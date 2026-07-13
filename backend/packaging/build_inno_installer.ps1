@@ -30,6 +30,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendRoot = (Resolve-Path -LiteralPath (Join-Path $ScriptDir "..")).Path
+$RepoRoot = (Resolve-Path -LiteralPath (Join-Path $BackendRoot "..")).Path
 $IssPath = Join-Path $ScriptDir "ticketbox-installer.iss"
 $IssWindowsCode = Join-Path $ScriptDir "ticketbox-installer-windows.isph"
 $IssFlowCode = Join-Path $ScriptDir "ticketbox-installer-flow.isph"
@@ -38,6 +39,9 @@ $BackendDist = Join-Path $BackendRoot "dist\ticketbox-backend"
 $BackendBuildManifest = Join-Path $BackendDist "BUILD_PROVENANCE.json"
 $BuildProvenanceScript = Join-Path $BackendRoot "scripts\windows_build_provenance.ps1"
 $BackendBuildProvenanceScript = Join-Path $BackendRoot "scripts\windows_backend_build_provenance.ps1"
+$ManagerDist = Join-Path $RepoRoot "desktop\dist\ticketbox-manager"
+$ManagerBuildManifest = Join-Path $ManagerDist "BUILD_PROVENANCE.json"
+$ManagerBuildProvenanceScript = Join-Path $RepoRoot "desktop\scripts\windows_manager_build_provenance.ps1"
 $PgBundle = Join-Path $ScriptDir "vendor\pg"
 $PgManifest = Join-Path $PgBundle "BUNDLE_MANIFEST.txt"
 $ShawlExe = Join-Path $ScriptDir "vendor\shawl\shawl.exe"
@@ -255,6 +259,7 @@ function Get-ValidatedShawlProvenance([string]$ExecutablePath = $ShawlExe) {
 
 function Get-InstallerBuildInputEvidence(
     [object]$BackendManifest,
+    [object]$ManagerManifest,
     [object]$PostgresProvenance,
     [object]$ShawlProvenance
 ) {
@@ -268,6 +273,16 @@ function Get-InstallerBuildInputEvidence(
             executable = $BackendManifest.payload.executable
             toolchain = $BackendManifest.toolchain
             manifest = Get-TicketboxFileEvidence $BackendRoot $BackendBuildManifest
+        }
+        manager = [ordered]@{
+            version = $ManagerManifest.version
+            source_algorithm = $ManagerManifest.source.algorithm
+            source_fingerprint = $ManagerManifest.source.fingerprint
+            payload_algorithm = $ManagerManifest.payload.algorithm
+            payload_fingerprint = $ManagerManifest.payload.fingerprint
+            executable = $ManagerManifest.payload.executable
+            toolchain = $ManagerManifest.toolchain
+            manifest = Get-TicketboxFileEvidence $RepoRoot $ManagerBuildManifest
         }
         postgresql = [ordered]@{
             version = $PostgresProvenance.version
@@ -532,6 +547,7 @@ function Write-InstallerBuildProvenance(
         }
         compiler_defines = @(Get-TicketboxNormalizedCompilerDefines $CompilerDefines)
         backend = $BuildInputs.backend
+        manager = $BuildInputs.manager
         postgresql = $BuildInputs.postgresql
         shawl = $BuildInputs.shawl
     }
@@ -543,24 +559,7 @@ function Write-InstallerBuildProvenance(
 }
 
 function Resolve-VersionInfoVersion([string]$Value) {
-    $m = [regex]::Match(
-        $Value,
-        '^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:(?:a|b|rc)\d+|(?:-[0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$'
-    )
-    if (-not $m.Success) {
-        throw "BACKEND_VERSION 不能转换为 Windows 文件版本：$Value"
-    }
-
-    $parts = @($m.Groups[1].Value, $m.Groups[2].Value, $m.Groups[3].Value)
-    if ($m.Groups[4].Success) {
-        $parts += $m.Groups[4].Value
-    }
-    else {
-        $parts += "0"
-    }
-    if (@($parts | Where-Object { [int64]$_ -gt 65535 }).Count -gt 0) {
-        throw "BACKEND_VERSION 的 Windows 文件版本分量不能超过 65535：$Value"
-    }
+    $parts = @(ConvertTo-SupportedNumericVersionParts $Value)
     return ($parts -join ".")
 }
 
@@ -667,6 +666,8 @@ if ($VersionPolicyContractProbe.Trim().Length -gt 0) {
     Write-Output (Invoke-VersionPolicyContractProbe $VersionPolicyContractProbe)
     return
 }
+Assert-File $ManagerBuildProvenanceScript "Windows Desktop Manager build provenance helper"
+. $ManagerBuildProvenanceScript
 
 $activeBuildModes = @(
     [bool]$CheckSourceInputsOnly,
@@ -774,6 +775,7 @@ Assert-File $ChineseLanguageFile "Inno 简体中文语言文件"
 Assert-File $ReleaseConfigScript "Windows release config 解析脚本"
 Assert-File $BuildProvenanceScript "Windows installer build provenance 脚本"
 Assert-File $BackendBuildProvenanceScript "Windows backend build provenance 脚本"
+Assert-File $ManagerBuildProvenanceScript "Windows Desktop Manager build provenance 脚本"
 Assert-File $BuildToolchainPrepScript "Windows build toolchain 准备脚本"
 . $ReleaseConfigScript
 $releaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
@@ -804,6 +806,8 @@ Write-Ok "Windows 文件版本：$resolvedVersionInfo"
 if ($CheckSourceInputsOnly) {
     $sourceSnapshot = Get-TicketboxBackendSourceSnapshot $BackendRoot
     Write-Ok "当前冻结相关源码指纹：$($sourceSnapshot.fingerprint)"
+    $managerSourceSnapshot = Get-TicketboxManagerSourceSnapshot $RepoRoot
+    Write-Ok "当前 Desktop Manager 源码指纹：$($managerSourceSnapshot.fingerprint)"
     $recipeSnapshot = Get-TicketboxInstallerRecipeSnapshot $BackendRoot
     Write-Ok "当前安装器配方指纹：$($recipeSnapshot.fingerprint)"
     $gitProvenance = Get-TicketboxGitProvenance $BackendRoot
@@ -814,6 +818,8 @@ if ($CheckSourceInputsOnly) {
 }
 $sourceSnapshot = Get-TicketboxBackendSourceSnapshot $BackendRoot
 Write-Ok "当前冻结相关源码指纹：$($sourceSnapshot.fingerprint)"
+$managerSourceSnapshot = Get-TicketboxManagerSourceSnapshot $RepoRoot
+Write-Ok "当前 Desktop Manager 源码指纹：$($managerSourceSnapshot.fingerprint)"
 $recipeSnapshot = Get-TicketboxInstallerRecipeSnapshot $BackendRoot
 Write-Ok "当前安装器配方指纹：$($recipeSnapshot.fingerprint)"
 $gitProvenance = Get-TicketboxGitProvenance $BackendRoot
@@ -823,6 +829,11 @@ Assert-TicketboxNoReparsePath -Path $BackendDist -AllowedRoot $BackendRoot -Insp
 Assert-File (Join-Path $BackendDist "ticketbox-backend.exe") "ticketbox-backend.exe"
 $backendManifest = Assert-TicketboxBackendBuildManifest $BackendRoot $BackendDist
 Write-Ok "冻结后端 manifest 已绑定当前源码、版本和 EXE/payload hash。"
+Assert-Dir $ManagerDist "冻结 Desktop Manager onedir"
+Assert-TicketboxNoReparsePath -Path $ManagerDist -AllowedRoot $RepoRoot -InspectTree | Out-Null
+Assert-File (Join-Path $ManagerDist "ticketbox-manager.exe") "ticketbox-manager.exe"
+$managerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $ManagerDist
+Write-Ok "冻结 Desktop Manager manifest 已绑定当前源码、版本和 EXE/payload hash。"
 Assert-Dir $PgBundle "捆绑 PostgreSQL"
 Assert-TicketboxNoReparsePath -Path $PgBundle -AllowedRoot $BackendRoot -InspectTree | Out-Null
 $postgresProvenance = Get-ValidatedPostgresProvenance
@@ -886,6 +897,7 @@ $defines = @(
 )
 $verifiedBuildInputs = Get-InstallerBuildInputEvidence `
     $backendManifest `
+    $managerManifest `
     $postgresProvenance `
     $shawlProvenance
 if ($VerifyOnly) {
@@ -910,10 +922,12 @@ if ($VerifyOnly) {
     return
 }
 $buildStagingRoot = Join-Path $BackendRoot ("dist\.installer-build-{0}" -f $publishNonce)
-$stagedBackendRoot = Join-Path $buildStagingRoot "source\backend"
+$stagedRepoRoot = Join-Path $buildStagingRoot "source"
+$stagedBackendRoot = Join-Path $stagedRepoRoot "backend"
 $stagedScriptDir = Join-Path $stagedBackendRoot "packaging"
 $stagedIssPath = Join-Path $stagedScriptDir "ticketbox-installer.iss"
 $stagedBackendDist = Join-Path $stagedBackendRoot "dist\ticketbox-backend"
+$stagedManagerDist = Join-Path $stagedRepoRoot "desktop\dist\ticketbox-manager"
 $stagedPgBundle = Join-Path $stagedScriptDir "vendor\pg"
 $stagedShawlExe = Join-Path $stagedScriptDir "vendor\shawl\shawl.exe"
 $stagedInstallerInputDir = Join-Path $stagedBackendRoot "dist\installer-input"
@@ -930,6 +944,7 @@ try {
     New-Item -ItemType Directory -Force -Path `
         $stagedBackendRoot, `
         $stagedBackendDist, `
+        $stagedManagerDist, `
         $stagedPgBundle, `
         (Split-Path -Parent $stagedShawlExe), `
         $stagedInstallerInputDir, `
@@ -940,6 +955,7 @@ try {
         -DestinationRoot $stagedBackendRoot `
         -Snapshot $recipeSnapshot | Out-Null
     Copy-Item -Path (Join-Path $BackendDist "*") -Destination $stagedBackendDist -Recurse -Force
+    Copy-Item -Path (Join-Path $ManagerDist "*") -Destination $stagedManagerDist -Recurse -Force
     Copy-Item -Path (Join-Path $PgBundle "*") -Destination $stagedPgBundle -Recurse -Force
     Copy-Item -LiteralPath $ShawlExe -Destination $stagedShawlExe
 
@@ -948,6 +964,7 @@ try {
         $recipeSnapshot `
         (Get-TicketboxInstallerRecipeSnapshot $stagedBackendRoot)
     Assert-TicketboxBackendBuildManifest $BackendRoot $stagedBackendDist | Out-Null
+    Assert-TicketboxManagerBuildManifest $RepoRoot $stagedManagerDist | Out-Null
     Assert-TicketboxStructuredEvidence `
         "安装器 staging PostgreSQL" `
         $postgresProvenance `
@@ -969,12 +986,12 @@ try {
     Write-Ok "安装器输入 provenance：$($installerBuild.Path)"
 
     $stagedInputPaths = @(
-        Get-ChildItem -LiteralPath $stagedBackendRoot -Recurse -File |
+        Get-ChildItem -LiteralPath $stagedRepoRoot -Recurse -File |
             ForEach-Object { $_.FullName }
     )
-    $stagedInputSnapshot = Get-TicketboxFileSetSnapshot $stagedBackendRoot $stagedInputPaths
+    $stagedInputSnapshot = Get-TicketboxFileSetSnapshot $stagedRepoRoot $stagedInputPaths
     $inputLocks = @(Enter-TicketboxFileSetReadLocks `
-        -Root $stagedBackendRoot `
+        -Root $stagedRepoRoot `
         -Snapshot $stagedInputSnapshot)
     $isccRoot = Split-Path -Parent $iscc
     $isccPaths = @(
@@ -995,16 +1012,21 @@ try {
     Assert-TicketboxFileSetSnapshot `
         "ISCC 实际读取的 staging 输入" `
         $stagedInputSnapshot `
-        (Get-TicketboxFileSetSnapshot $stagedBackendRoot $stagedInputPaths)
+        (Get-TicketboxFileSetSnapshot $stagedRepoRoot $stagedInputPaths)
     Assert-TicketboxFileSetSnapshot `
         "ISCC compiler tree during build" `
         $isccSnapshot `
         (Get-TicketboxFileSetSnapshot $isccRoot $isccPaths)
 
     $currentBackendManifest = Assert-TicketboxBackendBuildManifest $BackendRoot $BackendDist
+    $currentManagerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $ManagerDist
     $currentPostgresProvenance = Get-ValidatedPostgresProvenance
     $currentShawlProvenance = Get-ValidatedShawlProvenance
-    $currentBuildInputs = Get-InstallerBuildInputEvidence $currentBackendManifest $currentPostgresProvenance $currentShawlProvenance
+    $currentBuildInputs = Get-InstallerBuildInputEvidence `
+        $currentBackendManifest `
+        $currentManagerManifest `
+        $currentPostgresProvenance `
+        $currentShawlProvenance
     $currentIsccProvenance = Get-TicketboxIsccProvenance $iscc
     $currentIsccProvenance | Add-Member `
         -NotePropertyName version_policy `

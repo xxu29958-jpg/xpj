@@ -73,6 +73,8 @@ from app.schemas._common import (
     AuthCheckResponse,
     ErrorResponse,
     HealthResponse,
+    InstallationHealthResponse,
+    InstallationMobileCapabilitiesResponse,
     StatusResponse,
 )
 from app.schemas._csv_import import (
@@ -372,6 +374,8 @@ __all__ = [
     "GoalTokenRequest",
     "GoalUpdateRequest",
     "HealthResponse",
+    "InstallationHealthResponse",
+    "InstallationMobileCapabilitiesResponse",
     "IncomePlanCreateRequest",
     "IncomePlanListResponse",
     "IncomePlanResponse",

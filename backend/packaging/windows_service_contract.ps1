@@ -95,6 +95,7 @@ function New-TicketboxShawlServiceImagePath {
         [Parameter(Mandatory = $true)][string]$InstallerRecoveryGuardPath,
         [Parameter(Mandatory = $true)][string]$DataRootMarkerPath,
         [Parameter(Mandatory = $true)][string]$DataVolumeIdentity,
+        [Parameter(Mandatory = $true)][ValidateSet("managed_host")][string]$OwnerRecoveryChannel,
         [Parameter(Mandatory = $true)][int]$StopTimeoutMs,
         [Parameter(Mandatory = $true)][int]$RestartDelayMs
     )
@@ -130,6 +131,8 @@ function New-TicketboxShawlServiceImagePath {
         "TICKETBOX_DATA_ROOT_MARKER_PATH=$(ConvertTo-TicketboxFullPath $DataRootMarkerPath)",
         "--env",
         "TICKETBOX_DATA_VOLUME_IDENTITY=$($DataVolumeIdentity.ToUpperInvariant())",
+        "--env",
+        "TICKETBOX_OWNER_RECOVERY_CHANNEL=$OwnerRecoveryChannel",
         "--",
         (ConvertTo-TicketboxFullPath $BackendPath)
     )
@@ -414,10 +417,12 @@ function Assert-TicketboxShawlServiceCommand {
         [string]$ExpectedInstallerRecoveryGuardPath,
         [string]$ExpectedDataRootMarkerPath = "",
         [string]$ExpectedDataVolumeIdentity = "",
+        [string]$ExpectedOwnerRecoveryChannel = "managed_host",
         [int]$ExpectedStopTimeoutMs,
         [int]$ExpectedRestartDelayMs,
         [switch]$AllowMissingInstallerRecoveryGuard,
-        [switch]$AllowMissingRuntimeDataAuthority
+        [switch]$AllowMissingRuntimeDataAuthority,
+        [switch]$AllowMissingOwnerRecoveryChannel
     )
 
     Assert-TicketboxServiceDependencies -Name $Name -ExpectedDependencies @($ExpectedDependency)
@@ -532,6 +537,7 @@ function Assert-TicketboxShawlServiceCommand {
         "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH" = $ExpectedInstallerRecoveryGuardPath
         "TICKETBOX_DATA_ROOT_MARKER_PATH" = $ExpectedDataRootMarkerPath
         "TICKETBOX_DATA_VOLUME_IDENTITY" = $ExpectedDataVolumeIdentity
+        "TICKETBOX_OWNER_RECOVERY_CHANNEL" = $ExpectedOwnerRecoveryChannel
     }
     $allowedMissingEnvironment = @()
     if ($AllowMissingInstallerRecoveryGuard) {
@@ -542,6 +548,9 @@ function Assert-TicketboxShawlServiceCommand {
             "TICKETBOX_DATA_ROOT_MARKER_PATH",
             "TICKETBOX_DATA_VOLUME_IDENTITY"
         )
+    }
+    if ($AllowMissingOwnerRecoveryChannel) {
+        $allowedMissingEnvironment += "TICKETBOX_OWNER_RECOVERY_CHANNEL"
     }
     if (
         $environmentValues.Count -gt $expectedEnvironment.Count -or
@@ -568,6 +577,11 @@ function Assert-TicketboxShawlServiceCommand {
                 throw "Shawl 服务 $Name 的 DataRoot Volume GUID 不匹配。"
             }
             $runtimeAuthorityValuesSeen++
+        }
+        elseif ($parts[0] -eq "TICKETBOX_OWNER_RECOVERY_CHANNEL") {
+            if (-not [string]::Equals($parts[1], $expectedValue, [System.StringComparison]::Ordinal)) {
+                throw "Shawl 服务 $Name 的 owner recovery capability 与部署合同不一致。"
+            }
         }
         else {
             if (

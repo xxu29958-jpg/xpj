@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import threading
 from pathlib import Path
 
 import pytest
 
+from backend_manager.installation import WindowsReleaseConfig
 from backend_manager.process import HealthProbeResult, TicketboxHealthExpectation, _parse_health_payload
 from backend_manager.runtime import RuntimeControlError, ServiceAccessError
 from backend_manager.windows_service import (
@@ -54,6 +56,33 @@ class FakeActionRunner:
 
     def run(self, action: str) -> None:
         self.actions.append(action)
+
+
+def _health_payload(
+    *,
+    installation_id: str = "ticketbox-0123456789abcdef0123456789abcdef",
+    runtime_access_state: str = "available",
+    owner_state: str = "configured",
+    owner_recovery_channel: str = "managed_host",
+) -> bytes:
+    return json.dumps(
+        {
+            "contract": "ticketbox-installation-health-v2",
+            "status": "ok",
+            "product": "ticketbox",
+            "backend_version": "9.8.7",
+            "installation_id": installation_id,
+            "runtime_access_state": runtime_access_state,
+            "owner_state": owner_state,
+            "owner_recovery_channel": owner_recovery_channel,
+            "mobile_connectivity": {
+                "mobile_endpoint_state": "local_only",
+                "android_binding_state": "setup_required",
+                "iphone_upload_state": "setup_required",
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
 
 
 def _runtime(
@@ -105,24 +134,40 @@ def test_status_reports_services_and_redacted_identity_health_without_raw_logs(t
 
 def test_health_json_requires_exact_product_version_and_installation_identity(tmp_path: Path) -> None:
     expectation = TicketboxHealthExpectation(
-        backend_version="9.8.7-test",
+        backend_version="9.8.7",
         installation_id="ticketbox-0123456789abcdef0123456789abcdef",
     )
     random_200 = _parse_health_payload(b'{"status":"ok"}', expectation)
-    valid = _parse_health_payload(
-        b'{"status":"ok","product":"ticketbox","backend_version":"9.8.7-test",'
-        b'"installation_id":"ticketbox-0123456789abcdef0123456789abcdef"}',
+    valid = _parse_health_payload(_health_payload(), expectation)
+    wrong_install = _parse_health_payload(
+        _health_payload(installation_id="ticketbox-ffffffffffffffffffffffffffffffff"),
         expectation,
     )
-    wrong_install = _parse_health_payload(
-        b'{"status":"ok","product":"ticketbox","backend_version":"9.8.7-test",'
-        b'"installation_id":"ticketbox-ffffffffffffffffffffffffffffffff"}',
+    missing_owner = _parse_health_payload(
+        _health_payload(owner_state="recovery_required"),
         expectation,
     )
 
     assert random_200.state == "mismatch"
     assert valid.healthy is True
+    assert valid.mobile_endpoint_state == "local_only"
+    assert valid.android_binding_state == "setup_required"
+    assert valid.owner_state == "configured"
     assert wrong_install.state == "mismatch"
+    assert missing_owner.healthy is True
+    assert missing_owner.owner_state == "recovery_required"
+    assert "缺少可用拥有者身份" in missing_owner.detail
+    repair_required = _parse_health_payload(
+        _health_payload(runtime_access_state="repair_required"),
+        expectation,
+    )
+    assert repair_required.healthy is True
+    assert repair_required.runtime_access_state == "repair_required"
+    _runtime(
+        tmp_path,
+        FakeGateway(backend="running", database="running"),
+        health_result=missing_owner,
+    ).start()
     mismatch_status = _runtime(
         tmp_path,
         FakeGateway(backend="running", database="running"),
@@ -325,6 +370,106 @@ def test_postgres_progress_can_continue_for_more_than_45_seconds(tmp_path: Path)
 
     assert clock.now >= 50
     assert gateway.actions == [("start", "TicketboxPg"), ("start", "TicketboxBackend")]
+
+
+def test_phase_budget_outlasts_full_reachable_restart_state_machine(tmp_path: Path) -> None:
+    clock = FakeClock()
+    release = WindowsReleaseConfig(
+        backend_service_name="TicketboxBackend",
+        pg_service_name="TicketboxPg",
+        service_state_timeout_ms=2_000,
+        service_poll_interval_ms=100,
+        postgres_ready_timeout_ms=3_000,
+        backend_ready_timeout_ms=4_000,
+        backend_ready_poll_interval_ms=100,
+        backend_health_request_timeout_ms=500,
+    )
+
+    class SlowTransitionGateway(FakeGateway):
+        def __init__(self) -> None:
+            super().__init__(backend="start_pending", database="stop_pending")
+            self.deadlines: dict[str, float] = {}
+
+        def _delay(self, name: str) -> float:
+            return 2.8 if name == "TicketboxPg" else 1.8
+
+        def query(self, name: str) -> ServiceSnapshot:
+            state = self.states[name]
+            if state in {"start_pending", "stop_pending"}:
+                deadline = self.deadlines.setdefault(name, clock.now + self._delay(name))
+                if clock.now >= deadline:
+                    self.states[name] = "running" if state == "start_pending" else "stopped"
+                    self.deadlines.pop(name, None)
+            return ServiceSnapshot(
+                name=name,
+                state=self.states[name],
+                pid=4321 if self.states[name] == "running" else None,
+                checkpoint=int(clock.now * 10) + 1,
+                wait_hint_ms=5_000,
+            )
+
+        def start(self, name: str) -> None:
+            self.actions.append(("start", name))
+            self.states[name] = "start_pending"
+            self.deadlines[name] = clock.now + self._delay(name)
+
+        def stop(self, name: str) -> None:
+            self.actions.append(("stop", name))
+            self.states[name] = "stop_pending"
+            self.deadlines[name] = clock.now + self._delay(name)
+
+    gateway = SlowTransitionGateway()
+    health_started: float | None = None
+
+    def health_probe() -> HealthProbeResult:
+        nonlocal health_started
+        if health_started is None:
+            health_started = clock.now
+        clock.sleep(0.45)
+        if clock.now - health_started >= 3.5:
+            return HealthProbeResult("healthy", "verified")
+        return HealthProbeResult("pending", "warming")
+
+    def validate_stopped() -> None:
+        clock.sleep(1.8)
+        # A separate SCM actor can begin a transition after validation. The
+        # start path must still have budget for its own settle window.
+        gateway.states["TicketboxBackend"] = "stop_pending"
+        gateway.deadlines.pop("TicketboxBackend", None)
+
+    runtime = WindowsServiceRuntime(
+        gateway=gateway,
+        backend_service_name="TicketboxBackend",
+        pg_service_name="TicketboxPg",
+        health_probe=health_probe,
+        wait_timeout_seconds=release.service_state_timeout_seconds,
+        pg_wait_timeout_seconds=max(
+            release.service_state_timeout_seconds,
+            release.postgres_ready_timeout_seconds,
+        ),
+        poll_seconds=release.service_poll_seconds,
+        backend_ready_timeout_seconds=release.backend_ready_timeout_seconds,
+        backend_ready_poll_seconds=release.backend_ready_poll_seconds,
+        clock=clock,
+        sleep=clock.sleep,
+        backend_stopped_validator=validate_stopped,
+    )
+
+    runtime.restart()
+
+    action_phases = release.helper_action_phase_budget_seconds("restart")
+    runtime_budget = sum(
+        seconds
+        for name, seconds in action_phases.items()
+        if name not in {"pre_action_contract_validation", "watchdog_scheduler_margin"}
+    )
+    assert gateway.actions == [
+        ("stop", "TicketboxBackend"),
+        ("start", "TicketboxPg"),
+        ("start", "TicketboxBackend"),
+    ]
+    assert clock.now > 15
+    assert clock.now < runtime_budget < release.helper_watchdog_seconds("restart")
 
 
 def test_blocked_health_probe_does_not_block_service_stop(tmp_path: Path) -> None:

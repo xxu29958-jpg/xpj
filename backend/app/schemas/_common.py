@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 __all__ = [
     "AuthCheckResponse",
     "ErrorResponse",
     "HealthResponse",
+    "InstallationHealthResponse",
+    "InstallationMobileCapabilitiesResponse",
     "StatusResponse",
 ]
 
@@ -45,6 +49,24 @@ class HealthResponse(BaseModel):
     latest_backup_at: str | None = None
     backup_age_hours: int | None = None
     backup_stale: bool | None = None
+
+
+class InstallationMobileCapabilitiesResponse(BaseModel):
+    mobile_endpoint_state: Literal["local_only", "public_configured_unverified"]
+    android_binding_state: Literal["setup_required", "configured_unverified"]
+    iphone_upload_state: Literal["setup_required", "configured_unverified"]
+
+
+class InstallationHealthResponse(BaseModel):
+    contract: Literal["ticketbox-installation-health-v2"] = "ticketbox-installation-health-v2"
+    status: Literal["ok"] = "ok"
+    product: Literal["ticketbox"] = "ticketbox"
+    backend_version: str
+    installation_id: str
+    runtime_access_state: Literal["available", "repair_required"]
+    owner_state: Literal["configured", "recovery_required"]
+    owner_recovery_channel: Literal["development", "managed_host", "operator"]
+    mobile_connectivity: InstallationMobileCapabilitiesResponse
 
 
 class AuthCheckResponse(BaseModel):

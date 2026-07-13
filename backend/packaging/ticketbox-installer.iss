@@ -100,11 +100,19 @@ VersionInfoProductName={#AppName}
 VersionInfoProductVersion={#AppVersion}
 VersionInfoVersion={#AppVersionInfo}
 AllowCancelDuringInstall=no
-CloseApplications=no
+CloseApplications=yes
+RestartApplications=no
 ShowLanguageDialog=no
 
 [Languages]
 Name: "chinesesimp"; MessagesFile: "languages\ChineseSimplified.isl"
+
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\program\ticketbox-backend\*"; Check: AuthoritativePayloadReplacementPrepared
+Type: filesandordirs; Name: "{app}\manager\*"; Check: AuthoritativePayloadReplacementPrepared
+Type: filesandordirs; Name: "{app}\pg\*"; Check: AuthoritativePayloadReplacementPrepared
+Type: filesandordirs; Name: "{app}\shawl\*"; Check: AuthoritativePayloadReplacementPrepared
+Type: filesandordirs; Name: "{app}\installer\*"; Check: AuthoritativePayloadReplacementPrepared
 
 [Files]
 Source: "..\scripts\windows_build_provenance.ps1"; DestName: "windows_build_provenance.ps1"; Flags: dontcopy noencryption
@@ -123,6 +131,7 @@ Source: "windows_release_config.ps1"; Flags: dontcopy noencryption
 Source: "windows-release-config.json"; Flags: dontcopy noencryption
 Source: "ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\ticketbox-backend\*"; DestDir: "{app}\program\ticketbox-backend"; Excludes: "ticketbox-data\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "vendor\pg\*"; DestDir: "{app}\pg"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "vendor\shawl\shawl.exe"; DestDir: "{app}\shawl"; Flags: ignoreversion
 Source: "hold_data_root_mutation_guard.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
@@ -155,6 +164,7 @@ Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "Backend
 Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "PgServiceName"; ValueData: "{#PgServiceName}"
 
 [Icons]
+Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\manager\ticketbox-manager.exe"; WorkingDir: "{app}\manager"; IconFilename: "{app}\ticketbox.ico"
 Name: "{autoprograms}\小票夹\打开小票夹 Web"; Filename: "http://127.0.0.1:{code:GetBackendPort}/web"; IconFilename: "{app}\ticketbox.ico"
 Name: "{autoprograms}\小票夹\数据目录"; Filename: "{code:GetDataRoot}"; IconFilename: "{app}\ticketbox.ico"
 

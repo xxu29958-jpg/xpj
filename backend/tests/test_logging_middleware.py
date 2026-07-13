@@ -86,9 +86,18 @@ def test_middleware_transparent_for_200(client: TestClient) -> None:
     installation_body = installation_health.json()
     assert installation_body["status"] == "ok"
     assert installation_body["product"] == "ticketbox"
+    assert installation_body["contract"] == "ticketbox-installation-health-v2"
     assert installation_body["backend_version"]
     assert installation_body["installation_id"]
-    assert all(":\\" not in value for value in installation_body.values())
+    assert installation_body["runtime_access_state"] == "available"
+    assert installation_body["owner_state"] == "configured"
+    assert installation_body["owner_recovery_channel"] == "development"
+    assert installation_body["mobile_connectivity"] == {
+        "mobile_endpoint_state": "local_only",
+        "android_binding_state": "setup_required",
+        "iphone_upload_state": "setup_required",
+    }
+    assert ":\\" not in installation_health.text
 
 
 def test_installation_health_rejects_database_query_failure() -> None:
@@ -120,6 +129,24 @@ def test_installation_health_rejects_database_query_failure() -> None:
     assert payload["error"] == "invalid_request"
     assert payload["message"] == "Ticketbox database is not ready for installed-service traffic."
     assert payload["request_id"]
+
+
+def test_installation_health_exposes_owner_recovery_as_a_distinct_state(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.main import app
+
+    monkeypatch.setattr("app.main.installation_owner_state", lambda _db: "recovery_required")
+    with TestClient(
+        app,
+        base_url="http://127.0.0.1:8000",
+        client=("127.0.0.1", 50000),
+    ) as local_client:
+        response = local_client.get("/api/health/installation")
+
+    assert response.status_code == 200
+    assert response.json()["owner_state"] == "recovery_required"
 
 
 def test_mask_token_helper() -> None:

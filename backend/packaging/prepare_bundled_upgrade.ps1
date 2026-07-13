@@ -52,6 +52,7 @@ function Set-TicketboxInstalledReleaseConfiguration([object]$Config, [bool]$Pers
     $script:BackendServiceName = [string]$Config.backend_service_name
     $script:DbName = [string]$Config.db_name
     $script:DbRole = [string]$Config.db_role
+    $script:OwnerRecoveryChannel = [string]$Config.owner_recovery_channel
     $script:InstalledStopTimeoutMs = [int]$Config.stop_timeout_ms
     $script:InstalledRestartDelayMs = [int]$Config.restart_delay_ms
 }
@@ -61,7 +62,9 @@ function Initialize-TicketboxInstalledReleaseConfiguration {
         $InstalledReleaseConfigPath.Trim().Length -gt 0 -and
         (Test-Path -LiteralPath $InstalledReleaseConfigPath -PathType Leaf)
     ) {
-        $installedConfig = Read-TicketboxWindowsReleaseConfig $InstalledReleaseConfigPath
+        $installedConfig = Read-TicketboxWindowsReleaseConfig `
+            $InstalledReleaseConfigPath `
+            -AllowLegacyMissingOwnerRecoveryChannel
         Assert-TicketboxReleaseIdentityCompatible `
             -InstalledConfig $installedConfig `
             -TargetConfig $TargetReleaseConfig
@@ -361,10 +364,12 @@ function Assert-TicketboxPreparedServiceRuntimeCommand {
         -ExpectedInstallerRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
         -ExpectedDataRootMarkerPath $ExpectedDataRootMarkerPath `
         -ExpectedDataVolumeIdentity $ExpectedDataVolumeIdentity `
+        -ExpectedOwnerRecoveryChannel $OwnerRecoveryChannel `
         -ExpectedStopTimeoutMs $ExpectedStopTimeoutMs `
         -ExpectedRestartDelayMs $ExpectedRestartDelayMs `
         -AllowMissingInstallerRecoveryGuard `
-        -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority
+        -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority `
+        -AllowMissingOwnerRecoveryChannel
 }
 
 function Assert-ExpectedServiceConfiguration {

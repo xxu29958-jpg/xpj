@@ -8,7 +8,6 @@ import os
 import re
 import secrets
 import subprocess
-import sys
 import threading
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -321,9 +320,21 @@ def build_helper_command(
     action: ServiceAction,
     channel: HelperResultChannel,
     wait_timeout_ms: int,
+    *,
+    helper_executable: Path,
 ) -> HelperCommand:
-    executable = Path(sys.executable).resolve()
-    frozen = bool(getattr(sys, "frozen", False))
+    expected_parent = Path(os.path.abspath(helper_executable.parent))
+    if (
+        helper_executable.name.casefold() != "ticketbox-manager.exe"
+        or expected_parent.name.casefold() != "manager"
+    ):
+        raise RuntimeControlError("正式服务操作只能使用安装目录中的 ticketbox-manager.exe。")
+    executable = windows_user_security.require_local_fixed_regular_file(
+        helper_executable,
+        label="正式 Manager 服务助手",
+    )
+    if os.path.normcase(str(executable.parent)) != os.path.normcase(str(expected_parent)):
+        raise RuntimeControlError("正式 Manager 服务助手解析后离开了登记安装目录。")
     helper_args = (
         "--elevated-service-action",
         action,
@@ -338,16 +349,10 @@ def build_helper_command(
         "--helper-channel-file-id",
         channel.file_identity or "",
     )
-    if frozen:
-        arguments = helper_args
-        working_dir = executable.parent
-    else:
-        arguments = ("-m", "backend_manager", *helper_args)
-        working_dir = Path(__file__).resolve().parents[1]
     return HelperCommand(
         executable=executable,
-        arguments=arguments,
-        working_dir=working_dir,
+        arguments=helper_args,
+        working_dir=executable.parent,
         wait_timeout_ms=wait_timeout_ms,
     )
 
@@ -415,16 +420,23 @@ class ElevatedServiceActionRunner:
     def __init__(
         self,
         release: WindowsReleaseConfig,
+        helper_executable: Path,
         launcher=_launch_elevated,
         channel_factory=create_helper_result_channel,
     ) -> None:
         self._release = release
+        self._helper_executable = helper_executable
         self._launcher = launcher
         self._channel_factory = channel_factory
 
     def run(self, action: ServiceAction) -> None:
         with self._channel_factory(action) as channel:
-            command = build_helper_command(action, channel, self._release.helper_parent_timeout_ms(action))
+            command = build_helper_command(
+                action,
+                channel,
+                self._release.helper_parent_timeout_ms(action),
+                helper_executable=self._helper_executable,
+            )
             exit_code = self._launcher(command)
             result = channel.read(exit_code)
         if result is None:

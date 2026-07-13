@@ -845,6 +845,7 @@ function Enable-TicketboxInstalledServicesAutoStart {
         -ExpectedInstallerRecoveryGuardPath (Get-TicketboxInstallerRuntimeRecoveryGuardPath) `
         -ExpectedDataRootMarkerPath (Join-Path $binding.RuntimeDataRoot $script:TicketboxDataRootMarkerName) `
         -ExpectedDataVolumeIdentity $binding.DataVolumeIdentity `
+        -ExpectedOwnerRecoveryChannel ([string]$TargetReleaseConfig.owner_recovery_channel) `
         -ExpectedStopTimeoutMs ([int]$TargetReleaseConfig.stop_timeout_ms) `
         -ExpectedRestartDelayMs ([int]$TargetReleaseConfig.restart_delay_ms)
     $services = @(

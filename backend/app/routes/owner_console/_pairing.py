@@ -2,15 +2,33 @@
 
 from __future__ import annotations
 
+from types import MappingProxyType
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
+
+
+_RECOVERY_MESSAGES = MappingProxyType({
+    "development": "服务未初始化，请先运行 bootstrap_dev_owner.ps1。",
+    "managed_host": "当前安装缺少可用拥有者身份。普通修复不会重建身份，请先导出诊断包交给维护者处理。",
+    "operator": "服务未初始化，请联系部署管理员完成初始化。",
+})
+
+
+def _runtime_recovery_message() -> str:
+    return _RECOVERY_MESSAGES[get_settings().owner_recovery_channel]
+
+
+def _add_android_connection_context(context: dict[str, object]) -> None:
+    context["android_server_url"] = get_settings().public_base_url or None
 
 
 @router.get("/pairing", response_class=HTMLResponse)
@@ -27,6 +45,8 @@ def owner_pairing_get(
     ctx["ledger_choices"] = choices
     ctx["ledger_id"] = selected_id
     ctx["selected_ledger_id"] = selected_id
+    ctx["owner_recovery_message"] = _runtime_recovery_message()
+    _add_android_connection_context(ctx)
     return templates.TemplateResponse(request=request, name="pairing.html", context=ctx)
 
 
@@ -47,11 +67,24 @@ def owner_pairing_post(
         ctx["ledger_choices"] = choices
         ctx["ledger_id"] = None
         ctx["selected_ledger_id"] = ledger_id if ledger_id in valid_ids else None
+        ctx["owner_recovery_message"] = _runtime_recovery_message()
+        _add_android_connection_context(ctx)
         ctx["error"] = (
-            "服务未初始化，请先运行 bootstrap_dev_owner.ps1。"
+            _runtime_recovery_message()
             if not choices
             else "请选择一个有权限的账本。"
         )
+        return templates.TemplateResponse(request=request, name="pairing.html", context=ctx)
+    android_server_url = get_settings().public_base_url or None
+    if android_server_url is None:
+        ctx = _base(request, db)
+        ctx["pairing_result"] = None
+        ctx["ledger_choices"] = choices
+        ctx["ledger_id"] = ledger_id
+        ctx["selected_ledger_id"] = ledger_id
+        ctx["owner_recovery_message"] = _runtime_recovery_message()
+        ctx["android_server_url"] = None
+        ctx["error"] = "请先在设置中完成手机连接配置，再生成绑定码。"
         return templates.TemplateResponse(request=request, name="pairing.html", context=ctx)
     result = svc.do_create_pairing_code(db, ledger_id=ledger_id, account_id=account_id, ttl_minutes=ttl_minutes)
     ctx = _base(request, db)
@@ -60,4 +93,5 @@ def owner_pairing_post(
     ctx["ledger_id"] = ledger_id
     ctx["selected_ledger_id"] = ledger_id
     ctx["error"] = None
+    _add_android_connection_context(ctx)
     return templates.TemplateResponse(request=request, name="pairing.html", context=ctx)

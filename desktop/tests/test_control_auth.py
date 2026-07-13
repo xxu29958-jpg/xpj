@@ -7,11 +7,23 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from backend_manager.control_server import ControlServer, is_authorized, probe_existing_manager
+from backend_manager.app_controller import AppController
+from backend_manager.control_server import (
+    ControlServer,
+    is_authorized,
+    probe_existing_manager,
+    request_existing_manager_window,
+)
+from backend_manager.projection import UnavailableInstalledRuntimeConfigProvider
 
 _TOKEN = "s3cr3t-token"
 _INSTANCE_SECRET = "instance-proof-secret"
 _ORIGIN = "http://127.0.0.1:8799"
+_CONTENT_SECURITY_POLICY = (
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+    "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; "
+    "frame-ancestors 'none'"
+)
 
 
 def _auth(**overrides: object) -> bool:
@@ -79,7 +91,7 @@ def test_canonicalization_does_not_accept_hostile_authorities() -> None:
 
 
 def _assert_security_headers(response: http.client.HTTPResponse) -> None:
-    assert response.getheader("Content-Security-Policy") == "frame-ancestors 'none'"
+    assert response.getheader("Content-Security-Policy") == _CONTENT_SECURITY_POLICY
     assert response.getheader("X-Frame-Options") == "DENY"
     assert response.getheader("X-Content-Type-Options") == "nosniff"
     assert response.getheader("Cache-Control") == "no-store"
@@ -87,6 +99,7 @@ def _assert_security_headers(response: http.client.HTTPResponse) -> None:
 
 
 def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> None:
+    reopened: list[str] = []
     class Controller:
         def status(self) -> dict:
             return {"status": "ok"}
@@ -96,6 +109,8 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         def restart(self) -> None: ...
         def auto_restart(self) -> None: ...
         def open_console(self) -> None: ...
+        def is_manager_shutting_down(self) -> bool:
+            return False
 
     ui = tmp_path / "ui.html"
     ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
@@ -106,6 +121,7 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         token=_TOKEN,
         instance_secret=_INSTANCE_SECRET,
         ui_html=ui,
+        request_window=lambda: (reopened.append("window"), True)[-1],
     )
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
@@ -150,6 +166,26 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         assert json.loads(response.read()) == {"status": "ok"}
         connection.close()
 
+        action_headers = {
+            "X-Control-Token": _TOKEN,
+            "Sec-Fetch-Site": "same-origin",
+            "Origin": f"http://127.0.0.1:{server.server_address[1]}",
+        }
+        for invalid_path in ("/anything/start", "/api/start?unexpected=1"):
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+            connection.request("POST", invalid_path, headers=action_headers)
+            response = connection.getresponse()
+            assert response.status == 404
+            response.read()
+            connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("POST", "/api/start", body=b"{}", headers=action_headers)
+        response = connection.getresponse()
+        assert response.status == 400
+        response.read()
+        connection.close()
+
         connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
         connection.request("GET", "/api/identity")
         response = connection.getresponse()
@@ -161,6 +197,49 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
             f"http://127.0.0.1:{server.server_address[1]}/",
             _INSTANCE_SECRET,
         ) is True
+        assert request_existing_manager_window(
+            f"http://127.0.0.1:{server.server_address[1]}/",
+            _INSTANCE_SECRET,
+        ) is True
+        assert reopened == ["window"]
+
+        browser_reopen = http.client.HTTPConnection(
+            "127.0.0.1",
+            server.server_address[1],
+            timeout=2,
+        )
+        browser_reopen.request(
+            "POST",
+            "/api/reopen",
+            headers={
+                "X-Ticketbox-Reopen-Challenge": "x" * 43,
+                "Origin": f"http://127.0.0.1:{server.server_address[1]}",
+            },
+        )
+        browser_response = browser_reopen.getresponse()
+        assert browser_response.status == 403
+        browser_response.read()
+        browser_reopen.close()
+        assert reopened == ["window"]
+
+        native_reopen = http.client.HTTPConnection(
+            "127.0.0.1",
+            server.server_address[1],
+            timeout=2,
+        )
+        native_reopen.request(
+            "POST",
+            "/api/reopen",
+            headers={
+                "X-Ticketbox-Reopen-Challenge": "x" * 43,
+                "X-Ticketbox-Reopen-Proof": "0" * 64,
+            },
+        )
+        native_response = native_reopen.getresponse()
+        assert native_response.status == 403
+        native_response.read()
+        native_reopen.close()
+        assert reopened == ["window"]
     finally:
         server.shutdown()
         server.server_close()
@@ -188,7 +267,139 @@ def test_fake_fixed_identity_listener_cannot_prove_manager_ownership() -> None:
             f"http://127.0.0.1:{server.server_address[1]}/",
             _INSTANCE_SECRET,
         ) is False
+        assert request_existing_manager_window(
+            f"http://127.0.0.1:{server.server_address[1]}/",
+            _INSTANCE_SECRET,
+        ) is False
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_control_server_rejects_overlapping_actions_but_keeps_status_available(tmp_path) -> None:
+    action_entered = threading.Event()
+    release_action = threading.Event()
+
+    class BlockingController:
+        def status(self) -> dict:
+            return {"status": "ok"}
+
+        def start(self) -> None:
+            action_entered.set()
+            assert release_action.wait(timeout=2)
+
+        def stop(self) -> None: ...
+        def restart(self) -> None: ...
+        def auto_restart(self) -> None: ...
+        def open_console(self) -> None: ...
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=BlockingController(),
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    port = server.server_address[1]
+    origin = f"http://127.0.0.1:{port}"
+    headers = {
+        "X-Control-Token": _TOKEN,
+        "Sec-Fetch-Site": "same-origin",
+        "Origin": origin,
+    }
+    server_thread = threading.Thread(target=server.serve_forever)
+    first_result: list[tuple[int, dict]] = []
+
+    def run_first_action() -> None:
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        connection.request("POST", "/api/start", headers=headers)
+        response = connection.getresponse()
+        first_result.append((response.status, json.loads(response.read())))
+        connection.close()
+
+    server_thread.start()
+    action_thread = threading.Thread(target=run_first_action)
+    action_thread.start()
+    try:
+        assert action_entered.wait(timeout=1)
+
+        status_connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        status_connection.request("GET", "/api/status", headers={"X-Control-Token": _TOKEN})
+        status_response = status_connection.getresponse()
+        assert status_response.status == 200
+        assert json.loads(status_response.read()) == {"status": "ok"}
+        status_connection.close()
+
+        overlap = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        overlap.request("POST", "/api/start", headers=headers)
+        overlap_response = overlap.getresponse()
+        assert overlap_response.status == 409
+        assert json.loads(overlap_response.read()) == {"error": "operation_in_progress"}
+        overlap.close()
+    finally:
+        release_action.set()
+        action_thread.join(timeout=3)
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)
+
+    assert first_result == [(200, {"status": "ok"})]
+
+
+def test_control_server_rejects_every_action_and_reopen_after_shutdown_seal(tmp_path) -> None:
+    controller = AppController(UnavailableInstalledRuntimeConfigProvider(), maintenance_version="1.2.0")
+    controller.request_manager_shutdown()
+    reopened: list[str] = []
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=controller,
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+        request_window=lambda: (reopened.append("window"), True)[-1],
+    )
+    port = server.server_address[1]
+    headers = {
+        "X-Control-Token": _TOKEN,
+        "Sec-Fetch-Site": "same-origin",
+        "Origin": f"http://127.0.0.1:{port}",
+    }
+    server_thread = threading.Thread(target=server.serve_forever)
+    server_thread.start()
+    try:
+        for action in (
+            "start",
+            "stop",
+            "restart",
+            "auto_restart",
+            "open_console",
+            "open_pairing",
+            "open_devices",
+            "open_upload_links",
+            "open_backups",
+            "open_diagnostics",
+            "open_settings",
+            "export_diagnostics",
+        ):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            connection.request("POST", f"/api/{action}", headers=headers)
+            response = connection.getresponse()
+            assert response.status == 409
+            assert json.loads(response.read()) == {"error": "manager_shutting_down"}
+            connection.close()
+
+        assert request_existing_manager_window(f"http://127.0.0.1:{port}/", _INSTANCE_SECRET) is False
+        assert reopened == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)

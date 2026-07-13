@@ -11,6 +11,19 @@
 <div class="alert alert-danger">{{ error }}</div>
 {% endif %}
 
+{% if android_server_url %}
+<div class="card">
+  <div class="meta text-center">
+    Android 服务器地址：<code>{{ android_server_url }}</code>
+    <button class="btn" type="button" data-copy-server-url="{{ android_server_url }}">复制地址</button>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-danger">
+  手机连接地址尚未配置。请先到<a href="/owner/settings"><strong>设置</strong></a>完成连接配置，再回来生成绑定码。
+</div>
+{% endif %}
+
 {% if pairing_result %}
 <div class="card">
   <div class="alert alert-success">绑定码已生成，请在有效期内完成绑定。</div>
@@ -26,6 +39,21 @@
 </div>
 {% endif %}
 
+{% if android_server_url %}
+<script>
+  document.querySelectorAll("[data-copy-server-url]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copyServerUrl);
+        button.textContent = "已复制";
+      } catch (_error) {
+        button.textContent = "请手动复制";
+      }
+    });
+  });
+</script>
+{% endif %}
+
 <div class="card">
   <h2>生成新绑定码</h2>
   <p class="text-meta mb-5">
@@ -34,8 +62,10 @@
   </p>
   {% if not ledger_choices %}
   <div class="alert alert-danger">
-    服务未初始化或没有可绑定的账本，请先运行 <code>bootstrap_dev_owner.ps1</code>。
+    {{ owner_recovery_message }}
   </div>
+  {% elif not android_server_url %}
+  <div class="alert alert-danger">连接配置完成前不会签发新的绑定码。</div>
   {% else %}
   <form method="post" action="/owner/pairing">
     <div class="flex-row-wrap">

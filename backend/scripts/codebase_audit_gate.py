@@ -54,7 +54,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 217,  # Noisy lane; ratcheted to the current measured floor.
+    "unreferenced_modules": 216,  # Noisy lane; ratcheted to the current measured floor.
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -136,8 +136,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2532,  # Includes installer hash dataflow mutations for both CI platforms, 2026-07-13.
-    "installer_pytest_count": 91,  # Includes Windows runtime DataRoot authority coverage, 2026-07-13.
+    "backend_pytest_count": 2546,  # Includes installation health, pairing, and owner-recovery contracts.
+    "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane

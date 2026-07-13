@@ -36,15 +36,34 @@ _SOURCE_HEALTH_REQUEST_TIMEOUT_SECONDS = 3.0
 class ConfigError(RuntimeError):
     """Raised when the manager cannot resolve a usable runtime configuration."""
 
+    def __init__(self, message: str, *, code: str = "manager_config_invalid") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+@dataclass(frozen=True)
+class MaintenanceManagerConfig:
+    """Only enough local state to expose diagnostics and installer recovery."""
+
+    manager_host: str
+    manager_port: int
+    current_version: str
+    startup_failure_code: str = "runtime_config_invalid"
+    startup_failure_stage: str = "runtime_discovery"
+
+    def manager_url_for_port(self, port: int) -> str:
+        return f"http://{self.manager_host}:{port}/"
+
 
 @dataclass(frozen=True)
 class SourceRuntimeConfig:
     backend_root: Path
     venv_python: Path
+    data_root: Path
 
     @property
     def env_path(self) -> Path:
-        return self.backend_root / ".env"
+        return self.data_root / ".env"
 
 
 @dataclass(frozen=True)
@@ -143,6 +162,15 @@ def _discover_backend_root() -> Path:
     return (Path(__file__).resolve().parents[2] / "backend").resolve()
 
 
+def _resolve_source_data_root(backend_root: Path) -> Path:
+    """Resolve the source data root once, relative to the backend root."""
+    raw = os.getenv("TICKETBOX_DATA_DIR", "").strip()
+    candidate = Path(raw) if raw else backend_root
+    if not candidate.is_absolute():
+        candidate = backend_root / candidate
+    return candidate.resolve()
+
+
 def _discover_source_runtime() -> SourceRuntimeConfig:
     backend_root = _discover_backend_root()
     if not backend_root.exists():
@@ -150,7 +178,11 @@ def _discover_source_runtime() -> SourceRuntimeConfig:
     venv_python = backend_root / ".venv" / "Scripts" / "python.exe"
     if not venv_python.exists():
         raise ConfigError(f"backend venv interpreter not found at {venv_python}")
-    return SourceRuntimeConfig(backend_root=backend_root, venv_python=venv_python)
+    return SourceRuntimeConfig(
+        backend_root=backend_root,
+        venv_python=venv_python,
+        data_root=_resolve_source_data_root(backend_root),
+    )
 
 
 def _env_port(name: str, default: int) -> int:
@@ -166,23 +198,13 @@ def _env_port(name: str, default: int) -> int:
     return port
 
 
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
-
-
 def _require_source_backend_host(host: str) -> str:
     """Accept only bind shapes that have a fixed loopback management path."""
     normalized = host.strip().lower()
-    try:
-        loopback_v4 = (
-            ipaddress.ip_address(normalized).version == 4
-            and ipaddress.ip_address(normalized).is_loopback
-        )
-    except ValueError:
-        loopback_v4 = False
-    if normalized in {"0.0.0.0", "localhost"} or loopback_v4:
-        return host
+    if normalized in {"0.0.0.0", "127.0.0.1", "localhost"}:
+        return normalized
     raise ConfigError(
-        f"{_ENV_BACKEND_HOST}={host!r} must be IPv4 loopback or 0.0.0.0; "
+        f"{_ENV_BACKEND_HOST}={host!r} must be 127.0.0.1, localhost, or 0.0.0.0; "
         "use 0.0.0.0 for LAN access so health and Owner Console stay on 127.0.0.1.",
     )
 
@@ -220,11 +242,14 @@ def _resolve_runtime(mode_override: Literal["source", "installed"] | None = None
         installed = discover_installed_layout() if mode != "source" else None
         release = load_installed_release_config(installed) if installed is not None else None
     except InstallationConfigError as exc:
-        raise ConfigError(str(exc)) from exc
+        raise ConfigError(str(exc), code=exc.code) from exc
 
     if mode == "installed":
         if installed is None:
-            raise ConfigError("未找到小票夹正式安装信息，请重新安装或改用 TICKETBOX_MANAGER_MODE=source。")
+            raise ConfigError(
+                "未找到小票夹正式安装信息，请重新安装或改用 TICKETBOX_MANAGER_MODE=source。",
+                code="installation_missing",
+            )
         assert release is not None
         return InstalledRuntimeConfig(installed, release)
     if mode == "auto" and installed is not None:
@@ -254,8 +279,7 @@ def load_config(*, mode_override: Literal["source", "installed"] | None = None) 
         )
         backend_port = _env_port(_ENV_BACKEND_PORT, _DEFAULT_BACKEND_PORT)
         expected_backend_version = None
-        source_data_root = Path(os.getenv("TICKETBOX_DATA_DIR", str(runtime.backend_root)))
-        expected_installation_id = installation_id_for_app_data(source_data_root)
+        expected_installation_id = installation_id_for_app_data(runtime.data_root)
         health_request_timeout_seconds = _SOURCE_HEALTH_REQUEST_TIMEOUT_SECONDS
     return ManagerConfig(
         runtime=runtime,
@@ -267,4 +291,22 @@ def load_config(*, mode_override: Literal["source", "installed"] | None = None) 
         expected_backend_version=expected_backend_version,
         expected_installation_id=expected_installation_id,
         health_request_timeout_seconds=health_request_timeout_seconds,
+    )
+
+
+def load_maintenance_manager_config(
+    current_version: str,
+    *,
+    startup_failure_code: str = "runtime_config_invalid",
+    startup_failure_stage: str = "runtime_discovery",
+) -> MaintenanceManagerConfig:
+    """Resolve the ordinary-user loopback shell without reading installed runtime state."""
+    return MaintenanceManagerConfig(
+        manager_host=_require_loopback_manager_host(
+            os.getenv(_ENV_MANAGER_HOST, _DEFAULT_MANAGER_HOST),
+        ),
+        manager_port=_env_port(_ENV_MANAGER_PORT, _DEFAULT_MANAGER_PORT),
+        current_version=current_version,
+        startup_failure_code=startup_failure_code,
+        startup_failure_stage=startup_failure_stage,
     )

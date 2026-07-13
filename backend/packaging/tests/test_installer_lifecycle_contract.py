@@ -303,6 +303,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     finish_click = flow[flow.index("function NextButtonClick") : flow.index("function PrepareToInstall")]
     assert "OwnerHandoffMemo.Visible := True" in finished_page
     assert "OwnerHandoffConfirmation.Visible := True" in finished_page
+    assert "Android 绑定前须先在管理器中完成手机连接配置" in finished_page
     assert "owner-handoff-pending" not in finished_page
     confirmation = finish_click.index("if not OwnerHandoffConfirmation.Checked")
     cleanup_call = finish_click.index("' -CompleteOwnerHandoffOnly'")
@@ -324,6 +325,9 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "Exit-TicketboxLifecycleLock"
     )
     assert "请先复制一次性绑定信息，并勾选确认后再完成安装" in finish_click
+    bootstrap = _read("windows_backend_bootstrap.ps1")
+    assert "Android pairing code (requires a configured server URL)" in bootstrap
+    assert "configure the phone connection, then use or regenerate this code" in bootstrap
     assert "$InstallerState = Get-TicketboxInstallerStateDirectory" in install
     assert "$InstallerState = Get-TicketboxInstallerStateDirectory" in prepare
     assert '$RecoveryRequiredPath = Join-Path $InstallerState "installer-recovery-required.json"' in install
@@ -398,8 +402,22 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     ]
     assert stale_branch.count("return") == 2
     assert "AllowCancelDuringInstall=no" in installer
+    assert "CloseApplications=yes" in installer
+    assert "RestartManagerSupport" not in installer
+    assert "RestartApplications=no" in installer
     assert "DisableDirPage=yes" in installer
     assert "UsePreviousAppDir=no" in installer
+    assert "function FindAutomaticPort(" in flow
+    assert "procedure ResolveInstallationPorts();" in flow
+    assert "function ShouldSkipPage(PageID: Integer): Boolean;" in flow
+    assert "AdvancedPortSettings.Checked := AdvancedPortsRequested();" in flow
+    assert "PageID = PortPage.ID" in flow
+    assert "not ManualPortSettingsEnabled()" in flow
+    assert "普通用户保持默认即可；如果本机已有 PostgreSQL" not in flow
+    assert flow.index("ResolveInstallationPorts();", flow.index("function FreshInstallPortError")) < flow.index(
+        "Result := PortConflictMessage();",
+        flow.index("function FreshInstallPortError"),
+    )
     assert "PowerShellExecutable()" in installer
     assert "IsSupportedPowerShell7Host(PowerShellPath: String)" in installer
     assert "FindMachinePowerShell7()" in installer
@@ -415,7 +433,14 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "IsLowerHexLifecycleNonce" in installer
     assert "HardenLifecycleLockPath(ReleaseTempPath, False)" in installer
     assert installer.count("AssertLifecycleLockActive();") >= 8
-    assert "CreateFileW@kernel32.dll" not in installer
+    assert installer.count("CreateFileW@kernel32.dll") == 1
+    source_lease = windows[
+        windows.index("function AcquireInstallerSourceLease") : windows.index(
+            "function StartManagerMaintenanceGate"
+        )
+    ]
+    assert source_lease.count("CreateFileForLease(") == 1
+    assert "CreateFileForLease(" not in acquire_lock
     assert "hold_installer_lifecycle_lock.ps1" in installer
     assert "OpenProcess(" in installer
     assert "GetProcessTimes(" in installer
@@ -867,12 +892,7 @@ def test_installer_version_only_comes_from_backend_source_of_truth() -> None:
 
     powershell = shutil.which("powershell")
     assert powershell
-    for version, expected in (
-        ("1.3.0a1", "1.3.0.0"),
-        ("1.3.0rc2", "1.3.0.0"),
-        ("1.3.0-rc.2+build.7", "1.3.0.0"),
-        ("1.3.0.9", "1.3.0.9"),
-    ):
+    for version, expected in (("1.3.0", "1.3.0.0"), ("1.3.0.9", "1.3.0.9")):
         result = subprocess.run(
             [
                 powershell,
@@ -894,26 +914,27 @@ def test_installer_version_only_comes_from_backend_source_of_truth() -> None:
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == expected
-    rejected = subprocess.run(
-        [
-            powershell,
-            "-NoLogo",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            PACKAGING / "build_inno_installer.ps1",
-            "-VersionContractProbe",
-            "release-latest",
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=15,
-    )
-    assert rejected.returncode != 0
+    for version in ("1.3.0a1", "1.3.0rc2", "1.3.0-rc.2+build.7", "release-latest"):
+        rejected = subprocess.run(
+            [
+                powershell,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                PACKAGING / "build_inno_installer.ps1",
+                "-VersionContractProbe",
+                version,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert rejected.returncode != 0
 
 
 def test_mutable_windows_runtime_policy_is_read_from_release_config() -> None:
@@ -930,6 +951,10 @@ def test_mutable_windows_runtime_policy_is_read_from_release_config() -> None:
 
     for script in (build, install, prepare, uninstall):
         assert "Read-TicketboxWindowsReleaseConfig" in script
+    assert config["owner_recovery_channel"] == "managed_host"
+    assert '"TICKETBOX_OWNER_RECOVERY_CHANNEL=$OwnerRecoveryChannel"' in _read(
+        "windows_service_contract.ps1"
+    )
     assert '"/DStopTimeoutMs=' not in build
     assert '"/DRestartDelayMs=' not in build
     assert " -PgServiceName {#PgServiceName}" not in installer
@@ -1632,7 +1657,9 @@ def test_inno_acl_and_post_child_failure_compensation_mutations() -> None:
     assert "Result := True;" in runner[commit_branch:post_child_hardening]
 
     prepare = flow[
-        flow.index("function PrepareToInstall") : flow.index("procedure CurStepChanged")
+        flow.index("function PrepareAuthoritativePayloadReplacement") : flow.index(
+            "function PrepareToInstall"
+        )
     ]
     failed_call = prepare.index("if not RunPowerShellChecked")
     record_prepared = prepare.index("if LastPowerShellChildSucceeded then", failed_call)
@@ -1695,7 +1722,11 @@ def test_installer_uses_protected_lifecycle_lock_as_sole_serial_authority() -> N
     assert deinitialize_uninstall.count("ReleaseLifecycleLock()") == 1
     assert "LifecycleProcessMutex" not in deinitialize_uninstall
 
-    prepare = flow[flow.index("function PrepareToInstall") : flow.index("procedure CurStepChanged")]
+    prepare = flow[
+        flow.index("function PrepareAuthoritativePayloadReplacement") : flow.index(
+            "function PrepareToInstall"
+        )
+    ]
     guard_start = prepare.index("StartDataRootMutationGuard")
     pre_copy = prepare.index("'Ticketbox pre-upgrade backup and service preparation'")
     assert guard_start < pre_copy
@@ -1725,6 +1756,474 @@ def test_installer_uses_protected_lifecycle_lock_as_sole_serial_authority() -> N
     assert "0x02200000" in guard
     assert "0x3" in guard
     assert "FileShareDelete" not in guard
+
+
+def test_manager_maintenance_gate_spans_setup_and_uninstall_payload_mutation() -> None:
+    windows = _read("ticketbox-installer-windows.isph")
+    flow = _read("ticketbox-installer-flow.isph")
+
+    assert "ManagerMaintenanceRegistryPath = 'Software\\Ticketbox'" in windows
+    assert "ManagerMaintenanceRegistryValue = 'MaintenanceOwner'" in windows
+    assert "ManagerMaintenanceRecordSchema = 'ticketbox-manager-maintenance-v1'" in windows
+    assert "Global\\TicketboxManagerMaintenance" not in windows
+    gate_start = windows[
+        windows.index("function StartManagerMaintenanceGate") : windows.index(
+            "function ManagerMaintenanceGateActive"
+        )
+    ]
+    assert "BuildManagerMaintenanceOwnerRecord()" in gate_start
+    assert "RegWriteStringValue(" in gate_start
+    assert "RegQueryStringValue(" in gate_start
+    assert "LifecycleLockOwnerProcessId" in gate_start
+
+    prepare = flow[flow.index("function PrepareToInstall") : flow.index("procedure CurStepChanged")]
+    assert "StartManagerMaintenanceGate()" in prepare
+    assert "StartDataRootMutationGuard" not in prepare
+    assert "'Ticketbox pre-upgrade backup and service preparation'" not in prepare
+
+    install = flow[flow.index("procedure CurStepChanged") : flow.index("procedure DeinitializeSetup")]
+    assert install.count("AssertManagerMaintenanceGateActive()") >= 2
+    assert install.index("PrepareAuthoritativePayloadReplacement()") < install.index(
+        "'Ticketbox program-files copy boundary'"
+    )
+    after_close_applications = flow[
+        flow.index("function PrepareAuthoritativePayloadReplacement") : flow.index(
+            "function PrepareToInstall"
+        )
+    ]
+    assert after_close_applications.index("StartDataRootMutationGuard") < (
+        after_close_applications.index(
+            "'Ticketbox pre-upgrade backup and service preparation'"
+        )
+    )
+    finish = flow[flow.index("function NextButtonClick") : flow.index("function PrepareToInstall")]
+    assert "ReleaseManagerMaintenanceGate()" in finish
+
+    setup_deinitialize = flow[
+        flow.index("procedure DeinitializeSetup") : flow.index("procedure CurUninstallStepChanged")
+    ]
+    assert setup_deinitialize.index("ReleaseDataRootMutationGuard()") < (
+        setup_deinitialize.index("ReleaseLifecycleLock()")
+    )
+    assert setup_deinitialize.index("ReleaseLifecycleLock()") < setup_deinitialize.index(
+        "CloseInstallerSourceLease()"
+    )
+    assert setup_deinitialize.index("CloseInstallerSourceLease()") < (
+        setup_deinitialize.index("CloseManagerMaintenanceGate()")
+    )
+    uninstall_initialize = windows[
+        windows.index("function InitializeUninstall") : windows.index(
+            "procedure DeinitializeUninstall"
+        )
+    ]
+    assert uninstall_initialize.index("AcquireLifecycleLock()") < (
+        uninstall_initialize.index("StartManagerMaintenanceGate()")
+    )
+    uninstall = flow[flow.index("procedure CurUninstallStepChanged") :]
+    assert uninstall.index("AssertManagerMaintenanceGateActive()") < uninstall.index(
+        "'Ticketbox service uninstall'"
+    )
+    uninstall_deinitialize = windows[
+        windows.index("procedure DeinitializeUninstall") : windows.index(
+            "function IsSupportedPowerShell7Host"
+        )
+    ]
+    assert uninstall_deinitialize.index("ReleaseLifecycleLock()") < (
+        uninstall_deinitialize.index("CloseManagerMaintenanceGate()")
+    )
+
+
+def test_installer_source_lease_stays_owned_until_setup_deinitializes() -> None:
+    windows = _read("ticketbox-installer-windows.isph")
+    flow = _read("ticketbox-installer-flow.isph")
+
+    acquire = windows[
+        windows.index("function AcquireInstallerSourceLease") : windows.index(
+            "function StartManagerMaintenanceGate"
+        )
+    ]
+    assert "ExpandConstant('{srcexe}')" in acquire
+    assert "GenericRead" in acquire
+    assert "FileShareRead" in acquire
+    assert "Handoff" not in acquire
+    assert "CreateFileForLease(" in acquire
+
+    initialize = windows[
+        windows.index("function InitializeSetup") : windows.index("function InitializeUninstall")
+    ]
+    assert initialize.index("AcquireInstallerSourceLease()") < initialize.index("if WizardSilent then")
+    assert initialize.index("AcquireInstallerSourceLease()") < initialize.index(
+        "AcquireLifecycleLock()"
+    )
+    deinitialize = flow[
+        flow.index("procedure DeinitializeSetup") : flow.index("procedure CurUninstallStepChanged")
+    ]
+    assert deinitialize.index("ReleaseLifecycleLock()") < deinitialize.index(
+        "CloseInstallerSourceLease()"
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows Inno compiler contract")
+def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Path) -> None:
+    candidates = (
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Inno Setup 6/ISCC.exe",
+        Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Inno Setup 6/ISCC.exe",
+        Path(os.environ.get("PROGRAMFILES", "")) / "Inno Setup 6/ISCC.exe",
+    )
+    iscc = next((candidate for candidate in candidates if candidate.is_file()), None)
+    assert iscc is not None, "Inno Setup 6 compiler is required"
+
+    digest = "a" * 64
+    defines = {
+        "AppName": "Ticketbox Contract",
+        "AppVersion": "0.1.0",
+        "AppVersionInfo": "0.1.0.0",
+        "TicketboxAppIdGuid": "C97812CE-7486-41D0-AB68-7558A916F6E3",
+        "PgServiceName": "TicketboxPgContract",
+        "BackendServiceName": "TicketboxBackendContract",
+        "DefaultPgPort": "5432",
+        "FallbackPgPort": "15432",
+        "DefaultBackendPort": "8000",
+        "FallbackBackendPort": "18000",
+        "TargetPgMajor": "17",
+        "LifecycleSafetyScriptSha256": digest,
+        "LifecycleLockScriptSha256": digest,
+        "LifecycleHolderScriptSha256": digest,
+        "DataRootGuardScriptSha256": digest,
+        "PrepareScriptSha256": digest,
+        "ServiceContractScriptSha256": digest,
+        "ServiceLifecycleScriptSha256": digest,
+        "LifecycleReceiptScriptSha256": digest,
+        "DatabaseSafetyScriptSha256": digest,
+        "PgRecoveryToolsScriptSha256": digest,
+        "ReleaseConfigScriptSha256": digest,
+        "ReleaseConfigJsonSha256": digest,
+        "BuildProvenanceScriptSha256": digest,
+        "BackendBuildProvenanceScriptSha256": digest,
+    }
+    preprocessor = "\n".join(f'#define {name} "{value}"' for name, value in defines.items())
+    source = tmp_path / "manager-maintenance-contract.iss"
+    source.write_text(
+        preprocessor
+        + """
+[Setup]
+AppName=Ticketbox Manager Maintenance Contract
+AppVersion=0.1.0
+DefaultDirName={tmp}\\TicketboxManagerMaintenanceContract
+PrivilegesRequired=admin
+Uninstallable=no
+OutputDir=.
+OutputBaseFilename=manager-maintenance-contract
+
+[Code]
+"""
+        + f'#include "{PACKAGING / "ticketbox-installer-windows.isph"}"\n'
+        + f'#include "{PACKAGING / "ticketbox-installer-flow.isph"}"\n',
+        encoding="utf-8-sig",
+    )
+    result = subprocess.run(
+        [iscc, source],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    windows = _read("ticketbox-installer-windows.isph")
+    registry_path = rf"Software\TicketboxContract\{uuid.uuid4().hex}"
+    windows_prefix = windows[: windows.index("function ProcessHandleMatchesStartedFileTime")]
+    windows_prefix = windows_prefix.replace(
+        "ManagerMaintenanceRegistryPath = 'Software\\Ticketbox';",
+        f"ManagerMaintenanceRegistryPath = '{registry_path}';",
+    ).replace("HKLM64", "HKCU")
+    gate_source = tmp_path / "manager-maintenance-runtime-contract.iss"
+    gate_output = tmp_path / "manager-maintenance-runtime-contract.txt"
+    gate_ready = tmp_path / "manager-maintenance-runtime-contract.ready"
+    gate_release = tmp_path / "manager-maintenance-runtime-contract.release"
+    gate_source.write_text(
+        preprocessor
+        + """
+[Setup]
+AppName=Ticketbox Manager Maintenance Runtime Contract
+AppVersion=0.1.0
+DefaultDirName={tmp}\\TicketboxManagerMaintenanceRuntimeContract
+PrivilegesRequired=lowest
+Uninstallable=no
+OutputDir=.
+OutputBaseFilename=manager-maintenance-runtime-contract
+
+[Code]
+"""
+        + windows_prefix
+        + """
+function InitializeSetup(): Boolean;
+var
+  Attempts: Integer;
+  ProcessHandle: LongWord;
+begin
+  ManagerMaintenanceOwnerRecord := '';
+  LifecycleLockOwnerProcessId := GetCurrentProcessId();
+  ProcessHandle := OpenProcess(
+    ProcessSynchronize or ProcessQueryLimitedInformation,
+    False,
+    LifecycleLockOwnerProcessId);
+  if not IsProcessHandleRunning(ProcessHandle) then
+    RaiseException('could not open maintenance owner process');
+  if not ReadProcessStartedFileTime(
+    ProcessHandle,
+    LifecycleLockOwnerStartedFileTimeHigh,
+    LifecycleLockOwnerStartedFileTimeLow) then
+    RaiseException('could not read maintenance owner creation time');
+  CloseHandle(ProcessHandle);
+  if not StartManagerMaintenanceGate() then
+    RaiseException('could not start maintenance gate');
+  if not ManagerMaintenanceGateActive() then
+    RaiseException('maintenance gate was not initially active');
+  if not ManagerMaintenanceGateActive() then
+    RaiseException('maintenance gate was not manual-reset');
+  if not SaveStringToFile(
+    ExpandConstant('{param:ReadyPath|}'),
+    'ready',
+    False) then
+    RaiseException('could not save maintenance gate ready state');
+  Attempts := 0;
+  while (not FileExists(ExpandConstant('{param:ReleasePath|}'))) and
+    (Attempts < 200) do begin
+    Sleep(50);
+    Attempts := Attempts + 1;
+  end;
+  if not FileExists(ExpandConstant('{param:ReleasePath|}')) then
+    RaiseException('maintenance gate release timed out');
+  if not ReleaseManagerMaintenanceGate() then
+    RaiseException('could not release maintenance gate');
+  if ManagerMaintenanceGateActive() then
+    RaiseException('maintenance gate remained active after release');
+  if not SaveStringToFile(
+    ExpandConstant('{param:OutputPath|}'),
+    'ok',
+    False) then
+    RaiseException('could not save maintenance gate result');
+  Result := False;
+end;
+""",
+        encoding="utf-8-sig",
+    )
+    gate_compile = subprocess.run(
+        [iscc, gate_source],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    assert gate_compile.returncode == 0, gate_compile.stdout + gate_compile.stderr
+
+    def manager_gate_requested() -> bool:
+        probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0, sys.argv[1]); "
+                "import winreg; "
+                "from backend_manager.maintenance_gate import "
+                "manager_maintenance_requested, _read_registry_record; "
+                "reader=lambda: _read_registry_record(root=winreg.HKEY_CURRENT_USER, registry_path=sys.argv[2]); "
+                "print('true' if manager_maintenance_requested(record_reader=reader) else 'false')",
+                str(ROOT / "desktop"),
+                registry_path,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=10,
+        )
+        assert probe.stdout.strip() in {"true", "false"}
+        return probe.stdout.strip() == "true"
+
+    gate_process = subprocess.Popen(
+        [
+            tmp_path / "manager-maintenance-runtime-contract.exe",
+            "/VERYSILENT",
+            "/SUPPRESSMSGBOXES",
+            f"/OutputPath={gate_output}",
+            f"/ReadyPath={gate_ready}",
+            f"/ReleasePath={gate_release}",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    gate_stdout = gate_stderr = ""
+    try:
+        deadline = time.monotonic() + 10
+        while not gate_ready.is_file() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert gate_ready.is_file(), "Inno producer did not publish the maintenance gate"
+        assert manager_gate_requested() is True
+        assert manager_gate_requested() is True
+        gate_release.write_text("release", encoding="utf-8")
+        gate_stdout, gate_stderr = gate_process.communicate(timeout=20)
+    finally:
+        gate_release.write_text("release", encoding="utf-8")
+        if gate_process.poll() is None:
+            try:
+                gate_process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                gate_process.kill()
+                gate_process.communicate()
+    assert gate_output.is_file(), gate_stdout + gate_stderr
+    assert gate_output.read_text(encoding="utf-8-sig") == "ok"
+    assert manager_gate_requested() is False
+
+    gate_ready.unlink()
+    gate_release.unlink()
+    gate_output.unlink()
+    crashed_process = subprocess.Popen(
+        [
+            tmp_path / "manager-maintenance-runtime-contract.exe",
+            "/VERYSILENT",
+            "/SUPPRESSMSGBOXES",
+            f"/OutputPath={gate_output}",
+            f"/ReadyPath={gate_ready}",
+            f"/ReleasePath={gate_release}",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    deadline = time.monotonic() + 10
+    while not gate_ready.is_file() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert gate_ready.is_file(), "Inno producer did not publish the crash marker"
+    assert manager_gate_requested() is True
+    import winreg
+
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, registry_path) as key:
+        owner_record, _ = winreg.QueryValueEx(key, "MaintenanceOwner")
+    owner_process_id = int(owner_record.split("|")[1])
+    assert owner_process_id not in {0, os.getpid()}
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_bool, ctypes.c_uint32]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    kernel32.TerminateProcess.restype = ctypes.c_bool
+    kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    kernel32.CloseHandle.restype = ctypes.c_bool
+    owner_handle = kernel32.OpenProcess(0x0001 | 0x00100000, False, owner_process_id)
+    assert owner_handle
+    try:
+        assert kernel32.TerminateProcess(owner_handle, 1)
+        assert kernel32.WaitForSingleObject(owner_handle, 5000) == 0
+    finally:
+        kernel32.CloseHandle(owner_handle)
+    crashed_process.communicate(timeout=10)
+    assert manager_gate_requested() is False
+
+    with winreg.OpenKey(
+        winreg.HKEY_CURRENT_USER,
+        registry_path,
+        0,
+        winreg.KEY_SET_VALUE,
+    ) as key:
+        winreg.DeleteValue(key, "MaintenanceOwner")
+
+    flow = _read("ticketbox-installer-flow.isph")
+    selection_contract = flow[
+        flow.index("function TryAvailablePort") : flow.index(
+            "procedure ResolveInstallationPorts"
+        )
+    ]
+    selection_source = tmp_path / "automatic-port-selection-contract.iss"
+    selection_output = tmp_path / "automatic-port-selection.txt"
+    selection_source.write_text(
+        """
+[Setup]
+AppName=Ticketbox Automatic Port Selection Contract
+AppVersion=0.1.0
+DefaultDirName={tmp}\\TicketboxAutomaticPortSelectionContract
+PrivilegesRequired=lowest
+Uninstallable=no
+OutputDir=.
+OutputBaseFilename=automatic-port-selection-contract
+
+[Code]
+var
+  PortProbeFailed: Boolean;
+
+function IsValidPort(Port: String): Boolean;
+var
+  PortNumber: Integer;
+begin
+  PortNumber := StrToIntDef(Trim(Port), -1);
+  Result := (PortNumber >= 1) and (PortNumber <= 65535);
+end;
+
+function IsPortListening(Port: String): Boolean;
+begin
+  Result :=
+    (Port = '5432') or (Port = '5440') or
+    (Port = '8000') or (Port = '8001');
+end;
+"""
+        + selection_contract
+        + """
+function InitializeSetup(): Boolean;
+var
+  PgPort: String;
+  BackendPort: String;
+begin
+  PortProbeFailed := False;
+  if not FindAutomaticPort('5432', '5440', '', PgPort) then
+    RaiseException('PostgreSQL automatic selection failed');
+  if not FindAutomaticPort('8000', '8001', PgPort, BackendPort) then
+    RaiseException('backend automatic selection failed');
+  if not SaveStringToFile(
+    ExpandConstant('{param:OutputPath|}'),
+    PgPort + #13#10 + BackendPort + #13#10,
+    False) then
+    RaiseException('could not save automatic selection result');
+  Result := False;
+end;
+""",
+        encoding="utf-8-sig",
+    )
+    selection_compile = subprocess.run(
+        [iscc, selection_source],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    assert selection_compile.returncode == 0, selection_compile.stdout + selection_compile.stderr
+    selection_run = subprocess.run(
+        [
+            tmp_path / "automatic-port-selection-contract.exe",
+            "/VERYSILENT",
+            f"/OutputPath={selection_output}",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=20,
+    )
+    assert selection_output.read_text(encoding="utf-8-sig").splitlines() == ["5441", "8002"], (
+        selection_run.stdout + selection_run.stderr
+    )
 
 
 def test_powershell7_selector_requires_core_v7_x64_and_is_deterministic() -> None:
@@ -3027,6 +3526,20 @@ def test_windows_safety_helpers_execute_in_available_powershells(tmp_path: Path)
         json.dumps(conflicting_service_config, ensure_ascii=False),
         encoding="utf-8",
     )
+    missing_owner_channel_config_path = base / "windows-release-config-missing-owner-channel.json"
+    missing_owner_channel_config = dict(dynamic_config)
+    missing_owner_channel_config.pop("owner_recovery_channel")
+    missing_owner_channel_config_path.write_text(
+        json.dumps(missing_owner_channel_config, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    invalid_owner_channel_config_path = base / "windows-release-config-invalid-owner-channel.json"
+    invalid_owner_channel_config = dict(dynamic_config)
+    invalid_owner_channel_config["owner_recovery_channel"] = "MANAGED_HOST"
+    invalid_owner_channel_config_path.write_text(
+        json.dumps(invalid_owner_channel_config, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
     def literal(path: Path) -> str:
         return str(path).replace("'", "''")
@@ -3080,6 +3593,16 @@ if (-not $rejected) {{ throw 'release identity changed without migration' }}
 $rejected = $false
 try {{ Read-TicketboxWindowsReleaseConfig '{literal(conflicting_service_config_path)}' | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'conflicting service names were accepted' }}
+$rejected = $false
+try {{ Read-TicketboxWindowsReleaseConfig '{literal(missing_owner_channel_config_path)}' | Out-Null }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'current release config without owner recovery capability was accepted' }}
+$legacyConfig = Read-TicketboxWindowsReleaseConfig `
+    '{literal(missing_owner_channel_config_path)}' `
+    -AllowLegacyMissingOwnerRecoveryChannel
+if ($legacyConfig.owner_recovery_channel -cne 'managed_host') {{ throw 'legacy Windows capability was not normalized' }}
+$rejected = $false
+try {{ Read-TicketboxWindowsReleaseConfig '{literal(invalid_owner_channel_config_path)}' | Out-Null }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'non-canonical owner recovery capability was accepted in Windows release config' }}
 $localUrl = Assert-TicketboxLocalDatabaseUrl -DatabaseUrl 'postgresql+psycopg://ticketbox:secret@127.0.0.1:5432/ticketbox' -PgPort 5432
 if ($localUrl -ne 'postgresql://ticketbox:secret@127.0.0.1:5432/ticketbox') {{ throw 'local DB URL rejected' }}
 $connection = Get-TicketboxLocalDatabaseConnection -DatabaseUrl $localUrl -PgPort 5432 -ExpectedDatabase ticketbox -ExpectedRole ticketbox
@@ -3124,7 +3647,7 @@ $rejected = $false
 try {{ Assert-TicketboxPgServiceCommand -Name TicketboxPg -ExpectedExecutable 'C:\\Ticketbox\\pg_ctl.exe' -ExpectedServiceName TicketboxPg -ExpectedDataRoot 'D:\\Ticketbox Data\\pgdata' }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'PostgreSQL option smuggling accepted' }}
 $script:testServiceDependencies = @('TicketboxPg')
-$script:testServiceImagePath = '"C:\\Ticketbox\\shawl.exe" run --name TicketboxBackend --stop-timeout 25000 --restart --kill-process-tree --restart-delay 5000 --cwd "D:\\Ticketbox Data\\app" --log-dir "D:\\Ticketbox Data\\app\\logs" --env "TICKETBOX_DATA_DIR=D:\\Ticketbox Data\\app" --env "PG_DUMP_PATH=C:\\Ticketbox\\pg_dump.exe" --env "PG_RESTORE_PATH=C:\\Ticketbox\\pg_restore.exe" --env "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH=D:\\Ticketbox Data\\bootstrap-exposure-recovery-pending" --env "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH=D:\\Ticketbox Data\\installer-runtime-recovery-pending" --env "TICKETBOX_DATA_ROOT_MARKER_PATH=C:\\ProgramData\\TicketboxRuntimeBinding\\data-root\\.ticketbox-data-root.json" --env "TICKETBOX_DATA_VOLUME_IDENTITY=\\\\?\\VOLUME{{01234567-89AB-CDEF-0123-456789ABCDEF}}\\\\" -- "C:\\Ticketbox\\backend.exe"'
+$script:testServiceImagePath = '"C:\\Ticketbox\\shawl.exe" run --name TicketboxBackend --stop-timeout 25000 --restart --kill-process-tree --restart-delay 5000 --cwd "D:\\Ticketbox Data\\app" --log-dir "D:\\Ticketbox Data\\app\\logs" --env "TICKETBOX_DATA_DIR=D:\\Ticketbox Data\\app" --env "PG_DUMP_PATH=C:\\Ticketbox\\pg_dump.exe" --env "PG_RESTORE_PATH=C:\\Ticketbox\\pg_restore.exe" --env "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH=D:\\Ticketbox Data\\bootstrap-exposure-recovery-pending" --env "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH=D:\\Ticketbox Data\\installer-runtime-recovery-pending" --env "TICKETBOX_DATA_ROOT_MARKER_PATH=C:\\ProgramData\\TicketboxRuntimeBinding\\data-root\\.ticketbox-data-root.json" --env "TICKETBOX_DATA_VOLUME_IDENTITY=\\\\?\\VOLUME{{01234567-89AB-CDEF-0123-456789ABCDEF}}\\\\" --env "TICKETBOX_OWNER_RECOVERY_CHANNEL=managed_host" -- "C:\\Ticketbox\\backend.exe"'
 $shawlArgs = @{{
     Name = 'TicketboxBackend'; ExpectedExecutable = 'C:\\Ticketbox\\shawl.exe'; ExpectedServiceName = 'TicketboxBackend'
     ExpectedCwd = 'D:\\Ticketbox Data\\app'; ExpectedPayload = 'C:\\Ticketbox\\backend.exe'; ExpectedDependency = 'TicketboxPg'
@@ -3133,6 +3656,7 @@ $shawlArgs = @{{
     ExpectedInstallerRecoveryGuardPath = 'D:\\Ticketbox Data\\installer-runtime-recovery-pending'
     ExpectedDataRootMarkerPath = 'C:\\ProgramData\\TicketboxRuntimeBinding\\data-root\\.ticketbox-data-root.json'
     ExpectedDataVolumeIdentity = '\\\\?\\VOLUME{{01234567-89AB-CDEF-0123-456789ABCDEF}}\\'
+    ExpectedOwnerRecoveryChannel = 'managed_host'
     ExpectedStopTimeoutMs = 25000; ExpectedRestartDelayMs = 5000
 }}
 Assert-TicketboxShawlServiceCommand @shawlArgs
@@ -3160,6 +3684,24 @@ if (-not $rejected) {{ throw 'legacy runtime path bypassed the explicit compatib
 $shawlArgs.AllowMissingRuntimeDataAuthority = $true
 Assert-TicketboxShawlServiceCommand @shawlArgs
 $shawlArgs.Remove('AllowMissingRuntimeDataAuthority')
+$legacyOwnerRecoveryImagePath = $validShawlImagePath.Replace(
+    ' --env "TICKETBOX_OWNER_RECOVERY_CHANNEL=managed_host"',
+    ''
+)
+$script:testServiceImagePath = $legacyOwnerRecoveryImagePath
+$rejected = $false
+try {{ Assert-TicketboxShawlServiceCommand @shawlArgs }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'missing owner recovery capability bypassed the compatibility switch' }}
+$shawlArgs.AllowMissingOwnerRecoveryChannel = $true
+Assert-TicketboxShawlServiceCommand @shawlArgs
+$shawlArgs.Remove('AllowMissingOwnerRecoveryChannel')
+$script:testServiceImagePath = $validShawlImagePath.Replace(
+    'TICKETBOX_OWNER_RECOVERY_CHANNEL=managed_host',
+    'TICKETBOX_OWNER_RECOVERY_CHANNEL=operator'
+)
+$rejected = $false
+try {{ Assert-TicketboxShawlServiceCommand @shawlArgs }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'wrong owner recovery capability was accepted' }}
 $script:testServiceImagePath = $validShawlImagePath.Replace(' --kill-process-tree', '')
 $rejected = $false
 try {{ Assert-TicketboxShawlServiceCommand @shawlArgs }} catch {{ $rejected = $true }}

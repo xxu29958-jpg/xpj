@@ -5,12 +5,15 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from backend_manager.version_contract import is_managed_release_version
 
 _REGISTRY_PATH = r"Software\Ticketbox"
 _REGISTRY_VALUE_NAMES = (
@@ -23,7 +26,6 @@ _REGISTRY_VALUE_NAMES = (
     "BackendVersion",
 )
 _SERVICE_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
-_BACKEND_VERSION_PATTERN = re.compile(r"[0-9A-Za-z][0-9A-Za-z.+-]{0,63}\Z")
 _RELEASE_CONFIG_SCHEMA = "ticketbox-windows-release-v1"
 _MAX_RELEASE_CONFIG_BYTES = 64 * 1024
 _INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
@@ -31,6 +33,10 @@ _INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
 
 class InstallationConfigError(RuntimeError):
     """Raised when the installer registry key exists but is incomplete or invalid."""
+
+    def __init__(self, message: str, *, code: str = "installation_config_invalid") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def installation_id_for_app_data(app_data_dir: Path) -> str:
@@ -58,6 +64,10 @@ class InstalledLayout:
     @property
     def release_config_path(self) -> Path:
         return self.install_dir / "installer" / "windows-release-config.json"
+
+    @property
+    def manager_executable_path(self) -> Path:
+        return self.install_dir / "manager" / "ticketbox-manager.exe"
 
     @property
     def installation_id(self) -> str:
@@ -99,23 +109,58 @@ class WindowsReleaseConfig:
     def backend_health_request_timeout_seconds(self) -> float:
         return self.backend_health_request_timeout_ms / 1000.0
 
-    def helper_watchdog_seconds(self, action: str) -> float:
+    @property
+    def process_boundary_margin_seconds(self) -> float:
+        return max(
+            self.backend_health_request_timeout_seconds,
+            self.service_poll_seconds * 2,
+            1.0,
+        )
+
+    @property
+    def service_validation_timeout_seconds(self) -> float:
+        return self.service_state_timeout_seconds + self.process_boundary_margin_seconds
+
+    def helper_action_phase_budget_seconds(self, action: str) -> dict[str, float]:
         service = self.service_state_timeout_seconds
         postgres = max(service, self.postgres_ready_timeout_seconds)
-        readiness = self.backend_ready_timeout_seconds
-        if action == "start":
-            operation = service * 2 + postgres + readiness
-        elif action == "stop":
-            operation = service * 3
-        elif action == "restart":
-            operation = service * 4 + postgres + readiness
-        else:
+        process_margin = self.process_boundary_margin_seconds
+        if action not in {"start", "stop", "restart"}:
             raise InstallationConfigError(f"不支持的服务操作：{action}")
-        return operation + self.backend_health_request_timeout_seconds
+
+        phases = {
+            "pre_action_contract_validation": service + process_margin,
+        }
+        if action in {"stop", "restart"}:
+            phases.update(
+                {
+                    "backend_settle_before_stop": service,
+                    "backend_stop": service,
+                    "post_stop_runtime_validation": service + process_margin,
+                },
+            )
+        if action in {"start", "restart"}:
+            phases.update(
+                {
+                    "postgres_settle_before_start": postgres,
+                    "postgres_start": postgres,
+                    "backend_settle_before_start": service,
+                    "backend_start": service,
+                    "backend_readiness": (
+                        self.backend_ready_timeout_seconds
+                        + self.backend_health_request_timeout_seconds
+                    ),
+                },
+            )
+        phases["watchdog_scheduler_margin"] = process_margin
+        return phases
+
+    def helper_watchdog_seconds(self, action: str) -> float:
+        return sum(self.helper_action_phase_budget_seconds(action).values())
 
     def helper_parent_timeout_ms(self, action: str) -> int:
-        cleanup = max(self.backend_health_request_timeout_seconds, self.service_poll_seconds)
-        return int((self.helper_watchdog_seconds(action) + cleanup) * 1000)
+        result_channel_flush = self.process_boundary_margin_seconds
+        return math.ceil((self.helper_watchdog_seconds(action) + result_channel_flush) * 1000)
 
 
 def _parse_port(raw: str, name: str) -> int:
@@ -137,7 +182,7 @@ def _parse_service_name(raw: str, name: str) -> str:
 
 def _parse_backend_version(raw: str) -> str:
     value = raw.strip()
-    if not _BACKEND_VERSION_PATTERN.fullmatch(value):
+    if not is_managed_release_version(value):
         raise InstallationConfigError(f"安装信息里的 BackendVersion 不是受支持的版本：{raw!r}")
     return value
 
@@ -190,6 +235,13 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
 
 
 def load_installed_release_config(layout: InstalledLayout) -> WindowsReleaseConfig:
+    try:
+        return _load_installed_release_config(layout)
+    except InstallationConfigError as exc:
+        raise InstallationConfigError(str(exc), code="release_contract_invalid") from exc
+
+
+def _load_installed_release_config(layout: InstalledLayout) -> WindowsReleaseConfig:
     path = layout.release_config_path
     try:
         if not path.is_file() or path.stat().st_size > _MAX_RELEASE_CONFIG_BYTES:
@@ -253,8 +305,11 @@ def _read_registry_values() -> dict[str, str] | None:
 
 def discover_installed_layout() -> InstalledLayout | None:
     """Return the installed layout, or ``None`` when Ticketbox is not installed."""
-    values = _read_registry_values()
-    return parse_installed_layout(values) if values is not None else None
+    try:
+        values = _read_registry_values()
+        return parse_installed_layout(values) if values is not None else None
+    except InstallationConfigError as exc:
+        raise InstallationConfigError(str(exc), code="registry_contract_invalid") from exc
 
 
 def _windows_powershell_path() -> Path:
@@ -312,14 +367,20 @@ def _run_installed_lifecycle_validation(
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=release.service_state_timeout_seconds,
+            timeout=release.service_validation_timeout_seconds,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise InstallationConfigError(f"无法完成 Windows 服务归属校验：{exc}") from exc
+        raise InstallationConfigError(
+            f"无法完成 Windows 服务归属校验：{exc}",
+            code="service_contract_invalid",
+        ) from exc
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "无诊断输出").strip()[-1200:]
-        raise InstallationConfigError(f"Windows 服务归属校验失败：{detail}")
+        raise InstallationConfigError(
+            f"Windows 服务归属校验失败：{detail}",
+            code="service_contract_invalid",
+        )
 
 
 def validate_installed_service_contract(layout: InstalledLayout, release: WindowsReleaseConfig) -> None:

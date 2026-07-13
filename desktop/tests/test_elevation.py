@@ -14,7 +14,7 @@ import pytest
 
 from backend_manager import elevation, runtime_factory, windows_user_security
 from backend_manager.__main__ import main
-from backend_manager.config import ConfigError, InstalledRuntimeConfig, ManagerConfig
+from backend_manager.config import InstalledRuntimeConfig, ManagerConfig
 from backend_manager.elevation import (
     HELPER_EXIT_CONFIG,
     HELPER_EXIT_LIFECYCLE_BUSY,
@@ -22,7 +22,6 @@ from backend_manager.elevation import (
     HELPER_EXIT_NOT_ELEVATED,
     HELPER_EXIT_TIMEOUT,
     ElevatedServiceActionRunner,
-    HelperCommand,
     HelperResult,
     HelperResultChannel,
     build_helper_command,
@@ -68,11 +67,11 @@ def _fake_result_channel(action: str, exit_code: int, diagnostic: str):
     yield Channel()
 
 
-def test_source_helper_command_reenters_module_with_one_fixed_action(monkeypatch, tmp_path: Path) -> None:
-    python = tmp_path / "python.exe"
-    monkeypatch.setattr(elevation.sys, "executable", str(python))
-    monkeypatch.delattr(elevation.sys, "frozen", raising=False)
-
+def test_helper_command_uses_only_registered_installed_manager(tmp_path: Path) -> None:
+    manager_dir = tmp_path / "program" / "manager"
+    manager_dir.mkdir(parents=True)
+    executable = manager_dir / "ticketbox-manager.exe"
+    executable.write_bytes(b"MZ")
     channel = HelperResultChannel(
         path=tmp_path / "result.json",
         root=tmp_path,
@@ -81,12 +80,15 @@ def test_source_helper_command_reenters_module_with_one_fixed_action(monkeypatch
         owner_sid="S-1-5-21-1000",
         file_identity="1:2",
     )
-    command = build_helper_command("restart", channel, 123_456)
+    command = build_helper_command(
+        "restart",
+        channel,
+        123_456,
+        helper_executable=executable,
+    )
 
-    assert command.executable == python.resolve()
+    assert command.executable == executable.resolve()
     assert command.arguments == (
-        "-m",
-        "backend_manager",
         "--elevated-service-action",
         "restart",
         "--helper-result-path",
@@ -100,15 +102,11 @@ def test_source_helper_command_reenters_module_with_one_fixed_action(monkeypatch
         "--helper-channel-file-id",
         channel.file_identity,
     )
-    assert command.working_dir.name == "desktop"
+    assert command.working_dir == manager_dir.resolve()
     assert command.wait_timeout_ms == 123_456
 
 
-def test_frozen_helper_command_reuses_manager_executable(monkeypatch, tmp_path: Path) -> None:
-    executable = tmp_path / "TicketboxManager.exe"
-    monkeypatch.setattr(elevation.sys, "executable", str(executable))
-    monkeypatch.setattr(elevation.sys, "frozen", True, raising=False)
-
+def test_helper_command_rejects_source_python_or_copied_payload(tmp_path: Path) -> None:
     channel = HelperResultChannel(
         path=tmp_path / "result.json",
         root=tmp_path,
@@ -117,27 +115,13 @@ def test_frozen_helper_command_reuses_manager_executable(monkeypatch, tmp_path: 
         owner_sid="S-1-5-21-1000",
         file_identity="1:2",
     )
-    command = build_helper_command("stop", channel, 87_000)
-
-    assert command == HelperCommand(
-        executable=executable.resolve(),
-        arguments=(
-            "--elevated-service-action",
+    with pytest.raises(RuntimeControlError, match="安装目录"):
+        build_helper_command(
             "stop",
-            "--helper-result-path",
-            str(channel.path),
-            "--helper-result-root",
-            str(channel.root),
-            "--helper-result-nonce",
-            channel.nonce,
-            "--helper-channel-owner-sid",
-            channel.owner_sid,
-            "--helper-channel-file-id",
-            channel.file_identity,
-        ),
-        working_dir=tmp_path.resolve(),
-        wait_timeout_ms=87_000,
-    )
+            channel,
+            87_000,
+            helper_executable=tmp_path / "python.exe",
+        )
 
 
 @pytest.mark.parametrize(
@@ -150,13 +134,22 @@ def test_frozen_helper_command_reuses_manager_executable(monkeypatch, tmp_path: 
         (99, "exit=99"),
     ],
 )
-def test_action_runner_maps_helper_exit_to_actionable_message(exit_code: int, message: str) -> None:
+def test_action_runner_maps_helper_exit_to_actionable_message(
+    exit_code: int,
+    message: str,
+    tmp_path: Path,
+) -> None:
     diagnostic = f"helper detail: {message}"
+    release = _release()
+    helper = tmp_path / "manager" / "ticketbox-manager.exe"
+    helper.parent.mkdir()
+    helper.write_bytes(b"MZ")
     runner = ElevatedServiceActionRunner(
-        _release(),
+        release,
+        helper,
         launcher=lambda command: (
             exit_code
-            if command.wait_timeout_ms == 91_500
+            if command.wait_timeout_ms == release.helper_parent_timeout_ms("start")
             else (_ for _ in ()).throw(AssertionError("helper timeout ignored release config"))
         ),
         channel_factory=lambda action: _fake_result_channel(action, exit_code, diagnostic),
@@ -234,10 +227,15 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
 
 
 def test_elevated_ui_process_is_refused_before_control_server_starts(monkeypatch) -> None:
+    warnings: list[bool] = []
     monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: True)
+    monkeypatch.setattr(
+        "backend_manager.__main__.show_elevated_manager_warning",
+        lambda: warnings.append(True),
+    )
 
-    with pytest.raises(ConfigError, match="不能以管理员身份运行"):
-        main([])
+    assert main([]) == 2
+    assert warnings == [True]
 
 
 def test_helper_action_without_elevation_cannot_touch_services(monkeypatch) -> None:
@@ -254,7 +252,7 @@ def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path:
         5432,
         "TicketboxBackend",
         "TicketboxPg",
-        "9.8.7-test",
+        "9.8.7",
     )
     release = _release()
     config = ManagerConfig(
@@ -274,6 +272,7 @@ def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path:
             raise ServiceMissingError("missing")
 
     events: list[str] = []
+    watchdog_timeouts: list[float] = []
 
     def build_runtime(*_args, backend_stopped_validator=None):
         assert callable(backend_stopped_validator)
@@ -281,7 +280,13 @@ def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path:
         return BrokenRuntime()
 
     monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: True)
-    monkeypatch.setattr("backend_manager.__main__.start_helper_watchdog", lambda **_kwargs: threading.Event())
+    monkeypatch.setattr(
+        "backend_manager.__main__.start_helper_watchdog",
+        lambda *, timeout_seconds: (
+            watchdog_timeouts.append(timeout_seconds),
+            threading.Event(),
+        )[-1],
+    )
     monkeypatch.setattr("backend_manager.__main__.validate_helper_result_channel", lambda *_args: None)
     monkeypatch.setattr("backend_manager.__main__.hold_installer_lifecycle_lock", _no_op_lock)
     monkeypatch.setattr("backend_manager.__main__.load_config", lambda **_kwargs: config)
@@ -313,6 +318,7 @@ def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path:
         ],
     ) == HELPER_EXIT_MISSING_SERVICE
     assert events == ["validate", "build"]
+    assert watchdog_timeouts == [release.helper_watchdog_seconds("stop")]
     assert results == [(HELPER_EXIT_MISSING_SERVICE, "missing")]
 
 
@@ -366,8 +372,8 @@ def test_installed_ui_runtime_uses_uac_broker_not_direct_service_mutation(monkey
     actions: list[str] = []
 
     class Runner:
-        def __init__(self, _release_config) -> None:
-            pass
+        def __init__(self, _release_config, helper_executable: Path) -> None:
+            assert helper_executable == layout.manager_executable_path
 
         def run(self, action: str) -> None:
             actions.append(action)
@@ -381,8 +387,10 @@ def test_installed_ui_runtime_uses_uac_broker_not_direct_service_mutation(monkey
         5432,
         "TicketboxBackend",
         "TicketboxPg",
-        "9.8.7-test",
+        "9.8.7",
     )
+    layout.manager_executable_path.parent.mkdir(parents=True)
+    layout.manager_executable_path.write_bytes(b"MZ")
     release = _release()
     config = ManagerConfig(
         runtime=InstalledRuntimeConfig(layout, release),

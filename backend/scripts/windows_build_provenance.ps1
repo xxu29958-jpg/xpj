@@ -499,6 +499,10 @@ function Assert-TicketboxInstallerBuildProvenance(
         $manifest.backend `
         $ExpectedBuildInputs.backend
     Assert-TicketboxStructuredEvidence `
+        "安装器 Desktop Manager provenance" `
+        $manifest.manager `
+        $ExpectedBuildInputs.manager
+    Assert-TicketboxStructuredEvidence `
         "安装器 PostgreSQL provenance" `
         $manifest.postgresql `
         $ExpectedBuildInputs.postgresql

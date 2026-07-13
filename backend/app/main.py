@@ -87,7 +87,13 @@ from app.routes import (
     web_tasks,
 )
 from app.routes import web_rules as web_rules_routes
-from app.schemas import ErrorResponse, HealthResponse, StatusResponse
+from app.schemas import (
+    ErrorResponse,
+    HealthResponse,
+    InstallationHealthResponse,
+    InstallationMobileCapabilitiesResponse,
+    StatusResponse,
+)
 from app.services import backup_service
 from app.services.background_task_service import (
     recover_orphaned_tasks,
@@ -101,6 +107,9 @@ from app.services.fx_rate_scheduler import start_fx_rate_scheduler
 from app.services.installation_health_service import (
     InstallationDatabaseIdentityError,
     assert_installation_database_ready,
+    installation_mobile_capabilities,
+    installation_owner_state,
+    installation_runtime_access_state,
 )
 from app.services.learning_cleanup_scheduler import (
     start_learning_cleanup_scheduler,
@@ -364,25 +373,34 @@ def health() -> StatusResponse:
     return StatusResponse()
 
 
-@app.get("/api/health/installation", response_model=dict[str, str], tags=["health"])
+@app.get("/api/health/installation", response_model=InstallationHealthResponse, tags=["health"])
 def installation_health(
     request: Request,
     db: Session = Depends(get_db),
-) -> dict[str, str]:
+) -> InstallationHealthResponse:
     require_owner_console_local(request)
+    settings = get_settings()
     try:
-        assert_installation_database_ready(db, database_url=get_settings().database_url)
+        assert_installation_database_ready(db, database_url=settings.database_url)
+        owner_state = installation_owner_state(db)
     except (InstallationDatabaseIdentityError, SQLAlchemyError) as exc:
         raise HTTPException(
             status_code=503,
             detail="Ticketbox database is not ready for installed-service traffic.",
         ) from exc
-    return {
-        "status": "ok",
-        "product": "ticketbox",
-        "backend_version": BACKEND_VERSION,
-        "installation_id": installation_identity(),
-    }
+    mobile = installation_mobile_capabilities(settings.public_base_url)
+    return InstallationHealthResponse(
+        backend_version=BACKEND_VERSION,
+        installation_id=installation_identity(),
+        runtime_access_state=installation_runtime_access_state(request.scope),
+        owner_state=owner_state,
+        owner_recovery_channel=settings.owner_recovery_channel,
+        mobile_connectivity=InstallationMobileCapabilitiesResponse(
+            mobile_endpoint_state=mobile.mobile_endpoint_state,
+            android_binding_state=mobile.android_binding_state,
+            iphone_upload_state=mobile.iphone_upload_state,
+        ),
+    )
 
 
 @app.get("/api/status/private", response_model=HealthResponse, tags=["health"])

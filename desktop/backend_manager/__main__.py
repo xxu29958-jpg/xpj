@@ -7,7 +7,13 @@ import threading
 from functools import partial
 from pathlib import Path
 
-from backend_manager.config import ConfigError, InstalledRuntimeConfig, load_config
+from backend_manager.build_identity import load_frozen_manager_identity
+from backend_manager.config import (
+    ConfigError,
+    InstalledRuntimeConfig,
+    load_config,
+    load_maintenance_manager_config,
+)
 from backend_manager.elevation import (
     HELPER_EXIT_ACCESS,
     HELPER_EXIT_CONFIG,
@@ -36,6 +42,7 @@ from backend_manager.runtime import (
     ServiceTransitionError,
 )
 from backend_manager.runtime_factory import build_direct_service_runtime
+from backend_manager.windows_user_security import show_elevated_manager_warning
 
 
 def _run_elevated_service_action(
@@ -141,9 +148,20 @@ def main(argv: list[str] | None = None) -> int:
             args.helper_channel_file_id,
         )
     if is_process_elevated():
-        raise ConfigError("小票夹管理器界面不能以管理员身份运行；服务操作会按需单独请求 UAC 授权。")
+        show_elevated_manager_warning()
+        return 2
 
-    config = load_config()
+    try:
+        config = load_config()
+    except ConfigError as exc:
+        identity = load_frozen_manager_identity()
+        if identity is None:
+            raise
+        config = load_maintenance_manager_config(
+            identity.version,
+            startup_failure_code=exc.code,
+            startup_failure_stage="runtime_discovery",
+        )
     return run_manager(config)
 
 

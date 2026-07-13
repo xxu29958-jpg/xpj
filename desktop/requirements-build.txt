@@ -1,0 +1,3 @@
+# Exact build environment for the frozen Desktop Manager.
+-r requirements.txt
+pyinstaller==6.21.0

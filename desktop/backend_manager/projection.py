@@ -73,3 +73,18 @@ class RefreshingInstalledRuntimeConfigProvider:
 
     def shutdown(self) -> None:
         return
+
+
+class UnavailableInstalledRuntimeConfigProvider:
+    """Fail-closed provider used by the frozen maintenance shell."""
+
+    mode_hint: Literal["installed"] = "installed"
+
+    def current(self) -> RuntimeProjection:
+        raise ConfigError("正式安装运行配置不可用。")
+
+    def run_monitor(self, stop_event: threading.Event) -> None:
+        stop_event.wait()
+
+    def shutdown(self) -> None:
+        return

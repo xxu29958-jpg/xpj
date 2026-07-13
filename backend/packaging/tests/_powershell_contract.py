@@ -12,6 +12,7 @@ _PROBE = """
     minor = [int]$PSVersionTable.PSVersion.Minor
 } | ConvertTo-Json -Compress
 """
+_PROBE_TIMEOUT_SECONDS = 10
 
 
 def powershell_contract_engines() -> list[str]:
@@ -24,20 +25,24 @@ def powershell_contract_engines() -> list[str]:
     for command, edition, minimum_major, minimum_minor in contracts:
         executable = shutil.which(command)
         assert executable is not None, f"required PowerShell host is missing: {command}"
-        result = subprocess.run(
-            [
-                executable,
-                "-NoLogo",
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                _PROBE,
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            encoding="utf-8-sig",
-        )
+        try:
+            result = subprocess.run(
+                [
+                    executable,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    _PROBE,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8-sig",
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AssertionError(f"PowerShell host probe timed out: {command}") from exc
         identity = json.loads(result.stdout.strip())
         actual = (
             str(identity["edition"]),
