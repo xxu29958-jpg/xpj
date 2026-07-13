@@ -7554,6 +7554,109 @@
         "title": "IncomePlanUpdateRequest",
         "type": "object"
       },
+      "InstallationHealthResponse": {
+        "properties": {
+          "backend_version": {
+            "title": "Backend Version",
+            "type": "string"
+          },
+          "contract": {
+            "const": "ticketbox-installation-health-v2",
+            "default": "ticketbox-installation-health-v2",
+            "title": "Contract",
+            "type": "string"
+          },
+          "installation_id": {
+            "title": "Installation Id",
+            "type": "string"
+          },
+          "mobile_connectivity": {
+            "$ref": "#/components/schemas/InstallationMobileCapabilitiesResponse"
+          },
+          "owner_recovery_channel": {
+            "enum": [
+              "development",
+              "managed_host",
+              "operator"
+            ],
+            "title": "Owner Recovery Channel",
+            "type": "string"
+          },
+          "owner_state": {
+            "enum": [
+              "configured",
+              "recovery_required"
+            ],
+            "title": "Owner State",
+            "type": "string"
+          },
+          "product": {
+            "const": "ticketbox",
+            "default": "ticketbox",
+            "title": "Product",
+            "type": "string"
+          },
+          "runtime_access_state": {
+            "enum": [
+              "available",
+              "repair_required"
+            ],
+            "title": "Runtime Access State",
+            "type": "string"
+          },
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "backend_version",
+          "installation_id",
+          "runtime_access_state",
+          "owner_state",
+          "owner_recovery_channel",
+          "mobile_connectivity"
+        ],
+        "title": "InstallationHealthResponse",
+        "type": "object"
+      },
+      "InstallationMobileCapabilitiesResponse": {
+        "properties": {
+          "android_binding_state": {
+            "enum": [
+              "setup_required",
+              "configured_unverified"
+            ],
+            "title": "Android Binding State",
+            "type": "string"
+          },
+          "iphone_upload_state": {
+            "enum": [
+              "setup_required",
+              "configured_unverified"
+            ],
+            "title": "Iphone Upload State",
+            "type": "string"
+          },
+          "mobile_endpoint_state": {
+            "enum": [
+              "local_only",
+              "public_configured_unverified"
+            ],
+            "title": "Mobile Endpoint State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mobile_endpoint_state",
+          "android_binding_state",
+          "iphone_upload_state"
+        ],
+        "title": "InstallationMobileCapabilitiesResponse",
+        "type": "object"
+      },
       "InvitationAcceptRequest": {
         "additionalProperties": false,
         "properties": {
@@ -19068,11 +19171,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Installation Health Api Health Installation Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/InstallationHealthResponse"
                 }
               }
             },
