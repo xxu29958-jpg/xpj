@@ -33,6 +33,9 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
     assert "直接运行安装脚本不能提交或伪造 Inno 生命周期回执" in install
     assert "$PreUpgradeBackupAlreadyCompleted = [bool]$lifecycleReceipt.backup_completed" in install
     assert "InstallerOwnerProcessId" in receipt
+    assert '"ticketbox-windows-lifecycle-receipt-v8"' in receipt
+    assert "target_backend_version_floor" in receipt
+    assert "Set-TicketboxLifecycleReceiptTargetVersionFloor" in receipt
     assert "Assert-TicketboxProtectedLifecycleReceipt" in receipt
     assert "Write-TicketboxProtectedUtf8FileDurable" in receipt
     receipt_writer = receipt[
@@ -41,6 +44,7 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
         )
     ]
     assert "Write-TicketboxProtectedUtf8FileDurable" in receipt_writer
+    assert "安装生命周期回执目标版本下限不能回退" in receipt_writer
     assert "[System.IO.File]::WriteAllText" not in receipt_writer
     assert "Write-TicketboxLifecycleReceipt" in prepare
     assert "files_may_have_been_replaced" in receipt
@@ -208,7 +212,7 @@ if ($runtimeState -cne '{_literal(tmp_path / "TicketboxRuntimeState")}') {{
 $script:stage = 'files_may_have_been_replaced'
 $script:events = New-Object System.Collections.Generic.List[string]
 function Read-TicketboxLifecycleReceipt {{
-    param($Path, $InstallDir, $DataRoot, $PgPort, $BackendPort, $TargetReleaseConfig, $InstallerOwnerProcessId)
+    param($Path, $InstallDir, $DataRoot, $PgPort, $BackendPort, $TargetReleaseConfig, $CurrentTargetBackendVersion, $InstallerOwnerProcessId)
     [void]$script:events.Add('read')
     return [pscustomobject]@{{ preparation_stage = $script:stage }}
 }}
@@ -250,7 +254,7 @@ function Remove-TicketboxInstallerRuntimeRecoveryGuard {{
 $config = [pscustomobject]@{{ pg_service_name = 'TicketboxPg'; backend_service_name = 'TicketboxBackend' }}
 $arguments = @{{
     Path = 'receipt.json'; InstallDir = 'program'; DataRoot = 'data'; PgPort = 5432; BackendPort = 8000
-    TargetReleaseConfig = $config; InstallerOwnerProcessId = $PID; BuildManifestPath = 'manifest.json'
+    TargetReleaseConfig = $config; TargetBackendVersion = '1.3.0'; InstallerOwnerProcessId = $PID; BuildManifestPath = 'manifest.json'
     RecoveryRequiredPath = 'installer-recovery-required.json'
     RuntimeRecoveryGuardPath = 'installer-runtime-recovery-pending'
 }}
@@ -1359,6 +1363,7 @@ Write-TicketboxLifecycleReceipt `
     -PgPort 5544 `
     -BackendPort 8765 `
     -InstalledReleaseConfig $config `
+    -TargetBackendVersionFloor 1.3.0 `
     -InstallerOwnerProcessId $PID `
     -PreviousPgState running `
     -PreviousBackendState running `
@@ -1374,6 +1379,7 @@ $capturedReceipt = Read-TicketboxLifecycleReceipt `
     -PgPort 5544 `
     -BackendPort 8765 `
     -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId $PID
 $dataRootAuthority = Read-TicketboxProtectedDataRootMarker `
     -DataRoot '{_literal(data_root)}' `
@@ -1385,7 +1391,8 @@ $capturedReceiptJson = Get-Content `
     -Encoding UTF8 `
     -Raw | ConvertFrom-Json
 if (
-    $capturedReceiptJson.schema -cne 'ticketbox-windows-lifecycle-receipt-v7' -or
+    $capturedReceiptJson.schema -cne 'ticketbox-windows-lifecycle-receipt-v8' -or
+    $capturedReceiptJson.target_backend_version_floor -cne '1.3.0' -or
     $capturedReceiptJson.data_volume_identity -cne $dataRootAuthority.DataVolumeIdentity
 ) {{
     throw 'lifecycle receipt did not durably bind the v2 DataRoot volume authority'
@@ -1403,6 +1410,7 @@ try {{
         -PgPort 5544 `
         -BackendPort 8765 `
         -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.3.0 `
         -InstallerOwnerProcessId $PID | Out-Null
 }}
 catch {{ $missingDataRootAuthorityRejected = $true }}
@@ -1438,6 +1446,7 @@ try {{
         -PgPort 5544 `
         -BackendPort 8765 `
         -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.3.0 `
         -InstallerOwnerProcessId $PID | Out-Null
 }}
 catch {{ $wrongVolumeReceiptRejected = $true }}
@@ -1468,8 +1477,10 @@ $receipt = Read-TicketboxLifecycleReceipt `
     -PgPort 5544 `
     -BackendPort 8765 `
     -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId $PID
 if ($receipt.mode -ne 'upgrade' -or
+    $receipt.target_backend_version_floor -cne '1.3.0' -or
     -not $receipt.backup_completed -or
     $receipt.backup_sha256 -cnotmatch '^[0-9A-F]{{64}}$' -or
     [long]$receipt.backup_byte_length -ne 15 -or
@@ -1488,6 +1499,7 @@ try {{
         -PgPort 5544 `
         -BackendPort 8765 `
         -InstalledReleaseConfig $config `
+        -TargetBackendVersionFloor 1.3.0 `
         -InstallerOwnerProcessId $PID `
         -PreviousPgState absent `
         -PreviousBackendState absent `
@@ -1508,6 +1520,7 @@ try {{
         -PgPort 5544 `
         -BackendPort 8765 `
         -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.3.0 `
         -InstallerOwnerProcessId ($PID + 1) | Out-Null
 }}
 catch {{ $oldOwnerRejected = $true }}
@@ -1529,6 +1542,7 @@ $staleReceipt = Read-TicketboxLifecycleReceipt `
     -PgPort 5544 `
     -BackendPort 8765 `
     -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId ($PID + 1) `
     -AllowPreviousInstallerOwnerProcessId
 $backupMutationBlocked = $false
@@ -1548,8 +1562,10 @@ $repairReceipt = Read-TicketboxLifecycleReceipt `
     -PgPort 5544 `
     -BackendPort 8765 `
     -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId ($PID + 1)
 if (-not $repairReceipt.files_may_have_been_replaced -or
+    $repairReceipt.target_backend_version_floor -cne '1.3.0' -or
     $repairReceipt.previous_pg_state -ne 'running' -or
     $repairReceipt.previous_backend_state -ne 'running' -or
     $repairReceipt.previous_pg_start_policy -ne 'delayed_auto' -or
@@ -1571,7 +1587,11 @@ $repairReceipt = Read-TicketboxLifecycleReceipt `
     -PgPort 5544 `
     -BackendPort 8765 `
     -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId ($PID + 2)
+if ($repairReceipt.target_backend_version_floor -cne '1.3.0') {{
+    throw 'installer-owner transition discarded the target version floor'
+}}
 $duplicateTransitionRejected = $false
 try {{
     Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced `
@@ -1590,6 +1610,7 @@ try {{
         -PgPort 5545 `
         -BackendPort 8765 `
         -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.3.0 `
         -InstallerOwnerProcessId ($PID + 2) | Out-Null
 }}
 catch {{ $rejected = $true }}
@@ -1605,8 +1626,11 @@ $completedReceipt = Read-TicketboxLifecycleReceipt `
     -PgPort 5544 `
     -BackendPort 8765 `
     -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId ($PID + 2)
-if (-not $completedReceipt.install_completed -or $completedReceipt.preparation_stage -ne 'install_completed') {{
+if (-not $completedReceipt.install_completed -or
+    $completedReceipt.preparation_stage -ne 'install_completed' -or
+    $completedReceipt.target_backend_version_floor -cne '1.3.0') {{
     throw 'completed receipt was not persisted'
 }}
 Set-TestBackupContent 'completed-corruption'
@@ -1663,6 +1687,131 @@ Remove-TicketboxCompletedLifecycleReceipt `
     -Path '{_literal(receipt_path)}' `
     -Receipt $boundCompletedReceipt
 if (Test-Path -LiteralPath '{_literal(receipt_path)}') {{ throw 'completed receipt survived invalidation' }}
+Write-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -Mode repair_install `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -InstalledReleaseConfig $config `
+    -TargetBackendVersionFloor 1.3.0 `
+    -InstallerOwnerProcessId $PID `
+    -PreviousPgState absent `
+    -PreviousBackendState absent `
+    -PreviousPgStartPolicy absent `
+    -PreviousBackendStartPolicy absent `
+    -BackupRequired $false `
+    -BackupCompleted $false `
+    -PreparationStage captured
+$floorReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId $PID
+$floorBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+$olderTargetRejected = $false
+try {{
+    Read-TicketboxLifecycleReceipt `
+        -Path '{_literal(receipt_path)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -DataRoot '{_literal(data_root)}' `
+        -PgPort 5544 `
+        -BackendPort 8765 `
+        -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.2.9 `
+        -InstallerOwnerProcessId $PID | Out-Null
+}}
+catch {{ $olderTargetRejected = $true }}
+if (-not $olderTargetRejected -or
+    -not (Test-TicketboxByteArrayEquals $floorBytes ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
+    throw 'older installer target was accepted or mutated the receipt before rejection'
+}}
+$newerReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.4.0 `
+    -InstallerOwnerProcessId $PID
+Set-TicketboxLifecycleReceiptTargetVersionFloor `
+    -Path '{_literal(receipt_path)}' `
+    -Receipt $newerReceipt `
+    -InstallerOwnerProcessId $PID `
+    -TargetBackendVersionFloor 1.4.0
+$ratchetedReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.4.0 `
+    -InstallerOwnerProcessId $PID
+if ($ratchetedReceipt.target_backend_version_floor -cne '1.4.0' -or
+    $ratchetedReceipt.preparation_stage -cne 'captured') {{
+    throw 'newer installer did not durably ratchet the target version floor'
+}}
+$previousTargetRejected = $false
+try {{
+    Read-TicketboxLifecycleReceipt `
+        -Path '{_literal(receipt_path)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -DataRoot '{_literal(data_root)}' `
+        -PgPort 5544 `
+        -BackendPort 8765 `
+        -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.3.0 `
+        -InstallerOwnerProcessId $PID | Out-Null
+}}
+catch {{ $previousTargetRejected = $true }}
+if (-not $previousTargetRejected) {{
+    throw 'previous installer target remained valid after receipt ratchet'
+}}
+$staleTransitionRejected = $false
+try {{
+    Set-TicketboxLifecycleReceiptPrepared `
+        -Path '{_literal(receipt_path)}' `
+        -Receipt $floorReceipt `
+        -InstallerOwnerProcessId $PID `
+        -BackupCompleted $false
+}}
+catch {{ $staleTransitionRejected = $true }}
+if (-not $staleTransitionRejected) {{
+    throw 'stale transition lowered the target version floor'
+}}
+$ratchetedJson = Get-Content -LiteralPath '{_literal(receipt_path)}' -Encoding UTF8 -Raw | ConvertFrom-Json
+$ratchetedJson.target_backend_version_floor = '1.4.beta'
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path '{_literal(receipt_path)}' `
+    -Text ($ratchetedJson | ConvertTo-Json -Depth 20 -Compress) `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount `
+    -ReplaceExisting
+$malformedBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+$malformedFloorRejected = $false
+try {{
+    Read-TicketboxLifecycleReceipt `
+        -Path '{_literal(receipt_path)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -DataRoot '{_literal(data_root)}' `
+        -PgPort 5544 `
+        -BackendPort 8765 `
+        -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.4.0 `
+        -InstallerOwnerProcessId $PID | Out-Null
+}}
+catch {{ $malformedFloorRejected = $true }}
+if (-not $malformedFloorRejected -or
+    -not (Test-TicketboxByteArrayEquals $malformedBytes ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
+    throw 'malformed target version floor was accepted or mutated before rejection'
+}}
 """,
             encoding="utf-8-sig",
         )

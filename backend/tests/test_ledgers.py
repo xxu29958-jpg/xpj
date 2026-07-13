@@ -265,6 +265,9 @@ def test_owner_pairing_shows_the_exact_android_server_address(
         "https://0177.0.0.1",
         "https://0x7f000001",
         "https://[::ffff:127.0.0.1]",
+        "https://%31%32%37.0.0.1",
+        "https://[::ffff:192.168.1.10]",
+        "https://\uff11\uff12\uff17\u3002\uff10\u3002\uff10\u3002\uff11",
         "https://finance.example.test:0",
     ),
 )

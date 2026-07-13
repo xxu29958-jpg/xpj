@@ -362,6 +362,9 @@ def test_owner_upload_links_warns_when_public_base_url_missing(
         "https://0177.0.0.1",
         "https://0x7f000001",
         "https://[::ffff:127.0.0.1]",
+        "https://%31%32%37.0.0.1",
+        "https://[::ffff:192.168.1.10]",
+        "https://\uff11\uff12\uff17\u3002\uff10\u3002\uff10\u3002\uff11",
         "https://finance.example.test:0",
     ),
 )
@@ -433,6 +436,36 @@ def test_owner_upload_links_create_uses_deployment_recovery_capability(
     assert created == []
 
 
+def test_owner_upload_links_create_checks_installation_owner_before_mutation(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routes.owner_console import _upload_links as upload_links_route
+
+    created: list[bool] = []
+    monkeypatch.setattr(upload_links_route, "installation_owner_state", lambda _db: "recovery_required")
+    monkeypatch.setattr(
+        upload_links_route.svc,
+        "do_create_upload_link",
+        lambda *_args, **_kwargs: created.append(True),
+    )
+    monkeypatch.setattr(
+        upload_links_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            owner_recovery_channel="managed_host",
+            public_base_url="https://finance.example.test",
+            ocr_default_timezone="Asia/Shanghai",
+        ),
+    )
+
+    response = local_client.post("/owner/upload-links")
+
+    assert response.status_code == 200
+    assert "普通修复不会重建身份" in response.text
+    assert created == []
+
+
 @pytest.mark.parametrize(
     ("channel", "expected", "excluded"),
     [
@@ -474,6 +507,35 @@ def test_owner_upload_links_rotate_uses_deployment_recovery_capability(
     assert rotated == []
 
 
+def test_owner_upload_links_rotate_checks_installation_owner_before_mutation(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routes.owner_console import _upload_links as upload_links_route
+
+    rotated: list[bool] = []
+    monkeypatch.setattr(upload_links_route, "installation_owner_state", lambda _db: "recovery_required")
+    monkeypatch.setattr(
+        upload_links_route.svc,
+        "do_rotate_upload_link",
+        lambda *_args, **_kwargs: rotated.append(True),
+    )
+    monkeypatch.setattr(
+        upload_links_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            owner_recovery_channel="managed_host",
+            public_base_url="https://finance.example.test",
+        ),
+    )
+
+    response = local_client.post("/owner/upload-links/missing/rotate")
+
+    assert response.status_code == 200
+    assert "普通修复不会重建身份" in response.text
+    assert rotated == []
+
+
 @pytest.mark.parametrize(
     "unusable_endpoint",
     (
@@ -483,6 +545,9 @@ def test_owner_upload_links_rotate_uses_deployment_recovery_capability(
         "https://0177.0.0.1",
         "https://0x7f000001",
         "https://[::ffff:127.0.0.1]",
+        "https://%31%32%37.0.0.1",
+        "https://[::ffff:192.168.1.10]",
+        "https://\uff11\uff12\uff17\u3002\uff10\u3002\uff10\u3002\uff11",
         "https://finance.example.test:0",
     ),
 )

@@ -379,8 +379,11 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     )
     assert service_install < current_pending
     assert " -TargetPgMajor {#TargetPgMajor}" in installer
+    assert " -TargetBackendVersion {#AppVersion}" in flow
     assert "[int]$TargetPgMajor" in prepare
     assert "[int]$TargetPgMajor = 0" in install
+    assert "[Parameter(Mandatory = $true)][string]$TargetBackendVersion" in prepare
+    assert "[Parameter(Mandatory = $true)][string]$TargetBackendVersion" in install
     assert 'Join-Path $PgData "PG_VERSION"' in prepare
     prepare_calls = list(
         re.finditer(
@@ -393,6 +396,15 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         args_start = flow.rfind("Args :=\n", 0, call.start())
         assert args_start >= 0
         assert " -TargetPgMajor {#TargetPgMajor}" in flow[args_start : call.start()]
+        assert " -TargetBackendVersion {#AppVersion}" in flow[args_start : call.start()]
+    install_calls = list(
+        re.finditer(r"(?<!un)install_bundled_services\.ps1'\)", flow)
+    )
+    assert len(install_calls) == 2
+    for call in install_calls:
+        args_start = flow.rfind("Args :=\n", 0, call.start())
+        assert args_start >= 0
+        assert " -TargetBackendVersion {#AppVersion}" in flow[args_start : call.start()]
     stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
     stale_branch = prepare[
         stale_start : prepare.index(
@@ -541,6 +553,25 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
     persist_copy_boundary = flow.index("-MarkProgramFilesInstalledBackupPending", install_boundary)
     memory_copy_boundary = flow.index("LifecycleFilesMayBeReplaced := True", persist_copy_boundary)
     assert install_boundary < persist_copy_boundary < memory_copy_boundary
+
+    copy_boundary = prepare[
+        prepare.index("if ($MarkProgramFilesInstalledBackupPending)") : prepare.index(
+            "if ($RecoverPreparedInstall)"
+        )
+    ]
+    stage_persistence = min(
+        copy_boundary.index("Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending"),
+        copy_boundary.index("Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced"),
+    )
+    ratchet = copy_boundary.index("Set-TicketboxLifecycleReceiptTargetVersionFloor")
+    durable_verify = copy_boundary.index(
+        "Compare-TicketboxLifecycleVersions",
+        ratchet,
+    )
+    boundary_return = copy_boundary.rindex("return")
+    assert stage_persistence < ratchet < durable_verify < boundary_return
+    assert "-CurrentTargetBackendVersion $TargetBackendVersion" in copy_boundary
+    assert "-TargetBackendVersionFloor $TargetBackendVersion" in copy_boundary
 
     service_phase = install.index("if ($DeferredPreservedDataBackup)")
     cleanup_wal = install.index(

@@ -20,6 +20,7 @@ param(
     [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
     [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
     [ValidateRange(0, 99)][int]$TargetPgMajor = 0,
+    [Parameter(Mandatory = $true)][string]$TargetBackendVersion,
     [string]$AccountName = "",
     [string]$LedgerName = "",
     [string]$DeviceName = "",
@@ -923,6 +924,7 @@ try {
             -PgPort $PgPort `
             -BackendPort $BackendPort `
             -TargetReleaseConfig $ReleaseConfig `
+            -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId
         if (
             [string]$lifecycleReceipt.preparation_stage -eq "program_files_installed_backup_pending" -and

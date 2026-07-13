@@ -243,6 +243,7 @@ def test_service_contract_validator_uses_installed_script_and_dynamic_identity(
 
     command = captured[0]
     assert command[0] == str(powershell)
+    assert command[command.index("-TargetBackendVersion") + 1] == "9.8.7"
     assert command[command.index("-ExpectedBackendServiceName") + 1] == "TicketboxBackendDynamic"
     assert command[command.index("-ExpectedPgServiceName") + 1] == "TicketboxPgDynamic"
     assert command[-1] == "-ValidateInstalledServicesOnly"

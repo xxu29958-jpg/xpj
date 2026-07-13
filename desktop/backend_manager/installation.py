@@ -355,6 +355,8 @@ def _run_installed_lifecycle_validation(
         str(layout.pg_port),
         "-BackendPort",
         str(layout.backend_port),
+        "-TargetBackendVersion",
+        layout.backend_version,
         "-ExpectedBackendServiceName",
         layout.backend_service_name,
         "-ExpectedPgServiceName",
