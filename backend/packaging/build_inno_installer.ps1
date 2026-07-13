@@ -6,6 +6,8 @@
 .DESCRIPTION
   Validates the frozen backend, bundled PostgreSQL, Shawl, and installer scripts,
   then invokes ISCC.exe. Use -CheckInputsOnly on machines without Inno Setup.
+  -VerifyOnly requires the installer SHA-256 captured by the compile step so a
+  coordinated rewrite of the publish directory cannot self-authorize.
 #>
 [CmdletBinding()]
 param(
@@ -16,7 +18,10 @@ param(
     [string]$ReleaseConfigOverride = "",
     [switch]$CheckSourceInputsOnly,
     [switch]$CheckInputsOnly,
-    [switch]$VerifyOnly
+    [switch]$VerifyOnly,
+    [string]$ExpectedInstallerSha256 = "",
+    [string]$VerifyPublishDirectory = "",
+    [string]$InstallerHashOutputFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,6 +37,7 @@ $ChineseLanguageFile = Join-Path $ScriptDir "languages\ChineseSimplified.isl"
 $BackendDist = Join-Path $BackendRoot "dist\ticketbox-backend"
 $BackendBuildManifest = Join-Path $BackendDist "BUILD_PROVENANCE.json"
 $BuildProvenanceScript = Join-Path $BackendRoot "scripts\windows_build_provenance.ps1"
+$BackendBuildProvenanceScript = Join-Path $BackendRoot "scripts\windows_backend_build_provenance.ps1"
 $PgBundle = Join-Path $ScriptDir "vendor\pg"
 $PgManifest = Join-Path $PgBundle "BUNDLE_MANIFEST.txt"
 $ShawlExe = Join-Path $ScriptDir "vendor\shawl\shawl.exe"
@@ -50,6 +56,7 @@ $LifecycleScript = Join-Path $ScriptDir "windows_service_lifecycle.ps1"
 $SafetyScript = Join-Path $ScriptDir "windows_installation_safety.ps1"
 $ReceiptScript = Join-Path $ScriptDir "windows_lifecycle_receipt.ps1"
 $LockScript = Join-Path $ScriptDir "windows_lifecycle_lock.ps1"
+$LockHolderScript = Join-Path $ScriptDir "hold_installer_lifecycle_lock.ps1"
 $DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
 $PgRecoveryToolsScript = Join-Path $ScriptDir "windows_pg_recovery_tools.ps1"
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
@@ -57,6 +64,7 @@ $BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
 $BootstrapExposureRecoveryScript = Join-Path $ScriptDir "windows_bootstrap_exposure_recovery.ps1"
 $InstallScript = Join-Path $ScriptDir "install_bundled_services.ps1"
 $UninstallScript = Join-Path $ScriptDir "uninstall_bundled_services.ps1"
+$DataRootGuardScript = Join-Path $ScriptDir "hold_data_root_mutation_guard.ps1"
 
 function Write-Step([string]$Message) {
     Write-Host ""
@@ -669,6 +677,54 @@ if (@($activeBuildModes).Count -gt 1) {
     throw "-CheckSourceInputsOnly、-CheckInputsOnly 与 -VerifyOnly 不能同时使用。"
 }
 
+function Write-TicketboxInstallerHashOutput {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallerSha256,
+        [Parameter(Mandatory = $true)][string]$PublishRoot
+    )
+    if ($InstallerSha256 -notmatch '^[0-9a-f]{64}$') {
+        throw "installer hash output 不是规范 SHA-256。"
+    }
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullPublishRoot = [System.IO.Path]::GetFullPath($PublishRoot).TrimEnd("\\")
+    $publishPrefix = $fullPublishRoot + [System.IO.Path]::DirectorySeparatorChar
+    if ($fullPath.Equals(
+        $fullPublishRoot,
+        [System.StringComparison]::OrdinalIgnoreCase
+    ) -or $fullPath.StartsWith(
+        $publishPrefix,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "installer hash output 必须位于 publish unit 之外。"
+    }
+    $parent = Split-Path -Parent $fullPath
+    Assert-Dir $parent "installer hash output 父目录"
+    if ((Test-Path -LiteralPath $fullPath) -and -not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+        throw "installer hash output 不是普通文件：$fullPath"
+    }
+    $line = "installer_sha256=$InstallerSha256" + [Environment]::NewLine
+    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($line)
+    $stream = [System.IO.File]::Open(
+        $fullPath,
+        [System.IO.FileMode]::OpenOrCreate,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::Read
+    )
+    try {
+        [void]$stream.Seek(0, [System.IO.SeekOrigin]::End)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+    }
+    finally { $stream.Dispose() }
+}
+if ($VerifyPublishDirectory.Trim().Length -gt 0 -and -not $VerifyOnly) {
+    throw "VerifyPublishDirectory 只允许用于 VerifyOnly。"
+}
+if ($InstallerHashOutputFile.Trim().Length -gt 0 -and @($activeBuildModes).Count -gt 0) {
+    throw "InstallerHashOutputFile 只允许用于真实编译模式。"
+}
+
 $BuildLock = $null
 $InstallerPrimaryFailure = $null
 $InstallerCleanupFailures = New-Object System.Collections.Generic.List[string]
@@ -682,6 +738,10 @@ $resolvedVersionInfo = Resolve-VersionInfoVersion $resolvedVersion
 $publishRoot = Join-Path $BackendRoot "dist\installer"
 $publishUnitName = "Ticketbox-Setup-$resolvedVersion"
 $targetPublishDir = Join-Path $publishRoot $publishUnitName
+if ($VerifyPublishDirectory.Trim().Length -gt 0) {
+    $targetPublishDir = [System.IO.Path]::GetFullPath($VerifyPublishDirectory)
+    $publishRoot = Split-Path -Parent $targetPublishDir
+}
 $publishNonce = "{0}-{1}" -f $PID, [Guid]::NewGuid().ToString("N")
 $publishBackupDir = Join-Path $publishRoot (".$publishUnitName.last-known-good")
 $publishReceipt = Join-Path $publishRoot (".$publishUnitName.publish-receipt.json")
@@ -692,7 +752,11 @@ $targetManifest = Join-Path $targetPublishDir "BUILD_PROVENANCE.json"
 $targetCompletion = Join-Path $targetPublishDir "BUILD_COMPLETE.json"
 $legacyInstaller = Join-Path $publishRoot $installerFileName
 $legacyChecksum = "$legacyInstaller.sha256"
-if (-not $CheckSourceInputsOnly -and -not $CheckInputsOnly) {
+if (
+    -not $CheckSourceInputsOnly -and
+    -not $CheckInputsOnly -and
+    $VerifyPublishDirectory.Trim().Length -eq 0
+) {
     Assert-TicketboxNoReparsePath -Path $publishRoot -AllowedRoot $BackendRoot | Out-Null
     New-Item -ItemType Directory -Force -Path $publishRoot | Out-Null
     Recover-TicketboxDirectoryPublication `
@@ -708,6 +772,8 @@ Assert-File $IssWindowsCode "Inno Windows runtime include"
 Assert-File $IssFlowCode "Inno installer flow include"
 Assert-File $ChineseLanguageFile "Inno 简体中文语言文件"
 Assert-File $ReleaseConfigScript "Windows release config 解析脚本"
+Assert-File $BuildProvenanceScript "Windows installer build provenance 脚本"
+Assert-File $BackendBuildProvenanceScript "Windows backend build provenance 脚本"
 Assert-File $BuildToolchainPrepScript "Windows build toolchain 准备脚本"
 . $ReleaseConfigScript
 $releaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
@@ -722,6 +788,8 @@ Assert-File $LifecycleScript "Windows 服务生命周期脚本"
 Assert-File $SafetyScript "Windows 安装安全脚本"
 Assert-File $ReceiptScript "Windows 生命周期回执脚本"
 Assert-File $LockScript "Windows 生命周期锁脚本"
+Assert-File $LockHolderScript "Windows 生命周期锁 holder 脚本"
+Assert-File $DataRootGuardScript "Windows DataRoot guard holder 脚本"
 Assert-File $DatabaseSafetyScript "Windows 数据库安全脚本"
 Assert-File $PgRecoveryToolsScript "Windows PostgreSQL 恢复工具脚本"
 Assert-File $DatabaseScript "Windows bundled database 脚本"
@@ -800,20 +868,44 @@ $defines = @(
     "/DFallbackPgPort=$($releaseConfig.fallback_pg_port)",
     "/DDefaultBackendPort=$($releaseConfig.default_backend_port)",
     "/DFallbackBackendPort=$($releaseConfig.fallback_backend_port)",
-    "/DTargetPgMajor=$($postgresProvenance.major)"
+    "/DTargetPgMajor=$($postgresProvenance.major)",
+    "/DLifecycleSafetyScriptSha256=$(Get-TicketboxFileSha256 $SafetyScript)",
+    "/DLifecycleLockScriptSha256=$(Get-TicketboxFileSha256 $LockScript)",
+    "/DLifecycleHolderScriptSha256=$(Get-TicketboxFileSha256 $LockHolderScript)",
+    "/DDataRootGuardScriptSha256=$(Get-TicketboxFileSha256 $DataRootGuardScript)",
+    "/DPrepareScriptSha256=$(Get-TicketboxFileSha256 $PrepareScript)",
+    "/DServiceContractScriptSha256=$(Get-TicketboxFileSha256 $ServiceContractScript)",
+    "/DServiceLifecycleScriptSha256=$(Get-TicketboxFileSha256 $LifecycleScript)",
+    "/DLifecycleReceiptScriptSha256=$(Get-TicketboxFileSha256 $ReceiptScript)",
+    "/DDatabaseSafetyScriptSha256=$(Get-TicketboxFileSha256 $DatabaseSafetyScript)",
+    "/DPgRecoveryToolsScriptSha256=$(Get-TicketboxFileSha256 $PgRecoveryToolsScript)",
+    "/DReleaseConfigScriptSha256=$(Get-TicketboxFileSha256 $ReleaseConfigScript)",
+    "/DReleaseConfigJsonSha256=$(Get-TicketboxFileSha256 $ReleaseConfigPath)",
+    "/DBuildProvenanceScriptSha256=$(Get-TicketboxFileSha256 $BuildProvenanceScript)",
+    "/DBackendBuildProvenanceScriptSha256=$(Get-TicketboxFileSha256 $BackendBuildProvenanceScript)"
 )
 $verifiedBuildInputs = Get-InstallerBuildInputEvidence `
     $backendManifest `
     $postgresProvenance `
     $shawlProvenance
 if ($VerifyOnly) {
+    if ($ExpectedInstallerSha256 -notmatch '^[0-9A-Fa-f]{64}$') {
+        throw "VerifyOnly 必须提供由本轮编译步骤外部保存的 ExpectedInstallerSha256。"
+    }
+    $expectedVerifyDirectoryName = if ($VerifyPublishDirectory.Trim().Length -eq 0) {
+        $publishUnitName
+    }
+    else {
+        ""
+    }
     $verifiedPublish = Assert-TicketboxInstallerPublishUnit `
         -PublishDirectory $targetPublishDir `
         -ExpectedVersion $resolvedVersion `
         -ExpectedCompilerProvenance $isccProvenance `
         -ExpectedBuildInputs $verifiedBuildInputs `
         -ExpectedCompilerDefines $defines `
-        -ExpectedDirectoryName $publishUnitName
+        -ExpectedInstallerSha256 $ExpectedInstallerSha256.ToLowerInvariant() `
+        -ExpectedDirectoryName $expectedVerifyDirectoryName
     Write-Ok "安装器发布单元验证通过：$($verifiedPublish.Path)"
     return
 }
@@ -994,6 +1086,12 @@ finally {
     }
 }
 if ($null -ne $BuildBodyFailure) { throw $BuildBodyFailure }
+if ($InstallerHashOutputFile.Trim().Length -gt 0) {
+    Write-TicketboxInstallerHashOutput `
+        -Path $InstallerHashOutputFile `
+        -InstallerSha256 $installerHash `
+        -PublishRoot $publishRoot
+}
 Write-Ok "安装包发布单元：$targetPublishDir"
 }
 catch {

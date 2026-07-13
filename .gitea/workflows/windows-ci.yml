@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       adr_base_ref:
-        description: Exact pre-change commit for ADR history ratchets
+        description: Canonical default-branch divergence commit for ADR history ratchets
         required: true
         type: string
 
@@ -120,12 +120,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile authoritative Inno installer
+        id: compile_installer
         working-directory: backend
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -InstallerHashOutputFile "$env:GITHUB_OUTPUT"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify atomic Windows installer publish unit
         working-directory: backend
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly
+        env:
+          INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve verified Windows installer publish path
         working-directory: backend
@@ -150,6 +157,36 @@ jobs:
           path: ${{ env.INSTALLER_PUBLISH_PATH }}
           if-no-files-found: error
 
+      - name: Create fresh installer verification directory
+        working-directory: backend
+        run: |
+          $downloadRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+          $downloadPath = Join-Path $downloadRoot ("ticketbox-installer-verify-" + [Guid]::NewGuid().ToString("N"))
+          if (Test-Path -LiteralPath $downloadPath) { throw "Installer verification directory already exists." }
+          New-Item -ItemType Directory -Path $downloadPath -ErrorAction Stop | Out-Null
+          if (@([System.IO.Directory]::EnumerateFileSystemEntries($downloadPath)).Count -ne 0) {
+            throw "Installer verification directory is not empty."
+          }
+          [System.IO.File]::AppendAllText(
+            $env:GITHUB_ENV,
+            "INSTALLER_VERIFY_DOWNLOAD_PATH=$downloadPath" + [Environment]::NewLine,
+            (New-Object System.Text.UTF8Encoding($false))
+          )
+
+      - name: Download uploaded Windows installer publish unit
+        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a # v3.0.2
+        with:
+          name: ticketbox-windows-installer
+          path: ${{ env.INSTALLER_VERIFY_DOWNLOAD_PATH }}
+
+      - name: Verify uploaded Windows installer bytes
+        working-directory: backend
+        env:
+          INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # The business pytest suite AND the end-to-end smoke run on PostgreSQL in the
       # backend-postgres job below (PG-only — debt #4): the SQLite engine is
       # retired, so neither a bare `pytest` nor the threaded smoke server can run
@@ -160,11 +197,33 @@ jobs:
         working-directory: backend
         run: .\.ci-venv\Scripts\python.exe scripts\check_api_contract.py
 
+      - name: Resolve release audit base
+        env:
+          ADR_MANUAL_BASE: ${{ inputs.adr_base_ref }}
+          ADR_PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") {
+            $auditBase = $env:ADR_MANUAL_BASE
+          }
+          elseif ($env:GITHUB_EVENT_NAME -eq "push" -and $env:GITHUB_REF -eq "refs/heads/main") {
+            $auditBase = $env:ADR_PUSH_BEFORE
+          }
+          elseif ($env:GITHUB_EVENT_NAME -eq "push") {
+            $auditBaseCandidates = @(git merge-base --all HEAD refs/remotes/origin/main)
+            if ($LASTEXITCODE -ne 0 -or $auditBaseCandidates.Count -ne 1) {
+              throw "Cannot resolve one unique canonical work-branch audit base."
+            }
+            $auditBase = ([string]$auditBaseCandidates[0]).Trim()
+          }
+          else { throw "Unsupported release audit event: $env:GITHUB_EVENT_NAME" }
+          if ($auditBase -notmatch '^[0-9a-fA-F]{40,64}$') { throw "Release audit base is not an exact object ID." }
+          [System.IO.File]::AppendAllText($env:GITHUB_ENV, "XPJ_AUDIT_BASE_REF=$auditBase" + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
+
       - name: Release audit
         working-directory: backend
         env:
           XPJ_RELEASE_AUDIT_COMPACT: "1"
-          XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'push' && github.event.before || inputs.adr_base_ref }}
+          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
         run: .\.ci-venv\Scripts\python.exe scripts\release_audit.py
 
       - name: Dependency vulnerability scan

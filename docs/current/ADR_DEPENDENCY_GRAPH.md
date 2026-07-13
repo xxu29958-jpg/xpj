@@ -1,7 +1,7 @@
 # ADR 依赖与演进图
 
 > 由 schema-v2 front matter、冻结 legacy identity baseline 与当前 calibration 生成；禁止手工编辑。
-> 代码核对基线：`0f1092e625b376d0fa8d4abc214cdc53de93a96d`；组合审查日期：2026-07-11。
+> 审查基线：`83af67d0702a7bfda2fa3a760b56dbef47c663c7`；组合审查日期：2026-07-12。
 
 ```mermaid
 flowchart LR
@@ -96,6 +96,11 @@ flowchart LR
   A0073["0073"] -->|refines| A0061["0061"]
   A0073["0073"] -->|refines| A0066["0066"]
   A0073["0073"] -->|refines| A0070["0070"]
+  A0074["0074"] -->|amends| A0062["0062"]
+  A0074["0074"] -->|amends| A0063["0063"]
+  A0074["0074"] -->|depends on| A0065["0065"]
+  A0074["0074"] -->|refines| A0066["0066"]
+  A0074["0074"] -->|informational| A0006["0006"]
 ```
 
 ## 未迁移 legacy ADR
@@ -198,3 +203,8 @@ flowchart LR
 | 0073 | refines | 0061 | 所有财务对象共享 minor-unit carrier、入口上限、rounding、currency binding 和 overflow 规则 |
 | 0073 | refines | 0066 | 家庭账务事实承重域内的事实分类、写权限、修订、补偿、恢复和故障隔离 |
 | 0073 | refines | 0070 | 确认与更正事务必须同时冻结带 precision 的 event-time representation、accounting date 和 calendar revision |
+| 0074 | amends | 0062 | installer recovery latch 的机器权限域、原子发布、迁移与前滚 repair |
+| 0074 | amends | 0063 | owner handoff 父目录权限、pending/confirmed 原子转换、完成页清理与中断接管 |
+| 0074 | depends-on | 0065 | accepted 历史不改写，以后继 ADR 修订当前 Windows adapter 裁决 |
+| 0074 | refines | 0066 | 安装器、SCM、Inno 与 PowerShell 保持平台适配层，不进入家庭财务核心 |
+| 0074 | informational | 0006 | PS5.1/PS7 只是同一 Windows 脚本合同的兼容宿主 |

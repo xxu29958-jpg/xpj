@@ -13,9 +13,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
 BOOTSTRAP_SCRIPT = PACKAGING / "windows_backend_bootstrap.ps1"
+SAFETY_SCRIPT = PACKAGING / "windows_installation_safety.ps1"
 
 
 def _read() -> str:
@@ -56,7 +58,8 @@ def test_bootstrap_checks_listener_chain_and_durable_credentials() -> None:
     assert "Invoke-RestMethod" not in script
     assert "Invoke-WebRequest" not in script
     assert "Assert-TicketboxBootstrapResponse" in script
-    assert "Set-TicketboxExactFileAcl" in script
+    assert "Write-TicketboxProtectedUtf8FileDurable" in script
+    assert "Read-TicketboxProtectedUtf8Artifact" in script
     assert "Write-TicketboxOwnerHandoffPendingMarker" in script
     assert "Complete-TicketboxOwnerBootstrapHandoff" in script
     handoff_cleanup = script[script.index("function Complete-TicketboxOwnerBootstrapHandoff") :]
@@ -68,12 +71,18 @@ def test_bootstrap_checks_listener_chain_and_durable_credentials() -> None:
     assert 'if (Test-Path -LiteralPath $OwnerBootstrapPath)' in handoff_cleanup
     assert "STATE=confirmed" in script
     assert "INSTALLER_OWNER_PID=" in script
+    assert "Get-TicketboxOwnerHandoffLifecycleIdentity" in script
+    handoff_writer = script[
+        script.index("function Write-TicketboxOwnerHandoffMarker") :
+        script.index("function Write-TicketboxOwnerHandoffPendingMarker")
+    ]
+    assert "Get-TicketboxOwnerHandoffLifecycleIdentity" in handoff_writer
+    assert "Get-Process" not in handoff_writer
     assert script.index("Write-TicketboxOwnerHandoffPendingMarker") < script.index(
-        "Write-EnvNoBom -Path $OwnerBootstrapPath"
+        "-Path $OwnerBootstrapPath"
     )
-    assert script.index("Write-TicketboxOwnerBootstrapFile $response") < script.index(
-        "Write-EnvNoBom -Path $EnvPath"
-    )
+    persisted_owner = script.index("Write-TicketboxOwnerBootstrapFile $response")
+    assert persisted_owner < script.index("Write-EnvNoBom -Path $EnvPath", persisted_owner)
     assert "bootstrap_already_initialized" not in script
     assert "Write-TicketboxBootstrapExposureRecoveryIntent" in recovery
     assert "Write-TicketboxBootstrapQuarantineEnvironment" in recovery
@@ -108,6 +117,632 @@ def test_bootstrap_checks_listener_chain_and_durable_credentials() -> None:
     assert install.index("Resolve-TicketboxBootstrapExposureRecoveryIntent") < install.index(
         'Write-Step "启动后端服务"'
     )
+
+
+def test_installer_state_migration_is_ordered_and_resumable_before_service_start() -> None:
+    bootstrap = _read()
+    install = (PACKAGING / "install_bundled_services.ps1").read_text(encoding="utf-8-sig")
+    migration = bootstrap[
+        bootstrap.index("function Move-TicketboxLegacyOwnerHandoffArtifacts") :
+        bootstrap.index("function Read-TicketboxOwnerHandoffRecord")
+    ]
+    migration_calls = migration[migration.index("Initialize-TicketboxInstallerStateDirectory") :]
+    assert migration_calls.index("$LegacyOwnerBootstrapPath") < migration_calls.index(
+        "$LegacyOwnerHandoffPendingPath"
+    )
+
+    main = install[install.index("$operationLock = Enter-TicketboxLifecycleLock") :]
+    marker = main.index("Initialize-TicketboxDataRootMarker")
+    mutation = main.index("$mutationStarted = $true")
+    stopped = main.index("Stop-ServiceIfExists", mutation)
+    acl_reset = main.index("Initialize-TicketboxSecureDataRoot", stopped)
+    migrated = main.index("Initialize-TicketboxInstallerStateArtifacts", acl_reset)
+    adopted = main.index("Adopt-TicketboxOwnerBootstrapHandoff", migrated)
+    service_acl = main.index("Set-TicketboxAcl", adopted)
+    backend_start = main.index('Write-Step "启动后端服务"', service_acl)
+    assert marker < mutation < stopped < acl_reset < migrated < adopted < service_acl < backend_start
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell durable file contract")
+def test_protected_writer_requires_explicit_atomic_replacement_in_powershell_5_and_7(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "protected-state.txt"
+    harness = tmp_path / "protected-writer.ps1"
+    harness.write_text(
+        f"""
+$ErrorActionPreference = 'Stop'
+. '{str(SAFETY_SCRIPT).replace("'", "''")}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$target = '{str(target).replace("'", "''")}'
+$originalMove = ${{function:Move-TicketboxFileDurable}}
+$script:prePublishAclVerified = $false
+function Move-TicketboxFileDurable([string]$Source, [string]$Destination, [switch]$ReplaceExisting) {{
+    Assert-TicketboxExactFileAcl `
+        -Path $Source `
+        -Accounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+    $expectedOwner = ConvertTo-TicketboxAccountSid $currentAccount
+    $actualOwner = ConvertTo-TicketboxAccountSid (Get-TicketboxPathAcl $Source).Owner
+    if ($actualOwner -ne $expectedOwner) {{ throw 'temporary file owner was not final before publish' }}
+    $script:prePublishAclVerified = $true
+    & $originalMove $Source $Destination -ReplaceExisting:$ReplaceExisting
+}}
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $target `
+    -Text 'pending' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$createNewRejected = $false
+try {{
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $target `
+        -Text 'must-not-overwrite' `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
+catch {{ $createNewRejected = $true }}
+if (-not $createNewRejected) {{ throw 'protected writer replaced an existing file without opt-in' }}
+if ([System.IO.File]::ReadAllText($target) -cne 'pending') {{ throw 'failed CreateNew changed the target' }}
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $target `
+    -Text 'confirmed' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount `
+    -ReplaceExisting
+if ([System.IO.File]::ReadAllText($target) -cne 'confirmed') {{ throw 'explicit replacement was not published' }}
+if (-not $script:prePublishAclVerified) {{ throw 'temporary ACL was not verified before publish' }}
+if (@(Get-ChildItem -LiteralPath '{str(tmp_path).replace("'", "''")}' -Filter '.ticketbox-protected-*.tmp').Count -ne 0) {{
+    throw 'protected writer left a temporary file'
+}}
+""",
+        encoding="utf-8-sig",
+    )
+    engines = powershell_contract_engines()
+    for engine in engines:
+        target.unlink(missing_ok=True)
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell installer-state ACL contract")
+def test_installer_state_migration_survives_recursive_app_acl_reset_in_powershell_5_and_7(
+    tmp_path: Path,
+) -> None:
+    harness = tmp_path / "installer-state-migration.ps1"
+    root = tmp_path / "data"
+    app = root / "app"
+    lifecycle_root = tmp_path / "machine-lifecycle"
+    installer_state = lifecycle_root / "installer-state"
+    legacy_credential = app / "owner-bootstrap.txt"
+    current_credential = installer_state / "owner-bootstrap.txt"
+    legacy_marker = app / "owner-handoff-pending"
+    current_marker = installer_state / "owner-handoff-pending"
+    harness.write_text(
+        f"""
+$ErrorActionPreference = 'Stop'
+. '{str(SAFETY_SCRIPT).replace("'", "''")}'
+. '{str(PACKAGING / "windows_lifecycle_lock.ps1").replace("'", "''")}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$root = '{str(root).replace("'", "''")}'
+$app = '{str(app).replace("'", "''")}'
+$lifecycleRoot = '{str(lifecycle_root).replace("'", "''")}'
+$installerState = '{str(installer_state).replace("'", "''")}'
+$legacyCredential = '{str(legacy_credential).replace("'", "''")}'
+$currentCredential = '{str(current_credential).replace("'", "''")}'
+$legacyMarker = '{str(legacy_marker).replace("'", "''")}'
+$currentMarker = '{str(current_marker).replace("'", "''")}'
+$backendAccount = 'NT AUTHORITY\\LOCAL SERVICE'
+New-Item -ItemType Directory -Path $app -Force | Out-Null
+New-Item -ItemType Directory -Path $lifecycleRoot -Force | Out-Null
+Set-TicketboxExactDirectoryAcl `
+    -Path $lifecycleRoot `
+    -Accounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$testLockRoot = Join-Path $lifecycleRoot 'lock-root'
+Initialize-TicketboxLifecycleLockDirectory `
+    -LockDirectory $testLockRoot `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+Assert-TicketboxProtectedDirectoryAcl `
+    -Path $testLockRoot `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$latch = Join-Path $testLockRoot 'existing-latch.json'
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $latch `
+    -Text 'must-survive-root-drift' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$backendSidForDrift = ConvertTo-TicketboxAccountSid $backendAccount
+Invoke-TicketboxIcaclsChecked $testLockRoot @('/grant', "*${{backendSidForDrift}}:(OI)(CI)F")
+$driftedRootSddl = (Get-TicketboxPathAcl $testLockRoot).Sddl
+$rootDriftRejected = $false
+try {{
+    Initialize-TicketboxLifecycleLockDirectory `
+        -LockDirectory $testLockRoot `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount | Out-Null
+}}
+catch {{ $rootDriftRejected = $true }}
+if (-not $rootDriftRejected -or
+    (Get-TicketboxPathAcl $testLockRoot).Sddl -cne $driftedRootSddl -or
+    [System.IO.File]::ReadAllText($latch) -cne 'must-survive-root-drift') {{
+    throw 'existing lifecycle root drift was normalized or its state was changed'
+}}
+$junctionTarget = Join-Path $lifecycleRoot 'lock-junction-target'
+$junctionRoot = Join-Path $lifecycleRoot 'lock-junction'
+New-Item -ItemType Directory -Path $junctionTarget -Force | Out-Null
+[System.IO.File]::WriteAllText((Join-Path $junctionTarget 'sentinel.txt'), 'must-not-change')
+& cmd.exe /d /c "mklink /J `"$junctionRoot`" `"$junctionTarget`"" | Out-Null
+if ($LASTEXITCODE -ne 0) {{ throw 'could not create lifecycle root junction fixture' }}
+$junctionRejected = $false
+try {{
+    Initialize-TicketboxLifecycleLockDirectory `
+        -LockDirectory $junctionRoot `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount | Out-Null
+}}
+catch {{ $junctionRejected = $true }}
+if (-not $junctionRejected -or
+    [System.IO.File]::ReadAllText((Join-Path $junctionTarget 'sentinel.txt')) -cne 'must-not-change' -or
+    (Test-Path -LiteralPath (Join-Path $junctionTarget 'installer-lifecycle.lock')) -or
+    (Test-Path -LiteralPath (Join-Path $junctionTarget 'installer-lifecycle.owner'))) {{
+    throw 'lifecycle root junction was followed or mutated before authority validation'
+}}
+[System.IO.Directory]::Delete($junctionRoot)
+Set-TicketboxExactDirectoryAcl `
+    -Path $root `
+    -Accounts @($currentAccount) `
+    -ReadExecuteAccounts @($backendAccount) `
+    -OwnerAccount $currentAccount
+Set-TicketboxExactDirectoryAcl `
+    -Path $app `
+    -Accounts @($currentAccount, $backendAccount) `
+    -OwnerAccount $currentAccount `
+    -Recurse
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $legacyCredential `
+    -Text 'credential-v1' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $legacyMarker `
+    -Text 'pending-state' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Initialize-TicketboxInstallerStateDirectory `
+    -Path $installerState `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $legacyCredential `
+    -CurrentPath $currentCredential `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $legacyMarker `
+    -CurrentPath $currentMarker `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$aclBefore = (Get-TicketboxPathAcl $currentMarker).Sddl
+New-Item -ItemType File -Path (Join-Path $app 'backend-owned.tmp') -Force | Out-Null
+Set-TicketboxExactDirectoryAcl `
+    -Path $app `
+    -Accounts @($currentAccount, $backendAccount) `
+    -OwnerAccount $currentAccount `
+    -Recurse
+$aclAfter = (Get-TicketboxPathAcl $currentMarker).Sddl
+if ((Test-Path -LiteralPath $legacyCredential) -or (Test-Path -LiteralPath $legacyMarker)) {{
+    throw 'legacy handoff artifact survived migration'
+}}
+if ([System.IO.File]::ReadAllText($currentCredential) -cne 'credential-v1') {{
+    throw 'migrated credential content changed'
+}}
+if ([System.IO.File]::ReadAllText($currentMarker) -cne 'pending-state') {{
+    throw 'migrated marker content changed'
+}}
+if ($aclBefore -cne $aclAfter) {{ throw 'recursive app ACL reset changed sibling installer-state ACL' }}
+Assert-TicketboxExactFileAcl `
+    -Path $currentMarker `
+    -Accounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$backendSid = (New-Object Security.Principal.NTAccount($backendAccount)).Translate(
+    [Security.Principal.SecurityIdentifier]
+).Value
+foreach ($rule in (Get-TicketboxPathAcl $installerState).Access) {{
+    $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+    if ($sid -eq $backendSid) {{ throw 'backend principal reached installer-state ACL' }}
+}}
+foreach ($rule in (Get-TicketboxPathAcl $root).Access) {{
+    $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+    if ($sid -ne $backendSid) {{ continue }}
+    $forbidden = (
+        [Security.AccessControl.FileSystemRights]::CreateFiles -bor
+        [Security.AccessControl.FileSystemRights]::CreateDirectories -bor
+        [Security.AccessControl.FileSystemRights]::Delete -bor
+        [Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
+    )
+    if (($rule.FileSystemRights -band $forbidden) -ne 0) {{
+        throw 'backend principal retained create/delete authority at data-root parent'
+    }}
+}}
+
+# Crash after credential move: current credential + legacy marker must converge.
+Remove-Item -LiteralPath $currentMarker -Force
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $legacyMarker `
+    -Text 'pending-v2' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $legacyCredential `
+    -CurrentPath $currentCredential `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $legacyMarker `
+    -CurrentPath $currentMarker `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+if ([System.IO.File]::ReadAllText($currentMarker) -cne 'pending-v2') {{
+    throw 'credential-first crash state did not converge'
+}}
+
+# Existing marker + legacy credential is also resumable and keeps marker authority.
+Remove-Item -LiteralPath $currentCredential -Force
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $legacyCredential `
+    -Text 'credential-v3' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $legacyCredential `
+    -CurrentPath $currentCredential `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $legacyMarker `
+    -CurrentPath $currentMarker `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+if ([System.IO.File]::ReadAllText($currentCredential) -cne 'credential-v3' -or
+    [System.IO.File]::ReadAllText($currentMarker) -cne 'pending-v2') {{
+    throw 'marker-first crash state did not converge'
+}}
+
+# Crash after destination publication: identical old/new files converge by deleting legacy.
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $legacyCredential `
+    -Text 'credential-v3' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $legacyCredential `
+    -CurrentPath $currentCredential `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+if (Test-Path -LiteralPath $legacyCredential) {{
+    throw 'identical dual-location crash state did not converge'
+}}
+
+# Divergent dual-location state must fail closed and preserve both artifacts.
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $legacyCredential `
+    -Text 'conflicting-credential' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$conflictRejected = $false
+try {{
+    Move-TicketboxLegacyInstallerStateArtifact `
+        -LegacyPath $legacyCredential `
+        -CurrentPath $currentCredential `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
+catch {{ $conflictRejected = $true }}
+if (-not $conflictRejected -or
+    -not (Test-Path -LiteralPath $legacyCredential -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $currentCredential -PathType Leaf)) {{
+    throw 'conflicting dual-location state did not fail closed'
+}}
+Remove-Item -LiteralPath $legacyCredential -Force
+
+# A directory or reparse-like non-file at either path is corruption, not absence.
+New-Item -ItemType Directory -Path $legacyCredential | Out-Null
+$nonFileRejected = $false
+try {{
+    Move-TicketboxLegacyInstallerStateArtifact `
+        -LegacyPath $legacyCredential `
+        -CurrentPath $currentCredential `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
+catch {{ $nonFileRejected = $true }}
+if (-not $nonFileRejected) {{ throw 'legacy directory was treated as an absent artifact' }}
+Remove-Item -LiteralPath $legacyCredential -Force
+
+$currentSid = ConvertTo-TicketboxAccountSid $currentAccount
+Invoke-TicketboxIcaclsChecked $installerState @('/remove:g', "*${{currentSid}}")
+Invoke-TicketboxIcaclsChecked $installerState @('/grant:r', "*${{currentSid}}:F")
+$malformedFlagsRejected = $false
+try {{
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $installerState `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
+catch {{ $malformedFlagsRejected = $true }}
+if (-not $malformedFlagsRejected) {{
+    throw 'non-inheritable allowed-SID FullControl passed the exact directory ACL contract'
+}}
+Set-TicketboxExactDirectoryAcl `
+    -Path $installerState `
+    -Accounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+
+$protectedStage = Join-Path $installerState '.ticketbox-protected-11111111111111111111111111111111.tmp'
+$durableStage = Join-Path $installerState '.ticketbox-durable-22222222222222222222222222222222.tmp'
+$unrelatedStage = Join-Path $installerState '.ticketbox-protected-not-a-guid.tmp'
+Set-Content -LiteralPath $protectedStage -Value 'pre-acl-crash'
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $durableStage `
+    -Text 'post-acl-crash' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Set-Content -LiteralPath $unrelatedStage -Value 'must-remain-unknown'
+Initialize-TicketboxInstallerStateDirectory `
+    -Path $installerState `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+if ((Test-Path $protectedStage) -or (Test-Path $durableStage) -or
+    -not (Test-Path $unrelatedStage -PathType Leaf)) {{
+    throw 'installer-state staging cleanup did not distinguish owned namespaces'
+}}
+Remove-Item -LiteralPath $unrelatedStage -Force
+
+Set-TicketboxExactDirectoryAcl `
+    -Path $installerState `
+    -Accounts @($currentAccount, $backendAccount) `
+    -OwnerAccount $currentAccount
+$driftRejected = $false
+try {{
+    Initialize-TicketboxInstallerStateDirectory `
+        -Path $installerState `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount | Out-Null
+}}
+catch {{ $driftRejected = $true }}
+if (-not $driftRejected) {{
+    throw 'existing installer-state ACL drift was normalized instead of rejected'
+}}
+
+Remove-Item -LiteralPath $installerState -Recurse -Force
+$junctionTarget = Join-Path $lifecycleRoot 'installer-state-target'
+New-Item -ItemType Directory -Path $junctionTarget | Out-Null
+Set-TicketboxExactDirectoryAcl `
+    -Path $junctionTarget `
+    -Accounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Set-Content -LiteralPath (Join-Path $junctionTarget 'keep.txt') -Value 'keep'
+& cmd.exe /d /c "mklink /J `"$installerState`" `"$junctionTarget`"" | Out-Null
+if ($LASTEXITCODE -eq 0) {{
+    $junctionRejected = $false
+    try {{
+        Initialize-TicketboxInstallerStateDirectory `
+            -Path $installerState `
+            -FullControlAccounts @($currentAccount) `
+            -OwnerAccount $currentAccount | Out-Null
+    }}
+    catch {{ $junctionRejected = $true }}
+    if (-not $junctionRejected -or
+        -not (Test-Path -LiteralPath (Join-Path $junctionTarget 'keep.txt') -PathType Leaf)) {{
+        throw 'installer-state junction was accepted or its target was mutated'
+    }}
+    [System.IO.Directory]::Delete($installerState)
+}}
+""",
+        encoding="utf-8-sig",
+    )
+    engines = powershell_contract_engines()
+    for engine in engines:
+        shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(lifecycle_root, ignore_errors=True)
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell owner migration provenance contract")
+def test_legacy_credential_only_migration_binds_before_retiring_source(tmp_path: Path) -> None:
+    harness = tmp_path / "owner-legacy-provenance.ps1"
+    harness.write_text(
+        f"""
+$ErrorActionPreference = 'Stop'
+. '{str(SAFETY_SCRIPT).replace("'", "''")}'
+. '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
+$InstallerState = '{str(tmp_path / 'installer-state').replace("'", "''")}'
+$OwnerBootstrapPath = Join-Path $InstallerState 'owner-bootstrap.txt'
+$OwnerHandoffPendingPath = Join-Path $InstallerState 'owner-handoff-pending'
+$LegacyRoot = '{str(tmp_path / 'legacy').replace("'", "''")}'
+$LegacyOwnerBootstrapPath = Join-Path $LegacyRoot 'owner-bootstrap.txt'
+$LegacyOwnerHandoffPendingPath = Join-Path $LegacyRoot 'owner-handoff-pending'
+$InstallDir = '{str(tmp_path / 'program').replace("'", "''")}'
+$DataRoot = '{str(tmp_path / 'data').replace("'", "''")}'
+$InstallerLockOwnerProcessId = $PID
+function Get-TicketboxValidatedExternalLifecycleOwnerIdentity([int]$OwnerProcessId) {{
+    $process = Get-Process -Id $OwnerProcessId -ErrorAction Stop
+    return [pscustomobject]@{{
+        ProcessId = $OwnerProcessId
+        StartedUtc = $process.StartTime.ToUniversalTime().ToString(
+            'yyyy-MM-ddTHH:mm:ss.fffffffZ',
+            [Globalization.CultureInfo]::InvariantCulture
+        )
+    }}
+}}
+New-Item -ItemType Directory -Path $LegacyRoot, $InstallDir, $DataRoot -Force | Out-Null
+function Initialize-TicketboxInstallerStateDirectory {{
+    param($Path, $FullControlAccounts, $OwnerAccount)
+    New-Item -ItemType Directory -Path $Path -Force | Out-Null
+    return $Path
+}}
+function Assert-TicketboxProtectedDirectoryAcl {{ param($Path, $FullControlAccounts, $OwnerAccount) }}
+function Assert-TicketboxExactFileAcl {{ param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount) }}
+function Assert-NoTicketboxAncestorReparsePoints {{ param($Path) }}
+function Read-TicketboxProtectedUtf8Artifact {{
+    param($Path, $FullControlAccounts, $OwnerAccount, $MaximumBytes = 65536)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {{ throw 'artifact is not a file' }}
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -le 0 -or $bytes.Length -gt $MaximumBytes) {{ throw 'artifact size invalid' }}
+    $encoding = New-Object System.Text.UTF8Encoding($false, $true)
+    return [pscustomobject]@{{ Text = $encoding.GetString($bytes); Bytes = $bytes }}
+}}
+function Write-TicketboxProtectedUtf8FileDurable {{
+    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount, [switch]$ReplaceExisting)
+    if ((Test-Path -LiteralPath $Path) -and -not $ReplaceExisting) {{ throw 'CreateNew collision' }}
+    [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding($false)))
+}}
+function Remove-TicketboxProtectedUtf8Artifact {{
+    param($Path, $FullControlAccounts, $OwnerAccount)
+    Read-TicketboxProtectedUtf8Artifact -Path $Path | Out-Null
+    Remove-Item -LiteralPath $Path -Force
+}}
+[System.IO.File]::WriteAllText($LegacyOwnerBootstrapPath, 'legacy-owner-credential')
+
+# Simulate a crash immediately after current credential publication.
+Initialize-TicketboxInstallerStateDirectory $InstallerState | Out-Null
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $LegacyOwnerBootstrapPath `
+    -CurrentPath $OwnerBootstrapPath `
+    -RetainLegacySource
+if (-not (Test-Path $LegacyOwnerBootstrapPath) -or -not (Test-Path $OwnerBootstrapPath)) {{
+    throw 'migration source proof was retired before marker binding'
+}}
+Move-TicketboxLegacyOwnerHandoffArtifacts `
+    -InstallerStatePath $InstallerState `
+    -LegacyOwnerBootstrapPath $LegacyOwnerBootstrapPath `
+    -LegacyOwnerHandoffPendingPath $LegacyOwnerHandoffPendingPath
+if ((Test-Path $LegacyOwnerBootstrapPath) -or -not (Test-Path $OwnerHandoffPendingPath)) {{
+    throw 'legacy-only credential did not converge to a bound current handoff'
+}}
+$record = Read-TicketboxOwnerHandoffRecord
+Assert-TicketboxOwnerHandoffCredential $record
+if ($record.State -cne 'pending' -or $record.OwnerProcessId -ne $PID) {{
+    throw 'migrated handoff binding is not owned by the current installer'
+}}
+
+# Malformed sibling state is preflighted before the credential can move.
+Remove-Item -LiteralPath $InstallerState -Recurse -Force
+New-Item -ItemType Directory -Path $InstallerState -Force | Out-Null
+[System.IO.File]::WriteAllText($LegacyOwnerBootstrapPath, 'second-legacy-credential')
+New-Item -ItemType Directory -Path $LegacyOwnerHandoffPendingPath | Out-Null
+$preflightRejected = $false
+try {{
+    Move-TicketboxLegacyOwnerHandoffArtifacts `
+        -InstallerStatePath $InstallerState `
+        -LegacyOwnerBootstrapPath $LegacyOwnerBootstrapPath `
+        -LegacyOwnerHandoffPendingPath $LegacyOwnerHandoffPendingPath
+}}
+catch {{ $preflightRejected = $true }}
+if (-not $preflightRejected -or (Test-Path -LiteralPath $OwnerBootstrapPath)) {{
+    throw 'owner migration mutated credential before preflighting all legacy artifacts'
+}}
+""",
+        encoding="utf-8-sig",
+    )
+    for engine in powershell_contract_engines():
+        shutil.rmtree(tmp_path / "installer-state", ignore_errors=True)
+        shutil.rmtree(tmp_path / "legacy", ignore_errors=True)
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell owner handoff canonical parser")
+def test_owner_handoff_parser_rejects_noncanonical_equivalent_authority(
+    tmp_path: Path,
+) -> None:
+    harness = tmp_path / "owner-handoff-canonical-parser.ps1"
+    generation = "22222222-2222-4222-8222-222222222222"
+    installation_id = "11111111-1111-4111-8111-111111111111"
+    credential_hash = "a" * 64
+    canonical_time = "2026-07-12T01:02:03.1234567Z"
+    harness.write_text(
+        f"""
+$ErrorActionPreference = 'Stop'
+. '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
+$OwnerHandoffPendingPath = 'unused-owner-handoff-path'
+function Read-TicketboxOwnerHandoffArtifact {{
+    param($Path)
+    return [pscustomobject]@{{ Text = $script:recordText }}
+}}
+function Get-TicketboxOwnerHandoffInstallationId {{ return '{installation_id}' }}
+function Set-TestRecord([string]$Generation, [string]$OwnerPid, [string]$StartedUtc) {{
+    $script:recordText =
+        "SCHEMA=ticketbox-owner-handoff-v2$([Environment]::NewLine)" +
+        "STATE=pending$([Environment]::NewLine)" +
+        "GENERATION=$Generation$([Environment]::NewLine)" +
+        "INSTALLATION_ID={installation_id}$([Environment]::NewLine)" +
+        "CREDENTIAL_SHA256={credential_hash}$([Environment]::NewLine)" +
+        "INSTALLER_OWNER_PID=$OwnerPid$([Environment]::NewLine)" +
+        "INSTALLER_OWNER_STARTED_UTC=$StartedUtc$([Environment]::NewLine)"
+}}
+function Assert-TestRecordRejected([string]$Generation, [string]$OwnerPid, [string]$StartedUtc) {{
+    Set-TestRecord $Generation $OwnerPid $StartedUtc
+    $before = $script:recordText
+    $rejected = $false
+    try {{ Read-TicketboxOwnerHandoffRecord | Out-Null }}
+    catch {{ $rejected = $true }}
+    if (-not $rejected -or $script:recordText -cne $before) {{
+        throw 'noncanonical owner handoff authority was accepted or mutated'
+    }}
+}}
+Set-TestRecord '{generation}' '123' '{canonical_time}'
+$valid = Read-TicketboxOwnerHandoffRecord
+if ($valid.Generation -cne '{generation}' -or
+    $valid.OwnerProcessId -ne 123 -or
+    $valid.OwnerStartedUtc -cne '{canonical_time}') {{
+    throw 'canonical owner handoff record did not round-trip'
+}}
+Assert-TestRecordRejected '{{{generation}}}' '123' '{canonical_time}'
+Assert-TestRecordRejected '{generation}' '+123' '{canonical_time}'
+Assert-TestRecordRejected '{generation}' '123' '2026-07-12T01:02:03.1234567+00:00'
+""",
+        encoding="utf-8-sig",
+    )
+    for engine in powershell_contract_engines():
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
 def test_maintenance_failure_writes_credential_free_durable_result(tmp_path: Path) -> None:
@@ -193,10 +828,10 @@ function Write-EnvNoBom([string]$Path, [string[]]$Lines) {{
     )
 }}
 function Write-TicketboxProtectedUtf8FileDurable {{
-    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount)
+    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount, [switch]$ReplaceExisting)
     $temporary = "$Path.tmp"
     [System.IO.File]::WriteAllText($temporary, $Text, (New-Object System.Text.UTF8Encoding($false)))
-    Move-Item -LiteralPath $temporary -Destination $Path
+    Move-Item -LiteralPath $temporary -Destination $Path -Force:$ReplaceExisting
 }}
 function Move-TicketboxFileDurable {{
     param($Source, $Destination, [switch]$ReplaceExisting)
@@ -336,8 +971,7 @@ if ($collisionEnabled['HTTP_BOOTSTRAP_SECRET'] -cne $collisionRetry) {{
 """,
         encoding="utf-8-sig",
     )
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     for engine in engines:
         (tmp_path / "recovery.env").unlink(missing_ok=True)
         (tmp_path / "recovery.pending").unlink(missing_ok=True)
@@ -369,9 +1003,17 @@ $OwnerHandoffPendingPath = '{pending_path}'
 $InstallDir = '{str(tmp_path / "install").replace("'", "''")}'
 $DataRoot = '{str(tmp_path / "data").replace("'", "''")}'
 $InstallerLockOwnerProcessId = $PID
-$script:rejectMarkerAcl = $true
+$validatedLifecycleStartedUtc = '2001-02-03T04:05:06.0000000Z'
+function Get-TicketboxValidatedExternalLifecycleOwnerIdentity([int]$OwnerProcessId) {{
+    return [pscustomobject]@{{
+        ProcessId = $OwnerProcessId
+        StartedUtc = $validatedLifecycleStartedUtc
+    }}
+}}
+$script:rejectMarkerAcl = $false
 $script:crashBeforeMarkerDeletion = $false
 function Assert-NoTicketboxAncestorReparsePoints([string]$Path) {{ }}
+function Assert-TicketboxProtectedDirectoryAcl([string]$Path) {{ }}
 function ConvertTo-TicketboxCanonicalPath([string]$Path) {{ return [IO.Path]::GetFullPath($Path) }}
 function Assert-TicketboxExactFileAcl {{
     param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount)
@@ -379,11 +1021,17 @@ function Assert-TicketboxExactFileAcl {{
         throw 'simulated marker ACL substitution'
     }}
 }}
+function Read-TicketboxProtectedUtf8Artifact {{
+    param($Path, $FullControlAccounts, $OwnerAccount, $MaximumBytes)
+    Assert-TicketboxExactFileAcl -Path $Path
+    $text = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    return [pscustomobject]@{{ Text = $text; Bytes = [System.Text.Encoding]::UTF8.GetBytes($text) }}
+}}
 function Write-TicketboxProtectedUtf8FileDurable {{
-    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount)
+    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount, [switch]$ReplaceExisting)
     $temporary = "$Path.tmp"
     [System.IO.File]::WriteAllText($temporary, $Text, (New-Object System.Text.UTF8Encoding($false)))
-    Move-Item -LiteralPath $temporary -Destination $Path -Force
+    Move-Item -LiteralPath $temporary -Destination $Path -Force:$ReplaceExisting
 }}
 function Remove-TicketboxSensitiveFile([string]$Path) {{
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {{ throw 'not a leaf' }}
@@ -402,6 +1050,11 @@ Write-TicketboxOwnerHandoffMarker `
     -State 'pending' `
     -Generation ([Guid]::NewGuid().ToString('D')) `
     -CredentialSha256 $credentialHash
+$initialRecord = Read-TicketboxOwnerHandoffRecord
+if ($initialRecord.OwnerStartedUtc -cne $validatedLifecycleStartedUtc) {{
+    throw 'owner marker re-read PID StartTime instead of using validated lifecycle identity'
+}}
+$script:rejectMarkerAcl = $true
 if (-not (Test-Path $OwnerBootstrapPath) -or -not (Test-Path $OwnerHandoffPendingPath)) {{
     throw 'pending handoff did not retain both files'
 }}
@@ -428,8 +1081,7 @@ if ((Test-Path $OwnerBootstrapPath) -or (Test-Path $OwnerHandoffPendingPath)) {{
 """,
         encoding="utf-8-sig",
     )
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     for engine in engines:
         result = subprocess.run(
             [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
@@ -460,11 +1112,30 @@ $DataRoot = '{str(tmp_path / "data").replace("'", "''")}'
 $EnvPath = '{str(tmp_path / ".env").replace("'", "''")}'
 $currentInstallerPid = $PID
 $InstallerLockOwnerProcessId = $currentInstallerPid
+function Get-TicketboxValidatedExternalLifecycleOwnerIdentity([int]$OwnerProcessId) {{
+    $process = Get-Process -Id $OwnerProcessId -ErrorAction Stop
+    return [pscustomobject]@{{
+        ProcessId = $OwnerProcessId
+        StartedUtc = $process.StartTime.ToUniversalTime().ToString(
+            'yyyy-MM-ddTHH:mm:ss.fffffffZ',
+            [Globalization.CultureInfo]::InvariantCulture
+        )
+    }}
+}}
 function Assert-NoTicketboxAncestorReparsePoints([string]$Path) {{ }}
+function Assert-TicketboxProtectedDirectoryAcl([string]$Path) {{ }}
 function Assert-TicketboxExactFileAcl {{ param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount) }}
+function Read-TicketboxProtectedUtf8Artifact {{
+    param($Path, $FullControlAccounts, $OwnerAccount, $MaximumBytes)
+    $text = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    return [pscustomobject]@{{ Text = $text; Bytes = [System.Text.Encoding]::UTF8.GetBytes($text) }}
+}}
 function ConvertTo-TicketboxCanonicalPath([string]$Path) {{ return [IO.Path]::GetFullPath($Path) }}
 function Write-TicketboxProtectedUtf8FileDurable {{
-    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount)
+    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount, [switch]$ReplaceExisting)
+    if ((Test-Path -LiteralPath $Path) -and -not $ReplaceExisting) {{
+        throw 'target already exists'
+    }}
     [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding($false)))
 }}
 function Remove-TicketboxSensitiveFile([string]$Path) {{
@@ -510,6 +1181,11 @@ $adopted = Adopt-TicketboxOwnerBootstrapHandoff
 if ($adopted -cne 'pending') {{ throw 'dead previous installer was not adopted' }}
 $current = Read-TicketboxOwnerHandoffRecord
 if ($current.OwnerProcessId -ne $currentInstallerPid) {{ throw 'adopted marker owner mismatch' }}
+$uncertainOwnerAlive = Test-TicketboxOwnerHandoffProcessIsAlive `
+    -Record $current `
+    -ProcessReader {{ [pscustomobject]@{{ ProcessId = $current.OwnerProcessId }} }} `
+    -StartedUtcReader {{ throw 'simulated StartTime access denied after PID reuse' }}
+if ($uncertainOwnerAlive) {{ throw 'unverifiable reused PID retained stale owner authority' }}
 Complete-TicketboxOwnerBootstrapHandoff
 
 $confirmedOwner = New-OldOwnerProcess
@@ -526,11 +1202,60 @@ if ($cleaned -cne 'cleaned_confirmed') {{ throw 'confirmed handoff was redisplay
 if ((Test-Path $OwnerBootstrapPath) -or (Test-Path $OwnerHandoffPendingPath)) {{
     throw 'confirmed handoff cleanup left artifacts'
 }}
+
+# Crash after credential persistence but before .env retirement resumes without replaying bootstrap.
+$credential = 'persisted-owner-credential'
+[System.IO.File]::WriteAllText($OwnerBootstrapPath, $credential)
+$script:InstallerLockOwnerProcessId = $currentInstallerPid
+Write-TicketboxOwnerHandoffMarker `
+    -State 'pending' `
+    -Generation ([Guid]::NewGuid().ToString('D')) `
+    -CredentialSha256 (Get-TicketboxOwnerHandoffTextSha256 $credential)
+$script:httpCalls = 0
+$script:envWrites = 0
+$script:restartCalls = 0
+$script:healthCalls = 0
+$BackendServiceName = 'TicketboxBackend'
+$BackendPort = 8000
+$BackendExe = 'backend.exe'
+$ShawlExe = 'shawl.exe'
+$ServiceWaitArguments = @{{}}
+function Read-EnvMap([string]$Path) {{ return @{{ HTTP_BOOTSTRAP_SECRET = 'secret-still-present' }} }}
+function New-BaseEnvLines([string]$DatabaseUrl) {{ return @('DATABASE_URL=postgresql://local/test') }}
+function Write-EnvNoBom {{ param($Path, $Lines) $script:envWrites++ }}
+function Write-Ok([string]$Message) {{ }}
+function Get-ExpectedServiceExecutable([string]$Name) {{ return $ShawlExe }}
+function Restart-TicketboxOwnedServiceIfExists {{
+    param($Name, $ExpectedExecutable, $BackendPort, $ExpectedRuntimeExecutables)
+    $script:restartCalls++
+}}
+function Wait-BackendHealth {{ $script:healthCalls++ }}
+function Invoke-TicketboxOwnerBootstrapHttpRequest {{
+    $script:httpCalls++
+    throw 'bootstrap HTTP must not be replayed'
+}}
+Complete-FirstOwnerBootstrapIfEnabled 'postgresql://local/test'
+if ($script:httpCalls -ne 0 -or $script:envWrites -ne 1 -or
+    $script:restartCalls -ne 1 -or $script:healthCalls -ne 1) {{
+    throw 'persisted owner handoff did not resume through secret retirement only'
+}}
+if (-not (Test-Path $OwnerBootstrapPath) -or -not (Test-Path $OwnerHandoffPendingPath)) {{
+    throw 'resumed pending handoff was removed before user confirmation'
+}}
+Complete-TicketboxOwnerBootstrapHandoff
+
+# A current-location credential without migration provenance is corruption, not legacy state.
+[System.IO.File]::WriteAllText($OwnerBootstrapPath, 'unbound-current-credential')
+$unboundRejected = $false
+try {{ Adopt-TicketboxOwnerBootstrapHandoff | Out-Null }} catch {{ $unboundRejected = $true }}
+if (-not $unboundRejected -or -not (Test-Path -LiteralPath $OwnerBootstrapPath -PathType Leaf)) {{
+    throw 'unbound current credential was accepted or deleted'
+}}
+Remove-Item -LiteralPath $OwnerBootstrapPath -Force
 """,
         encoding="utf-8-sig",
     )
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     for engine in engines:
         result = subprocess.run(
             [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
@@ -546,8 +1271,7 @@ if ((Test-Path $OwnerBootstrapPath) -or (Test-Path $OwnerHandoffPendingPath)) {{
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell cross-runtime contract")
 def test_bootstrap_hmac_vector_matches_backend_in_powershell_5_and_7(tmp_path: Path) -> None:
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     harness = tmp_path / "bootstrap-vector.ps1"
     harness.write_text(
         f"""
@@ -652,8 +1376,7 @@ def test_bootstrap_request_bypasses_default_proxy(tmp_path: Path) -> None:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-        assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+        engines = powershell_contract_engines()
         harness = tmp_path / "bootstrap-proxy-bypass.ps1"
         harness.write_text(
             f"""
@@ -776,8 +1499,7 @@ finally {{
 def test_bootstrap_request_exception_revalidates_listener_and_stops_on_failure(
     tmp_path: Path,
 ) -> None:
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     with socket.socket() as closed_socket:
         closed_socket.bind(("127.0.0.1", 0))
         closed_port = closed_socket.getsockname()[1]

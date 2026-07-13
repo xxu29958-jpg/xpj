@@ -25,6 +25,48 @@
 #ifndef TargetPgMajor
 #error TargetPgMajor must be probed from vendor PostgreSQL by build_inno_installer.ps1
 #endif
+#ifndef LifecycleSafetyScriptSha256
+#error LifecycleSafetyScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef LifecycleLockScriptSha256
+#error LifecycleLockScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef LifecycleHolderScriptSha256
+#error LifecycleHolderScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef DataRootGuardScriptSha256
+#error DataRootGuardScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef PrepareScriptSha256
+#error PrepareScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef ServiceContractScriptSha256
+#error ServiceContractScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef ServiceLifecycleScriptSha256
+#error ServiceLifecycleScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef LifecycleReceiptScriptSha256
+#error LifecycleReceiptScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseSafetyScriptSha256
+#error DatabaseSafetyScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef PgRecoveryToolsScriptSha256
+#error PgRecoveryToolsScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef ReleaseConfigScriptSha256
+#error ReleaseConfigScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef ReleaseConfigJsonSha256
+#error ReleaseConfigJsonSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef BuildProvenanceScriptSha256
+#error BuildProvenanceScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef BackendBuildProvenanceScriptSha256
+#error BackendBuildProvenanceScriptSha256 must be injected by build_inno_installer.ps1
+#endif
 #define AppName "小票夹后端服务"
 #define AppPublisher "小票夹"
 #define TicketboxAppIdGuid "C97812CE-7486-41D0-AB68-7558A916F6E3"
@@ -67,12 +109,14 @@ Name: "chinesesimp"; MessagesFile: "languages\ChineseSimplified.isl"
 [Files]
 Source: "..\scripts\windows_build_provenance.ps1"; DestName: "windows_build_provenance.ps1"; Flags: dontcopy noencryption
 Source: "..\scripts\windows_backend_build_provenance.ps1"; DestName: "windows_backend_build_provenance.ps1"; Flags: dontcopy noencryption
+Source: "hold_data_root_mutation_guard.ps1"; Flags: dontcopy noencryption
 Source: "prepare_bundled_upgrade.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_contract.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_lifecycle.ps1"; Flags: dontcopy noencryption
 Source: "windows_installation_safety.ps1"; Flags: dontcopy noencryption
 Source: "windows_lifecycle_receipt.ps1"; Flags: dontcopy noencryption
 Source: "windows_lifecycle_lock.ps1"; Flags: dontcopy noencryption
+Source: "hold_installer_lifecycle_lock.ps1"; Flags: dontcopy noencryption
 Source: "windows_database_safety.ps1"; Flags: dontcopy noencryption
 Source: "windows_pg_recovery_tools.ps1"; Flags: dontcopy noencryption
 Source: "windows_release_config.ps1"; Flags: dontcopy noencryption
@@ -81,12 +125,14 @@ Source: "ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\ticketbox-backend\*"; DestDir: "{app}\program\ticketbox-backend"; Excludes: "ticketbox-data\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "vendor\pg\*"; DestDir: "{app}\pg"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "vendor\shawl\shawl.exe"; DestDir: "{app}\shawl"; Flags: ignoreversion
+Source: "hold_data_root_mutation_guard.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "prepare_bundled_upgrade.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_service_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_service_lifecycle.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_installation_safety.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_lifecycle_receipt.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_lifecycle_lock.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "hold_installer_lifecycle_lock.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_safety.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_pg_recovery_tools.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_release_config.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion

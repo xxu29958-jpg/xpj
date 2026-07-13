@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "front_matter_schema_version": 2,
-  "portfolio_reviewed_at": "2026-07-11",
-  "code_baseline": "0f1092e625b376d0fa8d4abc214cdc53de93a96d",
-  "baseline_scope": "main runtime evidence at 0f1092e6; installer overlay is represented only by schema-v2 ADR-0062..0064",
+  "portfolio_reviewed_at": "2026-07-12",
+  "code_baseline": "83af67d0702a7bfda2fa3a760b56dbef47c663c7",
+  "baseline_scope": "legacy ADRs retain per-entry reviewed-against evidence; schema-v2 ADRs and the Windows installer runtime including ADR-0074 are calibrated against review base 83af67d0 plus the implementation in this tree, while unrun evidence remains unverified",
   "entries": [
     {
       "id": "0001",

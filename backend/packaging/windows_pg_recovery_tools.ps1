@@ -3,6 +3,8 @@
 $script:TicketboxPgRecoveryDirectoryName = "postgresql-preserved-data-recovery"
 $script:TicketboxPgRecoveryCompletionName = "BUILD_COMPLETE.json"
 $script:TicketboxPgRecoveryManifestName = "BUILD_PROVENANCE.json"
+$script:TicketboxPgRecoveryDeletionIntentName = "DELETE_IN_PROGRESS.json"
+$script:TicketboxPgRecoveryStagingPrefix = ".postgresql-recovery-staging-"
 $script:TicketboxPgRecoveryFullControlAccounts = @("SYSTEM", "BUILTIN\Administrators")
 $script:TicketboxPgRecoveryOwnerAccount = "SYSTEM"
 
@@ -87,9 +89,113 @@ function Assert-TicketboxPgRecoveryPayload {
     }
 }
 
+function Read-TicketboxPgRecoveryCompletion {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][int]$ExpectedMajor,
+        [string[]]$ReadExecuteAccounts = @()
+    )
+
+    Assert-TicketboxPgRecoveryAcl -ReadExecuteAccounts $ReadExecuteAccounts
+    $text = Read-TicketboxPgRecoveryStrictUtf8Text -Path $Path -MaximumBytes 4096
+    try { $completion = $text | ConvertFrom-Json }
+    catch { throw "PostgreSQL 恢复工具完成标记不是有效 JSON。" }
+    $expectedProperties = @(
+        "manifest_sha256",
+        "payload_fingerprint",
+        "pg_major",
+        "schema"
+    )
+    $actualProperties = @($completion.PSObject.Properties.Name | Sort-Object)
+    if (@(Compare-Object $expectedProperties $actualProperties -CaseSensitive).Count -gt 0) {
+        throw "PostgreSQL 恢复工具完成标记字段不符合严格 schema。"
+    }
+    $pgMajor = 0
+    if (
+        [string]$completion.schema -cne "ticketbox-pg-recovery-v1" -or
+        -not [int]::TryParse([string]$completion.pg_major, [ref]$pgMajor) -or
+        $pgMajor -le 0 -or
+        ($ExpectedMajor -gt 0 -and $pgMajor -ne $ExpectedMajor) -or
+        [string]$completion.payload_fingerprint -cnotmatch '^[0-9a-f]{64}$' -or
+        [string]$completion.manifest_sha256 -cnotmatch '^[0-9a-f]{64}$'
+    ) {
+        throw "PostgreSQL 恢复工具完成标记 schema 或校验字段无效。"
+    }
+    return $completion
+}
+
+function Read-TicketboxPgRecoveryDeletionIntent {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][int]$ExpectedMajor
+    )
+
+    Assert-TicketboxPgRecoveryAcl
+    $text = Read-TicketboxPgRecoveryStrictUtf8Text -Path $Path -MaximumBytes 4096
+    try { $intent = $text | ConvertFrom-Json }
+    catch { throw "PostgreSQL 恢复工具删除意图不是有效 JSON。" }
+    $expectedProperties = @(
+        "completion_sha256",
+        "manifest_sha256",
+        "payload_fingerprint",
+        "pg_major",
+        "schema"
+    )
+    $actualProperties = @($intent.PSObject.Properties.Name | Sort-Object)
+    if (@(Compare-Object $expectedProperties $actualProperties -CaseSensitive).Count -gt 0) {
+        throw "PostgreSQL 恢复工具删除意图字段不符合严格 schema。"
+    }
+    $pgMajor = 0
+    if (
+        [string]$intent.schema -cne "ticketbox-pg-recovery-delete-v1" -or
+        -not [int]::TryParse([string]$intent.pg_major, [ref]$pgMajor) -or
+        $pgMajor -le 0 -or
+        ($ExpectedMajor -gt 0 -and $pgMajor -ne $ExpectedMajor) -or
+        [string]$intent.payload_fingerprint -cnotmatch '^[0-9a-f]{64}$' -or
+        [string]$intent.manifest_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+        [string]$intent.completion_sha256 -cnotmatch '^[0-9a-f]{64}$'
+    ) {
+        throw "PostgreSQL 恢复工具删除意图 schema 或校验字段无效。"
+    }
+    return $intent
+}
+
+function Read-TicketboxPgRecoveryStrictUtf8Text {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65536)][int]$MaximumBytes
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    Assert-NoTicketboxAncestorReparsePoints $fullPath
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+        throw "PostgreSQL 恢复工具状态文件不存在或不是普通文件：$fullPath"
+    }
+    $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    if (
+        ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        $item.Length -le 0 -or
+        $item.Length -gt $MaximumBytes
+    ) {
+        throw "PostgreSQL 恢复工具状态文件大小或类型无效：$fullPath"
+    }
+    $bytes = [System.IO.File]::ReadAllBytes($fullPath)
+    $encoding = New-Object System.Text.UTF8Encoding($false, $true)
+    try { $text = $encoding.GetString($bytes) }
+    catch { throw "PostgreSQL 恢复工具状态文件不是严格 UTF-8：$fullPath" }
+    if (-not (Test-TicketboxByteArrayEquals -Left $bytes -Right $encoding.GetBytes($text))) {
+        throw "PostgreSQL 恢复工具状态文件不能无损 UTF-8 往返：$fullPath"
+    }
+    return $text
+}
+
 function Set-TicketboxPgRecoveryAcl([string[]]$ReadExecuteAccounts = @()) {
     $root = Get-TicketboxPgRecoveryRoot
-    if (-not (Test-Path -LiteralPath $root -PathType Container)) { return }
+    $rootKind = Get-TicketboxPathEntryKindNoFollow $root
+    if ($rootKind -ceq "Missing") { return }
+    if ($rootKind -cne "Directory") {
+        throw "PostgreSQL 恢复工具根存在但不是普通目录：$root ($rootKind)"
+    }
     Set-TicketboxExactDirectoryAcl `
         -Path $root `
         -Accounts $script:TicketboxPgRecoveryFullControlAccounts `
@@ -100,8 +206,9 @@ function Set-TicketboxPgRecoveryAcl([string[]]$ReadExecuteAccounts = @()) {
 
 function Assert-TicketboxPgRecoveryAcl([string[]]$ReadExecuteAccounts = @()) {
     $root = Get-TicketboxPgRecoveryRoot
-    if (-not (Test-Path -LiteralPath $root -PathType Container)) {
-        throw "缺少 PostgreSQL 恢复工具根目录：$root"
+    $rootKind = Get-TicketboxPathEntryKindNoFollow $root
+    if ($rootKind -cne "Directory") {
+        throw "PostgreSQL 恢复工具根不存在或不是普通目录：$root ($rootKind)"
     }
     Assert-NoTicketboxReparsePoints $root
     $fullControlSids = @($script:TicketboxPgRecoveryFullControlAccounts | ForEach-Object {
@@ -220,12 +327,10 @@ function Assert-TicketboxPgRecoveryToolset {
     $manifestPath = Join-Path $root $script:TicketboxPgRecoveryManifestName
     $completionPath = Join-Path $root $script:TicketboxPgRecoveryCompletionName
     Assert-TicketboxPgRecoveryAcl -ReadExecuteAccounts $ReadExecuteAccounts
-    try {
-        $completion = Get-Content -LiteralPath $completionPath -Encoding UTF8 -Raw | ConvertFrom-Json
-    }
-    catch {
-        throw "PostgreSQL 恢复工具完成标记无效。"
-    }
+    $completion = Read-TicketboxPgRecoveryCompletion `
+        -Path $completionPath `
+        -ExpectedMajor $ExpectedMajor `
+        -ReadExecuteAccounts $ReadExecuteAccounts
     $payload = Assert-TicketboxPgRecoveryPayload `
         -PgHome $pgHomePath `
         -BuildManifestPath $manifestPath `
@@ -241,23 +346,55 @@ function Assert-TicketboxPgRecoveryToolset {
     return $payload
 }
 
-function Remove-TicketboxKnownPgRecoveryDirectory([string]$Path) {
+function Remove-TicketboxKnownPgRecoveryDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [AllowEmptyString()][string]$DeferredRootLeafName = ""
+    )
+
     $lifecycleDirectory = Split-Path -Parent (Get-TicketboxLifecycleLockPath)
     $candidate = [System.IO.Path]::GetFullPath($Path)
     $expectedPrefix = [System.IO.Path]::GetFullPath($lifecycleDirectory).TrimEnd("\", "/") + "\"
     if (-not $candidate.StartsWith($expectedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "拒绝清理机器级生命周期目录之外的 PostgreSQL 恢复路径。"
     }
-    if (Test-Path -LiteralPath $candidate) {
-        Assert-NoTicketboxAncestorReparsePoints $candidate
-        $item = Get-Item -LiteralPath $candidate -Force
-        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw "PostgreSQL 恢复路径是重解析点，拒绝清理：$candidate"
-        }
-        Remove-Item -LiteralPath $candidate -Recurse -Force -ErrorAction Stop
+    $candidateKind = Get-TicketboxPathEntryKindNoFollow $candidate
+    if ($candidateKind -ceq "Missing") { return }
+    if ($candidateKind -cne "Directory") {
+        throw "PostgreSQL 恢复路径存在但不是普通目录，拒绝清理：$candidate ($candidateKind)"
     }
-    if (Test-Path -LiteralPath $candidate) {
+    Assert-NoTicketboxAncestorReparsePoints $candidate
+    Remove-TicketboxTreeExact `
+        -Path $candidate `
+        -DeferredRootLeafName $DeferredRootLeafName
+    if ((Get-TicketboxPathEntryKindNoFollow $candidate) -cne "Missing") {
         throw "无法清理 PostgreSQL 恢复路径：$candidate"
+    }
+}
+
+function Remove-TicketboxAbandonedPgRecoveryStagingDirectories {
+    $lifecycleDirectory = Split-Path -Parent (Get-TicketboxLifecycleLockPath)
+    if (-not (Test-Path -LiteralPath $lifecycleDirectory -PathType Container)) { return }
+    $stagingPattern = '^\.postgresql-recovery-staging-[1-9][0-9]*-[0-9a-f]{32}$'
+    $candidates = @(Get-ChildItem -LiteralPath $lifecycleDirectory -Force -ErrorAction Stop | Where-Object {
+        $_.Name.StartsWith(
+            $script:TicketboxPgRecoveryStagingPrefix,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    })
+    foreach ($candidate in $candidates) {
+        if (
+            $candidate -isnot [System.IO.DirectoryInfo] -or
+            $candidate.Name -cnotmatch $stagingPattern -or
+            ($candidate.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+        ) {
+            throw "PostgreSQL 恢复 staging 命名空间含有不可验证 artifact：$($candidate.FullName)"
+        }
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $candidate.FullName `
+            -FullControlAccounts $script:TicketboxPgRecoveryFullControlAccounts `
+            -OwnerAccount $script:TicketboxPgRecoveryOwnerAccount
+        Remove-TicketboxKnownPgRecoveryDirectory $candidate.FullName
     }
 }
 
@@ -272,8 +409,13 @@ function Save-TicketboxPgRecoveryToolset {
         -PgHome $SourcePgHome `
         -BuildManifestPath $BuildManifestPath `
         -ExpectedMajor $ExpectedMajor
+    Remove-TicketboxAbandonedPgRecoveryStagingDirectories
     $targetRoot = Get-TicketboxPgRecoveryRoot
-    if (Test-Path -LiteralPath $targetRoot) {
+    $targetRootKind = Get-TicketboxPathEntryKindNoFollow $targetRoot
+    if ($targetRootKind -cne "Missing") {
+        if ($targetRootKind -cne "Directory") {
+            throw "PostgreSQL 恢复工具目标存在但不是普通目录：$targetRoot ($targetRootKind)"
+        }
         $existing = Assert-TicketboxPgRecoveryToolset -ExpectedMajor $ExpectedMajor
         if ($existing.Snapshot.fingerprint -cne $source.Snapshot.fingerprint) {
             throw "已存在不同 payload 的 PostgreSQL 恢复工具，拒绝静默替换。"
@@ -286,7 +428,10 @@ function Save-TicketboxPgRecoveryToolset {
         ".postgresql-recovery-staging-{0}-{1}" -f $PID, [Guid]::NewGuid().ToString("N")
     )
     try {
-        New-Item -ItemType Directory -Path $stagingRoot | Out-Null
+        Initialize-TicketboxProtectedDirectoryAtomically `
+            -Path $stagingRoot `
+            -FullControlAccounts $script:TicketboxPgRecoveryFullControlAccounts `
+            -OwnerAccount $script:TicketboxPgRecoveryOwnerAccount | Out-Null
         $stagingPgHome = Join-Path $stagingRoot "pg"
         New-Item -ItemType Directory -Path $stagingPgHome | Out-Null
         Copy-Item -Path (Join-Path $SourcePgHome "*") -Destination $stagingPgHome -Recurse -Force
@@ -320,21 +465,77 @@ function Save-TicketboxPgRecoveryToolset {
         return Assert-TicketboxPgRecoveryToolset -ExpectedMajor $ExpectedMajor
     }
     finally {
-        if (Test-Path -LiteralPath $stagingRoot) {
+        if ((Get-TicketboxPathEntryKindNoFollow $stagingRoot) -cne "Missing") {
             Remove-TicketboxKnownPgRecoveryDirectory $stagingRoot
         }
     }
 }
 
-function Remove-TicketboxPgRecoveryToolset([int]$ExpectedMajor) {
-    $root = Get-TicketboxPgRecoveryRoot
-    if (-not (Test-Path -LiteralPath $root)) { return }
-    if ($ExpectedMajor -le 0) {
-        $manifest = Read-TicketboxPgRecoveryBuildManifest (
-            Join-Path $root $script:TicketboxPgRecoveryManifestName
-        )
-        $ExpectedMajor = [int]$manifest.postgresql.major
+function Remove-TicketboxPgRecoveryToolset {
+    param(
+        [Parameter(Mandatory = $true)][int]$ExpectedMajor,
+        [switch]$DeleteDataIntentValidated,
+        [switch]$InstallCommitValidated
+    )
+
+    if ([bool]$DeleteDataIntentValidated -eq [bool]$InstallCommitValidated) {
+        throw "删除 PostgreSQL 恢复工具必须且只能由 completed install commit 或机器级 delete-data 意图授权。"
     }
-    Assert-TicketboxPgRecoveryToolset -ExpectedMajor $ExpectedMajor | Out-Null
-    Remove-TicketboxKnownPgRecoveryDirectory $root
+    Remove-TicketboxAbandonedPgRecoveryStagingDirectories
+    $root = Get-TicketboxPgRecoveryRoot
+    $rootKind = Get-TicketboxPathEntryKindNoFollow $root
+    if ($rootKind -ceq "Missing") { return }
+    if ($rootKind -cne "Directory") {
+        throw "PostgreSQL 恢复工具根存在但不是普通目录，拒绝退役：$root ($rootKind)"
+    }
+    $deletionIntentPath = Join-Path $root $script:TicketboxPgRecoveryDeletionIntentName
+    Assert-TicketboxPgRecoveryAcl
+    $deletionIntentKind = Get-TicketboxPathEntryKindNoFollow $deletionIntentPath
+    if ($deletionIntentKind -ceq "File") {
+        $deletionIntent = Read-TicketboxPgRecoveryDeletionIntent `
+            -Path $deletionIntentPath `
+            -ExpectedMajor $ExpectedMajor
+        if ($ExpectedMajor -le 0) {
+            $ExpectedMajor = [int]$deletionIntent.pg_major
+        }
+    }
+    elseif ($deletionIntentKind -ceq "Missing") {
+        $remainingEntries = @(Get-ChildItem -LiteralPath $root -Force -ErrorAction Stop)
+        if ($remainingEntries.Count -eq 0) {
+            Remove-TicketboxKnownPgRecoveryDirectory $root
+            return
+        }
+        if ($ExpectedMajor -le 0) {
+            $manifest = Read-TicketboxPgRecoveryBuildManifest (
+                Join-Path $root $script:TicketboxPgRecoveryManifestName
+            )
+            $ExpectedMajor = [int]$manifest.postgresql.major
+        }
+        $payload = Assert-TicketboxPgRecoveryToolset -ExpectedMajor $ExpectedMajor
+        $completionPath = Join-Path $root $script:TicketboxPgRecoveryCompletionName
+        $completion = Read-TicketboxPgRecoveryCompletion `
+            -Path $completionPath `
+            -ExpectedMajor $ExpectedMajor
+        $deletionIntent = [ordered]@{
+            schema = "ticketbox-pg-recovery-delete-v1"
+            pg_major = $ExpectedMajor
+            payload_fingerprint = [string]$payload.Snapshot.fingerprint
+            manifest_sha256 = [string]$completion.manifest_sha256
+            completion_sha256 = Get-TicketboxFileSha256 $completionPath
+        }
+        Write-TicketboxProtectedUtf8FileDurable `
+            -Path $deletionIntentPath `
+            -Text (($deletionIntent | ConvertTo-Json -Depth 4) + [Environment]::NewLine) `
+            -FullControlAccounts $script:TicketboxPgRecoveryFullControlAccounts `
+            -OwnerAccount $script:TicketboxPgRecoveryOwnerAccount
+        Read-TicketboxPgRecoveryDeletionIntent `
+            -Path $deletionIntentPath `
+            -ExpectedMajor $ExpectedMajor | Out-Null
+    }
+    else {
+        throw "PostgreSQL 恢复工具删除意图存在但不是普通文件：$deletionIntentPath ($deletionIntentKind)"
+    }
+    Remove-TicketboxKnownPgRecoveryDirectory `
+        -Path $root `
+        -DeferredRootLeafName $script:TicketboxPgRecoveryDeletionIntentName
 }

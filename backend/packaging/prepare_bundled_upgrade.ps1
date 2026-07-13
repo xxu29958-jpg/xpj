@@ -24,10 +24,6 @@ param(
     [switch]$FilesReplaced,
     [switch]$CommitCompletedInstall,
     [switch]$MarkProgramFilesInstalledBackupPending,
-    [switch]$HoldDataRootMutationGuard,
-    [string]$DataRootGuardReadyPath = "",
-    [string]$DataRootGuardReleasePath = "",
-    [int]$DataRootGuardOwnerProcessId = 0,
     [switch]$ValidateOnly
 )
 
@@ -76,6 +72,47 @@ function Initialize-TicketboxInstalledReleaseConfiguration {
     Set-TicketboxInstalledReleaseConfiguration -Config $targetClone -Persisted $false
 }
 
+function Assert-TicketboxPreparedDataRootAuthorityGate {
+    param(
+        [Parameter(Mandatory = $true)][string]$Mode,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $markerPath = Get-TicketboxDataRootMarkerPath $DataRoot
+    $markerKind = Get-TicketboxPathEntryKindNoFollow $markerPath
+    if ($markerKind -ceq "File") {
+        if ($Mode -ceq "fresh_install") {
+            Assert-TicketboxProtectedDirectoryAcl `
+                -Path $DataRoot `
+                -FullControlAccounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount
+            Assert-TicketboxProtectedDataRootMarker `
+                -DataRoot $DataRoot `
+                -InstallDir $InstallDir `
+                -FullControlAccounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount
+        }
+        else {
+            # Preserved/repair modes prove legacy authority below before mutation.
+            Assert-TicketboxDataRootMarker `
+                -DataRoot $DataRoot `
+                -InstallDir $InstallDir `
+                -AllowLegacyV1
+        }
+        return
+    }
+    if ($markerKind -cne "Missing") {
+        throw "DataRoot marker 不是普通文件或缺失路径，拒绝安装准备。"
+    }
+    if ($Mode -ceq "fresh_install") {
+        throw "fresh install 只接受 holder 已发布权威 marker 的新 DataRoot；拒绝收编非空 markerless 目录。"
+    }
+    throw "既有 DataRoot 缺少 v1/v2 marker；普通安装器拒绝重新铸造权威，请使用独立隔离恢复/导入流程。"
+}
+
 Set-TicketboxInstalledReleaseConfiguration -Config $InstalledReleaseConfig -Persisted $false
 $ServiceWaitArguments = @{
     TimeoutMilliseconds = [int]$TargetReleaseConfig.service_state_timeout_ms
@@ -122,6 +159,7 @@ if (-not (Test-Path -LiteralPath $PgRecoveryToolsScript -PathType Leaf)) {
 $PgBin = Join-Path $InstallDir "pg\bin"
 $PgData = Join-Path $DataRoot "pgdata"
 $AppData = Join-Path $DataRoot "app"
+$InstallerState = Get-TicketboxInstallerStateDirectory
 $EnvPath = Join-Path $AppData ".env"
 $BackupDir = Join-Path $DataRoot "installer-backups"
 $LogDir = Join-Path $AppData "logs"
@@ -133,9 +171,79 @@ $Psql = Join-Path $PgBin "psql.exe"
 $ShawlExe = Join-Path $InstallDir "shawl\shawl.exe"
 $BackendExe = Join-Path $InstallDir "program\ticketbox-backend\ticketbox-backend.exe"
 $BootstrapExposureRecoveryGuardPath = Join-Path $DataRoot "bootstrap-exposure-recovery-pending"
+$InstallerRuntimeRecoveryGuardPath = Get-TicketboxInstallerRuntimeRecoveryGuardPath
 $PgBootstrapRecoveryPath = Join-Path $AppData ".postgres-bootstrap-password"
-$RecoveryRequiredPath = Join-Path $AppData "installer-recovery-required.json"
+$RecoveryRequiredPath = Join-Path $InstallerState "installer-recovery-required.json"
+$LegacyRecoveryRequiredPath = Join-Path $AppData "installer-recovery-required.json"
 $InstalledBuildManifestPath = Join-Path $InstallDir "installer\BUILD_PROVENANCE.json"
+$RuntimeDataRoot = Get-TicketboxRuntimeDataRootPath
+$ServicePgData = $PgData
+$ServiceAppData = $AppData
+$ServiceLogDir = $LogDir
+$ServiceDataRootMarkerPath = Join-Path $RuntimeDataRoot $script:TicketboxDataRootMarkerName
+$ServiceBootstrapExposureRecoveryGuardPath = $BootstrapExposureRecoveryGuardPath
+$ServiceDataVolumeIdentity = ""
+$AllowMissingRuntimeDataAuthority = $true
+$RuntimeDataBindingPresent = $false
+
+function Set-TicketboxPreparedRuntimeServiceContract {
+    $bindingDirectory = Get-TicketboxRuntimeDataBindingDirectory
+    $bindingKind = Get-TicketboxPathEntryKindNoFollow $bindingDirectory
+    if ($bindingKind -ceq "Missing") {
+        $script:ServicePgData = $PgData
+        $script:ServiceAppData = $AppData
+        $script:ServiceLogDir = $LogDir
+        $script:ServiceBootstrapExposureRecoveryGuardPath = $BootstrapExposureRecoveryGuardPath
+        $script:ServiceDataVolumeIdentity = ""
+        $script:AllowMissingRuntimeDataAuthority = $true
+        $script:RuntimeDataBindingPresent = $false
+        return
+    }
+    $serviceAccounts = @(
+        (Get-TicketboxServiceSid $PgServiceName),
+        (Get-TicketboxServiceSid $BackendServiceName)
+    )
+    $runtimeDataRoot = Get-TicketboxRuntimeDataRootPath
+    if (
+        $bindingKind -ceq "Directory" -and
+        (Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -ceq "Missing"
+    ) {
+        $validatedBindingDirectory = Assert-TicketboxRuntimeDataBindingDomain `
+            -DataRoot $DataRoot `
+            -InstallDir $InstallDir
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $validatedBindingDirectory `
+            -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+            -InheritableReadExecuteAccounts $serviceAccounts `
+            -OwnerAccount "SYSTEM"
+        if (@(Get-ChildItem -LiteralPath $validatedBindingDirectory -Force).Count -ne 0) {
+            throw "runtime DataRoot binding provisioning 断点含有未知 artifact。"
+        }
+        $script:ServicePgData = $PgData
+        $script:ServiceAppData = $AppData
+        $script:ServiceLogDir = $LogDir
+        $script:ServiceBootstrapExposureRecoveryGuardPath = $BootstrapExposureRecoveryGuardPath
+        $script:ServiceDataVolumeIdentity = ""
+        $script:AllowMissingRuntimeDataAuthority = $true
+        $script:RuntimeDataBindingPresent = $false
+        return
+    }
+    $binding = Read-TicketboxRuntimeDataBinding `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -ServiceReadExecuteAccounts $serviceAccounts
+    $script:ServicePgData = $binding.RuntimePgData
+    $script:ServiceAppData = $binding.RuntimeAppData
+    $script:ServiceLogDir = Join-Path $binding.RuntimeAppData "logs"
+    $script:ServiceDataRootMarkerPath = Join-Path `
+        $binding.RuntimeDataRoot `
+        $script:TicketboxDataRootMarkerName
+    $script:ServiceBootstrapExposureRecoveryGuardPath =
+        Get-TicketboxRuntimeBootstrapRecoveryGuardPath $binding.RuntimeDataRoot
+    $script:ServiceDataVolumeIdentity = $binding.DataVolumeIdentity
+    $script:AllowMissingRuntimeDataAuthority = $false
+    $script:RuntimeDataBindingPresent = $true
+}
 
 function Set-TicketboxActivePgTools([string]$PgHome) {
     $script:PgBin = Join-Path $PgHome "bin"
@@ -219,48 +327,128 @@ function Read-EnvMap([string]$Path) {
     return $map
 }
 
+function Assert-TicketboxPreparedServiceRuntimeCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$ExpectedPgData,
+        [Parameter(Mandatory = $true)][string]$ExpectedAppData,
+        [Parameter(Mandatory = $true)][string]$ExpectedLogDir,
+        [string]$ExpectedDataRootMarkerPath = "",
+        [string]$ExpectedDataVolumeIdentity = "",
+        [int]$ExpectedStopTimeoutMs = $InstalledStopTimeoutMs,
+        [int]$ExpectedRestartDelayMs = $InstalledRestartDelayMs,
+        [switch]$AllowMissingRuntimeDataAuthority
+    )
+    if ($Name -eq $PgServiceName) {
+        Assert-TicketboxPgServiceCommand `
+            -Name $Name `
+            -ExpectedExecutable $PgCtl `
+            -ExpectedServiceName $PgServiceName `
+            -ExpectedDataRoot $ExpectedPgData
+        return
+    }
+    Assert-TicketboxShawlServiceCommand `
+        -Name $Name `
+        -ExpectedExecutable $ShawlExe `
+        -ExpectedServiceName $BackendServiceName `
+        -ExpectedCwd $ExpectedAppData `
+        -ExpectedPayload $BackendExe `
+        -ExpectedDependency $PgServiceName `
+        -ExpectedLogDir $ExpectedLogDir `
+        -ExpectedPgDumpPath $PgDump `
+        -ExpectedPgRestorePath $PgRestore `
+        -ExpectedBootstrapRecoveryGuardPath $ServiceBootstrapExposureRecoveryGuardPath `
+        -ExpectedInstallerRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
+        -ExpectedDataRootMarkerPath $ExpectedDataRootMarkerPath `
+        -ExpectedDataVolumeIdentity $ExpectedDataVolumeIdentity `
+        -ExpectedStopTimeoutMs $ExpectedStopTimeoutMs `
+        -ExpectedRestartDelayMs $ExpectedRestartDelayMs `
+        -AllowMissingInstallerRecoveryGuard `
+        -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority
+}
+
 function Assert-ExpectedServiceConfiguration {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
-        [switch]$AllowTargetPolicyFallback
+        [switch]$AllowTargetPolicyFallback,
+        [switch]$AllowLegacyRuntimeDataContract
     )
     if (-not (Test-TicketboxServiceExists $Name)) {
         return
     }
-    if ($Name -eq $PgServiceName) {
-        Assert-TicketboxServiceOwnership -Name $Name -ExpectedExecutable $PgCtl | Out-Null
-        Assert-TicketboxServiceAccount -Name $Name -ExpectedAccount "NT SERVICE\$Name"
-        Assert-TicketboxPgServiceCommand -Name $Name -ExpectedExecutable $PgCtl -ExpectedServiceName $PgServiceName -ExpectedDataRoot $PgData
+    $expectedExecutable = if ($Name -eq $PgServiceName) { $PgCtl } else { $ShawlExe }
+    Assert-TicketboxServiceOwnership -Name $Name -ExpectedExecutable $expectedExecutable | Out-Null
+    Assert-TicketboxServiceAccount -Name $Name -ExpectedAccount "NT SERVICE\$Name"
+    $targetError = $null
+    try {
+        Assert-TicketboxPreparedServiceRuntimeCommand `
+            -Name $Name `
+            -ExpectedPgData $ServicePgData `
+            -ExpectedAppData $ServiceAppData `
+            -ExpectedLogDir $ServiceLogDir `
+            -ExpectedDataRootMarkerPath $ServiceDataRootMarkerPath `
+            -ExpectedDataVolumeIdentity $ServiceDataVolumeIdentity `
+            -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority
         return
     }
-    Assert-TicketboxServiceOwnership -Name $Name -ExpectedExecutable $ShawlExe | Out-Null
-    Assert-TicketboxServiceAccount -Name $Name -ExpectedAccount "NT SERVICE\$Name"
-    $contractArguments = @{
-        Name = $Name
-        ExpectedExecutable = $ShawlExe
-        ExpectedServiceName = $BackendServiceName
-        ExpectedCwd = $AppData
-        ExpectedPayload = $BackendExe
-        ExpectedDependency = $PgServiceName
-        ExpectedLogDir = $LogDir
-        ExpectedPgDumpPath = $PgDump
-        ExpectedPgRestorePath = $PgRestore
-        ExpectedBootstrapRecoveryGuardPath = $BootstrapExposureRecoveryGuardPath
-        ExpectedStopTimeoutMs = $InstalledStopTimeoutMs
-        ExpectedRestartDelayMs = $InstalledRestartDelayMs
+    catch {
+        $targetError = $_
     }
+    if ($AllowTargetPolicyFallback -and $Name -eq $BackendServiceName) {
+        try {
+            Assert-TicketboxPreparedServiceRuntimeCommand `
+                -Name $Name `
+                -ExpectedPgData $ServicePgData `
+                -ExpectedAppData $ServiceAppData `
+                -ExpectedLogDir $ServiceLogDir `
+                -ExpectedDataRootMarkerPath $ServiceDataRootMarkerPath `
+                -ExpectedDataVolumeIdentity $ServiceDataVolumeIdentity `
+                -ExpectedStopTimeoutMs ([int]$TargetReleaseConfig.stop_timeout_ms) `
+                -ExpectedRestartDelayMs ([int]$TargetReleaseConfig.restart_delay_ms) `
+                -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority
+            return
+        }
+        catch { }
+    }
+    if (-not $AllowLegacyRuntimeDataContract -or -not $RuntimeDataBindingPresent) {
+        throw $targetError
+    }
+    $legacyError = $null
     try {
-        Assert-TicketboxShawlServiceCommand @contractArguments
+        Assert-TicketboxPreparedServiceRuntimeCommand `
+            -Name $Name `
+            -ExpectedPgData $PgData `
+            -ExpectedAppData $AppData `
+            -ExpectedLogDir $LogDir `
+            -AllowMissingRuntimeDataAuthority
+        return
     }
     catch {
-        if (-not $AllowTargetPolicyFallback) { throw }
-        $contractArguments.ExpectedStopTimeoutMs = [int]$TargetReleaseConfig.stop_timeout_ms
-        $contractArguments.ExpectedRestartDelayMs = [int]$TargetReleaseConfig.restart_delay_ms
-        Assert-TicketboxShawlServiceCommand @contractArguments
+        $legacyError = $_
     }
+    if ($AllowTargetPolicyFallback -and $Name -eq $BackendServiceName) {
+        try {
+            Assert-TicketboxPreparedServiceRuntimeCommand `
+                -Name $Name `
+                -ExpectedPgData $PgData `
+                -ExpectedAppData $AppData `
+                -ExpectedLogDir $LogDir `
+                -ExpectedStopTimeoutMs ([int]$TargetReleaseConfig.stop_timeout_ms) `
+                -ExpectedRestartDelayMs ([int]$TargetReleaseConfig.restart_delay_ms) `
+                -AllowMissingRuntimeDataAuthority
+            return
+        }
+        catch { }
+    }
+    throw "Windows 服务 $Name 不匹配 runtime binding 恢复允许的任一精确合同。target=$($targetError.Exception.Message); legacy=$($legacyError.Exception.Message)"
 }
 
-function Set-TicketboxRecoveryServiceDataAcl([bool]$IncludeRecoveryService) {
+function Get-TicketboxRecoveryServiceDataAclShape {
+    param(
+        [bool]$IncludeRecoveryService,
+        [string]$RecoveryServiceSid = ""
+    )
+
     $rootReadAccounts = @()
     $pgAccounts = @("SYSTEM", "BUILTIN\Administrators")
     if (Test-TicketboxServiceExists $PgServiceName) {
@@ -271,24 +459,101 @@ function Set-TicketboxRecoveryServiceDataAcl([bool]$IncludeRecoveryService) {
         $rootReadAccounts += "NT SERVICE\$BackendServiceName"
     }
     if ($IncludeRecoveryService) {
-        $rootReadAccounts += "NT SERVICE\$PgRecoveryServiceName"
-        $pgAccounts += "NT SERVICE\$PgRecoveryServiceName"
+        if ([string]::IsNullOrWhiteSpace($RecoveryServiceSid)) {
+            $RecoveryServiceSid = Get-TicketboxServiceSid $PgRecoveryServiceName
+        }
+        if ($RecoveryServiceSid -notmatch '^S-1-5-80-(?:[0-9]+-){4}[0-9]+$') {
+            throw "PostgreSQL 恢复服务 SID 不是规范虚拟服务账户 SID。"
+        }
+        $rootReadAccounts += $RecoveryServiceSid
+        $pgAccounts += $RecoveryServiceSid
     }
+    return [pscustomobject]@{
+        RootReadAccounts = @($rootReadAccounts)
+        PgAccounts = @($pgAccounts)
+        ToolReadAccounts = if ($IncludeRecoveryService) { @($RecoveryServiceSid) } else { @() }
+    }
+}
+
+function Assert-TicketboxRecoveryServiceDataAcl {
+    param(
+        [bool]$IncludeRecoveryService,
+        [string]$RecoveryServiceSid = ""
+    )
+
+    $shape = Get-TicketboxRecoveryServiceDataAclShape `
+        -IncludeRecoveryService $IncludeRecoveryService `
+        -RecoveryServiceSid $RecoveryServiceSid
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $DataRoot `
+        -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+        -ReadExecuteAccounts $shape.RootReadAccounts
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $PgData `
+        -FullControlAccounts $shape.PgAccounts
+    Assert-TicketboxPgRecoveryToolset `
+        -ExpectedMajor $TargetPgMajor `
+        -ReadExecuteAccounts $shape.ToolReadAccounts | Out-Null
+}
+
+function Assert-TicketboxRecoveryServiceAclTransition([string]$RecoveryServiceSid) {
+    $clean = Get-TicketboxRecoveryServiceDataAclShape $false
+    $transitional = Get-TicketboxRecoveryServiceDataAclShape `
+        -IncludeRecoveryService $true `
+        -RecoveryServiceSid $RecoveryServiceSid
+    try {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $DataRoot `
+            -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+            -ReadExecuteAccounts $clean.RootReadAccounts
+    }
+    catch {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $DataRoot `
+            -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+            -ReadExecuteAccounts $transitional.RootReadAccounts
+    }
+    try {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $PgData `
+            -FullControlAccounts $clean.PgAccounts
+    }
+    catch {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $PgData `
+            -FullControlAccounts $transitional.PgAccounts
+    }
+    try {
+        Assert-TicketboxPgRecoveryToolset -ExpectedMajor $TargetPgMajor | Out-Null
+    }
+    catch {
+        Assert-TicketboxPgRecoveryToolset `
+            -ExpectedMajor $TargetPgMajor `
+            -ReadExecuteAccounts $transitional.ToolReadAccounts | Out-Null
+    }
+}
+
+function Set-TicketboxRecoveryServiceDataAcl {
+    param(
+        [bool]$IncludeRecoveryService,
+        [string]$RecoveryServiceSid = ""
+    )
+
+    $shape = Get-TicketboxRecoveryServiceDataAclShape `
+        -IncludeRecoveryService $IncludeRecoveryService `
+        -RecoveryServiceSid $RecoveryServiceSid
     Set-TicketboxExactDirectoryAcl `
         -Path $DataRoot `
         -Accounts @("SYSTEM", "BUILTIN\Administrators") `
-        -ReadExecuteAccounts $rootReadAccounts
+        -ReadExecuteAccounts $shape.RootReadAccounts
     Set-TicketboxExactDirectoryAcl `
         -Path $PgData `
-        -Accounts $pgAccounts `
+        -Accounts $shape.PgAccounts `
         -Recurse
-    if ($IncludeRecoveryService) {
-        Set-TicketboxPgRecoveryAcl `
-            -ReadExecuteAccounts @("NT SERVICE\$PgRecoveryServiceName")
-    }
-    else {
-        Set-TicketboxPgRecoveryAcl
-    }
+    Set-TicketboxPgRecoveryAcl -ReadExecuteAccounts $shape.ToolReadAccounts
+    Assert-TicketboxRecoveryServiceDataAcl `
+        -IncludeRecoveryService $IncludeRecoveryService `
+        -RecoveryServiceSid $RecoveryServiceSid
 }
 
 function Assert-TicketboxRecoveryPgServiceConfiguration {
@@ -333,27 +598,27 @@ function Register-TicketboxRecoveryPgService {
 }
 
 function Remove-TicketboxRecoveryPgServiceIfExists {
-    if (-not (Test-TicketboxServiceExists $PgRecoveryServiceName)) { return }
+    $serviceExists = Test-TicketboxServiceExists $PgRecoveryServiceName
     $recoveryHome = Get-TicketboxPgRecoveryHome
+    $recoveryRootKind = Get-TicketboxPathEntryKindNoFollow (Get-TicketboxPgRecoveryRoot)
+    if (-not $serviceExists -and $recoveryRootKind -ceq "Missing") { return }
+    $recoveryServiceSid = Get-TicketboxServiceSid $PgRecoveryServiceName
+    Assert-TicketboxRecoveryServiceAclTransition $recoveryServiceSid
     $recoveryPgCtl = Join-Path $recoveryHome "bin\pg_ctl.exe"
-    try {
-        Assert-TicketboxPgRecoveryToolset `
-            -ExpectedMajor $TargetPgMajor `
-            -ReadExecuteAccounts @("NT SERVICE\$PgRecoveryServiceName") | Out-Null
+    if ($serviceExists) {
+        Assert-TicketboxRecoveryPgServiceConfiguration
+        Remove-TicketboxOwnedServiceIfExists `
+            -Name $PgRecoveryServiceName `
+            -ExpectedExecutable $recoveryPgCtl `
+            -ExpectedRuntimeExecutables @(
+                $recoveryPgCtl,
+                (Join-Path $recoveryHome "bin\postgres.exe")
+            ) `
+            @ServiceWaitArguments
     }
-    catch {
-        Assert-TicketboxPgRecoveryToolset -ExpectedMajor $TargetPgMajor | Out-Null
-    }
-    Assert-TicketboxRecoveryPgServiceConfiguration
-    Remove-TicketboxOwnedServiceIfExists `
-        -Name $PgRecoveryServiceName `
-        -ExpectedExecutable $recoveryPgCtl `
-        -ExpectedRuntimeExecutables @(
-            $recoveryPgCtl,
-            (Join-Path $recoveryHome "bin\postgres.exe")
-        ) `
-        @ServiceWaitArguments
-    Set-TicketboxRecoveryServiceDataAcl $false
+    Set-TicketboxRecoveryServiceDataAcl `
+        -IncludeRecoveryService $false `
+        -RecoveryServiceSid $recoveryServiceSid
 }
 
 function Assert-TicketboxDeferredPreservedPgServiceConfiguration {
@@ -380,7 +645,11 @@ function Remove-TicketboxDeferredPreservedPgServiceIfExists {
         @ServiceWaitArguments
 }
 
-function Assert-TicketboxPreparedServiceContracts([switch]$AllowTargetPolicyFallback) {
+function Assert-TicketboxPreparedServiceContracts {
+    param(
+        [switch]$AllowTargetPolicyFallback,
+        [switch]$AllowLegacyRuntimeDataContract
+    )
     $hasPgService = Test-TicketboxServiceExists $PgServiceName
     $hasBackendService = Test-TicketboxServiceExists $BackendServiceName
     if (-not $hasPgService) {
@@ -398,12 +667,14 @@ function Assert-TicketboxPreparedServiceContracts([switch]$AllowTargetPolicyFall
     if ($hasPgService) {
         Assert-ExpectedServiceConfiguration `
             -Name $PgServiceName `
-            -AllowTargetPolicyFallback:$AllowTargetPolicyFallback
+            -AllowTargetPolicyFallback:$AllowTargetPolicyFallback `
+            -AllowLegacyRuntimeDataContract:$AllowLegacyRuntimeDataContract
     }
     if ($hasBackendService) {
         Assert-ExpectedServiceConfiguration `
             -Name $BackendServiceName `
-            -AllowTargetPolicyFallback:$AllowTargetPolicyFallback
+            -AllowTargetPolicyFallback:$AllowTargetPolicyFallback `
+            -AllowLegacyRuntimeDataContract:$AllowLegacyRuntimeDataContract
     }
 }
 
@@ -573,6 +844,40 @@ function Write-TicketboxRecoveryRequiredMarker([string]$Reason) {
         -Reason $Reason
 }
 
+function Initialize-TicketboxRecoveryStateArtifact {
+    $installerStateExists = Test-Path -LiteralPath $InstallerState
+    $legacyRecoveryExists = Test-Path -LiteralPath $LegacyRecoveryRequiredPath
+    if ($installerStateExists) {
+        Initialize-TicketboxInstallerStateDirectory $InstallerState | Out-Null
+    }
+    if (-not (Test-Path -LiteralPath $DataRoot -PathType Container)) {
+        if ($installerStateExists -and @(Get-ChildItem -LiteralPath $InstallerState -Force).Count -gt 0) {
+            throw "installer-state 含有状态但数据根不存在，拒绝继续恢复。"
+        }
+        return
+    }
+    $dataRootMarkerPath = Get-TicketboxDataRootMarkerPath $DataRoot
+    if (-not (Test-Path -LiteralPath $dataRootMarkerPath -PathType Leaf)) {
+        if ($installerStateExists -and @(Get-ChildItem -LiteralPath $InstallerState -Force).Count -gt 0) {
+            throw "installer-state 含有状态但数据根权威标记缺失，拒绝继续恢复。"
+        }
+        if ($legacyRecoveryExists) {
+            throw "legacy recovery 状态存在但数据根权威标记缺失，拒绝继续恢复。"
+        }
+        return
+    }
+    Assert-TicketboxDataRootMarker -DataRoot $DataRoot -InstallDir $InstallDir
+    if (-not $installerStateExists -and -not $legacyRecoveryExists) {
+        return
+    }
+    if (-not $installerStateExists) {
+        Initialize-TicketboxInstallerStateDirectory $InstallerState | Out-Null
+    }
+    Move-TicketboxLegacyInstallerStateArtifact `
+        -LegacyPath $LegacyRecoveryRequiredPath `
+        -CurrentPath $RecoveryRequiredPath
+}
+
 function Assert-TicketboxPgStoppedForFailSafeRecovery {
     if (Test-Path -LiteralPath $PgCtl -PathType Leaf) {
         Assert-TicketboxPgClusterStopped
@@ -585,6 +890,9 @@ function Assert-TicketboxPgStoppedForFailSafeRecovery {
 }
 
 function Invoke-TicketboxPreparedInstallRecovery([object]$Receipt, [bool]$ProgramFilesWereReplaced) {
+    Assert-TicketboxProtectedDataRootMarker `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir
     if (-not $ProgramFilesWereReplaced) {
         Restore-PreviousServiceState `
             -BackendWasRunning ([string]$Receipt.previous_backend_state -eq "running") `
@@ -594,8 +902,6 @@ function Invoke-TicketboxPreparedInstallRecovery([object]$Receipt, [bool]$Progra
         return
     }
 
-    Write-TicketboxRecoveryRequiredMarker `
-        "安装文件可能已替换；服务将保持禁用。请重新运行安装器完成可重复修复。未执行自动二进制或数据库回滚。"
     Disable-TicketboxOwnedServiceIfExists `
         -Name $BackendServiceName `
         -ExpectedExecutable $ShawlExe `
@@ -616,42 +922,12 @@ function Invoke-TicketboxPreparedInstallRecovery([object]$Receipt, [bool]$Progra
         -not (Test-TicketboxServiceExists $PgServiceName) -and
         -not (Test-TicketboxServiceExists $BackendServiceName)
     ) {
-        if (Test-Path -LiteralPath $RecoveryRequiredPath -PathType Leaf) {
-            Remove-Item -LiteralPath $RecoveryRequiredPath -Force
-        }
+        Remove-TicketboxInstallerRecoveryMarker -Path $RecoveryRequiredPath -InstallDir $InstallDir -DataRoot $DataRoot
         return
     }
-}
-
-if ($HoldDataRootMutationGuard) {
-    Assert-Admin
-    if (
-        $InstallerLockOwnerProcessId -le 0 -or
-        $DataRootGuardOwnerProcessId -ne $InstallerLockOwnerProcessId -or
-        [string]::IsNullOrWhiteSpace($DataRootGuardReadyPath) -or
-        [string]::IsNullOrWhiteSpace($DataRootGuardReleasePath) -or
-        $RecoverPreparedInstall -or
-        $FilesReplaced -or
-        $CommitCompletedInstall -or
-        $MarkProgramFilesInstalledBackupPending -or
-        $ValidateOnly
-    ) {
-        throw "DataRoot guard lease 参数与当前 Inno 生命周期不一致。"
-    }
-    $guardOperationLock = Enter-TicketboxLifecycleLock `
-        -ExternalOwnerProcessId $InstallerLockOwnerProcessId
-    try {
-        Assert-TicketboxDataRootDomain -DataRoot $DataRoot -InstallDir $InstallDir | Out-Null
-    }
-    finally {
-        Exit-TicketboxLifecycleLock $guardOperationLock
-    }
-    Wait-TicketboxDirectoryMutationGuardLease `
-        -Path $DataRoot `
-        -ReadyPath $DataRootGuardReadyPath `
-        -ReleasePath $DataRootGuardReleasePath `
-        -OwnerProcessId $DataRootGuardOwnerProcessId
-    return
+    Initialize-TicketboxRecoveryStateArtifact
+    Write-TicketboxRecoveryRequiredMarker `
+        "安装文件可能已替换；服务将保持禁用。请重新运行安装器完成可重复修复。未执行自动二进制或数据库回滚。"
 }
 
 if ($PgPort -eq $BackendPort) {
@@ -667,6 +943,7 @@ $operationLock = Enter-TicketboxLifecycleLock `
     -ExternalOwnerProcessId $InstallerLockOwnerProcessId
 try {
     Assert-Admin
+    Set-TicketboxPreparedRuntimeServiceContract
     if ($InstallerLockOwnerProcessId -le 0) {
         throw "升级预检只能由持有生命周期锁的 Inno 安装器调用。"
     }
@@ -722,7 +999,13 @@ try {
         Set-TicketboxInstalledReleaseConfiguration `
             -Config $receipt.installed_release_config `
             -Persisted $true
-        Assert-TicketboxPreparedServiceContracts -AllowTargetPolicyFallback
+        Assert-TicketboxPreparedServiceContracts `
+            -AllowTargetPolicyFallback `
+            -AllowLegacyRuntimeDataContract:($RuntimeDataBindingPresent -and $recoveryStage -in @(
+                "prepared",
+                "program_files_installed_backup_pending",
+                "files_may_have_been_replaced"
+            ))
         $isDeferredPreservedBackup =
             [string]$receipt.mode -eq "preserved_data_reinstall" -and
             $recoveryStage -in @(
@@ -774,18 +1057,17 @@ try {
     }
 
     if ($CommitCompletedInstall) {
-        $receipt = Read-TicketboxLifecycleReceipt `
+        Complete-TicketboxInstalledLifecycleTransaction `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
             -DataRoot $DataRoot `
             -PgPort $PgPort `
             -BackendPort $BackendPort `
             -TargetReleaseConfig $TargetReleaseConfig `
-            -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-        Set-TicketboxLifecycleReceiptInstallCompleted `
-            -Path $LifecycleReceiptPath `
-            -Receipt $receipt `
-            -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+            -BuildManifestPath $InstalledBuildManifestPath `
+            -RecoveryRequiredPath $RecoveryRequiredPath `
+            -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath
         return
     }
 
@@ -813,10 +1095,36 @@ try {
         }
         Remove-TicketboxRecoveryPgServiceIfExists
         if ([bool]$staleReceipt.install_completed) {
+            Set-TicketboxInstalledReleaseConfiguration `
+                -Config $staleReceipt.installed_release_config `
+                -Persisted $true
+            Set-TicketboxLifecycleReceiptInstallerOwner `
+                -Path $LifecycleReceiptPath `
+                -Receipt $staleReceipt `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+            Complete-TicketboxInstalledLifecycleTransaction `
+                -Path $LifecycleReceiptPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -TargetReleaseConfig $TargetReleaseConfig `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+                -BuildManifestPath $InstalledBuildManifestPath `
+                -RecoveryRequiredPath $RecoveryRequiredPath `
+                -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath
+            $staleReceipt = Read-TicketboxLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -TargetReleaseConfig $TargetReleaseConfig `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId
             Remove-TicketboxCompletedLifecycleReceipt `
                 -Path $LifecycleReceiptPath `
                 -Receipt $staleReceipt
-            Write-Host "检测到上次安装已完成但回执未清理；旧备份证明已失效，本次将重新执行复制前备份。" -ForegroundColor Yellow
+            Write-Host "已补完上次中断的安装提交并退役旧回执；本次将重新执行复制前备份。" -ForegroundColor Yellow
         }
         elseif ([string]$staleReceipt.preparation_stage -in @(
             "captured",
@@ -836,7 +1144,9 @@ try {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
                 -Persisted $true
-            Assert-TicketboxPreparedServiceContracts -AllowTargetPolicyFallback
+            Assert-TicketboxPreparedServiceContracts `
+                -AllowTargetPolicyFallback `
+                -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
             Invoke-TicketboxPreparedInstallRecovery `
                 -Receipt $staleReceipt `
                 -ProgramFilesWereReplaced $true
@@ -851,7 +1161,9 @@ try {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
                 -Persisted $true
-            Assert-TicketboxPreparedServiceContracts -AllowTargetPolicyFallback
+            Assert-TicketboxPreparedServiceContracts `
+                -AllowTargetPolicyFallback `
+                -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
             Invoke-TicketboxPreparedInstallRecovery `
                 -Receipt $staleReceipt `
                 -ProgramFilesWereReplaced $true
@@ -872,8 +1184,6 @@ try {
         }
     }
 
-    Remove-TicketboxRecoveryPgServiceIfExists
-
     Initialize-TicketboxInstalledReleaseConfiguration
 
     $hasPgService = Test-TicketboxServiceExists $PgServiceName
@@ -892,6 +1202,17 @@ try {
     if ($hasPgService) { $serviceReadAccounts += "NT SERVICE\$PgServiceName" }
     if ($hasBackendService) { $serviceReadAccounts += "NT SERVICE\$BackendServiceName" }
     Assert-TicketboxDataRootDomain -DataRoot $DataRoot -InstallDir $InstallDir | Out-Null
+    Assert-TicketboxPreparedDataRootAuthorityGate `
+        -Mode $mode `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir
+    Initialize-LegacyInstalledServicePolicy -HasBackendService $hasBackendService
+    if ($hasPgService) {
+        Assert-ExpectedServiceConfiguration -Name $PgServiceName
+    }
+    if ($hasBackendService) {
+        Assert-ExpectedServiceConfiguration -Name $BackendServiceName
+    }
     if ($mode -eq "preserved_data_reinstall") {
         Assert-TicketboxLegacyPreservedDataLayout `
             -DataRoot $DataRoot `
@@ -911,20 +1232,16 @@ try {
     }
     elseif ($mode -ne "fresh_install") {
         Assert-TicketboxRegisteredDataRootBinding -DataRoot $DataRoot
+        Assert-NoTicketboxReparsePoints $DataRoot
+    }
+    if ($mode -ne "fresh_install") {
         Initialize-TicketboxDataRootMarker `
             -DataRoot $DataRoot `
             -InstallDir $InstallDir `
-            -AllowLegacyAdoption
-        Assert-NoTicketboxReparsePoints $DataRoot
+            -AllowLegacyV1Migration
     }
 
-    Initialize-LegacyInstalledServicePolicy -HasBackendService $hasBackendService
-    if ($hasPgService) {
-        Assert-ExpectedServiceConfiguration -Name $PgServiceName
-    }
-    if ($hasBackendService) {
-        Assert-ExpectedServiceConfiguration -Name $BackendServiceName
-    }
+    Remove-TicketboxRecoveryPgServiceIfExists
     Assert-TicketboxPortAvailableForMissingService `
         -Name $PgServiceName `
         -Port $PgPort `
@@ -1015,15 +1332,12 @@ try {
         $installAclMutationStarted = $true
         Repair-TicketboxPreflightInstallAcl -ServiceReadAccounts $serviceReadAccounts
         if ($hasBackendService) {
-            Stop-TicketboxOwnedServiceIfExists `
+            Disable-TicketboxOwnedServiceIfExists `
                 -Name $BackendServiceName `
                 -ExpectedExecutable $ShawlExe `
                 -BackendPort $BackendPort `
                 -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe) `
                 @ServiceWaitArguments
-            Set-TicketboxPreparedServiceDemandStart `
-                -Name $BackendServiceName `
-                -ExpectedExecutable $ShawlExe
         }
         if ($usingRecoveryPgService) {
             Register-TicketboxRecoveryPgService
@@ -1111,15 +1425,12 @@ try {
             Set-TicketboxActivePgTools $InstalledPgHome
         }
         if ($hasPgService) {
-            Stop-TicketboxOwnedServiceIfExists `
+            Disable-TicketboxOwnedServiceIfExists `
                 -Name $PgServiceName `
                 -ExpectedExecutable $PgCtl `
                 -ExpectedRuntimeExecutables @($PgCtl, (Join-Path $PgBin "postgres.exe")) `
                 @ServiceWaitArguments
             Assert-TicketboxPgClusterStopped
-            Set-TicketboxPreparedServiceDemandStart `
-                -Name $PgServiceName `
-                -ExpectedExecutable $PgCtl
         }
         Set-TicketboxLifecycleReceiptPrepared `
             -Path $LifecycleReceiptPath `

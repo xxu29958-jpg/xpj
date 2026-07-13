@@ -4,8 +4,8 @@
 目标与当前实现分开。产品边界见 [[0066]]，权威身份见 [AUTHORITY_SOURCE_REGISTER](AUTHORITY_SOURCE_REGISTER.md)。
 
 - Catalog version: `1.1.0`
-- Main code baseline: `0f1092e625b376d0fa8d4abc214cdc53de93a96d`
-- Installer overlay: uncommitted and separately labelled
+- Review base: `83af67d0702a7bfda2fa3a760b56dbef47c663c7`
+- Installer implementation: this tree includes [[0074]]; release verification remains explicitly incomplete
 - Status semantics: `implemented | partial | nonconformant | not-started`; none of these alone means verified
 
 ## 宿主机生命周期
@@ -22,8 +22,11 @@ Current：**partial**。核心模型大体独立；architecture/runbook 和部�
 Contract：当前 topology 只支持一套 active backend writer；启动必须证明 process/build/config/schema/DB identity。
 迁移由短命 migrator 串行，旧 writer 在任何 DDL 前隔离。Related：[[0062]], [[0067]]。
 
-Current：**nonconformant**。main 先 create_all/迁移后 compatibility；installer overlay 的 `[Files]` no-return point
-只在内存先标记，持久 receipt 晚于复制。
+Current：**partial / unverified**。backend 已在 Alembic 写入前完成 schema inspection、compatibility 和既有库备份；
+installer overlay 已在 Inno `ssInstall` 复制前把 program-files boundary 持久化，并以专用 DataRoot holder +
+operation lease 分离长命目录权威与短命升级准备；正式 backend 的 marker/guard 读取统一经过 Volume GUID runtime projection，
+marker 仅授予服务 SID 读取权。单 writer 的 clean-machine、kill/power-loss 与真实服务运行验证仍缺，
+不能升级为 verified。
 
 ### INV-HOST-003 GUI、provider 和单个任务不在关键运行链
 
@@ -31,6 +34,22 @@ Contract：GUI 崩溃、OCR/AI provider 失败或单任务异常不能停止 Pos
 Related：[[0015]], [[0047]], [[0072]]。
 
 Current：**partial/nonconformant**。provider fail-open 基本成立；task claim/restart/backpressure 未闭环。
+
+### INV-HOST-004 发布 gate 不得把未比较降级为通过
+
+Contract：显式 exact base 或任一 CI/PR 上下文存在时，release audit 必须读取并比较该基线；CI base 必须是 HEAD 的
+严格变更前祖先。PR/manual workflow 只接受当前分支与受信任默认分支的 canonical divergence base；默认分支 push 使用事件
+`before`，非默认工作分支 push 无论是否首推都必须相对受信任默认分支求 canonical merge-base，不能用工作分支上一 tip 隐藏
+较早差异。首推的全零 `before` 只允许在 push 上下文按同一规则求解；默认 ref 已指向 HEAD 时因缺少独立 pre-push authority 而失败，
+不得退化到 `HEAD^1`；该 fallback 只允许无 CI marker 的本地探索。canonical merge-base 必须唯一，多最佳共同祖先直接失败。
+本地脏树只有 HEAD 等于受信任 remote-tracking 默认 tip 时才可用 HEAD 比较未提交变更。解析、读取或
+祖先资格失败即失败。只有没有 exact ref、没有 CI 标记的真实本地探索运行可明确跳过 ratchet。resolver 交给
+`git show` / `git ls-tree` 的 base 必须是实际可解析
+commit/ref，来源说明不得混入 ref。ADR/codebase gate 共用同一 CI-context predicate；event-only 上下文或
+任何非空 marker（包括 `CI=false`）都不得降级为本地 PASS。Related：[[0074]]。
+
+Current：**implemented in current tree / unverified in cloud**。exact-ref、GitHub/Gitea push/manual/PR 上下文已统一 fail closed；
+最终 PR head 的云端 lane 尚未运行。
 
 ## 账本权威与家庭身份
 
@@ -249,13 +268,47 @@ Contract：backend/PG服务账户不能读取、删除、改名或替换 owner h
 write、`DELETE_CHILD` 或 FullControl。bootstrap challenge 只是短命 backend-readable 安装凭证；restore/clone 前轮换适用 secret，
 并在开放 listener 前证明旧能力失效和 recovery re-enrollment 可用。Related：[[0059]], [[0063]], [[0068]]。
 
-Current：main **nonconformant**；installer overlay 受保护子文件位于 backend 拥有 FullControl 的 `app` 父目录，仍可被删除/替换，且无真实服务账户负测。
+Current：**partial**。owner handoff/recovery latch 已迁入机器生命周期根下受保护的 `installer-state`，
+backend/PG 对其父目录也没有访问权；独立 sealed recovery principal/epoch 与真实服务账户负测仍缺。Related：[[0074]]。
 
 ### INV-RECOVERY-003 migration/install跨过 no-return point前必须有恢复点
 
 Contract：先持久化状态/锁/backup，再允许DDL或文件覆盖；断电后能区分pre-copy/pre-DDL可补偿与post-boundary repair/forward-only。
 
-Current：**nonconformant**。main先DDL；installer overlay copy boundary持久化晚于实际复制开始。
+Current：**partial / unverified**。backend inspect -> compatibility -> backup -> Alembic 与 Inno 复制前持久 boundary 已接线；
+机器根由专职 holder 先验证后持锁，IPC 留在受保护根并以随机 nonce 防重放。lifecycle owner 与 holder ready 都绑定 PID + Windows
+process creation FILETIME；machine/DataRoot holder 打开并校验 owner 的同一个 `SafeWaitHandle` 后终身等待它，不按 PID 重开或
+刷新，Inno 用 `GetProcessTimes` 排除 ready 前 PID 重用；mutation child 以 operation lock 取得委托租约，DataRoot holder
+只有在目录句柄、marker、ready 均 durable 且复读后才显式接过启动 lease，owner 死亡时 machine/DataRoot holder 会保留到活动 child
+返回。operation lock 必须是 no-follow 普通受保护文件；malformed/reparse/不可读形态视为 active/indeterminate，不能使 holder
+提前释放权威。holder 启动或 preflight 失败时，Setup 只有在目录 guard 与 operation lease 已释放、且 holder 向同一活 owner
+原子提交并复读 `stopped` 后才可清空状态并同进程重试。DataRoot 缺失目录链以最终 ACL 原子创建；holder 在锁住可信祖先后、
+首个目录可见前 durable 发布绑定路径与 Windows Volume GUID 的 provisioning intent；`ticketbox-data-root-v2` marker 以最终
+ACL/owner 的受保护 writer 发布，并永久绑定 DataRoot、InstallDir 与同一 Volume GUID。fresh gate 在任何 recovery-service/ACL
+mutation 前同时验证根 ACL、marker no-follow 形态、精确 ACL/owner 与完整 v2 绑定；预先存在的无 marker 空根、v1 marker 或伪造
+marker 均拒绝事后收编，中断重试只恢复相同路径、同 Volume GUID intent 下的精确 ACL 空根和严格 staging。卷身份在首个创建回调、
+根句柄取得后和 v2 marker 复读后重复核对，marker 与当前卷一致后才退役 intent；中断后改选路径不自动改绑，盘符复用或任何
+不可判定状态继续绑定原路径并 fail closed。旧 v1 可在既有安装证据下原子迁移；markerless 非空布局在所有普通安装模式都拒绝，
+不能通过当前 ACL 或目录形状重铸权威，只能由未来独立隔离恢复/逻辑导入生成新的受保护 DataRoot。
+机器 lifecycle receipt v7 固化同一 `data_volume_identity`，每次 stale recovery/commit/uninstall 都在 mutation 前复核 receipt、v2 marker
+与当前挂载卷。正式 PG/backend SCM 通过 OS `CommonApplicationData` 下 machine-owned、服务只读的稳定 junction 指向该 Volume GUID
+DataRoot；frozen launcher 在任何写入前要求两类 guard、marker、Volume GUID 四项完整，拒绝 reparse marker，并要求 marker 的 DataRoot 等于 junction 最终目标、InstallDir 等于 frozen executable 根、
+Volume GUID 与 SCM/final path 一致。原卷离线或盘符被复用时不会落入 replacement tree。binding 根创建、单服务迁移、junction 退役三个断点只允许精确空根和
+旧直连/新别名两种完整命令合同收敛，不能把宽松 argv 或第三种路径当 repair。
+bootstrap recovery guard 必须与 marker 同处这个已经完整验证的 runtime junction；guard 缺失时只允许该精确 junction 祖先，
+任意其他 reparse、dangling 或不可读祖先仍 fail closed，避免把正式投影误判为攻击路径或反向放宽通用 guard 检查。
+backend-readable runtime guard 位于 OS 动态解析、与 DataRoot 不相交的 machine runtime-state 域；PowerShell no-follow entry
+inspection 与 launcher lexical `lstat()` 都不把 file-shaped root、directory-shaped guard、dangling junction/symlink、不可读 entry
+或其他 reparse 当 absent，DataRoot restore 不能移除阻断投影。复制前已有服务先 disabled；复制后的 backend 也保持
+disabled，直到 runtime guard durable 才转 demand-start。普通保留数据卸载在 backend SID 仍可验证时先移除 guard/空 runtime-state，
+服务删除后退役 completed receipt，同时保留数据、安装身份与 PG recovery tools。identity 已部分/全部删除的 retry resolver
+必须先 no-follow 分类 receipt 且保持只读；machine runtime projection 验证通过前不得退役空 installer-state。完整身份卸载也必须在
+projection 前保持 installer-state 与 PG recovery 只读；严格命名的 lock-writer 临时残留清理不授权业务权威迁移。
+DataRoot/PG recovery 删除把受保护 authority/latch 留到最后，仅在已验证 delete intent 下收敛空根；PG recovery staging 先按 Windows 大小写不敏感命名空间发现，再只清理精确命名、
+精确 ACL 的可信 partial staging；临时 PG 服务账户的 ReadExecute SID 必须贯穿 completion/payload 校验，并在停删服务后才退役。
+服务已删除后仍由服务名确定性导出虚拟 SID，只接受 clean/clean+SID 精确过渡 ACL 并幂等退役；PG recovery root 的 dangling
+reparse/file-shaped/不可判定形态不能冒充 absent。completed receipt 的 post-commit 步骤可幂等续跑；clean-machine
+kill/power-loss/repair 演练仍缺。Related：[[0062]], [[0074]]。
 
 ## 维护规则
 

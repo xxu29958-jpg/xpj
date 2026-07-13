@@ -1,11 +1,29 @@
 ﻿const
-  GenericReadWrite = $C0000000;
-  OpenAlways = 4;
-  FileAttributeNormal = $80;
   InvalidHandleValue = $FFFFFFFF;
   ProcessSynchronize = $00100000;
+  ProcessQueryLimitedInformation = $00001000;
   WaitObject0 = 0;
   WaitTimeout = 258;
+  LifecycleSafetyScriptSha256 = '{#LifecycleSafetyScriptSha256}';
+  LifecycleLockScriptSha256 = '{#LifecycleLockScriptSha256}';
+  LifecycleHolderScriptSha256 = '{#LifecycleHolderScriptSha256}';
+  DataRootGuardScriptSha256 = '{#DataRootGuardScriptSha256}';
+  PrepareScriptSha256 = '{#PrepareScriptSha256}';
+  ServiceContractScriptSha256 = '{#ServiceContractScriptSha256}';
+  ServiceLifecycleScriptSha256 = '{#ServiceLifecycleScriptSha256}';
+  LifecycleReceiptScriptSha256 = '{#LifecycleReceiptScriptSha256}';
+  DatabaseSafetyScriptSha256 = '{#DatabaseSafetyScriptSha256}';
+  PgRecoveryToolsScriptSha256 = '{#PgRecoveryToolsScriptSha256}';
+  ReleaseConfigScriptSha256 = '{#ReleaseConfigScriptSha256}';
+  ReleaseConfigJsonSha256 = '{#ReleaseConfigJsonSha256}';
+  BuildProvenanceScriptSha256 = '{#BuildProvenanceScriptSha256}';
+  BackendBuildProvenanceScriptSha256 = '{#BackendBuildProvenanceScriptSha256}';
+
+type
+  TTicketboxFileTime = record
+    LowDateTime: LongWord;
+    HighDateTime: LongWord;
+  end;
 
 var
   DataRootPage: TInputDirWizardPage;
@@ -16,9 +34,22 @@ var
   ExistingBackendPort: String;
   SelectedPowerShellPath: String;
   PortProbeFailed: Boolean;
-  LifecycleLockHandle: LongWord;
+  LifecycleLockHolderProcessHandle: LongWord;
+  LifecycleLockHolderProcessId: LongWord;
+  LifecycleLockRootValidatedPath: String;
+  LifecycleLockHolderReadyPath: String;
+  LifecycleLockHolderReleasePath: String;
+  LifecycleLockReleaseNonce: String;
+  LifecycleInstallerStateDirectory: String;
+  LifecycleLockHolderScriptPath: String;
+  LifecycleLockBootstrapDirectory: String;
+  LifecycleLockBootstrapFilesStaged: Boolean;
+  LifecycleLockHolderStarted: Boolean;
+  LifecycleLockHolderActive: Boolean;
   LifecycleLockOwnerPath: String;
   LifecycleLockOwnerProcessId: LongWord;
+  LifecycleLockOwnerStartedFileTimeHigh: String;
+  LifecycleLockOwnerStartedFileTimeLow: String;
   LifecycleLockError: String;
   LifecyclePrepared: Boolean;
   LifecycleFilesMayBeReplaced: Boolean;
@@ -31,21 +62,15 @@ var
   OwnerHandoffConfirmation: TNewCheckBox;
   DataRootGuardProcessId: LongWord;
   DataRootGuardProcessHandle: LongWord;
+  DataRootGuardProcessStartedFileTimeHigh: String;
+  DataRootGuardProcessStartedFileTimeLow: String;
   DataRootGuardReadyPath: String;
   DataRootGuardReleasePath: String;
+  DataRootGuardReleaseNonce: String;
+  DataRootGuardScriptPath: String;
   DataRootGuardProcessStarted: Boolean;
   DataRootGuardActive: Boolean;
 
-function CreateFile(
-  FileName: String;
-  DesiredAccess: LongWord;
-  ShareMode: LongWord;
-  SecurityAttributes: LongWord;
-  CreationDisposition: LongWord;
-  FlagsAndAttributes: LongWord;
-  TemplateFile: LongWord
-): LongWord;
-  external 'CreateFileW@kernel32.dll stdcall';
 function CloseHandle(Handle: LongWord): Boolean;
   external 'CloseHandle@kernel32.dll stdcall';
 function GetCurrentProcessId(): LongWord;
@@ -58,6 +83,99 @@ function OpenProcess(
   external 'OpenProcess@kernel32.dll stdcall';
 function WaitForSingleObject(Handle: LongWord; Milliseconds: LongWord): LongWord;
   external 'WaitForSingleObject@kernel32.dll stdcall';
+function GetProcessTimes(
+  ProcessHandle: LongWord;
+  var CreationTime: TTicketboxFileTime;
+  var ExitTime: TTicketboxFileTime;
+  var KernelTime: TTicketboxFileTime;
+  var UserTime: TTicketboxFileTime
+): Boolean;
+  external 'GetProcessTimes@kernel32.dll stdcall';
+
+function IsProcessHandleRunning(Handle: LongWord): Boolean;
+begin
+  Result := False;
+  if (Handle = 0) or (Handle = InvalidHandleValue) then
+  begin
+    exit;
+  end;
+  Result := WaitForSingleObject(Handle, 0) = WaitTimeout;
+end;
+
+function ReadProcessStartedFileTime(
+  Handle: LongWord;
+  var HighText: String;
+  var LowText: String
+): Boolean;
+var
+  CreationTime: TTicketboxFileTime;
+  ExitTime: TTicketboxFileTime;
+  KernelTime: TTicketboxFileTime;
+  UserTime: TTicketboxFileTime;
+begin
+  Result := False;
+  HighText := '';
+  LowText := '';
+  if (Handle = 0) or (Handle = InvalidHandleValue) then
+  begin
+    exit;
+  end;
+  if not GetProcessTimes(
+    Handle,
+    CreationTime,
+    ExitTime,
+    KernelTime,
+    UserTime) then
+  begin
+    exit;
+  end;
+  HighText := IntToStr(Int64(CreationTime.HighDateTime));
+  LowText := IntToStr(Int64(CreationTime.LowDateTime));
+  Result := True;
+end;
+
+function ProcessHandleMatchesStartedFileTime(
+  Handle: LongWord;
+  ExpectedHighText: String;
+  ExpectedLowText: String
+): Boolean;
+var
+  ActualHighText: String;
+  ActualLowText: String;
+begin
+  Result :=
+    ReadProcessStartedFileTime(Handle, ActualHighText, ActualLowText) and
+    (ActualHighText = ExpectedHighText) and
+    (ActualLowText = ExpectedLowText);
+end;
+
+function OpenVerifiedProcessIdentityHandle(
+  ProcessId: LongWord;
+  ExpectedHighText: String;
+  ExpectedLowText: String
+): LongWord;
+var
+  ProcessHandle: LongWord;
+begin
+  Result := InvalidHandleValue;
+  ProcessHandle := OpenProcess(
+    ProcessSynchronize or ProcessQueryLimitedInformation,
+    False,
+    ProcessId);
+  if not IsProcessHandleRunning(ProcessHandle) or
+     not ProcessHandleMatchesStartedFileTime(
+       ProcessHandle,
+       ExpectedHighText,
+       ExpectedLowText) then
+  begin
+    if (ProcessHandle <> 0) and (ProcessHandle <> InvalidHandleValue) then
+    begin
+      CloseHandle(ProcessHandle);
+    end;
+    exit;
+  end;
+  Result := ProcessHandle;
+end;
 
 function Quote(Value: String): String;
 var
@@ -121,72 +239,617 @@ begin
     RunLifecycleIcacls(TargetPath, '/verify');
 end;
 
-function AcquireLifecycleLock(): Boolean;
-var
-  LockDirectory: String;
-  LockPath: String;
+procedure CleanupLifecycleLockBootstrapDirectory();
 begin
-  LifecycleLockError := '';
-  LockDirectory := ExpandConstant('{commoncf64}\Ticketbox');
-  LockPath := LockDirectory + '\installer-lifecycle.lock';
-  LifecycleLockOwnerPath := LockDirectory + '\installer-lifecycle.owner';
-  if (not ForceDirectories(LockDirectory)) or
-     (not HardenLifecycleLockPath(LockDirectory, True)) then
+  if LifecycleLockBootstrapDirectory = '' then
   begin
-    LifecycleLockError := '无法建立受保护的机器级安装锁目录。请确认安装器具有管理员权限。';
-    Result := False;
+    LifecycleLockRootValidatedPath := '';
+    LifecycleLockBootstrapFilesStaged := False;
     exit;
   end;
-  LifecycleLockHandle := CreateFile(
-    LockPath,
-    GenericReadWrite,
-    0,
-    0,
-    OpenAlways,
-    FileAttributeNormal,
-    0);
-  if LifecycleLockHandle = InvalidHandleValue then
+  if LifecycleLockRootValidatedPath <> '' then
   begin
-    LifecycleLockHandle := 0;
-    LifecycleLockError := '另一项小票夹安装、升级或卸载操作正在进行。请等待它完成后重试。';
-    Result := False;
+    DeleteFile(LifecycleLockRootValidatedPath);
+  end;
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'hold_installer_lifecycle_lock.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_lifecycle_lock.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_installation_safety.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'hold_data_root_mutation_guard.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'prepare_bundled_upgrade.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_service_contract.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_service_lifecycle.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_lifecycle_receipt.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_safety.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_pg_recovery_tools.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_release_config.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows-release-config.json');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_build_provenance.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_backend_build_provenance.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'ticketbox-run-installer-child-logged.ps1');
+  if DirExists(LifecycleLockBootstrapDirectory) and
+     (not RemoveDir(LifecycleLockBootstrapDirectory)) then
+  begin
+    Log('Could not remove the protected lifecycle bootstrap directory; it contains no authority state.');
+  end;
+  LifecycleLockBootstrapDirectory := '';
+  LifecycleLockRootValidatedPath := '';
+  LifecycleLockBootstrapFilesStaged := False;
+  LifecycleLockHolderScriptPath := '';
+end;
+
+function StageLifecycleLockBootstrapFile(
+  FileName: String;
+  ExpectedSha256: String
+): Boolean;
+var
+  ExtractedPath: String;
+  ProtectedPath: String;
+  ActualSha256: String;
+begin
+  Result := False;
+  try
+    ExtractTemporaryFile(FileName);
+  except
+    LifecycleLockError :=
+      '无法从安装器内嵌 payload 提取 lifecycle bootstrap 文件 ' + FileName +
+      '：' + GetExceptionMessage();
     exit;
   end;
-  if not HardenLifecycleLockPath(LockPath, False) then
+  ExtractedPath := ExpandConstant('{tmp}\') + FileName;
+  ProtectedPath := AddBackslash(LifecycleLockBootstrapDirectory) + FileName;
+  if not CopyFile(ExtractedPath, ProtectedPath, True) then
   begin
-    CloseHandle(LifecycleLockHandle);
-    LifecycleLockHandle := 0;
-    LifecycleLockError := '无法收紧机器级安装锁文件权限，拒绝继续。';
-    Result := False;
+    LifecycleLockError := '无法把 lifecycle bootstrap 文件复制到受保护 staging：' + FileName;
     exit;
   end;
-  LifecycleLockOwnerProcessId := GetCurrentProcessId();
-  if (not SaveStringToFile(
-        LifecycleLockOwnerPath,
-        IntToStr(LifecycleLockOwnerProcessId),
-        False)) or
-     (not HardenLifecycleLockPath(LifecycleLockOwnerPath, False)) then
+  if not HardenLifecycleLockPath(ProtectedPath, False) then
   begin
-    DeleteFile(LifecycleLockOwnerPath);
-    CloseHandle(LifecycleLockHandle);
-    LifecycleLockHandle := 0;
-    LifecycleLockOwnerProcessId := 0;
-    LifecycleLockError := '无法写入受保护的安装锁所有者记录，拒绝继续。';
-    Result := False;
+    LifecycleLockError := '无法收紧 lifecycle bootstrap 文件 ACL：' + FileName;
+    exit;
+  end;
+  try
+    ActualSha256 := Lowercase(GetSHA256OfFile(ProtectedPath));
+  except
+    LifecycleLockError := '无法计算受保护 lifecycle bootstrap 文件 SHA-256：' + FileName;
+    exit;
+  end;
+  if CompareText(ActualSha256, ExpectedSha256) <> 0 then
+  begin
+    LifecycleLockError := '受保护 lifecycle bootstrap 文件与构建时 SHA-256 不匹配：' + FileName;
     exit;
   end;
   Result := True;
 end;
 
-procedure ReleaseLifecycleLock();
+function ValidateLifecycleLockBootstrapFile(
+  FileName: String;
+  ExpectedSha256: String
+): Boolean;
+var
+  FilePath: String;
+  ActualSha256: String;
 begin
-  if LifecycleLockHandle <> 0 then
+  Result := False;
+  if LifecycleLockBootstrapDirectory = '' then
   begin
-    DeleteFile(LifecycleLockOwnerPath);
-    CloseHandle(LifecycleLockHandle);
-    LifecycleLockHandle := 0;
-    LifecycleLockOwnerPath := '';
-    LifecycleLockOwnerProcessId := 0;
+    exit;
+  end;
+  FilePath := AddBackslash(LifecycleLockBootstrapDirectory) + FileName;
+  if not FileExists(FilePath) then
+  begin
+    exit;
+  end;
+  try
+    ActualSha256 := Lowercase(GetSHA256OfFile(FilePath));
+  except
+    exit;
+  end;
+  Result := CompareText(ActualSha256, ExpectedSha256) = 0;
+end;
+
+function ValidateLifecycleLockBootstrapFiles(): Boolean;
+begin
+  Result :=
+    ValidateLifecycleLockBootstrapFile(
+      'windows_installation_safety.ps1', LifecycleSafetyScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_lifecycle_lock.ps1', LifecycleLockScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'hold_installer_lifecycle_lock.ps1', LifecycleHolderScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'hold_data_root_mutation_guard.ps1', DataRootGuardScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'prepare_bundled_upgrade.ps1', PrepareScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_service_contract.ps1', ServiceContractScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_service_lifecycle.ps1', ServiceLifecycleScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_lifecycle_receipt.ps1', LifecycleReceiptScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_database_safety.ps1', DatabaseSafetyScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_pg_recovery_tools.ps1', PgRecoveryToolsScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_release_config.ps1', ReleaseConfigScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows-release-config.json', ReleaseConfigJsonSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_build_provenance.ps1', BuildProvenanceScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_backend_build_provenance.ps1', BackendBuildProvenanceScriptSha256);
+end;
+
+function LifecycleBootstrapFilePath(FileName: String): String;
+begin
+  if LifecycleLockBootstrapDirectory = '' then
+  begin
+    RaiseException('受保护 lifecycle bootstrap staging 尚未建立。');
+  end;
+  Result := AddBackslash(LifecycleLockBootstrapDirectory) + FileName;
+end;
+
+function LifecycleInstallerStatePath(FileName: String): String;
+begin
+  if LifecycleInstallerStateDirectory = '' then
+  begin
+    RaiseException('机器级安装锁 holder 尚未声明 installer state 路径。');
+  end;
+  Result := AddBackslash(LifecycleInstallerStateDirectory) + FileName;
+end;
+
+function PrepareLifecycleLockBootstrapDirectory(): Boolean;
+begin
+  Result := False;
+  LifecycleLockError := '';
+  LifecycleLockBootstrapDirectory :=
+    ExpandConstant('{commoncf64}\Ticketbox-Installer-Bootstrap-') +
+    IntToStr(GetCurrentProcessId());
+  if FileOrDirExists(LifecycleLockBootstrapDirectory) then
+  begin
+    LifecycleLockError :=
+      '检测到同 PID 的旧 lifecycle bootstrap staging，拒绝复用：' +
+      LifecycleLockBootstrapDirectory;
+    exit;
+  end;
+  if not CreateDir(LifecycleLockBootstrapDirectory) then
+  begin
+    LifecycleLockError := '无法创建 lifecycle bootstrap staging。';
+    exit;
+  end;
+  if not HardenLifecycleLockPath(LifecycleLockBootstrapDirectory, True) then
+  begin
+    LifecycleLockError := '无法收紧 lifecycle bootstrap staging ACL。';
+    CleanupLifecycleLockBootstrapDirectory();
+    exit;
+  end;
+  Result := True;
+end;
+
+function PrepareSetupLifecycleLockHolderScripts(): Boolean;
+begin
+  Result := False;
+  if not PrepareLifecycleLockBootstrapDirectory() then
+  begin
+    exit;
+  end;
+  if not StageLifecycleLockBootstrapFile(
+    'windows_installation_safety.ps1',
+    LifecycleSafetyScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_lifecycle_lock.ps1',
+    LifecycleLockScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'hold_installer_lifecycle_lock.ps1',
+    LifecycleHolderScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'hold_data_root_mutation_guard.ps1',
+    DataRootGuardScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'prepare_bundled_upgrade.ps1',
+    PrepareScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_service_contract.ps1',
+    ServiceContractScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_service_lifecycle.ps1',
+    ServiceLifecycleScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_lifecycle_receipt.ps1',
+    LifecycleReceiptScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_safety.ps1',
+    DatabaseSafetyScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_pg_recovery_tools.ps1',
+    PgRecoveryToolsScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_release_config.ps1',
+    ReleaseConfigScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows-release-config.json',
+    ReleaseConfigJsonSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_build_provenance.ps1',
+    BuildProvenanceScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_backend_build_provenance.ps1',
+    BackendBuildProvenanceScriptSha256) then
+  begin
+    CleanupLifecycleLockBootstrapDirectory();
+    exit;
+  end;
+  LifecycleLockHolderScriptPath :=
+    AddBackslash(LifecycleLockBootstrapDirectory) + 'hold_installer_lifecycle_lock.ps1';
+  LifecycleLockBootstrapFilesStaged := True;
+  Result := True;
+end;
+
+function PrepareUninstallLifecycleLockHolderScript(): Boolean;
+begin
+  Result := PrepareLifecycleLockBootstrapDirectory();
+  if not Result then
+  begin
+    exit;
+  end;
+  LifecycleLockHolderScriptPath :=
+    ExpandConstant('{app}\installer\hold_installer_lifecycle_lock.ps1');
+end;
+
+function IsLowerHexLifecycleNonce(Value: String): Boolean;
+var
+  Index: Integer;
+begin
+  Result := Length(Value) = 64;
+  if not Result then exit;
+  for Index := 1 to Length(Value) do
+  begin
+    if not (((Value[Index] >= '0') and (Value[Index] <= '9')) or
+            ((Value[Index] >= 'a') and (Value[Index] <= 'f'))) then
+    begin
+      Result := False;
+      exit;
+    end;
+  end;
+end;
+
+function AcquireLifecycleLock(): Boolean;
+var
+  LockDirectory: String;
+  Params: String;
+  ResultCode: Integer;
+  Attempt: Integer;
+  RootValidatedText: AnsiString;
+  ReadyText: AnsiString;
+  ExpectedRootValidatedText: String;
+  RootValidatedValue: String;
+  RootValidated: Boolean;
+  ReadyPrefix: String;
+  ReadyRemainder: String;
+  HolderIdentityRemainder: String;
+  HolderStartedLowRemainder: String;
+  InstallerStateRemainder: String;
+  HolderStartedHighDelimiter: String;
+  HolderStartedLowDelimiter: String;
+  InstallerStateDelimiter: String;
+  NonceDelimiter: String;
+  HolderProcessIdText: String;
+  HolderStartedFileTimeHighText: String;
+  HolderStartedFileTimeLowText: String;
+  HolderDelimiterPosition: Integer;
+  HolderStartedLowDelimiterPosition: Integer;
+  InstallerStateDelimiterPosition: Integer;
+  NonceDelimiterPosition: Integer;
+  ParsedHolderProcessId: Integer;
+  OwnerProcessHandle: LongWord;
+  ExpectedReadyText: String;
+  ReadyValue: String;
+begin
+  LifecycleLockError := '';
+  Result := False;
+  if LifecycleLockHolderStarted then
+  begin
+    LifecycleLockError := '安装生命周期锁 holder 已启动，拒绝重复获取。';
+    exit;
+  end;
+  LockDirectory := ExpandConstant('{commoncf64}\Ticketbox');
+  LifecycleLockOwnerPath := LockDirectory + '\installer-lifecycle.owner';
+  if (LifecycleLockHolderScriptPath = '') or
+     (not FileExists(LifecycleLockHolderScriptPath)) then
+  begin
+    LifecycleLockError := '缺少受信任的机器级安装锁 holder 脚本。';
+    exit;
+  end;
+  if LifecycleLockBootstrapFilesStaged and
+     (not ValidateLifecycleLockBootstrapFiles()) then
+  begin
+    LifecycleLockError :=
+      '受保护 lifecycle bootstrap staging 在执行前未通过 SHA-256 复核。';
+    exit;
+  end;
+  LifecycleLockOwnerProcessId := GetCurrentProcessId();
+  OwnerProcessHandle := OpenProcess(
+    ProcessSynchronize or ProcessQueryLimitedInformation,
+    False,
+    LifecycleLockOwnerProcessId);
+  if not IsProcessHandleRunning(OwnerProcessHandle) or
+     not ReadProcessStartedFileTime(
+       OwnerProcessHandle,
+       LifecycleLockOwnerStartedFileTimeHigh,
+       LifecycleLockOwnerStartedFileTimeLow) then
+  begin
+    if (OwnerProcessHandle <> 0) and
+       (OwnerProcessHandle <> InvalidHandleValue) then
+    begin
+      CloseHandle(OwnerProcessHandle);
+    end;
+    LifecycleLockError := '无法冻结安装器进程创建身份。';
+    exit;
+  end;
+  CloseHandle(OwnerProcessHandle);
+  LifecycleLockRootValidatedPath :=
+    AddBackslash(LifecycleLockBootstrapDirectory) +
+    'lifecycle-root-validated.ready';
+  if FileExists(LifecycleLockRootValidatedPath) then
+  begin
+    LifecycleLockError := '机器根验证信号已存在，拒绝复用。';
+    exit;
+  end;
+  LifecycleLockHolderReadyPath :=
+    LockDirectory + '\installer-lifecycle-' +
+    IntToStr(LifecycleLockOwnerProcessId) + '.ready';
+  LifecycleLockHolderReleasePath :=
+    LockDirectory + '\installer-lifecycle-' +
+    IntToStr(LifecycleLockOwnerProcessId) + '.release';
+  Params :=
+    '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' +
+     Quote(LifecycleLockHolderScriptPath) +
+     ' -InstallerOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
+     ' -InstallerOwnerStartedFileTimeHigh ' + LifecycleLockOwnerStartedFileTimeHigh +
+     ' -InstallerOwnerStartedFileTimeLow ' + LifecycleLockOwnerStartedFileTimeLow +
+     ' -ExpectedLockDirectory ' + Quote(LockDirectory) +
+    ' -RootValidatedPath ' + Quote(LifecycleLockRootValidatedPath) +
+    ' -ReadyPath ' + Quote(LifecycleLockHolderReadyPath) +
+    ' -ReleasePath ' + Quote(LifecycleLockHolderReleasePath);
+  if not Exec(
+    WindowsPowerShellExecutable(),
+    Params,
+    '',
+    SW_HIDE,
+    ewNoWait,
+    ResultCode) then
+  begin
+    LifecycleLockError := '无法启动受保护的机器级安装锁 holder。';
+    exit;
+  end;
+  LifecycleLockHolderStarted := True;
+  ExpectedRootValidatedText :=
+    'STATE=root_validated' + #13#10 +
+    'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10;
+  RootValidated := False;
+  ReadyPrefix :=
+    'STATE=holding' + #13#10 +
+    'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10 +
+    'HOLDER_PID=';
+  HolderStartedHighDelimiter := #13#10 + 'HOLDER_STARTED_FILETIME_HIGH=';
+  HolderStartedLowDelimiter := #13#10 + 'HOLDER_STARTED_FILETIME_LOW=';
+  InstallerStateDelimiter := #13#10 + 'INSTALLER_STATE=';
+  NonceDelimiter := #13#10 + 'NONCE=';
+  for Attempt := 1 to 300 do
+  begin
+    if not RootValidated then
+    begin
+      if FileExists(LifecycleLockRootValidatedPath) then
+      begin
+        if not LoadStringFromFile(
+          LifecycleLockRootValidatedPath,
+          RootValidatedText) then
+        begin
+          LifecycleLockError := '无法读取机器根验证信号。';
+          exit;
+        end;
+        RootValidatedValue := String(RootValidatedText);
+        if RootValidatedValue <> ExpectedRootValidatedText then
+        begin
+          LifecycleLockError := '机器根验证信号与当前安装器身份不匹配。';
+          exit;
+        end;
+        RootValidated := True;
+      end;
+    end
+    else if FileExists(LifecycleLockHolderReadyPath) then
+    begin
+      if not LoadStringFromFile(LifecycleLockHolderReadyPath, ReadyText) then
+      begin
+        LifecycleLockError := '无法读取机器级安装锁 ready IPC。';
+        exit;
+      end;
+      ReadyValue := String(ReadyText);
+      if Copy(ReadyValue, 1, Length(ReadyPrefix)) <> ReadyPrefix then
+      begin
+        LifecycleLockError := '机器级安装锁 ready IPC 前缀不匹配当前安装器。';
+        exit;
+      end;
+      ReadyRemainder := Copy(
+        ReadyValue,
+        Length(ReadyPrefix) + 1,
+        Length(ReadyValue));
+      HolderDelimiterPosition := Pos(HolderStartedHighDelimiter, ReadyRemainder);
+      if HolderDelimiterPosition <= 1 then
+      begin
+        LifecycleLockError := '机器级安装锁 ready IPC 缺少 holder PID。';
+        exit;
+      end;
+      HolderProcessIdText := Copy(
+        ReadyRemainder,
+        1,
+        HolderDelimiterPosition - 1);
+      ParsedHolderProcessId := StrToIntDef(HolderProcessIdText, 0);
+      if (ParsedHolderProcessId <= 0) or
+         (IntToStr(ParsedHolderProcessId) <> HolderProcessIdText) then
+      begin
+        LifecycleLockError := '机器级安装锁 ready IPC 的 holder PID 无效。';
+        exit;
+      end;
+      HolderIdentityRemainder := Copy(
+        ReadyRemainder,
+        HolderDelimiterPosition + Length(HolderStartedHighDelimiter),
+        Length(ReadyRemainder));
+      HolderStartedLowDelimiterPosition := Pos(
+        HolderStartedLowDelimiter,
+        HolderIdentityRemainder);
+      if HolderStartedLowDelimiterPosition <= 1 then
+      begin
+        LifecycleLockError := '机器级安装锁 ready IPC 缺少 holder 创建时间高位。';
+        exit;
+      end;
+      HolderStartedFileTimeHighText := Copy(
+        HolderIdentityRemainder,
+        1,
+        HolderStartedLowDelimiterPosition - 1);
+      HolderStartedLowRemainder := Copy(
+        HolderIdentityRemainder,
+        HolderStartedLowDelimiterPosition + Length(HolderStartedLowDelimiter),
+        Length(HolderIdentityRemainder));
+      InstallerStateDelimiterPosition := Pos(
+        InstallerStateDelimiter,
+        HolderStartedLowRemainder);
+      if InstallerStateDelimiterPosition <= 1 then
+      begin
+        LifecycleLockError := '机器级安装锁 ready IPC 缺少 holder 创建时间低位。';
+        exit;
+      end;
+      HolderStartedFileTimeLowText := Copy(
+        HolderStartedLowRemainder,
+        1,
+        InstallerStateDelimiterPosition - 1);
+      InstallerStateRemainder := Copy(
+        HolderStartedLowRemainder,
+        InstallerStateDelimiterPosition + Length(InstallerStateDelimiter),
+        Length(HolderStartedLowRemainder));
+      NonceDelimiterPosition := Pos(NonceDelimiter, InstallerStateRemainder);
+      if NonceDelimiterPosition <= 1 then
+      begin
+        LifecycleLockError := '机器级安装锁 ready IPC 缺少 installer state 路径。';
+        exit;
+      end;
+      LifecycleInstallerStateDirectory := Copy(
+        InstallerStateRemainder,
+        1,
+        NonceDelimiterPosition - 1);
+      if (CompareText(ExtractFileDir(LifecycleInstallerStateDirectory), LockDirectory) <> 0) or
+         (CompareText(LifecycleInstallerStateDirectory, LockDirectory) = 0) then
+      begin
+        LifecycleLockError := '机器级安装锁 holder 声明的 installer state 越出机器根。';
+        LifecycleInstallerStateDirectory := '';
+        exit;
+      end;
+      LifecycleLockReleaseNonce := Copy(
+        InstallerStateRemainder,
+        NonceDelimiterPosition + Length(NonceDelimiter),
+        64);
+      ExpectedReadyText :=
+        ReadyPrefix + HolderProcessIdText + HolderStartedHighDelimiter +
+        HolderStartedFileTimeHighText + HolderStartedLowDelimiter +
+        HolderStartedFileTimeLowText + InstallerStateDelimiter +
+        LifecycleInstallerStateDirectory + NonceDelimiter +
+        LifecycleLockReleaseNonce + #13#10;
+      if (ReadyValue <> ExpectedReadyText) or
+         (not IsLowerHexLifecycleNonce(LifecycleLockReleaseNonce)) then
+      begin
+        LifecycleLockError := '机器级安装锁 ready IPC 与当前安装器身份或随机挑战不匹配。';
+        LifecycleLockReleaseNonce := '';
+        LifecycleInstallerStateDirectory := '';
+        exit;
+      end;
+      LifecycleLockHolderProcessId := LongWord(ParsedHolderProcessId);
+      LifecycleLockHolderProcessHandle := OpenVerifiedProcessIdentityHandle(
+        LifecycleLockHolderProcessId,
+        HolderStartedFileTimeHighText,
+        HolderStartedFileTimeLowText);
+      if not IsProcessHandleRunning(LifecycleLockHolderProcessHandle) then
+      begin
+        LifecycleLockError :=
+          '机器级安装锁 holder 的 PID/创建时间与 ready IPC 不匹配或进程已退出。';
+        exit;
+      end;
+      LifecycleLockHolderActive := True;
+      Result := True;
+      exit;
+    end;
+    Sleep(100);
+  end;
+  if not RootValidated then
+  begin
+    LifecycleLockError := '机器级安装锁 holder 未在 30 秒内验证机器状态根。';
+  end
+  else
+  begin
+    LifecycleLockError := '机器级安装锁 holder 未在 30 秒内就绪。';
+  end;
+end;
+
+procedure ReleaseLifecycleLock();
+var
+  ReleaseTempPath: String;
+  ReleaseText: String;
+  WaitResult: LongWord;
+begin
+  if not LifecycleLockHolderStarted then
+  begin
+    CleanupLifecycleLockBootstrapDirectory();
+    exit;
+  end;
+  if IsProcessHandleRunning(LifecycleLockHolderProcessHandle) then
+  begin
+    ReleaseTempPath := LifecycleLockHolderReleasePath + '.tmp';
+    ReleaseText :=
+      'STATE=release' + #13#10 +
+      'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10 +
+      'NONCE=' + LifecycleLockReleaseNonce + #13#10;
+    DeleteFile(ReleaseTempPath);
+    if SaveStringToFile(ReleaseTempPath, ReleaseText, False) and
+       HardenLifecycleLockPath(ReleaseTempPath, False) and
+       RenameFile(ReleaseTempPath, LifecycleLockHolderReleasePath) then
+    begin
+      WaitResult := WaitForSingleObject(LifecycleLockHolderProcessHandle, 10000);
+      if WaitResult <> WaitObject0 then
+      begin
+        Log('Lifecycle lock holder did not exit before timeout; parent exit remains the fail-safe release.');
+      end;
+    end
+    else
+    begin
+      Log('Could not persist lifecycle lock release IPC; parent exit remains the fail-safe release.');
+    end;
+  end;
+  if (LifecycleLockHolderProcessHandle <> 0) and
+     (LifecycleLockHolderProcessHandle <> InvalidHandleValue) then
+  begin
+    CloseHandle(LifecycleLockHolderProcessHandle);
+  end;
+  DeleteFile(LifecycleLockHolderReadyPath);
+  DeleteFile(LifecycleLockHolderReleasePath);
+  DeleteFile(LifecycleLockHolderReleasePath + '.tmp');
+  LifecycleLockHolderProcessHandle := InvalidHandleValue;
+  LifecycleLockHolderProcessId := 0;
+  LifecycleLockHolderReadyPath := '';
+  LifecycleLockHolderReleasePath := '';
+  LifecycleLockReleaseNonce := '';
+  LifecycleInstallerStateDirectory := '';
+  LifecycleLockHolderStarted := False;
+  LifecycleLockHolderActive := False;
+  LifecycleLockOwnerPath := '';
+  LifecycleLockOwnerProcessId := 0;
+  CleanupLifecycleLockBootstrapDirectory();
+end;
+
+procedure AssertLifecycleLockActive();
+begin
+  if (not LifecycleLockHolderActive) or
+     (not IsProcessHandleRunning(LifecycleLockHolderProcessHandle)) then
+  begin
+    RaiseException('机器级安装生命周期锁未持续持有，拒绝继续 mutation。');
   end;
 end;
 
@@ -821,14 +1484,37 @@ begin
   LastInstallerLogPath := '';
   DataRootGuardProcessId := 0;
   DataRootGuardProcessHandle := InvalidHandleValue;
+  DataRootGuardProcessStartedFileTimeHigh := '';
+  DataRootGuardProcessStartedFileTimeLow := '';
   DataRootGuardReadyPath := '';
   DataRootGuardReleasePath := '';
+  DataRootGuardReleaseNonce := '';
+  DataRootGuardScriptPath := '';
   DataRootGuardProcessStarted := False;
   DataRootGuardActive := False;
+  LifecycleLockHolderProcessHandle := InvalidHandleValue;
+  LifecycleLockHolderProcessId := 0;
+  LifecycleLockRootValidatedPath := '';
+  LifecycleLockHolderReadyPath := '';
+  LifecycleLockHolderReleasePath := '';
+  LifecycleLockReleaseNonce := '';
+  LifecycleInstallerStateDirectory := '';
+  LifecycleLockHolderScriptPath := '';
+  LifecycleLockBootstrapDirectory := '';
+  LifecycleLockBootstrapFilesStaged := False;
+  LifecycleLockHolderStarted := False;
+  LifecycleLockHolderActive := False;
+  if not PrepareSetupLifecycleLockHolderScripts() then
+  begin
+    MsgBox(LifecycleLockError, mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
   Result := AcquireLifecycleLock();
   if not Result then
   begin
     MsgBox(LifecycleLockError, mbError, MB_OK);
+    ReleaseLifecycleLock();
     exit;
   end;
   if not CheckBackendVersionFloor(VersionFailureReason) then
@@ -843,10 +1529,28 @@ end;
 
 function InitializeUninstall(): Boolean;
 begin
+  LifecycleLockHolderProcessHandle := InvalidHandleValue;
+  LifecycleLockHolderProcessId := 0;
+  LifecycleLockRootValidatedPath := '';
+  LifecycleLockHolderReadyPath := '';
+  LifecycleLockHolderReleasePath := '';
+  LifecycleLockReleaseNonce := '';
+  LifecycleInstallerStateDirectory := '';
+  LifecycleLockBootstrapDirectory := '';
+  LifecycleLockBootstrapFilesStaged := False;
+  LifecycleLockHolderStarted := False;
+  LifecycleLockHolderActive := False;
+  if not PrepareUninstallLifecycleLockHolderScript() then
+  begin
+    MsgBox(LifecycleLockError, mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
   Result := AcquireLifecycleLock();
   if not Result then
   begin
     MsgBox(LifecycleLockError, mbError, MB_OK);
+    ReleaseLifecycleLock();
   end;
 end;
 
@@ -855,18 +1559,23 @@ begin
   ReleaseLifecycleLock();
 end;
 
-function CanRunPowerShell(PowerShellPath: String): Boolean;
+function IsSupportedPowerShell7Host(PowerShellPath: String): Boolean;
 var
   ResultCode: Integer;
+  CommandText: String;
 begin
   if not FileExists(PowerShellPath) then
   begin
     Result := False;
     exit;
   end;
+  CommandText :=
+    'if (($PSVersionTable.PSEdition -ceq ''Core'') -and ' +
+    '([int]$PSVersionTable.PSVersion.Major -ge 7) -and ' +
+    '[Environment]::Is64BitProcess) { exit 0 } else { exit 1 }';
   if not Exec(
     PowerShellPath,
-    '-NoLogo -NoProfile -NonInteractive -Command "exit 0"',
+    '-NoLogo -NoProfile -NonInteractive -Command ' + Quote(CommandText),
     '',
     SW_HIDE,
     ewWaitUntilTerminated,
@@ -944,10 +1653,10 @@ begin
         FileExists(Candidate) and
         IsProtectedProgramFilesPath(Candidate) and
         HasValidMicrosoftSignature(Candidate) and
-        CanRunPowerShell(Candidate) then
+        IsSupportedPowerShell7Host(Candidate) and
+        ((Result = '') or (CompareText(ExpandFileName(Candidate), ExpandFileName(Result)) < 0)) then
       begin
         Result := Candidate;
-        exit;
       end;
     end;
   end;
@@ -1004,6 +1713,10 @@ begin
   begin
     Result := '确认并清理首次绑定凭据';
   end
+  else if CompareText(Context, 'Ticketbox DataRoot guard control recovery') = 0 then
+  begin
+    Result := '确认 DataRoot guard 启动失败已释放全部权威';
+  end
   else
   begin
     Result := '安装子步骤（' + Context + '）';
@@ -1039,11 +1752,22 @@ begin
   Result := True;
 end;
 
-function EnsureLoggedPowerShellRunner(var RunnerPath: String): Boolean;
+function EnsureLoggedPowerShellRunner(
+  var RunnerPath: String;
+  var RunnerSha256: String
+): Boolean;
 var
   RunnerText: String;
 begin
-  RunnerPath := ExpandConstant('{tmp}\ticketbox-run-installer-child-logged.ps1');
+  Result := False;
+  RunnerSha256 := '';
+  if LifecycleLockBootstrapDirectory = '' then
+  begin
+    exit;
+  end;
+  RunnerPath :=
+    AddBackslash(LifecycleLockBootstrapDirectory) +
+    'ticketbox-run-installer-child-logged.ps1';
   RunnerText :=
     '#Requires -Version 5.1' + #13#10 +
     '[CmdletBinding()]' + #13#10 +
@@ -1062,7 +1786,8 @@ begin
     '    if ([IO.Path]::GetFullPath($command.Source) -ine [IO.Path]::GetFullPath($TargetScript)) { throw "Child script resolution mismatch." }' + #13#10 +
     '    $scriptName = [IO.Path]::GetFileName($command.Source)' + #13#10 +
     '    $allowedByScript = @{' + #13#10 +
-    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced","HoldDataRootMutationGuard","DataRootGuardReadyPath","DataRootGuardReleasePath","DataRootGuardOwnerProcessId")' + #13#10 +
+    '        "hold_data_root_mutation_guard.ps1" = @("InstallDir","DataRoot","InstallerLockOwnerProcessId","Hold","ConfirmStopped","DataRootGuardReadyPath","DataRootGuardReleasePath","ExpectedHolderProcessId","ExpectedHolderStartedFileTimeHigh","ExpectedHolderStartedFileTimeLow","ExpectedNonce")' + #13#10 +
+    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced")' + #13#10 +
     '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","LifecycleReceiptPath","InstallerLockOwnerProcessId","CompleteOwnerHandoffOnly")' + #13#10 +
     '        "uninstall_bundled_services.ps1" = @("InstallDir","InstallerLockOwnerProcessId","DeleteData")' + #13#10 +
     '    }' + #13#10 +
@@ -1097,7 +1822,39 @@ begin
     '    if ($transcriptStarted) { try { Stop-Transcript | Out-Null } catch { } }' + #13#10 +
     '}' + #13#10 +
     'exit $exitCode' + #13#10;
-  Result := SaveStringToFile(RunnerPath, RunnerText, False);
+  DeleteFile(RunnerPath);
+  if (not SaveStringToFile(RunnerPath, RunnerText, False)) or
+     (not HardenLifecycleLockPath(RunnerPath, False)) then
+  begin
+    DeleteFile(RunnerPath);
+    exit;
+  end;
+  try
+    RunnerSha256 := Lowercase(GetSHA256OfFile(RunnerPath));
+  except
+    RunnerSha256 := '';
+  end;
+  Result := RunnerSha256 <> '';
+end;
+
+function ValidateLoggedPowerShellRunner(
+  RunnerPath: String;
+  ExpectedSha256: String
+): Boolean;
+var
+  ActualSha256: String;
+begin
+  Result := False;
+  if (ExpectedSha256 = '') or (not FileExists(RunnerPath)) then
+  begin
+    exit;
+  end;
+  try
+    ActualSha256 := Lowercase(GetSHA256OfFile(RunnerPath));
+  except
+    exit;
+  end;
+  Result := CompareText(ActualSha256, ExpectedSha256) = 0;
 end;
 
 function RunPowerShellChecked(ScriptPath: String; Arguments: String; Context: String): Boolean;
@@ -1108,6 +1865,7 @@ var
   Started: Boolean;
   LogPath: String;
   RunnerPath: String;
+  RunnerSha256: String;
   ChineseContext: String;
 begin
   ChineseContext := PowerShellContextChinese(Context);
@@ -1123,7 +1881,7 @@ begin
     Result := False;
     exit;
   end;
-  if not EnsureLoggedPowerShellRunner(RunnerPath) then
+  if not EnsureLoggedPowerShellRunner(RunnerPath, RunnerSha256) then
   begin
     MsgBox(
       '无法创建 PowerShell 日志运行器，已拒绝继续。' + #13#10 +
@@ -1139,9 +1897,29 @@ begin
     ' -TargetScript ' + Quote(ScriptPath) +
     ' -LogPath ' + Quote(LogPath) + ' ' + Arguments;
   PowerShellPath := PowerShellExecutable();
+  if not ValidateLoggedPowerShellRunner(RunnerPath, RunnerSha256) then
+  begin
+    MsgBox(
+      '受保护 PowerShell 日志运行器在执行前完整性复核失败。' + #13#10 +
+      '操作：' + ChineseContext + #13#10 +
+      '日志：' + LogPath,
+      mbError,
+      MB_OK);
+    Result := False;
+    exit;
+  end;
   Started := Exec(PowerShellPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   if (not Started) and (CompareText(PowerShellPath, WindowsPowerShellExecutable()) <> 0) then
   begin
+    if not ValidateLoggedPowerShellRunner(RunnerPath, RunnerSha256) then
+    begin
+      MsgBox(
+        '受保护 PowerShell 日志运行器在兼容宿主回退前完整性复核失败。',
+        mbError,
+        MB_OK);
+      Result := False;
+      exit;
+    end;
     Started := Exec(
       WindowsPowerShellExecutable(),
       Params,
@@ -1150,6 +1928,7 @@ begin
       ewWaitUntilTerminated,
       ResultCode);
   end;
+  DeleteFile(RunnerPath);
   if not Started then
   begin
     MsgBox(
@@ -1228,12 +2007,198 @@ begin
   Result := True;
 end;
 
+procedure ResetDataRootMutationGuardState();
+begin
+  if (DataRootGuardProcessHandle <> 0) and
+     (DataRootGuardProcessHandle <> InvalidHandleValue) then
+  begin
+    CloseHandle(DataRootGuardProcessHandle);
+  end;
+  DeleteFile(DataRootGuardReadyPath);
+  DeleteFile(DataRootGuardReleasePath);
+  DeleteFile(DataRootGuardReleasePath + '.tmp');
+  DataRootGuardProcessHandle := InvalidHandleValue;
+  DataRootGuardProcessId := 0;
+  DataRootGuardProcessStartedFileTimeHigh := '';
+  DataRootGuardProcessStartedFileTimeLow := '';
+  DataRootGuardReleaseNonce := '';
+  DataRootGuardScriptPath := '';
+  DataRootGuardProcessStarted := False;
+  DataRootGuardActive := False;
+end;
+
+function PersistDataRootGuardControl(ControlState: String): Boolean;
+var
+  ControlTempPath: String;
+  ControlText: String;
+begin
+  Result := False;
+  if (CompareText(ControlState, 'release') = 0) and
+     (not IsLowerHexLifecycleNonce(DataRootGuardReleaseNonce)) then
+  begin
+    exit;
+  end;
+  if (CompareText(ControlState, 'release') = 0) then
+  begin
+    ControlText :=
+      'STATE=release' + #13#10 +
+      'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10 +
+      'NONCE=' + DataRootGuardReleaseNonce + #13#10;
+  end
+  else if CompareText(ControlState, 'abort') = 0 then
+  begin
+    ControlText :=
+      'STATE=abort' + #13#10 +
+      'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10;
+  end
+  else
+  begin
+    exit;
+  end;
+  ControlTempPath := DataRootGuardReleasePath + '.tmp';
+  DeleteFile(ControlTempPath);
+  if FileExists(DataRootGuardReleasePath) then
+  begin
+    exit;
+  end;
+  Result :=
+    SaveStringToFile(ControlTempPath, ControlText, False) and
+    HardenLifecycleLockPath(ControlTempPath, False) and
+    RenameFile(ControlTempPath, DataRootGuardReleasePath);
+  if not Result then
+  begin
+    DeleteFile(ControlTempPath);
+  end;
+end;
+
+function DataRootGuardStoppedAcknowledged(): Boolean;
+var
+  AckText: AnsiString;
+  ExpectedAck: String;
+begin
+  Result := False;
+  if not FileExists(DataRootGuardReleasePath) then
+  begin
+    exit;
+  end;
+  if not LoadStringFromFile(DataRootGuardReleasePath, AckText) then
+  begin
+    exit;
+  end;
+  ExpectedAck :=
+    'STATE=stopped' + #13#10 +
+    'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10;
+  Result := String(AckText) = ExpectedAck;
+end;
+
+function WaitForDataRootGuardStoppedAcknowledgement(): Boolean;
+var
+  Attempt: Integer;
+begin
+  Result := False;
+  for Attempt := 1 to 100 do
+  begin
+    if DataRootGuardStoppedAcknowledged() then
+    begin
+      Result := True;
+      exit;
+    end;
+    Sleep(100);
+  end;
+end;
+
+function ConfirmDataRootGuardStoppedAfterControlFailure(): Boolean;
+var
+  Args: String;
+begin
+  Result := False;
+  if (DataRootGuardScriptPath = '') or
+     (DataRootGuardReadyPath = '') or
+     (DataRootGuardReleasePath = '') then
+  begin
+    exit;
+  end;
+  if not ValidateLifecycleLockBootstrapFiles() then
+  begin
+    Log('DataRoot guard recovery refused a changed lifecycle bootstrap bundle.');
+    exit;
+  end;
+  Args :=
+    '-InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
+    ' -ConfirmStopped' +
+    ' -DataRootGuardReadyPath ' + Quote(DataRootGuardReadyPath) +
+    ' -DataRootGuardReleasePath ' + Quote(DataRootGuardReleasePath);
+  if (DataRootGuardProcessId > 0) and
+     (DataRootGuardProcessStartedFileTimeHigh <> '') and
+     (DataRootGuardProcessStartedFileTimeLow <> '') and
+     IsLowerHexLifecycleNonce(DataRootGuardReleaseNonce) then
+  begin
+    Args := Args +
+      ' -ExpectedHolderProcessId ' + IntToStr(DataRootGuardProcessId) +
+      ' -ExpectedHolderStartedFileTimeHigh ' + DataRootGuardProcessStartedFileTimeHigh +
+      ' -ExpectedHolderStartedFileTimeLow ' + DataRootGuardProcessStartedFileTimeLow +
+      ' -ExpectedNonce ' + DataRootGuardReleaseNonce;
+  end;
+  if not RunPowerShellChecked(
+    DataRootGuardScriptPath,
+    Args,
+    'Ticketbox DataRoot guard control recovery') then
+  begin
+    exit;
+  end;
+  Result := DataRootGuardStoppedAcknowledged();
+end;
+
+function AbortDataRootMutationGuardStartup(): Boolean;
+begin
+  Result := False;
+  if not DataRootGuardProcessStarted then
+  begin
+    Result := True;
+    exit;
+  end;
+  if DataRootGuardStoppedAcknowledged() then
+  begin
+    ResetDataRootMutationGuardState();
+    Result := True;
+    exit;
+  end;
+  if not PersistDataRootGuardControl('abort') then
+  begin
+    if DataRootGuardStoppedAcknowledged() then
+    begin
+      ResetDataRootMutationGuardState();
+      Result := True;
+      exit;
+    end;
+    if ConfirmDataRootGuardStoppedAfterControlFailure() then
+    begin
+      ResetDataRootMutationGuardState();
+      Result := True;
+      exit;
+    end;
+    Log('Could not persist DataRoot guard startup abort; keeping local holder state fail closed.');
+    exit;
+  end;
+  if WaitForDataRootGuardStoppedAcknowledgement() then
+  begin
+    ResetDataRootMutationGuardState();
+    Result := True;
+    exit;
+  end;
+  if ConfirmDataRootGuardStoppedAfterControlFailure() then
+  begin
+    ResetDataRootMutationGuardState();
+    Result := True;
+    exit;
+  end;
+  Log('DataRoot guard startup abort was not acknowledged and inactivity could not be proven; keeping local holder state fail closed.');
+end;
+
 function StartDataRootMutationGuard(
   ScriptPath: String;
   InstallDir: String;
-  DataRoot: String;
-  PgPort: String;
-  BackendPort: String
+  DataRoot: String
 ): Boolean;
 var
   Params: String;
@@ -1242,14 +2207,29 @@ var
   Started: Boolean;
   Attempt: Integer;
   ReadyText: AnsiString;
+  ReadyPrefix: String;
+  ReadyRemainder: String;
+  HolderIdentityRemainder: String;
+  HolderStartedHighDelimiter: String;
+  HolderStartedLowDelimiter: String;
+  NonceDelimiter: String;
+  HolderProcessIdText: String;
+  HolderStartedFileTimeHighText: String;
+  HolderStartedFileTimeLowText: String;
+  HolderDelimiterPosition: Integer;
+  NonceDelimiterPosition: Integer;
+  ParsedHolderProcessId: Integer;
+  ReadyValue: String;
   ExpectedReadyText: String;
 begin
   Result := False;
-  if DataRootGuardProcessStarted then
+  if DataRootGuardProcessStarted and
+     (not AbortDataRootMutationGuardStartup()) then
   begin
-    MsgBox('DataRoot guard lease 已启动，拒绝在同一安装生命周期重复获取。', mbError, MB_OK);
+    MsgBox('上一轮 DataRoot guard 尚未证明停止，拒绝在同一安装生命周期重复获取。', mbError, MB_OK);
     exit;
   end;
+  DataRootGuardScriptPath := ScriptPath;
   DataRootGuardReadyPath :=
     ExpandConstant('{commoncf64}\Ticketbox\data-root-guard-') +
     IntToStr(LifecycleLockOwnerProcessId) + '.ready';
@@ -1266,16 +2246,10 @@ begin
     '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + Quote(ScriptPath) +
     ' -InstallDir ' + Quote(InstallDir) +
     ' -DataRoot ' + Quote(DataRoot) +
-    ' -PgPort ' + PgPort +
-    ' -BackendPort ' + BackendPort +
-    ' -TargetPgMajor {#TargetPgMajor}' +
-    ' -ReleaseConfigPath ' + Quote(ExpandConstant('{tmp}\windows-release-config.json')) +
-    ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
     ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
-    ' -HoldDataRootMutationGuard' +
+    ' -Hold' +
     ' -DataRootGuardReadyPath ' + Quote(DataRootGuardReadyPath) +
-    ' -DataRootGuardReleasePath ' + Quote(DataRootGuardReleasePath) +
-    ' -DataRootGuardOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);
+    ' -DataRootGuardReleasePath ' + Quote(DataRootGuardReleasePath);
   PowerShellPath := PowerShellExecutable();
   Started := Exec(PowerShellPath, Params, '', SW_HIDE, ewNoWait, ResultCode);
   if (not Started) and (CompareText(PowerShellPath, WindowsPowerShellExecutable()) <> 0) then
@@ -1294,99 +2268,170 @@ begin
     exit;
   end;
 
-  DataRootGuardProcessId := LongWord(ResultCode);
   DataRootGuardProcessStarted := True;
-  DataRootGuardProcessHandle := OpenProcess(
-    ProcessSynchronize,
-    False,
-    DataRootGuardProcessId);
-  if DataRootGuardProcessHandle = 0 then
-  begin
-    MsgBox('无法取得 DataRoot guard 进程句柄，安装尚未进入复制前阶段。', mbError, MB_OK);
-    exit;
-  end;
-
-  ExpectedReadyText :=
-    'STATE=holding' + #13#10 +
-    'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10;
-  for Attempt := 1 to 300 do
-  begin
-    if WaitForSingleObject(DataRootGuardProcessHandle, 0) = WaitObject0 then
+  try
+    ReadyPrefix :=
+      'STATE=holding' + #13#10 +
+      'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10 +
+      'HOLDER_PID=';
+    HolderStartedHighDelimiter := #13#10 + 'HOLDER_STARTED_FILETIME_HIGH=';
+    HolderStartedLowDelimiter := #13#10 + 'HOLDER_STARTED_FILETIME_LOW=';
+    NonceDelimiter := #13#10 + 'NONCE=';
+    for Attempt := 1 to 300 do
     begin
-      MsgBox('DataRoot guard 在确认 ready artifact 前退出，安装尚未进入复制前阶段。', mbError, MB_OK);
-      exit;
-    end;
-    if FileExists(DataRootGuardReadyPath) then
-    begin
-      if (not LoadStringFromFile(DataRootGuardReadyPath, ReadyText)) or
-         (String(ReadyText) <> ExpectedReadyText) then
+      if FileExists(DataRootGuardReadyPath) then
       begin
-        MsgBox('DataRoot guard ready artifact 与当前安装器身份不匹配。', mbError, MB_OK);
+        if not LoadStringFromFile(DataRootGuardReadyPath, ReadyText) then
+        begin
+          MsgBox('无法读取 DataRoot guard ready artifact。', mbError, MB_OK);
+          exit;
+        end;
+        ReadyValue := String(ReadyText);
+        if Copy(ReadyValue, 1, Length(ReadyPrefix)) <> ReadyPrefix then
+        begin
+          MsgBox('DataRoot guard ready artifact 与当前安装器身份不匹配。', mbError, MB_OK);
+          exit;
+        end;
+        ReadyRemainder := Copy(
+          ReadyValue,
+          Length(ReadyPrefix) + 1,
+          Length(ReadyValue));
+        HolderDelimiterPosition := Pos(HolderStartedHighDelimiter, ReadyRemainder);
+        if HolderDelimiterPosition <= 1 then
+        begin
+          MsgBox('DataRoot guard ready artifact 缺少 holder PID。', mbError, MB_OK);
+          exit;
+        end;
+        HolderProcessIdText := Copy(
+          ReadyRemainder,
+          1,
+          HolderDelimiterPosition - 1);
+        ParsedHolderProcessId := StrToIntDef(HolderProcessIdText, 0);
+        if (ParsedHolderProcessId <= 0) or
+           (IntToStr(ParsedHolderProcessId) <> HolderProcessIdText) then
+        begin
+          MsgBox('DataRoot guard ready artifact 的 holder PID 无效。', mbError, MB_OK);
+          exit;
+        end;
+        HolderIdentityRemainder := Copy(
+          ReadyRemainder,
+          HolderDelimiterPosition + Length(HolderStartedHighDelimiter),
+          Length(ReadyRemainder));
+        NonceDelimiterPosition := Pos(HolderStartedLowDelimiter, HolderIdentityRemainder);
+        if NonceDelimiterPosition <= 1 then
+        begin
+          MsgBox('DataRoot guard ready artifact 缺少 holder 创建时间高位。', mbError, MB_OK);
+          exit;
+        end;
+        HolderStartedFileTimeHighText := Copy(
+          HolderIdentityRemainder,
+          1,
+          NonceDelimiterPosition - 1);
+        HolderIdentityRemainder := Copy(
+          HolderIdentityRemainder,
+          NonceDelimiterPosition + Length(HolderStartedLowDelimiter),
+          Length(HolderIdentityRemainder));
+        NonceDelimiterPosition := Pos(NonceDelimiter, HolderIdentityRemainder);
+        if NonceDelimiterPosition <= 1 then
+        begin
+          MsgBox('DataRoot guard ready artifact 缺少 holder 创建时间低位。', mbError, MB_OK);
+          exit;
+        end;
+        HolderStartedFileTimeLowText := Copy(
+          HolderIdentityRemainder,
+          1,
+          NonceDelimiterPosition - 1);
+        DataRootGuardReleaseNonce := Copy(
+          HolderIdentityRemainder,
+          NonceDelimiterPosition + Length(NonceDelimiter),
+          64);
+        ExpectedReadyText :=
+          ReadyPrefix + HolderProcessIdText + HolderStartedHighDelimiter +
+          HolderStartedFileTimeHighText + HolderStartedLowDelimiter +
+          HolderStartedFileTimeLowText + NonceDelimiter +
+          DataRootGuardReleaseNonce + #13#10;
+        if (ReadyValue <> ExpectedReadyText) or
+           (not IsLowerHexLifecycleNonce(DataRootGuardReleaseNonce)) then
+        begin
+          DataRootGuardReleaseNonce := '';
+          MsgBox('DataRoot guard ready artifact 的随机挑战无效。', mbError, MB_OK);
+          exit;
+        end;
+        DataRootGuardProcessId := LongWord(ParsedHolderProcessId);
+        DataRootGuardProcessStartedFileTimeHigh := HolderStartedFileTimeHighText;
+        DataRootGuardProcessStartedFileTimeLow := HolderStartedFileTimeLowText;
+        DataRootGuardProcessHandle := OpenVerifiedProcessIdentityHandle(
+          DataRootGuardProcessId,
+          HolderStartedFileTimeHighText,
+          HolderStartedFileTimeLowText);
+        if not IsProcessHandleRunning(DataRootGuardProcessHandle) then
+        begin
+          MsgBox(
+            'DataRoot guard 的 PID/创建时间与 ready artifact 不匹配或进程已退出。',
+            mbError,
+            MB_OK);
+          exit;
+        end;
+        DataRootGuardActive := True;
+        Result := True;
         exit;
       end;
-      DataRootGuardActive := True;
-      Result := True;
-      exit;
+      Sleep(100);
     end;
-    Sleep(100);
+    MsgBox('DataRoot guard 未在 30 秒内就绪，安装尚未进入复制前阶段。', mbError, MB_OK);
+  finally
+    if (not Result) and (not AbortDataRootMutationGuardStartup()) then
+    begin
+      Log('DataRoot guard startup could not be rolled back in-process; retry remains blocked until Setup exits.');
+    end;
   end;
-  MsgBox('DataRoot guard 未在 30 秒内就绪，安装尚未进入复制前阶段。', mbError, MB_OK);
 end;
 
 procedure AssertDataRootMutationGuardActive();
 begin
   if (not DataRootGuardActive) or
-     (DataRootGuardProcessHandle = 0) or
-     (DataRootGuardProcessHandle = InvalidHandleValue) or
-     (WaitForSingleObject(DataRootGuardProcessHandle, 0) <> WaitTimeout) then
+     (not IsProcessHandleRunning(DataRootGuardProcessHandle)) then
   begin
     RaiseException('DataRoot guard lease 未持续持有，拒绝继续安装生命周期 mutation。');
   end;
 end;
 
 procedure ReleaseDataRootMutationGuard();
-var
-  ReleaseTempPath: String;
-  ReleaseText: String;
-  WaitResult: LongWord;
 begin
   if not DataRootGuardProcessStarted then
   begin
     exit;
   end;
-  if (DataRootGuardProcessHandle <> 0) and
-     (DataRootGuardProcessHandle <> InvalidHandleValue) and
-     (WaitForSingleObject(DataRootGuardProcessHandle, 0) = WaitTimeout) then
+  if not DataRootGuardActive then
   begin
-    ReleaseTempPath := DataRootGuardReleasePath + '.tmp';
-    ReleaseText :=
-      'STATE=release' + #13#10 +
-      'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10;
-    DeleteFile(ReleaseTempPath);
-    if SaveStringToFile(ReleaseTempPath, ReleaseText, False) and
-       HardenLifecycleLockPath(ReleaseTempPath, False) and
-       RenameFile(ReleaseTempPath, DataRootGuardReleasePath) then
+    AbortDataRootMutationGuardStartup();
+    exit;
+  end;
+  if DataRootGuardStoppedAcknowledged() then
+  begin
+    ResetDataRootMutationGuardState();
+    exit;
+  end;
+  if not PersistDataRootGuardControl('release') then
+  begin
+    if DataRootGuardStoppedAcknowledged() or
+       ConfirmDataRootGuardStoppedAfterControlFailure() then
     begin
-      WaitResult := WaitForSingleObject(DataRootGuardProcessHandle, 10000);
-      if WaitResult <> WaitObject0 then
-      begin
-        Log('DataRoot guard did not exit before timeout; parent-process exit remains the fail-safe release.');
-      end;
-    end
-    else
-    begin
-      Log('Could not persist the DataRoot guard release artifact; parent-process exit remains the fail-safe release.');
+      ResetDataRootMutationGuardState();
+      exit;
     end;
+    Log('Could not persist the DataRoot guard release artifact; keeping local state fail closed.');
+    exit;
   end;
-  if (DataRootGuardProcessHandle <> 0) and
-     (DataRootGuardProcessHandle <> InvalidHandleValue) then
+  if WaitForDataRootGuardStoppedAcknowledgement() then
   begin
-    CloseHandle(DataRootGuardProcessHandle);
+    ResetDataRootMutationGuardState();
+    exit;
   end;
-  DeleteFile(DataRootGuardReadyPath);
-  DeleteFile(DataRootGuardReleasePath);
-  DeleteFile(DataRootGuardReleasePath + '.tmp');
-  DataRootGuardProcessHandle := InvalidHandleValue;
-  DataRootGuardProcessStarted := False;
-  DataRootGuardActive := False;
+  if ConfirmDataRootGuardStoppedAfterControlFailure() then
+  begin
+    ResetDataRootMutationGuardState();
+    exit;
+  end;
+  Log('DataRoot guard release was not acknowledged and stopped authority could not be proven; keeping local state fail closed.');
 end;

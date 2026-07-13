@@ -92,9 +92,15 @@ function New-TicketboxShawlServiceImagePath {
         [Parameter(Mandatory = $true)][string]$PgDumpPath,
         [Parameter(Mandatory = $true)][string]$PgRestorePath,
         [Parameter(Mandatory = $true)][string]$BootstrapRecoveryGuardPath,
+        [Parameter(Mandatory = $true)][string]$InstallerRecoveryGuardPath,
+        [Parameter(Mandatory = $true)][string]$DataRootMarkerPath,
+        [Parameter(Mandatory = $true)][string]$DataVolumeIdentity,
         [Parameter(Mandatory = $true)][int]$StopTimeoutMs,
         [Parameter(Mandatory = $true)][int]$RestartDelayMs
     )
+    if ($DataVolumeIdentity -notmatch '^\\\\\?\\Volume\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}\\$') {
+        throw "Shawl 服务需要规范的 Windows Volume GUID identity。"
+    }
     return Join-TicketboxWindowsCommandLine @(
         (ConvertTo-TicketboxFullPath $ShawlPath),
         "run",
@@ -118,6 +124,12 @@ function New-TicketboxShawlServiceImagePath {
         "PG_RESTORE_PATH=$(ConvertTo-TicketboxFullPath $PgRestorePath)",
         "--env",
         "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH=$(ConvertTo-TicketboxFullPath $BootstrapRecoveryGuardPath)",
+        "--env",
+        "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH=$(ConvertTo-TicketboxFullPath $InstallerRecoveryGuardPath)",
+        "--env",
+        "TICKETBOX_DATA_ROOT_MARKER_PATH=$(ConvertTo-TicketboxFullPath $DataRootMarkerPath)",
+        "--env",
+        "TICKETBOX_DATA_VOLUME_IDENTITY=$($DataVolumeIdentity.ToUpperInvariant())",
         "--",
         (ConvertTo-TicketboxFullPath $BackendPath)
     )
@@ -399,8 +411,13 @@ function Assert-TicketboxShawlServiceCommand {
         [string]$ExpectedPgDumpPath,
         [string]$ExpectedPgRestorePath,
         [string]$ExpectedBootstrapRecoveryGuardPath,
+        [string]$ExpectedInstallerRecoveryGuardPath,
+        [string]$ExpectedDataRootMarkerPath = "",
+        [string]$ExpectedDataVolumeIdentity = "",
         [int]$ExpectedStopTimeoutMs,
-        [int]$ExpectedRestartDelayMs
+        [int]$ExpectedRestartDelayMs,
+        [switch]$AllowMissingInstallerRecoveryGuard,
+        [switch]$AllowMissingRuntimeDataAuthority
     )
 
     Assert-TicketboxServiceDependencies -Name $Name -ExpectedDependencies @($ExpectedDependency)
@@ -512,28 +529,69 @@ function Assert-TicketboxShawlServiceCommand {
         "PG_DUMP_PATH" = $ExpectedPgDumpPath
         "PG_RESTORE_PATH" = $ExpectedPgRestorePath
         "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH" = $ExpectedBootstrapRecoveryGuardPath
+        "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH" = $ExpectedInstallerRecoveryGuardPath
+        "TICKETBOX_DATA_ROOT_MARKER_PATH" = $ExpectedDataRootMarkerPath
+        "TICKETBOX_DATA_VOLUME_IDENTITY" = $ExpectedDataVolumeIdentity
     }
-    if ($environmentValues.Count -ne $expectedEnvironment.Count) {
+    $allowedMissingEnvironment = @()
+    if ($AllowMissingInstallerRecoveryGuard) {
+        $allowedMissingEnvironment += "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH"
+    }
+    if ($AllowMissingRuntimeDataAuthority) {
+        $allowedMissingEnvironment += @(
+            "TICKETBOX_DATA_ROOT_MARKER_PATH",
+            "TICKETBOX_DATA_VOLUME_IDENTITY"
+        )
+    }
+    if (
+        $environmentValues.Count -gt $expectedEnvironment.Count -or
+        $environmentValues.Count -lt ($expectedEnvironment.Count - $allowedMissingEnvironment.Count)
+    ) {
         throw "Shawl 服务 $Name 的环境变量数量不匹配。"
     }
+    $runtimeAuthorityValuesSeen = 0
     foreach ($entry in $environmentValues) {
         $parts = $entry.Split(@("="), 2, [System.StringSplitOptions]::None)
         if ($parts.Count -ne 2 -or -not $expectedEnvironment.ContainsKey($parts[0])) {
             throw "Shawl 服务 $Name 含有未授权环境变量。"
         }
-        $expectedEnvironmentPath = $expectedEnvironment[$parts[0]]
-        if (
-            -not [string]::Equals(
-                (ConvertTo-TicketboxFullPath $parts[1]),
-                (ConvertTo-TicketboxFullPath $expectedEnvironmentPath),
-                [System.StringComparison]::OrdinalIgnoreCase
-            )
-        ) {
-            throw "Shawl 服务 $Name 的环境变量 $($parts[0]) 指向错误路径。"
+        $expectedValue = $expectedEnvironment[$parts[0]]
+        if ($parts[0] -eq "TICKETBOX_DATA_VOLUME_IDENTITY") {
+            if (
+                $parts[1] -notmatch '^\\\\\?\\Volume\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}\\$' -or
+                -not [string]::Equals(
+                    $parts[1],
+                    $expectedValue,
+                    [System.StringComparison]::OrdinalIgnoreCase
+                )
+            ) {
+                throw "Shawl 服务 $Name 的 DataRoot Volume GUID 不匹配。"
+            }
+            $runtimeAuthorityValuesSeen++
+        }
+        else {
+            if (
+                -not [string]::Equals(
+                    (ConvertTo-TicketboxFullPath $parts[1]),
+                    (ConvertTo-TicketboxFullPath $expectedValue),
+                    [System.StringComparison]::OrdinalIgnoreCase
+                )
+            ) {
+                throw "Shawl 服务 $Name 的环境变量 $($parts[0]) 指向错误路径。"
+            }
+            if ($parts[0] -eq "TICKETBOX_DATA_ROOT_MARKER_PATH") {
+                $runtimeAuthorityValuesSeen++
+            }
         }
         $expectedEnvironment.Remove($parts[0])
     }
-    if ($expectedEnvironment.Count -ne 0) {
+    if ($runtimeAuthorityValuesSeen -notin @(0, 2)) {
+        throw "Shawl 服务 $Name 的 runtime DataRoot authority 必须成对出现。"
+    }
+    $unexpectedMissing = @($expectedEnvironment.Keys | Where-Object {
+        $_ -notin $allowedMissingEnvironment
+    })
+    if ($unexpectedMissing.Count -ne 0) {
         throw "Shawl 服务 $Name 缺少安装器要求的环境变量。"
     }
 }

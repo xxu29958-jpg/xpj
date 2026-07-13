@@ -114,7 +114,10 @@ def _matches_authoritative_inno_build(command: str) -> bool:
     if invocation is None:
         return False
     script, arguments = invocation
-    return script == "packaging/build_inno_installer.ps1" and not arguments
+    return script == "packaging/build_inno_installer.ps1" and arguments == (
+        "-installerhashoutputfile",
+        "$env:github_output",
+    )
 
 
 def _matches_installer_publish_verification(command: str) -> bool:
@@ -127,6 +130,25 @@ def _matches_installer_publish_verification(command: str) -> bool:
     script, arguments = invocation
     return script == "packaging/build_inno_installer.ps1" and arguments == (
         "-verifyonly",
+        "-expectedinstallersha256",
+        "$env:installer_expected_sha256",
+    )
+
+
+def _matches_uploaded_installer_verification(command: str) -> bool:
+    invocation = _powershell_file_invocation(
+        command,
+        executables={"powershell", "powershell.exe", "pwsh", "pwsh.exe"},
+    )
+    if invocation is None:
+        return False
+    script, arguments = invocation
+    return script == "packaging/build_inno_installer.ps1" and arguments == (
+        "-verifyonly",
+        "-expectedinstallersha256",
+        "$env:installer_expected_sha256",
+        "-verifypublishdirectory",
+        "$env:installer_verify_download_path",
     )
 
 
@@ -215,7 +237,8 @@ _REQUIRED_INNO_BUILD_INVOCATIONS = (
         "authoritative Inno installer compile",
         re.compile(
             r"(?i)^\s*(?:&\s+)?(?:powershell|pwsh)(?:\.exe)?\b[^\r\n]*\s-File\s+"
-            r"(?:\.[\\/])?packaging[\\/]+build_inno_installer\.ps1\s*$"
+            r"(?:\.[\\/])?packaging[\\/]+build_inno_installer\.ps1\b"
+            r"[^\r\n]*\s-InstallerHashOutputFile\s+[^\r\n]*GITHUB_OUTPUT\s*$"
         ),
         matcher=_matches_authoritative_inno_build,
     ),
@@ -235,10 +258,27 @@ REQUIRED_CI_INVOCATIONS_BY_PLATFORM = {
     "Gitea": _REQUIRED_INNO_BUILD_INVOCATIONS,
 }
 
+REQUIRED_INSTALLER_POST_UPLOAD_INVOCATION_BY_PLATFORM = {
+    platform: RequiredCommand(
+        "uploaded installer byte verification",
+        re.compile(
+            r"(?i)^\s*(?:&\s+)?(?:powershell|pwsh)(?:\.exe)?\b[^\r\n]*\s-File\s+"
+            r"(?:\.[\\/])?packaging[\\/]+build_inno_installer\.ps1\b"
+            r"[^\r\n]*\s-VerifyPublishDirectory\b"
+        ),
+        matcher=_matches_uploaded_installer_verification,
+    )
+    for platform in ("GitHub", "Gitea")
+}
+
 _INSTALLER_UPLOAD_INPUTS = (
     ("name", "ticketbox-windows-installer"),
     ("path", "${{ env.INSTALLER_PUBLISH_PATH }}"),
     ("if-no-files-found", "error"),
+)
+_INSTALLER_DOWNLOAD_INPUTS = (
+    ("name", "ticketbox-windows-installer"),
+    ("path", "${{ env.INSTALLER_VERIFY_DOWNLOAD_PATH }}"),
 )
 REQUIRED_CI_ACTIONS_BY_PLATFORM = {
     "GitHub": (
@@ -247,12 +287,22 @@ REQUIRED_CI_ACTIONS_BY_PLATFORM = {
             "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
             _INSTALLER_UPLOAD_INPUTS,
         ),
+        RequiredAction(
+            "uploaded installer publish-unit download",
+            "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+            _INSTALLER_DOWNLOAD_INPUTS,
+        ),
     ),
     "Gitea": (
         RequiredAction(
             "atomic installer publish-unit artifact upload",
             "actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32",
             _INSTALLER_UPLOAD_INPUTS,
+        ),
+        RequiredAction(
+            "uploaded installer publish-unit download",
+            "actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a",
+            _INSTALLER_DOWNLOAD_INPUTS,
         ),
     ),
 }

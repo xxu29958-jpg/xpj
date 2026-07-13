@@ -72,6 +72,11 @@ if (-not (Test-Path -LiteralPath $PgRecoveryToolsScript -PathType Leaf)) {
     throw "缺少 Windows PostgreSQL 恢复工具脚本：$PgRecoveryToolsScript"
 }
 . $PgRecoveryToolsScript
+$BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
+if (-not (Test-Path -LiteralPath $BackendBootstrapScript -PathType Leaf)) {
+    throw "缺少 Windows owner handoff 脚本：$BackendBootstrapScript"
+}
+. $BackendBootstrapScript
 
 $regPath = "HKLM:\Software\Ticketbox"
 $ExplicitDataRootProvided = -not [string]::IsNullOrWhiteSpace($DataRoot)
@@ -126,15 +131,108 @@ if (
 }
 
 $PgBin = Join-Path $InstallDir "pg\bin"
-$PgData = Join-Path $DataRoot "pgdata"
-$AppData = Join-Path $DataRoot "app"
-$LogDir = Join-Path $AppData "logs"
+$InstallerState = Get-TicketboxInstallerStateDirectory
+$OwnerBootstrapPath = Join-Path $InstallerState "owner-bootstrap.txt"
+$OwnerHandoffPendingPath = Join-Path $InstallerState "owner-handoff-pending"
+$RecoveryRequiredPath = Join-Path $InstallerState "installer-recovery-required.json"
+$DeleteDataIntentPath = Join-Path $InstallerState "delete-data-in-progress.json"
+$script:DeleteDataIntentValidated = $false
 $BackendExe = Join-Path $InstallDir "program\ticketbox-backend\ticketbox-backend.exe"
-$BootstrapExposureRecoveryGuardPath = Join-Path $DataRoot "bootstrap-exposure-recovery-pending"
 $ShawlExe = Join-Path $InstallDir "shawl\shawl.exe"
 $PgCtl = Join-Path $PgBin "pg_ctl.exe"
 $InstalledBuildManifestPath = Join-Path $ScriptDir "BUILD_PROVENANCE.json"
 $LifecycleReceiptPath = Get-TicketboxLifecycleReceiptPath
+
+function Set-TicketboxUninstallDataRoot([string]$ResolvedDataRoot) {
+    $script:DataRoot = ConvertTo-TicketboxCanonicalPath $ResolvedDataRoot
+    $script:PgData = Join-Path $script:DataRoot "pgdata"
+    $script:AppData = Join-Path $script:DataRoot "app"
+    $script:LogDir = Join-Path $script:AppData "logs"
+    $script:BootstrapExposureRecoveryGuardPath = Join-Path `
+        $script:DataRoot `
+        "bootstrap-exposure-recovery-pending"
+    $script:ServiceBootstrapExposureRecoveryGuardPath =
+        $script:BootstrapExposureRecoveryGuardPath
+    $script:InstallerRuntimeRecoveryGuardPath =
+        Get-TicketboxInstallerRuntimeRecoveryGuardPath
+}
+
+Set-TicketboxUninstallDataRoot $DataRoot
+$RuntimeDataBindingServiceAccounts = @(
+    (Get-TicketboxServiceSid $PgServiceName),
+    (Get-TicketboxServiceSid $BackendServiceName)
+)
+$RuntimeDataBindingPresent = $false
+$ServicePgData = $PgData
+$ServiceAppData = $AppData
+$ServiceLogDir = $LogDir
+$ServiceDataRootMarkerPath = Join-Path `
+    (Get-TicketboxRuntimeDataRootPath) `
+    $script:TicketboxDataRootMarkerName
+$ServiceBootstrapExposureRecoveryGuardPath = $BootstrapExposureRecoveryGuardPath
+$ServiceDataVolumeIdentity = ""
+$AllowMissingRuntimeDataAuthority = $true
+
+function Set-TicketboxUninstallRuntimeServiceContract {
+    $bindingDirectory = Get-TicketboxRuntimeDataBindingDirectory
+    $bindingKind = Get-TicketboxPathEntryKindNoFollow $bindingDirectory
+    if ($bindingKind -ceq "Missing") {
+        $script:RuntimeDataBindingPresent = $false
+        $script:ServicePgData = $PgData
+        $script:ServiceAppData = $AppData
+        $script:ServiceLogDir = $LogDir
+        $script:ServiceBootstrapExposureRecoveryGuardPath = $BootstrapExposureRecoveryGuardPath
+        $script:ServiceDataVolumeIdentity = ""
+        $script:AllowMissingRuntimeDataAuthority = $true
+        return
+    }
+    $runtimeDataRoot = Get-TicketboxRuntimeDataRootPath
+    if (
+        $bindingKind -ceq "Directory" -and
+        (Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -ceq "Missing"
+    ) {
+        $validatedBindingDirectory = Assert-TicketboxRuntimeDataBindingDomain `
+            -DataRoot $DataRoot `
+            -InstallDir $InstallDir
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $validatedBindingDirectory `
+            -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+            -InheritableReadExecuteAccounts $RuntimeDataBindingServiceAccounts `
+            -OwnerAccount "SYSTEM"
+        if (@(Get-ChildItem -LiteralPath $validatedBindingDirectory -Force).Count -ne 0) {
+            throw "runtime DataRoot binding 退役断点含有未知 artifact。"
+        }
+        if ((Service-Exists $BackendServiceName) -or (Service-Exists $PgServiceName)) {
+            throw "runtime DataRoot junction 已缺失但 Ticketbox 服务仍存在；拒绝继续卸载。"
+        }
+        $script:RuntimeDataBindingPresent = $true
+        return
+    }
+    $binding = Read-TicketboxRuntimeDataBinding `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts
+    $script:RuntimeDataBindingPresent = $true
+    $script:ServicePgData = $binding.RuntimePgData
+    $script:ServiceAppData = $binding.RuntimeAppData
+    $script:ServiceLogDir = Join-Path $binding.RuntimeAppData "logs"
+    $script:ServiceDataRootMarkerPath = Join-Path `
+        $binding.RuntimeDataRoot `
+        $script:TicketboxDataRootMarkerName
+    $script:ServiceBootstrapExposureRecoveryGuardPath =
+        Get-TicketboxRuntimeBootstrapRecoveryGuardPath $binding.RuntimeDataRoot
+    $script:ServiceDataVolumeIdentity = $binding.DataVolumeIdentity
+    $script:AllowMissingRuntimeDataAuthority = $false
+}
+
+function Remove-TicketboxUninstallRuntimeDataBindingIfPresent {
+    if (-not $RuntimeDataBindingPresent) { return }
+    Remove-TicketboxRuntimeDataBinding `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts
+    $script:RuntimeDataBindingPresent = $false
+}
 $BackendPort = 0
 if (-not [string]::IsNullOrWhiteSpace($RegisteredBackendPort)) {
     $parsedBackendPort = 0
@@ -203,22 +301,31 @@ function Assert-ExpectedServiceConfiguration([string]$Name) {
     Assert-TicketboxServiceOwnership -Name $Name -ExpectedExecutable (Get-ExpectedServiceExecutable $Name) | Out-Null
     Assert-TicketboxServiceAccount -Name $Name -ExpectedAccount "NT SERVICE\$Name"
     if ($Name -eq $PgServiceName) {
-        Assert-TicketboxPgServiceCommand -Name $Name -ExpectedExecutable $PgCtl -ExpectedServiceName $PgServiceName -ExpectedDataRoot $PgData
+        Assert-TicketboxPgServiceCommand `
+            -Name $Name `
+            -ExpectedExecutable $PgCtl `
+            -ExpectedServiceName $PgServiceName `
+            -ExpectedDataRoot $ServicePgData
         return
     }
     Assert-TicketboxShawlServiceCommand `
         -Name $Name `
         -ExpectedExecutable $ShawlExe `
         -ExpectedServiceName $BackendServiceName `
-        -ExpectedCwd $AppData `
+        -ExpectedCwd $ServiceAppData `
         -ExpectedPayload $BackendExe `
         -ExpectedDependency $PgServiceName `
-        -ExpectedLogDir $LogDir `
+        -ExpectedLogDir $ServiceLogDir `
         -ExpectedPgDumpPath (Join-Path $PgBin "pg_dump.exe") `
         -ExpectedPgRestorePath (Join-Path $PgBin "pg_restore.exe") `
-        -ExpectedBootstrapRecoveryGuardPath $BootstrapExposureRecoveryGuardPath `
+        -ExpectedBootstrapRecoveryGuardPath $ServiceBootstrapExposureRecoveryGuardPath `
+        -ExpectedInstallerRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
+        -ExpectedDataRootMarkerPath $ServiceDataRootMarkerPath `
+        -ExpectedDataVolumeIdentity $ServiceDataVolumeIdentity `
         -ExpectedStopTimeoutMs $StopTimeoutMs `
-        -ExpectedRestartDelayMs $RestartDelayMs
+        -ExpectedRestartDelayMs $RestartDelayMs `
+        -AllowMissingInstallerRecoveryGuard `
+        -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority
 }
 
 function Stop-ServiceIfExists([string]$Name) {
@@ -408,12 +515,43 @@ function Assert-TicketboxDataRootForDeletion([string]$CandidateRoot) {
         InstallDir = $InstallDir
     }
     if ([string]::IsNullOrWhiteSpace($RegisteredDataRoot)) {
-        if (-not $ExplicitDataRootProvided) {
+        if (-not $ExplicitDataRootProvided -and -not $script:DeleteDataIntentValidated) {
             throw "安装器注册表缺少 DataRoot；请显式传入原 DataRoot 后重试数据删除。"
         }
         $arguments.AllowProtectedMarkerWithoutRegistration = $true
     }
+    if ($script:DeleteDataIntentValidated) {
+        $arguments.AllowMarkerlessEmptyRoot = $true
+    }
     return Assert-TicketboxDataRootDeletionSafety @arguments
+}
+
+function Remove-TicketboxInstallerRuntimeProjectionForUninstall {
+    $runtimeState = Get-TicketboxInstallerRuntimeStateShape -DataRoot $DataRoot
+    if (-not (Service-Exists $BackendServiceName)) {
+        if ($runtimeState.DirectoryExists -or $runtimeState.GuardExists) {
+            throw "backend 服务已缺失但 machine runtime-state 仍存在；拒绝在无法验证服务 SID 的状态下清理。"
+        }
+        return
+    }
+
+    Assert-ExpectedServiceConfiguration $BackendServiceName
+    Disable-TicketboxOwnedServiceIfExists `
+        -Name $BackendServiceName `
+        -ExpectedExecutable $ShawlExe `
+        -BackendPort $BackendPort `
+        -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe) `
+        @ServiceWaitArguments
+    Remove-TicketboxInstallerRuntimeRecoveryGuard `
+        -Path $InstallerRuntimeRecoveryGuardPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -BackendServiceName $BackendServiceName
+    if ($runtimeState.DirectoryExists) {
+        Remove-TicketboxInstallerRuntimeStateDirectoryIfEmpty `
+            -DataRoot $DataRoot `
+            -BackendServiceName $BackendServiceName
+    }
 }
 
 function Assert-UninstallInputs {
@@ -430,9 +568,26 @@ function Assert-UninstallInputs {
     return Assert-TicketboxDataRootForDeletion $DataRoot
 }
 
-function Get-TicketboxCompletedLifecycleReceiptForDataDeletion {
-    if (-not $DeleteData -or -not (Test-Path -LiteralPath $LifecycleReceiptPath -PathType Leaf)) {
-        return $null
+function Get-TicketboxCompletedLifecycleReceiptForUninstall {
+    $installerStateSnapshot = if ($DeleteData) {
+        Get-TicketboxInstallerStateDataDeletionSnapshot
+    }
+    else { $null }
+    $receiptKind = Get-TicketboxPathEntryKindNoFollow $LifecycleReceiptPath
+    if ($receiptKind -ceq "Missing") {
+        if (-not $DeleteData) { return $null }
+        if ($installerStateSnapshot.Kinds[$DeleteDataIntentPath] -ceq "File") {
+            Read-TicketboxDeleteDataIntent `
+                -Path $DeleteDataIntentPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot | Out-Null
+            $script:DeleteDataIntentValidated = $true
+            return $null
+        }
+        throw "删除数据要求已完成 lifecycle receipt，或要求存在由其生成的受保护删除意图。"
+    }
+    if ($receiptKind -cne "File") {
+        throw "生命周期回执路径存在但不是受支持的普通文件。"
     }
     if (
         $RegisteredInstallDir.Trim().Length -gt 0 -and
@@ -482,14 +637,229 @@ function Remove-TicketboxDataRootForUninstall([string]$CandidateRoot) {
         if (-not (Test-TicketboxPathEquals $GuardedPath $safeRoot)) {
             throw "数据目录句柄与已验证删除目标不一致。"
         }
+        $revalidatedRoot = Assert-TicketboxDataRootForDeletion $GuardedPath
+        if (-not (Test-TicketboxPathEquals $revalidatedRoot $GuardedPath)) {
+            throw "数据目录句柄获取后的安全复核返回了不同目标。"
+        }
+        if (-not $script:DeleteDataIntentValidated) {
+            throw "数据目录句柄获取后缺少已验证的删除意图。"
+        }
+        Read-TicketboxDeleteDataIntent `
+            -Path $DeleteDataIntentPath `
+            -InstallDir $InstallDir `
+            -DataRoot $revalidatedRoot | Out-Null
         Assert-TicketboxRuntimeProcessesStoppedForDataDeletion
         Assert-TicketboxBackendPortStoppedForDataDeletion
         Assert-TicketboxPgScmProcessAgreement
     }.GetNewClosure()
     Remove-TicketboxDataRootExact `
         -Path $safeRoot `
+        -DeferredRootLeafName $script:TicketboxDataRootMarkerName `
         -OnRootHandleAcquired $finalDeletionGuard
     Write-Ok "数据目录已删除。"
+}
+
+function Get-TicketboxInstallerStateDataDeletionSnapshot {
+    $rootKind = Get-TicketboxPathEntryKindNoFollow $InstallerState
+    if ($rootKind -ceq "Missing") {
+        return [pscustomobject]@{ Exists = $false; Kinds = @{} }
+    }
+    if ($rootKind -cne "Directory") {
+        throw "installer-state 不是普通目录，拒绝随数据删除：$rootKind"
+    }
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $InstallerState `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    $kinds = @{}
+    foreach ($path in @(
+        $OwnerBootstrapPath,
+        $OwnerHandoffPendingPath,
+        $RecoveryRequiredPath,
+        $DeleteDataIntentPath
+    )) {
+        $kind = Get-TicketboxPathEntryKindNoFollow $path
+        if ($kind -notin @("Missing", "File")) {
+            throw "installer-state 已知状态不是普通文件，拒绝随数据删除：$path ($kind)"
+        }
+        $kinds[$path] = $kind
+    }
+    return [pscustomobject]@{ Exists = $true; Kinds = $kinds }
+}
+
+function Assert-TicketboxRetiredInstallerStateShape([object]$Snapshot) {
+    if (-not $Snapshot.Exists) { return }
+    foreach ($path in @(
+        $OwnerBootstrapPath,
+        $OwnerHandoffPendingPath,
+        $RecoveryRequiredPath,
+        $DeleteDataIntentPath
+    )) {
+        if ($Snapshot.Kinds[$path] -cne "Missing") {
+            throw "安装身份已缺少 DataRoot，且 installer-state 仍含权威状态：$path"
+        }
+    }
+    foreach ($item in @(Get-ChildItem -LiteralPath $InstallerState -Force -ErrorAction Stop)) {
+        if ($item.Name -cnotmatch '^\.ticketbox-(protected|durable)-[0-9a-f]{32}\.tmp$') {
+            throw "安装身份已缺少 DataRoot，且 installer-state 含未知状态：$($item.Name)"
+        }
+        if ((Get-TicketboxPathEntryKindNoFollow $item.FullName) -cne "File") {
+            throw "退役 installer-state 的 staging artifact 不是普通文件：$($item.FullName)"
+        }
+    }
+}
+
+function Remove-TicketboxRetiredInstallerStateAfterRuntimeProjection {
+    $snapshot = Get-TicketboxInstallerStateDataDeletionSnapshot
+    if (-not $snapshot.Exists) { return }
+    Assert-TicketboxRetiredInstallerStateShape $snapshot
+    Remove-TicketboxProtectedStagingArtifacts `
+        -Path $InstallerState `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    $revalidatedSnapshot = Get-TicketboxInstallerStateDataDeletionSnapshot
+    Assert-TicketboxRetiredInstallerStateShape $revalidatedSnapshot
+    if (@(Get-ChildItem -LiteralPath $InstallerState -Force -ErrorAction Stop).Count -gt 0) {
+        throw "退役 installer-state 清理 staging 后仍非空。"
+    }
+    Remove-Item -LiteralPath $InstallerState -Force -ErrorAction Stop
+    if ((Get-TicketboxPathEntryKindNoFollow $InstallerState) -cne "Missing") {
+        throw "无法清理删除意图退役后留下的空 installer-state。"
+    }
+}
+
+function Assert-TicketboxInstallerStateForDataDeletion {
+    $snapshot = Get-TicketboxInstallerStateDataDeletionSnapshot
+    if (-not $snapshot.Exists) { return $snapshot }
+    $knownNames = @(
+        "owner-bootstrap.txt",
+        "owner-handoff-pending",
+        "installer-recovery-required.json",
+        "delete-data-in-progress.json"
+    )
+    $unknownEntries = @(Get-ChildItem -LiteralPath $InstallerState -Force | Where-Object {
+        $_.Name -notin $knownNames -and
+        $_.Name -cnotmatch '^\.ticketbox-(protected|durable)-[0-9a-f]{32}\.tmp$'
+    })
+    if ($unknownEntries.Count -gt 0) {
+        throw "installer-state 含有未知状态，拒绝随数据删除：$($unknownEntries.Name -join ', ')"
+    }
+    foreach ($item in @(Get-ChildItem -LiteralPath $InstallerState -Force | Where-Object {
+        $_.Name -cmatch '^\.ticketbox-(protected|durable)-[0-9a-f]{32}\.tmp$'
+    })) {
+        if ((Get-TicketboxPathEntryKindNoFollow $item.FullName) -cne "File") {
+            throw "installer-state staging artifact 不是普通文件：$($item.FullName)"
+        }
+    }
+    foreach ($path in @($OwnerBootstrapPath, $OwnerHandoffPendingPath)) {
+        if ($snapshot.Kinds[$path] -ceq "File") {
+            Read-TicketboxProtectedUtf8Artifact `
+                -Path $path `
+                -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+                -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount `
+                -MaximumBytes 16384 | Out-Null
+        }
+    }
+    if ($snapshot.Kinds[$RecoveryRequiredPath] -ceq "File") {
+        Read-TicketboxInstallerRecoveryMarker `
+            -Path $RecoveryRequiredPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot | Out-Null
+    }
+    if ($snapshot.Kinds[$DeleteDataIntentPath] -ceq "File") {
+        Read-TicketboxDeleteDataIntent `
+            -Path $DeleteDataIntentPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot | Out-Null
+        $script:DeleteDataIntentValidated = $true
+    }
+    if ($snapshot.Kinds[$OwnerHandoffPendingPath] -ceq "File") {
+        $record = Read-TicketboxOwnerHandoffRecord
+        if ($snapshot.Kinds[$OwnerBootstrapPath] -ceq "File") {
+            Assert-TicketboxOwnerHandoffCredential $record
+        }
+    }
+    elseif ($snapshot.Kinds[$OwnerBootstrapPath] -ceq "File") {
+        Assert-TicketboxOwnerHandoffArtifact $OwnerBootstrapPath
+        throw "installer-state 中存在无 handoff 标记的 owner 凭据；拒绝无来源证明的数据删除。"
+    }
+    return $snapshot
+}
+
+function Remove-TicketboxInstallerStateStagingAfterRuntimeProjection {
+    $snapshot = Assert-TicketboxInstallerStateForDataDeletion
+    if (-not $snapshot.Exists) { return }
+    Remove-TicketboxProtectedStagingArtifacts `
+        -Path $InstallerState `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    Assert-TicketboxInstallerStateForDataDeletion | Out-Null
+}
+
+function Remove-TicketboxInstallerStateAfterDataDeletion {
+    $snapshot = Assert-TicketboxInstallerStateForDataDeletion
+    if (-not $snapshot.Exists) { return }
+    Remove-TicketboxInstallerStateStagingAfterRuntimeProjection
+    $snapshot = Assert-TicketboxInstallerStateForDataDeletion
+    foreach ($path in @($OwnerBootstrapPath, $OwnerHandoffPendingPath)) {
+        if ($snapshot.Kinds[$path] -ceq "File") {
+            Remove-TicketboxProtectedUtf8Artifact `
+                -Path $path `
+                -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+                -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+        }
+    }
+    if ($snapshot.Kinds[$RecoveryRequiredPath] -ceq "File") {
+        Remove-TicketboxInstallerRecoveryMarker `
+            -Path $RecoveryRequiredPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot
+    }
+    if ($snapshot.Kinds[$DeleteDataIntentPath] -ceq "File") {
+        Remove-TicketboxProtectedUtf8Artifact `
+            -Path $DeleteDataIntentPath `
+            -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+            -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    }
+    if (@(Get-ChildItem -LiteralPath $InstallerState -Force).Count -gt 0) {
+        throw "删除已验证 installer-state 后目录仍非空。"
+    }
+    Remove-Item -LiteralPath $InstallerState -Force -ErrorAction Stop
+    if ((Get-TicketboxPathEntryKindNoFollow $InstallerState) -cne "Missing") {
+        throw "无法删除已退役的 installer-state 目录。"
+    }
+}
+
+function Resolve-TicketboxDeleteDataRetryAuthority {
+    if (
+        -not $DeleteData -or
+        -not ($InstallationIdentityAlreadyRemoved -or $InstallationIdentityCleanupIncomplete) -or
+        $ExplicitDataRootProvided -or
+        $RegisteredDataRoot.Trim().Length -gt 0
+    ) {
+        return "not_required"
+    }
+    $lifecycleReceiptKind = Get-TicketboxPathEntryKindNoFollow $LifecycleReceiptPath
+    if ($lifecycleReceiptKind -notin @("Missing", "File")) {
+        throw "安装身份已缺少 DataRoot，但 lifecycle receipt 形态不可信：$lifecycleReceiptKind"
+    }
+    $installerStateSnapshot = Get-TicketboxInstallerStateDataDeletionSnapshot
+    if ($installerStateSnapshot.Kinds[$DeleteDataIntentPath] -ceq "File") {
+        $intent = Read-TicketboxDeleteDataIntent `
+            -Path $DeleteDataIntentPath `
+            -InstallDir $InstallDir
+        Set-TicketboxUninstallDataRoot ([string]$intent.data_root)
+        $script:DeleteDataIntentValidated = $true
+        return "resolved"
+    }
+    if ($lifecycleReceiptKind -cne "Missing") {
+        throw "安装身份已缺少 DataRoot，但 lifecycle receipt 仍存在且没有绑定删除意图。"
+    }
+    if ($installerStateSnapshot.Exists) {
+        Assert-TicketboxRetiredInstallerStateShape $installerStateSnapshot
+        return "retired"
+    }
+    return "retired"
 }
 
 Write-Host "=== 小票夹服务卸载 ===" -ForegroundColor Yellow
@@ -497,7 +867,14 @@ $operationLock = Enter-TicketboxLifecycleLock `
     -ExternalOwnerProcessId $InstallerLockOwnerProcessId
 try {
     Assert-Admin
-    $completedLifecycleReceipt = Get-TicketboxCompletedLifecycleReceiptForDataDeletion
+    $deleteDataRetryAuthority = Resolve-TicketboxDeleteDataRetryAuthority
+    Set-TicketboxUninstallRuntimeServiceContract
+    $completedLifecycleReceipt = if ($deleteDataRetryAuthority -ceq "retired") {
+        $null
+    }
+    else {
+        Get-TicketboxCompletedLifecycleReceiptForUninstall
+    }
     if ($InstallationIdentityAlreadyRemoved -or $InstallationIdentityCleanupIncomplete) {
         if ((Service-Exists $BackendServiceName) -or (Service-Exists $PgServiceName)) {
             throw "安装身份已缺少 DataRoot，但 Ticketbox 服务仍存在；拒绝把损坏状态误判为已卸载。"
@@ -511,14 +888,48 @@ try {
             -Name $PgServiceName `
             -ExpectedRuntimeExecutables @($PgCtl, (Join-Path $PgBin "postgres.exe")) `
             @ServiceWaitArguments
+        Remove-TicketboxInstallerRuntimeProjectionForUninstall
+        if ($deleteDataRetryAuthority -ceq "retired") {
+            Remove-TicketboxRetiredInstallerStateAfterRuntimeProjection
+        }
+        Remove-TicketboxUninstallRuntimeDataBindingIfPresent
         if (
             $DeleteData -and
-            ($ExplicitDataRootProvided -or $RegisteredDataRoot.Trim().Length -gt 0)
+            (
+                $ExplicitDataRootProvided -or
+                $RegisteredDataRoot.Trim().Length -gt 0 -or
+                $deleteDataRetryAuthority -ceq "resolved"
+            )
         ) {
+            Assert-TicketboxInstallerStateForDataDeletion
+            if ($null -ne $completedLifecycleReceipt) {
+                Write-TicketboxDeleteDataIntent `
+                    -Path $DeleteDataIntentPath `
+                    -CompletedReceiptPath $LifecycleReceiptPath `
+                    -CompletedReceipt $completedLifecycleReceipt `
+                    -InstallDir $InstallDir `
+                    -DataRoot $DataRoot | Out-Null
+                $script:DeleteDataIntentValidated = $true
+                Remove-TicketboxCompletedLifecycleReceipt `
+                    -Path $LifecycleReceiptPath `
+                    -Receipt $completedLifecycleReceipt
+                $completedLifecycleReceipt = $null
+            }
             Remove-TicketboxDataRootForUninstall $DataRoot
+            Remove-TicketboxPgRecoveryToolset `
+                -ExpectedMajor 0 `
+                -DeleteDataIntentValidated:$script:DeleteDataIntentValidated
+        }
+        if ($null -ne $completedLifecycleReceipt) {
+            Remove-TicketboxCompletedLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -Receipt $completedLifecycleReceipt
         }
         if ($InstallationIdentityCleanupIncomplete -or $DeleteData) {
             Remove-TicketboxPreservedInstallationIdentity
+        }
+        if ($DeleteData -and $deleteDataRetryAuthority -ne "retired") {
+            Remove-TicketboxInstallerStateAfterDataDeletion
         }
         if ($InstallationIdentityCleanupIncomplete) {
             Write-Host "残留安装身份已完成清理；本次卸载重试已安全收口。" -ForegroundColor Green
@@ -526,15 +937,17 @@ try {
         else {
             Write-Host "安装身份、服务与安装路径进程均已移除；本次卸载重试按幂等成功处理。" -ForegroundColor Green
         }
-        if ($null -ne $completedLifecycleReceipt) {
-            Remove-TicketboxCompletedLifecycleReceipt `
-                -Path $LifecycleReceiptPath `
-                -Receipt $completedLifecycleReceipt
-        }
         return
     }
     $safeRoot = Assert-UninstallInputs
+    if ($DeleteData) {
+        Assert-TicketboxInstallerStateForDataDeletion
+    }
     $preservedPgMajor = Get-TicketboxPreservedPgMajor
+    Remove-TicketboxInstallerRuntimeProjectionForUninstall
+    if ($DeleteData) {
+        Remove-TicketboxInstallerStateStagingAfterRuntimeProjection
+    }
     Save-TicketboxUninstallPgRecoveryIfRequired
 
     Write-Step "停止并删除后端服务"
@@ -544,20 +957,38 @@ try {
     Write-Step "停止并删除 PostgreSQL 服务"
     Remove-TicketboxPgServiceIfExists
     Write-Ok "PG 服务已处理。"
+    Remove-TicketboxUninstallRuntimeDataBindingIfPresent
 
     if ($DeleteData) {
-        Remove-TicketboxDataRootForUninstall $safeRoot
-        Remove-TicketboxPreservedInstallationIdentity
-        Remove-TicketboxPgRecoveryToolset -ExpectedMajor $preservedPgMajor
         if ($null -ne $completedLifecycleReceipt) {
+            Write-TicketboxDeleteDataIntent `
+                -Path $DeleteDataIntentPath `
+                -CompletedReceiptPath $LifecycleReceiptPath `
+                -CompletedReceipt $completedLifecycleReceipt `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot | Out-Null
+            $script:DeleteDataIntentValidated = $true
             Remove-TicketboxCompletedLifecycleReceipt `
                 -Path $LifecycleReceiptPath `
                 -Receipt $completedLifecycleReceipt
+            $completedLifecycleReceipt = $null
         }
+        Remove-TicketboxDataRootForUninstall $safeRoot
+        Remove-TicketboxPgRecoveryToolset `
+            -ExpectedMajor $preservedPgMajor `
+            -DeleteDataIntentValidated:$script:DeleteDataIntentValidated
+        Remove-TicketboxPreservedInstallationIdentity
+        Remove-TicketboxInstallerStateAfterDataDeletion
     }
     else {
         Write-Step "保留数据目录"
         Write-Host "    $DataRoot"
+        if ($null -ne $completedLifecycleReceipt) {
+            Remove-TicketboxCompletedLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -Receipt $completedLifecycleReceipt
+            $completedLifecycleReceipt = $null
+        }
     }
 
     Write-Host ""

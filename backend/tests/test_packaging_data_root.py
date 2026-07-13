@@ -11,10 +11,14 @@ bundle (where they vanish on restart).
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import importlib.util
+import json
 import os
+import stat
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -163,7 +167,21 @@ def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_
 
     launch = _load_launch_module()
     captured: dict = {}
+    validated_junction = tmp_path / "validated-runtime-junction"
     monkeypatch.setattr(launch, "configure_environment", lambda: tmp_path)
+    monkeypatch.setattr(
+        launch,
+        "_assert_runtime_data_root_authority",
+        lambda data_dir: validated_junction,
+    )
+    monkeypatch.setattr(
+        launch,
+        "_assert_bootstrap_recovery_not_pending",
+        lambda runtime_junction: captured.__setitem__(
+            "validated_runtime_junction",
+            runtime_junction,
+        ),
+    )
     monkeypatch.setattr(logging.config, "dictConfig", lambda cfg: captured.__setitem__("dictconfig", cfg))
     monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: captured.__setitem__("run_kwargs", kwargs))
 
@@ -171,6 +189,7 @@ def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_
 
     assert captured["dictconfig"]["handlers"]["file"]["filename"] == str(tmp_path / "logs" / "backend.log")
     assert captured["run_kwargs"]["log_config"] is None
+    assert captured["validated_runtime_junction"] == validated_junction
 
 
 def test_main_refuses_http_startup_while_bootstrap_recovery_is_pending(
@@ -190,6 +209,96 @@ def test_main_refuses_http_startup_while_bootstrap_recovery_is_pending(
 
     with pytest.raises(RuntimeError, match="bootstrap credential recovery is pending"):
         launch.main()
+
+
+def _run_guarded_request(launch, guard_path: Path, path: str) -> tuple[list[dict], list[str]]:
+    messages: list[dict] = []
+    downstream_paths: list[str] = []
+
+    async def downstream(scope, receive, send):
+        downstream_paths.append(scope["path"])
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    guarded = launch._InstallerRuntimeRecoveryGuard(downstream, guard_path)
+    asyncio.run(
+        guarded(
+            {"type": "http", "method": "GET", "path": path, "headers": []},
+            receive,
+            send,
+        )
+    )
+    return messages, downstream_paths
+
+
+def test_installer_runtime_guard_blocks_normal_http_until_removed(tmp_path):
+    launch = _load_launch_module()
+    guard = tmp_path / "installer-runtime-recovery-pending"
+    guard.write_text("pending", encoding="utf-8")
+
+    blocked, blocked_downstream = _run_guarded_request(launch, guard, "/api/expenses")
+    assert blocked[0]["status"] == 503
+    assert json.loads(blocked[1]["body"])["error"] == "installer_recovery_pending"
+    assert blocked_downstream == []
+
+    guard.unlink()
+    allowed, allowed_downstream = _run_guarded_request(launch, guard, "/api/expenses")
+    assert allowed[0]["status"] == 204
+    assert allowed_downstream == ["/api/expenses"]
+
+    class DanglingReparseParent:
+        parent = None
+
+        def lstat(self):
+            return SimpleNamespace(
+                st_mode=stat.S_IFLNK,
+                st_file_attributes=getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400),
+            )
+
+    dangling_parent = DanglingReparseParent()
+    dangling_parent.parent = dangling_parent
+
+    class MissingLeafBelowReparse:
+        parent = dangling_parent
+
+        def lstat(self):
+            raise FileNotFoundError("dangling runtime-state reparse target")
+
+    malformed, malformed_downstream = _run_guarded_request(
+        launch,
+        MissingLeafBelowReparse(),
+        "/api/expenses",
+    )
+    assert malformed[0]["status"] == 503
+    assert malformed_downstream == []
+
+
+@pytest.mark.parametrize("path", ["/api/health/installation", "/api/bootstrap/owner"])
+def test_installer_runtime_guard_allows_only_repair_endpoints(tmp_path, path):
+    launch = _load_launch_module()
+    guard = tmp_path / "installer-runtime-recovery-pending"
+    guard.write_text("pending", encoding="utf-8")
+
+    messages, downstream_paths = _run_guarded_request(launch, guard, path)
+
+    assert messages[0]["status"] == 204
+    assert downstream_paths == [path]
+
+
+def test_installer_runtime_guard_fails_closed_when_status_cannot_be_read():
+    launch = _load_launch_module()
+
+    class UnreadableGuard:
+        def lstat(self):
+            raise PermissionError("denied")
+
+    assert launch._installer_runtime_recovery_is_pending(UnreadableGuard()) is True
 
 
 def test_alembic_env_skips_fileconfig_when_logging_already_configured():
