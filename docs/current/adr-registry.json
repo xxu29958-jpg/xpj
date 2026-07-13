@@ -3063,7 +3063,7 @@
       "reviewed_at": null,
       "reviewed_against_commit": null,
       "calibration_reason": null,
-      "history_fingerprint": "adr-history-v2:11070a7da53b7ca0f4f64c8ed514b6751f18b6a4a5800378f4108b5e618e2a2e",
+      "history_fingerprint": "adr-history-v2:d8c4a9e7d1c702a5e28ae7edcf75b836449e1df4cf1f5ef1669250126a890b26",
       "id": "0074",
       "declared_current_scope": "Windows 正式安装、修复、升级中的 lifecycle identity、owner handoff、installer recovery latch、runtime guard、委托操作租约、legacy 状态迁移、发布审计基线与未来宿主拓扑扩展边界",
       "declared_implementation_status": "partial",

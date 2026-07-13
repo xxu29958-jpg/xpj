@@ -136,8 +136,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2546,  # Includes installer hash dataflow mutations for both CI platforms, 2026-07-12.
-    "installer_pytest_count": 77,  # Includes authenticated DataRoot guard lifecycle coverage, 2026-07-12.
+    "backend_pytest_count": 2532,  # Includes installer hash dataflow mutations for both CI platforms, 2026-07-13.
+    "installer_pytest_count": 91,  # Includes Windows runtime DataRoot authority coverage, 2026-07-13.
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane

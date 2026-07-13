@@ -16,7 +16,7 @@ _OTHER_VOLUME_IDENTITY = "\\\\?\\Volume{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}\\"
 
 
 def _load_launch_module():
-    launch_path = Path(__file__).resolve().parents[1] / "packaging" / "launch.py"
+    launch_path = Path(__file__).resolve().parents[1] / "launch.py"
     spec = importlib.util.spec_from_file_location("ticketbox_authority_launch", launch_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
