@@ -42,6 +42,7 @@ _BACKEND_MANIFEST_KEYS = frozenset(
 _STARTUP_FAILURE_CODES = frozenset(
     {
         "installation_missing",
+        "manager_identity_mismatch",
         "manager_config_invalid",
         "registry_contract_invalid",
         "release_contract_invalid",
@@ -49,7 +50,7 @@ _STARTUP_FAILURE_CODES = frozenset(
         "service_contract_invalid",
     },
 )
-_STARTUP_FAILURE_STAGES = frozenset({"runtime_discovery"})
+_STARTUP_FAILURE_STAGES = frozenset({"manager_identity", "runtime_discovery"})
 
 
 class DiagnosticExportError(RuntimeError):
@@ -364,6 +365,14 @@ def _bundle_payload(status: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _publish_without_replace(temporary: Path, target: Path) -> None:
+    if os.name == "nt":
+        os.rename(temporary, target)
+        return
+    os.link(temporary, target)
+    temporary.unlink()
+
+
 def export_diagnostic_bundle(
     status: Mapping[str, object],
     *,
@@ -387,8 +396,7 @@ def export_diagnostic_bundle(
         with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("diagnostics.json", payload)
             archive.writestr("README.txt", readme)
-        os.link(temporary, target)
-        temporary.unlink()
+        _publish_without_replace(temporary, target)
     except OSError as exc:
         with contextlib.suppress(OSError):
             temporary.unlink(missing_ok=True)

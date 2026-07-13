@@ -13,7 +13,7 @@
 
 {% if not public_base_url_configured %}
 <div class="alert alert-danger alert--accent-danger">
-  ⚠️ 未配置公网域名（<code>PUBLIC_BASE_URL</code>）。新建/轮换上传链接将<u>不会</u>给出可直接粘贴到 iPhone 快捷指令的完整 URL。请先到 <a href="/owner/settings"><strong>设置</strong></a> 页面填入域名（例如 <code>https://api.example.com</code>）。
+  尚未完成手机连接设置。为避免生成无法使用的链接，新建和重新生成暂不可用。请先到 <a href="/owner/settings"><strong>设置</strong></a> 页面完成配置。
 </div>
 {% endif %}
 
@@ -23,7 +23,6 @@
     ✅ 上传链接已{% if new_secret.public_id %}创建/轮换{% endif %}。<br>
     <strong>请把下面的<u>完整公网 URL</u>整段复制到 iPhone 快捷指令的「URL」动作。必须包含 <code>https://</code> 开头的域名，<u>不能</u>只复制 <code>/u/...</code> 路径。</strong>
   </div>
-  {% if new_secret_full_url %}
   <div class="secret-box" data-upload-handoff-url>{{ new_secret_full_url }}</div>
   <div class="reveal-row">
     <button type="button" class="btn btn-primary" data-copy-upload-url>复制完整 URL</button>
@@ -34,13 +33,6 @@
     <p class="help-text qr-hint">或用 iPhone 相机扫上面的二维码：长按顶部识别横幅，选「<strong>拷贝</strong>」把链接粘进快捷指令。<u>不要选「打开」</u>——上传地址只接受快捷指令发出的 POST 上传，浏览器直接打开会提示无效。</p>
   </div>
   <p class="secret-note">⚠️ 完整 URL 仅显示一次；离开本页面后无法再查看，列表中只保留 <code>/u/***</code> 掩码。</p>
-  {% else %}
-  <div class="alert alert-danger">
-    未配置 <code>PUBLIC_BASE_URL</code>，只能显示相对路径。请到 <a href="/owner/settings">设置</a> 页面填入公网域名（例如 <code>https://api.example.com</code>），再回到本页重新创建上传链接。
-  </div>
-  <div class="secret-box">{{ new_secret.upload_url_path }}</div>
-  <p class="secret-note">⚠️ 上面是相对路径，iPhone 快捷指令的「URL」动作会判定为无效 URL，无法直接使用。</p>
-  {% endif %}
 </div>
 {% endif %}
 
@@ -48,7 +40,7 @@
   <div class="row-between mb-4">
     <h2>链接列表</h2>
     <form method="post" action="/owner/upload-links">
-      <button type="submit" class="btn btn-primary">+ 新建上传链接</button>
+      <button type="submit" class="btn btn-primary"{% if not public_base_url_configured %} disabled aria-disabled="true" title="请先配置手机 HTTPS 地址"{% endif %}>+ 新建上传链接</button>
     </form>
   </div>
   {% if links %}
@@ -111,7 +103,7 @@
             <form class="inline" method="post"
                   action="/owner/upload-links/{{ link.public_id }}/rotate"
                   data-confirm="重新生成上传 Key？旧 iPhone 快捷指令将立即失效。">
-              <button type="submit" class="btn btn-secondary">重新生成</button>
+              <button type="submit" class="btn btn-secondary"{% if not public_base_url_configured %} disabled aria-disabled="true" title="请先配置手机 HTTPS 地址"{% endif %}>重新生成</button>
             </form>
             <form class="inline" method="post"
                   action="/owner/upload-links/{{ link.public_id }}/extend">

@@ -11,40 +11,51 @@ from __future__ import annotations
 import pytest
 
 from app.config import _resolve_cloudflare_access_team_domain, _resolve_public_base_url
-from app.services.installation_health_service import installation_mobile_capabilities
+from app.services.installation_health_service import (
+    configured_mobile_endpoint_url,
+    installation_mobile_capabilities,
+)
 
 
 @pytest.mark.parametrize(
-    "raw,expected",
+    "raw,expected,phone_usable",
     [
         # https any host: accepted
-        ("https://api.example.com", "https://api.example.com"),
-        ("https://api.zen70.cn:8443", "https://api.zen70.cn:8443"),
+        ("https://api.example.com", "https://api.example.com", True),
+        ("https://api.zen70.cn:8443", "https://api.zen70.cn:8443", True),
         # http loopback: accepted (local dev)
-        ("http://127.0.0.1:8000", "http://127.0.0.1:8000"),
-        ("http://localhost", "http://localhost"),
-        ("http://[::1]:8000", "http://[::1]:8000"),
+        ("http://127.0.0.1:8000", "http://127.0.0.1:8000", False),
+        ("http://localhost", "http://localhost", False),
+        ("http://[::1]:8000", "http://[::1]:8000", False),
+        # HTTPS still cannot turn loopback or wildcard binds into a phone endpoint
+        ("https://127.0.0.1:8000", "https://127.0.0.1:8000", False),
+        ("https://localhost", "https://localhost", False),
+        ("https://[::1]:8000", "https://[::1]:8000", False),
+        ("https://0.0.0.0:8000", "https://0.0.0.0:8000", False),
+        ("https://[::]:8000", "https://[::]:8000", False),
         # trailing slash stripped
-        ("https://api.example.com/", "https://api.example.com"),
+        ("https://api.example.com/", "https://api.example.com", True),
         # whitespace stripped
-        ("  https://api.example.com  ", "https://api.example.com"),
+        ("  https://api.example.com  ", "https://api.example.com", True),
         # empty / None
-        (None, ""),
-        ("", ""),
-        ("   ", ""),
+        (None, "", False),
+        ("", "", False),
+        ("   ", "", False),
     ],
 )
-def test_resolver_accepts_safe_values(raw: str | None, expected: str) -> None:
+def test_resolver_accepts_safe_values(
+    raw: str | None,
+    expected: str,
+    phone_usable: bool,
+) -> None:
     assert _resolve_public_base_url(raw) == expected
     capabilities = installation_mobile_capabilities(expected)
-    public_configured = expected.startswith("https://") and not any(
-        loopback in expected for loopback in ("127.0.0.1", "localhost", "[::1]")
-    )
+    assert configured_mobile_endpoint_url(expected) == (expected if phone_usable else None)
     assert capabilities.mobile_endpoint_state == (
-        "public_configured_unverified" if public_configured else "local_only"
+        "public_configured_unverified" if phone_usable else "local_only"
     )
     assert capabilities.android_binding_state == (
-        "configured_unverified" if public_configured else "setup_required"
+        "configured_unverified" if phone_usable else "setup_required"
     )
     assert capabilities.iphone_upload_state == capabilities.android_binding_state
 

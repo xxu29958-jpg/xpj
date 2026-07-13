@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import threading
 from functools import partial
 from pathlib import Path
 
-from backend_manager.build_identity import load_frozen_manager_identity
+from backend_manager.build_identity import FrozenManagerIdentity, load_frozen_manager_identity
 from backend_manager.config import (
     ConfigError,
     InstalledRuntimeConfig,
@@ -42,7 +43,20 @@ from backend_manager.runtime import (
     ServiceTransitionError,
 )
 from backend_manager.runtime_factory import build_direct_service_runtime
-from backend_manager.windows_user_security import show_elevated_manager_warning
+from backend_manager.windows_user_security import (
+    show_elevated_manager_warning,
+    show_manager_repair_required_warning,
+)
+
+
+def _load_validated_frozen_identity() -> FrozenManagerIdentity | None:
+    identity = load_frozen_manager_identity()
+    if getattr(sys, "frozen", False) and identity is None:
+        raise ConfigError(
+            "桌面管理器载荷身份无效，请使用可信安装包执行修复。",
+            code="manager_identity_invalid",
+        )
+    return identity
 
 
 def _run_elevated_service_action(
@@ -75,11 +89,17 @@ def _run_elevated_service_action(
             channel_owner_sid,
             channel_file_id,
         )
+        identity = _load_validated_frozen_identity()
         with hold_installer_lifecycle_lock():
             config = load_config(mode_override="installed")
             runtime_config = config.runtime
             if not isinstance(runtime_config, InstalledRuntimeConfig):
                 raise ConfigError("未找到正式安装运行时。")
+            if identity is not None and runtime_config.layout.backend_version != identity.version:
+                raise ConfigError(
+                    "桌面管理器版本与安装记录不一致，请使用可信安装包执行修复。",
+                    code="manager_identity_mismatch",
+                )
             watchdog = start_helper_watchdog(
                 timeout_seconds=runtime_config.release.helper_watchdog_seconds(action),
             )
@@ -152,9 +172,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
+        identity = _load_validated_frozen_identity()
+    except ConfigError:
+        show_manager_repair_required_warning()
+        return 3
+    try:
         config = load_config()
     except ConfigError as exc:
-        identity = load_frozen_manager_identity()
         if identity is None:
             raise
         config = load_maintenance_manager_config(
@@ -162,6 +186,13 @@ def main(argv: list[str] | None = None) -> int:
             startup_failure_code=exc.code,
             startup_failure_stage="runtime_discovery",
         )
+    else:
+        if identity is not None and config.expected_backend_version != identity.version:
+            config = load_maintenance_manager_config(
+                identity.version,
+                startup_failure_code="manager_identity_mismatch",
+                startup_failure_stage="manager_identity",
+            )
     return run_manager(config)
 
 

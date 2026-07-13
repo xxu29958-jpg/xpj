@@ -33,6 +33,23 @@ def _release_config() -> WindowsReleaseConfig:
     )
 
 
+def _release_config_document(**overrides: object) -> dict[str, object]:
+    document: dict[str, object] = {
+        "schema": "ticketbox-windows-release-v1",
+        "backend_service_name": "TicketboxBackendCustom",
+        "pg_service_name": "TicketboxPgCustom",
+        "owner_recovery_channel": "managed_host",
+        "service_state_timeout_ms": 17_000,
+        "service_poll_interval_ms": 125,
+        "postgres_ready_timeout_ms": 23_000,
+        "backend_ready_timeout_ms": 31_000,
+        "backend_ready_poll_interval_ms": 375,
+        "backend_health_request_timeout_ms": 1_750,
+    }
+    document.update(overrides)
+    return document
+
+
 def test_registry_and_release_failures_keep_sanitized_failure_codes(
     monkeypatch,
     tmp_path: Path,
@@ -70,19 +87,7 @@ def test_parse_installed_layout_builds_program_data_paths(tmp_path: Path) -> Non
     )
     layout.release_config_path.parent.mkdir(parents=True)
     layout.release_config_path.write_text(
-        json.dumps(
-            {
-                "schema": "ticketbox-windows-release-v1",
-                "backend_service_name": "TicketboxBackendCustom",
-                "pg_service_name": "TicketboxPgCustom",
-                "service_state_timeout_ms": 17_000,
-                "service_poll_interval_ms": 125,
-                "postgres_ready_timeout_ms": 23_000,
-                "backend_ready_timeout_ms": 31_000,
-                "backend_ready_poll_interval_ms": 375,
-                "backend_health_request_timeout_ms": 1_750,
-            },
-        ),
+        json.dumps(_release_config_document()),
         encoding="utf-8",
     )
     release = load_installed_release_config(layout)
@@ -98,6 +103,18 @@ def test_parse_installed_layout_builds_program_data_paths(tmp_path: Path) -> Non
     assert layout.installation_id.startswith("ticketbox-")
     assert release.service_state_timeout_seconds == 17
     assert release.backend_ready_poll_seconds == 0.375
+
+
+@pytest.mark.parametrize("owner_recovery_channel", [None, "operator"])
+def test_release_config_requires_managed_host_owner_recovery_contract(
+    owner_recovery_channel: str | None,
+) -> None:
+    document = _release_config_document(owner_recovery_channel=owner_recovery_channel)
+    if owner_recovery_channel is None:
+        document.pop("owner_recovery_channel")
+
+    with pytest.raises(InstallationConfigError, match="owner_recovery_channel"):
+        installation.parse_windows_release_config(document)
 
 
 def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> None:
@@ -161,6 +178,7 @@ def test_helper_phase_budget_rejects_unknown_action() -> None:
         ({"BackendPort": "abc"}, "BackendPort"),
         ({"PgPort": "70000"}, "PgPort"),
         ({"BackendServiceName": "bad/service"}, "BackendServiceName"),
+        ({"BackendVersion": f"{'9' * 5000}.2.3"}, "BackendVersion"),
     ],
 )
 def test_parse_installed_layout_rejects_incomplete_or_invalid_values(overrides, message: str) -> None:

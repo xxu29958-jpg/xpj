@@ -26,6 +26,7 @@ _REGISTRY_VALUE_NAMES = (
     "BackendVersion",
 )
 _SERVICE_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
+_OWNER_RECOVERY_CHANNEL_PATTERN = re.compile(r"managed_host\Z")
 _RELEASE_CONFIG_SCHEMA = "ticketbox-windows-release-v1"
 _MAX_RELEASE_CONFIG_BYTES = 64 * 1024
 _INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
@@ -214,6 +215,7 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
     service_pattern = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
     backend_service_name = _config_text(config, "backend_service_name", service_pattern)
     pg_service_name = _config_text(config, "pg_service_name", service_pattern)
+    _config_text(config, "owner_recovery_channel", _OWNER_RECOVERY_CHANNEL_PATTERN)
     service_timeout = _config_integer(config, "service_state_timeout_ms", 1000, 300000)
     service_poll = _config_integer(config, "service_poll_interval_ms", 10, 10000)
     postgres_timeout = _config_integer(config, "postgres_ready_timeout_ms", 1000, 300000)

@@ -11,6 +11,8 @@ Security invariants verified:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -74,6 +76,18 @@ def local_client(client: TestClient) -> TestClient:
     app.dependency_overrides[_require_local] = lambda: None
     yield client
     app.dependency_overrides.pop(_require_local, None)
+
+
+@pytest.fixture()
+def phone_mobile_endpoint(monkeypatch: pytest.MonkeyPatch):
+    from app import config as app_config
+
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://finance.example.test")
+    app_config.get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        app_config.get_settings.cache_clear()
 
 
 def test_owner_index_local_returns_200(local_client: TestClient) -> None:
@@ -201,7 +215,10 @@ def test_owner_upload_links_tutorial_pins_duplicate_branch(local_client: TestCli
     assert "疑似重复" in resp.text
 
 
-def test_owner_upload_link_limits_can_be_updated(local_client: TestClient) -> None:
+def test_owner_upload_link_limits_can_be_updated(
+    local_client: TestClient,
+    phone_mobile_endpoint,
+) -> None:
     import re
 
     from app.database import SessionLocal
@@ -229,7 +246,10 @@ def test_owner_upload_link_limits_can_be_updated(local_client: TestClient) -> No
         assert link.per_remote_min_interval_seconds == 9
 
 
-def test_owner_upload_link_can_be_extended(local_client: TestClient) -> None:
+def test_owner_upload_link_can_be_extended(
+    local_client: TestClient,
+    phone_mobile_endpoint,
+) -> None:
     import re
     from datetime import timedelta
 
@@ -261,13 +281,26 @@ def test_owner_upload_link_can_be_extended(local_client: TestClient) -> None:
 
 def test_owner_upload_links_create_reveals_once(local_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from app import config as app_config
+    from app.routes.owner_console import _upload_links as upload_links_route
     from app.services import owner_console_service
 
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://api.zen70.cn")
     app_config.get_settings.cache_clear()
+    route_settings_reads = 0
+
+    def route_settings() -> SimpleNamespace:
+        nonlocal route_settings_reads
+        route_settings_reads += 1
+        return SimpleNamespace(
+            public_base_url="https://api.zen70.cn",
+            ocr_default_timezone="Asia/Shanghai",
+        )
+
+    monkeypatch.setattr(upload_links_route, "get_settings", route_settings)
     try:
         resp = local_client.post("/owner/upload-links")
         assert resp.status_code == 200
+        assert route_settings_reads == 1
         # Full public URL must appear once in the one-shot reveal section.
         assert "https://api.zen70.cn/u/" in resp.text
         # In the rendered full URL itself, ?tz= must appear exactly once —
@@ -280,6 +313,7 @@ def test_owner_upload_links_create_reveals_once(local_client: TestClient, monkey
         assert full_urls[0].count("?tz=") == 1, full_urls[0]
         # Navigating back to the list must not show raw upload keys.
         list_resp = local_client.get("/owner/upload-links")
+        assert route_settings_reads == 2
         assert "/u/***" in list_resp.text
         raw_keys = re.findall(r"upl_[A-Za-z0-9_\-]{20,}", list_resp.text)
         assert raw_keys == [], f"raw upload key visible in list: {raw_keys[:1]}"
@@ -295,20 +329,58 @@ def test_owner_upload_links_warns_when_public_base_url_missing(
     local_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app import config as app_config
+    from app.database import SessionLocal
+    from app.models import UploadLink
 
     monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
     app_config.get_settings.cache_clear()
     try:
+        with SessionLocal() as db:
+            count_before = db.query(UploadLink).count()
         resp = local_client.post("/owner/upload-links")
         assert resp.status_code == 200
-        # Owner Console must NOT pretend to provide a usable public URL.
+        with SessionLocal() as db:
+            assert db.query(UploadLink).count() == count_before
+        # Owner Console must neither mint a credential nor pretend to provide a usable URL.
         assert "PUBLIC_BASE_URL" in resp.text
         assert "未配置" in resp.text
+        assert 'disabled aria-disabled="true"' in resp.text
         # No https:// /u/ URL should be rendered when the env is missing.
         import re
 
         full_urls = re.findall(r"https?://[^\s\"<]+/u/[A-Za-z0-9_\-]+", resp.text)
         assert full_urls == [], f"unexpected full URL when PUBLIC_BASE_URL empty: {full_urls[:1]}"
+    finally:
+        app_config.get_settings.cache_clear()
+
+
+def test_owner_upload_link_rotate_preserves_credential_without_phone_usable_endpoint(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import re
+
+    from app import config as app_config
+    from app.database import SessionLocal
+    from app.models import UploadLink
+
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://finance.example.test")
+    app_config.get_settings.cache_clear()
+    try:
+        created = local_client.post("/owner/upload-links")
+        public_id = re.search(r"/owner/upload-links/([0-9a-f\-]{36})/rotate", created.text)
+        assert public_id is not None
+        with SessionLocal() as db:
+            token_hash = db.query(UploadLink).filter_by(public_id=public_id.group(1)).one().token_hash
+
+        monkeypatch.setenv("PUBLIC_BASE_URL", "http://127.0.0.1:8000")
+        app_config.get_settings.cache_clear()
+        response = local_client.post(f"/owner/upload-links/{public_id.group(1)}/rotate")
+
+        assert response.status_code == 200
+        assert "可供手机访问的 HTTPS 地址" in response.text
+        with SessionLocal() as db:
+            assert db.query(UploadLink).filter_by(public_id=public_id.group(1)).one().token_hash == token_hash
     finally:
         app_config.get_settings.cache_clear()
 
@@ -782,6 +854,7 @@ def test_owner_dashboard_budget_status_hides_external_ledger_budget(
 
 def test_owner_upload_links_default_and_list_are_ledger_scoped(
     local_client: TestClient,
+    phone_mobile_endpoint,
 ) -> None:
     from sqlalchemy import select
 
@@ -899,7 +972,10 @@ def test_owner_settings_rejects_missing_scheme(
         app_config.get_settings.cache_clear()
 
 
-def test_owner_delete_upload_link_requires_revoke_first(local_client: TestClient) -> None:
+def test_owner_delete_upload_link_requires_revoke_first(
+    local_client: TestClient,
+    phone_mobile_endpoint,
+) -> None:
     create = local_client.post("/owner/upload-links")
     assert create.status_code == 200
     import re
@@ -912,7 +988,10 @@ def test_owner_delete_upload_link_requires_revoke_first(local_client: TestClient
     assert resp.status_code == 409
 
 
-def test_owner_delete_upload_link_after_revoke(local_client: TestClient) -> None:
+def test_owner_delete_upload_link_after_revoke(
+    local_client: TestClient,
+    phone_mobile_endpoint,
+) -> None:
     create = local_client.post("/owner/upload-links")
     assert create.status_code == 200
     import re
