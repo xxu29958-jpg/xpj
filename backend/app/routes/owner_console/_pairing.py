@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from types import MappingProxyType
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -12,20 +10,16 @@ from app.config import get_settings
 from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
-from app.services.installation_health_service import configured_mobile_endpoint_url
+from app.services.installation_health_service import (
+    configured_mobile_endpoint_url,
+    owner_recovery_message,
+)
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 
-_RECOVERY_MESSAGES = MappingProxyType({
-    "development": "服务未初始化，请先运行 bootstrap_dev_owner.ps1。",
-    "managed_host": "当前安装缺少可用拥有者身份。普通修复不会重建身份，请先导出诊断包交给维护者处理。",
-    "operator": "服务未初始化，请联系部署管理员完成初始化。",
-})
-
-
 def _runtime_recovery_message() -> str:
-    return _RECOVERY_MESSAGES[get_settings().owner_recovery_channel]
+    return owner_recovery_message(get_settings().owner_recovery_channel)
 
 
 def _add_android_connection_context(context: dict[str, object]) -> None:

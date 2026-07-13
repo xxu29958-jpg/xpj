@@ -641,6 +641,20 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     assert prepare_to_install.index("CheckBackendVersionFloorForDataRoot") < prepare_to_install.index(
         "ValidateLifecycleLockBootstrapFiles()"
     )
+    persistent_gate = gate[
+        gate.index("if HasPersistentIdentity then") : gate.index("else if HasPreservedPgData then")
+    ]
+    assert "'DataRoot'" in persistent_gate
+    assert "'BackendVersion'" in persistent_gate
+    assert "CompareSupportedNumericVersions(" in persistent_gate
+    assert "if VersionComparison > 0 then" in persistent_gate
+    cur_step = flow[
+        flow.index("procedure CurStepChanged") : flow.index("procedure DeinitializeSetup")
+    ]
+    recovered = cur_step.index("PreparationFailure := PrepareAuthoritativePayloadReplacement()")
+    version_recheck = cur_step.index("CheckBackendVersionFloorForDataRoot", recovered)
+    payload_copy = cur_step.index("AssertDataRootMutationGuardActive()", version_recheck)
+    assert recovered < version_recheck < payload_copy
     persistent_reader = windows[
         windows.index("function TryGetPersistentBackendVersionFloor") : windows.index(
             "function TicketboxLegacyUninstallKey"

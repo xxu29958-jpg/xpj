@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.fx_constants import CURRENCY_SYMBOLS, DEFAULT_HOME_CURRENCY_CODE
 from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
+from app.services.installation_health_service import owner_recovery_message
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ def _base(request: Request, db: Session) -> dict:
         "asset_version": STATIC_ASSET_VERSION,
         "upload_dir_status": upload_status,
         "ui_theme": _read_ui_theme(request),
+        "owner_recovery_message": owner_recovery_message(cfg.owner_recovery_channel),
         "home_currency_code": home_currency,
         "home_currency_symbol": CURRENCY_SYMBOLS.get(home_currency, f"{home_currency} "),
     }

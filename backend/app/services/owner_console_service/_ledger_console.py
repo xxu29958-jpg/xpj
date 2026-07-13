@@ -228,7 +228,7 @@ def _require_owner_id(db: Session) -> int:
     if owner_id is None:
         raise AppError(
             "invalid_request",
-            "服务未初始化，请先运行 bootstrap_dev_owner.ps1。",
+            "当前服务缺少可用拥有者身份，操作已停止。",
             status_code=409,
         )
     return owner_id

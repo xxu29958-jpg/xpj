@@ -255,7 +255,18 @@ def test_owner_pairing_shows_the_exact_android_server_address(
 
 @pytest.mark.parametrize(
     "server_url",
-    ("", "https://127.0.0.1:8000", "https://localhost", "https://[::1]:8000"),
+    (
+        "",
+        "https://127.0.0.1:8000",
+        "https://localhost",
+        "https://[::1]:8000",
+        "https://127.1",
+        "https://2130706433",
+        "https://0177.0.0.1",
+        "https://0x7f000001",
+        "https://[::ffff:127.0.0.1]",
+        "https://finance.example.test:0",
+    ),
 )
 def test_owner_pairing_refuses_to_issue_code_without_phone_usable_server_address(
     local_client: TestClient,

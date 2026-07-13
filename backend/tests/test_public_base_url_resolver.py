@@ -23,6 +23,8 @@ from app.services.installation_health_service import (
         # https any host: accepted
         ("https://api.example.com", "https://api.example.com", True),
         ("https://api.zen70.cn:8443", "https://api.zen70.cn:8443", True),
+        ("https://192.168.1.10:8443", "https://192.168.1.10:8443", True),
+        ("https://[2001:db8::1]:8443", "https://[2001:db8::1]:8443", True),
         # http loopback: accepted (local dev)
         ("http://127.0.0.1:8000", "http://127.0.0.1:8000", False),
         ("http://localhost", "http://localhost", False),
@@ -83,6 +85,23 @@ def test_resolver_accepts_safe_values(
 )
 def test_resolver_rejects_downgrade_or_unscoped_values(raw: str) -> None:
     assert _resolve_public_base_url(raw) == ""
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "https://127.1",
+        "https://2130706433",
+        "https://0177.0.0.1",
+        "https://0x7f000001",
+        "https://[::ffff:127.0.0.1]",
+        "https://api.example.com:0",
+    ],
+)
+def test_mobile_endpoint_rejects_ambiguous_loopback_or_unusable_port(raw: str) -> None:
+    assert _resolve_public_base_url(raw) == raw
+    assert configured_mobile_endpoint_url(raw) is None
+    assert installation_mobile_capabilities(raw).mobile_endpoint_state == "local_only"
 
 
 @pytest.mark.parametrize(

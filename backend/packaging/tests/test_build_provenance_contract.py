@@ -1292,6 +1292,17 @@ def test_inno_version_floor_and_protected_child_logs_are_fail_closed() -> None:
     )
     assert fresh_probe.returncode == 0, fresh_probe.stderr
     assert fresh_probe.stdout.strip() == "fresh"
+    interrupted_downgrade = _run_powershell(
+        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' "
+        "-VersionFloorContractProbe '1.2.0|1.1.0|1.3.0||true'"
+    )
+    assert interrupted_downgrade.returncode != 0
+    interrupted_repair = _run_powershell(
+        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' "
+        "-VersionFloorContractProbe '1.3.0|1.1.0|1.3.0||true'"
+    )
+    assert interrupted_repair.returncode == 0, interrupted_repair.stderr
+    assert interrupted_repair.stdout.strip() == "allow"
 
 
 def test_windows_ci_names_source_preflight_without_claiming_a_build() -> None:

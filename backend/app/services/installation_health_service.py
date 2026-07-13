@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -26,6 +27,32 @@ class InstallationMobileCapabilities:
     mobile_endpoint_state: Literal["local_only", "public_configured_unverified"]
     android_binding_state: Literal["setup_required", "configured_unverified"]
     iphone_upload_state: Literal["setup_required", "configured_unverified"]
+
+
+_OWNER_RECOVERY_MESSAGES = MappingProxyType({
+    "development": "服务未初始化，请先运行 bootstrap_dev_owner.ps1。",
+    "managed_host": "当前安装缺少可用拥有者身份。普通修复不会重建身份，请先导出诊断包交给维护者处理。",
+    "operator": "服务未初始化，请联系部署管理员完成初始化。",
+})
+
+
+def owner_recovery_message(owner_recovery_channel: str) -> str:
+    """Return the recovery instruction declared by the deployment authority."""
+    return _OWNER_RECOVERY_MESSAGES[owner_recovery_channel]
+
+
+def _looks_like_legacy_ipv4_literal(host: str) -> bool:
+    """Reject numeric host spellings that URL stacks may reinterpret as IPv4."""
+    parts = host.split(".")
+    return bool(parts) and all(
+        part.isdecimal()
+        or (
+            part.casefold().startswith("0x")
+            and len(part) > 2
+            and all(char in "0123456789abcdef" for char in part[2:].casefold())
+        )
+        for part in parts
+    )
 
 
 def installation_runtime_access_state(
@@ -63,7 +90,7 @@ def configured_mobile_endpoint_url(public_base_url: str) -> str | None:
     try:
         parsed = urlsplit(value)
         host = (parsed.hostname or "").casefold().rstrip(".")
-        _ = parsed.port
+        port = parsed.port
     except ValueError:
         return None
     if (
@@ -74,6 +101,7 @@ def configured_mobile_endpoint_url(public_base_url: str) -> str | None:
         or parsed.path not in {"", "/"}
         or parsed.query
         or parsed.fragment
+        or port == 0
     ):
         return None
     if host == "localhost" or host.endswith(".localhost"):
@@ -81,8 +109,11 @@ def configured_mobile_endpoint_url(public_base_url: str) -> str | None:
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
-        pass
+        if _looks_like_legacy_ipv4_literal(host):
+            return None
     else:
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
         if address.is_loopback or address.is_unspecified:
             return None
     return value

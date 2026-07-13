@@ -10,7 +10,10 @@ from app.config import get_settings
 from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
-from app.services.installation_health_service import configured_mobile_endpoint_url
+from app.services.installation_health_service import (
+    configured_mobile_endpoint_url,
+    owner_recovery_message,
+)
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
@@ -76,7 +79,7 @@ def owner_upload_links_create(
             db,
             mobile_endpoint=mobile_endpoint,
             links=[],
-            error="服务未初始化，请先运行 bootstrap_dev_owner.ps1。",
+            error=owner_recovery_message(cfg.owner_recovery_channel),
         )
     if mobile_endpoint is None:
         return _render_upload_links(
@@ -99,7 +102,16 @@ def owner_upload_links_rotate(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    mobile_endpoint = configured_mobile_endpoint_url(get_settings().public_base_url)
+    cfg = get_settings()
+    mobile_endpoint = configured_mobile_endpoint_url(cfg.public_base_url)
+    if svc.get_owner_account_id(db) is None:
+        return _render_upload_links(
+            request,
+            db,
+            mobile_endpoint=mobile_endpoint,
+            links=[],
+            error=owner_recovery_message(cfg.owner_recovery_channel),
+        )
     if mobile_endpoint is None:
         return _render_upload_links(
             request,
