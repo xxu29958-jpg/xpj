@@ -137,6 +137,61 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
     assert probe["serviceTitle"] == ("小票夹需要修复" if degraded else "小票夹正在运行")
 
 
+def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profiles: list[Path] = []
+
+    def evaluate_once(_edge: str, *, profile: Path, **_kwargs: object) -> object:
+        profiles.append(profile)
+        if len(profiles) == 1:
+            raise TimeoutError("synthetic DevTools stall")
+        return {"ready": True}
+
+    monkeypatch.setattr(_edge_cdp, "_evaluate_page_once", evaluate_once)
+
+    result = evaluate_page(
+        "edge.exe",
+        profile=tmp_path / "profile",
+        url="file:///manager.html",
+        width=390,
+        height=844,
+        expression="window.__layoutProbe",
+    )
+
+    assert result == {"ready": True}
+    assert profiles == [
+        tmp_path / "profile" / "attempt-1",
+        tmp_path / "profile" / "attempt-2",
+    ]
+
+
+def test_layout_probe_does_not_retry_a_semantic_assertion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profiles: list[Path] = []
+
+    def evaluate_once(_edge: str, *, profile: Path, **_kwargs: object) -> object:
+        profiles.append(profile)
+        raise AssertionError("layout probe did not become available")
+
+    monkeypatch.setattr(_edge_cdp, "_evaluate_page_once", evaluate_once)
+
+    with pytest.raises(AssertionError, match="layout probe did not become available"):
+        evaluate_page(
+            "edge.exe",
+            profile=tmp_path / "profile",
+            url="file:///manager.html",
+            width=390,
+            height=844,
+            expression="window.__layoutProbe",
+        )
+
+    assert profiles == [tmp_path / "profile" / "attempt-1"]
+
+
 def test_edge_teardown_reaps_process_when_websocket_cleanup_fails(monkeypatch) -> None:
     events: list[str] = []
 
