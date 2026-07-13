@@ -49,10 +49,43 @@ def test_resolve_data_root_honors_env(monkeypatch, tmp_path):
     assert config._resolve_data_root(Path("/ignored")) == tmp_path.resolve()
 
 
+def test_resolve_data_root_anchors_relative_override_to_backend_root(monkeypatch, tmp_path):
+    backend_root = tmp_path / "backend"
+    monkeypatch.setenv("TICKETBOX_DATA_DIR", "runtime-data")
+    monkeypatch.chdir(tmp_path.parent)
+
+    assert config._resolve_data_root(backend_root) == (backend_root / "runtime-data").resolve()
+
+
 def test_resolve_data_root_ignores_blank_env(monkeypatch):
     monkeypatch.setenv("TICKETBOX_DATA_DIR", "   ")
     backend_root = Path("/srv/ticketbox/backend")
     assert config._resolve_data_root(backend_root) == backend_root
+
+
+@pytest.mark.parametrize("channel", ["development", "managed_host", "operator"])
+def test_owner_recovery_channel_accepts_only_declared_deployment_capabilities(
+    monkeypatch,
+    channel,
+):
+    monkeypatch.setenv("TICKETBOX_OWNER_RECOVERY_CHANNEL", channel.upper())
+
+    assert config._choice_env(
+        "TICKETBOX_OWNER_RECOVERY_CHANNEL",
+        "development",
+        config.OWNER_RECOVERY_CHANNELS,
+    ) == channel
+
+
+def test_owner_recovery_channel_rejects_undeclared_host_guess(monkeypatch):
+    monkeypatch.setenv("TICKETBOX_OWNER_RECOVERY_CHANNEL", "frozen_windows")
+
+    with pytest.raises(ValueError, match="TICKETBOX_OWNER_RECOVERY_CHANNEL must be one of"):
+        config._choice_env(
+            "TICKETBOX_OWNER_RECOVERY_CHANNEL",
+            "development",
+            config.OWNER_RECOVERY_CHANNELS,
+        )
 
 
 def test_launcher_honors_preset_data_dir(monkeypatch, tmp_path):
@@ -211,12 +244,12 @@ def test_main_refuses_http_startup_while_bootstrap_recovery_is_pending(
         launch.main()
 
 
-def _run_guarded_request(launch, guard_path: Path, path: str) -> tuple[list[dict], list[str]]:
+def _run_guarded_request(launch, guard_path: Path, path: str) -> tuple[list[dict], list[dict]]:
     messages: list[dict] = []
-    downstream_paths: list[str] = []
+    downstream_scopes: list[dict] = []
 
     async def downstream(scope, receive, send):
-        downstream_paths.append(scope["path"])
+        downstream_scopes.append(scope)
         await send({"type": "http.response.start", "status": 204, "headers": []})
         await send({"type": "http.response.body", "body": b""})
 
@@ -234,7 +267,7 @@ def _run_guarded_request(launch, guard_path: Path, path: str) -> tuple[list[dict
             send,
         )
     )
-    return messages, downstream_paths
+    return messages, downstream_scopes
 
 
 def test_installer_runtime_guard_blocks_normal_http_until_removed(tmp_path):
@@ -250,7 +283,8 @@ def test_installer_runtime_guard_blocks_normal_http_until_removed(tmp_path):
     guard.unlink()
     allowed, allowed_downstream = _run_guarded_request(launch, guard, "/api/expenses")
     assert allowed[0]["status"] == 204
-    assert allowed_downstream == ["/api/expenses"]
+    assert [scope["path"] for scope in allowed_downstream] == ["/api/expenses"]
+    assert "ticketbox_runtime_access_state" not in allowed_downstream[0].get("state", {})
 
     class DanglingReparseParent:
         parent = None
@@ -281,6 +315,8 @@ def test_installer_runtime_guard_blocks_normal_http_until_removed(tmp_path):
 
 @pytest.mark.parametrize("path", ["/api/health/installation", "/api/bootstrap/owner"])
 def test_installer_runtime_guard_allows_only_repair_endpoints(tmp_path, path):
+    from app.services.installation_health_service import installation_runtime_access_state
+
     launch = _load_launch_module()
     guard = tmp_path / "installer-runtime-recovery-pending"
     guard.write_text("pending", encoding="utf-8")
@@ -288,7 +324,9 @@ def test_installer_runtime_guard_allows_only_repair_endpoints(tmp_path, path):
     messages, downstream_paths = _run_guarded_request(launch, guard, path)
 
     assert messages[0]["status"] == 204
-    assert downstream_paths == [path]
+    assert [scope["path"] for scope in downstream_paths] == [path]
+    assert downstream_paths[0]["state"]["ticketbox_runtime_access_state"] == "repair_required"
+    assert installation_runtime_access_state(downstream_paths[0]) == "repair_required"
 
 
 def test_installer_runtime_guard_fails_closed_when_status_cannot_be_read():

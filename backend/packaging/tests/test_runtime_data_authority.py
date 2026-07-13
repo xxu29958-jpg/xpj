@@ -74,6 +74,7 @@ def _configure_installed_runtime(monkeypatch, launch, tmp_path):
     )
     monkeypatch.setenv("TICKETBOX_DATA_ROOT_MARKER_PATH", str(marker_path))
     monkeypatch.setenv("TICKETBOX_DATA_VOLUME_IDENTITY", _RUNTIME_VOLUME_IDENTITY)
+    monkeypatch.setenv("TICKETBOX_OWNER_RECOVERY_CHANNEL", "managed_host")
     monkeypatch.setattr(launch, "_assert_runtime_marker_no_follow", lambda _path: None)
     monkeypatch.setattr(
         launch,
@@ -107,6 +108,7 @@ def test_frozen_runtime_requires_complete_host_authority_before_write(
         "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH": str(tmp_path / "installer-guard"),
         "TICKETBOX_DATA_ROOT_MARKER_PATH": str(tmp_path / "data-root-marker"),
         "TICKETBOX_DATA_VOLUME_IDENTITY": _RUNTIME_VOLUME_IDENTITY,
+        "TICKETBOX_OWNER_RECOVERY_CHANNEL": "managed_host",
     }
     missing_cases = [tuple(values), *((key,) for key in values)]
     monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
@@ -167,6 +169,24 @@ def test_volume_bound_runtime_authority_allows_writes(monkeypatch, tmp_path):
 
     assert launch.configure_environment() == Path(os.path.abspath(preset))
     assert (preset / "uploads").is_dir()
+
+
+def test_frozen_runtime_rejects_unknown_recovery_capability_before_write(
+    monkeypatch,
+    tmp_path,
+):
+    launch = _load_launch_module()
+    runtime_root, _data_root, _install_dir, _marker_path = _configure_installed_runtime(
+        monkeypatch,
+        launch,
+        tmp_path,
+    )
+    monkeypatch.setenv("TICKETBOX_OWNER_RECOVERY_CHANNEL", "frozen_windows")
+
+    with pytest.raises(RuntimeError, match="owner recovery capability is invalid"):
+        launch.configure_environment()
+
+    assert not (runtime_root / "app" / "uploads").exists()
 
 
 def test_bootstrap_guard_must_share_runtime_projection_before_write(
@@ -339,7 +359,8 @@ def test_dotenv_cannot_replace_host_runtime_authority(monkeypatch, tmp_path):
         "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH=\n"
         "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH=C:\\attacker-guard\n"
         "TICKETBOX_DATA_ROOT_MARKER_PATH=C:\\attacker-marker\n"
-        "TICKETBOX_DATA_VOLUME_IDENTITY=\\\\?\\Volume{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}\\\n",
+        "TICKETBOX_DATA_VOLUME_IDENTITY=\\\\?\\Volume{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}\\\n"
+        "TICKETBOX_OWNER_RECOVERY_CHANNEL=development\n",
         encoding="utf-8",
     )
 
@@ -351,3 +372,22 @@ def test_dotenv_cannot_replace_host_runtime_authority(monkeypatch, tmp_path):
     assert os.environ["TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH"] == str(bootstrap_guard)
     assert os.environ["TICKETBOX_DATA_ROOT_MARKER_PATH"] == str(marker_path)
     assert os.environ["TICKETBOX_DATA_VOLUME_IDENTITY"] == _RUNTIME_VOLUME_IDENTITY
+    assert os.environ["TICKETBOX_OWNER_RECOVERY_CHANNEL"] == "managed_host"
+
+
+def test_frozen_runtime_preserves_explicit_deployment_recovery_capability(
+    monkeypatch,
+    tmp_path,
+):
+    launch = _load_launch_module()
+    runtime_root, _data_root, _install_dir, _marker_path = _configure_installed_runtime(
+        monkeypatch,
+        launch,
+        tmp_path,
+    )
+    (runtime_root / "app").mkdir(parents=True)
+    monkeypatch.setenv("TICKETBOX_OWNER_RECOVERY_CHANNEL", "operator")
+
+    launch.configure_environment()
+
+    assert os.environ["TICKETBOX_OWNER_RECOVERY_CHANNEL"] == "operator"

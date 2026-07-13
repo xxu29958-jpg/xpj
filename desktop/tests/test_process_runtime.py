@@ -62,6 +62,7 @@ def test_source_spawn_overrides_extra_loopback_hosts_with_exact_custom_port(
     process.spawn_backend(
         backend_root=tmp_path,
         venv_python=tmp_path / "python.exe",
+        data_root=tmp_path / "runtime-data",
         host="127.0.0.1",
         port=9123,
     )
@@ -69,6 +70,7 @@ def test_source_spawn_overrides_extra_loopback_hosts_with_exact_custom_port(
     child_environment = captured["env"]
     assert isinstance(child_environment, dict)
     assert child_environment["XPJ_EXTRA_LOOPBACK_HOSTS"] == "127.0.0.1:9123"
+    assert child_environment["TICKETBOX_DATA_DIR"] == str(tmp_path / "runtime-data")
     assert "api.example.com" not in child_environment["XPJ_EXTRA_LOOPBACK_HOSTS"]
     assert len(attached) == 1
 
@@ -99,6 +101,7 @@ def test_spawn_failure_to_attach_job_terminates_new_child(monkeypatch, tmp_path:
         process.spawn_backend(
             backend_root=tmp_path,
             venv_python=tmp_path / "python.exe",
+            data_root=tmp_path / "runtime-data",
             host="127.0.0.1",
             port=9123,
         )

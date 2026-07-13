@@ -1,145 +1,503 @@
 <!doctype html>
-<html lang="zh"><head><meta charset="utf-8"><title>小票夹 后端</title>
-<script>window.CONTROL_TOKEN="__CONTROL_TOKEN__";</script>
-<style>
-  :root{
-    --bg:#0E1116; --panel:#161A21; --panel-2:#1B2027; --line:#252B34;
-    --text:#E6E9EF; --muted:#9099A6; --meta:#5E6672;
-    --accent:#6E8BFF; --accent-soft:#1B2540;
-    --ok:#3FB950; --ok-soft:#13261A; --danger:#F0603A; --danger-soft:#2C1813;
-    --mono:"JetBrains Mono","Cascadia Code","SF Mono",Consolas,monospace;
-  }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{height:100%;}
-  body{background:radial-gradient(1200px 500px at 80% -10%, #18202e 0%, var(--bg) 55%);font-family:"Inter","Segoe UI Variable Display","Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;color:var(--text);padding:22px 24px;user-select:none;}
-  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
-  .head{display:flex;align-items:center;gap:12px;}
-  .logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(145deg,#6E8BFF,#5566d6);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;box-shadow:0 4px 14px rgba(85,102,214,.4);}
-  .h-title{font-size:16px;font-weight:650;letter-spacing:-.01em;} .h-sub{font-size:11.5px;color:var(--meta);margin-top:2px;}
-  .pill{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid transparent;}
-  .pdot{width:7px;height:7px;border-radius:50%;box-shadow:0 0 8px currentColor;}
-  .row{display:flex;gap:13px;margin-top:18px;}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px 17px;}
-  .clabel{font-size:10.5px;font-weight:700;letter-spacing:.13em;color:var(--meta);text-transform:uppercase;}
-  .kv{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;font-size:13px;}
-  .kv .k{color:var(--muted);} .kv .v{font-weight:600;}
-  .addr{flex:1;display:flex;gap:16px;} .addr .info{flex:1;}
-  .qr{width:88px;height:88px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:#8a8f99;font-size:9.5px;text-align:center;flex:0 0 auto;}
-  .qr-cap{font-size:10px;color:var(--meta);text-align:center;margin-top:6px;font-weight:600;}
-  .controls{display:flex;align-items:center;gap:9px;margin-top:18px;}
-  .btn{font-size:13px;font-weight:600;padding:9px 17px;border-radius:10px;cursor:pointer;border:1px solid var(--line);background:var(--panel-2);color:var(--text);transition:all .12s;}
-  .btn:hover{border-color:#333b46;background:#20262f;} .btn:active{transform:scale(.97);}
-  .btn-primary{background:var(--accent);border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(110,139,255,.32);}
-  .btn-primary:hover{background:#5d7bf5;}
-  .tg{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);cursor:pointer;}
-  .tg.disabled{cursor:default;opacity:.75;}
-  .sw{width:36px;height:20px;border-radius:999px;background:#2B313B;position:relative;transition:background .15s;}
-  .sw.on{background:var(--ok);}
-  .sw::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.4);}
-  .sw.on::after{left:18px;}
-  .openconsole{margin-top:15px;display:flex;align-items:center;justify-content:space-between;background:var(--accent-soft);border:1px solid #243154;border-radius:11px;padding:12px 15px;cursor:pointer;transition:background .12s;}
-  .openconsole:hover{background:#1f2c4d;}
-  .oc-l{font-size:12.5px;color:#b9c5e8;font-weight:500;} .oc-b{font-size:12.5px;color:var(--accent);font-weight:700;}
-  .logwrap{margin-top:18px;}
-  .log{background:#0A0D11;border:1px solid var(--line);border-radius:11px;padding:12px 14px;font-family:var(--mono);font-size:11px;line-height:1.7;color:#aab2bf;height:140px;overflow-y:auto;}
-  .log .ok{color:#56b96a;} .log .warn{color:#d9a441;} .log .err{color:#f0603a;} .log .dim{color:#646b78;}
-  .log::-webkit-scrollbar{width:7px;} .log::-webkit-scrollbar-thumb{background:#2b313b;border-radius:4px;}
-  .error{display:none;margin-top:12px;padding:10px 12px;border:1px solid #6b3023;background:var(--danger-soft);color:#ffad97;border-radius:8px;font-size:12px;line-height:1.5;}
-  @media (max-width:700px){
-    body{padding:18px;}
-    .row{flex-direction:column;}
-    .addr{width:100%;}
-    .controls{flex-wrap:wrap;}
-  }
-</style></head><body>
-  <div class="head">
-    <div class="logo">票</div>
-    <div><div class="h-title">小票夹 · 后端</div><div class="h-sub mono" id="runtimeLabel">localhost · 本机服务</div></div>
-    <div class="pill" id="pill"><span class="pdot"></span><span id="pillText">…</span></div>
-  </div>
-  <div class="row">
-    <div class="card" style="flex:1">
-      <div class="clabel">状态</div>
-      <div class="kv"><span class="k">健康检查</span><span class="v" id="health">—</span></div>
-      <div class="kv"><span class="k">已运行</span><span class="v mono" id="uptime">—</span></div>
-      <div class="kv"><span class="k">端口 · PID</span><span class="v mono" id="port">—</span></div>
-      <div class="kv" id="backendServiceRow"><span class="k">后端服务</span><span class="v" id="backendService">—</span></div>
-      <div class="kv" id="databaseServiceRow"><span class="k">PostgreSQL</span><span class="v" id="databaseService">—</span></div>
-      <div class="kv"><span class="k">自动重启</span><span class="v" id="autoState">—</span></div>
-    </div>
-    <div class="card addr">
-      <div class="info">
-        <div class="clabel">连接地址</div>
-        <div class="kv"><span class="k">局域网</span><span class="v mono" id="lan">—</span></div>
-        <div class="kv"><span class="k">隧道</span><span class="v mono" id="tunnel" style="font-size:11.5px">—</span></div>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>小票夹管理器</title>
+  <script>window.CONTROL_TOKEN="__CONTROL_TOKEN__";</script>
+  <style>
+    :root {
+      --page: #f3f5f2;
+      --surface: #ffffff;
+      --surface-subtle: #f8faf7;
+      --ink: #202521;
+      --muted: #68716a;
+      --line: #d8ddd8;
+      --line-strong: #bec7bf;
+      --green: #176b4d;
+      --green-soft: #e7f2eb;
+      --blue: #315f95;
+      --blue-soft: #e9f0f8;
+      --amber: #8a5a1c;
+      --amber-soft: #f8efdf;
+      --red: #aa3c32;
+      --red-soft: #fae9e6;
+      --shadow: 0 8px 24px rgba(31, 42, 34, 0.07);
+      --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: var(--font);
+      font-size: 14px;
+      letter-spacing: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font: inherit; letter-spacing: 0; }
+    button:focus-visible, summary:focus-visible {
+      outline: 3px solid rgba(49, 95, 149, 0.28);
+      outline-offset: 2px;
+    }
+    .shell { width: min(940px, 100%); margin: 0 auto; padding: 22px 24px 28px; }
+    .topbar { display: flex; align-items: center; gap: 12px; min-height: 42px; }
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #0f563d;
+      border-radius: 8px;
+      background: var(--green);
+      color: #fff;
+      font-size: 17px;
+      font-weight: 700;
+    }
+    .brand-name { font-size: 17px; font-weight: 700; line-height: 1.25; }
+    .brand-meta { margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .overall-state {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .state-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
+    .overall-state.is-ok { border-color: #acd0bd; color: var(--green); background: var(--green-soft); }
+    .overall-state.is-ok .state-dot { background: var(--green); }
+    .overall-state.is-warn { border-color: #e0c797; color: var(--amber); background: var(--amber-soft); }
+    .overall-state.is-warn .state-dot { background: var(--amber); }
+    .overall-state.is-error { border-color: #e0b0aa; color: var(--red); background: var(--red-soft); }
+    .overall-state.is-error .state-dot { background: var(--red); }
+
+    .service-band {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 22px;
+      min-height: 128px;
+      padding: 20px 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .eyebrow { color: var(--muted); font-size: 12px; font-weight: 650; }
+    .service-title { margin: 7px 0 0; font-size: 25px; line-height: 1.2; font-weight: 720; }
+    .service-detail { margin-top: 8px; color: var(--muted); line-height: 1.45; }
+    .service-actions { display: flex; align-items: center; gap: 8px; }
+    .button {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 8px 13px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 650;
+      white-space: nowrap;
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+    .button:hover:not(:disabled) { border-color: #8e9990; background: var(--surface-subtle); }
+    .button:active:not(:disabled) { background: #edf0ed; }
+    .button:disabled { cursor: default; opacity: 0.48; }
+    .button-primary { border-color: var(--green); background: var(--green); color: #fff; }
+    .button-primary:hover:not(:disabled) { border-color: #10573f; background: #10573f; }
+    .button-danger { color: var(--red); }
+    .button-primary.button-danger { border-color: #d3a39e; background: var(--surface); color: var(--red); }
+    .button-primary.button-danger:hover:not(:disabled) { border-color: var(--red); background: var(--red-soft); }
+    .button-icon { width: 38px; padding: 8px; font-size: 18px; }
+    .icon { display: inline-grid; width: 18px; height: 18px; place-items: center; font-size: 15px; line-height: 18px; }
+    .spinner { animation: spin 900ms linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .message {
+      margin-top: 12px;
+      display: none;
+      align-items: flex-start;
+      gap: 9px;
+      padding: 11px 13px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      line-height: 1.45;
+    }
+    .message.is-visible { display: flex; }
+    .message-info { border-color: #b7c9dc; background: var(--blue-soft); color: #264f7a; }
+    .message-error { border-color: #e0b0aa; background: var(--red-soft); color: #8e3029; }
+
+    .section-head { margin: 24px 0 10px; display: flex; align-items: baseline; justify-content: space-between; }
+    .section-head h2 { margin: 0; font-size: 15px; font-weight: 720; }
+    .section-meta { color: var(--muted); font-size: 12px; }
+    .task-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .task-card {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 190px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .task-icon {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      background: var(--surface-subtle);
+      color: var(--ink);
+      font-size: 17px;
+    }
+    .task-card:nth-child(1) .task-icon { background: var(--green-soft); color: var(--green); }
+    .task-card:nth-child(2) .task-icon { background: var(--blue-soft); color: var(--blue); }
+    .task-card:nth-child(3) .task-icon { background: var(--amber-soft); color: var(--amber); }
+    .task-title { margin-top: 13px; font-size: 15px; font-weight: 720; }
+    .task-state { min-height: 40px; margin-top: 6px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+    .task-actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 7px; }
+    .task-actions .button { min-height: 34px; padding: 6px 10px; font-size: 12.5px; }
+
+    .technical {
+      margin-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .technical summary { padding: 14px 2px 8px; cursor: pointer; font-weight: 650; color: #4d5750; }
+    .technical-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      padding: 2px 0 10px;
+    }
+    .technical-item { min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+    .technical-label { font-size: 11px; color: var(--muted); }
+    .technical-value { margin-top: 4px; overflow-wrap: anywhere; color: var(--ink); font-family: var(--mono); font-size: 11.5px; }
+    .diagnostic-lines {
+      max-height: 112px;
+      margin: 0 0 8px;
+      overflow: auto;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #202521;
+      color: #dce4dd;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.55;
+      user-select: text;
+    }
+    .footer { margin-top: 14px; color: #7a837c; font-size: 11.5px; text-align: right; }
+
+    @media (max-width: 700px) {
+      .shell { padding: 16px; }
+      .service-band { grid-template-columns: 1fr; gap: 16px; }
+      .service-actions { width: 100%; }
+      .service-actions .button-primary { flex: 1; }
+      .task-grid { grid-template-columns: 1fr; }
+      .task-card { min-height: 164px; }
+      .technical-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .section-meta { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand-mark" aria-hidden="true">票</div>
+      <div>
+        <div class="brand-name">小票夹管理器</div>
+        <div class="brand-meta" id="runtimeLabel">正在读取本机状态</div>
       </div>
-      <div><div class="qr" id="qr">QR</div><div class="qr-cap">扫码连手机</div></div>
+      <div class="overall-state" id="overallState" role="status" aria-live="polite">
+        <span class="state-dot" aria-hidden="true"></span>
+        <span id="overallText">检查中</span>
+      </div>
+    </header>
+
+    <section class="service-band" aria-labelledby="serviceTitle">
+      <div>
+        <div class="eyebrow">此电脑</div>
+        <h1 class="service-title" id="serviceTitle">正在检查小票夹</h1>
+        <div class="service-detail" id="serviceDetail">请稍候</div>
+      </div>
+      <div class="service-actions">
+        <button class="button button-primary manager-action" id="primaryAction" type="button" data-action="start" onclick="act(this.dataset.action, this)">
+          <span class="icon" aria-hidden="true">▶</span><span>启动</span>
+        </button>
+        <button class="button button-icon manager-action" id="restartAction" type="button" title="重启小票夹" aria-label="重启小票夹" onclick="act('restart', this)">↻</button>
+      </div>
+    </section>
+
+    <div class="message message-error" id="controlError" role="alert">
+      <span aria-hidden="true">!</span><span id="controlErrorText"></span>
     </div>
-  </div>
-  <div class="controls">
-    <button class="btn btn-primary" onclick="act('restart')">重启</button>
-    <button class="btn" id="toggleBtn" onclick="toggleRun()">停止</button>
-    <div class="tg" id="autoControl" onclick="toggleAutoRestart()"><span class="sw" id="autoSw"></span>自动重启</div>
-  </div>
-  <div class="error" id="controlError" role="alert"></div>
-  <div class="openconsole" onclick="act('open_console')">
-    <span class="oc-l">管理台 · 设置 / 备份 / 设备配对 / 诊断</span>
-    <span class="oc-b">打开 /owner ›</span>
-  </div>
-  <div class="logwrap">
-    <div class="clabel" style="margin-bottom:9px">运行诊断</div>
-    <div class="log mono" id="log"></div>
-  </div>
-<script>
-let running = false;
-let refreshInFlight = false;
-const $ = (id) => document.getElementById(id);
-function fmtUptime(s){ if(!s) return "—"; const h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return h>0?`${h}h ${m}m`:`${m}m ${s%60}s`; }
-function logClass(l){ if(/\bWARN/i.test(l)) return "warn"; if(/\bERROR|Traceback|Exception/i.test(l)) return "err"; if(/\bINFO|启动|已启动/i.test(l)) return "ok"; return "dim"; }
-function serviceState(state){
-  const labels={running:"运行中",stopped:"已停止",start_pending:"启动中",stop_pending:"停止中",paused:"已暂停",missing:"未安装",unknown:"未知"};
-  return labels[state] || state || "—";
-}
-function setPill(state){
-  const map={ ok:["var(--ok-soft)","var(--ok)","运行中"], bad:["var(--danger-soft)","var(--danger)","无响应"], off:["#1B2027","var(--muted)","已停止"] };
-  const [bg,fg,txt]=map[state]; const p=$("pill"); p.style.background=bg; p.style.color=fg; p.style.borderColor=fg+"40"; p.querySelector(".pdot").style.background=fg; $("pillText").textContent=txt;
-}
-async function refresh(){
-  if(refreshInFlight) return;
-  refreshInFlight = true;
-  try{
-    const s = await (await fetch("/api/status", {headers:{"X-Control-Token": window.CONTROL_TOKEN}})).json();
-    running = s.running;
-    const healthy = s.running && s.health;
-    setPill(healthy ? "ok" : (s.running ? "bad" : "off"));
-    const healthText = s.database_service_state && s.database_service_state !== "running" ? "● 数据库未运行" : (s.health_state === "mismatch" ? "● 身份不匹配" : (s.health_state === "pending" ? "● 正在就绪" : "● 无响应"));
-    $("health").textContent = healthy ? "● 正常" : (s.running ? healthText : "● 已停止");
-    $("health").title = s.health_detail || "";
-    $("health").style.color = healthy ? "var(--ok)" : (s.running ? "var(--danger)" : "var(--muted)");
-    $("uptime").textContent = fmtUptime(s.uptime_seconds);
-    $("port").textContent = (s.port || "—") + (s.pid ? " · " + s.pid : "");
-    const installed = s.runtime_mode === "installed";
-    $("runtimeLabel").textContent = installed ? "Windows 服务 · 正式安装" : "localhost · 源码运行";
-    $("backendServiceRow").style.display = installed ? "flex" : "none";
-    $("databaseServiceRow").style.display = installed ? "flex" : "none";
-    $("backendService").textContent = serviceState(s.backend_service_state);
-    $("databaseService").textContent = serviceState(s.database_service_state);
-    $("autoState").textContent = s.auto_restart_configurable ? (s.auto_restart ? `已启用 · ${s.restarts} 次` : "已关闭") : "Windows 托管";
-    $("lan").textContent = s.lan;
-    $("tunnel").textContent = s.tunnel || (s.public_endpoint_state === "protected_unknown" ? "受保护 · 状态未知" : (s.public_endpoint_state === "unknown" ? "状态未知" : "未配置"));
-    $("autoSw").className = "sw" + (s.auto_restart ? " on" : "");
-    $("autoControl").className = "tg" + (s.auto_restart_configurable ? "" : " disabled");
-    $("toggleBtn").textContent = s.running ? "停止" : "启动";
-    const error = $("controlError"); error.textContent = s.control_error || ""; error.style.display = s.control_error ? "block" : "none";
-    const log = $("log"); const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
-    log.replaceChildren(...(s.log||[]).map(line => { const row=document.createElement("div"); row.className=logClass(line); row.textContent=line; return row; }));
-    if(atBottom) log.scrollTop = log.scrollHeight;
-  }catch(e){ setPill("off"); $("pillText").textContent="管理器离线"; }
-  finally{ refreshInFlight = false; }
-}
-async function act(a){ try{ await fetch("/api/"+a, {method:"POST", headers:{"X-Control-Token": window.CONTROL_TOKEN}}); }catch(e){} refresh(); }
-function toggleRun(){ act(running ? "stop" : "start"); }
-function toggleAutoRestart(){ if(!$("autoControl").classList.contains("disabled")) act("auto_restart"); }
-refresh(); setInterval(refresh, 2000);
-</script>
-</body></html>
+    <div class="message message-info" id="actionNotice" role="status">
+      <span aria-hidden="true">✓</span><span id="actionNoticeText"></span>
+    </div>
+
+    <div class="section-head">
+      <h2>常用操作</h2>
+      <span class="section-meta">需要时进入对应任务</span>
+    </div>
+    <section class="task-grid" aria-label="常用操作">
+      <article class="task-card">
+        <div class="task-icon" aria-hidden="true">⌁</div>
+        <div class="task-title">连接设备</div>
+        <div class="task-state" id="connectState">服务正常后可以生成一次性绑定码。</div>
+        <div class="task-actions">
+          <button class="button manager-action owner-action" id="androidAction" type="button" onclick="act('open_pairing', this)">Android 绑定</button>
+          <button class="button manager-action owner-action" id="iphoneAction" type="button" onclick="act('open_upload_links', this)">iPhone 上传</button>
+          <button class="button manager-action owner-action" type="button" title="查看已连接设备" onclick="act('open_devices', this)">设备</button>
+        </div>
+      </article>
+
+      <article class="task-card">
+        <div class="task-icon" aria-hidden="true">▣</div>
+        <div class="task-title">备份</div>
+        <div class="task-state" id="protectState">升级前请确认最近备份可用。</div>
+        <div class="task-actions">
+          <button class="button manager-action owner-action" type="button" onclick="act('open_backups', this)">查看备份</button>
+        </div>
+      </article>
+
+      <article class="task-card">
+        <div class="task-icon" aria-hidden="true">+</div>
+        <div class="task-title">检查与自救</div>
+        <div class="task-state" id="diagnosticState">导出包不包含令牌、账本内容或原始日志。</div>
+        <div class="task-actions">
+          <button class="button manager-action" id="diagnosticExportAction" type="button" onclick="act('export_diagnostics', this)">导出诊断包</button>
+          <button class="button manager-action owner-action" type="button" onclick="act('open_diagnostics', this)">系统体检</button>
+          <button class="button manager-action owner-action" type="button" title="打开小票夹设置" onclick="act('open_settings', this)">设置</button>
+        </div>
+      </article>
+    </section>
+
+    <details class="technical">
+      <summary>技术详情</summary>
+      <div class="technical-grid">
+        <div class="technical-item"><div class="technical-label">后端服务</div><div class="technical-value" id="backendService">—</div></div>
+        <div class="technical-item"><div class="technical-label">PostgreSQL</div><div class="technical-value" id="databaseService">—</div></div>
+        <div class="technical-item"><div class="technical-label">局域网入口</div><div class="technical-value" id="lan">—</div></div>
+        <div class="technical-item"><div class="technical-label">公网入口</div><div class="technical-value" id="tunnel">—</div></div>
+      </div>
+      <div class="diagnostic-lines" id="log" aria-label="运行诊断"></div>
+    </details>
+    <div class="footer" id="versionLabel"></div>
+  </main>
+
+  <script>
+    let running = false;
+    let refreshInFlight = false;
+    let actionInFlight = false;
+    let latestStatus = null;
+    const $ = (id) => document.getElementById(id);
+
+    function serviceState(state) {
+      const labels = {
+        running: "运行中", stopped: "已停止", start_pending: "启动中", stop_pending: "停止中",
+        paused: "已暂停", missing: "未安装", unknown: "未知"
+      };
+      return labels[state] || state || "—";
+    }
+
+    function setOverall(kind, text) {
+      const target = $("overallState");
+      target.className = `overall-state${kind ? ` is-${kind}` : ""}`;
+      $("overallText").textContent = text;
+    }
+
+    function setMessage(id, text) {
+      const box = $(id);
+      box.classList.toggle("is-visible", Boolean(text));
+      $(`${id}Text`).textContent = text || "";
+    }
+
+    function applyActionAvailability(s) {
+      const hasStatus = Boolean(s);
+      const isRunning = hasStatus && Boolean(s.running);
+      const backendReady = isRunning && Boolean(s.health);
+      const productAvailable = backendReady
+        && s.runtime_access_state === "available"
+        && s.owner_state === "configured";
+      const serviceControls = hasStatus && Boolean(s.service_controls_available);
+      $("primaryAction").disabled = actionInFlight || !serviceControls;
+      $("restartAction").disabled = actionInFlight || !serviceControls || !isRunning;
+      document.querySelectorAll(".owner-action").forEach((button) => {
+        button.disabled = actionInFlight || !productAvailable;
+      });
+      $("androidAction").disabled = actionInFlight || !productAvailable || s.android_binding_state !== "configured_unverified";
+      $("iphoneAction").disabled = actionInFlight || !productAvailable || s.iphone_upload_state !== "configured_unverified";
+      $("diagnosticExportAction").disabled = actionInFlight;
+      document.querySelector("main").setAttribute("aria-busy", String(actionInFlight));
+    }
+
+    function render(s) {
+      latestStatus = s;
+      if (s.manager_shutdown_requested) {
+        actionInFlight = true;
+        setOverall("warn", "管理器正在交接");
+        setMessage("controlError", "安装维护即将开始，管理器会关闭，服务可能暂时不可用。");
+        applyActionAvailability(s);
+        setTimeout(() => window.close(), 50);
+        return;
+      }
+      running = Boolean(s.running);
+      const backendReady = running && Boolean(s.health);
+      const pending = running && s.health_state === "pending";
+      const mismatch = running && s.health_state === "mismatch";
+      const runtimeRepairRequired = backendReady && s.runtime_access_state === "repair_required";
+      const ownerRecoveryRequired = backendReady && s.owner_state === "recovery_required";
+      const productAvailable = backendReady && !runtimeRepairRequired && !ownerRecoveryRequired;
+      const serviceFault = s.runtime_mode === "installed" && !s.service_controls_available;
+      const androidConfigured = productAvailable && s.android_binding_state === "configured_unverified";
+      const iphoneConfigured = productAvailable && s.iphone_upload_state === "configured_unverified";
+
+      if (serviceFault) {
+        setOverall("error", "需要处理");
+        $("serviceTitle").textContent = "小票夹需要修复";
+        $("serviceDetail").textContent = "暂时无法确认小票夹状态，请先导出诊断包，再使用可信安装包手动修复。";
+      } else if (!running) {
+        setOverall("", "已停止");
+        $("serviceTitle").textContent = "小票夹已停止";
+        $("serviceDetail").textContent = "启动后可以继续使用电脑端管理功能。";
+      } else if (runtimeRepairRequired) {
+        setOverall("error", "需要修复安装");
+        $("serviceTitle").textContent = "安装维护尚未完成";
+        $("serviceDetail").textContent = "请先导出诊断包，再关闭管理器并重新运行可信安装包。";
+      } else if (ownerRecoveryRequired) {
+        setOverall("warn", "需要恢复身份");
+        $("serviceTitle").textContent = "缺少可用拥有者身份";
+        $("serviceDetail").textContent = "当前管理器不能自动重建身份，请先导出诊断包。";
+      } else if (backendReady) {
+        setOverall("ok", "运行正常");
+        $("serviceTitle").textContent = "小票夹正在运行";
+        $("serviceDetail").textContent = androidConfigured && iphoneConfigured
+          ? "电脑端运行正常；手机入口已配置，仍需在手机上完成连接验证。"
+          : "电脑端运行正常；手机连接尚未配置。";
+      } else if (pending) {
+        setOverall("warn", "正在启动");
+        $("serviceTitle").textContent = "小票夹正在准备";
+        $("serviceDetail").textContent = "数据库与服务正在完成启动。";
+      } else {
+        setOverall("error", mismatch ? "身份不匹配" : "需要处理");
+        $("serviceTitle").textContent = mismatch ? "安装身份校验失败" : "小票夹没有正常响应";
+        $("serviceDetail").textContent = s.health_detail || "请打开系统体检或导出诊断包。";
+      }
+
+      const primary = $("primaryAction");
+      primary.dataset.action = running ? "stop" : "start";
+      primary.querySelector(".icon").textContent = running ? "■" : "▶";
+      primary.querySelector("span:last-child").textContent = running ? "停止" : "启动";
+      primary.classList.toggle("button-danger", running);
+      $("runtimeLabel").textContent = s.runtime_mode === "installed" ? "本机安装" : "开发环境 · 源码运行";
+
+      $("connectState").textContent = runtimeRepairRequired
+        ? "安装修复完成后才能连接手机。"
+        : (ownerRecoveryRequired
+          ? "拥有者身份恢复后才能连接手机。"
+          : (!backendReady
+            ? "服务正常后才能检查手机连接配置。"
+        : (androidConfigured && iphoneConfigured
+          ? "手机入口已配置，连接结果以手机实测为准。"
+          : "当前仅本机可用，请先在设置中配置手机入口。")));
+      $("protectState").textContent = s.runtime_mode === "installed"
+        ? "升级前请确认最近备份可用。"
+        : "开发环境不使用正式安装器维护。";
+      $("diagnosticState").textContent = s.diagnostic_bundle_file ? `最近导出：${s.diagnostic_bundle_file}` : "导出包不包含令牌、账本内容或原始日志。";
+
+      $("backendService").textContent = serviceState(s.backend_service_state);
+      $("databaseService").textContent = serviceState(s.database_service_state);
+      $("lan").textContent = s.lan || "—";
+      $("tunnel").textContent = s.public_endpoint_state === "public_configured_unverified"
+        ? "已配置，待设备验证"
+        : (s.public_endpoint_state === "local_only" ? "未配置" : "未知");
+      $("versionLabel").textContent = s.version ? `小票夹 ${s.version}` : "小票夹 Desktop Manager";
+      setMessage("controlError", s.control_error);
+      setMessage("actionNotice", s.action_notice);
+
+      const log = $("log");
+      log.replaceChildren(...(s.log || []).map((line) => {
+        const row = document.createElement("div");
+        row.textContent = line;
+        return row;
+      }));
+      applyActionAvailability(s);
+    }
+
+    async function refresh() {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
+      try {
+        const response = await fetch("/api/status", {headers:{"X-Control-Token": window.CONTROL_TOKEN}});
+        if (!response.ok) throw new Error("status");
+        render(await response.json());
+      } catch (_error) {
+        latestStatus = null;
+        setOverall("error", "管理器离线");
+        setMessage("controlError", "管理器状态暂不可用，请稍后重试。");
+        applyActionAvailability(null);
+      } finally {
+        refreshInFlight = false;
+      }
+    }
+
+    async function act(action, button) {
+      if (actionInFlight) return;
+      const original = button ? button.innerHTML : "";
+      const originalAriaLabel = button ? button.getAttribute("aria-label") : null;
+      actionInFlight = true;
+      applyActionAvailability(latestStatus);
+      if (button) {
+        if (button.classList.contains("button-icon")) {
+          button.innerHTML = '<span class="icon spinner" aria-hidden="true">↻</span>';
+          button.setAttribute("aria-label", "处理中");
+        } else {
+          button.innerHTML = '<span class="icon spinner" aria-hidden="true">↻</span><span>处理中</span>';
+        }
+      }
+      try {
+        const response = await fetch(`/api/${action}`, {
+          method: "POST",
+          headers: {"X-Control-Token": window.CONTROL_TOKEN}
+        });
+        if (response.status === 409) throw new Error("busy");
+        if (!response.ok) throw new Error("action");
+        render(await response.json());
+      } catch (error) {
+        setMessage(
+          "controlError",
+          error.message === "busy" ? "另一项操作正在进行，请等待完成。" : "管理器未能完成操作，请稍后重试。"
+        );
+      } finally {
+        if (button) {
+          button.innerHTML = original;
+          if (originalAriaLabel === null) button.removeAttribute("aria-label");
+          else button.setAttribute("aria-label", originalAriaLabel);
+        }
+        actionInFlight = false;
+        applyActionAvailability(latestStatus);
+        await refresh();
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 2500);
+  </script>
+</body>
+</html>

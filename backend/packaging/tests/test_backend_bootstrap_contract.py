@@ -41,7 +41,9 @@ def test_bootstrap_checks_listener_chain_and_durable_credentials() -> None:
     assert "bootstrap secret 可能已暴露" in script
     assert "catch [System.Security.SecurityException]" in script
     assert '"http://127.0.0.1:$BackendPort/api/health/installation"' in script
-    assert '@($Payload.PSObject.Properties).Count -ne 4' in script
+    assert '@($Payload.PSObject.Properties).Count -ne 9' in script
+    assert '$Payload.runtime_access_state -notin @("available", "repair_required")' in script
+    assert '[string]$Payload.contract -cne "ticketbox-installation-health-v2"' in script
     assert '[string]$Payload.status -cne "ok"' in script
     assert '[string]$Payload.product -cne "ticketbox"' in script
     assert "Get-TicketboxExpectedBackendVersion" in script
@@ -1306,6 +1308,56 @@ if (-not $rejected) {{ throw 'weak bootstrap secret accepted' }}
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell direct loopback contract")
+def test_backend_health_schema_is_consumed_by_ps51_and_ps7(tmp_path: Path) -> None:
+    from app.schemas import (
+        InstallationHealthResponse,
+        InstallationMobileCapabilitiesResponse,
+    )
+
+    payload_path = tmp_path / "installation-health.json"
+    payload_path.write_text(
+        InstallationHealthResponse(
+            backend_version="7.8.9",
+            installation_id="ticketbox-contract-integration",
+            runtime_access_state="repair_required",
+            owner_state="configured",
+            owner_recovery_channel="managed_host",
+            mobile_connectivity=InstallationMobileCapabilitiesResponse(
+                mobile_endpoint_state="local_only",
+                android_binding_state="setup_required",
+                iphone_upload_state="setup_required",
+            ),
+        ).model_dump_json(),
+        encoding="utf-8",
+    )
+    harness = tmp_path / "installation-health-contract.ps1"
+    harness.write_text(
+        f"""
+$ErrorActionPreference = 'Stop'
+. '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
+$payload = Get-Content -LiteralPath '{str(payload_path).replace("'", "''")}' -Raw | ConvertFrom-Json
+Assert-TicketboxInstallationHealthResponse `
+    -Payload $payload `
+    -ExpectedBackendVersion '7.8.9' `
+    -ExpectedInstallationId 'ticketbox-contract-integration'
+""",
+        encoding="utf-8-sig",
+    )
+
+    for engine in powershell_contract_engines():
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell direct loopback contract")
 def test_bootstrap_request_bypasses_default_proxy(tmp_path: Path) -> None:
     app_data = (tmp_path / "data" / "app").resolve()
     expected_installation_id = "ticketbox-" + hashlib.sha256(
@@ -1323,10 +1375,19 @@ def test_bootstrap_request_bypasses_default_proxy(tmp_path: Path) -> None:
             if position == 1:
                 body = json.dumps(
                     {
+                        "contract": "ticketbox-installation-health-v2",
                         "status": "ok",
                         "product": "ticketbox",
                         "backend_version": "7.8.9",
                         "installation_id": expected_installation_id,
+                        "runtime_access_state": "repair_required",
+                        "owner_state": "configured",
+                        "owner_recovery_channel": "managed_host",
+                        "mobile_connectivity": {
+                            "mobile_endpoint_state": "local_only",
+                            "android_binding_state": "setup_required",
+                            "iphone_upload_state": "setup_required",
+                        },
                     },
                     separators=(",", ":"),
                 ).encode()
@@ -1440,7 +1501,16 @@ try {{
     if ($expectedInstallationId -cne '{expected_installation_id}') {{
         throw 'installation id did not match the backend data-root contract'
     }}
-    foreach ($field in @('status', 'product', 'backend_version', 'installation_id')) {{
+    foreach ($field in @(
+        'contract',
+        'status',
+        'product',
+        'backend_version',
+        'installation_id',
+        'runtime_access_state',
+        'owner_state',
+        'owner_recovery_channel'
+    )) {{
         $invalid = $health.PSObject.Copy()
         $invalid.$field = 'wrong'
         $rejected = $false
@@ -1452,6 +1522,30 @@ try {{
         }} catch {{ $rejected = $true }}
         if (-not $rejected) {{ throw "installation health accepted wrong $field" }}
     }}
+    $invalidMobile = $health.PSObject.Copy()
+    $invalidMobile.mobile_connectivity = [pscustomobject]@{{
+        mobile_endpoint_state = 'local_only'
+        android_binding_state = 'configured_unverified'
+        iphone_upload_state = 'setup_required'
+    }}
+    $mobileRejected = $false
+    try {{
+        Assert-TicketboxInstallationHealthResponse `
+            -Payload $invalidMobile `
+            -ExpectedBackendVersion $expectedVersion `
+            -ExpectedInstallationId $expectedInstallationId
+    }} catch {{ $mobileRejected = $true }}
+    if (-not $mobileRejected) {{ throw 'installation health accepted invalid mobile state' }}
+    $validPublic = $health.PSObject.Copy()
+    $validPublic.mobile_connectivity = [pscustomobject]@{{
+        mobile_endpoint_state = 'public_configured_unverified'
+        android_binding_state = 'configured_unverified'
+        iphone_upload_state = 'configured_unverified'
+    }}
+    Assert-TicketboxInstallationHealthResponse `
+        -Payload $validPublic `
+        -ExpectedBackendVersion $expectedVersion `
+        -ExpectedInstallationId $expectedInstallationId
     $redirectRejected = $false
     try {{
         Invoke-TicketboxDirectLoopbackHealthHttpRequest `

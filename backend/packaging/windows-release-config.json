@@ -15,6 +15,7 @@
   "pg_service_name": "TicketboxPg",
   "pg_recovery_service_name": "TicketboxPgRecovery",
   "backend_service_name": "TicketboxBackend",
+  "owner_recovery_channel": "managed_host",
   "default_pg_port": 5432,
   "fallback_pg_port": 5440,
   "default_backend_port": 8000,

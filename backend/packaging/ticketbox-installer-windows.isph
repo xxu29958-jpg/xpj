@@ -4,6 +4,13 @@
   ProcessQueryLimitedInformation = $00001000;
   WaitObject0 = 0;
   WaitTimeout = 258;
+  GenericRead = $80000000;
+  FileShareRead = $00000001;
+  OpenExisting = 3;
+  FileAttributeNormal = $00000080;
+  ManagerMaintenanceRegistryPath = 'Software\Ticketbox';
+  ManagerMaintenanceRegistryValue = 'MaintenanceOwner';
+  ManagerMaintenanceRecordSchema = 'ticketbox-manager-maintenance-v1';
   LifecycleSafetyScriptSha256 = '{#LifecycleSafetyScriptSha256}';
   LifecycleLockScriptSha256 = '{#LifecycleLockScriptSha256}';
   LifecycleHolderScriptSha256 = '{#LifecycleHolderScriptSha256}';
@@ -28,10 +35,14 @@ type
 var
   DataRootPage: TInputDirWizardPage;
   PortPage: TInputQueryWizardPage;
+  AdvancedPortSettings: TNewCheckBox;
   ExistingInstall: Boolean;
   ExistingDataRoot: String;
   ExistingPgPort: String;
   ExistingBackendPort: String;
+  ResolvedPgPort: String;
+  ResolvedBackendPort: String;
+  AutomaticPortSelectionError: String;
   SelectedPowerShellPath: String;
   PortProbeFailed: Boolean;
   LifecycleLockHolderProcessHandle: LongWord;
@@ -70,11 +81,27 @@ var
   DataRootGuardScriptPath: String;
   DataRootGuardProcessStarted: Boolean;
   DataRootGuardActive: Boolean;
+  ManagerMaintenanceOwnerRecord: String;
+  InstallerSourceLeaseHandle: LongWord;
 
 function CloseHandle(Handle: LongWord): Boolean;
   external 'CloseHandle@kernel32.dll stdcall';
 function GetCurrentProcessId(): LongWord;
   external 'GetCurrentProcessId@kernel32.dll stdcall';
+function GetLastError(): LongWord;
+  external 'GetLastError@kernel32.dll stdcall';
+procedure SetLastError(ErrorCode: LongWord);
+  external 'SetLastError@kernel32.dll stdcall';
+function CreateFileForLease(
+  FileName: String;
+  DesiredAccess: LongWord;
+  ShareMode: LongWord;
+  SecurityAttributes: LongWord;
+  CreationDisposition: LongWord;
+  FlagsAndAttributes: LongWord;
+  TemplateFile: LongWord
+): LongWord;
+  external 'CreateFileW@kernel32.dll stdcall';
 function OpenProcess(
   DesiredAccess: LongWord;
   InheritHandle: Boolean;
@@ -91,6 +118,176 @@ function GetProcessTimes(
   var UserTime: TTicketboxFileTime
 ): Boolean;
   external 'GetProcessTimes@kernel32.dll stdcall';
+
+procedure CloseInstallerSourceLease();
+begin
+  if (InstallerSourceLeaseHandle <> 0) and
+     (InstallerSourceLeaseHandle <> InvalidHandleValue) then
+  begin
+    CloseHandle(InstallerSourceLeaseHandle);
+  end;
+  InstallerSourceLeaseHandle := InvalidHandleValue;
+end;
+
+function AcquireInstallerSourceLease(): Boolean;
+begin
+  InstallerSourceLeaseHandle := CreateFileForLease(
+    ExpandConstant('{srcexe}'),
+    GenericRead,
+    FileShareRead,
+    0,
+    OpenExisting,
+    FileAttributeNormal,
+    0);
+  if (InstallerSourceLeaseHandle = 0) or
+     (InstallerSourceLeaseHandle = InvalidHandleValue) then
+  begin
+    Log('Could not acquire the installer source file lease.');
+    Result := False;
+    exit;
+  end;
+  Result := True;
+end;
+
+function BuildManagerMaintenanceOwnerRecord(): String;
+begin
+  Result :=
+    ManagerMaintenanceRecordSchema + '|' +
+    IntToStr(LifecycleLockOwnerProcessId) + '|' +
+    LifecycleLockOwnerStartedFileTimeHigh + '|' +
+    LifecycleLockOwnerStartedFileTimeLow;
+end;
+
+function StartManagerMaintenanceGate(): Boolean;
+var
+  Persisted: String;
+begin
+  if ManagerMaintenanceOwnerRecord <> '' then
+  begin
+    Result :=
+      RegQueryStringValue(
+        HKLM64,
+        ManagerMaintenanceRegistryPath,
+        ManagerMaintenanceRegistryValue,
+        Persisted) and
+      (Persisted = ManagerMaintenanceOwnerRecord);
+    exit;
+  end;
+  if (LifecycleLockOwnerProcessId = 0) or
+     (LifecycleLockOwnerStartedFileTimeHigh = '') or
+     (LifecycleLockOwnerStartedFileTimeLow = '') then
+  begin
+    Log('Lifecycle owner identity is unavailable for the Manager maintenance marker.');
+    Result := False;
+    exit;
+  end;
+  ManagerMaintenanceOwnerRecord := BuildManagerMaintenanceOwnerRecord();
+  if not RegWriteStringValue(
+    HKLM64,
+    ManagerMaintenanceRegistryPath,
+    ManagerMaintenanceRegistryValue,
+    ManagerMaintenanceOwnerRecord) then
+  begin
+    ManagerMaintenanceOwnerRecord := '';
+    Log('Could not publish the Manager maintenance owner marker.');
+    Result := False;
+    exit;
+  end;
+  if (not RegQueryStringValue(
+        HKLM64,
+        ManagerMaintenanceRegistryPath,
+        ManagerMaintenanceRegistryValue,
+        Persisted)) or
+     (Persisted <> ManagerMaintenanceOwnerRecord) then
+  begin
+    ManagerMaintenanceOwnerRecord := '';
+    Log('The Manager maintenance owner marker failed post-write verification.');
+    Result := False;
+    exit;
+  end;
+  Result := True;
+end;
+
+function ManagerMaintenanceGateActive(): Boolean;
+var
+  Persisted: String;
+begin
+  Result :=
+    (ManagerMaintenanceOwnerRecord <> '') and
+    RegQueryStringValue(
+      HKLM64,
+      ManagerMaintenanceRegistryPath,
+      ManagerMaintenanceRegistryValue,
+      Persisted) and
+    (Persisted = ManagerMaintenanceOwnerRecord);
+end;
+
+procedure AssertManagerMaintenanceGateActive();
+begin
+  if not ManagerMaintenanceGateActive() then
+  begin
+    RaiseException('Manager maintenance gate is not active.');
+  end;
+end;
+
+function ReleaseManagerMaintenanceGate(): Boolean;
+var
+  Persisted: String;
+begin
+  Result := True;
+  if ManagerMaintenanceOwnerRecord = '' then
+  begin
+    exit;
+  end;
+  if (not RegQueryStringValue(
+        HKLM64,
+        ManagerMaintenanceRegistryPath,
+        ManagerMaintenanceRegistryValue,
+        Persisted)) or
+     (Persisted <> ManagerMaintenanceOwnerRecord) then
+  begin
+    Result := False;
+    exit;
+  end;
+  if not RegDeleteValue(
+    HKLM64,
+    ManagerMaintenanceRegistryPath,
+    ManagerMaintenanceRegistryValue) then
+  begin
+    Result := False;
+    exit;
+  end;
+  if RegQueryStringValue(
+    HKLM64,
+    ManagerMaintenanceRegistryPath,
+    ManagerMaintenanceRegistryValue,
+    Persisted) then
+  begin
+    Result := False;
+    exit;
+  end;
+  ManagerMaintenanceOwnerRecord := '';
+end;
+
+procedure CloseManagerMaintenanceGate();
+var
+  Persisted: String;
+begin
+  if (ManagerMaintenanceOwnerRecord <> '') and
+     RegQueryStringValue(
+       HKLM64,
+       ManagerMaintenanceRegistryPath,
+       ManagerMaintenanceRegistryValue,
+       Persisted) and
+     (Persisted = ManagerMaintenanceOwnerRecord) then
+  begin
+    RegDeleteValue(
+      HKLM64,
+      ManagerMaintenanceRegistryPath,
+      ManagerMaintenanceRegistryValue);
+  end;
+  ManagerMaintenanceOwnerRecord := '';
+end;
 
 function IsProcessHandleRunning(Handle: LongWord): Boolean;
 begin
@@ -1468,18 +1665,30 @@ function InitializeSetup(): Boolean;
 var
   VersionFailureReason: String;
 begin
+  InstallerSourceLeaseHandle := InvalidHandleValue;
+  if not AcquireInstallerSourceLease() then
+  begin
+    MsgBox(
+      '无法锁定当前小票夹安装包；安装尚未修改服务、数据或程序文件。请重新下载后再试。',
+      mbError,
+      MB_OK);
+    Result := False;
+    exit;
+  end;
   if WizardSilent then
   begin
     MsgBox(
       '当前版本尚未提供经过安全验收的无人值守安装合同。请使用交互式安装向导。',
       mbError,
       MB_OK);
+    CloseInstallerSourceLease();
     Result := False;
     exit;
   end;
   LifecyclePrepared := False;
   LifecycleFilesMayBeReplaced := False;
   LifecycleInstallCompleted := False;
+  ManagerMaintenanceOwnerRecord := '';
   InstallerLogSequence := 0;
   LastInstallerLogPath := '';
   DataRootGuardProcessId := 0;
@@ -1507,6 +1716,7 @@ begin
   if not PrepareSetupLifecycleLockHolderScripts() then
   begin
     MsgBox(LifecycleLockError, mbError, MB_OK);
+    CloseInstallerSourceLease();
     Result := False;
     exit;
   end;
@@ -1515,12 +1725,14 @@ begin
   begin
     MsgBox(LifecycleLockError, mbError, MB_OK);
     ReleaseLifecycleLock();
+    CloseInstallerSourceLease();
     exit;
   end;
   if not CheckBackendVersionFloor(VersionFailureReason) then
   begin
     MsgBox(VersionFailureReason, mbError, MB_OK);
     ReleaseLifecycleLock();
+    CloseInstallerSourceLease();
     Result := False;
     exit;
   end;
@@ -1529,6 +1741,7 @@ end;
 
 function InitializeUninstall(): Boolean;
 begin
+  ManagerMaintenanceOwnerRecord := '';
   LifecycleLockHolderProcessHandle := InvalidHandleValue;
   LifecycleLockHolderProcessId := 0;
   LifecycleLockRootValidatedPath := '';
@@ -1551,12 +1764,24 @@ begin
   begin
     MsgBox(LifecycleLockError, mbError, MB_OK);
     ReleaseLifecycleLock();
+    exit;
+  end;
+  if not StartManagerMaintenanceGate() then
+  begin
+    MsgBox(
+      '无法建立小票夹管理器维护门；卸载尚未修改服务或文件。请关闭其他安装器后重试。',
+      mbError,
+      MB_OK);
+    CloseManagerMaintenanceGate();
+    ReleaseLifecycleLock();
+    Result := False;
   end;
 end;
 
 procedure DeinitializeUninstall();
 begin
   ReleaseLifecycleLock();
+  CloseManagerMaintenanceGate();
 end;
 
 function IsSupportedPowerShell7Host(PowerShellPath: String): Boolean;

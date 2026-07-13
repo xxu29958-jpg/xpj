@@ -414,6 +414,7 @@ $shawl = New-TicketboxShawlServiceImagePath `
     -InstallerRecoveryGuardPath 'D:\Ticketbox Data\installer-runtime-recovery-pending' `
     -DataRootMarkerPath 'C:\ProgramData\TicketboxRuntimeBinding\data-root\.ticketbox-data-root.json' `
     -DataVolumeIdentity '\\?\Volume{{01234567-89AB-CDEF-0123-456789ABCDEF}}\' `
+    -OwnerRecoveryChannel managed_host `
     -StopTimeoutMs 25000 `
     -RestartDelayMs 5000
 $shawlParts = @(Split-TicketboxWindowsCommandLine $shawl)
@@ -425,6 +426,9 @@ if (@($shawlParts | Where-Object {{ $_ -ceq '--kill-process-tree' }}).Count -ne 
 }}
 if (@($shawlParts | Where-Object {{ $_ -ceq 'TICKETBOX_DATA_VOLUME_IDENTITY=\\?\VOLUME{{01234567-89AB-CDEF-0123-456789ABCDEF}}\' }}).Count -ne 1) {{
     throw 'Shawl Volume GUID authority did not roundtrip exactly once'
+}}
+if (@($shawlParts | Where-Object {{ $_ -ceq 'TICKETBOX_OWNER_RECOVERY_CHANNEL=managed_host' }}).Count -ne 1) {{
+    throw 'Shawl owner recovery capability did not roundtrip exactly once'
 }}
 """,
         encoding="utf-8-sig",

@@ -13,7 +13,7 @@ from backend_manager.config import (
     SourceRuntimeConfig,
     load_config,
 )
-from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
+from backend_manager.installation import InstalledLayout, WindowsReleaseConfig, installation_id_for_app_data
 
 
 def _release_config() -> WindowsReleaseConfig:
@@ -31,7 +31,11 @@ def _release_config() -> WindowsReleaseConfig:
 
 def test_all_urls_derive_from_one_host_port_pair() -> None:
     cfg = ManagerConfig(
-        runtime=SourceRuntimeConfig(backend_root=Path("x"), venv_python=Path("y")),
+        runtime=SourceRuntimeConfig(
+            backend_root=Path("x"),
+            venv_python=Path("y"),
+            data_root=Path("x"),
+        ),
         backend_host="0.0.0.0",
         backend_port=9001,
         manager_host="127.0.0.1",
@@ -58,7 +62,11 @@ def test_all_urls_derive_from_one_host_port_pair() -> None:
 )
 def test_lan_endpoint_matches_backend_bind_semantics(host: str, detected: str, expected: str | None) -> None:
     cfg = ManagerConfig(
-        runtime=SourceRuntimeConfig(backend_root=Path("x"), venv_python=Path("y")),
+        runtime=SourceRuntimeConfig(
+            backend_root=Path("x"),
+            venv_python=Path("y"),
+            data_root=Path("x"),
+        ),
         backend_host=host,
         backend_port=9001,
         manager_host="127.0.0.1",
@@ -97,6 +105,29 @@ def test_load_config_reads_env_overrides_and_backend_dotenv(tmp_path: Path, monk
     assert cfg.backend_host == "127.0.0.1"  # documented default
     assert cfg.public_base_url == "https://api.example"  # read from backend .env
     assert cfg.runtime.venv_python == root.resolve() / ".venv" / "Scripts" / "python.exe"
+    assert cfg.runtime.data_root == root.resolve()
+
+
+def test_source_relative_data_root_is_anchored_to_backend_root(tmp_path: Path, monkeypatch) -> None:
+    root = _fake_backend(tmp_path)
+    runtime_data = root / "runtime-data"
+    runtime_data.mkdir()
+    (runtime_data / ".env").write_text(
+        "PUBLIC_BASE_URL=https://runtime.example\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TICKETBOX_MANAGER_MODE", "source")
+    monkeypatch.setenv("TICKETBOX_BACKEND_ROOT", str(root))
+    monkeypatch.setenv("TICKETBOX_DATA_DIR", "runtime-data")
+    monkeypatch.chdir(tmp_path.parent)
+
+    cfg = load_config()
+
+    assert isinstance(cfg.runtime, SourceRuntimeConfig)
+    assert cfg.runtime.data_root == runtime_data.resolve()
+    assert cfg.runtime.env_path == runtime_data.resolve() / ".env"
+    assert cfg.public_base_url == "https://runtime.example"
+    assert cfg.expected_installation_id == installation_id_for_app_data(cfg.runtime.data_root)
 
 
 def test_missing_venv_interpreter_raises(tmp_path: Path, monkeypatch) -> None:
@@ -144,7 +175,7 @@ def test_supported_manager_hosts_are_accepted(tmp_path: Path, monkeypatch) -> No
         assert load_config().manager_host == expected
 
 
-@pytest.mark.parametrize("host", ["10.0.0.5", "::", "::1", "127.evil.test"])
+@pytest.mark.parametrize("host", ["10.0.0.5", "::", "::1", "127.0.0.5", "127.evil.test"])
 def test_source_backend_requires_ipv4_loopback_or_wildcard(
     tmp_path: Path,
     monkeypatch,
@@ -155,7 +186,7 @@ def test_source_backend_requires_ipv4_loopback_or_wildcard(
     monkeypatch.setenv("TICKETBOX_BACKEND_ROOT", str(root))
     monkeypatch.setenv("TICKETBOX_BACKEND_HOST", host)
 
-    with pytest.raises(ConfigError, match="IPv4 loopback or 0.0.0.0"):
+    with pytest.raises(ConfigError, match="127.0.0.1, localhost, or 0.0.0.0"):
         load_config()
 
 
@@ -173,7 +204,7 @@ def test_auto_mode_uses_safe_install_metadata_without_reading_protected_env(tmp_
         pg_port=5544,
         backend_service_name="TicketboxBackendConfigured",
         pg_service_name="TicketboxPgConfigured",
-        backend_version="9.8.7-test",
+        backend_version="9.8.7",
     )
     monkeypatch.setattr("backend_manager.config.discover_installed_layout", lambda: layout)
     monkeypatch.setattr("backend_manager.config.load_installed_release_config", lambda _layout: _release_config())
@@ -196,7 +227,7 @@ def test_auto_mode_uses_safe_install_metadata_without_reading_protected_env(tmp_
     assert cfg.runtime.pg_service_name == "TicketboxPgConfigured"
     assert cfg.public_base_url is None
     assert cfg.public_endpoint_state == "protected_unknown"
-    assert cfg.expected_backend_version == "9.8.7-test"
+    assert cfg.expected_backend_version == "9.8.7"
     assert cfg.expected_installation_id == layout.installation_id
     assert cfg.health_request_timeout_seconds == 1.75
     assert cfg.runtime.release.service_state_timeout_seconds == 17

@@ -76,6 +76,7 @@ $ScmFailureResetSeconds = [int]$ReleaseConfig.scm_failure_reset_seconds
 $ScmRestartActions = @($ReleaseConfig.scm_restart_delays_ms | ForEach-Object { "restart/$([int]$_)" }) -join "/"
 $DbName = [string]$ReleaseConfig.db_name
 $DbRole = [string]$ReleaseConfig.db_role
+$OwnerRecoveryChannel = [string]$ReleaseConfig.owner_recovery_channel
 if ($AccountName.Trim().Length -eq 0) { $AccountName = [string]$ReleaseConfig.bootstrap_account_name }
 if ($LedgerName.Trim().Length -eq 0) { $LedgerName = [string]$ReleaseConfig.bootstrap_ledger_name }
 if ($DeviceName.Trim().Length -eq 0) { $DeviceName = [string]$ReleaseConfig.bootstrap_device_name }
@@ -308,7 +309,8 @@ function Assert-TicketboxServiceRuntimeCommand {
         [int]$ExpectedStopTimeoutMs = $StopTimeoutMs,
         [int]$ExpectedRestartDelayMs = $RestartDelayMs,
         [switch]$AllowMissingInstallerRecoveryGuard,
-        [switch]$AllowMissingRuntimeDataAuthority
+        [switch]$AllowMissingRuntimeDataAuthority,
+        [switch]$AllowMissingOwnerRecoveryChannel
     )
     if ($Name -eq $PgServiceName) {
         Assert-TicketboxPgServiceCommand `
@@ -332,10 +334,12 @@ function Assert-TicketboxServiceRuntimeCommand {
         -ExpectedInstallerRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
         -ExpectedDataRootMarkerPath $ExpectedDataRootMarkerPath `
         -ExpectedDataVolumeIdentity $ExpectedDataVolumeIdentity `
+        -ExpectedOwnerRecoveryChannel $OwnerRecoveryChannel `
         -ExpectedStopTimeoutMs $ExpectedStopTimeoutMs `
         -ExpectedRestartDelayMs $ExpectedRestartDelayMs `
         -AllowMissingInstallerRecoveryGuard:$AllowMissingInstallerRecoveryGuard `
-        -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority
+        -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority `
+        -AllowMissingOwnerRecoveryChannel:$AllowMissingOwnerRecoveryChannel
 }
 
 function Assert-ExpectedServiceConfiguration {
@@ -345,7 +349,8 @@ function Assert-ExpectedServiceConfiguration {
         [int]$ExpectedRestartDelayMs = $RestartDelayMs,
         [switch]$AllowTargetPolicyFallback,
         [switch]$AllowMissingInstallerRecoveryGuard,
-        [switch]$AllowLegacyRuntimeDataContract
+        [switch]$AllowLegacyRuntimeDataContract,
+        [switch]$AllowMissingOwnerRecoveryChannel
     )
     if (-not (Service-Exists $Name)) {
         return
@@ -364,7 +369,8 @@ function Assert-ExpectedServiceConfiguration {
             -ExpectedStopTimeoutMs $ExpectedStopTimeoutMs `
             -ExpectedRestartDelayMs $ExpectedRestartDelayMs `
             -AllowMissingInstallerRecoveryGuard:$AllowMissingInstallerRecoveryGuard `
-            -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority
+            -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority `
+            -AllowMissingOwnerRecoveryChannel:$AllowMissingOwnerRecoveryChannel
         return
     }
     catch {
@@ -382,7 +388,8 @@ function Assert-ExpectedServiceConfiguration {
                 -ExpectedStopTimeoutMs $StopTimeoutMs `
                 -ExpectedRestartDelayMs $RestartDelayMs `
                 -AllowMissingInstallerRecoveryGuard:$AllowMissingInstallerRecoveryGuard `
-                -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority
+                -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority `
+                -AllowMissingOwnerRecoveryChannel:$AllowMissingOwnerRecoveryChannel
             return
         }
         catch { }
@@ -400,7 +407,8 @@ function Assert-ExpectedServiceConfiguration {
             -ExpectedStopTimeoutMs $ExpectedStopTimeoutMs `
             -ExpectedRestartDelayMs $ExpectedRestartDelayMs `
             -AllowMissingInstallerRecoveryGuard:$AllowMissingInstallerRecoveryGuard `
-            -AllowMissingRuntimeDataAuthority
+            -AllowMissingRuntimeDataAuthority `
+            -AllowMissingOwnerRecoveryChannel:$AllowMissingOwnerRecoveryChannel
         return
     }
     catch {
@@ -416,7 +424,8 @@ function Assert-ExpectedServiceConfiguration {
                 -ExpectedStopTimeoutMs $StopTimeoutMs `
                 -ExpectedRestartDelayMs $RestartDelayMs `
                 -AllowMissingInstallerRecoveryGuard:$AllowMissingInstallerRecoveryGuard `
-                -AllowMissingRuntimeDataAuthority
+                -AllowMissingRuntimeDataAuthority `
+                -AllowMissingOwnerRecoveryChannel:$AllowMissingOwnerRecoveryChannel
             return
         }
         catch { }
@@ -431,7 +440,8 @@ function Stop-ServiceIfExists {
         [int]$ExpectedRestartDelayMs = $RestartDelayMs,
         [switch]$AllowTargetPolicyFallback,
         [switch]$AllowMissingInstallerRecoveryGuard,
-        [switch]$AllowLegacyRuntimeDataContract
+        [switch]$AllowLegacyRuntimeDataContract,
+        [switch]$AllowMissingOwnerRecoveryChannel
     )
     Assert-ExpectedServiceConfiguration `
         -Name $Name `
@@ -439,7 +449,8 @@ function Stop-ServiceIfExists {
         -ExpectedRestartDelayMs $ExpectedRestartDelayMs `
         -AllowTargetPolicyFallback:$AllowTargetPolicyFallback `
         -AllowMissingInstallerRecoveryGuard:$AllowMissingInstallerRecoveryGuard `
-        -AllowLegacyRuntimeDataContract:$AllowLegacyRuntimeDataContract
+        -AllowLegacyRuntimeDataContract:$AllowLegacyRuntimeDataContract `
+        -AllowMissingOwnerRecoveryChannel:$AllowMissingOwnerRecoveryChannel
     $backendStopPort = if ($Name -eq $BackendServiceName) { $BackendPort } else { 0 }
     $runtimeExecutables = if ($Name -eq $BackendServiceName) {
         @($BackendExe, $ShawlExe)
@@ -529,6 +540,7 @@ function Register-BackendService {
         -InstallerRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
         -DataRootMarkerPath $ServiceDataRootMarkerPath `
         -DataVolumeIdentity $ServiceDataVolumeIdentity `
+        -OwnerRecoveryChannel $OwnerRecoveryChannel `
         -StopTimeoutMs $StopTimeoutMs `
         -RestartDelayMs $RestartDelayMs
     if (Service-Exists $BackendServiceName) {
@@ -964,7 +976,8 @@ try {
         -ExpectedRestartDelayMs $PreviousRestartDelayMs `
         -AllowTargetPolicyFallback:$FilesMayHaveBeenReplaced `
         -AllowMissingInstallerRecoveryGuard:$hadExistingBackendService `
-        -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+        -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent `
+        -AllowMissingOwnerRecoveryChannel:$hadExistingBackendService
     Assert-ExpectedServiceConfiguration `
         -Name $PgServiceName `
         -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
@@ -1051,7 +1064,8 @@ try {
         -ExpectedRestartDelayMs $PreviousRestartDelayMs `
         -AllowTargetPolicyFallback:$FilesMayHaveBeenReplaced `
         -AllowMissingInstallerRecoveryGuard:$hadExistingBackendService `
-        -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+        -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent `
+        -AllowMissingOwnerRecoveryChannel:$hadExistingBackendService
     if (-not $hadExistingPgService) {
         Initialize-TicketboxSecureDataRoot `
             -DataRoot $DataRoot `

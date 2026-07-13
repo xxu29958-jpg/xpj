@@ -46,7 +46,9 @@ _FROZEN_HOST_AUTHORITY_KEYS = (
     "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH",
     "TICKETBOX_DATA_ROOT_MARKER_PATH",
     "TICKETBOX_DATA_VOLUME_IDENTITY",
+    "TICKETBOX_OWNER_RECOVERY_CHANNEL",
 )
+_OWNER_RECOVERY_CHANNELS = frozenset({"development", "managed_host", "operator"})
 _BOOTSTRAP_RECOVERY_GUARD_NAME = "bootstrap-exposure-recovery-pending"
 
 
@@ -230,6 +232,9 @@ def _assert_frozen_host_authority(host_authority: dict[str, str | None]) -> None
         raise RuntimeError(
             "frozen backend host authority is incomplete: " + ", ".join(missing)
         )
+    owner_recovery_channel = host_authority["TICKETBOX_OWNER_RECOVERY_CHANNEL"]
+    if owner_recovery_channel not in _OWNER_RECOVERY_CHANNELS:
+        raise RuntimeError("frozen backend owner recovery capability is invalid")
 
 
 def _assert_bootstrap_guard_runtime_binding(marker_path: Path) -> None:
@@ -541,12 +546,20 @@ class _InstallerRuntimeRecoveryGuard:
         self._guard_path = guard_path
 
     async def __call__(self, scope, receive, send) -> None:
-        if (
-            scope["type"] != "http"
-            or scope.get("path") in self._ALLOWED_PATHS
-            or not _installer_runtime_recovery_is_pending(self._guard_path)
-        ):
+        if scope["type"] != "http":
             await self._app(scope, receive, send)
+            return
+
+        recovery_pending = _installer_runtime_recovery_is_pending(self._guard_path)
+        if not recovery_pending:
+            await self._app(scope, receive, send)
+            return
+        if scope.get("path") in self._ALLOWED_PATHS:
+            projected_scope = dict(scope)
+            projected_state = dict(scope.get("state") or {})
+            projected_state["ticketbox_runtime_access_state"] = "repair_required"
+            projected_scope["state"] = projected_state
+            await self._app(projected_scope, receive, send)
             return
 
         body = json.dumps(

@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from app.config import _resolve_cloudflare_access_team_domain, _resolve_public_base_url
+from app.services.installation_health_service import installation_mobile_capabilities
 
 
 @pytest.mark.parametrize(
@@ -35,6 +36,17 @@ from app.config import _resolve_cloudflare_access_team_domain, _resolve_public_b
 )
 def test_resolver_accepts_safe_values(raw: str | None, expected: str) -> None:
     assert _resolve_public_base_url(raw) == expected
+    capabilities = installation_mobile_capabilities(expected)
+    public_configured = expected.startswith("https://") and not any(
+        loopback in expected for loopback in ("127.0.0.1", "localhost", "[::1]")
+    )
+    assert capabilities.mobile_endpoint_state == (
+        "public_configured_unverified" if public_configured else "local_only"
+    )
+    assert capabilities.android_binding_state == (
+        "configured_unverified" if public_configured else "setup_required"
+    )
+    assert capabilities.iphone_upload_state == capabilities.android_binding_state
 
 
 @pytest.mark.parametrize(

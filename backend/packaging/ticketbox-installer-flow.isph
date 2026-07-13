@@ -80,27 +80,130 @@ begin
   end;
 end;
 
-function SelectInitialPort(ParamName: String; ExistingValue: String; DefaultValue: String; FallbackValue: String): String;
-var
-  ParamValue: String;
+function PortParameter(ParamName: String): String;
 begin
-  ParamValue := ExpandConstant('{param:' + ParamName + '|}');
-  if ParamValue <> '' then
+  Result := Trim(ExpandConstant('{param:' + ParamName + '|}'));
+end;
+
+function AdvancedPortsRequested(): Boolean;
+begin
+  Result :=
+    (CompareText(Trim(ExpandConstant('{param:TicketboxAdvancedPorts|0}')), '1') = 0) or
+    (PortParameter('TicketboxPgPort') <> '') or
+    (PortParameter('TicketboxBackendPort') <> '');
+end;
+
+function TryAvailablePort(Candidate: String; ExcludedPort: String; var SelectedPort: String): Boolean;
+begin
+  Result := False;
+  if (not IsValidPort(Candidate)) or (Candidate = ExcludedPort) then
   begin
-    Result := ParamValue;
-  end
-  else if ExistingValue <> '' then
-  begin
-    Result := ExistingValue;
-  end
-  else if (not ExistingInstall) and IsPortListening(DefaultValue) and (not IsPortListening(FallbackValue)) then
-  begin
-    Result := FallbackValue;
-  end
-  else
-  begin
-    Result := DefaultValue;
+    exit;
   end;
+  if IsPortListening(Candidate) then
+  begin
+    exit;
+  end;
+  SelectedPort := Candidate;
+  Result := True;
+end;
+
+function FindAutomaticPort(
+  DefaultValue: String;
+  FallbackValue: String;
+  ExcludedPort: String;
+  var SelectedPort: String
+): Boolean;
+var
+  Offset: Integer;
+  CandidateNumber: Integer;
+begin
+  Result := TryAvailablePort(DefaultValue, ExcludedPort, SelectedPort);
+  if Result or PortProbeFailed then
+  begin
+    exit;
+  end;
+  Result := TryAvailablePort(FallbackValue, ExcludedPort, SelectedPort);
+  if Result or PortProbeFailed then
+  begin
+    exit;
+  end;
+  CandidateNumber := StrToIntDef(FallbackValue, -1);
+  for Offset := 1 to 32 do
+  begin
+    if CandidateNumber + Offset <= 65535 then
+    begin
+      Result := TryAvailablePort(
+        IntToStr(CandidateNumber + Offset),
+        ExcludedPort,
+        SelectedPort);
+      if Result or PortProbeFailed then
+      begin
+        exit;
+      end;
+    end;
+  end;
+end;
+
+procedure ResolveInstallationPorts();
+var
+  PgParameter: String;
+  BackendParameter: String;
+begin
+  AutomaticPortSelectionError := '';
+  PortProbeFailed := False;
+  PgParameter := PortParameter('TicketboxPgPort');
+  BackendParameter := PortParameter('TicketboxBackendPort');
+
+  if ExistingInstall then
+  begin
+    ResolvedPgPort := ExistingPgPort;
+    ResolvedBackendPort := ExistingBackendPort;
+    if ResolvedPgPort = '' then
+    begin
+      ResolvedPgPort := '{#DefaultPgPort}';
+    end;
+    if ResolvedBackendPort = '' then
+    begin
+      ResolvedBackendPort := '{#DefaultBackendPort}';
+    end;
+    exit;
+  end;
+
+  if PgParameter <> '' then
+  begin
+    ResolvedPgPort := PgParameter;
+  end
+  else if not FindAutomaticPort(
+    '{#DefaultPgPort}', '{#FallbackPgPort}', '', ResolvedPgPort) then
+  begin
+    AutomaticPortSelectionError := '无法自动选择可用的 PostgreSQL 服务端口。';
+    exit;
+  end;
+
+  if BackendParameter <> '' then
+  begin
+    ResolvedBackendPort := BackendParameter;
+  end
+  else if not FindAutomaticPort(
+    '{#DefaultBackendPort}', '{#FallbackBackendPort}', ResolvedPgPort, ResolvedBackendPort) then
+  begin
+    AutomaticPortSelectionError := '无法自动选择可用的后端服务端口。';
+    exit;
+  end;
+
+  if PortProbeFailed then
+  begin
+    AutomaticPortSelectionError := '无法可靠检查本机服务端口。安装器尚未复制任何程序文件。';
+  end;
+end;
+
+function ManualPortSettingsEnabled(): Boolean;
+begin
+  Result :=
+    (not ExistingInstall) and
+    (AdvancedPortSettings <> nil) and
+    AdvancedPortSettings.Checked;
 end;
 
 function SelectedDataRoot(): String;
@@ -117,27 +220,25 @@ end;
 
 function SelectedPgPort(): String;
 begin
-  if PortPage <> nil then
+  if (PortPage <> nil) and ManualPortSettingsEnabled() then
   begin
     Result := Trim(PortPage.Values[0]);
   end
   else
   begin
-    Result := SelectInitialPort(
-      'TicketboxPgPort', ExistingPgPort, '{#DefaultPgPort}', '{#FallbackPgPort}');
+    Result := ResolvedPgPort;
   end;
 end;
 
 function SelectedBackendPort(): String;
 begin
-  if PortPage <> nil then
+  if (PortPage <> nil) and ManualPortSettingsEnabled() then
   begin
     Result := Trim(PortPage.Values[1]);
   end
   else
   begin
-    Result := SelectInitialPort(
-      'TicketboxBackendPort', ExistingBackendPort, '{#DefaultBackendPort}', '{#FallbackBackendPort}');
+    Result := ResolvedBackendPort;
   end;
 end;
 
@@ -194,8 +295,7 @@ begin
   begin
     Result :=
       '所选端口已被占用：' + BusyPorts + '。' + #13#10 + #13#10 +
-      '请关闭占用这些端口的程序，或在上一步改用其它端口。开发机隔离端口：PostgreSQL ' +
-      '{#FallbackPgPort}，后端 API {#FallbackBackendPort}。';
+      '请关闭占用这些端口的程序后重试；需要固定端口时，可返回并打开高级设置。';
   end;
 end;
 
@@ -204,13 +304,34 @@ begin
   Result := '';
   if FreshInstall() then
   begin
+    if not ManualPortSettingsEnabled() then
+    begin
+      ResolveInstallationPorts();
+      if PortPage <> nil then
+      begin
+        PortPage.Values[0] := ResolvedPgPort;
+        PortPage.Values[1] := ResolvedBackendPort;
+      end;
+    end;
+    if AutomaticPortSelectionError <> '' then
+    begin
+      Result := AutomaticPortSelectionError;
+      exit;
+    end;
     Result := PortConflictMessage();
   end;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := (PortPage <> nil) and (PageID = PortPage.ID) and
+    (not ManualPortSettingsEnabled());
 end;
 
 procedure InitializeWizard();
 begin
   LoadExistingConfig();
+  ResolveInstallationPorts();
 
   DataRootPage := CreateInputDirPage(
     wpSelectDir,
@@ -223,18 +344,26 @@ begin
   DataRootPage.Add('数据目录');
   DataRootPage.Values[0] := SelectInitialDataRoot();
 
+  AdvancedPortSettings := TNewCheckBox.Create(DataRootPage.Surface);
+  AdvancedPortSettings.Parent := DataRootPage.Surface;
+  AdvancedPortSettings.Left := DataRootPage.Edits[0].Left;
+  AdvancedPortSettings.Top :=
+    DataRootPage.Edits[0].Top + DataRootPage.Edits[0].Height + ScaleY(18);
+  AdvancedPortSettings.Width := DataRootPage.Edits[0].Width;
+  AdvancedPortSettings.Caption := '高级设置：手动指定服务端口';
+  AdvancedPortSettings.Checked := AdvancedPortsRequested();
+  AdvancedPortSettings.Enabled := not ExistingInstall;
+
   PortPage := CreateInputQueryPage(
     DataRootPage.ID,
     '配置本机服务端口',
     '小票夹会安装 PostgreSQL 服务和后端 API 服务。',
-    '普通用户保持默认即可；如果本机已有 PostgreSQL 或正在运行源码后端，请使用未被占用的端口。'
+    '安装器已自动选择可用端口。只有需要固定端口的高级用户才应修改。'
   );
   PortPage.Add('PostgreSQL 服务端口', False);
   PortPage.Add('后端 API 端口', False);
-  PortPage.Values[0] := SelectInitialPort(
-    'TicketboxPgPort', ExistingPgPort, '{#DefaultPgPort}', '{#FallbackPgPort}');
-  PortPage.Values[1] := SelectInitialPort(
-    'TicketboxBackendPort', ExistingBackendPort, '{#DefaultBackendPort}', '{#FallbackBackendPort}');
+  PortPage.Values[0] := ResolvedPgPort;
+  PortPage.Values[1] := ResolvedBackendPort;
 
   OwnerHandoffMemo := TNewMemo.Create(WizardForm.FinishedPage);
   OwnerHandoffMemo.Parent := WizardForm.FinishedPage;
@@ -324,6 +453,11 @@ begin
   OwnerHandoffConfirmation.Visible := False;
   if (not OwnerHandoffExpected) or (not LifecycleInstallCompleted) then
   begin
+    if LifecycleInstallCompleted then
+    begin
+      WizardForm.FinishedLabel.Caption :=
+        '小票夹安装维护已完成。请从 Windows 开始菜单打开“小票夹管理器”。';
+    end;
     exit;
   end;
 
@@ -335,7 +469,7 @@ begin
     exit;
   end;
   WizardForm.FinishedLabel.Caption :=
-    '小票夹已安装。请先选中并复制下面的一次性绑定信息，再关闭安装器。';
+    '小票夹已安装。请先复制下面的一次性绑定信息；关闭安装器后，从 Windows 开始菜单打开“小票夹管理器”。Android 绑定前须先在管理器中完成手机连接配置。';
   OwnerHandoffMemo.Text := HandoffText;
   OwnerHandoffMemo.Visible := True;
   OwnerHandoffConfirmation.Visible := True;
@@ -395,6 +529,19 @@ begin
       exit;
     end;
     OwnerHandoffMemo.Text := '';
+  end;
+
+  if (CurPageID = wpFinished) and LifecycleInstallCompleted then
+  begin
+    if not ReleaseManagerMaintenanceGate() then
+    begin
+      MsgBox(
+        '安装已完成，但无法安全释放管理器维护门。请关闭安装器后从开始菜单打开小票夹管理器。',
+        mbError,
+        MB_OK);
+      Result := False;
+      exit;
+    end;
   end;
 
   if CurPageID = DataRootPage.ID then
@@ -472,25 +619,12 @@ begin
   end;
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): String;
+function PrepareAuthoritativePayloadReplacement(): String;
 var
   Args: String;
-  VersionFailureReason: String;
 begin
   AssertLifecycleLockActive();
-  OwnerHandoffExpected := False;
-  if not CheckBackendVersionFloorForDataRoot(
-    SelectedDataRoot(),
-    VersionFailureReason) then
-  begin
-    Result := VersionFailureReason;
-    exit;
-  end;
-  Result := FreshInstallPortError();
-  if Result <> '' then
-  begin
-    exit;
-  end;
+  AssertManagerMaintenanceGateActive();
   if not ValidateLifecycleLockBootstrapFiles() then
   begin
     Result := '受保护 lifecycle bootstrap bundle 在复制前复核失败。';
@@ -535,13 +669,58 @@ begin
   Result := '';
 end;
 
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  VersionFailureReason: String;
+begin
+  AssertLifecycleLockActive();
+  if not StartManagerMaintenanceGate() then
+  begin
+    Result :=
+      '无法建立小票夹管理器维护门；安装尚未备份、停服或复制文件。请关闭其他安装器后重试。';
+    exit;
+  end;
+  AssertManagerMaintenanceGateActive();
+  OwnerHandoffExpected := False;
+  if not CheckBackendVersionFloorForDataRoot(
+    SelectedDataRoot(),
+    VersionFailureReason) then
+  begin
+    Result := VersionFailureReason;
+    exit;
+  end;
+  Result := FreshInstallPortError();
+  if Result <> '' then
+  begin
+    exit;
+  end;
+  if not ValidateLifecycleLockBootstrapFiles() then
+  begin
+    Result := '受保护 lifecycle bootstrap bundle 在安装前复核失败。';
+    exit;
+  end;
+  Result := '';
+end;
+
+function AuthoritativePayloadReplacementPrepared(): Boolean;
+begin
+  Result := LifecyclePrepared;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Args: String;
+  PreparationFailure: String;
 begin
   if CurStep = ssInstall then
   begin
     AssertLifecycleLockActive();
+    AssertManagerMaintenanceGateActive();
+    PreparationFailure := PrepareAuthoritativePayloadReplacement();
+    if PreparationFailure <> '' then
+    begin
+      RaiseException(PreparationFailure);
+    end;
     AssertDataRootMutationGuardActive();
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
@@ -570,6 +749,7 @@ begin
   if CurStep = ssPostInstall then
   begin
     AssertLifecycleLockActive();
+    AssertManagerMaintenanceGateActive();
     AssertDataRootMutationGuardActive();
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
@@ -645,6 +825,8 @@ begin
   end;
   ReleaseDataRootMutationGuard();
   ReleaseLifecycleLock();
+  CloseInstallerSourceLease();
+  CloseManagerMaintenanceGate();
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -654,6 +836,7 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     AssertLifecycleLockActive();
+    AssertManagerMaintenanceGateActive();
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);

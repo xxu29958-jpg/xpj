@@ -24,18 +24,49 @@ import ipaddress
 import json
 import re
 import secrets
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Protocol
 
+from backend_manager.app_controller import ManagerShuttingDownError
+
 _TOKEN_PLACEHOLDER = "__CONTROL_TOKEN__"
-_ACTIONS = ("start", "stop", "restart", "auto_restart", "open_console")
+_ACTIONS = (
+    "start",
+    "stop",
+    "restart",
+    "auto_restart",
+    "open_console",
+    "open_pairing",
+    "open_devices",
+    "open_upload_links",
+    "open_backups",
+    "open_diagnostics",
+    "open_settings",
+    "export_diagnostics",
+)
+_ACTION_PATHS = {f"/api/{action}": action for action in _ACTIONS}
 _IDENTITY = {"product": "ticketbox-desktop-manager", "protocol": "v1"}
 _IDENTITY_RESPONSE_LIMIT = 512
 _CHALLENGE_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}\Z")
+_SHA256_PROOF_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
+_REOPEN_REQUEST_CONTEXT = b"ticketbox-manager-reopen-request-v1\0"
+_REOPEN_RESPONSE_CONTEXT = b"ticketbox-manager-reopen-response-v1\0"
+_CONTENT_SECURITY_POLICY = (
+    "default-src 'none'; "
+    "script-src 'unsafe-inline'; "
+    "style-src 'unsafe-inline'; "
+    "connect-src 'self'; "
+    "img-src 'self' data:; "
+    "base-uri 'none'; "
+    "form-action 'none'; "
+    "frame-ancestors 'none'"
+)
 
 
 def manager_window_url(manager_url: str, instance_secret: str) -> str:
@@ -164,6 +195,66 @@ def probe_existing_manager(manager_url: str, instance_secret: str, *, timeout: f
     )
 
 
+def request_existing_manager_window(
+    manager_url: str,
+    instance_secret: str,
+    *,
+    timeout: float = 0.5,
+) -> bool:
+    """Ask the authenticated owner process to open and own another UI window."""
+    if not probe_existing_manager(manager_url, instance_secret, timeout=timeout):
+        return False
+    challenge = secrets.token_urlsafe(32)
+    request_proof = hmac.new(
+        instance_secret.encode("utf-8"),
+        _REOPEN_REQUEST_CONTEXT + challenge.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+    reopen_url = urllib.parse.urljoin(manager_url, "api/reopen")
+    request = urllib.request.Request(
+        reopen_url,
+        data=b"",
+        headers={
+            "Accept": "application/json",
+            "X-Ticketbox-Reopen-Challenge": challenge,
+            "X-Ticketbox-Reopen-Proof": request_proof,
+        },
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+    try:
+        with opener.open(request, timeout=timeout) as response:  # noqa: S310 - validated loopback
+            if response.status != 200:
+                return False
+            media_type = response.headers.get("Content-Type", "").partition(";")[0].lower()
+            if media_type != "application/json":
+                return False
+            raw = response.read(_IDENTITY_RESPONSE_LIMIT + 1)
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+    if len(raw) > _IDENTITY_RESPONSE_LIMIT:
+        return False
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict) or set(payload) != {*_IDENTITY, "challenge", "proof"}:
+        return False
+    expected_proof = hmac.new(
+        instance_secret.encode("utf-8"),
+        _REOPEN_RESPONSE_CONTEXT + challenge.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+    proof = payload.get("proof")
+    return (
+        payload.get("product") == _IDENTITY["product"]
+        and payload.get("protocol") == _IDENTITY["protocol"]
+        and payload.get("challenge") == challenge
+        and isinstance(proof, str)
+        and secrets.compare_digest(proof, expected_proof)
+    )
+
+
 class Controller(Protocol):
     """What the control server drives — implemented by the app wiring."""
 
@@ -173,6 +264,14 @@ class Controller(Protocol):
     def restart(self) -> None: ...
     def auto_restart(self) -> None: ...
     def open_console(self) -> None: ...
+    def open_pairing(self) -> None: ...
+    def open_devices(self) -> None: ...
+    def open_upload_links(self) -> None: ...
+    def open_backups(self) -> None: ...
+    def open_diagnostics(self) -> None: ...
+    def open_settings(self) -> None: ...
+    def export_diagnostics(self) -> None: ...
+    def is_manager_shutting_down(self) -> bool: ...
 
 
 def is_authorized(
@@ -211,7 +310,7 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def end_headers(self) -> None:
-        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", _CONTENT_SECURITY_POLICY)
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
@@ -253,6 +352,12 @@ class _Handler(BaseHTTPRequestHandler):
         srv: ControlServer = self.server  # type: ignore[assignment]
         provided = self.headers.get("X-Control-Token")
         return provided is not None and secrets.compare_digest(provided, srv.token)
+
+    def _has_empty_request_body(self) -> bool:
+        if self.headers.get("Transfer-Encoding") is not None:
+            return False
+        lengths = self.headers.get_all("Content-Length", [])
+        return not lengths or (len(lengths) == 1 and lengths[0].strip() == "0")
 
     # ---- routes -----------------------------------------------------------
     def do_GET(self) -> None:
@@ -310,15 +415,59 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._host_allowed():
             self._send(421, b"misdirected request", "text/plain; charset=utf-8")
             return
-        action = self.path.rsplit("/", 1)[-1]
-        if action not in _ACTIONS:
+        if self.path == "/api/reopen":
+            challenge = self.headers.get("X-Ticketbox-Reopen-Challenge", "")
+            request_proof = self.headers.get("X-Ticketbox-Reopen-Proof", "")
+            if (
+                not self._has_empty_request_body()
+                or self.headers.get("Origin") is not None
+                or self.headers.get("Sec-Fetch-Site") is not None
+                or not _CHALLENGE_PATTERN.fullmatch(challenge)
+                or not _SHA256_PROOF_PATTERN.fullmatch(request_proof)
+            ):
+                self._send(403, b"forbidden", "text/plain; charset=utf-8")
+                return
+            expected_request_proof = hmac.new(
+                srv.instance_secret.encode("utf-8"),
+                _REOPEN_REQUEST_CONTEXT + challenge.encode("ascii"),
+                hashlib.sha256,
+            ).hexdigest()
+            if not secrets.compare_digest(request_proof, expected_request_proof):
+                self._send(403, b"forbidden", "text/plain; charset=utf-8")
+                return
+            if srv.controller.is_manager_shutting_down() or not srv.request_window():
+                self._send_json({"error": "manager_shutting_down"}, code=409)
+                return
+            proof = hmac.new(
+                srv.instance_secret.encode("utf-8"),
+                _REOPEN_RESPONSE_CONTEXT + challenge.encode("ascii"),
+                hashlib.sha256,
+            ).hexdigest()
+            self._send_json({**_IDENTITY, "challenge": challenge, "proof": proof})
+            return
+        action = _ACTION_PATHS.get(self.path)
+        if action is None:
             self._send(404, b"unknown action", "text/plain; charset=utf-8")
             return
         if not self._authorized():
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
             return
-        getattr(srv.controller, action)()
-        self._send_json(srv.controller.status())
+        if not self._has_empty_request_body():
+            self._send(400, b"request body not allowed", "text/plain; charset=utf-8")
+            return
+        if not srv.action_lock.acquire(blocking=False):
+            self._send_json({"error": "operation_in_progress"}, code=409)
+            return
+        try:
+            try:
+                getattr(srv.controller, action)()
+                payload = srv.controller.status()
+            except ManagerShuttingDownError:
+                self._send_json({"error": "manager_shutting_down"}, code=409)
+                return
+        finally:
+            srv.action_lock.release()
+        self._send_json(payload)
 
 
 class ControlServer(ThreadingHTTPServer):
@@ -333,12 +482,15 @@ class ControlServer(ThreadingHTTPServer):
         token: str,
         instance_secret: str,
         ui_html: Path,
+        request_window: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__((host, port), _Handler)
         self.controller = controller
         self.token = token
         self.instance_secret = instance_secret
         self.ui_html = ui_html
+        self.request_window = request_window or (lambda: False)
+        self.action_lock = threading.Lock()
         actual_port = int(self.server_address[1])
         self.expected_host = f"{host}:{actual_port}"
         self.expected_origin = f"http://{self.expected_host}"

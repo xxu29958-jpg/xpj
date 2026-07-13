@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import subprocess
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
+from backend_manager.process import HealthProbeResult
 from backend_manager.supervisor import BackendSupervisor, SupervisorControlError
 
 
@@ -42,6 +44,12 @@ class RuntimeStatus:
     control_error: str | None = None
     health_state: str = "pending"
     health_detail: str | None = None
+    mobile_endpoint_state: str = "unknown"
+    android_binding_state: str = "unknown"
+    iphone_upload_state: str = "unknown"
+    runtime_access_state: str = "unknown"
+    owner_state: str = "unknown"
+    owner_recovery_channel: str = "unknown"
 
 
 class BackendRuntime(Protocol):
@@ -59,15 +67,29 @@ class BackendRuntime(Protocol):
 class SourceBackendRuntime:
     """Adapter preserving the existing source-tree supervisor behavior."""
 
-    def __init__(self, supervisor: BackendSupervisor) -> None:
+    def __init__(
+        self,
+        supervisor: BackendSupervisor,
+        *,
+        health_probe: Callable[[], HealthProbeResult] | None = None,
+    ) -> None:
         self._supervisor = supervisor
+        self._health_probe = health_probe
 
     def status(self) -> RuntimeStatus:
         snapshot = self._supervisor.status()
+        health = (
+            self._health_probe()
+            if snapshot.healthy and self._health_probe is not None
+            else HealthProbeResult(
+                "healthy" if snapshot.healthy else ("pending" if snapshot.running else "stopped"),
+                "Ticketbox 源码运行身份已验证。" if snapshot.healthy else "Ticketbox 源码运行尚未就绪。",
+            )
+        )
         return RuntimeStatus(
             mode="source",
             running=snapshot.running,
-            healthy=snapshot.healthy,
+            healthy=snapshot.healthy and health.healthy,
             pid=snapshot.pid,
             uptime_seconds=snapshot.uptime_seconds,
             auto_restart=snapshot.auto_restart,
@@ -77,8 +99,14 @@ class SourceBackendRuntime:
             database_service_state=None,
             log=snapshot.log,
             control_error=snapshot.control_error,
-            health_state="healthy" if snapshot.healthy else ("pending" if snapshot.running else "stopped"),
-            health_detail=None,
+            health_state=health.state,
+            health_detail=health.detail,
+            mobile_endpoint_state=health.mobile_endpoint_state,
+            android_binding_state=health.android_binding_state,
+            iphone_upload_state=health.iphone_upload_state,
+            runtime_access_state=health.runtime_access_state,
+            owner_state=health.owner_state,
+            owner_recovery_channel=health.owner_recovery_channel,
         )
 
     def start(self) -> None:

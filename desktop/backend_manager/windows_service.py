@@ -250,6 +250,12 @@ class WindowsServiceRuntime:
             control_error=None,
             health_state=health.state,
             health_detail=health.detail,
+            mobile_endpoint_state=health.mobile_endpoint_state,
+            android_binding_state=health.android_binding_state,
+            iphone_upload_state=health.iphone_upload_state,
+            runtime_access_state=health.runtime_access_state,
+            owner_state=health.owner_state,
+            owner_recovery_channel=health.owner_recovery_channel,
         )
 
     def start(self) -> None:

@@ -22,11 +22,32 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from backend_manager.version_contract import is_managed_release_version
+
 _CREATE_NO_WINDOW = 0x08000000  # don't pop a console window for child processes
 _LOG_LINES = 300
 _HEALTH_RESPONSE_LIMIT_BYTES = 4096
-_HEALTH_KEYS = frozenset({"status", "product", "backend_version", "installation_id"})
-_VERSION_PATTERN = re.compile(r"[0-9A-Za-z][0-9A-Za-z.+-]{0,63}\Z")
+_HEALTH_KEYS = frozenset(
+    {
+        "contract",
+        "status",
+        "product",
+        "backend_version",
+        "installation_id",
+        "runtime_access_state",
+        "owner_state",
+        "owner_recovery_channel",
+        "mobile_connectivity",
+    },
+)
+_MOBILE_CONNECTIVITY_KEYS = frozenset(
+    {"mobile_endpoint_state", "android_binding_state", "iphone_upload_state"},
+)
+_MOBILE_ENDPOINT_STATES = frozenset({"local_only", "public_configured_unverified"})
+_MOBILE_TASK_STATES = frozenset({"setup_required", "configured_unverified"})
+_OWNER_STATES = frozenset({"configured", "recovery_required"})
+_OWNER_RECOVERY_CHANNELS = frozenset({"development", "managed_host", "operator"})
+_RUNTIME_ACCESS_STATES = frozenset({"available", "repair_required"})
 _INSTALLATION_ID_PATTERN = re.compile(r"ticketbox-[0-9a-f]{32}\Z")
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
@@ -129,6 +150,12 @@ class TicketboxHealthExpectation:
 class HealthProbeResult:
     state: Literal["healthy", "pending", "mismatch", "stopped"]
     detail: str
+    mobile_endpoint_state: str = "unknown"
+    android_binding_state: str = "unknown"
+    iphone_upload_state: str = "unknown"
+    runtime_access_state: str = "unknown"
+    owner_state: str = "unknown"
+    owner_recovery_channel: str = "unknown"
 
     @property
     def healthy(self) -> bool:
@@ -199,9 +226,17 @@ class UvicornProcess:
                     self._log.append(line.rstrip())
 
 
-def spawn_backend(*, backend_root: Path, venv_python: Path, host: str, port: int) -> UvicornProcess:
+def spawn_backend(
+    *,
+    backend_root: Path,
+    venv_python: Path,
+    data_root: Path,
+    host: str,
+    port: int,
+) -> UvicornProcess:
     """Launch ``uvicorn app.main:app`` from the backend's own venv."""
     child_environment = os.environ.copy()
+    child_environment["TICKETBOX_DATA_DIR"] = str(data_root)
     child_environment["XPJ_EXTRA_LOOPBACK_HOSTS"] = f"127.0.0.1:{port}"
     popen = subprocess.Popen(
         [
@@ -276,9 +311,11 @@ def _parse_health_payload(raw: bytes, expectation: TicketboxHealthExpectation) -
         return HealthProbeResult("mismatch", "loopback JSON 不符合 Ticketbox 身份字段契约。")
     if decoded.get("status") != "ok" or decoded.get("product") != "ticketbox":
         return HealthProbeResult("mismatch", "loopback 服务不是 Ticketbox 后端。")
+    if decoded.get("contract") != "ticketbox-installation-health-v2":
+        return HealthProbeResult("mismatch", "Ticketbox 安装健康合同版本不匹配。")
     version = decoded.get("backend_version")
     installation_id = decoded.get("installation_id")
-    if not isinstance(version, str) or not _VERSION_PATTERN.fullmatch(version):
+    if not is_managed_release_version(version):
         return HealthProbeResult("mismatch", "Ticketbox 后端版本身份无效。")
     if not isinstance(installation_id, str) or not _INSTALLATION_ID_PATTERN.fullmatch(installation_id):
         return HealthProbeResult("mismatch", "Ticketbox 安装身份无效。")
@@ -286,7 +323,46 @@ def _parse_health_payload(raw: bytes, expectation: TicketboxHealthExpectation) -
         return HealthProbeResult("mismatch", "运行中的 Ticketbox 版本与安装记录不一致。")
     if installation_id != expectation.installation_id:
         return HealthProbeResult("mismatch", "运行中的 Ticketbox 实例与本机安装记录不一致。")
-    return HealthProbeResult("healthy", "Ticketbox 产品、版本和安装身份已验证。")
+    runtime_access_state = decoded.get("runtime_access_state")
+    if runtime_access_state not in _RUNTIME_ACCESS_STATES:
+        return HealthProbeResult("mismatch", "Ticketbox 运行访问字段合同无效。")
+    owner_state = decoded.get("owner_state")
+    owner_recovery_channel = decoded.get("owner_recovery_channel")
+    if owner_state not in _OWNER_STATES or owner_recovery_channel not in _OWNER_RECOVERY_CHANNELS:
+        return HealthProbeResult("mismatch", "Ticketbox 拥有者恢复字段合同无效。")
+    mobile = decoded.get("mobile_connectivity")
+    if not isinstance(mobile, dict) or set(mobile) != _MOBILE_CONNECTIVITY_KEYS:
+        return HealthProbeResult("mismatch", "Ticketbox 移动端能力字段合同无效。")
+    endpoint_state = mobile.get("mobile_endpoint_state")
+    android_state = mobile.get("android_binding_state")
+    iphone_state = mobile.get("iphone_upload_state")
+    if (
+        endpoint_state not in _MOBILE_ENDPOINT_STATES
+        or android_state not in _MOBILE_TASK_STATES
+        or iphone_state not in _MOBILE_TASK_STATES
+        or (endpoint_state == "local_only" and (android_state != "setup_required" or iphone_state != "setup_required"))
+        or (
+            endpoint_state == "public_configured_unverified"
+            and (android_state != "configured_unverified" or iphone_state != "configured_unverified")
+        )
+    ):
+        return HealthProbeResult("mismatch", "Ticketbox 移动端能力组合不符合部署合同。")
+    if runtime_access_state == "repair_required":
+        detail = "Ticketbox 后端身份已验证，但安装维护尚未完成。"
+    elif owner_state == "recovery_required":
+        detail = "Ticketbox 后端身份已验证，但缺少可用拥有者身份。"
+    else:
+        detail = "Ticketbox 产品、版本、安装身份和拥有者身份已验证。"
+    return HealthProbeResult(
+        "healthy",
+        detail,
+        mobile_endpoint_state=endpoint_state,
+        android_binding_state=android_state,
+        iphone_upload_state=iphone_state,
+        runtime_access_state=runtime_access_state,
+        owner_state=owner_state,
+        owner_recovery_channel=owner_recovery_channel,
+    )
 
 
 def probe_ticketbox_health(

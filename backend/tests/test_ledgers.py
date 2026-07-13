@@ -15,6 +15,8 @@ Anti-cross-ledger guarantees are tested in
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -23,6 +25,7 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
 from app.models import Account, Ledger
+from app.routes.owner_console import _pairing as owner_pairing_route
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
 from app.services import ledger_service
@@ -188,7 +191,18 @@ def test_switch_ledger_requires_app_token(client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_owner_pairing_renders_ledger_dropdown(local_client: TestClient) -> None:
+def test_owner_pairing_renders_ledger_dropdown(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        owner_pairing_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            owner_recovery_channel="managed_host",
+            public_base_url="https://finance.example.test",
+        ),
+    )
     response = local_client.get("/owner/pairing")
     assert response.status_code == 200
     html = response.text
@@ -198,7 +212,128 @@ def test_owner_pairing_renders_ledger_dropdown(local_client: TestClient) -> None
     assert "灰度用户1" in html
 
 
-def test_owner_pairing_post_uses_selected_ledger(local_client: TestClient) -> None:
+def test_owner_pairing_shows_the_exact_android_server_address(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        owner_pairing_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            owner_recovery_channel="managed_host",
+            public_base_url="https://finance.example.test",
+        ),
+    )
+
+    response = local_client.get("/owner/pairing")
+
+    assert response.status_code == 200
+    assert "https://finance.example.test" in response.text
+    assert 'data-copy-server-url="https://finance.example.test"' in response.text
+
+
+def test_owner_pairing_refuses_to_issue_code_without_server_address(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issued: list[bool] = []
+    monkeypatch.setattr(
+        owner_pairing_route,
+        "get_settings",
+        lambda: SimpleNamespace(owner_recovery_channel="managed_host", public_base_url=""),
+    )
+    monkeypatch.setattr(
+        owner_pairing_route.svc,
+        "do_create_pairing_code",
+        lambda *_args, **_kwargs: issued.append(True),
+    )
+
+    response = local_client.post(
+        "/owner/pairing",
+        data={"ledger_id": "tester_1", "ttl_minutes": "10"},
+    )
+
+    assert response.status_code == 200
+    assert "请先在设置中完成手机连接配置" in response.text
+    assert 'action="/owner/pairing"' not in response.text
+    assert issued == []
+
+
+@pytest.mark.parametrize(
+    ("channel", "expected", "excluded"),
+    [
+        ("development", "bootstrap_dev_owner.ps1", "普通修复不会重建身份"),
+        ("managed_host", "普通修复不会重建身份", "bootstrap_dev_owner.ps1"),
+        ("operator", "联系部署管理员完成初始化", "bootstrap_dev_owner.ps1"),
+    ],
+)
+def test_owner_pairing_empty_state_matches_runtime_recovery_path(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    channel: str,
+    expected: str,
+    excluded: str,
+) -> None:
+    monkeypatch.setattr(owner_pairing_route.svc, "list_console_ledger_choices", lambda _db: [])
+    monkeypatch.setattr(owner_pairing_route.svc, "get_default_ledger_id", lambda _db: None)
+    monkeypatch.setattr(
+        owner_pairing_route,
+        "get_settings",
+        lambda: SimpleNamespace(owner_recovery_channel=channel, public_base_url=""),
+    )
+
+    response = local_client.get("/owner/pairing")
+
+    assert response.status_code == 200
+    assert expected in response.text
+    assert excluded not in response.text
+
+
+@pytest.mark.parametrize(
+    ("channel", "expected", "excluded"),
+    [
+        ("development", "bootstrap_dev_owner.ps1", "普通修复不会重建身份"),
+        ("managed_host", "普通修复不会重建身份", "bootstrap_dev_owner.ps1"),
+        ("operator", "联系部署管理员完成初始化", "bootstrap_dev_owner.ps1"),
+    ],
+)
+def test_owner_pairing_stale_post_matches_runtime_recovery_path(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    channel: str,
+    expected: str,
+    excluded: str,
+) -> None:
+    monkeypatch.setattr(owner_pairing_route.svc, "list_console_ledger_choices", lambda _db: [])
+    monkeypatch.setattr(owner_pairing_route.svc, "get_owner_account_id", lambda _db: None)
+    monkeypatch.setattr(
+        owner_pairing_route,
+        "get_settings",
+        lambda: SimpleNamespace(owner_recovery_channel=channel, public_base_url=""),
+    )
+
+    response = local_client.post(
+        "/owner/pairing",
+        data={"ledger_id": "stale-ledger", "ttl_minutes": "15"},
+    )
+
+    assert response.status_code == 200
+    assert expected in response.text
+    assert excluded not in response.text
+
+
+def test_owner_pairing_post_uses_selected_ledger(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        owner_pairing_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            owner_recovery_channel="managed_host",
+            public_base_url="https://finance.example.test",
+        ),
+    )
     response = local_client.post(
         "/owner/pairing",
         data={"ledger_id": "tester_1", "ttl_minutes": "10"},
@@ -214,7 +349,18 @@ def test_owner_pairing_post_uses_selected_ledger(local_client: TestClient) -> No
     assert codes, "expected an 8-digit pairing code in the page"
 
 
-def test_owner_pairing_post_rejects_unknown_ledger(local_client: TestClient) -> None:
+def test_owner_pairing_post_rejects_unknown_ledger(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        owner_pairing_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            owner_recovery_channel="managed_host",
+            public_base_url="https://finance.example.test",
+        ),
+    )
     response = local_client.post(
         "/owner/pairing",
         data={"ledger_id": "ledger_unknown", "ttl_minutes": "10"},

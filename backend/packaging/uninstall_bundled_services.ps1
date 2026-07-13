@@ -36,6 +36,7 @@ if ($ReleaseConfigPath.Trim().Length -eq 0) {
 $ReleaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
 $PgServiceName = [string]$ReleaseConfig.pg_service_name
 $BackendServiceName = [string]$ReleaseConfig.backend_service_name
+$OwnerRecoveryChannel = [string]$ReleaseConfig.owner_recovery_channel
 $StopTimeoutMs = [int]$ReleaseConfig.stop_timeout_ms
 $RestartDelayMs = [int]$ReleaseConfig.restart_delay_ms
 $ServiceWaitArguments = @{
@@ -322,10 +323,12 @@ function Assert-ExpectedServiceConfiguration([string]$Name) {
         -ExpectedInstallerRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
         -ExpectedDataRootMarkerPath $ServiceDataRootMarkerPath `
         -ExpectedDataVolumeIdentity $ServiceDataVolumeIdentity `
+        -ExpectedOwnerRecoveryChannel $OwnerRecoveryChannel `
         -ExpectedStopTimeoutMs $StopTimeoutMs `
         -ExpectedRestartDelayMs $RestartDelayMs `
         -AllowMissingInstallerRecoveryGuard `
-        -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority
+        -AllowMissingRuntimeDataAuthority:$AllowMissingRuntimeDataAuthority `
+        -AllowMissingOwnerRecoveryChannel
 }
 
 function Stop-ServiceIfExists([string]$Name) {

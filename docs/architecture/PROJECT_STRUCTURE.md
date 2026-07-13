@@ -238,6 +238,7 @@ CI 的 desktop-manager job 对它跑 compileall / ruff / pytest。详见 [deskto
 ```text
 desktop\
   backend_manager\
+    build_identity.py     # 冻结 Manager 相邻 manifest 的最小维护版本身份
     config.py            # 自动选择正式安装 / 源码运行态
     installation.py      # Inno 注册表动态身份、ProgramData 布局与服务契约复核
     runtime.py           # 两种运行态的共用状态/控制契约
@@ -245,12 +246,24 @@ desktop\
     helper_channel.py    # 提权 helper 的受保护单次结果通道
     lifecycle_lock.py    # 与安装/升级/卸载共用的机器级独占锁
     projection.py        # 普通用户可见的脱敏状态/诊断投影
-    windows_service.py   # Windows SCM 服务控制与正式日志读取
+    windows_service.py   # Windows SCM 服务控制与服务/安装身份脱敏诊断
+    diagnostic_bundle.py # allowlist 脱敏诊断 ZIP 与构建摘要
     supervisor.py        # 源码后端进程监督（独占、崩溃重启、树 kill）
-    control_server.py     # 固定 Host/Origin 的控制面与单实例身份探针
-    ui.html
+    manager_startup.py    # 单实例 owner、窗口进程集合与宿主退出状态机
+    desktop_shell.py      # HKLM Edge 发现、独立 app profile 与窗口进程回收
+    maintenance_gate.py   # HKLM 安装维护 owner 与进程身份的只读验证
+    control_server.py     # 固定 Host/Origin 控制面、身份探针与 authenticated reopen
+    ui.html               # 服务、连接、备份升级与故障自救工作台
+  packaging\
+    ticketbox-manager.spec # 独立 windowed PyInstaller onedir
+  scripts\
+    build_manager_exe.ps1  # 锁定工具链、快照构建与 recoverable publish
+    windows_manager_build_provenance.ps1 # Manager 源码/payload provenance
   tests\
+    _edge_cdp.py          # 零第三方依赖的真实 Edge DevTools 消费者探针
   pyproject.toml
+  requirements-build.txt
+  requirements-build.lock
 ```
 
 ## docs

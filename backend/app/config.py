@@ -27,7 +27,12 @@ def _resolve_data_root(backend_root: Path) -> Path:
     alembic.ini) keep resolving against ``BACKEND_ROOT``.
     """
     raw = os.environ.get("TICKETBOX_DATA_DIR", "").strip()
-    return Path(raw).resolve() if raw else backend_root
+    if not raw:
+        return backend_root
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = backend_root / candidate
+    return candidate.resolve()
 
 
 DATA_ROOT = _resolve_data_root(BACKEND_ROOT)
@@ -46,6 +51,9 @@ def installation_identity(data_root: Path = DATA_ROOT) -> str:
 # _resolve_local_llm_base_url. Owner can extend via env if they really need to
 # tunnel a vision model from another host, but that's explicit, not implicit.
 _LOOPBACK_OUTBOUND_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "::1", "localhost"})
+OWNER_RECOVERY_CHANNELS: frozenset[str] = frozenset(
+    {"development", "managed_host", "operator"},
+)
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -53,6 +61,13 @@ def _bool_env(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _choice_env(name: str, default: str, choices: frozenset[str]) -> str:
+    value = os.getenv(name, default).strip().lower()
+    if value not in choices:
+        raise ValueError(f"{name} must be one of: {', '.join(sorted(choices))}")
+    return value
 
 
 @dataclass(frozen=True)
@@ -101,6 +116,7 @@ class Settings:
     http_bootstrap_secret: str
     enable_api_docs: bool
     allow_public_admin_api: bool
+    owner_recovery_channel: str
     public_base_url: str
     cloudflare_access_required: bool
     cloudflare_access_team_domain: str
@@ -376,6 +392,11 @@ def get_settings() -> Settings:
         http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),
         enable_api_docs=_bool_env("ENABLE_API_DOCS", False),
         allow_public_admin_api=_bool_env("ALLOW_PUBLIC_ADMIN_API", False),
+        owner_recovery_channel=_choice_env(
+            "TICKETBOX_OWNER_RECOVERY_CHANNEL",
+            "development",
+            OWNER_RECOVERY_CHANNELS,
+        ),
         public_base_url=_resolve_public_base_url(os.getenv("PUBLIC_BASE_URL")),
         cloudflare_access_required=_bool_env("CLOUDFLARE_ACCESS_REQUIRED", False),
         cloudflare_access_team_domain=_resolve_cloudflare_access_team_domain(

@@ -45,7 +45,11 @@ function Assert-TicketboxReleaseConfigText {
     return $value
 }
 
-function Read-TicketboxWindowsReleaseConfig([string]$Path) {
+function Read-TicketboxWindowsReleaseConfig {
+    param(
+        [Parameter(Mandatory = $true, Position = 0)][string]$Path,
+        [switch]$AllowLegacyMissingOwnerRecoveryChannel
+    )
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "缺少 Windows release config：$Path"
     }
@@ -62,6 +66,16 @@ function Read-TicketboxWindowsReleaseConfig([string]$Path) {
     Assert-TicketboxReleaseConfigText $config "pg_service_name" '^[A-Za-z][A-Za-z0-9_-]{0,63}$' 64 | Out-Null
     Assert-TicketboxReleaseConfigText $config "pg_recovery_service_name" '^[A-Za-z][A-Za-z0-9_-]{0,63}$' 64 | Out-Null
     Assert-TicketboxReleaseConfigText $config "backend_service_name" '^[A-Za-z][A-Za-z0-9_-]{0,63}$' 64 | Out-Null
+    if ($null -eq $config.PSObject.Properties["owner_recovery_channel"]) {
+        if (-not $AllowLegacyMissingOwnerRecoveryChannel) {
+            throw "Windows release config 缺少 owner_recovery_channel。"
+        }
+        $config | Add-Member -NotePropertyName "owner_recovery_channel" -NotePropertyValue "managed_host"
+    }
+    Assert-TicketboxReleaseConfigText $config "owner_recovery_channel" '^managed_host$' 32 | Out-Null
+    if ([string]$config.owner_recovery_channel -cne "managed_host") {
+        throw "Windows release config 的 owner_recovery_channel 必须精确为 managed_host。"
+    }
     Assert-TicketboxReleaseConfigText $config "db_name" '^[A-Za-z_][A-Za-z0-9_]*$' 64 | Out-Null
     Assert-TicketboxReleaseConfigText $config "db_role" '^[A-Za-z_][A-Za-z0-9_]*$' 64 | Out-Null
     foreach ($name in @("bootstrap_account_name", "bootstrap_ledger_name", "bootstrap_device_name", "default_timezone")) {

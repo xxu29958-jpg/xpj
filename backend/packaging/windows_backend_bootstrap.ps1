@@ -339,12 +339,49 @@ function Assert-TicketboxInstallationHealthResponse(
     [string]$ExpectedBackendVersion,
     [string]$ExpectedInstallationId
 ) {
+    $mobile = $Payload.mobile_connectivity
     if (
-        @($Payload.PSObject.Properties).Count -ne 4 -or
+        @($Payload.PSObject.Properties).Count -ne 9 -or
+        [string]$Payload.contract -cne "ticketbox-installation-health-v2" -or
         [string]$Payload.status -cne "ok" -or
         [string]$Payload.product -cne "ticketbox" -or
         [string]$Payload.backend_version -cne $ExpectedBackendVersion -or
-        [string]$Payload.installation_id -cne $ExpectedInstallationId
+        [string]$Payload.installation_id -cne $ExpectedInstallationId -or
+        [string]$Payload.runtime_access_state -notin @("available", "repair_required") -or
+        [string]$Payload.owner_state -notin @("configured", "recovery_required") -or
+        [string]$Payload.owner_recovery_channel -notin @(
+            "development",
+            "managed_host",
+            "operator"
+        ) -or
+        $null -eq $mobile -or
+        @($mobile.PSObject.Properties).Count -ne 3 -or
+        [string]$mobile.mobile_endpoint_state -notin @(
+            "local_only",
+            "public_configured_unverified"
+        ) -or
+        [string]$mobile.android_binding_state -notin @(
+            "setup_required",
+            "configured_unverified"
+        ) -or
+        [string]$mobile.iphone_upload_state -notin @(
+            "setup_required",
+            "configured_unverified"
+        ) -or
+        (
+            [string]$mobile.mobile_endpoint_state -ceq "local_only" -and
+            (
+                [string]$mobile.android_binding_state -cne "setup_required" -or
+                [string]$mobile.iphone_upload_state -cne "setup_required"
+            )
+        ) -or
+        (
+            [string]$mobile.mobile_endpoint_state -ceq "public_configured_unverified" -and
+            (
+                [string]$mobile.android_binding_state -cne "configured_unverified" -or
+                [string]$mobile.iphone_upload_state -cne "configured_unverified"
+            )
+        )
     ) {
         throw "installation health 响应与当前安装身份不一致。"
     }
@@ -496,8 +533,9 @@ function Write-TicketboxOwnerBootstrapFile([object]$Response) {
         "admin token: $($Response.admin_token)",
         "iOS upload URL path: $($Response.upload_url_path)",
         "iOS upload key: $($Response.upload_key)",
-        "Android pairing code: $($Response.pairing_code)",
-        "pairing expires at: $($Response.pairing_expires_at)"
+        "Android pairing code (requires a configured server URL): $($Response.pairing_code)",
+        "pairing expires at: $($Response.pairing_expires_at)",
+        "Android setup: open Ticketbox Manager, configure the phone connection, then use or regenerate this code"
     )
     $expected = [string]::Join([Environment]::NewLine, $lines) + [Environment]::NewLine
     $credentialSha256 = Get-TicketboxOwnerHandoffTextSha256 $expected

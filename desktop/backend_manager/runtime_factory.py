@@ -33,6 +33,7 @@ def build_source_supervisor(config: ManagerConfig, runtime: SourceRuntimeConfig)
             spawn_backend,
             backend_root=runtime.backend_root,
             venv_python=runtime.venv_python,
+            data_root=runtime.data_root,
             host=config.backend_host,
             port=config.backend_port,
         ),
@@ -82,11 +83,26 @@ def build_direct_service_runtime(
 def build_runtime(config: ManagerConfig) -> BackendRuntime:
     runtime = config.runtime
     if isinstance(runtime, SourceRuntimeConfig):
-        return SourceBackendRuntime(build_source_supervisor(config, runtime))
+        expectation = TicketboxHealthExpectation(
+            backend_version=config.expected_backend_version,
+            installation_id=config.expected_installation_id,
+        )
+        return SourceBackendRuntime(
+            build_source_supervisor(config, runtime),
+            health_probe=partial(
+                probe_ticketbox_health,
+                config.health_url,
+                expectation=expectation,
+                timeout=config.health_request_timeout_seconds,
+            ),
+        )
     if isinstance(runtime, InstalledRuntimeConfig):
         return BrokeredWindowsServiceRuntime(
             status_runtime=build_direct_service_runtime(config, runtime),
-            action_runner=ElevatedServiceActionRunner(runtime.release),
+            action_runner=ElevatedServiceActionRunner(
+                runtime.release,
+                runtime.layout.manager_executable_path,
+            ),
         )
     raise ConfigError(f"unsupported runtime: {type(runtime).__name__}")
 

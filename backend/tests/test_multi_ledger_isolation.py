@@ -10,6 +10,8 @@ v0.4-specific token-rotation path.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from api_contract_helpers import (
     confirm_expense_api,
@@ -20,6 +22,7 @@ from api_contract_helpers import (
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.routes.owner_console import _pairing as owner_pairing_route
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
 from tests._infra.assets import PNG_BYTES
@@ -146,7 +149,20 @@ def test_upload_link_uploads_only_into_its_ledger(client: TestClient, *, identit
     assert any(row["public_id"] == public_id for row in tester_pending.json())
 
 
-def test_pairing_to_new_ledger_yields_isolated_token(local_client: TestClient, *, identity) -> None:
+def test_pairing_to_new_ledger_yields_isolated_token(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    monkeypatch.setattr(
+        owner_pairing_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            owner_recovery_channel="managed_host",
+            public_base_url="https://finance.example.test",
+        ),
+    )
     new_ledger = _create_ledger(local_client, "家庭账本", identity=identity)
 
     # Generate a pairing code targeting the new ledger via Owner Console flow.
