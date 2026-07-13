@@ -4,56 +4,9 @@ from pathlib import Path
 import pytest
 
 from tests._infra.ci_gap import load_ci_gap_audit
-
-_INSTALLER_RUN_STEP = """
-      - run: |
-          powershell -NoProfile -File packaging\\build_inno_installer.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-"""
-
-_INSTALLER_VERIFY_FIRST_RUN_STEP = """
-      - run: |
-          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -File packaging\\build_inno_installer.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-"""
-
-
-def _installer_upload_step(action_sha: str, condition: str = "") -> str:
-    condition_line = f"        if: {condition}\n" if condition else ""
-    return f"""
-      - uses: actions/upload-artifact@{action_sha}
-{condition_line.rstrip()}
-        with:
-          name: ticketbox-windows-installer
-          path: ${{{{ env.INSTALLER_PUBLISH_PATH }}}}
-          if-no-files-found: error
-"""
-
-
-def _write_installer_workflow(
-    path: Path,
-    *,
-    action_sha: str = "",
-    upload_first: bool = False,
-    upload_condition: str = "",
-    verify_first: bool = False,
-    include_run: bool = True,
-) -> None:
-    run_step = _INSTALLER_VERIFY_FIRST_RUN_STEP if verify_first else _INSTALLER_RUN_STEP
-    steps = [run_step] if include_run else []
-    if action_sha:
-        steps.insert(
-            0 if upload_first else len(steps),
-            _installer_upload_step(action_sha, upload_condition),
-        )
-    path.write_text(
-        "name: CI\njobs:\n  installer:\n    steps:\n" + "".join(steps),
-        encoding="utf-8",
-    )
+from tests._infra.ci_gap_installer import (
+    write_installer_workflow as _write_installer_workflow,
+)
 
 
 def test_ci_gap_platform_buckets_reject_union_masking_mutation(tmp_path: Path) -> None:
@@ -173,10 +126,11 @@ def test_authoritative_inno_matcher_rejects_powershell_wrapper_mutations(
 ) -> None:
     mod = load_ci_gap_audit()
     matcher = mod.REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform][0]
-    real = (
+    base = (
         "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass "
         "-File packaging\\build_inno_installer.ps1"
     )
+    real = f'{base} -InstallerHashOutputFile "$env:GITHUB_OUTPUT"'
 
     assert matcher.matches(real)
     for wrapper in (
@@ -188,6 +142,7 @@ def test_authoritative_inno_matcher_rejects_powershell_wrapper_mutations(
     ):
         mutated = real.replace("-File", f"{wrapper} -File")
         assert not matcher.matches(mutated), wrapper
+    assert not matcher.matches(base)
     assert not matcher.matches(f"{real} -VerifyOnly")
     for probe in (
         "-VersionContractProbe 1.2.3",
@@ -197,26 +152,25 @@ def test_authoritative_inno_matcher_rejects_powershell_wrapper_mutations(
         assert not matcher.matches(f"{real} {probe}"), probe
 
     verifier = mod.REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform][1]
-    verify = f"{real} -VerifyOnly"
+    verify = f'{base} -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"'
     assert verifier.matches(verify)
-    assert not verifier.matches(real)
-    assert not verifier.matches(real.replace("-File", "-Command Write-Host -File") + " -VerifyOnly")
+    assert not verifier.matches(base)
+    assert not verifier.matches(base.replace("-File", "-Command Write-Host -File") + " -VerifyOnly")
     assert not verifier.matches(f"{verify} -VersionContractProbe 1.2.3")
 
 
-@pytest.mark.parametrize("platform_dir", [".github", ".gitea"])
-def test_inno_build_pins_reject_non_executable_and_non_propagating_mutations(
-    tmp_path: Path,
-    platform_dir: str,
-) -> None:
-    mod = load_ci_gap_audit()
-    workflows = tmp_path / platform_dir / "workflows"
-    workflows.mkdir(parents=True)
+def _write_masked_installer_workflow(workflows: Path) -> None:
     compile_command = (
         "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass "
-        "-File packaging\\build_inno_installer.ps1"
+        "-File packaging\\build_inno_installer.ps1 "
+        '-InstallerHashOutputFile "$env:GITHUB_OUTPUT"'
     )
-    verify_command = f"{compile_command} -VerifyOnly"
+    verify_command = (
+        "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass "
+        "-File packaging\\build_inno_installer.ps1 "
+        '-VerifyOnly -ExpectedInstallerSha256 '
+        '"$env:INSTALLER_EXPECTED_SHA256"'
+    )
     mutations = {
         "comment": f"# {compile_command}\n# {verify_command}",
         "prose": (
@@ -273,6 +227,17 @@ def test_inno_build_pins_reject_non_executable_and_non_propagating_mutations(
         encoding="utf-8",
     )
 
+
+@pytest.mark.parametrize("platform_dir", [".github", ".gitea"])
+def test_inno_build_pins_reject_non_executable_and_non_propagating_mutations(
+    tmp_path: Path,
+    platform_dir: str,
+) -> None:
+    mod = load_ci_gap_audit()
+    workflows = tmp_path / platform_dir / "workflows"
+    workflows.mkdir(parents=True)
+    _write_masked_installer_workflow(workflows)
+
     commands = mod._iter_workflow_run_commands(workflows)
     segments = mod._iter_executable_command_segments(commands)
     platform = "GitHub" if platform_dir == ".github" else "Gitea"
@@ -284,37 +249,14 @@ def test_inno_build_pins_reject_non_executable_and_non_propagating_mutations(
     assert not any(verify_matcher.matches(segment) for segment in segments)
 
 
-@pytest.mark.parametrize("platform_dir", [".github", ".gitea"])
-def test_inno_build_pins_accept_direct_commands_with_failure_guards(
-    tmp_path: Path,
-    platform_dir: str,
+def _assert_upload_order_mutations(
+    mod,
+    workflows: Path,
+    workflow_path: Path,
+    action_sha: str,
+    upload_label: str,
+    commands,
 ) -> None:
-    mod = load_ci_gap_audit()
-    workflows = tmp_path / platform_dir / "workflows"
-    workflows.mkdir(parents=True)
-    workflow_path = workflows / "ci.yml"
-    _write_installer_workflow(workflow_path)
-
-    commands = mod._iter_workflow_run_commands(workflows)
-    segments = mod._iter_executable_command_segments(commands)
-    actions = mod._iter_workflow_actions(workflows)
-    platform = "GitHub" if platform_dir == ".github" else "Gitea"
-    compile_matcher, verify_matcher = mod.REQUIRED_CI_INVOCATIONS_BY_PLATFORM[
-        platform
-    ]
-
-    assert any(compile_matcher.matches(segment) for segment in segments)
-    assert any(verify_matcher.matches(segment) for segment in segments)
-    upload_label = f"{platform}: atomic installer publish-unit artifact upload"
-    assert upload_label in mod._missing_installer_publish_actions_by_platform(
-        commands, actions
-    )
-
-    action_sha = (
-        "ea165f8d65b6e75b540449e92b4886f43607fa02"
-        if platform_dir == ".github"
-        else "a8a3f3ad30e3422c9c7b888a15615d19a852ae32"
-    )
     _write_installer_workflow(
         workflows / "detached-upload.yml",
         action_sha=action_sha,
@@ -324,20 +266,73 @@ def test_inno_build_pins_accept_direct_commands_with_failure_guards(
     assert upload_label in mod._missing_installer_publish_actions_by_platform(
         commands, actions
     )
-
     (workflows / "detached-upload.yml").unlink()
     for mutation in (
         {"upload_first": True},
         {"verify_first": True},
         {"upload_condition": "always()"},
         {"upload_condition": "success() || github.event_name == 'pull_request'"},
+        {"download_preparation": "publish_env_override"},
+        {"download_preparation": "mixed_case_publish_env_override"},
+        {"download_preparation": "rebind_publish_after_resolve"},
+        {"download_preparation": "invalid_publish_resolver"},
+    ):
+        _write_installer_workflow(workflow_path, action_sha=action_sha, **mutation)
+        mutated_commands = mod._iter_workflow_run_commands(workflows)
+        actions = mod._iter_workflow_actions(workflows)
+        assert upload_label in mod._missing_installer_publish_actions_by_platform(
+            mutated_commands, actions
+        )
+
+
+def _assert_download_and_unknown_step_mutations(
+    mod,
+    workflows: Path,
+    workflow_path: Path,
+    action_sha: str,
+    platform: str,
+    upload_label: str,
+):
+    download_label = f"{platform}: uploaded installer publish-unit download"
+    for mutation in (
+        {"download_first": True},
+        {"include_post_upload_verify": False},
     ):
         _write_installer_workflow(workflow_path, action_sha=action_sha, **mutation)
         commands = mod._iter_workflow_run_commands(workflows)
         actions = mod._iter_workflow_actions(workflows)
-        assert upload_label in mod._missing_installer_publish_actions_by_platform(
-            commands, actions
+        missing = mod._missing_installer_publish_actions_by_platform(commands, actions)
+        assert upload_label not in missing
+        assert download_label in missing
+    for preparation in (
+        "missing",
+        "before_upload",
+        "dead_branch",
+        "fixed_path",
+        "missing_collision_check",
+        "missing_create",
+        "missing_empty_check",
+        "wrong_binding",
+        "extra_statement",
+        "download_env_override",
+        "mixed_case_download_env_override",
+        "verify_env_override",
+        "mixed_case_verify_env_override",
+        "job_env_override",
+        "workflow_env_override",
+        "rebind_after_prepare",
+        "post_verify_inline_hash_override",
+    ):
+        _write_installer_workflow(
+            workflow_path,
+            action_sha=action_sha,
+            download_preparation=preparation,
         )
+        commands = mod._iter_workflow_run_commands(workflows)
+        actions = mod._iter_workflow_actions(workflows)
+        missing = mod._missing_installer_publish_actions_by_platform(commands, actions)
+        assert upload_label not in missing
+        assert download_label in missing
 
     _write_installer_workflow(workflow_path, action_sha=action_sha)
     commands = mod._iter_workflow_run_commands(workflows)
@@ -353,7 +348,16 @@ def test_inno_build_pins_accept_direct_commands_with_failure_guards(
     assert upload_label in mod._missing_installer_publish_actions_by_platform(
         commands, unknown_actions
     )
+    return commands
 
+
+def _assert_duplicate_upload_rejected(
+    mod,
+    workflows: Path,
+    action_sha: str,
+    upload_label: str,
+    commands,
+) -> None:
     _write_installer_workflow(
         workflows / "duplicate-upload.yml",
         action_sha=action_sha,
@@ -363,3 +367,127 @@ def test_inno_build_pins_accept_direct_commands_with_failure_guards(
     assert upload_label in mod._missing_installer_publish_actions_by_platform(
         commands, actions
     )
+
+
+@pytest.mark.parametrize("platform_dir", [".github", ".gitea"])
+def test_inno_build_pins_accept_direct_commands_with_failure_guards(
+    tmp_path: Path,
+    platform_dir: str,
+) -> None:
+    mod = load_ci_gap_audit()
+    workflows = tmp_path / platform_dir / "workflows"
+    workflows.mkdir(parents=True)
+    workflow_path = workflows / "ci.yml"
+    _write_installer_workflow(workflow_path)
+    commands = mod._iter_workflow_run_commands(workflows)
+    segments = mod._iter_executable_command_segments(commands)
+    actions = mod._iter_workflow_actions(workflows)
+    platform = "GitHub" if platform_dir == ".github" else "Gitea"
+    compile_matcher, verify_matcher = mod.REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]
+    assert any(compile_matcher.matches(segment) for segment in segments)
+    assert any(verify_matcher.matches(segment) for segment in segments)
+    upload_label = f"{platform}: atomic installer publish-unit artifact upload"
+    assert upload_label in mod._missing_installer_publish_actions_by_platform(
+        commands, actions
+    )
+    action_sha = (
+        "ea165f8d65b6e75b540449e92b4886f43607fa02"
+        if platform_dir == ".github"
+        else "a8a3f3ad30e3422c9c7b888a15615d19a852ae32"
+    )
+    _assert_upload_order_mutations(
+        mod, workflows, workflow_path, action_sha, upload_label, commands
+    )
+    commands = _assert_download_and_unknown_step_mutations(
+        mod, workflows, workflow_path, action_sha, platform, upload_label
+    )
+    _assert_duplicate_upload_rejected(
+        mod, workflows, action_sha, upload_label, commands
+    )
+
+
+@pytest.mark.parametrize(
+    ("platform_dir", "action_sha"),
+    [
+        (".github", "ea165f8d65b6e75b540449e92b4886f43607fa02"),
+        (".gitea", "a8a3f3ad30e3422c9c7b888a15615d19a852ae32"),
+    ],
+)
+def test_installer_hash_output_dataflow_rejects_detached_mutations(
+    tmp_path: Path,
+    platform_dir: str,
+    action_sha: str,
+) -> None:
+    mod = load_ci_gap_audit()
+    workflows = tmp_path / platform_dir / "workflows"
+    workflows.mkdir(parents=True)
+    workflow_path = workflows / "ci.yml"
+    _write_installer_workflow(workflow_path, action_sha=action_sha)
+    platform = "GitHub" if platform_dir == ".github" else "Gitea"
+    label = f"{platform}: installer hash output dataflow"
+    valid = workflow_path.read_text(encoding="utf-8")
+
+    assert label not in mod._missing_installer_hash_dataflow_by_platform(
+        mod._iter_workflow_run_commands(workflows)
+    )
+    for inline_override in (
+        "verify_inline_hash_override",
+        "post_verify_inline_hash_override",
+    ):
+        _write_installer_workflow(
+            workflow_path,
+            action_sha=action_sha,
+            download_preparation=inline_override,
+        )
+        assert label in mod._missing_installer_hash_dataflow_by_platform(
+            mod._iter_workflow_run_commands(workflows)
+        )
+    _write_installer_workflow(
+        workflow_path,
+        action_sha=action_sha,
+        download_preparation="mixed_case_hash_precedence",
+    )
+    assert label not in mod._missing_installer_hash_dataflow_by_platform(
+        mod._iter_workflow_run_commands(workflows)
+    )
+
+    hash_environment = (
+        "      - env:\n"
+        "          INSTALLER_EXPECTED_SHA256: "
+        "${{ steps.compile_installer.outputs.installer_sha256 }}\n"
+    )
+    compile_output = ' -InstallerHashOutputFile "$env:GITHUB_OUTPUT"'
+    failure_guard = "          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+    reread_output = (
+        "\n          $completion = Get-Content -LiteralPath "
+        "dist\\installer\\BUILD_COMPLETE.json -Raw\n"
+        "          Add-Content -LiteralPath $env:GITHUB_OUTPUT "
+        "-Value \"installer_sha256=$completion\""
+    )
+    mutations = {
+        "missing verifier environment": valid.replace(hash_environment, "", 1),
+        "literal verifier hash": valid.replace(
+            "${{ steps.compile_installer.outputs.installer_sha256 }}",
+            "a" * 64,
+            1,
+        ),
+        "compile omits locked output": valid.replace(compile_output, "", 1),
+        "compile rereads mutable completion": valid.replace(
+            compile_output,
+            reread_output,
+            1,
+        ),
+        "compile output overwritten later": valid.replace(
+            failure_guard,
+            failure_guard
+            + "          Add-Content -LiteralPath $env:GITHUB_OUTPUT "
+            + "-Value 'installer_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'\n",
+            1,
+        ),
+    }
+    for mutation, workflow_text in mutations.items():
+        workflow_path.write_text(workflow_text, encoding="utf-8")
+        missing = mod._missing_installer_hash_dataflow_by_platform(
+            mod._iter_workflow_run_commands(workflows)
+        )
+        assert label in missing, mutation

@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 
-$script:TicketboxLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v6"
+$script:TicketboxLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v7"
 $script:TicketboxLifecycleReceiptModes = @(
     "fresh_install",
     "preserved_data_reinstall",
@@ -26,6 +26,10 @@ $script:TicketboxLifecycleReceiptPreparationStages = @(
 $script:TicketboxLifecycleReceiptAclAccounts = @("SYSTEM", "BUILTIN\Administrators")
 $script:TicketboxLifecycleReceiptOwnerAccount = "SYSTEM"
 $script:TicketboxLifecycleReceiptFileName = "installer-lifecycle-receipt.json"
+$script:TicketboxDeleteDataIntentSchema = "ticketbox-delete-data-intent-v1"
+$script:TicketboxInstallerRuntimeRecoveryGuardSchema = "ticketbox-installer-runtime-recovery-guard-v1"
+$script:TicketboxInstallerRuntimeRecoveryGuardFileName = "installer-runtime-recovery-pending"
+$script:TicketboxInstallerRuntimeStateDirectoryName = "TicketboxRuntimeState"
 
 function Get-TicketboxLifecycleReceiptPath {
     if ($null -eq (Get-Command Get-TicketboxLifecycleLockPath -ErrorAction SilentlyContinue)) {
@@ -273,6 +277,11 @@ function Write-TicketboxLifecycleReceipt {
     if ($InstallerOwnerProcessId -le 0) {
         throw "Inno 生命周期回执必须绑定有效的安装器进程。"
     }
+    $dataRootMarker = Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
     if ($PgPort -eq $BackendPort) {
         throw "安装生命周期回执中的 PostgreSQL 与后端端口不能相同。"
     }
@@ -355,6 +364,7 @@ function Write-TicketboxLifecycleReceipt {
         mode = $Mode
         install_dir = ConvertTo-TicketboxCanonicalPath $InstallDir
         data_root = ConvertTo-TicketboxCanonicalPath $DataRoot
+        data_volume_identity = $dataRootMarker.DataVolumeIdentity
         pg_port = $PgPort
         backend_port = $BackendPort
         installer_owner_process_id = $InstallerOwnerProcessId
@@ -377,24 +387,12 @@ function Write-TicketboxLifecycleReceipt {
         installed_release_config = $InstalledReleaseConfig
         prepared_at_utc = [DateTime]::UtcNow.ToString("o")
     } | ConvertTo-Json -Depth 8
-    $receiptAclAccounts = $script:TicketboxLifecycleReceiptAclAccounts
-    $receiptOwnerAccount = $script:TicketboxLifecycleReceiptOwnerAccount
-    $protectTemporary = {
-        param($TemporaryPath)
-        Set-TicketboxExactFileAcl `
-            -Path $TemporaryPath `
-            -Accounts $receiptAclAccounts `
-            -OwnerAccount $receiptOwnerAccount
-    }.GetNewClosure()
-    Write-TicketboxUtf8FileDurable `
+    Write-TicketboxProtectedUtf8FileDurable `
         -Path $canonicalPath `
         -Text $payload `
-        -ProtectTemporaryFile $protectTemporary `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount `
         -ReplaceExisting:$ReplaceProtectedReceipt
-    Set-TicketboxExactFileAcl `
-        -Path $canonicalPath `
-        -Accounts $script:TicketboxLifecycleReceiptAclAccounts `
-        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
     Assert-TicketboxProtectedLifecycleReceipt $canonicalPath
 }
 
@@ -470,6 +468,21 @@ function Read-TicketboxLifecycleReceipt {
         )
     ) {
         throw "安装生命周期回执与当前安装输入不匹配。"
+    }
+    try {
+        $receiptVolumeIdentity = ConvertTo-TicketboxCanonicalVolumeIdentity `
+            ([string]$receipt.data_volume_identity)
+    }
+    catch {
+        throw "安装生命周期回执的 Windows volume identity 无效。"
+    }
+    $dataRootMarker = Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    if ($receiptVolumeIdentity -cne $dataRootMarker.DataVolumeIdentity) {
+        throw "安装生命周期回执与当前 DataRoot volume authority 不匹配。"
     }
     if ($PgPort -eq $BackendPort) {
         throw "PostgreSQL 与后端端口不能相同。"
@@ -769,6 +782,377 @@ function Set-TicketboxLifecycleReceiptInstallCompleted {
     Close-TicketboxLifecycleBackupGuard $Receipt
 }
 
+function Get-TicketboxInstallerRuntimeStateDirectory([string]$CommonApplicationData = "") {
+    if ([string]::IsNullOrWhiteSpace($CommonApplicationData)) {
+        $CommonApplicationData = [Environment]::GetFolderPath(
+            [Environment+SpecialFolder]::CommonApplicationData
+        )
+    }
+    if ([string]::IsNullOrWhiteSpace($CommonApplicationData)) {
+        throw "Windows 未提供 Common Application Data，无法建立安装运行时阻断投影。"
+    }
+    return Join-Path `
+        ([System.IO.Path]::GetFullPath($CommonApplicationData)) `
+        $script:TicketboxInstallerRuntimeStateDirectoryName
+}
+
+function Get-TicketboxInstallerRuntimeRecoveryGuardPath {
+    return Join-Path `
+        (Get-TicketboxInstallerRuntimeStateDirectory) `
+        $script:TicketboxInstallerRuntimeRecoveryGuardFileName
+}
+
+function Enable-TicketboxInstalledServicesAutoStart {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig
+    )
+
+    $pgServiceName = [string]$TargetReleaseConfig.pg_service_name
+    $backendServiceName = [string]$TargetReleaseConfig.backend_service_name
+    $pgCtl = Join-Path $InstallDir "pg\bin\pg_ctl.exe"
+    $shawl = Join-Path $InstallDir "shawl\shawl.exe"
+    $binding = Read-TicketboxRuntimeDataBinding `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -ServiceReadExecuteAccounts @(
+            (Get-TicketboxServiceSid $pgServiceName),
+            (Get-TicketboxServiceSid $backendServiceName)
+        )
+    Assert-TicketboxServiceAccount `
+        -Name $pgServiceName `
+        -ExpectedAccount "NT SERVICE\$pgServiceName"
+    Assert-TicketboxPgServiceCommand `
+        -Name $pgServiceName `
+        -ExpectedExecutable $pgCtl `
+        -ExpectedServiceName $pgServiceName `
+        -ExpectedDataRoot $binding.RuntimePgData
+    Assert-TicketboxServiceAccount `
+        -Name $backendServiceName `
+        -ExpectedAccount "NT SERVICE\$backendServiceName"
+    Assert-TicketboxShawlServiceCommand `
+        -Name $backendServiceName `
+        -ExpectedExecutable $shawl `
+        -ExpectedServiceName $backendServiceName `
+        -ExpectedCwd $binding.RuntimeAppData `
+        -ExpectedPayload (Join-Path $InstallDir "program\ticketbox-backend\ticketbox-backend.exe") `
+        -ExpectedDependency $pgServiceName `
+        -ExpectedLogDir (Join-Path $binding.RuntimeAppData "logs") `
+        -ExpectedPgDumpPath (Join-Path $InstallDir "pg\bin\pg_dump.exe") `
+        -ExpectedPgRestorePath (Join-Path $InstallDir "pg\bin\pg_restore.exe") `
+        -ExpectedBootstrapRecoveryGuardPath (Get-TicketboxRuntimeBootstrapRecoveryGuardPath $binding.RuntimeDataRoot) `
+        -ExpectedInstallerRecoveryGuardPath (Get-TicketboxInstallerRuntimeRecoveryGuardPath) `
+        -ExpectedDataRootMarkerPath (Join-Path $binding.RuntimeDataRoot $script:TicketboxDataRootMarkerName) `
+        -ExpectedDataVolumeIdentity $binding.DataVolumeIdentity `
+        -ExpectedStopTimeoutMs ([int]$TargetReleaseConfig.stop_timeout_ms) `
+        -ExpectedRestartDelayMs ([int]$TargetReleaseConfig.restart_delay_ms)
+    $services = @(
+        @{
+            Name = $pgServiceName
+            Executable = $pgCtl
+        },
+        @{
+            Name = $backendServiceName
+            Executable = $shawl
+        }
+    )
+    foreach ($service in $services) {
+        if (-not (Test-TicketboxServiceExists $service.Name)) {
+            throw "安装提交缺少 Windows 服务：$($service.Name)"
+        }
+        Assert-TicketboxServiceOwnership `
+            -Name $service.Name `
+            -ExpectedExecutable $service.Executable | Out-Null
+        Set-TicketboxOwnedServiceDelayedAutoStartIfExists `
+            -Name $service.Name `
+            -ExpectedExecutable $service.Executable
+        Assert-TicketboxServiceDelayedAutoStart $service.Name
+    }
+}
+
+function Get-TicketboxInstallerRuntimeStateShape {
+    param([Parameter(Mandatory = $true)][string]$DataRoot)
+
+    $runtimeStateDirectory = Get-TicketboxInstallerRuntimeStateDirectory
+    $guardPath = Get-TicketboxInstallerRuntimeRecoveryGuardPath
+    if (
+        (Test-TicketboxPathWithin $runtimeStateDirectory $DataRoot) -or
+        (Test-TicketboxPathWithin $DataRoot $runtimeStateDirectory)
+    ) {
+        throw "安装运行时恢复 guard 不能位于可恢复 DataRoot 内或包含 DataRoot。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $runtimeStateDirectory
+    $directoryKind = Get-TicketboxPathEntryKindNoFollow $runtimeStateDirectory
+    if ($directoryKind -ceq "Missing") {
+        return [pscustomobject]@{
+            DirectoryExists = $false
+            GuardExists = $false
+            DirectoryPath = $runtimeStateDirectory
+            GuardPath = $guardPath
+        }
+    }
+    if ($directoryKind -cne "Directory") {
+        throw "machine runtime-state 路径不是可信普通目录：$runtimeStateDirectory"
+    }
+    $guardKind = Get-TicketboxPathEntryKindNoFollow $guardPath
+    if ($guardKind -notin @("Missing", "File")) {
+        throw "安装运行时恢复 guard 不是可信普通文件：$guardPath"
+    }
+    $guardExists = $guardKind -ceq "File"
+    return [pscustomobject]@{
+        DirectoryExists = $true
+        GuardExists = [bool]$guardExists
+        DirectoryPath = $runtimeStateDirectory
+        GuardPath = $guardPath
+    }
+}
+
+function Assert-TicketboxInstallerRuntimeRecoveryGuardPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName
+    )
+
+    $canonicalPath = [System.IO.Path]::GetFullPath($Path)
+    $expectedPath = Get-TicketboxInstallerRuntimeRecoveryGuardPath
+    if (-not (Test-TicketboxPathEquals $canonicalPath $expectedPath)) {
+        throw "安装运行时恢复 guard 必须位于 OS 动态解析的独立 machine runtime-state 域。"
+    }
+    $shape = Get-TicketboxInstallerRuntimeStateShape -DataRoot $DataRoot
+    if ($shape.DirectoryExists) {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $shape.DirectoryPath `
+            -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+            -ReadExecuteAccounts @("NT SERVICE\$BackendServiceName") `
+            -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    }
+    return $canonicalPath
+}
+
+function Initialize-TicketboxInstallerRuntimeStateDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName
+    )
+
+    $runtimeStateDirectory = Get-TicketboxInstallerRuntimeStateDirectory
+    if (
+        (Test-TicketboxPathWithin $runtimeStateDirectory $DataRoot) -or
+        (Test-TicketboxPathWithin $DataRoot $runtimeStateDirectory)
+    ) {
+        throw "machine runtime-state 目录不能位于可恢复 DataRoot 内或包含 DataRoot。"
+    }
+    Initialize-TicketboxProtectedDirectoryAtomically `
+        -Path $runtimeStateDirectory `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -ReadExecuteAccounts @("NT SERVICE\$BackendServiceName") `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount | Out-Null
+    return $runtimeStateDirectory
+}
+
+function Read-TicketboxInstallerRuntimeRecoveryGuard {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName
+    )
+
+    Assert-TicketboxDataRootMarker -DataRoot $DataRoot -InstallDir $InstallDir
+    $canonicalPath = Assert-TicketboxInstallerRuntimeRecoveryGuardPath `
+        -Path $Path `
+        -DataRoot $DataRoot `
+        -BackendServiceName $BackendServiceName
+    $backendReadAccount = "NT SERVICE\$BackendServiceName"
+    $artifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path $canonicalPath `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -ReadExecuteAccounts @($backendReadAccount) `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount `
+        -MaximumBytes 16384
+    try { $guard = ConvertFrom-Json -InputObject $artifact.Text }
+    catch { throw "安装运行时恢复 guard 无法读取为有效 JSON。" }
+    $createdAt = [DateTimeOffset]::MinValue
+    if (
+        @($guard.PSObject.Properties).Count -ne 5 -or
+        [string]$guard.schema -cne $script:TicketboxInstallerRuntimeRecoveryGuardSchema -or
+        [string]$guard.state -cne "installer_transaction_pending" -or
+        -not (Test-TicketboxPathEquals ([string]$guard.install_dir) $InstallDir) -or
+        -not (Test-TicketboxPathEquals ([string]$guard.data_root) $DataRoot) -or
+        -not [DateTimeOffset]::TryParse(
+            [string]$guard.created_at_utc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$createdAt
+        )
+    ) {
+        throw "安装运行时恢复 guard 内容或安装绑定校验失败。"
+    }
+    return $guard
+}
+
+function Write-TicketboxInstallerRuntimeRecoveryGuard {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName
+    )
+
+    Assert-TicketboxDataRootMarker -DataRoot $DataRoot -InstallDir $InstallDir
+    Initialize-TicketboxInstallerRuntimeStateDirectory `
+        -DataRoot $DataRoot `
+        -BackendServiceName $BackendServiceName | Out-Null
+    $canonicalPath = Assert-TicketboxInstallerRuntimeRecoveryGuardPath `
+        -Path $Path `
+        -DataRoot $DataRoot `
+        -BackendServiceName $BackendServiceName
+    if (Test-Path -LiteralPath $canonicalPath) {
+        Read-TicketboxInstallerRuntimeRecoveryGuard `
+            -Path $canonicalPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot `
+            -BackendServiceName $BackendServiceName | Out-Null
+        return
+    }
+    $payload = [ordered]@{
+        schema = $script:TicketboxInstallerRuntimeRecoveryGuardSchema
+        state = "installer_transaction_pending"
+        install_dir = ConvertTo-TicketboxCanonicalPath $InstallDir
+        data_root = ConvertTo-TicketboxCanonicalPath $DataRoot
+        created_at_utc = [DateTime]::UtcNow.ToString("o")
+    } | ConvertTo-Json
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $canonicalPath `
+        -Text $payload `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -ReadExecuteAccounts @("NT SERVICE\$BackendServiceName") `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    Read-TicketboxInstallerRuntimeRecoveryGuard `
+        -Path $canonicalPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -BackendServiceName $BackendServiceName | Out-Null
+}
+
+function Remove-TicketboxInstallerRuntimeRecoveryGuard {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName
+    )
+
+    $canonicalPath = Assert-TicketboxInstallerRuntimeRecoveryGuardPath `
+        -Path $Path `
+        -DataRoot $DataRoot `
+        -BackendServiceName $BackendServiceName
+    if (-not (Test-Path -LiteralPath $canonicalPath)) { return }
+    Read-TicketboxInstallerRuntimeRecoveryGuard `
+        -Path $canonicalPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -BackendServiceName $BackendServiceName | Out-Null
+    Remove-TicketboxProtectedUtf8Artifact `
+        -Path $canonicalPath `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -ReadExecuteAccounts @("NT SERVICE\$BackendServiceName") `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+}
+
+function Remove-TicketboxInstallerRuntimeStateDirectoryIfEmpty {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName
+    )
+
+    $runtimeStateDirectory = Get-TicketboxInstallerRuntimeStateDirectory
+    if (-not (Test-Path -LiteralPath $runtimeStateDirectory)) { return }
+    Assert-TicketboxInstallerRuntimeRecoveryGuardPath `
+        -Path (Get-TicketboxInstallerRuntimeRecoveryGuardPath) `
+        -DataRoot $DataRoot `
+        -BackendServiceName $BackendServiceName | Out-Null
+    $remaining = @(Get-ChildItem -LiteralPath $runtimeStateDirectory -Force -ErrorAction Stop)
+    if ($remaining.Count -gt 0) {
+        throw "安装运行时状态目录仍含未退役 artifact：$($remaining.Name -join ', ')"
+    }
+    Remove-Item -LiteralPath $runtimeStateDirectory -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $runtimeStateDirectory) {
+        throw "无法删除已退役的安装运行时状态目录。"
+    }
+}
+
+function Complete-TicketboxInstalledLifecycleTransaction {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][int]$PgPort,
+        [Parameter(Mandatory = $true)][int]$BackendPort,
+        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
+        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
+        [Parameter(Mandatory = $true)][string]$BuildManifestPath,
+        [Parameter(Mandatory = $true)][string]$RecoveryRequiredPath,
+        [Parameter(Mandatory = $true)][string]$RuntimeRecoveryGuardPath
+    )
+
+    $receipt = Read-TicketboxLifecycleReceipt `
+        -Path $Path `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -TargetReleaseConfig $TargetReleaseConfig `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId
+    if ([string]$receipt.preparation_stage -notin @(
+        "files_may_have_been_replaced",
+        "install_completed"
+    )) {
+        throw "安装提交阶段不允许从当前回执继续：$($receipt.preparation_stage)。"
+    }
+    Write-TicketboxPersistentInstallationIdentity `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -PgServiceName ([string]$TargetReleaseConfig.pg_service_name) `
+        -BackendServiceName ([string]$TargetReleaseConfig.backend_service_name) `
+        -BuildManifestPath $BuildManifestPath | Out-Null
+    if ([string]$receipt.preparation_stage -eq "files_may_have_been_replaced") {
+        Set-TicketboxLifecycleReceiptInstallCompleted `
+            -Path $Path `
+            -Receipt $receipt `
+            -InstallerOwnerProcessId $InstallerOwnerProcessId
+        $receipt = Read-TicketboxLifecycleReceipt `
+            -Path $Path `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot `
+            -PgPort $PgPort `
+            -BackendPort $BackendPort `
+            -TargetReleaseConfig $TargetReleaseConfig `
+            -InstallerOwnerProcessId $InstallerOwnerProcessId
+    }
+    Assert-TicketboxCompletedLifecycleReceipt $receipt
+    Remove-TicketboxPgRecoveryToolset `
+        -ExpectedMajor 0 `
+        -InstallCommitValidated
+    Enable-TicketboxInstalledServicesAutoStart `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -TargetReleaseConfig $TargetReleaseConfig
+    Remove-TicketboxInstallerRecoveryMarker `
+        -Path $RecoveryRequiredPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot
+    Remove-TicketboxInstallerRuntimeRecoveryGuard `
+        -Path $RuntimeRecoveryGuardPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -BackendServiceName ([string]$TargetReleaseConfig.backend_service_name)
+}
+
 function Set-TicketboxLifecycleReceiptInstallerOwner {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -780,7 +1164,8 @@ function Set-TicketboxLifecycleReceiptInstallerOwner {
         "backup_deferred_until_program_files_installed",
         "program_files_installed_backup_pending",
         "prepared",
-        "files_may_have_been_replaced"
+        "files_may_have_been_replaced",
+        "install_completed"
     )) {
         throw "只能为可恢复安装阶段重绑当前安装器进程。"
     }
@@ -949,6 +1334,70 @@ function Remove-TicketboxLifecycleReceipt([string]$Path) {
     }
 }
 
+function Read-TicketboxInstallerRecoveryMarker {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [string]$ExpectedReason = ""
+    )
+    $canonicalPath = [System.IO.Path]::GetFullPath($Path)
+    $parent = Split-Path -Parent $canonicalPath
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $parent `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    $artifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path $canonicalPath `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount `
+        -MaximumBytes 16384
+    try {
+        $marker = ConvertFrom-Json -InputObject $artifact.Text
+    }
+    catch {
+        throw "安装恢复标记无法读取为有效 JSON。"
+    }
+    $createdAt = [DateTimeOffset]::MinValue
+    if (
+        [string]$marker.schema -cne "ticketbox-installer-recovery-required-v1" -or
+        [string]::IsNullOrWhiteSpace([string]$marker.reason) -or
+        ($ExpectedReason.Length -gt 0 -and [string]$marker.reason -cne $ExpectedReason) -or
+        $marker.files_may_have_been_replaced -isnot [bool] -or
+        -not [bool]$marker.files_may_have_been_replaced -or
+        [string]$marker.recovery_action -cne "rerun_installer_repair" -or
+        -not (Test-TicketboxPathEquals ([string]$marker.install_dir) $InstallDir) -or
+        -not (Test-TicketboxPathEquals ([string]$marker.data_root) $DataRoot) -or
+        -not [DateTimeOffset]::TryParse(
+            [string]$marker.created_at_utc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$createdAt
+        )
+    ) {
+        throw "安装恢复标记内容或安装绑定校验失败。"
+    }
+    return $marker
+}
+
+function Remove-TicketboxInstallerRecoveryMarker {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot
+    )
+    $entryKind = Get-TicketboxPathEntryKindNoFollow $Path
+    if ($entryKind -ceq "Missing") { return }
+    if ($entryKind -cne "File") {
+        throw "安装恢复标记不是普通文件：$Path"
+    }
+    Read-TicketboxInstallerRecoveryMarker -Path $Path -InstallDir $InstallDir -DataRoot $DataRoot | Out-Null
+    Remove-Item -LiteralPath $Path -Force
+    if ((Get-TicketboxPathEntryKindNoFollow $Path) -cne "Missing") {
+        throw "无法清理安装恢复标记：$Path"
+    }
+}
+
 function Write-TicketboxInstallerRecoveryMarker {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -958,8 +1407,18 @@ function Write-TicketboxInstallerRecoveryMarker {
     )
     $canonicalPath = [System.IO.Path]::GetFullPath($Path)
     $parent = Split-Path -Parent $canonicalPath
-    if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
-        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    Assert-TicketboxDataRootMarker -DataRoot $DataRoot -InstallDir $InstallDir
+    Initialize-TicketboxInstallerStateDirectory `
+        -Path $parent `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount | Out-Null
+    $entryKind = Get-TicketboxPathEntryKindNoFollow $canonicalPath
+    if ($entryKind -ceq "File") {
+        Read-TicketboxInstallerRecoveryMarker -Path $canonicalPath -InstallDir $InstallDir -DataRoot $DataRoot | Out-Null
+        return
+    }
+    if ($entryKind -cne "Missing") {
+        throw "安装恢复标记不是普通文件：$canonicalPath"
     }
     $payload = [ordered]@{
         schema = "ticketbox-installer-recovery-required-v1"
@@ -971,45 +1430,129 @@ function Write-TicketboxInstallerRecoveryMarker {
         created_at_utc = [DateTime]::UtcNow.ToString("o")
     } | ConvertTo-Json
     Assert-NoTicketboxAncestorReparsePoints $parent
-    $markerAclAccounts = $script:TicketboxLifecycleReceiptAclAccounts
-    $markerOwnerAccount = $script:TicketboxLifecycleReceiptOwnerAccount
-    $protectTemporary = {
-        param($TemporaryPath)
-        Set-TicketboxExactFileAcl `
-            -Path $TemporaryPath `
-            -Accounts $markerAclAccounts `
-            -OwnerAccount $markerOwnerAccount
-    }.GetNewClosure()
-    Write-TicketboxUtf8FileDurable `
+    Write-TicketboxProtectedUtf8FileDurable `
         -Path $canonicalPath `
         -Text $payload `
-        -ProtectTemporaryFile $protectTemporary `
-        -ReplaceExisting:(Test-Path -LiteralPath $canonicalPath)
-    Set-TicketboxExactFileAcl `
-        -Path $canonicalPath `
-        -Accounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
         -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
-    Assert-TicketboxExactFileAcl `
-        -Path $canonicalPath `
-        -Accounts $script:TicketboxLifecycleReceiptAclAccounts `
+    Read-TicketboxInstallerRecoveryMarker -Path $canonicalPath -InstallDir $InstallDir -DataRoot $DataRoot -ExpectedReason $Reason | Out-Null
+}
+
+function Ensure-TicketboxInstallerRecoveryMarkerAfterFailure {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallerStatePath,
+        [Parameter(Mandatory = $true)][string]$LegacyPath,
+        [Parameter(Mandatory = $true)][string]$CurrentPath,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$Reason
+    )
+
+    Initialize-TicketboxInstallerStateDirectory $InstallerStatePath | Out-Null
+    Move-TicketboxLegacyInstallerStateArtifact `
+        -LegacyPath $LegacyPath `
+        -CurrentPath $CurrentPath
+    if (Test-Path -LiteralPath $CurrentPath) {
+        Read-TicketboxInstallerRecoveryMarker `
+            -Path $CurrentPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot | Out-Null
+        return
+    }
+    Write-TicketboxInstallerRecoveryMarker `
+        -Path $CurrentPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -Reason $Reason
+}
+
+function Read-TicketboxDeleteDataIntent {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [string]$DataRoot = ""
+    )
+
+    $canonicalPath = [System.IO.Path]::GetFullPath($Path)
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path (Split-Path -Parent $canonicalPath) `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
         -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
-    try {
-        $published = Get-Content -LiteralPath $canonicalPath -Encoding UTF8 -Raw | ConvertFrom-Json
-    }
-    catch {
-        throw "安装恢复标记发布后无法复读为有效 JSON。"
-    }
+    $artifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path $canonicalPath `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount `
+        -MaximumBytes 16384
+    try { $intent = ConvertFrom-Json -InputObject $artifact.Text }
+    catch { throw "删除数据意图无法读取为有效 JSON。" }
+    $createdAt = [DateTimeOffset]::MinValue
+    $intentDataRoot = [string]$intent.data_root
     if (
-        [string]$published.schema -cne "ticketbox-installer-recovery-required-v1" -or
-        [string]$published.reason -cne $Reason -or
-        $published.files_may_have_been_replaced -isnot [bool] -or
-        -not [bool]$published.files_may_have_been_replaced -or
-        [string]$published.recovery_action -cne "rerun_installer_repair" -or
-        -not (Test-TicketboxPathEquals ([string]$published.install_dir) $InstallDir) -or
-        -not (Test-TicketboxPathEquals ([string]$published.data_root) $DataRoot)
+        @($intent.PSObject.Properties).Count -ne 5 -or
+        [string]$intent.schema -cne $script:TicketboxDeleteDataIntentSchema -or
+        -not (Test-TicketboxPathEquals ([string]$intent.install_dir) $InstallDir) -or
+        [string]::IsNullOrWhiteSpace($intentDataRoot) -or
+        -not [System.IO.Path]::IsPathRooted($intentDataRoot) -or
+        (
+            -not [string]::IsNullOrWhiteSpace($DataRoot) -and
+            -not (Test-TicketboxPathEquals $intentDataRoot $DataRoot)
+        ) -or
+        [string]$intent.completed_receipt_sha256 -cnotmatch '^[0-9A-F]{64}$' -or
+        -not [DateTimeOffset]::TryParse(
+            [string]$intent.created_at_utc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$createdAt
+        )
     ) {
-        throw "安装恢复标记发布后内容校验失败。"
+        throw "删除数据意图内容或安装绑定校验失败。"
     }
+    return $intent
+}
+
+function Write-TicketboxDeleteDataIntent {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$CompletedReceiptPath,
+        [Parameter(Mandatory = $true)][object]$CompletedReceipt,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot
+    )
+
+    Assert-TicketboxCompletedLifecycleReceipt $CompletedReceipt
+    Assert-TicketboxProtectedLifecycleReceipt $CompletedReceiptPath
+    $receiptSha256 = Get-TicketboxPortableFileSha256 $CompletedReceiptPath
+    $parent = Split-Path -Parent ([System.IO.Path]::GetFullPath($Path))
+    Initialize-TicketboxInstallerStateDirectory `
+        -Path $parent `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount | Out-Null
+    if (Test-Path -LiteralPath $Path) {
+        $existing = Read-TicketboxDeleteDataIntent `
+            -Path $Path `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot
+        if ([string]$existing.completed_receipt_sha256 -cne $receiptSha256) {
+            throw "既有删除数据意图绑定了另一份 lifecycle receipt。"
+        }
+        return $existing
+    }
+    $payload = [ordered]@{
+        schema = $script:TicketboxDeleteDataIntentSchema
+        install_dir = ConvertTo-TicketboxCanonicalPath $InstallDir
+        data_root = ConvertTo-TicketboxCanonicalPath $DataRoot
+        completed_receipt_sha256 = $receiptSha256
+        created_at_utc = [DateTime]::UtcNow.ToString("o")
+    } | ConvertTo-Json
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $Path `
+        -Text $payload `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    return Read-TicketboxDeleteDataIntent `
+        -Path $Path `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot
 }
 
 function Close-TicketboxLifecycleBackupGuard([object]$Receipt) {

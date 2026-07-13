@@ -192,11 +192,6 @@ def test_bootstrap_recovery_static_contract() -> None:
         '$PgBootstrapRecoveryPath = Join-Path $AppData ".postgres-bootstrap-password"'
         in PREPARE_SCRIPT.read_text(encoding="utf-8-sig")
     )
-    assert (
-        'Join-Path $canonicalDataRoot "app\\.postgres-bootstrap-password"'
-        in INSTALLATION_SAFETY_SCRIPT.read_text(encoding="utf-8-sig")
-    )
-
     fresh_write = database.index("[void](Get-OrCreatePostgresBootstrapRecoveryState)")
     initdb = database.index('Join-Path $PgBin "initdb.exe"', fresh_write)
     assert fresh_write < initdb

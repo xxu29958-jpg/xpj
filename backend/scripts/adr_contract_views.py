@@ -23,6 +23,8 @@ GRAPH_PATH = REPO_ROOT / "docs" / "current" / "ADR_DEPENDENCY_GRAPH.md"
 
 STATUS_START = "<!-- ADR_STATUS_TABLE_START -->"
 STATUS_END = "<!-- ADR_STATUS_TABLE_END -->"
+STATUS_METADATA_START = "<!-- ADR_STATUS_METADATA_START -->"
+STATUS_METADATA_END = "<!-- ADR_STATUS_METADATA_END -->"
 INDEX_START = "<!-- ADR_INDEX_TABLE_START -->"
 INDEX_END = "<!-- ADR_INDEX_TABLE_END -->"
 NEXT_ID_START = "<!-- ADR_NEXT_ID_START -->"
@@ -38,6 +40,16 @@ class ViewPaths:
     index: Path
     graph: Path
     repo_root: Path
+
+
+@dataclass(frozen=True)
+class EffectiveAdrState:
+    """Current projection after accepted successor amendments."""
+
+    current_scope: str
+    implementation_status: str
+    verification_status: str
+    amendments: tuple[tuple[RegistryEntry, AdrRelation], ...]
 
 
 DEFAULT_VIEW_PATHS = ViewPaths(
@@ -59,7 +71,7 @@ def registry_json(registry: Registry) -> str:
         "code_baseline": registry.code_baseline,
         "bootstrap_base_commit": registry.bootstrap_base_commit,
         "baseline_scope": registry.baseline_scope,
-        "entries": [_entry_json(entry) for entry in registry.entries],
+        "entries": [_entry_json(registry, entry) for entry in registry.entries],
     }
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
@@ -70,13 +82,25 @@ def render_status_table(registry: Registry) -> str:
         "| --- | --- | --- | --- | --- | --- |",
     ]
     for entry in registry.entries:
+        effective = _effective_state(registry, entry)
         link = f"../DECISIONS/{Path(entry.path).name}"
         lines.append(
             f"| [{entry.adr_id}]({link}) | {entry.decision_status} | "
-            f"{entry.implementation_status} | {entry.verification_status} | "
-            f"{entry.current_scope} | {_relation_summary(entry.relations)} |"
+            f"{effective.implementation_status} | {effective.verification_status} | "
+            f"{effective.current_scope} | "
+            f"{_relation_summary(entry.relations, effective.amendments)} |"
         )
     return "\n".join(lines)
+
+
+def render_status_metadata(registry: Registry) -> str:
+    return "\n".join(
+        (
+            f"- 组合审查日期: {registry.portfolio_reviewed_at}",
+            f"- Review base: `{registry.code_baseline}` (pre-implementation main snapshot)",
+            f"- Baseline scope: {registry.baseline_scope}",
+        )
+    )
 
 
 def render_index_table(registry: Registry) -> str:
@@ -85,14 +109,15 @@ def render_index_table(registry: Registry) -> str:
         "|---|---|---|---|---|",
     ]
     for entry in registry.entries:
+        effective = _effective_state(registry, entry)
         filename = Path(entry.path).name
         state = (
-            f"{entry.decision_status} / {entry.implementation_status} / "
-            f"{entry.verification_status}"
+            f"{entry.decision_status} / {effective.implementation_status} / "
+            f"{effective.verification_status}"
         )
         lines.append(
             f"| [{entry.adr_id}]({filename}) | {entry.title} | {entry.summary} | "
-            f"{state} | {_relation_summary(entry.relations)} |"
+            f"{state} | {_relation_summary(entry.relations, effective.amendments)} |"
         )
     return "\n".join(lines)
 
@@ -102,7 +127,7 @@ def render_dependency_graph(registry: Registry) -> str:
         "# ADR 依赖与演进图",
         "",
         "> 由 schema-v2 front matter、冻结 legacy identity baseline 与当前 calibration 生成；禁止手工编辑。",
-        f"> 代码核对基线：`{registry.code_baseline}`；组合审查日期：{registry.portfolio_reviewed_at}。",
+        f"> 审查基线：`{registry.code_baseline}`；组合审查日期：{registry.portfolio_reviewed_at}。",
         "",
         "```mermaid",
         "flowchart LR",
@@ -165,6 +190,12 @@ def expected_views(
 
     status = replace_generated_block(
         paths.status.read_text(encoding="utf-8"),
+        STATUS_METADATA_START,
+        STATUS_METADATA_END,
+        render_status_metadata(registry),
+    )
+    status = replace_generated_block(
+        status,
         STATUS_START,
         STATUS_END,
         render_status_table(registry),
@@ -226,15 +257,109 @@ def _display_path(path: Path, repo_root: Path) -> str:
         return str(path)
 
 
-def _entry_json(entry: RegistryEntry) -> dict[str, Any]:
+def _entry_json(registry: Registry, entry: RegistryEntry) -> dict[str, Any]:
+    effective = _effective_state(registry, entry)
     payload = asdict(entry)
     payload["id"] = payload.pop("adr_id")
     payload["relations"] = [asdict(relation) for relation in entry.relations]
     payload["clause_ids"] = list(entry.clause_ids)
+    payload["declared_current_scope"] = entry.current_scope
+    payload["declared_implementation_status"] = entry.implementation_status
+    payload["declared_verification_status"] = entry.verification_status
+    payload["current_scope"] = effective.current_scope
+    payload["implementation_status"] = effective.implementation_status
+    payload["verification_status"] = effective.verification_status
+    payload["effective_amendments"] = [
+        {
+            "source": source.adr_id,
+            "scope": relation.scope,
+            "implementation_status": _effective_state(
+                registry, source
+            ).implementation_status,
+            "verification_status": _effective_state(
+                registry, source
+            ).verification_status,
+        }
+        for source, relation in effective.amendments
+    ]
     return payload
 
 
-def _relation_summary(relations: tuple[AdrRelation, ...]) -> str:
-    if not relations:
+def _effective_state(
+    registry: Registry,
+    entry: RegistryEntry,
+    resolving: frozenset[str] = frozenset(),
+) -> EffectiveAdrState:
+    if entry.adr_id in resolving:
+        raise RegistryError(
+            f"effective ADR amendment cycle reached ADR-{entry.adr_id}"
+        )
+    next_resolving = resolving | {entry.adr_id}
+    amendments = tuple(
+        (source, relation)
+        for source in registry.entries
+        if source.decision_status == "accepted"
+        for relation in source.relations
+        if relation.kind == "amends" and relation.target == entry.adr_id
+    )
+    if not amendments:
+        return EffectiveAdrState(
+            current_scope=entry.current_scope,
+            implementation_status=entry.implementation_status,
+            verification_status=entry.verification_status,
+            amendments=(),
+        )
+    amendment_states = tuple(
+        (source, relation, _effective_state(registry, source, next_resolving))
+        for source, relation in amendments
+    )
+    amendment_scope = "；".join(
+        f"ADR-{source.adr_id} 后继修订（{relation.scope}）：{state.current_scope}"
+        for source, relation, state in amendment_states
+    )
+    scope = (
+        f"ADR-{entry.adr_id} 未被后继关系覆盖的 declared_current_scope："
+        f"{entry.current_scope}；当前修订：{amendment_scope}"
+    )
+    implementation_order = {
+        "nonconformant": 0,
+        "not-started": 1,
+        "implementing": 2,
+        "partial": 3,
+        "implemented": 4,
+    }
+    verification_order = {
+        "failed": 0,
+        "unverified": 1,
+        "stale": 2,
+        "verified": 3,
+    }
+    implementation_statuses = (entry.implementation_status,) + tuple(
+        state.implementation_status for _, _, state in amendment_states
+    )
+    verification_statuses = (entry.verification_status,) + tuple(
+        state.verification_status for _, _, state in amendment_states
+    )
+    return EffectiveAdrState(
+        current_scope=scope,
+        implementation_status=min(
+            implementation_statuses,
+            key=implementation_order.__getitem__,
+        ),
+        verification_status=min(
+            verification_statuses,
+            key=verification_order.__getitem__,
+        ),
+        amendments=amendments,
+    )
+
+
+def _relation_summary(
+    relations: tuple[AdrRelation, ...],
+    amendments: tuple[tuple[RegistryEntry, AdrRelation], ...] = (),
+) -> str:
+    summaries = [f"{item.kind} {item.target}" for item in relations]
+    summaries.extend(f"amended-by {source.adr_id}" for source, _ in amendments)
+    if not summaries:
         return "—"
-    return "; ".join(f"{item.kind} {item.target}" for item in relations)
+    return "; ".join(summaries)

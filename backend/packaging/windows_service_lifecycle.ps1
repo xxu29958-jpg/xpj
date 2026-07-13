@@ -305,6 +305,23 @@ function Invoke-TicketboxScChecked([string[]]$ScArgs) {
     return ($out | Out-String).Trim()
 }
 
+function Get-TicketboxServiceSid([string]$Name) {
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        throw "服务 SID 查询需要非空服务名。"
+    }
+    $output = Invoke-TicketboxScChecked @("showsid", $Name)
+    $matches = [regex]::Matches(
+        $output,
+        '(?<![0-9A-Za-z-])S-1-5-80-(?:[0-9]+-){4}[0-9]+(?![0-9A-Za-z-])'
+    )
+    if ($matches.Count -ne 1) {
+        throw "Windows 服务控制器未返回唯一服务 SID：$Name"
+    }
+    return (New-Object System.Security.Principal.SecurityIdentifier(
+        $matches[0].Value
+    )).Value
+}
+
 function Set-TicketboxOwnedServiceDemandStartIfExists {
     param(
         [Parameter(Mandatory = $true)][string]$Name,

@@ -26,7 +26,12 @@ import os
 import subprocess
 from pathlib import Path
 
+from adr_contract_git import has_auditable_ci_context, select_ratchet_base
+
 DebtCounts = dict[str, int]
+
+_strict_baseline_selection_error: str | None = None
+_strict_baseline_selected_ref: str | None = None
 
 # ``CODEBASE_DEBT_LIMITS`` is active configuration, not an audit log. Keep the
 # current ceilings here and put detailed ratchet provenance in commits/PR notes.
@@ -49,7 +54,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 218,  # Noisy lane; ratcheted to the current measured floor.
+    "unreferenced_modules": 217,  # Noisy lane; ratcheted to the current measured floor.
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -131,8 +136,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2522,  # UploadLink commit-time revocation race, collected 2026-07-12.
-    "installer_pytest_count": 61,
+    "backend_pytest_count": 2546,  # Includes installer hash dataflow mutations for both CI platforms, 2026-07-12.
+    "installer_pytest_count": 77,  # Includes authenticated DataRoot guard lifecycle coverage, 2026-07-12.
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane
@@ -142,8 +147,10 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 # cut-over PRs that touch both sides needing to update both baseline files.
 # Android count is NOT listed here.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
-# baseline/actual reductions. ``backend_pytest_count`` is strict-only.
+# baseline/actual reductions. ``backend_pytest_count`` is strict-only, while
+# the release-critical installer behavior suite is also a monotonic floor.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
+    "installer_pytest_count",
     "mutate_token_carriers",
 })
 
@@ -178,17 +185,16 @@ def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
         is a FAIL; locally it's INFO-skip.
 
     Base ref priority:
-      1. ``GITHUB_BASE_REF`` (the CI runner sets this on PR events to
-         the target branch name; fetched as ``origin/<branch>``).
-      2. ``XPJ_AUDIT_BASE_REF`` (manual override for ad-hoc CI).
+      1. ``XPJ_AUDIT_BASE_REF`` (the workflow supplies the exact PR target
+         SHA / pre-push SHA; manual runs supply their exact pre-change SHA).
+      2. ``GITHUB_BASE_REF`` fallback (the CI runner sets the target branch
+         name on PR events; fetched as ``origin/<branch>``).
       3. else: local ``refs/heads/main`` / CI push (``GITHUB_SHA`` set) →
          ``origin/main`` (GitHub main on cloud CI).
     """
-    explicit_ref = os.environ.get("GITHUB_BASE_REF") or os.environ.get("XPJ_AUDIT_BASE_REF")
-    if explicit_ref:  # bare branch (e.g. ``main``) → fetched remote ``origin/main``
-        git_ref = explicit_ref if "/" in explicit_ref else f"origin/{explicit_ref}"
-    else:  # local: refs/heads/main; CI push (GITHUB_SHA): origin/main
-        git_ref = "origin/main" if os.environ.get("GITHUB_SHA") else "refs/heads/main"
+    git_ref = _strict_baseline_git_ref()
+    if git_ref is None:
+        return (False, {})
     backend_root = Path(__file__).resolve().parent.parent
     try:
         content = subprocess.check_output(
@@ -218,10 +224,25 @@ def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
     return (True, baseline)
 
 
-def _is_pr_ci_context() -> bool:
-    """True when running in PR CI (``GITHUB_BASE_REF`` set). Distinguishes
-    "base required, must FAIL if unreadable" from "local dev, skip OK"."""
-    return bool(os.environ.get("GITHUB_BASE_REF"))
+def _strict_baseline_git_ref() -> str | None:
+    global _strict_baseline_selected_ref, _strict_baseline_selection_error
+
+    backend_root = Path(__file__).resolve().parent.parent
+    selected, error = select_ratchet_base(backend_root.parent, dict(os.environ))
+    _strict_baseline_selection_error = error
+    _strict_baseline_selected_ref = None if selected is None else selected.ref
+    return None if selected is None else selected.commit
+
+
+def _strict_baseline_base_is_required() -> bool:
+    """Whether this invocation supplied or implied an auditable CI base.
+
+    Base selection and fail-closed policy are one contract: an exact ref used by
+    push/manual lanes is just as mandatory as ``GITHUB_BASE_REF`` in PR CI.
+    """
+    if os.environ.get("XPJ_AUDIT_BASE_REF", "").strip():
+        return True
+    return has_auditable_ci_context(dict(os.environ))
 
 
 def _compute_strict_equality_findings(
@@ -324,12 +345,16 @@ def _print_ratchet_failures(
             print(f"  - {key} (was in base, gone in current)")
     if base_unreadable_but_required:
         print(
-            "FAIL: in PR CI but couldn't read base baseline. Possible causes: "
+            "FAIL: CI/exact-base audit couldn't read the required base baseline. Possible causes: "
             "(a) checkout was shallow (fetch-depth=1, can't reach base SHA); "
             "(b) base ref not fetched. Fix CI config — do NOT downgrade to "
             "strict-equality-only as a workaround:"
         )
+        print(f"  - XPJ_AUDIT_BASE_REF={os.environ.get('XPJ_AUDIT_BASE_REF')}")
         print(f"  - GITHUB_BASE_REF={os.environ.get('GITHUB_BASE_REF')}")
+        print(f"  - GITHUB_SHA={os.environ.get('GITHUB_SHA')}")
+        print(f"  - selected_ref={_strict_baseline_selected_ref}")
+        print(f"  - selection_error={_strict_baseline_selection_error}")
 
 
 def _print_info_lines(base_readable: bool, bootstrapped: list[str]) -> None:
@@ -341,9 +366,9 @@ def _print_info_lines(base_readable: bool, bootstrapped: list[str]) -> None:
         )
         for key in bootstrapped:
             print(f"  - {key}")
-    if not base_readable and not _is_pr_ci_context():
+    if not base_readable and not _strict_baseline_base_is_required():
         print(
-            "INFO: base baseline unreadable (local dev — no PR context). "
+            "INFO: base baseline unreadable (local dev — no CI/exact-base context). "
             "Ratchet + removed-key checks skipped. In PR CI these would FAIL "
             "rather than skip, so this is not a CI bypass."
         )
@@ -395,7 +420,9 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     missing, mismatches, extras = _compute_strict_equality_findings(counts)
 
     base_readable, base_baseline = _read_base_strict_baseline()
-    base_unreadable_but_required = not base_readable and _is_pr_ci_context()
+    base_unreadable_but_required = (
+        not base_readable and _strict_baseline_base_is_required()
+    )
     bootstrapped: list[str] = []
     movement_violations: list[str] = []
     removed_keys: list[str] = []

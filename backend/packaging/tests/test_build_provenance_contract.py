@@ -11,6 +11,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from _powershell_contract import powershell_contract_engines
 
 ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parent
@@ -165,6 +166,8 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_installation_safety.ps1",
     "packaging/windows_lifecycle_receipt.ps1",
     "packaging/windows_lifecycle_lock.ps1",
+    "packaging/hold_installer_lifecycle_lock.ps1",
+    "packaging/hold_data_root_mutation_guard.ps1",
     "packaging/windows_database_safety.ps1",
     "packaging/windows_pg_recovery_tools.ps1",
     "packaging/windows_bundled_database.ps1",
@@ -385,6 +388,9 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert len(build_tool_sources["inno_setup"]["compiler_sha256"]) == 64
     assert "payload_fingerprint = $PostgresProvenance.bundle_snapshot.fingerprint" in build
     assert '"/DTargetPgMajor=$($postgresProvenance.major)"' in build
+    assert '"/DLifecycleSafetyScriptSha256=$(Get-TicketboxFileSha256 $SafetyScript)"' in build
+    assert '"/DLifecycleLockScriptSha256=$(Get-TicketboxFileSha256 $LockScript)"' in build
+    assert '"/DLifecycleHolderScriptSha256=$(Get-TicketboxFileSha256 $LockHolderScript)"' in build
     assert 'upstream_authenticity_verified = $false' in build
     assert 'verification_scope = "build-time-local-payload-integrity-only"' in build
     assert "Get-TicketboxInstallerRecipeSnapshot" in build
@@ -420,6 +426,12 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "BUILD_COMPLETE.json" in build
     assert "function Assert-TicketboxInstallerPublishUnit" in build
     assert "[switch]$VerifyOnly" in build
+    assert "[string]$VerifyPublishDirectory" in build
+    assert "[string]$InstallerHashOutputFile" in build
+    assert "VerifyOnly 必须提供由本轮编译步骤外部保存的 ExpectedInstallerSha256" in build
+    assert build.index("Write-TicketboxInstallerHashOutput `") < build.index(
+        "Exit-TicketboxWindowsBuildLock $BuildLock"
+    )
     assert build.count("Assert-TicketboxInstallerPublishUnit `") >= 3
     assert build.index("Write-TicketboxJsonFile $publishCompletion") < build.index(
         "Publish-TicketboxInstallerUnit `", build.index("Write-TicketboxJsonFile $publishCompletion")
@@ -545,8 +557,14 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "choco install innosetup" not in github_ci
     assert "prepare_windows_build_toolchain.ps1 -Component Inno -Force" in github_ci
     assert "build_inno_installer.ps1 -VerifyOnly" in github_ci
+    assert "steps.compile_installer.outputs.installer_sha256" in github_ci
+    assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in github_ci
+    assert "-VerifyPublishDirectory" in github_ci
     assert "prepare_windows_build_toolchain.ps1 -Component Inno -Force" in gitea_ci
     assert "build_inno_installer.ps1 -VerifyOnly" in gitea_ci
+    assert "steps.compile_installer.outputs.installer_sha256" in gitea_ci
+    assert "actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a" in gitea_ci
+    assert "-VerifyPublishDirectory" in gitea_ci
     assert not re.search(r"uses:\s+[^\s]+@(?:v\d+|main|master)(?:\s|$)", github_ci)
 
     config = json.loads(
@@ -684,6 +702,23 @@ def _assert_publish_unit_gates(build_script: str) -> None:
     assert staging_validation < publish_call
 
 
+def _assert_external_publish_directory_name_is_not_authority(build_script: str) -> None:
+    verify_only = build_script[
+        build_script.index("if ($VerifyOnly) {") : build_script.index(
+            '$buildStagingRoot = Join-Path $BackendRoot',
+        )
+    ]
+    assert "$expectedVerifyDirectoryName = if ($VerifyPublishDirectory.Trim().Length -eq 0)" in verify_only
+    assert '-ExpectedDirectoryName $expectedVerifyDirectoryName' in verify_only
+    external_branch = verify_only[
+        verify_only.index("$expectedVerifyDirectoryName = if") : verify_only.index(
+            "$verifiedPublish = Assert-TicketboxInstallerPublishUnit",
+        )
+    ]
+    assert "$publishUnitName" in external_branch
+    assert 'else {\n        ""\n    }' in external_branch
+
+
 def test_installer_publish_unit_validator_rejects_contract_mutations(
     tmp_path: Path,
 ) -> None:
@@ -696,11 +731,11 @@ def test_installer_publish_unit_validator_rejects_contract_mutations(
     provenance = unit / "BUILD_PROVENANCE.json"
     completion = unit / "BUILD_COMPLETE.json"
 
-    def write_valid_unit() -> None:
+    def write_valid_unit(installer_bytes: bytes = b"installer") -> str:
         for child in unit.iterdir():
             if child.is_file():
                 child.unlink()
-        installer.write_bytes(b"installer")
+        installer.write_bytes(installer_bytes)
         provenance.write_text('{"schema_version": 3}\n', encoding="utf-8")
         installer_hash = hashlib.sha256(installer.read_bytes()).hexdigest()
         provenance_hash = hashlib.sha256(provenance.read_bytes()).hexdigest()
@@ -723,7 +758,9 @@ def test_installer_publish_unit_validator_rejects_contract_mutations(
             ),
             encoding="utf-8",
         )
+        return installer_hash
 
+    trusted_installer_hash = write_valid_unit()
     build_path = PACKAGING / "build_inno_installer.ps1"
     command = (
         f". '{_ps_literal(PROVENANCE_HELPER)}'; "
@@ -753,13 +790,38 @@ def test_installer_publish_unit_validator_rejects_contract_mutations(
         "-ExpectedCompilerProvenance ([pscustomobject]@{}) "
         "-ExpectedBuildInputs ([pscustomobject]@{}) "
         "-ExpectedCompilerDefines @('/DTest=1') "
+        f"-ExpectedInstallerSha256 '{trusted_installer_hash}' "
         f"-ExpectedDirectoryName 'Ticketbox-Setup-{version}' | Out-Null"
     )
 
-    write_valid_unit()
     valid = _run_powershell(command)
     assert valid.returncode == 0, valid.stderr
 
+    downloaded_unit = tmp_path / "ticketbox-installer-verify-random"
+    shutil.copytree(unit, downloaded_unit)
+    downloaded_command = command.replace(
+        _ps_literal(unit),
+        _ps_literal(downloaded_unit),
+        1,
+    ).replace(
+        f"-ExpectedDirectoryName 'Ticketbox-Setup-{version}'",
+        "-ExpectedDirectoryName ''",
+        1,
+    )
+    downloaded_valid = _run_powershell(downloaded_command)
+    assert downloaded_valid.returncode == 0, downloaded_valid.stderr
+    assert _run_powershell(
+        downloaded_command.replace(
+            "-ExpectedDirectoryName ''",
+            f"-ExpectedDirectoryName 'Ticketbox-Setup-{version}'",
+            1,
+        )
+    ).returncode != 0
+
+    write_valid_unit(b"coordinated replacement")
+    assert _run_powershell(command).returncode != 0
+
+    write_valid_unit()
     (unit / "unexpected.txt").write_text("extra", encoding="utf-8")
     assert _run_powershell(command).returncode != 0
 
@@ -779,6 +841,7 @@ def test_installer_publish_unit_validator_rejects_contract_mutations(
 
     build = build_path.read_text(encoding="utf-8-sig")
     _assert_publish_unit_gates(build)
+    _assert_external_publish_directory_name_is_not_authority(build)
     mutated = build.replace(
         "Assert-TicketboxInstallerPublishUnit `",
         "# mutation removed publish-unit validation `",
@@ -786,9 +849,80 @@ def test_installer_publish_unit_validator_rejects_contract_mutations(
     )
     with pytest.raises(AssertionError):
         _assert_publish_unit_gates(mutated)
+    external_directory_mutation = build.replace(
+        'else {\n        ""\n    }\n    $verifiedPublish',
+        'else {\n        $publishUnitName\n    }\n    $verifiedPublish',
+        1,
+    )
+    with pytest.raises(AssertionError):
+        _assert_external_publish_directory_name_is_not_authority(
+            external_directory_mutation
+        )
     _assert_installer_publish_swap_rolls_back_and_then_replaces_atomically(
         tmp_path / "atomic-swap"
     )
+    _assert_installer_hash_output_is_external_and_durable(
+        build_path,
+        tmp_path / "hash-output",
+    )
+
+
+def _assert_installer_hash_output_is_external_and_durable(
+    build_path: Path,
+    tmp_path: Path,
+) -> None:
+    publish_root = tmp_path / "publish"
+    publish_root.mkdir(parents=True)
+    trusted_hash = "ab" * 32
+
+    for index, engine in enumerate(powershell_contract_engines()):
+        output_path = tmp_path / f"engine-{index}.txt"
+        extract_function = (
+            f"$scriptPath = '{_ps_literal(build_path)}'; "
+            "$tokens = $null; $errors = $null; "
+            "$ast = [System.Management.Automation.Language.Parser]::ParseFile("
+            "$scriptPath, [ref]$tokens, [ref]$errors); "
+            "$functionAst = $ast.FindAll({ param($node) "
+            "$node -is [System.Management.Automation.Language.FunctionDefinitionAst] "
+            "-and $node.Name -ceq 'Write-TicketboxInstallerHashOutput' }, $true) | "
+            "Select-Object -First 1; Invoke-Expression $functionAst.Extent.Text; "
+            "function Assert-Dir([string]$Path, [string]$Label) { "
+            "if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw $Label } }; "
+        )
+        write = _run_powershell(
+            extract_function
+            + "Write-TicketboxInstallerHashOutput "
+            + f"-Path '{_ps_literal(output_path)}' "
+            + f"-InstallerSha256 '{trusted_hash}' "
+            + f"-PublishRoot '{_ps_literal(publish_root)}'",
+            executable=engine,
+        )
+        assert write.returncode == 0, write.stdout + write.stderr
+        assert output_path.read_bytes() == (
+            f"installer_sha256={trusted_hash}{os.linesep}".encode()
+        )
+
+        inside_publish = publish_root / f"engine-{index}.txt"
+        rejected_inside = _run_powershell(
+            extract_function
+            + "Write-TicketboxInstallerHashOutput "
+            + f"-Path '{_ps_literal(inside_publish)}' "
+            + f"-InstallerSha256 '{trusted_hash}' "
+            + f"-PublishRoot '{_ps_literal(publish_root)}'",
+            executable=engine,
+        )
+        assert rejected_inside.returncode != 0
+        assert not inside_publish.exists()
+
+        rejected_hash = _run_powershell(
+            extract_function
+            + "Write-TicketboxInstallerHashOutput "
+            + f"-Path '{_ps_literal(tmp_path / f'invalid-{index}.txt')}' "
+            + "-InstallerSha256 'not-a-sha256' "
+            + f"-PublishRoot '{_ps_literal(publish_root)}'",
+            executable=engine,
+        )
+        assert rejected_hash.returncode != 0
 
 
 def _assert_installer_publish_swap_rolls_back_and_then_replaces_atomically(
@@ -1172,3 +1306,4 @@ def test_windows_ci_names_source_preflight_without_claiming_a_build() -> None:
         assert "run: pwsh " in text
         assert "build_inno_installer.ps1 -CheckSourceInputsOnly" in text
         assert "build_inno_installer.ps1 -CheckInputsOnly" not in text
+        assert "XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main" in text

@@ -293,7 +293,7 @@ var
   PendingValue: String;
 begin
   Result := False;
-  PendingPath := SelectedDataRoot() + '\app\owner-handoff-pending';
+  PendingPath := LifecycleInstallerStatePath('owner-handoff-pending');
   if not FileExists(PendingPath) then
   begin
     exit;
@@ -327,7 +327,7 @@ begin
     exit;
   end;
 
-  HandoffPath := SelectedDataRoot() + '\app\owner-bootstrap.txt';
+  HandoffPath := LifecycleInstallerStatePath('owner-bootstrap.txt');
   if not LoadUtf8TextFile(HandoffPath, 16384, HandoffText) then
   begin
     WizardForm.FinishedLabel.Caption :=
@@ -383,8 +383,8 @@ begin
         exit;
       end;
     end;
-    HandoffPath := SelectedDataRoot() + '\app\owner-bootstrap.txt';
-    HandoffPendingPath := SelectedDataRoot() + '\app\owner-handoff-pending';
+    HandoffPath := LifecycleInstallerStatePath('owner-bootstrap.txt');
+    HandoffPendingPath := LifecycleInstallerStatePath('owner-handoff-pending');
     if FileExists(HandoffPath) or FileExists(HandoffPendingPath) then
     begin
       MsgBox(
@@ -477,6 +477,7 @@ var
   Args: String;
   VersionFailureReason: String;
 begin
+  AssertLifecycleLockActive();
   OwnerHandoffExpected := False;
   if not CheckBackendVersionFloorForDataRoot(
     SelectedDataRoot(),
@@ -490,28 +491,20 @@ begin
   begin
     exit;
   end;
-  ExtractTemporaryFile('windows_service_contract.ps1');
-  ExtractTemporaryFile('windows_service_lifecycle.ps1');
-  ExtractTemporaryFile('windows_installation_safety.ps1');
-  ExtractTemporaryFile('windows_lifecycle_receipt.ps1');
-  ExtractTemporaryFile('windows_lifecycle_lock.ps1');
-  ExtractTemporaryFile('windows_database_safety.ps1');
-  ExtractTemporaryFile('windows_pg_recovery_tools.ps1');
-  ExtractTemporaryFile('windows_release_config.ps1');
-  ExtractTemporaryFile('windows-release-config.json');
-  ExtractTemporaryFile('windows_backend_build_provenance.ps1');
-  ExtractTemporaryFile('windows_build_provenance.ps1');
-  ExtractTemporaryFile('prepare_bundled_upgrade.ps1');
+  if not ValidateLifecycleLockBootstrapFiles() then
+  begin
+    Result := '受保护 lifecycle bootstrap bundle 在复制前复核失败。';
+    exit;
+  end;
   if not StartDataRootMutationGuard(
-    ExpandConstant('{tmp}\prepare_bundled_upgrade.ps1'),
+    LifecycleBootstrapFilePath('hold_data_root_mutation_guard.ps1'),
     ExpandConstant('{app}'),
-    SelectedDataRoot(),
-    SelectedPgPort(),
-    SelectedBackendPort()) then
+    SelectedDataRoot()) then
   begin
     Result := '无法持续锁定 DataRoot 目录链；安装尚未进入复制前阶段。';
     exit;
   end;
+  AssertLifecycleLockActive();
   AssertDataRootMutationGuardActive();
   Args :=
     '-InstallDir ' + Quote(ExpandConstant('{app}')) +
@@ -519,12 +512,12 @@ begin
     ' -PgPort ' + SelectedPgPort() +
     ' -BackendPort ' + SelectedBackendPort() +
     ' -TargetPgMajor {#TargetPgMajor}' +
-    ' -ReleaseConfigPath ' + Quote(ExpandConstant('{tmp}\windows-release-config.json')) +
+    ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
     ' -InstalledReleaseConfigPath ' + Quote(ExpandConstant('{app}\installer\windows-release-config.json')) +
     ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
     ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);
   if not RunPowerShellChecked(
-    ExpandConstant('{tmp}\prepare_bundled_upgrade.ps1'),
+    LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
     Args,
     'Ticketbox pre-upgrade backup and service preparation') then
   begin
@@ -532,10 +525,12 @@ begin
     begin
       LifecyclePrepared := True;
     end;
+    ReleaseDataRootMutationGuard();
     Result := '升级前备份或服务检查失败。本次安装尚未复制程序文件；若已有 recovery-required 标记，请按提示重新运行安装器修复。';
     exit;
   end;
   LifecyclePrepared := True;
+  AssertLifecycleLockActive();
   AssertDataRootMutationGuardActive();
   Result := '';
 end;
@@ -546,6 +541,7 @@ var
 begin
   if CurStep = ssInstall then
   begin
+    AssertLifecycleLockActive();
     AssertDataRootMutationGuardActive();
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
@@ -553,12 +549,12 @@ begin
       ' -PgPort ' + SelectedPgPort() +
       ' -BackendPort ' + SelectedBackendPort() +
       ' -TargetPgMajor {#TargetPgMajor}' +
-      ' -ReleaseConfigPath ' + Quote(ExpandConstant('{tmp}\windows-release-config.json')) +
+      ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
       ' -MarkProgramFilesInstalledBackupPending';
     if not RunPowerShellChecked(
-      ExpandConstant('{tmp}\prepare_bundled_upgrade.ps1'),
+      LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
       Args,
       'Ticketbox program-files copy boundary') then
     begin
@@ -569,9 +565,11 @@ begin
       RaiseException('Ticketbox program-files copy boundary persistence failed.');
     end;
     LifecycleFilesMayBeReplaced := True;
+    AssertLifecycleLockActive();
   end;
   if CurStep = ssPostInstall then
   begin
+    AssertLifecycleLockActive();
     AssertDataRootMutationGuardActive();
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
@@ -588,6 +586,7 @@ begin
     begin
       RaiseException('Ticketbox service installation failed.');
     end;
+    AssertLifecycleLockActive();
     OwnerHandoffExpected := HasCurrentOwnerHandoffPendingArtifact();
     AssertDataRootMutationGuardActive();
     Args :=
@@ -596,17 +595,19 @@ begin
       ' -PgPort ' + SelectedPgPort() +
       ' -BackendPort ' + SelectedBackendPort() +
       ' -TargetPgMajor {#TargetPgMajor}' +
-      ' -ReleaseConfigPath ' + Quote(ExpandConstant('{tmp}\windows-release-config.json')) +
+      ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
       ' -CommitCompletedInstall';
     if not RunPowerShellChecked(
-      ExpandConstant('{tmp}\prepare_bundled_upgrade.ps1'),
+      LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
       Args,
       'Ticketbox installer lifecycle commit') then
     begin
       RaiseException('Ticketbox installer lifecycle commit failed.');
     end;
+    AssertLifecycleLockActive();
+    AssertDataRootMutationGuardActive();
     LifecycleInstallCompleted := True;
   end;
 end;
@@ -623,7 +624,7 @@ begin
       ' -PgPort ' + SelectedPgPort() +
       ' -BackendPort ' + SelectedBackendPort() +
       ' -TargetPgMajor {#TargetPgMajor}' +
-      ' -ReleaseConfigPath ' + Quote(ExpandConstant('{tmp}\windows-release-config.json')) +
+      ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
       ' -RecoverPreparedInstall';
@@ -632,7 +633,7 @@ begin
       Args := Args + ' -FilesReplaced';
     end;
     if not RunPowerShellChecked(
-      ExpandConstant('{tmp}\prepare_bundled_upgrade.ps1'),
+      LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
       Args,
       'Ticketbox failed-install isolation') then
     begin
@@ -652,6 +653,7 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
+    AssertLifecycleLockActive();
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);
@@ -662,5 +664,6 @@ begin
     begin
       RaiseException('Ticketbox service uninstall failed.');
     end;
+    AssertLifecycleLockActive();
   end;
 end;

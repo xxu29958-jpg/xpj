@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       adr_base_ref:
-        description: Exact pre-change commit for ADR history ratchets
+        description: Canonical default-branch divergence commit for ADR history ratchets
         required: true
         type: string
 
@@ -129,12 +129,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile authoritative Inno installer
+        id: compile_installer
         shell: powershell
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -InstallerHashOutputFile "$env:GITHUB_OUTPUT"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify atomic Windows installer publish unit
         shell: powershell
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly
+        env:
+          INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve verified Windows installer publish path
         shell: powershell
@@ -159,14 +166,45 @@ jobs:
           path: ${{ env.INSTALLER_PUBLISH_PATH }}
           if-no-files-found: error
 
+      - name: Create fresh installer verification directory
+        shell: powershell
+        run: |
+          $downloadRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+          $downloadPath = Join-Path $downloadRoot ("ticketbox-installer-verify-" + [Guid]::NewGuid().ToString("N"))
+          if (Test-Path -LiteralPath $downloadPath) { throw "Installer verification directory already exists." }
+          New-Item -ItemType Directory -Path $downloadPath -ErrorAction Stop | Out-Null
+          if (@([System.IO.Directory]::EnumerateFileSystemEntries($downloadPath)).Count -ne 0) {
+            throw "Installer verification directory is not empty."
+          }
+          [System.IO.File]::AppendAllText(
+            $env:GITHUB_ENV,
+            "INSTALLER_VERIFY_DOWNLOAD_PATH=$downloadPath" + [Environment]::NewLine,
+            (New-Object System.Text.UTF8Encoding($false))
+          )
+
+      - name: Download uploaded Windows installer publish unit
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ticketbox-windows-installer
+          path: ${{ env.INSTALLER_VERIFY_DOWNLOAD_PATH }}
+
+      - name: Verify uploaded Windows installer bytes
+        shell: powershell
+        env:
+          INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Audit (release lanes)
         # Single PR gate for every read-only audit (release_audit.py::LANES):
         # service-graph cycles, CI-gap whitelist, codebase smell report, etc.
         # Any lane returning non-zero fails the PR.
         env:
           XPJ_RELEASE_AUDIT_COMPACT: "1"
+          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
           # PRs compare with the exact target SHA; main pushes compare with the
-          # pre-push SHA; manual runs must name their pre-change commit.
+          # pre-push SHA; manual runs must name the canonical divergence commit.
           XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || inputs.adr_base_ref }}
         run: python scripts\release_audit.py
 

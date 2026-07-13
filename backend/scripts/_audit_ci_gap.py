@@ -10,6 +10,12 @@ from hashlib import sha256
 from ci_gap_action_pins import (
     github_external_uses_pin_violations as _github_external_uses_pin_violations,
 )
+from ci_gap_installer_artifact import (
+    missing_installer_hash_dataflow_by_platform as _evaluate_installer_hash_dataflow,
+)
+from ci_gap_installer_artifact import (
+    missing_installer_publish_actions_by_platform as _evaluate_installer_publish_actions,
+)
 from ci_gap_powershell import (
     is_native_failure_propagation_guard as _is_native_failure_propagation_guard,
 )
@@ -18,11 +24,7 @@ from ci_gap_powershell import (
     powershell_ast_propagates_failure as _powershell_ast_propagates_failure,
 )
 from ci_gap_release_scope import release_apk_scope_policy_violations
-from ci_gap_required_commands import (
-    REQUIRED_CI_ACTIONS_BY_PLATFORM,
-    REQUIRED_CI_INVOCATIONS,
-    REQUIRED_CI_INVOCATIONS_BY_PLATFORM,
-)
+from ci_gap_required_commands import REQUIRED_CI_INVOCATIONS, REQUIRED_CI_INVOCATIONS_BY_PLATFORM
 from ci_gap_shell import (
     has_unquoted_shell_separator as _has_unquoted_shell_separator,
 )
@@ -322,54 +324,23 @@ def _missing_ci_invocations_by_platform(commands: list[WorkflowCommand]) -> list
     return missing
 
 
-def _installer_publish_action_is_ordered(
-    action: WorkflowAction, commands: list[WorkflowCommand], platform: str
-) -> bool:
-    if not action.requires_prior_success or action.step_index < 0:
-        return False
-    segments: list[str] = []
-    for command in sorted(commands, key=lambda item: item.step_index):
-        if (
-            command.workflow == action.workflow
-            and command.job == action.job
-            and 0 <= command.step_index < action.step_index
-        ):
-            segments.extend(_iter_executable_command_segments([command]))
-    cursor = 0
-    for invocation in REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]:
-        while cursor < len(segments) and not invocation.matches(segments[cursor]):
-            cursor += 1
-        if cursor == len(segments):
-            return False
-        cursor += 1
-    return True
+def _missing_installer_hash_dataflow_by_platform(
+    commands: list[WorkflowCommand],
+) -> list[str]:
+    return _evaluate_installer_hash_dataflow(
+        commands,
+        segment_reader=_iter_executable_command_segments,
+    )
 
 
 def _missing_installer_publish_actions_by_platform(
     commands: list[WorkflowCommand], actions: list[WorkflowAction]
 ) -> list[str]:
-    missing: list[str] = []
-    for platform in PLATFORM_WORKFLOW_PARTS:
-        platform_commands = [
-            command
-            for command in _commands_for_platform(commands, platform)
-            if command.protection_scope == "full"
-        ]
-        platform_actions = [
-            action
-            for action in actions
-            if PLATFORM_WORKFLOW_PARTS[platform] in action.workflow.parts
-            and action.protection_scope == "full"
-        ]
-        for required in REQUIRED_CI_ACTIONS_BY_PLATFORM[platform]:
-            matching_actions = [
-                action for action in platform_actions if required.matches(action.uses, action.inputs)
-            ]
-            if len(matching_actions) != 1 or not _installer_publish_action_is_ordered(
-                matching_actions[0], platform_commands, platform
-            ):
-                missing.append(f"{platform}: {required.label}")
-    return missing
+    return _evaluate_installer_publish_actions(
+        commands,
+        actions,
+        segment_reader=_iter_executable_command_segments,
+    )
 
 
 def _is_github_workflow(path: pathlib.Path) -> bool:
@@ -469,6 +440,8 @@ def main() -> int:
         missing.append(f"gradle task: {task}")
     for invocation in _missing_ci_invocations_by_platform(commands):
         missing.append(f"ci invocation: {invocation}")
+    for dataflow in _missing_installer_hash_dataflow_by_platform(commands):
+        missing.append(f"ci dataflow: {dataflow}")
     for action in _missing_installer_publish_actions_by_platform(commands, actions):
         missing.append(f"ci action: {action}")
     for violation in _github_ci_release_apk_policy_violations(path_scoped_commands):

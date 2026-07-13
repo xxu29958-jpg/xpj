@@ -16,6 +16,11 @@ from ci_gap_powershell import (
 )
 from ci_gap_trigger_scope import protected_workflow_scope as _protected_workflow_scope
 from ci_gap_trigger_scope import workflow_action_requires_prior_success
+from ci_gap_workflow_conditions import allows_failure as _allows_failure
+from ci_gap_workflow_conditions import condition_allows_event as _condition_allows_event
+from ci_gap_workflow_conditions import (
+    condition_guarantees_after_needs as _condition_guarantees_after_needs,
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +34,9 @@ class WorkflowCommand:
     shell: str = ""
     protection_scope: str = "full"
     powershell_ast_digest: str = ""
+    step_id: str = ""
+    environment: tuple[tuple[str, str], ...] = ()
+    source_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -41,6 +49,18 @@ class WorkflowAction:
     step_index: int = -1
     requires_prior_success: bool = True
     protection_scope: str = "full"
+    environment: tuple[tuple[str, str], ...] = ()
+
+
+WorkflowStep = tuple[
+    pathlib.Path,
+    object,
+    int,
+    dict[object, object],
+    str,
+    str,
+    tuple[tuple[str, str], ...],
+]
 
 
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
@@ -80,127 +100,6 @@ def _required_protection_event(path: pathlib.Path) -> str:
     # protected validation lane is push-based, but workflow_dispatch alone must
     # never satisfy either platform's required-command inventory.
     return "pull_request" if ".github" in path.parts else "push"
-
-
-def _strip_expression_wrapper(value: str) -> str:
-    stripped = value.strip()
-    if stripped.startswith("${{") and stripped.endswith("}}"):
-        return stripped[3:-2].strip()
-    return stripped
-
-
-def _strip_outer_condition_parentheses(value: str) -> str:
-    stripped = value.strip()
-    while stripped.startswith("(") and stripped.endswith(")"):
-        stripped = stripped[1:-1].strip()
-    return stripped
-
-
-def _condition_branch_is_proven(branch: str, event_name: str) -> bool:
-    comparison = re.compile(
-        r"github\.event_name\s*(==|!=)\s*(['\"])([^'\"]+)\2",
-        re.IGNORECASE,
-    )
-    predicates = [
-        _strip_outer_condition_parentheses(predicate)
-        for predicate in re.split(r"&&", branch)
-    ]
-    if not predicates:
-        return False
-    for predicate in predicates:
-        lowered = predicate.lower()
-        if lowered in {"true", "success()", "always()"}:
-            continue
-        match = comparison.fullmatch(predicate)
-        if match is None:
-            return False
-        equal = event_name == match.group(3)
-        if (match.group(1) == "==" and not equal) or (
-            match.group(1) == "!=" and equal
-        ):
-            return False
-    return True
-
-
-def _condition_is_proven_for_event(expression: str, event_name: str) -> bool:
-    return any(
-        _condition_branch_is_proven(branch, event_name)
-        for branch in re.split(r"\|\|", expression)
-    )
-
-
-def _condition_guarantees_after_needs(value: object, event_name: str) -> bool:
-    if value is None or value is False:
-        return False
-    expression = _strip_expression_wrapper(str(value))
-    normalized = re.sub(r"\s+", " ", expression).strip()
-    return any(
-        re.search(r"(?i)\balways\s*\(\s*\)", branch) is not None
-        and _condition_branch_is_proven(branch, event_name)
-        for branch in re.split(r"\|\|", normalized)
-    )
-
-
-def _condition_may_allow_event(normalized: str, event_name: str) -> bool:
-    if "github.event_name" not in normalized:
-        return True
-
-    comparison = re.compile(
-        r"github\.event_name\s*(==|!=)\s*(['\"])([^'\"]+)\2",
-        re.IGNORECASE,
-    )
-    for branch in re.split(r"\|\|", normalized):
-        matches = list(comparison.finditer(branch))
-        if not matches:
-            if "github.event_name" in branch:
-                continue
-            if not re.search(r"\bfalse\b|failure\(\)|cancelled\(\)", branch, re.IGNORECASE):
-                return True
-            continue
-        if re.search(r"!\s*\([^)]*github\.event_name", branch, re.IGNORECASE):
-            continue
-        if re.search(r"\bfalse\b|failure\(\)|cancelled\(\)", branch, re.IGNORECASE):
-            continue
-        permits = True
-        for match in matches:
-            equal = event_name == match.group(3)
-            if (match.group(1) == "==" and not equal) or (
-                match.group(1) == "!=" and equal
-            ):
-                permits = False
-                break
-        if permits:
-            return True
-    return False
-
-
-def _condition_allows_event(
-    value: object,
-    event_name: str,
-    *,
-    require_proof: bool = False,
-) -> bool:
-    if value is None or value is True:
-        return True
-    if value is False:
-        return False
-    expression = _strip_expression_wrapper(str(value))
-    normalized = re.sub(r"\s+", " ", expression).strip()
-    if normalized.lower() in {"", "true", "success()", "always()"}:
-        return True
-    if normalized.lower() in {"false", "failure()", "cancelled()"}:
-        return False
-    if require_proof:
-        return _condition_is_proven_for_event(normalized, event_name)
-    return _condition_may_allow_event(normalized, event_name)
-
-
-def _allows_failure(value: object) -> bool:
-    if value is None or value is False:
-        return False
-    if value is True:
-        return True
-    return _strip_expression_wrapper(str(value)).strip().lower() not in {"", "false"}
 
 
 def _nested_action_script(raw_step: dict[object, object]) -> object:
@@ -262,6 +161,14 @@ def _job_default_shell(raw_job: dict[object, object]) -> str:
         return ""
     run_defaults = defaults.get("run")
     return str(run_defaults.get("shell", "")) if isinstance(run_defaults, dict) else ""
+
+
+def _effective_environment(*scopes: object) -> tuple[tuple[str, str], ...]:
+    effective: list[tuple[str, str]] = []
+    for scope in scopes:
+        if isinstance(scope, dict):
+            effective.extend((str(key), str(value)) for key, value in scope.items())
+    return tuple(effective)
 
 
 def _job_needs(raw_job: dict[object, object]) -> tuple[str, ...] | None:
@@ -349,6 +256,7 @@ def _workflow_step_command(
     raw_step: dict[object, object],
     job_shell: str,
     protection_scope: str,
+    environment: tuple[tuple[str, str], ...],
 ) -> WorkflowCommand | None:
     command = raw_step.get("run", raw_step.get("script"))
     if command is None:
@@ -374,6 +282,9 @@ def _workflow_step_command(
             if is_powershell
             else ""
         ),
+        step_id=str(raw_step.get("id", "")),
+        environment=environment,
+        source_text=_strip_comment_lines(command),
     )
 
 
@@ -381,10 +292,8 @@ def _iter_reachable_workflow_steps(
     workflow_dirs: pathlib.Path | list[pathlib.Path],
     *,
     protected_only: bool = False,
-) -> list[tuple[pathlib.Path, object, int, dict[object, object], str, str]]:
-    reachable: list[
-        tuple[pathlib.Path, object, int, dict[object, object], str, str]
-    ] = []
+) -> list[WorkflowStep]:
+    reachable: list[WorkflowStep] = []
     for path in _iter_workflow_paths(workflow_dirs):
         workflow = _load_workflow(path)
         event_name = _required_protection_event(path)
@@ -432,7 +341,19 @@ def _iter_reachable_workflow_steps(
                 if _allows_failure(raw_step.get("continue-on-error")):
                     continue
                 reachable.append(
-                    (path, job_name, index, raw_step, job_shell, protection_scope)
+                    (
+                        path,
+                        job_name,
+                        index,
+                        raw_step,
+                        job_shell,
+                        protection_scope,
+                        _effective_environment(
+                            workflow.get("env"),
+                            raw_job.get("env"),
+                            raw_step.get("env"),
+                        ),
+                    )
                 )
     return reachable
 
@@ -443,7 +364,7 @@ def _iter_workflow_run_commands(
     protected_only: bool = False,
 ) -> list[WorkflowCommand]:
     commands: list[WorkflowCommand] = []
-    for path, job_name, index, raw_step, job_shell, protection_scope in (
+    for path, job_name, index, raw_step, job_shell, protection_scope, environment in (
         _iter_reachable_workflow_steps(
             workflow_dirs,
             protected_only=protected_only,
@@ -456,6 +377,7 @@ def _iter_workflow_run_commands(
             raw_step=raw_step,
             job_shell=job_shell,
             protection_scope=protection_scope,
+            environment=environment,
         )
         if parsed is not None:
             commands.append(parsed)
@@ -468,7 +390,7 @@ def _iter_workflow_actions(
     protected_only: bool = False,
 ) -> list[WorkflowAction]:
     actions: list[WorkflowAction] = []
-    for path, job_name, index, raw_step, _job_shell, protection_scope in (
+    for path, job_name, index, raw_step, _job_shell, protection_scope, environment in (
         _iter_reachable_workflow_steps(
             workflow_dirs,
             protected_only=protected_only,
@@ -493,6 +415,7 @@ def _iter_workflow_actions(
                 step_index=index,
                 requires_prior_success=workflow_action_requires_prior_success(raw_step.get("if")),
                 protection_scope=protection_scope,
+                environment=environment,
             )
         )
     return actions

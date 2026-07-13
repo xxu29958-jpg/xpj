@@ -37,8 +37,27 @@ def test_repository_contract_registry_is_current() -> None:
         legacy_baseline_path=LEGACY_BASELINE_PATH,
     )
 
-    assert len(registry.entries) == 70
+    assert len(registry.entries) == 71
     assert stale_view_errors(registry) == []
+    entries = {entry.adr_id: entry for entry in registry.entries}
+    amendments = {
+        relation.target
+        for relation in entries["0074"].relations
+        if relation.kind == "amends"
+    }
+    assert {"0062", "0063"} <= amendments
+    projected = {
+        entry["id"]: entry for entry in json.loads(registry_json(registry))["entries"]
+    }
+    assert "非原子恢复标记" in projected["0062"]["declared_current_scope"]
+    assert "非原子恢复标记" in projected["0062"]["current_scope"]
+    assert "handoff 父目录 ACL 审查失败" in projected["0063"]["declared_current_scope"]
+    assert "handoff 父目录 ACL 审查失败" in projected["0063"]["current_scope"]
+    assert projected["0062"]["effective_amendments"][0]["source"] == "0074"
+    assert projected["0062"]["implementation_status"] == "nonconformant"
+    assert projected["0062"]["verification_status"] == "failed"
+    assert projected["0063"]["implementation_status"] == "partial"
+    assert projected["0063"]["verification_status"] == "failed"
 
 
 def test_legacy_hash_ratchet_rejects_mutation(tmp_path: Path) -> None:
@@ -157,6 +176,66 @@ def test_registry_json_is_deterministic(tmp_path: Path) -> None:
     assert first_render.index('"id": "0065"') < first_render.index('"id": "0066"')
 
 
+def test_accepted_amendment_projects_current_state_without_rewriting_target(
+    tmp_path: Path,
+) -> None:
+    target = write_v2(tmp_path, "0065", implementation_status="implemented")
+    write_v2(
+        tmp_path,
+        "0066",
+        implementation_status="partial",
+        relations=(("amends", "0065", "bounded current-state correction"),),
+    )
+    write_v2(
+        tmp_path,
+        "0067",
+        implementation_status="nonconformant",
+        verification_status="failed",
+    )
+    write_v2(
+        tmp_path,
+        "0068",
+        implementation_status="implemented",
+        verification_status="verified",
+        relations=(("amends", "0067", "bounded verified correction"),),
+    )
+    baseline = write_baseline(tmp_path)
+
+    registry = build_registry(decisions_dir=target.parent, legacy_baseline_path=baseline)
+    payload = json.loads(registry_json(registry))
+    entries = {entry["id"]: entry for entry in payload["entries"]}
+    projected = entries["0065"]
+    failed_projection = entries["0067"]
+
+    assert projected["declared_current_scope"] == "Test-only contract scope"
+    assert projected["declared_implementation_status"] == "implemented"
+    assert projected["current_scope"].startswith(
+        "ADR-0065 未被后继关系覆盖的 declared_current_scope：Test-only contract scope"
+    )
+    assert "ADR-0066 后继修订" in projected["current_scope"]
+    assert projected["implementation_status"] == "partial"
+    assert projected["effective_amendments"] == [
+        {
+            "source": "0066",
+            "scope": "bounded current-state correction",
+            "implementation_status": "partial",
+            "verification_status": "unverified",
+        }
+    ]
+    assert failed_projection["declared_implementation_status"] == "nonconformant"
+    assert failed_projection["declared_verification_status"] == "failed"
+    assert failed_projection["implementation_status"] == "nonconformant"
+    assert failed_projection["verification_status"] == "failed"
+    assert failed_projection["effective_amendments"] == [
+        {
+            "source": "0068",
+            "scope": "bounded verified correction",
+            "implementation_status": "implemented",
+            "verification_status": "verified",
+        }
+    ]
+
+
 def test_generated_view_mutation_is_detected(tmp_path: Path) -> None:
     adr = write_v2(tmp_path, "0065")
     baseline = write_baseline(tmp_path)
@@ -166,6 +245,7 @@ def test_generated_view_mutation_is_detected(tmp_path: Path) -> None:
     status = current / "ADR_STATUS.md"
     index = adr.parent / "README.md"
     status.write_text(
+        "<!-- ADR_STATUS_METADATA_START -->\nold\n<!-- ADR_STATUS_METADATA_END -->\n"
         "<!-- ADR_STATUS_TABLE_START -->\nold\n<!-- ADR_STATUS_TABLE_END -->\n",
         encoding="utf-8",
     )
@@ -184,6 +264,18 @@ def test_generated_view_mutation_is_detected(tmp_path: Path) -> None:
 
     write_views(registry, paths=paths)
     assert stale_view_errors(registry, paths=paths) == []
+
+    paths.status.write_text(
+        paths.status.read_text(encoding="utf-8").replace(
+            f"`{registry.code_baseline}`",
+            "`0000000000000000000000000000000000000000`",
+        ),
+        encoding="utf-8",
+    )
+    assert stale_view_errors(registry, paths=paths) == [
+        "generated ADR view is stale: docs/current/ADR_STATUS.md"
+    ]
+    write_views(registry, paths=paths)
 
     paths.graph.write_text("manual edit\n", encoding="utf-8")
     assert stale_view_errors(registry, paths=paths) == [

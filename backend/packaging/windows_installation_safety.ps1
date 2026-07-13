@@ -1,7 +1,13 @@
 ﻿#Requires -Version 5.1
 
 $script:TicketboxDataRootMarkerName = ".ticketbox-data-root.json"
-$script:TicketboxDataRootMarkerSchema = "ticketbox-data-root-v1"
+$script:TicketboxLegacyDataRootMarkerSchema = "ticketbox-data-root-v1"
+$script:TicketboxDataRootMarkerSchema = "ticketbox-data-root-v2"
+$script:TicketboxDataRootProvisioningIntentName = "data-root-provisioning-pending"
+$script:TicketboxDataRootProvisioningIntentSchema = "ticketbox-data-root-provisioning-v2"
+$script:TicketboxRuntimeDataBindingDirectoryName = "TicketboxRuntimeBinding"
+$script:TicketboxRuntimeDataBindingJunctionName = "data-root"
+$script:TicketboxBootstrapRecoveryGuardName = "bootstrap-exposure-recovery-pending"
 $script:TicketboxPersistentInstallationIdentityName = ".ticketbox-installation-identity"
 $script:TicketboxPersistentInstallationIdentitySchema = "ticketbox-installation-identity-v1"
 $script:TicketboxPersistentInstallationIdentityAclAccounts = @("SYSTEM", "BUILTIN\Administrators")
@@ -14,6 +20,7 @@ function Initialize-TicketboxDirectoryGuardNativeMethods {
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 public static class TicketboxDirectoryGuardNativeMethods
@@ -27,6 +34,13 @@ public static class TicketboxDirectoryGuardNativeMethods
         uint creationDisposition,
         uint flagsAndAttributes,
         IntPtr templateFile);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetVolumeNameForVolumeMountPoint(
+        string volumeMountPoint,
+        StringBuilder volumeName,
+        uint bufferLength);
 }
 '@
 }
@@ -34,7 +48,10 @@ public static class TicketboxDirectoryGuardNativeMethods
 function Enter-TicketboxDirectoryMutationGuard {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
-        [switch]$CreateMissingDirectories
+        [switch]$CreateMissingDirectories,
+        [scriptblock]$OnBeforeFirstDirectoryCreation = $null,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
     )
 
     Initialize-TicketboxDirectoryGuardNativeMethods
@@ -51,6 +68,8 @@ function Enter-TicketboxDirectoryMutationGuard {
         $cursor = $parent
     }
     $handles = New-Object "System.Collections.Generic.List[Microsoft.Win32.SafeHandles.SafeFileHandle]"
+    $createdPaths = New-Object "System.Collections.Generic.List[string]"
+    $creationCallbackInvoked = $false
     try {
         while ($pathStack.Count -gt 0) {
             $guardedPath = $pathStack.Pop()
@@ -58,7 +77,15 @@ function Enter-TicketboxDirectoryMutationGuard {
                 if (-not $CreateMissingDirectories) {
                     throw "ACL 目标目录链不存在：$guardedPath"
                 }
-                [System.IO.Directory]::CreateDirectory($guardedPath) | Out-Null
+                if (-not $creationCallbackInvoked -and $null -ne $OnBeforeFirstDirectoryCreation) {
+                    & $OnBeforeFirstDirectoryCreation | Out-Null
+                    $creationCallbackInvoked = $true
+                }
+                Initialize-TicketboxProtectedDirectoryAtomically `
+                    -Path $guardedPath `
+                    -FullControlAccounts $FullControlAccounts `
+                    -OwnerAccount $OwnerAccount | Out-Null
+                $createdPaths.Add((ConvertTo-TicketboxCanonicalPath $guardedPath))
             }
             if (-not (Test-Path -LiteralPath $guardedPath -PathType Container)) {
                 throw "ACL 目标目录链节点不是目录：$guardedPath"
@@ -83,7 +110,10 @@ function Enter-TicketboxDirectoryMutationGuard {
                 throw "ACL 目标目录链不能包含重解析点：$guardedPath"
             }
         }
-        $guard = [pscustomobject]@{ Handles = @($handles) }
+        $guard = [pscustomobject]@{
+            Handles = @($handles)
+            CreatedPaths = @($createdPaths)
+        }
         Add-Member -InputObject $guard -MemberType ScriptMethod -Name Dispose -Value {
             foreach ($heldHandle in $this.Handles) { $heldHandle.Dispose() }
         }
@@ -193,7 +223,8 @@ function Write-TicketboxUtf8FileDurable {
 function New-TicketboxProtectedFileSecurity {
     param(
         [Parameter(Mandatory = $true)][string[]]$FullControlAccounts,
-        [string[]]$ReadExecuteAccounts = @()
+        [string[]]$ReadExecuteAccounts = @(),
+        [string]$OwnerAccount = "SYSTEM"
     )
 
     $fullControlSids = @($FullControlAccounts | ForEach-Object {
@@ -216,6 +247,9 @@ function New-TicketboxProtectedFileSecurity {
 
     $security = New-Object System.Security.AccessControl.FileSecurity
     $security.SetAccessRuleProtection($true, $false)
+    $security.SetOwner((New-Object System.Security.Principal.SecurityIdentifier(
+        (ConvertTo-TicketboxAccountSid $OwnerAccount)
+    )))
     foreach ($sid in $fullControlSids) {
         $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
             $sid,
@@ -231,6 +265,125 @@ function New-TicketboxProtectedFileSecurity {
         )))
     }
     return $security
+}
+
+function New-TicketboxProtectedDirectorySecurity {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$FullControlAccounts,
+        [string[]]$ReadExecuteAccounts = @(),
+        [string[]]$InheritableReadExecuteAccounts = @(),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $fullControlSids = @($FullControlAccounts | ForEach-Object {
+        ConvertTo-TicketboxAccountSid $_
+    } | Sort-Object -Unique)
+    $readExecuteSids = @($ReadExecuteAccounts | ForEach-Object {
+        ConvertTo-TicketboxAccountSid $_
+    } | Sort-Object -Unique)
+    $inheritableReadExecuteSids = @($InheritableReadExecuteAccounts | ForEach-Object {
+        ConvertTo-TicketboxAccountSid $_
+    } | Sort-Object -Unique)
+    if ($fullControlSids.Count -eq 0) {
+        throw "受保护目录至少需要一个 FullControl 账户。"
+    }
+    if (
+        @($fullControlSids | Where-Object { $_ -in $readExecuteSids }).Count -gt 0 -or
+        @($fullControlSids | Where-Object { $_ -in $inheritableReadExecuteSids }).Count -gt 0 -or
+        @($readExecuteSids | Where-Object { $_ -in $inheritableReadExecuteSids }).Count -gt 0
+    ) {
+        throw "受保护目录账户不能同时拥有 FullControl 与 ReadExecute。"
+    }
+    $security = New-Object System.Security.AccessControl.DirectorySecurity
+    $security.SetAccessRuleProtection($true, $false)
+    $security.SetOwner((New-Object System.Security.Principal.SecurityIdentifier(
+        (ConvertTo-TicketboxAccountSid $OwnerAccount)
+    )))
+    $inheritance =
+        [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+        [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+    foreach ($sidValue in $fullControlSids) {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($sidValue)
+        $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $sid,
+            [System.Security.AccessControl.FileSystemRights]::FullControl,
+            $inheritance,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )))
+    }
+    foreach ($sidValue in $readExecuteSids) {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($sidValue)
+        $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $sid,
+            [System.Security.AccessControl.FileSystemRights]::ReadAndExecute,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )))
+    }
+    foreach ($sidValue in $inheritableReadExecuteSids) {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($sidValue)
+        $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $sid,
+            [System.Security.AccessControl.FileSystemRights]::ReadAndExecute,
+            $inheritance,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )))
+    }
+    return $security
+}
+
+function Initialize-TicketboxProtectedDirectoryAtomically {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string[]]$ReadExecuteAccounts = @(),
+        [string[]]$InheritableReadExecuteAccounts = @(),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $parent = Split-Path -Parent $fullPath
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+        throw "受保护目录父路径不存在：$parent"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $parent
+    if (Test-Path -LiteralPath $fullPath) {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $fullPath `
+            -FullControlAccounts $FullControlAccounts `
+            -ReadExecuteAccounts $ReadExecuteAccounts `
+            -InheritableReadExecuteAccounts $InheritableReadExecuteAccounts `
+            -OwnerAccount $OwnerAccount
+        return $fullPath
+    }
+    $security = New-TicketboxProtectedDirectorySecurity `
+        -FullControlAccounts $FullControlAccounts `
+        -ReadExecuteAccounts $ReadExecuteAccounts `
+        -InheritableReadExecuteAccounts $InheritableReadExecuteAccounts `
+        -OwnerAccount $OwnerAccount
+    try {
+        if ($PSVersionTable.PSEdition -eq "Core") {
+            [System.IO.FileSystemAclExtensions]::CreateDirectory($security, $fullPath) | Out-Null
+        }
+        else {
+            (New-Object System.IO.DirectoryInfo($fullPath)).Create($security)
+        }
+    }
+    catch {
+        $creationFailure = $_.Exception
+        if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
+            throw $creationFailure
+        }
+    }
+    Assert-NoTicketboxAncestorReparsePoints $fullPath
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $fullPath `
+        -FullControlAccounts $FullControlAccounts `
+        -ReadExecuteAccounts $ReadExecuteAccounts `
+        -InheritableReadExecuteAccounts $InheritableReadExecuteAccounts `
+        -OwnerAccount $OwnerAccount
+    return $fullPath
 }
 
 function New-TicketboxProtectedFileStream {
@@ -267,7 +420,8 @@ function Write-TicketboxProtectedUtf8FileDurable {
         [Parameter(Mandatory = $true)][string]$Text,
         [Parameter(Mandatory = $true)][string[]]$FullControlAccounts,
         [string[]]$ReadExecuteAccounts = @(),
-        [string]$OwnerAccount = "SYSTEM"
+        [string]$OwnerAccount = "SYSTEM",
+        [switch]$ReplaceExisting
     )
 
     $fullPath = [System.IO.Path]::GetFullPath($Path)
@@ -280,7 +434,8 @@ function Write-TicketboxProtectedUtf8FileDurable {
     $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($Text)
     $security = New-TicketboxProtectedFileSecurity `
         -FullControlAccounts $FullControlAccounts `
-        -ReadExecuteAccounts $ReadExecuteAccounts
+        -ReadExecuteAccounts $ReadExecuteAccounts `
+        -OwnerAccount $OwnerAccount
     try {
         $stream = New-TicketboxProtectedFileStream -Path $temporaryPath -Security $security
         try {
@@ -288,10 +443,22 @@ function Write-TicketboxProtectedUtf8FileDurable {
             $stream.Flush($true)
         }
         finally { $stream.Dispose() }
-        Move-TicketboxFileDurable $temporaryPath $fullPath
+        $expectedOwnerSid = ConvertTo-TicketboxAccountSid $OwnerAccount
+        Set-TicketboxOwnerIfNeeded `
+            -Path $temporaryPath `
+            -ExpectedOwnerSid $expectedOwnerSid
+        Assert-TicketboxExactFileAcl `
+            -Path $temporaryPath `
+            -Accounts $FullControlAccounts `
+            -ReadExecuteAccounts $ReadExecuteAccounts `
+            -OwnerAccount $OwnerAccount
+        Move-TicketboxFileDurable `
+            $temporaryPath `
+            $fullPath `
+            -ReplaceExisting:$ReplaceExisting
         Set-TicketboxOwnerIfNeeded `
             -Path $fullPath `
-            -ExpectedOwnerSid (ConvertTo-TicketboxAccountSid $OwnerAccount)
+            -ExpectedOwnerSid $expectedOwnerSid
         Assert-TicketboxExactFileAcl `
             -Path $fullPath `
             -Accounts $FullControlAccounts `
@@ -303,47 +470,777 @@ function Write-TicketboxProtectedUtf8FileDurable {
     }
 }
 
-function Assert-TicketboxProtectedDirectoryAcl([string]$Path) {
+function Initialize-TicketboxInstallerStateDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $parent = Split-Path -Parent $fullPath
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+        throw "installer-state 父目录不存在：$parent"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $parent
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $parent `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    Initialize-TicketboxProtectedDirectoryAtomically `
+        -Path $fullPath `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount | Out-Null
+    Remove-TicketboxProtectedStagingArtifacts `
+        -Path $fullPath `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    return $fullPath
+}
+
+function Remove-TicketboxProtectedStagingArtifacts {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $Path `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    foreach ($item in @(Get-ChildItem -LiteralPath $Path -Force)) {
+        if ($item.Name -cnotmatch '^\.ticketbox-(protected|durable)-[0-9a-f]{32}\.tmp$') {
+            continue
+        }
+        if (
+            -not (Test-Path -LiteralPath $item.FullName -PathType Leaf) -or
+            ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+        ) {
+            throw "受保护 staging artifact 不是普通文件：$($item.FullName)"
+        }
+        Set-TicketboxExactFileAcl `
+            -Path $item.FullName `
+            -Accounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount
+        Remove-Item -LiteralPath $item.FullName -Force -ErrorAction Stop
+        if (Test-Path -LiteralPath $item.FullName) {
+            throw "无法清理受保护 staging artifact：$($item.FullName)"
+        }
+    }
+}
+
+function Test-TicketboxByteArrayEquals {
+    param(
+        [Parameter(Mandatory = $true)][byte[]]$Left,
+        [Parameter(Mandatory = $true)][byte[]]$Right
+    )
+
+    if ($Left.Length -ne $Right.Length) { return $false }
+    for ($index = 0; $index -lt $Left.Length; $index++) {
+        if ($Left[$index] -ne $Right[$index]) { return $false }
+    }
+    return $true
+}
+
+function Read-TicketboxProtectedUtf8Artifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string[]]$ReadExecuteAccounts = @(),
+        [string]$OwnerAccount = "SYSTEM",
+        [ValidateRange(1, 1048576)][int]$MaximumBytes = 65536
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    Assert-NoTicketboxAncestorReparsePoints $fullPath
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+        throw "installer-state artifact 不存在或不是普通文件：$fullPath"
+    }
+    $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    if (
+        ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        $item.Length -le 0 -or
+        $item.Length -gt $MaximumBytes
+    ) {
+        throw "installer-state artifact 不是有效的受保护普通文件：$fullPath"
+    }
+    Assert-TicketboxExactFileAcl `
+        -Path $fullPath `
+        -Accounts $FullControlAccounts `
+        -ReadExecuteAccounts $ReadExecuteAccounts `
+        -OwnerAccount $OwnerAccount
+    $bytes = [System.IO.File]::ReadAllBytes($fullPath)
+    $encoding = New-Object System.Text.UTF8Encoding($false, $true)
+    try { $text = $encoding.GetString($bytes) }
+    catch { throw "installer-state artifact 不是严格 UTF-8：$fullPath" }
+    $roundTripBytes = $encoding.GetBytes($text)
+    if (-not (Test-TicketboxByteArrayEquals -Left $bytes -Right $roundTripBytes)) {
+        throw "installer-state artifact 不能无损 UTF-8 往返：$fullPath"
+    }
+    return [PSCustomObject]@{
+        Text = $text
+        Bytes = $bytes
+    }
+}
+
+function Remove-TicketboxProtectedUtf8Artifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string[]]$ReadExecuteAccounts = @(),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    Read-TicketboxProtectedUtf8Artifact `
+        -Path $fullPath `
+        -FullControlAccounts $FullControlAccounts `
+        -ReadExecuteAccounts $ReadExecuteAccounts `
+        -OwnerAccount $OwnerAccount | Out-Null
+    Remove-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $fullPath) {
+        throw "无法清理受保护的 installer-state artifact：$fullPath"
+    }
+}
+
+function Move-TicketboxLegacyInstallerStateArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$LegacyPath,
+        [Parameter(Mandatory = $true)][string]$CurrentPath,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM",
+        [switch]$RetainLegacySource
+    )
+
+    $legacyFullPath = [System.IO.Path]::GetFullPath($LegacyPath)
+    $currentFullPath = [System.IO.Path]::GetFullPath($CurrentPath)
+    if (Test-TicketboxPathEquals $legacyFullPath $currentFullPath) {
+        throw "legacy 与 current installer-state artifact 不能是同一路径：$currentFullPath"
+    }
+    $currentParent = Split-Path -Parent $currentFullPath
+    Assert-NoTicketboxAncestorReparsePoints $currentParent
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $currentParent `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+
+    $legacyExists = Test-Path -LiteralPath $legacyFullPath
+    $currentExists = Test-Path -LiteralPath $currentFullPath
+    if ($legacyExists -and -not (Test-Path -LiteralPath $legacyFullPath -PathType Leaf)) {
+        throw "legacy installer-state artifact 存在但不是普通文件：$legacyFullPath"
+    }
+    if ($currentExists -and -not (Test-Path -LiteralPath $currentFullPath -PathType Leaf)) {
+        throw "current installer-state artifact 存在但不是普通文件：$currentFullPath"
+    }
+
+    $legacyArtifact = $null
+    $currentArtifact = $null
+    if ($legacyExists) {
+        $legacyArtifact = Read-TicketboxProtectedUtf8Artifact `
+            -Path $legacyFullPath `
+            -FullControlAccounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount
+    }
+    if ($currentExists) {
+        $currentArtifact = Read-TicketboxProtectedUtf8Artifact `
+            -Path $currentFullPath `
+            -FullControlAccounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount
+    }
+    if ($legacyExists -and $currentExists) {
+        if (-not (Test-TicketboxByteArrayEquals -Left $legacyArtifact.Bytes -Right $currentArtifact.Bytes)) {
+            throw "installer-state 新旧位置内容冲突，拒绝猜测权威文件：$currentFullPath"
+        }
+        if (-not $RetainLegacySource) {
+            Remove-TicketboxProtectedUtf8Artifact `
+                -Path $legacyFullPath `
+                -FullControlAccounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount
+        }
+        return
+    }
+    if ($currentExists -or -not $legacyExists) { return }
+
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $currentFullPath `
+        -Text $legacyArtifact.Text `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    $publishedArtifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path $currentFullPath `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    if (-not (Test-TicketboxByteArrayEquals -Left $legacyArtifact.Bytes -Right $publishedArtifact.Bytes)) {
+        throw "installer-state artifact 发布后复读不一致：$currentFullPath"
+    }
+    if (-not $RetainLegacySource) {
+        Remove-TicketboxProtectedUtf8Artifact `
+            -Path $legacyFullPath `
+            -FullControlAccounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount
+    }
+}
+
+function Assert-TicketboxProtectedDirectoryAcl {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string[]]$ReadExecuteAccounts = @(),
+        [string[]]$InheritableReadExecuteAccounts = @(),
+        [string]$OwnerAccount = "SYSTEM"
+    )
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
         throw "受保护目录不存在：$Path"
     }
+    Assert-NoTicketboxAncestorReparsePoints $Path
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "受保护目录不能是重解析点：$Path"
+    }
+    $fullControlSids = @($FullControlAccounts | ForEach-Object {
+        ConvertTo-TicketboxAccountSid $_
+    } | Sort-Object -Unique)
+    $readExecuteSids = @($ReadExecuteAccounts | ForEach-Object {
+        ConvertTo-TicketboxAccountSid $_
+    } | Sort-Object -Unique)
+    $inheritableReadExecuteSids = @($InheritableReadExecuteAccounts | ForEach-Object {
+        ConvertTo-TicketboxAccountSid $_
+    } | Sort-Object -Unique)
+    if (
+        @($fullControlSids | Where-Object { $_ -in $readExecuteSids }).Count -gt 0 -or
+        @($fullControlSids | Where-Object { $_ -in $inheritableReadExecuteSids }).Count -gt 0 -or
+        @($readExecuteSids | Where-Object { $_ -in $inheritableReadExecuteSids }).Count -gt 0
+    ) {
+        throw "受保护目录账户不能同时拥有 FullControl 与 ReadExecute：$Path"
+    }
     $expectedSids = @(
-        "SYSTEM",
-        "BUILTIN\Administrators"
-    ) | ForEach-Object { ConvertTo-TicketboxAccountSid $_ }
-    $systemSid = ConvertTo-TicketboxAccountSid "SYSTEM"
+        $fullControlSids + $readExecuteSids + $inheritableReadExecuteSids |
+            Sort-Object -Unique
+    )
+    $expectedOwnerSid = ConvertTo-TicketboxAccountSid $OwnerAccount
     $acl = Get-TicketboxPathAcl $Path
     if (
         -not $acl.AreAccessRulesProtected -or
-        (ConvertTo-TicketboxAccountSid $acl.Owner) -ne $systemSid
+        (ConvertTo-TicketboxAccountSid $acl.Owner) -ne $expectedOwnerSid
     ) {
-        throw "受保护目录 owner 或继承状态不符合 guard lease 契约：$Path"
+        throw "受保护目录 owner 或继承状态不符合精确 ACL 契约：$Path"
     }
-    foreach ($sid in $expectedSids) {
-        $matchingRules = @($acl.Access | Where-Object {
-            $ruleSid = $_.IdentityReference.Translate(
-                [System.Security.Principal.SecurityIdentifier]
-            ).Value
-            $hasFullControl =
-                ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::FullControl) -eq
-                [System.Security.AccessControl.FileSystemRights]::FullControl
-            $ruleSid -eq $sid -and
-                $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow -and
-                $hasFullControl
-        })
-        if ($matchingRules.Count -eq 0) {
-            throw "受保护目录缺少 SYSTEM/Administrators FullControl：$Path"
-        }
-    }
+    $requiredInheritance =
+        [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+        [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
     foreach ($rule in $acl.Access) {
         $ruleSid = $rule.IdentityReference.Translate(
             [System.Security.Principal.SecurityIdentifier]
         ).Value
+        $isFullControlRule =
+            $ruleSid -in $fullControlSids -and
+            $rule.FileSystemRights -eq [System.Security.AccessControl.FileSystemRights]::FullControl -and
+            $rule.InheritanceFlags -eq $requiredInheritance
+        $isReadExecuteRule =
+            $ruleSid -in $readExecuteSids -and
+            ($rule.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::ReadAndExecute) -eq
+                [System.Security.AccessControl.FileSystemRights]::ReadAndExecute -and
+            ($rule.FileSystemRights -band (
+                [System.Security.AccessControl.FileSystemRights]::Write -bor
+                [System.Security.AccessControl.FileSystemRights]::Delete -bor
+                [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+                [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+                [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+            )) -eq 0 -and
+            $rule.InheritanceFlags -eq [System.Security.AccessControl.InheritanceFlags]::None
+        $isInheritableReadExecuteRule =
+            $ruleSid -in $inheritableReadExecuteSids -and
+            ($rule.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::ReadAndExecute) -eq
+                [System.Security.AccessControl.FileSystemRights]::ReadAndExecute -and
+            ($rule.FileSystemRights -band (
+                [System.Security.AccessControl.FileSystemRights]::Write -bor
+                [System.Security.AccessControl.FileSystemRights]::Delete -bor
+                [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+                [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+                [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+            )) -eq 0 -and
+            $rule.InheritanceFlags -eq $requiredInheritance
         if (
             $ruleSid -notin $expectedSids -or
-            $rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow
+            $rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow -or
+            (
+                -not $isFullControlRule -and
+                -not $isReadExecuteRule -and
+                -not $isInheritableReadExecuteRule
+            ) -or
+            $rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None -or
+            $rule.IsInherited
         ) {
-            throw "受保护目录含有 guard lease 契约外 ACL：$Path ($ruleSid)"
+            throw "受保护目录含有精确 ACL 契约外规则或标志：$Path ($ruleSid)"
+        }
+    }
+    foreach ($sid in $fullControlSids) {
+        $matchingRules = @($acl.Access | Where-Object {
+            $_.IdentityReference.Translate(
+                [System.Security.Principal.SecurityIdentifier]
+            ).Value -eq $sid
+        })
+        if ($matchingRules.Count -ne 1) {
+            throw "受保护目录必须且只能有一条预期 FullControl：$Path ($sid)"
+        }
+    }
+    foreach ($sid in $readExecuteSids) {
+        $matchingRules = @($acl.Access | Where-Object {
+            $_.IdentityReference.Translate(
+                [System.Security.Principal.SecurityIdentifier]
+            ).Value -eq $sid
+        })
+        if ($matchingRules.Count -ne 1) {
+            throw "受保护目录必须且只能有一条预期 ReadExecute：$Path ($sid)"
+        }
+    }
+    foreach ($sid in $inheritableReadExecuteSids) {
+        $matchingRules = @($acl.Access | Where-Object {
+            $_.IdentityReference.Translate(
+                [System.Security.Principal.SecurityIdentifier]
+            ).Value -eq $sid -and
+            ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::ReadAndExecute) -eq
+                [System.Security.AccessControl.FileSystemRights]::ReadAndExecute -and
+            ($_.FileSystemRights -band (
+                [System.Security.AccessControl.FileSystemRights]::Write -bor
+                [System.Security.AccessControl.FileSystemRights]::Delete -bor
+                [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+                [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+                [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+            )) -eq 0 -and
+            $_.InheritanceFlags -eq $requiredInheritance
+        })
+        if ($matchingRules.Count -ne 1) {
+            throw "受保护目录必须且只能有一条预期可继承 ReadExecute：$Path ($sid)"
+        }
+    }
+}
+
+function New-TicketboxDirectoryGuardCoordinationNonce {
+    $bytes = New-Object byte[] 32
+    $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $generator.GetBytes($bytes) }
+    finally { $generator.Dispose() }
+    return -join @($bytes | ForEach-Object { $_.ToString("x2") })
+}
+
+function ConvertTo-TicketboxCanonicalVolumeIdentity {
+    param([Parameter(Mandatory = $true)][string]$Value)
+
+    if ($Value -notmatch '^\\\\\?\\Volume\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}\\$') {
+        throw "Windows volume identity 不符合 Volume GUID path 契约：$Value"
+    }
+    return $Value.ToUpperInvariant()
+}
+
+function Get-TicketboxVolumeIdentityForPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    Initialize-TicketboxDirectoryGuardNativeMethods
+    $canonicalPath = ConvertTo-TicketboxCanonicalPath $Path
+    $volumeRoot = [System.IO.Path]::GetPathRoot($canonicalPath)
+    if ([string]::IsNullOrWhiteSpace($volumeRoot)) {
+        throw "DataRoot 没有可解析的本机卷根：$canonicalPath"
+    }
+    $volumeName = New-Object System.Text.StringBuilder 1024
+    if (-not [TicketboxDirectoryGuardNativeMethods]::GetVolumeNameForVolumeMountPoint(
+        $volumeRoot,
+        $volumeName,
+        [uint32]$volumeName.Capacity
+    )) {
+        $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "无法解析 DataRoot 的稳定 Windows volume identity（Win32=$errorCode）：$volumeRoot"
+    }
+    return ConvertTo-TicketboxCanonicalVolumeIdentity $volumeName.ToString()
+}
+
+function Assert-TicketboxVolumeIdentityForPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$ExpectedVolumeIdentity
+    )
+
+    $expected = ConvertTo-TicketboxCanonicalVolumeIdentity $ExpectedVolumeIdentity
+    $actual = Get-TicketboxVolumeIdentityForPath $Path
+    if ($actual -cne $expected) {
+        throw "DataRoot 的 Windows volume identity 已变化；拒绝跨卷继续 provisioning：$Path"
+    }
+}
+
+function Get-TicketboxRuntimeDataBindingDirectory([string]$CommonApplicationData = "") {
+    if ([string]::IsNullOrWhiteSpace($CommonApplicationData)) {
+        $CommonApplicationData = [Environment]::GetFolderPath(
+            [Environment+SpecialFolder]::CommonApplicationData
+        )
+    }
+    if ([string]::IsNullOrWhiteSpace($CommonApplicationData)) {
+        throw "Windows 未提供 Common Application Data，无法建立 runtime DataRoot binding。"
+    }
+    return Join-Path `
+        ([System.IO.Path]::GetFullPath($CommonApplicationData)) `
+        $script:TicketboxRuntimeDataBindingDirectoryName
+}
+
+function Get-TicketboxRuntimeDataRootPath([string]$CommonApplicationData = "") {
+    return Join-Path `
+        (Get-TicketboxRuntimeDataBindingDirectory $CommonApplicationData) `
+        $script:TicketboxRuntimeDataBindingJunctionName
+}
+
+function Get-TicketboxRuntimeBootstrapRecoveryGuardPath([string]$RuntimeDataRoot = "") {
+    if ([string]::IsNullOrWhiteSpace($RuntimeDataRoot)) {
+        $RuntimeDataRoot = Get-TicketboxRuntimeDataRootPath
+    }
+    return Join-Path `
+        ([System.IO.Path]::GetFullPath($RuntimeDataRoot)) `
+        $script:TicketboxBootstrapRecoveryGuardName
+}
+
+function Assert-TicketboxRuntimeDataBindingDomain {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [string]$CommonApplicationData = ""
+    )
+
+    $bindingDirectory = Get-TicketboxRuntimeDataBindingDirectory $CommonApplicationData
+    foreach ($protectedPath in @($DataRoot, $InstallDir)) {
+        if (
+            (Test-TicketboxPathWithin $bindingDirectory $protectedPath) -or
+            (Test-TicketboxPathWithin $protectedPath $bindingDirectory)
+        ) {
+            throw "runtime DataRoot binding 不能与 DataRoot 或 InstallDir 重叠。"
+        }
+    }
+    Assert-NoTicketboxAncestorReparsePoints $bindingDirectory
+    return $bindingDirectory
+}
+
+function Get-TicketboxVolumeBoundDataRootPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$DataVolumeIdentity
+    )
+
+    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
+    $driveRoot = [System.IO.Path]::GetPathRoot($canonicalDataRoot)
+    if ([string]::IsNullOrWhiteSpace($driveRoot)) {
+        throw "DataRoot 没有可绑定 Volume GUID 的本机卷根。"
+    }
+    $relativePath = $canonicalDataRoot.Substring($driveRoot.Length).TrimStart("\")
+    if ([string]::IsNullOrWhiteSpace($relativePath)) {
+        throw "runtime DataRoot binding 不能指向卷根。"
+    }
+    return (ConvertTo-TicketboxCanonicalVolumeIdentity $DataVolumeIdentity) + $relativePath
+}
+
+function Read-TicketboxRuntimeDataBinding {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string[]]$ServiceReadExecuteAccounts,
+        [string]$CommonApplicationData = "",
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $marker = Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    $bindingDirectory = Assert-TicketboxRuntimeDataBindingDomain `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -CommonApplicationData $CommonApplicationData
+    $runtimeDataRoot = Get-TicketboxRuntimeDataRootPath $CommonApplicationData
+    if ((Get-TicketboxPathEntryKindNoFollow $bindingDirectory) -cne "Directory") {
+        throw "runtime DataRoot binding root 不是受保护的普通目录。"
+    }
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $bindingDirectory `
+        -FullControlAccounts $FullControlAccounts `
+        -InheritableReadExecuteAccounts $ServiceReadExecuteAccounts `
+        -OwnerAccount $OwnerAccount
+    if ((Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -cne "Reparse") {
+        throw "runtime DataRoot binding 必须是专用 junction。"
+    }
+    $junction = Get-Item -LiteralPath $runtimeDataRoot -Force -ErrorAction Stop
+    $targets = @($junction.Target)
+    $expectedTarget = Get-TicketboxVolumeBoundDataRootPath `
+        -DataRoot $DataRoot `
+        -DataVolumeIdentity $marker.DataVolumeIdentity
+    if (
+        [string]$junction.LinkType -cne "Junction" -or
+        $targets.Count -ne 1 -or
+        -not [string]::Equals(
+            ([string]$targets[0]).TrimEnd("\"),
+            $expectedTarget.TrimEnd("\"),
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or
+        -not (Test-Path -LiteralPath $runtimeDataRoot -PathType Container)
+    ) {
+        throw "runtime DataRoot junction 与 v2 marker 的 Volume GUID 绑定不一致。"
+    }
+    return [pscustomobject]@{
+        BindingDirectory = $bindingDirectory
+        RuntimeDataRoot = $runtimeDataRoot
+        RuntimeAppData = Join-Path $runtimeDataRoot "app"
+        RuntimePgData = Join-Path $runtimeDataRoot "pgdata"
+        DataVolumeIdentity = $marker.DataVolumeIdentity
+        VolumeBoundTarget = $expectedTarget
+    }
+}
+
+function Initialize-TicketboxRuntimeDataBinding {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string[]]$ServiceReadExecuteAccounts,
+        [string]$CommonApplicationData = "",
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $marker = Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    $bindingDirectory = Assert-TicketboxRuntimeDataBindingDomain `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -CommonApplicationData $CommonApplicationData
+    $bindingKind = Get-TicketboxPathEntryKindNoFollow $bindingDirectory
+    if ($bindingKind -ceq "Missing") {
+        Initialize-TicketboxProtectedDirectoryAtomically `
+            -Path $bindingDirectory `
+            -FullControlAccounts $FullControlAccounts `
+            -InheritableReadExecuteAccounts $ServiceReadExecuteAccounts `
+            -OwnerAccount $OwnerAccount | Out-Null
+    }
+    elseif ($bindingKind -ceq "Directory") {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $bindingDirectory `
+            -FullControlAccounts $FullControlAccounts `
+            -InheritableReadExecuteAccounts $ServiceReadExecuteAccounts `
+            -OwnerAccount $OwnerAccount
+    }
+    else {
+        throw "runtime DataRoot binding root 形态不安全：$bindingKind"
+    }
+    $runtimeDataRoot = Get-TicketboxRuntimeDataRootPath $CommonApplicationData
+    $junctionKind = Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot
+    if ($junctionKind -ceq "Missing") {
+        $target = Get-TicketboxVolumeBoundDataRootPath `
+            -DataRoot $DataRoot `
+            -DataVolumeIdentity $marker.DataVolumeIdentity
+        try {
+            New-Item `
+                -ItemType Junction `
+                -Path $runtimeDataRoot `
+                -Target $target `
+                -ErrorAction Stop | Out-Null
+        }
+        catch {
+            if ((Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -cne "Reparse") {
+                throw
+            }
+        }
+    }
+    elseif ($junctionKind -cne "Reparse") {
+        throw "runtime DataRoot binding child 不是 junction 或缺失路径。"
+    }
+    return Read-TicketboxRuntimeDataBinding `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -ServiceReadExecuteAccounts $ServiceReadExecuteAccounts `
+        -CommonApplicationData $CommonApplicationData `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+}
+
+function Remove-TicketboxRuntimeDataBinding {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string[]]$ServiceReadExecuteAccounts,
+        [string]$CommonApplicationData = "",
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $bindingDirectory = Get-TicketboxRuntimeDataBindingDirectory $CommonApplicationData
+    if ((Get-TicketboxPathEntryKindNoFollow $bindingDirectory) -ceq "Missing") {
+        return
+    }
+    $bindingDirectory = Assert-TicketboxRuntimeDataBindingDomain `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -CommonApplicationData $CommonApplicationData
+    if ((Get-TicketboxPathEntryKindNoFollow $bindingDirectory) -cne "Directory") {
+        throw "runtime DataRoot binding root 不是受保护的普通目录。"
+    }
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $bindingDirectory `
+        -FullControlAccounts $FullControlAccounts `
+        -InheritableReadExecuteAccounts $ServiceReadExecuteAccounts `
+        -OwnerAccount $OwnerAccount
+    $runtimeDataRoot = Get-TicketboxRuntimeDataRootPath $CommonApplicationData
+    $junctionKind = Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot
+    if ($junctionKind -ceq "Reparse") {
+        Read-TicketboxRuntimeDataBinding `
+            -DataRoot $DataRoot `
+            -InstallDir $InstallDir `
+            -ServiceReadExecuteAccounts $ServiceReadExecuteAccounts `
+            -CommonApplicationData $CommonApplicationData `
+            -FullControlAccounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount | Out-Null
+        [System.IO.Directory]::Delete($runtimeDataRoot)
+        if ((Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -cne "Missing") {
+            throw "无法退役 runtime DataRoot junction。"
+        }
+    }
+    elseif ($junctionKind -cne "Missing") {
+        throw "runtime DataRoot binding child 不是可退役的 junction 或已删除状态。"
+    }
+    $remaining = @(Get-ChildItem -LiteralPath $bindingDirectory -Force -ErrorAction Stop)
+    if ($remaining.Count -gt 0) {
+        throw "runtime DataRoot binding root 含有未知 artifact：$($remaining.Name -join ', ')"
+    }
+    Remove-Item -LiteralPath $bindingDirectory -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $bindingDirectory) {
+        throw "无法退役 runtime DataRoot binding root。"
+    }
+}
+
+function Get-TicketboxDataRootProvisioningIntentText {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [string]$DataVolumeIdentity = ""
+    )
+
+    $encoding = New-Object System.Text.UTF8Encoding($false, $true)
+    $canonicalVolumeIdentity = if ([string]::IsNullOrWhiteSpace($DataVolumeIdentity)) {
+        Get-TicketboxVolumeIdentityForPath $DataRoot
+    }
+    else {
+        ConvertTo-TicketboxCanonicalVolumeIdentity $DataVolumeIdentity
+    }
+    $dataRootBase64 = [Convert]::ToBase64String(
+        $encoding.GetBytes((ConvertTo-TicketboxCanonicalPath $DataRoot))
+    )
+    $dataVolumeBase64 = [Convert]::ToBase64String(
+        $encoding.GetBytes($canonicalVolumeIdentity)
+    )
+    $installDirBase64 = [Convert]::ToBase64String(
+        $encoding.GetBytes((ConvertTo-TicketboxCanonicalPath $InstallDir))
+    )
+    return (
+        "SCHEMA=$script:TicketboxDataRootProvisioningIntentSchema$([Environment]::NewLine)" +
+        "DATA_ROOT_UTF8_B64=$dataRootBase64$([Environment]::NewLine)" +
+        "DATA_VOLUME_UTF8_B64=$dataVolumeBase64$([Environment]::NewLine)" +
+        "INSTALL_DIR_UTF8_B64=$installDirBase64$([Environment]::NewLine)"
+    )
+}
+
+function Read-TicketboxDataRootProvisioningIntent {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $artifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path $Path `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount `
+        -MaximumBytes 131072
+    $escapedSchema = [Text.RegularExpressions.Regex]::Escape(
+        $script:TicketboxDataRootProvisioningIntentSchema
+    )
+    $pattern = (
+        "\ASCHEMA=$escapedSchema\r?\n" +
+        "DATA_ROOT_UTF8_B64=(?<data>[A-Za-z0-9+/]+={0,2})\r?\n" +
+        "DATA_VOLUME_UTF8_B64=(?<volume>[A-Za-z0-9+/]+={0,2})\r?\n" +
+        "INSTALL_DIR_UTF8_B64=(?<install>[A-Za-z0-9+/]+={0,2})\r?\n\z"
+    )
+    $match = [Text.RegularExpressions.Regex]::Match(
+        $artifact.Text,
+        $pattern,
+        [Text.RegularExpressions.RegexOptions]::CultureInvariant
+    )
+    if (-not $match.Success) {
+        throw "DataRoot provisioning intent 结构不符合严格 schema。"
+    }
+    try {
+        $encoding = New-Object System.Text.UTF8Encoding($false, $true)
+        $dataRoot = $encoding.GetString(
+            [Convert]::FromBase64String($match.Groups["data"].Value)
+        )
+        $dataVolumeIdentity = $encoding.GetString(
+            [Convert]::FromBase64String($match.Groups["volume"].Value)
+        )
+        $installDir = $encoding.GetString(
+            [Convert]::FromBase64String($match.Groups["install"].Value)
+        )
+        $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $dataRoot
+        $canonicalVolumeIdentity = ConvertTo-TicketboxCanonicalVolumeIdentity `
+            $dataVolumeIdentity
+        $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $installDir
+    }
+    catch {
+        throw "DataRoot provisioning intent 路径编码无效：$($_.Exception.Message)"
+    }
+    $canonicalText = Get-TicketboxDataRootProvisioningIntentText `
+        -DataRoot $canonicalDataRoot `
+        -InstallDir $canonicalInstallDir `
+        -DataVolumeIdentity $canonicalVolumeIdentity
+    if ($artifact.Text -cne $canonicalText) {
+        throw "DataRoot provisioning intent 不是规范路径编码。"
+    }
+    return [pscustomobject]@{
+        Text = $artifact.Text
+        DataRoot = $canonicalDataRoot
+        DataVolumeIdentity = $canonicalVolumeIdentity
+        InstallDir = $canonicalInstallDir
+    }
+}
+
+function Remove-TicketboxDirectoryGuardCoordinationArtifacts {
+    param(
+        [Parameter(Mandatory = $true)][string]$ParentPath,
+        [Parameter(Mandatory = $true)][string[]]$Paths,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $parentFullPath = [System.IO.Path]::GetFullPath($ParentPath)
+    Assert-NoTicketboxAncestorReparsePoints $parentFullPath
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $parentFullPath `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    foreach ($path in $Paths) {
+        $fullPath = [System.IO.Path]::GetFullPath($path)
+        if (-not (Test-TicketboxPathEquals (Split-Path -Parent $fullPath) $parentFullPath)) {
+            throw "DataRoot guard cleanup artifact 越出受保护 IPC 目录。"
+        }
+        if (-not (Test-Path -LiteralPath $fullPath)) {
+            continue
+        }
+        $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+        if (
+            $item -isnot [System.IO.FileInfo] -or
+            ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+        ) {
+            throw "DataRoot guard cleanup artifact 不是普通文件：$fullPath"
+        }
+        Remove-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+        if (Test-Path -LiteralPath $fullPath) {
+            throw "无法清理 DataRoot guard coordination artifact：$fullPath"
         }
     }
 }
@@ -351,9 +1248,15 @@ function Assert-TicketboxProtectedDirectoryAcl([string]$Path) {
 function Wait-TicketboxDirectoryMutationGuardLease {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][string]$ReadyPath,
         [Parameter(Mandatory = $true)][string]$ReleasePath,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 2147483647)][int]$OwnerProcessId
+        [Parameter(Mandatory = $true)][ValidateRange(1, 2147483647)][int]$OwnerProcessId,
+        [Parameter(Mandatory = $true)][object]$OwnerIdentity,
+        [Parameter(Mandatory = $true)][scriptblock]$OnLeaseReady,
+        [string]$RetainWhileLockPath = "",
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
     )
 
     $readyFullPath = [System.IO.Path]::GetFullPath($ReadyPath)
@@ -364,7 +1267,10 @@ function Wait-TicketboxDirectoryMutationGuardLease {
         throw "DataRoot guard ready/release artifact 必须位于同一受保护目录。"
     }
     Assert-NoTicketboxAncestorReparsePoints $readyParent
-    Assert-TicketboxProtectedDirectoryAcl $readyParent
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $readyParent `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
     if (
         (Test-Path -LiteralPath $readyFullPath) -or
         (Test-Path -LiteralPath $releaseFullPath)
@@ -372,50 +1278,277 @@ function Wait-TicketboxDirectoryMutationGuardLease {
         throw "DataRoot guard artifact 已存在，拒绝复用可能过期的 lease。"
     }
 
-    $ownerProcess = Get-Process -Id $OwnerProcessId -ErrorAction Stop
-    $guard = Enter-TicketboxDirectoryMutationGuard `
-        -Path $Path `
-        -CreateMissingDirectories
+    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $Path
+    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
+    $provisioningIntentPath = Join-Path `
+        $readyParent `
+        $script:TicketboxDataRootProvisioningIntentName
+    $provisioningState = [pscustomobject]@{
+        Active = $false
+        ExpectedVolumeIdentity = ""
+    }
+
+    $ownerHandleLease = Open-TicketboxVerifiedProcessIdentityHandle `
+        -ProcessId $OwnerProcessId `
+        -ExpectedIdentity $OwnerIdentity
+    $guard = $null
     try {
+        $provisioningIntentKind = Get-TicketboxPathEntryKindNoFollow $provisioningIntentPath
+        if ($provisioningIntentKind -ceq "File") {
+            $provisioningIntent = Read-TicketboxDataRootProvisioningIntent `
+                -Path $provisioningIntentPath `
+                -FullControlAccounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount
+            if (
+                -not (Test-TicketboxPathEquals $provisioningIntent.DataRoot $canonicalDataRoot) -or
+                -not (Test-TicketboxPathEquals $provisioningIntent.InstallDir $canonicalInstallDir)
+            ) {
+                throw (
+                    "DataRoot provisioning intent 固定绑定 " +
+                    "$($provisioningIntent.DataRoot) / $($provisioningIntent.InstallDir)；" +
+                    "请按原路径重试或进入显式 recovery，拒绝自动改绑。"
+                )
+            }
+            $provisioningState.Active = $true
+            $provisioningState.ExpectedVolumeIdentity = `
+                $provisioningIntent.DataVolumeIdentity
+        }
+        elseif ($provisioningIntentKind -cne "Missing") {
+            throw "DataRoot provisioning intent 形态不可判定，拒绝继续。"
+        }
+
+        $dataRootEntryKind = Get-TicketboxPathEntryKindNoFollow $canonicalDataRoot
+        if ($dataRootEntryKind -notin @("Missing", "Directory")) {
+            throw "DataRoot 不是普通目录或缺失路径，拒绝创建 guard：$canonicalDataRoot"
+        }
+        $publishProvisioningIntent = $null
+        if ($dataRootEntryKind -ceq "Missing") {
+            $publishProvisioningIntent = {
+                $mountedVolumeIdentity = Get-TicketboxVolumeIdentityForPath `
+                    $canonicalDataRoot
+                if ($provisioningState.Active) {
+                    if (
+                        $mountedVolumeIdentity -cne
+                        $provisioningState.ExpectedVolumeIdentity
+                    ) {
+                        throw "DataRoot provisioning intent 绑定的原卷当前不可用或已被替换。"
+                    }
+                }
+                else {
+                    $expectedProvisioningIntent = Get-TicketboxDataRootProvisioningIntentText `
+                        -DataRoot $canonicalDataRoot `
+                        -InstallDir $canonicalInstallDir `
+                        -DataVolumeIdentity $mountedVolumeIdentity
+                    Write-TicketboxProtectedUtf8FileDurable `
+                        -Path $provisioningIntentPath `
+                        -Text $expectedProvisioningIntent `
+                        -FullControlAccounts $FullControlAccounts `
+                        -OwnerAccount $OwnerAccount
+                    $persistedProvisioningIntent = Read-TicketboxDataRootProvisioningIntent `
+                        -Path $provisioningIntentPath `
+                        -FullControlAccounts $FullControlAccounts `
+                        -OwnerAccount $OwnerAccount
+                    if ($persistedProvisioningIntent.Text -cne $expectedProvisioningIntent) {
+                        throw "DataRoot provisioning intent 写后复读不一致。"
+                    }
+                    $provisioningState.Active = $true
+                    $provisioningState.ExpectedVolumeIdentity = $mountedVolumeIdentity
+                }
+            }.GetNewClosure()
+        }
+
+        $guard = Enter-TicketboxDirectoryMutationGuard `
+            -Path $canonicalDataRoot `
+            -CreateMissingDirectories `
+            -OnBeforeFirstDirectoryCreation $publishProvisioningIntent `
+            -FullControlAccounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount
+        if (-not [string]::IsNullOrWhiteSpace($provisioningState.ExpectedVolumeIdentity)) {
+            Assert-TicketboxVolumeIdentityForPath `
+                -Path $canonicalDataRoot `
+                -ExpectedVolumeIdentity $provisioningState.ExpectedVolumeIdentity
+        }
+        $dataRootCreated = @($guard.CreatedPaths | Where-Object {
+            Test-TicketboxPathEquals $_ $canonicalDataRoot
+        }).Count -eq 1
+        $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
+        $markerKind = Get-TicketboxPathEntryKindNoFollow $markerPath
+        if ($dataRootCreated -or $provisioningState.Active) {
+            Assert-TicketboxProtectedDirectoryAcl `
+                -Path $canonicalDataRoot `
+                -FullControlAccounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount
+            if ($markerKind -ceq "Missing") {
+                Remove-TicketboxProtectedStagingArtifacts `
+                    -Path $canonicalDataRoot `
+                    -FullControlAccounts $FullControlAccounts `
+                    -OwnerAccount $OwnerAccount
+                $existingEntries = @(
+                    Get-ChildItem -LiteralPath $canonicalDataRoot -Force -ErrorAction Stop
+                )
+                if ($existingEntries.Count -ne 0) {
+                    throw "DataRoot provisioning intent 只允许恢复仍为空的受保护目录。"
+                }
+                Write-TicketboxDataRootMarker `
+                    -DataRoot $canonicalDataRoot `
+                    -InstallDir $canonicalInstallDir `
+                    -DataVolumeIdentity $provisioningState.ExpectedVolumeIdentity `
+                    -FullControlAccounts $FullControlAccounts `
+                    -OwnerAccount $OwnerAccount
+            }
+            elseif ($markerKind -cne "File") {
+                throw "DataRoot marker 形态不可判定，拒绝完成 provisioning。"
+            }
+            Assert-TicketboxProtectedDataRootMarker `
+                -DataRoot $canonicalDataRoot `
+                -InstallDir $canonicalInstallDir `
+                -FullControlAccounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount
+            Assert-TicketboxVolumeIdentityForPath `
+                -Path $canonicalDataRoot `
+                -ExpectedVolumeIdentity $provisioningState.ExpectedVolumeIdentity
+            Remove-TicketboxDirectoryGuardCoordinationArtifacts `
+                -ParentPath $readyParent `
+                -Paths @($provisioningIntentPath) `
+                -FullControlAccounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount
+            $provisioningState.Active = $false
+        }
+        elseif ($markerKind -ceq "File") {
+            Assert-TicketboxDataRootMarker `
+                -DataRoot $canonicalDataRoot `
+                -InstallDir $canonicalInstallDir `
+                -AllowLegacyV1
+        }
+        elseif ($markerKind -ceq "Missing") {
+            $existingEntries = @(Get-ChildItem -LiteralPath $canonicalDataRoot -Force -ErrorAction Stop)
+            if ($existingEntries.Count -eq 0) {
+                throw "预先存在的空 DataRoot 没有安装权威 marker；拒绝在可能保留旧写句柄的目录上事后收紧 ACL。"
+            }
+            # The holder grants only a race-free directory lease. The short-lived
+            # prepare step must prove legacy authority before any mutation.
+        }
+        else {
+            throw "DataRoot marker 不是普通文件或缺失路径，拒绝继续。"
+        }
+
+        $coordinationNonce = New-TicketboxDirectoryGuardCoordinationNonce
+        $holderIdentity = Get-TicketboxProcessIdentity -ProcessId $PID
         $readyText =
             "STATE=holding$([Environment]::NewLine)" +
-            "OWNER_PID=$OwnerProcessId$([Environment]::NewLine)"
+            "OWNER_PID=$OwnerProcessId$([Environment]::NewLine)" +
+            "HOLDER_PID=$PID$([Environment]::NewLine)" +
+            "HOLDER_STARTED_FILETIME_HIGH=$($holderIdentity.StartedFileTimeHigh)$([Environment]::NewLine)" +
+            "HOLDER_STARTED_FILETIME_LOW=$($holderIdentity.StartedFileTimeLow)$([Environment]::NewLine)" +
+            "NONCE=$coordinationNonce$([Environment]::NewLine)"
         Write-TicketboxProtectedUtf8FileDurable `
             -Path $readyFullPath `
             -Text $readyText `
-            -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
-            -OwnerAccount "SYSTEM"
+            -FullControlAccounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount
+        $persistedReady = Read-TicketboxProtectedUtf8Artifact `
+            -Path $readyFullPath `
+            -FullControlAccounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount `
+            -MaximumBytes 512
+        if ($persistedReady.Text -cne $readyText) {
+            throw "DataRoot guard ready artifact 写后复读不一致。"
+        }
+        & $OnLeaseReady
 
-        while (-not $ownerProcess.HasExited) {
-            if (Test-Path -LiteralPath $releaseFullPath -PathType Leaf) {
-                Assert-NoTicketboxAncestorReparsePoints $releaseFullPath
-                $releaseItem = Get-Item -LiteralPath $releaseFullPath -Force -ErrorAction Stop
-                if (($releaseItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                    throw "DataRoot guard release artifact 不能是重解析点。"
-                }
-                Assert-TicketboxExactFileAcl `
+        $releaseAccepted = $false
+        while ($true) {
+            if (-not $releaseAccepted -and (Test-Path -LiteralPath $releaseFullPath -PathType Leaf)) {
+                $releaseArtifact = Read-TicketboxProtectedUtf8Artifact `
                     -Path $releaseFullPath `
-                    -Accounts @("SYSTEM", "BUILTIN\Administrators") `
-                    -OwnerAccount "SYSTEM"
+                    -FullControlAccounts $FullControlAccounts `
+                    -OwnerAccount $OwnerAccount `
+                    -MaximumBytes 256
                 $expectedRelease =
                     "STATE=release$([Environment]::NewLine)" +
+                    "OWNER_PID=$OwnerProcessId$([Environment]::NewLine)" +
+                    "NONCE=$coordinationNonce$([Environment]::NewLine)"
+                $expectedAbort =
+                    "STATE=abort$([Environment]::NewLine)" +
                     "OWNER_PID=$OwnerProcessId$([Environment]::NewLine)"
-                $persistedRelease = [System.IO.File]::ReadAllText(
-                    $releaseFullPath,
-                    [System.Text.Encoding]::UTF8
-                )
-                if ($persistedRelease -cne $expectedRelease) {
+                if (
+                    $releaseArtifact.Text -cne $expectedRelease -and
+                    $releaseArtifact.Text -cne $expectedAbort
+                ) {
                     throw "DataRoot guard release artifact 内容不匹配当前安装器。"
                 }
-                return
+                $releaseAccepted = $true
+            }
+            $ownerExited = Test-TicketboxProcessIdentityHandleExited $ownerHandleLease
+            if ($releaseAccepted -or $ownerExited) {
+                $activityLockHeld =
+                    -not [string]::IsNullOrWhiteSpace($RetainWhileLockPath) -and
+                    (Test-TicketboxExclusiveFileLockHeld -Path $RetainWhileLockPath)
+                if (-not $activityLockHeld) {
+                    if ($releaseAccepted) { return "control" }
+                    return "owner_exit"
+                }
             }
             Start-Sleep -Milliseconds 100
-            $ownerProcess.Refresh()
         }
     }
     finally {
-        $guard.Dispose()
-        $ownerProcess.Dispose()
+        try {
+            if ($null -ne $guard) {
+                Remove-TicketboxDirectoryGuardCoordinationArtifacts `
+                    -ParentPath $readyParent `
+                    -Paths @($readyFullPath, $releaseFullPath, "$releaseFullPath.tmp") `
+                    -FullControlAccounts $FullControlAccounts `
+                    -OwnerAccount $OwnerAccount
+            }
+        }
+        finally {
+            if ($null -ne $guard) { $guard.Dispose() }
+            Close-TicketboxProcessIdentityHandle $ownerHandleLease
+        }
+    }
+}
+
+function Test-TicketboxExclusiveFileLockHeld {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    try {
+        $fullPath = [System.IO.Path]::GetFullPath($Path)
+        $entryKind = Get-TicketboxPathEntryKindNoFollow $fullPath
+    }
+    catch {
+        # An active FileShare.None lease, ACL denial, or malformed entry can
+        # make even the no-follow classifier fail.  A holder must retain
+        # authority whenever the operation state cannot be proven absent.
+        return $true
+    }
+    if ($entryKind -ceq "Missing") { return $false }
+    if ($entryKind -cne "File") {
+        # A holder must never drop machine/DataRoot authority while the
+        # delegated-operation state is malformed or indeterminate.
+        return $true
+    }
+    try {
+        Assert-NoTicketboxAncestorReparsePoints $fullPath
+    }
+    catch {
+        return $true
+    }
+    $probe = $null
+    try {
+        $probe = [System.IO.File]::Open(
+            $fullPath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::None
+        )
+        return $false
+    }
+    catch {
+        return $true
+    }
+    finally {
+        if ($null -ne $probe) { $probe.Dispose() }
     }
 }
 
@@ -436,6 +1569,8 @@ public static class TicketboxExactTreeDeleteNativeMethods
     private const uint DeleteAccess = 0x00010000;
     private const uint FileReadAttributes = 0x00000080;
     private const uint FileShareRead = 0x00000001;
+    private const uint FileShareWrite = 0x00000002;
+    private const uint FileShareDelete = 0x00000004;
     private const uint OpenExisting = 3;
     private const uint FileFlagBackupSemantics = 0x02000000;
     private const uint FileFlagOpenReparsePoint = 0x00200000;
@@ -491,9 +1626,22 @@ public static class TicketboxExactTreeDeleteNativeMethods
         uint pathLength,
         uint flags);
 
-    public static void DeleteTree(string path, Action rootHandleAcquired)
+    public static void DeleteTree(
+        string path,
+        string deferredRootLeafName,
+        Action rootHandleAcquired)
     {
         string fullPath = NormalizePath(path);
+        if (!String.IsNullOrEmpty(deferredRootLeafName) &&
+            !String.Equals(
+                Path.GetFileName(deferredRootLeafName),
+                deferredRootLeafName,
+                StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The deferred deletion entry must be a root leaf name.",
+                "deferredRootLeafName");
+        }
         using (SafeFileHandle root = OpenExact(fullPath))
         {
             VerifyExactPath(root, fullPath);
@@ -501,11 +1649,45 @@ public static class TicketboxExactTreeDeleteNativeMethods
             {
                 rootHandleAcquired();
             }
-            DeleteOpenedNode(fullPath, root);
+            DeleteOpenedNode(fullPath, root, true, deferredRootLeafName);
         }
     }
 
-    private static void DeleteOpenedNode(string path, SafeFileHandle handle)
+    public static int InspectEntry(string path)
+    {
+        string fullPath = NormalizePath(path);
+        using (SafeFileHandle handle = CreateFile(
+            fullPath,
+            FileReadAttributes,
+            FileShareRead | FileShareWrite | FileShareDelete,
+            IntPtr.Zero,
+            OpenExisting,
+            FileFlagBackupSemantics | FileFlagOpenReparsePoint,
+            IntPtr.Zero))
+        {
+            if (handle.IsInvalid)
+            {
+                int error = Marshal.GetLastWin32Error();
+                if (error == 2 || error == 3)
+                {
+                    return 0;
+                }
+                throw new Win32Exception(error, "Unable to inspect exact path entry: " + fullPath);
+            }
+            FILE_ATTRIBUTE_TAG_INFO attributes = ReadAttributes(handle, fullPath);
+            if ((attributes.FileAttributes & FileAttributeReparsePoint) != 0)
+            {
+                return 3;
+            }
+            return (attributes.FileAttributes & FileAttributeDirectory) != 0 ? 2 : 1;
+        }
+    }
+
+    private static void DeleteOpenedNode(
+        string path,
+        SafeFileHandle handle,
+        bool isRoot,
+        string deferredRootLeafName)
     {
         FILE_ATTRIBUTE_TAG_INFO attributes = ReadAttributes(handle, path);
         if ((attributes.FileAttributes & FileAttributeReparsePoint) != 0)
@@ -514,12 +1696,37 @@ public static class TicketboxExactTreeDeleteNativeMethods
         }
         if ((attributes.FileAttributes & FileAttributeDirectory) != 0)
         {
+            string deferredChildPath = null;
             foreach (string childPath in Directory.GetFileSystemEntries(path))
             {
+                if (isRoot &&
+                    !String.IsNullOrEmpty(deferredRootLeafName) &&
+                    String.Equals(
+                        Path.GetFileName(childPath),
+                        deferredRootLeafName,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    if (deferredChildPath != null)
+                    {
+                        throw new IOException(
+                            "Multiple deferred root entries resolve to the same name: " +
+                            deferredRootLeafName);
+                    }
+                    deferredChildPath = childPath;
+                    continue;
+                }
                 using (SafeFileHandle child = OpenExact(childPath))
                 {
                     VerifyExactPath(child, childPath);
-                    DeleteOpenedNode(childPath, child);
+                    DeleteOpenedNode(childPath, child, false, null);
+                }
+            }
+            if (deferredChildPath != null)
+            {
+                using (SafeFileHandle deferredChild = OpenExact(deferredChildPath))
+                {
+                    VerifyExactPath(deferredChild, deferredChildPath);
+                    DeleteOpenedNode(deferredChildPath, deferredChild, false, null);
                 }
             }
         }
@@ -631,9 +1838,10 @@ public static class TicketboxExactTreeDeleteNativeMethods
 '@
 }
 
-function Remove-TicketboxDataRootExact {
+function Remove-TicketboxTreeExact {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
+        [AllowEmptyString()][string]$DeferredRootLeafName = "",
         [scriptblock]$OnRootHandleAcquired
     )
 
@@ -642,7 +1850,7 @@ function Remove-TicketboxDataRootExact {
         return
     }
     if (-not (Test-Path -LiteralPath $canonicalPath -PathType Container)) {
-        throw "数据删除目标不是目录：$canonicalPath"
+        throw "精确删除目标不是目录：$canonicalPath"
     }
     Initialize-TicketboxExactTreeDeleteNativeMethods
     $callback = $null
@@ -650,10 +1858,27 @@ function Remove-TicketboxDataRootExact {
         $callbackScript = { & $OnRootHandleAcquired $canonicalPath }.GetNewClosure()
         $callback = [System.Action]$callbackScript
     }
-    [TicketboxExactTreeDeleteNativeMethods]::DeleteTree($canonicalPath, $callback)
+    [TicketboxExactTreeDeleteNativeMethods]::DeleteTree(
+        $canonicalPath,
+        $DeferredRootLeafName,
+        $callback
+    )
     if (Test-Path -LiteralPath $canonicalPath) {
-        throw "精确删除完成后数据目录仍存在：$canonicalPath"
+        throw "精确删除完成后目标目录仍存在：$canonicalPath"
     }
+}
+
+function Remove-TicketboxDataRootExact {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [AllowEmptyString()][string]$DeferredRootLeafName = "",
+        [scriptblock]$OnRootHandleAcquired
+    )
+
+    Remove-TicketboxTreeExact `
+        -Path $Path `
+        -DeferredRootLeafName $DeferredRootLeafName `
+        -OnRootHandleAcquired $OnRootHandleAcquired
 }
 
 function ConvertTo-TicketboxCanonicalPath([string]$Path) {
@@ -682,14 +1907,58 @@ function Test-TicketboxPathWithin([string]$Path, [string]$Parent) {
     return $candidate.StartsWith($container.TrimEnd("\") + "\", [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-TicketboxPathEntryKindNoFollow([string]$Path) {
+    Initialize-TicketboxExactTreeDeleteNativeMethods
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $kind = [TicketboxExactTreeDeleteNativeMethods]::InspectEntry($fullPath)
+    if ($kind -eq 0) {
+        # CreateFile(FILE_FLAG_OPEN_REPARSE_POINT) can still report PATH_NOT_FOUND
+        # for a dangling directory junction. Enumerating its parent observes the
+        # directory entry itself without traversing the target.
+        $parentPath = [System.IO.Path]::GetDirectoryName($fullPath)
+        $leafName = [System.IO.Path]::GetFileName($fullPath)
+        if (-not [string]::IsNullOrWhiteSpace($parentPath) -and (Test-Path -LiteralPath $parentPath -PathType Container)) {
+            $matchingEntries = @(
+                Get-ChildItem -LiteralPath $parentPath -Force -ErrorAction Stop |
+                    Where-Object {
+                        [string]::Equals(
+                            $_.Name,
+                            $leafName,
+                            [System.StringComparison]::OrdinalIgnoreCase
+                        )
+                    }
+            )
+            if ($matchingEntries.Count -gt 1) {
+                throw "no-follow 路径分类发现多个同名目录项：$fullPath"
+            }
+            if ($matchingEntries.Count -eq 1) {
+                $attributes = $matchingEntries[0].Attributes
+                if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    $kind = 3
+                }
+                elseif (($attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
+                    $kind = 2
+                }
+                else {
+                    $kind = 1
+                }
+            }
+        }
+    }
+    switch ($kind) {
+        0 { return "Missing" }
+        1 { return "File" }
+        2 { return "Directory" }
+        3 { return "Reparse" }
+        default { throw "no-follow 路径分类返回未知结果：$kind" }
+    }
+}
+
 function Assert-NoTicketboxAncestorReparsePoints([string]$Path) {
     $cursor = ConvertTo-TicketboxCanonicalPath $Path
     while (-not [string]::IsNullOrWhiteSpace($cursor)) {
-        if (Test-Path -LiteralPath $cursor) {
-            $item = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
-            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "数据目录或祖先目录是重解析点，拒绝安装：$cursor"
-            }
+        if ((Get-TicketboxPathEntryKindNoFollow $cursor) -ceq "Reparse") {
+            throw "数据目录或祖先目录是重解析点，拒绝安装：$cursor"
         }
         $parent = [System.IO.Path]::GetDirectoryName($cursor)
         if ([string]::IsNullOrWhiteSpace($parent) -or (Test-TicketboxPathEquals $cursor $parent)) {
@@ -1306,22 +2575,12 @@ function Write-TicketboxPersistentInstallationIdentity {
         "PG_PORT=$PgPort",
         "BACKEND_PORT=$BackendPort"
     ) -join "`r`n"
-    $protectTemporary = {
-        param($TemporaryPath)
-        Set-TicketboxExactFileAcl `
-            -Path $TemporaryPath `
-            -Accounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
-            -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
-    }
-    Write-TicketboxUtf8FileDurable `
+    Write-TicketboxProtectedUtf8FileDurable `
         -Path $path `
         -Text ($text + "`r`n") `
-        -ProtectTemporaryFile $protectTemporary `
+        -FullControlAccounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
+        -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount `
         -ReplaceExisting:(Test-Path -LiteralPath $path)
-    Set-TicketboxExactFileAcl `
-        -Path $path `
-        -Accounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
-        -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
     return Read-TicketboxPersistentInstallationIdentity $canonicalDataRoot
 }
 
@@ -1347,47 +2606,193 @@ function Assert-TicketboxRegisteredDataRootBinding {
     }
 }
 
-function Write-TicketboxDataRootMarker([string]$DataRoot, [string]$InstallDir) {
-    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
+function Get-TicketboxDataRootMarkerText {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [string]$DataVolumeIdentity = "",
+        [switch]$LegacyV1
+    )
+
     $payload = [ordered]@{
-        schema = $script:TicketboxDataRootMarkerSchema
-        data_root = $canonicalDataRoot
+        schema = if ($LegacyV1) {
+            $script:TicketboxLegacyDataRootMarkerSchema
+        }
+        else {
+            $script:TicketboxDataRootMarkerSchema
+        }
+        data_root = ConvertTo-TicketboxCanonicalPath $DataRoot
         install_dir = ConvertTo-TicketboxCanonicalPath $InstallDir
-    } | ConvertTo-Json -Compress
-    Write-TicketboxUtf8FileDurable `
+    }
+    if (-not $LegacyV1) {
+        if ([string]::IsNullOrWhiteSpace($DataVolumeIdentity)) {
+            throw "DataRoot v2 marker 缺少 Windows volume identity。"
+        }
+        $payload.data_volume_identity = ConvertTo-TicketboxCanonicalVolumeIdentity `
+            $DataVolumeIdentity
+    }
+    return $payload | ConvertTo-Json -Compress
+}
+
+function ConvertFrom-TicketboxDataRootMarkerText {
+    param(
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [switch]$AllowLegacyV1
+    )
+
+    try { $marker = ConvertFrom-Json -InputObject $Text }
+    catch { throw "数据目录标记不是有效 JSON。" }
+    $schema = [string]$marker.schema
+    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
+    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
+    try {
+        $markerDataRoot = ConvertTo-TicketboxCanonicalPath ([string]$marker.data_root)
+        $markerInstallDir = ConvertTo-TicketboxCanonicalPath ([string]$marker.install_dir)
+    }
+    catch {
+        throw "数据目录标记的路径绑定无效。"
+    }
+    if (
+        -not (Test-TicketboxPathEquals $markerDataRoot $canonicalDataRoot) -or
+        -not (Test-TicketboxPathEquals $markerInstallDir $canonicalInstallDir)
+    ) {
+        throw "数据目录标记与当前安装路径不匹配。"
+    }
+    if ($schema -ceq $script:TicketboxDataRootMarkerSchema) {
+        try {
+            $volumeIdentity = ConvertTo-TicketboxCanonicalVolumeIdentity `
+                ([string]$marker.data_volume_identity)
+        }
+        catch {
+            throw "DataRoot v2 marker 的 Windows volume identity 无效。"
+        }
+        $canonicalText = Get-TicketboxDataRootMarkerText `
+            -DataRoot $markerDataRoot `
+            -InstallDir $markerInstallDir `
+            -DataVolumeIdentity $volumeIdentity
+        if ($Text -cne $canonicalText) {
+            throw "DataRoot v2 marker 不是规范且唯一的安装绑定。"
+        }
+        return [pscustomobject]@{
+            Schema = $schema
+            DataRoot = $markerDataRoot
+            InstallDir = $markerInstallDir
+            DataVolumeIdentity = $volumeIdentity
+            IsLegacyV1 = $false
+        }
+    }
+    if ($schema -ceq $script:TicketboxLegacyDataRootMarkerSchema -and $AllowLegacyV1) {
+        $canonicalText = Get-TicketboxDataRootMarkerText `
+            -DataRoot $markerDataRoot `
+            -InstallDir $markerInstallDir `
+            -LegacyV1
+        if ($Text -cne $canonicalText) {
+            throw "legacy DataRoot marker 不是规范且唯一的安装绑定。"
+        }
+        return [pscustomobject]@{
+            Schema = $schema
+            DataRoot = $markerDataRoot
+            InstallDir = $markerInstallDir
+            DataVolumeIdentity = ""
+            IsLegacyV1 = $true
+        }
+    }
+    throw "数据目录标记 schema 不受当前操作信任。"
+}
+
+function Read-TicketboxDataRootMarker {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [switch]$AllowLegacyV1
+    )
+
+    $markerPath = Get-TicketboxDataRootMarkerPath $DataRoot
+    if ((Get-TicketboxPathEntryKindNoFollow $markerPath) -cne "File") {
+        throw "拒绝信任缺失或非普通文件的数据目录标记：$markerPath"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $markerPath
+    $item = Get-Item -LiteralPath $markerPath -Force -ErrorAction Stop
+    if (
+        ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        $item.Length -le 0 -or
+        $item.Length -gt 16384
+    ) {
+        throw "数据目录标记不是有效普通文件：$markerPath"
+    }
+    $bytes = [System.IO.File]::ReadAllBytes($markerPath)
+    $encoding = New-Object System.Text.UTF8Encoding($false, $true)
+    try { $text = $encoding.GetString($bytes) }
+    catch { throw "数据目录标记不是严格 UTF-8：$markerPath" }
+    $roundTripBytes = $encoding.GetBytes($text)
+    if (-not (Test-TicketboxByteArrayEquals -Left $bytes -Right $roundTripBytes)) {
+        throw "数据目录标记不能无损 UTF-8 往返：$markerPath"
+    }
+    return ConvertFrom-TicketboxDataRootMarkerText `
+        -Text $text `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -AllowLegacyV1:$AllowLegacyV1
+}
+
+function Write-TicketboxDataRootMarker {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [string]$DataVolumeIdentity = "",
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM",
+        [switch]$ReplaceExisting
+    )
+
+    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
+    $canonicalVolumeIdentity = if ([string]::IsNullOrWhiteSpace($DataVolumeIdentity)) {
+        Get-TicketboxVolumeIdentityForPath $canonicalDataRoot
+    }
+    else {
+        ConvertTo-TicketboxCanonicalVolumeIdentity $DataVolumeIdentity
+    }
+    Assert-TicketboxVolumeIdentityForPath `
+        -Path $canonicalDataRoot `
+        -ExpectedVolumeIdentity $canonicalVolumeIdentity
+    $payload = Get-TicketboxDataRootMarkerText `
+        -DataRoot $canonicalDataRoot `
+        -InstallDir $InstallDir `
+        -DataVolumeIdentity $canonicalVolumeIdentity
+    Write-TicketboxProtectedUtf8FileDurable `
         -Path (Get-TicketboxDataRootMarkerPath $canonicalDataRoot) `
-        -Text $payload
+        -Text $payload `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount `
+        -ReplaceExisting:$ReplaceExisting
 }
 
 function Assert-TicketboxDataRootMarkerInitialization {
     param(
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
-        [switch]$AllowLegacyAdoption
+        [switch]$AllowLegacyV1Migration
     )
 
     $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
     $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
-    if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
-        Assert-TicketboxDataRootMarker -DataRoot $canonicalDataRoot -InstallDir $InstallDir
+    $markerKind = Get-TicketboxPathEntryKindNoFollow $markerPath
+    if ($markerKind -ceq "File") {
+        Assert-TicketboxDataRootMarker `
+            -DataRoot $canonicalDataRoot `
+            -InstallDir $InstallDir `
+            -AllowLegacyV1:$AllowLegacyV1Migration
         return
+    }
+    if ($markerKind -cne "Missing") {
+        throw "DataRoot marker 不是普通文件或缺失路径，拒绝初始化。"
     }
 
     $entries = @(Get-ChildItem -LiteralPath $canonicalDataRoot -Force)
     if ($entries.Count -gt 0) {
-        if (-not $AllowLegacyAdoption) {
-            throw "拒绝把非空目录收编为小票夹数据根：$canonicalDataRoot"
-        }
-        $unexpected = @($entries | Where-Object { $_.Name -notin @("app", "pgdata") })
-        $hasLegacyLayout =
-            (Test-Path -LiteralPath (Join-Path $canonicalDataRoot "pgdata\PG_VERSION") -PathType Leaf) -and
-            (
-                (Test-Path -LiteralPath (Join-Path $canonicalDataRoot "app\.env") -PathType Leaf) -or
-                (Test-Path -LiteralPath (Join-Path $canonicalDataRoot "app\.postgres-bootstrap-password") -PathType Leaf)
-            )
-        if ($unexpected.Count -gt 0 -or -not $hasLegacyLayout) {
-            throw "既有目录不是可识别的小票夹 legacy 数据布局，拒绝写入删除标记：$canonicalDataRoot"
-        }
+        throw "拒绝把 markerless 非空目录收编为小票夹数据根：$canonicalDataRoot"
     }
 }
 
@@ -1453,7 +2858,7 @@ function Assert-TicketboxLegacyPreservedDataLayout {
     Assert-TicketboxDataRootMarkerInitialization `
         -DataRoot $canonicalDataRoot `
         -InstallDir $InstallDir `
-        -AllowLegacyAdoption
+        -AllowLegacyV1Migration
     Assert-TicketboxLegacyProtectedFileAcl $EnvPath
     $pgVersionPath = Join-Path $PgData "PG_VERSION"
     if (-not (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)) {
@@ -1482,7 +2887,9 @@ function Initialize-TicketboxDataRootMarker {
     param(
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
-        [switch]$AllowLegacyAdoption
+        [switch]$AllowLegacyV1Migration,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
     )
 
     $canonicalDataRoot = Assert-TicketboxDataRootDomain -DataRoot $DataRoot -InstallDir $InstallDir
@@ -1492,12 +2899,40 @@ function Initialize-TicketboxDataRootMarker {
     Assert-TicketboxDataRootMarkerInitialization `
         -DataRoot $canonicalDataRoot `
         -InstallDir $InstallDir `
-        -AllowLegacyAdoption:$AllowLegacyAdoption
+        -AllowLegacyV1Migration:$AllowLegacyV1Migration
     $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
-    if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
-        return
+    $markerKind = Get-TicketboxPathEntryKindNoFollow $markerPath
+    if ($markerKind -ceq "File" -and $AllowLegacyV1Migration) {
+        $existingMarker = Read-TicketboxDataRootMarker `
+            -DataRoot $canonicalDataRoot `
+            -InstallDir $InstallDir `
+            -AllowLegacyV1
+        if ($existingMarker.IsLegacyV1) {
+            $targetVolumeIdentity = Get-TicketboxVolumeIdentityForPath $canonicalDataRoot
+            Write-TicketboxDataRootMarker `
+                -DataRoot $canonicalDataRoot `
+                -InstallDir $InstallDir `
+                -DataVolumeIdentity $targetVolumeIdentity `
+                -FullControlAccounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount `
+                -ReplaceExisting
+        }
     }
-    Write-TicketboxDataRootMarker -DataRoot $canonicalDataRoot -InstallDir $InstallDir
+    elseif ($markerKind -ceq "Missing") {
+        Write-TicketboxDataRootMarker `
+            -DataRoot $canonicalDataRoot `
+            -InstallDir $InstallDir `
+            -FullControlAccounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount
+    }
+    elseif ($markerKind -cne "File") {
+        throw "DataRoot marker 不是普通文件或缺失路径，拒绝初始化。"
+    }
+    Assert-TicketboxProtectedDataRootMarker `
+        -DataRoot $canonicalDataRoot `
+        -InstallDir $InstallDir `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
 }
 
 function Initialize-TicketboxSecureDataRoot {
@@ -1505,7 +2940,8 @@ function Initialize-TicketboxSecureDataRoot {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][string[]]$Accounts,
-        [switch]$AllowLegacyAdoption
+        [switch]$AllowLegacyV1Migration,
+        [string]$OwnerAccount = "SYSTEM"
     )
 
     $canonicalDataRoot = Assert-TicketboxDataRootDomain -DataRoot $DataRoot -InstallDir $InstallDir
@@ -1518,31 +2954,70 @@ function Initialize-TicketboxSecureDataRoot {
     Assert-TicketboxDataRootMarkerInitialization `
         -DataRoot $canonicalDataRoot `
         -InstallDir $InstallDir `
-        -AllowLegacyAdoption:$AllowLegacyAdoption
+        -AllowLegacyV1Migration:$AllowLegacyV1Migration
     Set-TicketboxExactDirectoryAcl -Path $canonicalDataRoot -Accounts $Accounts -Recurse
-    if (-not (Test-Path -LiteralPath (Get-TicketboxDataRootMarkerPath $canonicalDataRoot) -PathType Leaf)) {
-        Write-TicketboxDataRootMarker -DataRoot $canonicalDataRoot -InstallDir $InstallDir
+    Initialize-TicketboxDataRootMarker `
+        -DataRoot $canonicalDataRoot `
+        -InstallDir $InstallDir `
+        -AllowLegacyV1Migration:$AllowLegacyV1Migration `
+        -FullControlAccounts $Accounts `
+        -OwnerAccount $OwnerAccount
+}
+
+function Assert-TicketboxDataRootMarker {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [switch]$AllowLegacyV1
+    )
+
+    $marker = Read-TicketboxDataRootMarker `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -AllowLegacyV1:$AllowLegacyV1
+    if (-not $marker.IsLegacyV1) {
+        Assert-TicketboxVolumeIdentityForPath `
+            -Path $DataRoot `
+            -ExpectedVolumeIdentity $marker.DataVolumeIdentity
     }
 }
 
-function Assert-TicketboxDataRootMarker([string]$DataRoot, [string]$InstallDir) {
-    $markerPath = Get-TicketboxDataRootMarkerPath $DataRoot
-    if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
-        throw "拒绝删除未标记的数据目录：$DataRoot"
-    }
-    try {
-        $marker = Get-Content -LiteralPath $markerPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    }
-    catch {
-        throw "数据目录标记损坏，拒绝删除：$markerPath"
-    }
-    if (
-        $marker.schema -ne $script:TicketboxDataRootMarkerSchema -or
-        -not (Test-TicketboxPathEquals ([string]$marker.data_root) $DataRoot) -or
-        -not (Test-TicketboxPathEquals ([string]$marker.install_dir) $InstallDir)
-    ) {
-        throw "数据目录标记与当前安装不匹配，拒绝删除：$markerPath"
-    }
+function Read-TicketboxProtectedDataRootMarker {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $artifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path (Get-TicketboxDataRootMarkerPath $DataRoot) `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount `
+        -MaximumBytes 16384
+    $marker = ConvertFrom-TicketboxDataRootMarkerText `
+        -Text $artifact.Text `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir
+    Assert-TicketboxVolumeIdentityForPath `
+        -Path $DataRoot `
+        -ExpectedVolumeIdentity $marker.DataVolumeIdentity
+    return $marker
+}
+
+function Assert-TicketboxProtectedDataRootMarker {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount | Out-Null
 }
 
 function Assert-NoTicketboxReparsePoints([string]$DataRoot) {
@@ -1679,7 +3154,8 @@ function Assert-TicketboxDataRootDeletionSafety {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$RegisteredDataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
-        [switch]$AllowProtectedMarkerWithoutRegistration
+        [switch]$AllowProtectedMarkerWithoutRegistration,
+        [switch]$AllowMarkerlessEmptyRoot
     )
 
     $full = Assert-TicketboxDataRootDomain -DataRoot $DataRoot -InstallDir $InstallDir
@@ -1693,10 +3169,22 @@ function Assert-TicketboxDataRootDeletionSafety {
     Assert-NoTicketboxAncestorReparsePoints $full
 
     if (Test-Path -LiteralPath $full) {
-        Assert-TicketboxDataRootMarker -DataRoot $full -InstallDir $InstallDir
-        if ($registrationMissing) {
+        $markerPath = Get-TicketboxDataRootMarkerPath $full
+        if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
+            Assert-TicketboxDataRootMarker -DataRoot $full -InstallDir $InstallDir
+        }
+        elseif ($AllowMarkerlessEmptyRoot) {
+            $remainingEntries = @(Get-ChildItem -LiteralPath $full -Force -ErrorAction Stop)
+            if ($remainingEntries.Count -gt 0) {
+                throw "数据目录缺少权威标记且仍非空，拒绝把它当作中断删除续跑目标：$full"
+            }
+        }
+        else {
+            throw "数据目录缺少权威标记，拒绝删除：$markerPath"
+        }
+        if ($registrationMissing -and (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
             Assert-TicketboxExactFileAcl `
-                -Path (Get-TicketboxDataRootMarkerPath $full) `
+                -Path $markerPath `
                 -Accounts @("SYSTEM", "BUILTIN\Administrators") `
                 -OwnerAccount "SYSTEM"
         }

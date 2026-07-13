@@ -1,9 +1,9 @@
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
 
@@ -57,6 +57,19 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     install = _read("install_bundled_services.ps1")
     prepare = _read("prepare_bundled_upgrade.ps1")
     uninstall = _read("uninstall_bundled_services.ps1")
+    recovery_cleanup = prepare[
+        prepare.index("function Remove-TicketboxRecoveryPgServiceIfExists") : prepare.index(
+            "function Assert-TicketboxDeferredPreservedPgServiceConfiguration"
+        )
+    ]
+    assert "if (-not (Test-TicketboxServiceExists $PgRecoveryServiceName)) { return }" not in recovery_cleanup
+    assert recovery_cleanup.index("Get-TicketboxServiceSid") < recovery_cleanup.index(
+        "Assert-TicketboxRecoveryServiceAclTransition"
+    )
+    assert recovery_cleanup.index("Remove-TicketboxOwnedServiceIfExists") < recovery_cleanup.index(
+        "Set-TicketboxRecoveryServiceDataAcl"
+    )
+    assert "Get-TicketboxPathEntryKindNoFollow" in recovery_cleanup
     assert "ValidateInstalledServicesOnly" in install
     assert "ExpectedBackendServiceName" in install
     validation = install[
@@ -81,16 +94,42 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
         assert "InstallerLockHeld" not in entry_script
     lifecycle_lock = _read("windows_lifecycle_lock.ps1")
     assert "installer-operation.lock" in lifecycle_lock
-    assert lifecycle_lock.index("Assert-TicketboxExternalLifecycleLock") < lifecycle_lock.index(
-        "Enter-TicketboxExclusiveFileLock $operationLockPath"
-    )
+    assert "Enter-TicketboxExclusiveFileLock $operationLockPath" not in lifecycle_lock
+    assert "Enter-TicketboxProtectedExclusiveFileLock `" in lifecycle_lock
     assert "Operation = $operationLock" in lifecycle_lock
+    assert "Get-TicketboxServiceSid" in lifecycle
+    assert 'Invoke-TicketboxScChecked @("showsid", $Name)' in lifecycle
     assert "$initialAclAccounts" not in install
     stop_backend = install.index("Stop-ServiceIfExists", install.index("$hadExistingPgService"))
     isolate_acl = install.index("Set-TicketboxAcl", stop_backend)
     backup = install.index("Invoke-PreUpgradeBackupIfNeeded", isolate_acl)
     assert stop_backend < isolate_acl < backup
     assert "-IncludeBackendService $hadExistingBackendService" in install
+    for runtime_contract in (install, prepare):
+        assert "$ServiceBootstrapExposureRecoveryGuardPath" in runtime_contract
+        assert (
+            "Get-TicketboxRuntimeBootstrapRecoveryGuardPath $binding.RuntimeDataRoot"
+            in runtime_contract
+        )
+    assert (
+        "-BootstrapRecoveryGuardPath $ServiceBootstrapExposureRecoveryGuardPath"
+        in install
+    )
+    assert (
+        "-ExpectedBootstrapRecoveryGuardPath $ServiceBootstrapExposureRecoveryGuardPath"
+        in prepare
+    )
+    acl_function = install[install.index("function Set-TicketboxAcl") : install.index("function Assert-PortAvailable")]
+    assert acl_function.index("-Path $AppData") < acl_function.index(
+        "Initialize-TicketboxInstallerStateDirectory $InstallerState"
+    )
+    assert '$markerReadAccounts += "NT SERVICE\\$BackendServiceName"' in acl_function
+    marker_acl = acl_function.index("-Path (Get-TicketboxDataRootMarkerPath $DataRoot)")
+    assert acl_function.index("-ReadExecuteAccounts $markerReadAccounts", marker_acl) > marker_acl
+    operation = install[install.index("$operationLock =") :]
+    assert operation.index("Initialize-TicketboxInstallerStateArtifacts") < operation.index(
+        "Adopt-TicketboxOwnerBootstrapHandoff"
+    )
     pg_registration = install[install.index("function Register-PgService") : install.index("function Register-BackendService")]
     backend_registration = install[
         install.index("function Register-BackendService") : install.index("function Invoke-IcaclsChecked")
@@ -107,11 +146,27 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
         "Assert-ExpectedServiceConfiguration $PgServiceName"
     )
     assert '"create", $BackendServiceName' in backend_registration
-    assert '"start=", "demand"' in backend_registration
-    assert backend_registration.index('"start=", "demand"') < backend_registration.index(
-        '"start=", "delayed-auto"'
-    )
+    assert '"start=", "disabled"' in backend_registration
+    assert '"start=", "demand"' not in backend_registration
+    assert '"start=", "delayed-auto"' not in backend_registration
+    assert 'ExpectedStartMode "Disabled"' in backend_registration
     assert '"depend=", $PgServiceName' in backend_registration
+
+    mutation = install[install.index("$mutationStarted = $true") :]
+    register_backend = mutation.index("Register-BackendService")
+    write_guard = mutation.index("Write-TicketboxInstallerRuntimeRecoveryGuard")
+    enable_demand = mutation.index("Set-TicketboxOwnedServiceDemandStartIfExists")
+    start_backend = mutation.index('Write-Step "启动后端服务"')
+    assert register_backend < write_guard < enable_demand < start_backend
+
+    receipt = _read("windows_lifecycle_receipt.ps1")
+    promotion = receipt[
+        receipt.index("function Enable-TicketboxInstalledServicesAutoStart") : receipt.index(
+            "function Complete-TicketboxInstalledLifecycleTransaction"
+        )
+    ]
+    assert "Set-TicketboxOwnedServiceDelayedAutoStartIfExists" in promotion
+    assert "Assert-TicketboxServiceDelayedAutoStart" in promotion
 
     backend_bootstrap = _read("windows_backend_bootstrap.ps1")
     restart = backend_bootstrap[
@@ -139,11 +194,18 @@ def test_pre_upgrade_backup_uses_old_tools_before_stopping_postgres() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
 
     upgrade_try = prepare.index("try {", prepare.index("$backupRequired"))
-    stop_backend = prepare.index("Stop-TicketboxOwnedServiceIfExists", upgrade_try)
+    stop_backend = prepare.index("Disable-TicketboxOwnedServiceIfExists", upgrade_try)
     dump_database = prepare.index("Invoke-TicketboxPgDumpCustom")
     verify_dump = prepare.index("& $PgRestore --list")
-    stop_postgres = prepare.index("Stop-TicketboxOwnedServiceIfExists", dump_database)
+    stop_postgres = prepare.index("Disable-TicketboxOwnedServiceIfExists", dump_database)
     assert stop_backend < dump_database < verify_dump < stop_postgres
+    backend_prepare = prepare[
+        prepare.index("if ($hasBackendService) {", upgrade_try) : prepare.index(
+            "if ($usingRecoveryPgService)", upgrade_try
+        )
+    ]
+    assert "Disable-TicketboxOwnedServiceIfExists" in backend_prepare
+    assert "Set-TicketboxPreparedServiceDemandStart" not in backend_prepare
     assert '$PgBin = Join-Path $InstallDir "pg\\bin"' in prepare
     assert "Restore-PreviousServiceState" in prepare
     assert "旧程序保持不变" in prepare
@@ -217,14 +279,18 @@ def test_pre_copy_compensation_preserves_exact_start_policy_mutation() -> None:
     assert "Set-TicketboxOwnedServiceStartPolicyIfExists" in lifecycle
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell policy contract")
-def test_service_start_policy_mapping_in_powershell_5_and_7(tmp_path: Path) -> None:
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell service contract")
+def test_service_policy_and_sid_contract_in_powershell_5_and_7(tmp_path: Path) -> None:
     harness = tmp_path / "service-start-policy.ps1"
     lifecycle = str(PACKAGING / "windows_service_lifecycle.ps1").replace("'", "''")
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{lifecycle}'
+$sid = Get-TicketboxServiceSid 'TicketboxPgRecoveryContractProbe'
+if ($sid -cnotmatch '^S-1-5-80-(?:[0-9]+-){{4}}[0-9]+$') {{
+    throw "invalid virtual service SID: $sid"
+}}
 $script:scModes = @()
 function Assert-TicketboxServiceOwnership([string]$Name, [string]$ExpectedExecutable) {{ return $true }}
 function Invoke-TicketboxScChecked([string[]]$ScArgs) {{
@@ -243,8 +309,7 @@ if ($actual -ne 'disabled,demand,auto,delayed-auto') {{ throw "policy mapping ch
 """,
         encoding="utf-8-sig",
     )
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     for engine in engines:
         result = subprocess.run(
             [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
@@ -307,8 +372,7 @@ if (-not $cimFailurePropagated) {{ throw 'real CIM failure was swallowed' }}
 """,
         encoding="utf-8-sig",
     )
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     for engine in engines:
         result = subprocess.run(
             [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
@@ -347,6 +411,9 @@ $shawl = New-TicketboxShawlServiceImagePath `
     -PgDumpPath 'C:\Program Files\Ticketbox\pg\bin\pg_dump.exe' `
     -PgRestorePath 'C:\Program Files\Ticketbox\pg\bin\pg_restore.exe' `
     -BootstrapRecoveryGuardPath 'D:\Ticketbox Data\bootstrap-exposure-recovery-pending' `
+    -InstallerRecoveryGuardPath 'D:\Ticketbox Data\installer-runtime-recovery-pending' `
+    -DataRootMarkerPath 'C:\ProgramData\TicketboxRuntimeBinding\data-root\.ticketbox-data-root.json' `
+    -DataVolumeIdentity '\\?\Volume{{01234567-89AB-CDEF-0123-456789ABCDEF}}\' `
     -StopTimeoutMs 25000 `
     -RestartDelayMs 5000
 $shawlParts = @(Split-TicketboxWindowsCommandLine $shawl)
@@ -356,11 +423,13 @@ if ($shawlParts[-1] -cne 'C:\Program Files\Ticketbox\program\ticketbox-backend\t
 if (@($shawlParts | Where-Object {{ $_ -ceq '--kill-process-tree' }}).Count -ne 1) {{
     throw 'Shawl process-tree termination flag did not roundtrip exactly once'
 }}
+if (@($shawlParts | Where-Object {{ $_ -ceq 'TICKETBOX_DATA_VOLUME_IDENTITY=\\?\VOLUME{{01234567-89AB-CDEF-0123-456789ABCDEF}}\' }}).Count -ne 1) {{
+    throw 'Shawl Volume GUID authority did not roundtrip exactly once'
+}}
 """,
         encoding="utf-8-sig",
     )
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     for engine in engines:
         result = subprocess.run(
             [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
@@ -420,7 +489,13 @@ $trustedScItem = Get-Item -LiteralPath $trustedSc -Force -ErrorAction Stop
 if (($trustedScItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {{
     throw 'trusted sc.exe resolved to a reparse point'
 }}
-Set-Content -LiteralPath '{literal(lifecycle_owner_path)}' -Value $PID -NoNewline
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$ownerIdentity = Get-TicketboxProcessIdentity -ProcessId $PID
+Write-TicketboxLifecycleLockOwnerRecord `
+    -Path '{literal(lifecycle_owner_path)}' `
+    -OwnerIdentity $ownerIdentity `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
 $lifecycleHandle = [System.IO.File]::Open(
     '{literal(lifecycle_lock_path)}',
     [System.IO.FileMode]::OpenOrCreate,
@@ -431,13 +506,22 @@ function Get-TicketboxLifecycleLockPath {{ return '{literal(lifecycle_lock_path)
 function Get-TicketboxLifecycleLockOwnerPath {{ return '{literal(lifecycle_owner_path)}' }}
 function Get-TicketboxParentProcessId {{ return $PID }}
 try {{
-    Assert-TicketboxExternalLifecycleLock $PID
+    Assert-TicketboxExternalLifecycleLock `
+        -OwnerProcessId $PID `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount | Out-Null
 }}
 finally {{
     $lifecycleHandle.Dispose()
 }}
 $releasedLockRejected = $false
-try {{ Assert-TicketboxExternalLifecycleLock $PID }} catch {{ $releasedLockRejected = $true }}
+try {{
+    Assert-TicketboxExternalLifecycleLock `
+        -OwnerProcessId $PID `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount | Out-Null
+}}
+catch {{ $releasedLockRejected = $true }}
 if (-not $releasedLockRejected) {{ throw 'released external lifecycle lock was accepted' }}
 $script:deadlineProbeCount = 0
 $timedOut = $false
@@ -572,8 +656,7 @@ if (Test-Path -LiteralPath '{literal(secret_path)}') {{ throw 'sensitive file su
 """,
         encoding="utf-8-sig",
     )
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     for engine in engines:
         result = subprocess.run(
             [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", behavior_script],

@@ -431,7 +431,7 @@ def test_explicit_ci_base_and_local_missing_base_are_fail_closed(
 
     assert ci_result.errors == ("cannot resolve exact ADR ratchet base 'missing'",)
     assert local_result.errors == (
-        "cannot resolve local ADR ratchet base from main or origin/main",
+        "cannot resolve current HEAD for ADR ratchet base selection",
     )
 
 

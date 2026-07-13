@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import re
@@ -12,13 +13,97 @@ from pathlib import Path
 
 import pytest
 from _pg_recovery_contract import assert_pg_recovery_toolset_behavior
+from _powershell_contract import powershell_contract_engines
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGING = ROOT / "backend" / "packaging"
 
 
+class _WindowsFileTime(ctypes.Structure):
+    _fields_ = [("low", ctypes.c_uint32), ("high", ctypes.c_uint32)]
+
+
+def _windows_process_creation_filetime_parts(process_id: int) -> tuple[int, int]:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_bool, ctypes.c_uint32]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.GetProcessTimes.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(_WindowsFileTime),
+        ctypes.POINTER(_WindowsFileTime),
+        ctypes.POINTER(_WindowsFileTime),
+        ctypes.POINTER(_WindowsFileTime),
+    ]
+    kernel32.GetProcessTimes.restype = ctypes.c_bool
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel32.OpenProcess(0x1000, False, process_id)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    creation = _WindowsFileTime()
+    exit_time = _WindowsFileTime()
+    kernel_time = _WindowsFileTime()
+    user_time = _WindowsFileTime()
+    try:
+        if not kernel32.GetProcessTimes(
+            handle,
+            ctypes.byref(creation),
+            ctypes.byref(exit_time),
+            ctypes.byref(kernel_time),
+            ctypes.byref(user_time),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return creation.high, creation.low
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _read(name: str) -> str:
     return (PACKAGING / name).read_text(encoding="utf-8-sig")
+
+
+def _start_exclusive_file_lock(
+    engine: str,
+    tmp_path: Path,
+    name: str,
+    lock_path: Path,
+) -> tuple[subprocess.Popen[str], Path]:
+    ready_path = tmp_path / f"{name}.ready"
+    release_path = tmp_path / f"{name}.release"
+    script = tmp_path / f"{name}.ps1"
+    script.write_text(
+        f"""
+$ErrorActionPreference = 'Stop'
+$stream = [System.IO.File]::Open(
+    '{str(lock_path).replace("'", "''")}',
+    [System.IO.FileMode]::OpenOrCreate,
+    [System.IO.FileAccess]::ReadWrite,
+    [System.IO.FileShare]::None
+)
+try {{
+    [System.IO.File]::WriteAllText('{str(ready_path).replace("'", "''")}', 'ready')
+    while (-not (Test-Path -LiteralPath '{str(release_path).replace("'", "''")}')) {{
+        Start-Sleep -Milliseconds 50
+    }}
+}}
+finally {{ $stream.Dispose() }}
+""",
+        encoding="utf-8-sig",
+    )
+    process = subprocess.Popen(
+        [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    deadline = time.monotonic() + 10
+    while not ready_path.is_file() and process.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if not ready_path.is_file():
+        stdout, stderr = process.communicate(timeout=5)
+        pytest.fail(f"{engine} did not acquire {name}:\n{stdout}\n{stderr}")
+    return process, release_path
 
 
 def _read_installer() -> str:
@@ -42,6 +127,8 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_installation_safety.ps1",
         "windows_lifecycle_receipt.ps1",
         "windows_lifecycle_lock.ps1",
+        "hold_installer_lifecycle_lock.ps1",
+        "hold_data_root_mutation_guard.ps1",
         "windows_database_safety.ps1",
         "windows_pg_recovery_tools.ps1",
         "windows_release_config.ps1",
@@ -49,7 +136,18 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     )
     for name in pre_copy_dependencies:
         assert f'Source: "{name}"; Flags: dontcopy noencryption' in installer
-        assert f"ExtractTemporaryFile('{name}')" in installer
+        assert f"'{name}'," in installer
+    for name in (
+        "windows_backend_build_provenance.ps1",
+        "windows_build_provenance.ps1",
+    ):
+        assert f"'{name}'," in installer
+    assert (PACKAGING / "hold_installer_lifecycle_lock.ps1").read_bytes().startswith(
+        b"\xef\xbb\xbf"
+    )
+    assert (PACKAGING / "hold_data_root_mutation_guard.ps1").read_bytes().startswith(
+        b"\xef\xbb\xbf"
+    )
 
     installed_dependencies = pre_copy_dependencies + (
         "windows_bundled_database.ps1",
@@ -64,14 +162,15 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert 'Source: "..\\scripts\\windows_build_provenance.ps1"; DestDir: "{app}\\installer"; DestName: "windows_build_provenance.ps1"; Flags: ignoreversion' in installer
     assert 'Source: "..\\scripts\\windows_backend_build_provenance.ps1"; DestName: "windows_backend_build_provenance.ps1"; Flags: dontcopy noencryption' in installer
     assert 'Source: "..\\scripts\\windows_backend_build_provenance.ps1"; DestDir: "{app}\\installer"; DestName: "windows_backend_build_provenance.ps1"; Flags: ignoreversion' in installer
-    assert installer.index("ExtractTemporaryFile('windows_backend_build_provenance.ps1')") < installer.index(
-        "ExtractTemporaryFile('windows_build_provenance.ps1')"
+    assert installer.index("'windows_build_provenance.ps1',") < installer.index(
+        "'windows_backend_build_provenance.ps1',"
     )
-    assert "ExtractTemporaryFile('windows_build_provenance.ps1')" in installer
 
     prepare = _read("prepare_bundled_upgrade.ps1")
     install = _read("install_bundled_services.ps1")
     uninstall = _read("uninstall_bundled_services.ps1")
+    bootstrap = _read("windows_backend_bootstrap.ps1")
+    receipt = _read("windows_lifecycle_receipt.ps1")
     for script in (prepare, install, uninstall):
         assert ". $ReleaseConfigScript" in script
         assert ". $LifecycleScript" in script
@@ -103,6 +202,103 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "HasCurrentOwnerHandoffPendingArtifact" in installer
     assert "INSTALLER_OWNER_PID=" in installer
     flow = _read("ticketbox-installer-flow.isph")
+    windows = _read("ticketbox-installer-windows.isph")
+    lifecycle_lock = _read("windows_lifecycle_lock.ps1")
+    assert "LifecycleInstallerStatePath('owner-bootstrap.txt')" in flow
+    assert "LifecycleInstallerStatePath('owner-handoff-pending')" in flow
+    assert "AddBackslash(LifecycleInstallerStateDirectory) + FileName" in windows
+    assert "'installer-state\\' + FileName" not in windows
+    assert '"INSTALLER_STATE=$(Join-Path $lockRoot $script:TicketboxInstallerStateDirectoryName)' in lifecycle_lock
+    acquire_lock = windows[
+        windows.index("function AcquireLifecycleLock") : windows.index(
+            "procedure ReleaseLifecycleLock"
+        )
+    ]
+    assert "FileExists(LifecycleLockHolderReadyPath)" not in acquire_lock[
+        : acquire_lock.index("Params :=")
+    ]
+    holder_launch = acquire_lock.index("if not Exec(")
+    root_validation_poll = acquire_lock.index(
+        "if FileExists(LifecycleLockRootValidatedPath)", holder_launch
+    )
+    root_validation_accept = acquire_lock.index("RootValidated := True", root_validation_poll)
+    machine_ready_poll = acquire_lock.index(
+        "FileExists(LifecycleLockHolderReadyPath)", holder_launch
+    )
+    assert holder_launch < root_validation_poll < root_validation_accept < machine_ready_poll
+    assert "FileExists(LifecycleLockHolderReadyPath)" not in acquire_lock[
+        holder_launch:root_validation_accept
+    ]
+    holder = lifecycle_lock[
+        lifecycle_lock.index("function Wait-TicketboxExternalInstallerLifecycleLock") :
+        lifecycle_lock.index("function Enter-TicketboxLifecycleLock")
+    ]
+    assert holder.index("Initialize-TicketboxLifecycleLockDirectory") < holder.index(
+        "Test-Path -LiteralPath $readyFullPath"
+    )
+    assert holder.index("Test-Path -LiteralPath $readyFullPath") < holder.index(
+        '"STATE=root_validated$([Environment]::NewLine)"'
+    )
+    assert holder.index('"STATE=root_validated$([Environment]::NewLine)"') < holder.index(
+        "$lockPath = Join-Path $lockRoot"
+    )
+    assert holder.index("$operationLockPath = Join-Path $lockRoot") < holder.index(
+        "Test-TicketboxExclusiveFileLockHeld -Path $operationLockPath"
+    )
+    assert "function Get-TicketboxInstallerStateDirectory" in lifecycle_lock
+    assert "$script:TicketboxInstallerStateDirectoryName" in lifecycle_lock
+    lock_provider = lifecycle_lock[
+        lifecycle_lock.index("function Get-TicketboxLifecycleLockPath") : lifecycle_lock.index(
+            "function Get-TicketboxLifecycleLockOwnerPath"
+        )
+    ]
+    assert "Initialize-TicketboxLifecycleLockDirectory" in lock_provider
+    assert "Set-TicketboxExactDirectoryAcl" not in lock_provider
+    lock_initializer = lifecycle_lock[
+        lifecycle_lock.index("function Initialize-TicketboxLifecycleLockDirectory") : lifecycle_lock.index(
+            "function Get-TicketboxLifecycleLockPath"
+        )
+    ]
+    assert "Assert-TicketboxProtectedDirectoryAcl" in lock_initializer
+    assert "Initialize-TicketboxProtectedDirectoryAtomically" in lock_initializer
+    assert "Enter-TicketboxDirectoryMutationGuard" in lock_initializer
+    assert "Set-TicketboxExactDirectoryAcl" not in lock_initializer
+    acquire_lock = windows[
+        windows.index("function AcquireLifecycleLock") : windows.index(
+            "procedure ReleaseLifecycleLock"
+        )
+    ]
+    assert "-InstallerOwnerProcessId " in acquire_lock
+    assert "-ExpectedLockDirectory " in acquire_lock
+    assert "-RootValidatedPath " in acquire_lock
+    assert "-ReadyPath " in acquire_lock
+    assert "-ReleasePath " in acquire_lock
+    assert "CreateFile(" not in acquire_lock
+    assert "ForceDirectories(" not in acquire_lock
+    assert "HardenLifecycleLockPath(" not in acquire_lock
+    assert "SaveStringToFile(LifecycleLockOwnerPath" not in acquire_lock
+    enter_lock = lifecycle_lock[
+        lifecycle_lock.index("function Enter-TicketboxLifecycleLock") : lifecycle_lock.index(
+            "function Exit-TicketboxLifecycleLock"
+        )
+    ]
+    external_branch = enter_lock[
+        enter_lock.index("if ($ExternalOwnerProcessId -gt 0)") : enter_lock.index("else {")
+    ]
+    assert external_branch.index("Enter-TicketboxProtectedExclusiveFileLock") < external_branch.index(
+        "Assert-TicketboxExternalLifecycleLock"
+    )
+    assert "Set-TicketboxExactFileAcl" not in external_branch
+    data_root_holder = _read("hold_data_root_mutation_guard.ps1")
+    assert "-RetainWhileLockPath (Get-TicketboxLifecycleOperationLockPath)" in data_root_holder
+    holder = _read("hold_installer_lifecycle_lock.ps1")
+    assert holder.index("Get-TicketboxParentProcessId") < holder.index(
+        "Wait-TicketboxExternalInstallerLifecycleLock"
+    )
+    assert "Test-TicketboxPathEquals $ExpectedLockDirectory $expectedRoot" in holder
+    assert "\\app\\owner-bootstrap.txt" not in flow
+    assert "\\app\\owner-handoff-pending" not in flow
+    assert "SelectedDataRoot() + '\\installer-state" not in flow
     finished_page = flow[flow.index("procedure CurPageChanged") : flow.index("function NextButtonClick")]
     finish_click = flow[flow.index("function NextButtonClick") : flow.index("function PrepareToInstall")]
     assert "OwnerHandoffMemo.Visible := True" in finished_page
@@ -118,7 +314,9 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "LastPowerShellChildSucceeded" in finish_click
     assert '"CompleteOwnerHandoffOnly"' in installer
     assert "[switch]$CompleteOwnerHandoffOnly" in install
-    cleanup_mode = install[install.index("if ($CompleteOwnerHandoffOnly)") :]
+    cleanup_start = install.index("if ($CompleteOwnerHandoffOnly)")
+    cleanup_end = install.index("$operationLock = Enter-TicketboxLifecycleLock", cleanup_start)
+    cleanup_mode = install[cleanup_start:cleanup_end]
     assert cleanup_mode.index("Enter-TicketboxLifecycleLock") < cleanup_mode.index(
         "Complete-TicketboxOwnerBootstrapHandoff"
     )
@@ -126,6 +324,47 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "Exit-TicketboxLifecycleLock"
     )
     assert "请先复制一次性绑定信息，并勾选确认后再完成安装" in finish_click
+    assert "$InstallerState = Get-TicketboxInstallerStateDirectory" in install
+    assert "$InstallerState = Get-TicketboxInstallerStateDirectory" in prepare
+    assert '$RecoveryRequiredPath = Join-Path $InstallerState "installer-recovery-required.json"' in install
+    state_initialization = install[
+        install.index("function Initialize-TicketboxInstallerStateArtifacts") : install.index(
+            "function Assert-PortAvailableForMissingServices"
+        )
+    ]
+    assert state_initialization.index("$LegacyRecoveryRequiredPath") < state_initialization.index(
+        "Move-TicketboxLegacyOwnerHandoffArtifacts"
+    )
+    compensation = install[
+        install.index("function Invoke-TicketboxInstallFailureCompensation") : install.index(
+            'Write-Host "=== 小票夹 Inno 安装器服务配置 ==="'
+        )
+    ]
+    assert "Ensure-TicketboxInstallerRecoveryMarkerAfterFailure" in compensation
+    recovery_compensation = receipt[
+        receipt.index("function Ensure-TicketboxInstallerRecoveryMarkerAfterFailure") : receipt.index(
+            "function Close-TicketboxLifecycleBackupGuard"
+        )
+    ]
+    reconcile = recovery_compensation.index("Move-TicketboxLegacyInstallerStateArtifact")
+    preserve = recovery_compensation.index("Read-TicketboxInstallerRecoveryMarker", reconcile)
+    create = recovery_compensation.index("Write-TicketboxInstallerRecoveryMarker", preserve)
+    assert reconcile < preserve < create
+    owner_migration = bootstrap[
+        bootstrap.index("function Move-TicketboxLegacyOwnerHandoffArtifacts") : bootstrap.index(
+            "function Read-TicketboxOwnerHandoffRecord"
+        )
+    ]
+    preflight = owner_migration.index("Read-TicketboxProtectedUtf8Artifact")
+    retain_source = owner_migration.index("-RetainLegacySource")
+    bind_pending = owner_migration.index("Write-TicketboxOwnerHandoffPendingMarker")
+    retire_source = owner_migration.index("Remove-TicketboxProtectedUtf8Artifact")
+    assert preflight < retain_source < bind_pending < retire_source
+    assert "Initialize-TicketboxInstallerStateArtifacts" not in cleanup_mode
+    assert cleanup_mode.index("Assert-TicketboxDataRootMarker") < cleanup_mode.index(
+        "Assert-TicketboxProtectedDirectoryAcl"
+    )
+    assert "完成页清理不迁移 legacy owner handoff" in cleanup_mode
     prepare_flow = flow[flow.index("function PrepareToInstall") : flow.index("procedure CurStepChanged")]
     assert "OwnerHandoffExpected := False" in prepare_flow
     assert "owner-bootstrap.txt" not in prepare_flow
@@ -141,16 +380,15 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert 'Join-Path $PgData "PG_VERSION"' in prepare
     prepare_calls = list(
         re.finditer(
-            r"ExpandConstant\('\{tmp\}\\prepare_bundled_upgrade\.ps1'\)",
+            r"LifecycleBootstrapFilePath\('prepare_bundled_upgrade\.ps1'\)",
             flow,
         )
     )
-    assert len(prepare_calls) == 5
-    for call in prepare_calls[1:]:
+    assert len(prepare_calls) == 4
+    for call in prepare_calls:
         args_start = flow.rfind("Args :=\n", 0, call.start())
         assert args_start >= 0
         assert " -TargetPgMajor {#TargetPgMajor}" in flow[args_start : call.start()]
-    assert flow.count(" -TargetPgMajor {#TargetPgMajor}") == len(prepare_calls) + 1
     stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
     stale_branch = prepare[
         stale_start : prepare.index(
@@ -163,7 +401,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "DisableDirPage=yes" in installer
     assert "UsePreviousAppDir=no" in installer
     assert "PowerShellExecutable()" in installer
-    assert "CanRunPowerShell(PowerShellPath: String)" in installer
+    assert "IsSupportedPowerShell7Host(PowerShellPath: String)" in installer
     assert "FindMachinePowerShell7()" in installer
     assert "Microsoft\\PowerShellCore\\InstalledVersions" in installer
     assert "HasValidMicrosoftSignature" in installer
@@ -171,8 +409,37 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "{sys}\\WindowsPowerShell\\v1.0\\powershell.exe" in installer
     assert "CompareText(PowerShellPath, WindowsPowerShellExecutable())" in installer
     assert "AcquireLifecycleLock" in installer
-    assert "CreateFileW@kernel32.dll" in installer
+    assert "LockDirectory + '\\installer-lifecycle-'" in installer
+    assert "ExpandConstant('{tmp}\\ticketbox-lifecycle-lock-')" not in installer
+    assert "NONCE=" in installer
+    assert "IsLowerHexLifecycleNonce" in installer
+    assert "HardenLifecycleLockPath(ReleaseTempPath, False)" in installer
+    assert installer.count("AssertLifecycleLockActive();") >= 8
+    assert "CreateFileW@kernel32.dll" not in installer
+    assert "hold_installer_lifecycle_lock.ps1" in installer
+    assert "OpenProcess(" in installer
+    assert "GetProcessTimes(" in installer
+    assert "OpenVerifiedProcessIdentityHandle(" in installer
+    assert "LifecycleLockHolderProcessId := LongWord(ResultCode)" not in installer
+    assert "DataRootGuardProcessId := LongWord(ResultCode)" not in installer
+    assert "HOLDER_PID=" in installer
+    assert "HOLDER_STARTED_FILETIME_HIGH=" in installer
+    assert "HOLDER_STARTED_FILETIME_LOW=" in installer
+    assert "-InstallerOwnerStartedFileTimeHigh" in installer
+    assert "-InstallerOwnerStartedFileTimeLow" in installer
+    assert "INSTALLER_STATE=" in installer
+    assert "ValidateLifecycleLockBootstrapFiles" in installer
+    assert "GetSHA256OfFile" in installer
+    assert "Ticketbox-Installer-Bootstrap-" in installer
+    assert "CopyFile(ExtractedPath, ProtectedPath, True)" in installer
+    assert "ExpandConstant('{tmp}\\ticketbox-run-installer-child-logged.ps1')" not in installer
+    assert "AddBackslash(LifecycleLockBootstrapDirectory)" in installer
+    assert "ValidateLoggedPowerShellRunner" in installer
+    assert "Quote(LifecycleBootstrapFilePath('windows-release-config.json'))" in installer
+    assert "Quote(ExpandConstant('{tmp}\\windows-release-config.json'))" not in installer
+    assert "if not FileExists(ExpandConstant('{tmp}\\hold_installer_lifecycle_lock.ps1'))" not in installer
     assert "CreateMutexW@kernel32.dll" not in installer
+    assert "ReleaseMutex@kernel32.dll" not in installer
     assert "{commoncf64}\\Ticketbox" in installer
     assert "function InitializeUninstall(): Boolean" in installer
     assert "installer-lifecycle.owner" in installer
@@ -182,6 +449,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "InstallerLockHeld" not in installer
     assert "Pos(#0, Value)" in installer
     assert '"prepare_bundled_upgrade.ps1" = @(' in installer
+    assert '"hold_data_root_mutation_guard.ps1" = @(' in installer
     assert '"install_bundled_services.ps1" = @(' in installer
     assert '"uninstall_bundled_services.ps1" = @(' in installer
     assert "Child script resolution mismatch." in installer
@@ -189,8 +457,11 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "Duplicate child parameter:" in installer
     prepare_start = installer.index("function PrepareToInstall")
     port_check = installer.index("Result := FreshInstallPortError();", prepare_start)
-    extract_preflight = installer.index("ExtractTemporaryFile('prepare_bundled_upgrade.ps1')", prepare_start)
-    assert port_check < extract_preflight
+    protected_bundle_preflight = installer.index(
+        "if not ValidateLifecycleLockBootstrapFiles()",
+        prepare_start,
+    )
+    assert port_check < protected_bundle_preflight
     assert "StopServiceIfPresent" not in installer
     assert "Sleep(30000)" not in installer
     assert uninstall.index("Save-TicketboxUninstallPgRecoveryIfRequired") < uninstall.index(
@@ -256,12 +527,18 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
     remove_service = install.index("Remove-TicketboxDeferredPreservedPgServiceIfExists", backup)
     cleanup_complete = install.index("-CleanupPending $false", remove_service)
     receipt_files = install.index("Set-TicketboxLifecycleReceiptDeferredBackupCompleted", cleanup_complete)
-    mutation = install.index("$mutationStarted = $true", receipt_files)
-    data_root_acl = install.index("Initialize-TicketboxSecureDataRoot", mutation)
-    initdb = install.index("Initialize-PgClusterIfNeeded", data_root_acl)
+    data_root_authority = install.index("Initialize-TicketboxDataRootMarker", receipt_files)
+    mutation = install.index("$mutationStarted = $true", data_root_authority)
+    backend_stop = install.index("Stop-ServiceIfExists", mutation)
+    recursive_acl = install.index("Initialize-TicketboxSecureDataRoot", backend_stop)
+    initdb = install.index("Initialize-PgClusterIfNeeded", recursive_acl)
     assert cleanup_wal < register_service < backup < remove_service
-    assert remove_service < cleanup_complete < receipt_files < mutation < data_root_acl < initdb
-    assert "NT SERVICE\\$PgServiceName" in install[register_service - 1800 : backup]
+    assert remove_service < cleanup_complete < receipt_files < data_root_authority
+    assert data_root_authority < mutation < backend_stop < recursive_acl < initdb
+    deferred_service_contract = install[
+        install.index("function Register-TicketboxDeferredPreservedPgService") : backup
+    ]
+    assert "NT SERVICE\\$PgServiceName" in deferred_service_contract
     assert "Get-TicketboxDeferredBackupRoot" in install[register_service : backup + 600]
     assert "-ExpectedPgMajor $TargetPgMajor" in install[service_phase:backup]
     assert "-ExpectedPgMajor $ExpectedPgMajor" not in install[service_phase:backup]
@@ -304,6 +581,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     flow = _read("ticketbox-installer-flow.isph")
     install = _read("install_bundled_services.ps1")
     safety = _read("windows_installation_safety.ps1")
+    receipt = _read("windows_lifecycle_receipt.ps1")
 
     initialize = windows[
         windows.index("function InitializeSetup") : windows.index("function InitializeUninstall")
@@ -336,7 +614,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
         flow.index("function PrepareToInstall") : flow.index("procedure CurStepChanged")
     ]
     assert prepare_to_install.index("CheckBackendVersionFloorForDataRoot") < prepare_to_install.index(
-        "ExtractTemporaryFile('prepare_bundled_upgrade.ps1')"
+        "ValidateLifecycleLockBootstrapFiles()"
     )
     persistent_reader = windows[
         windows.index("function TryGetPersistentBackendVersionFloor") : windows.index(
@@ -356,16 +634,26 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
             "function Assert-TicketboxRegisteredDataRootBinding"
         )
     ]
-    assert "Write-TicketboxUtf8FileDurable" in identity_writer
-    assert "Set-TicketboxExactFileAcl" in identity_writer
+    assert "Write-TicketboxProtectedUtf8FileDurable" in identity_writer
     assert "$script:TicketboxPersistentInstallationIdentityAclAccounts" in identity_writer
     assert "Get-TicketboxPortableFileSha256 $BuildManifestPath" in identity_writer
     assert "Compare-TicketboxNumericVersion" in identity_writer
     assert "[guid]::NewGuid()" in identity_writer
 
-    persist_identity = install.rindex("Write-TicketboxPersistentInstallationIdentity")
-    service_return = install.index('Write-Host "================ 安装完成', persist_identity)
-    assert persist_identity < service_return
+    transaction = receipt[
+        receipt.index("function Complete-TicketboxInstalledLifecycleTransaction") : receipt.index(
+            "function Set-TicketboxLifecycleReceiptInstallerOwner"
+        )
+    ]
+    persist_identity = transaction.index("Write-TicketboxPersistentInstallationIdentity")
+    commit_receipt = transaction.index("Set-TicketboxLifecycleReceiptInstallCompleted")
+    retire_latch = transaction.index("Remove-TicketboxInstallerRecoveryMarker")
+    assert persist_identity < commit_receipt < retire_latch
+    receipt_guard = install.index('if ($InstallerLockOwnerProcessId -le 0)')
+    operation_lock = install.index("$operationLock = Enter-TicketboxLifecycleLock")
+    assert receipt_guard < operation_lock
+    assert "正式安装或升级只能由持有生命周期锁和回执的 Inno 安装器调用" in install
+    assert 'if ($InstallerLockOwnerProcessId -eq 0)' not in install
     post_install = flow[flow.index("if CurStep = ssPostInstall") : flow.index("procedure DeinitializeSetup")]
     service_install = post_install.index("'Ticketbox service installation'")
     lifecycle_commit = post_install.index("'Ticketbox installer lifecycle commit'", service_install)
@@ -401,16 +689,154 @@ def test_owner_handoff_uses_utf8_aware_inno_loading() -> None:
     assert "AnsiString" not in pending + finished
 
 
-def test_data_root_guard_releases_operation_lock_before_long_lived_lease() -> None:
-    prepare = _read("prepare_bundled_upgrade.ps1")
-    guard = prepare[
-        prepare.index("if ($HoldDataRootMutationGuard)") :
-        prepare.index("if ($PgPort -eq $BackendPort)")
-    ]
-    acquired = guard.index("$guardOperationLock = Enter-TicketboxLifecycleLock")
-    released = guard.index("Exit-TicketboxLifecycleLock $guardOperationLock")
+def test_data_root_guard_hands_off_operation_lock_only_after_durable_ready() -> None:
+    guard = _read("hold_data_root_mutation_guard.ps1")
+    assert "windows_release_config.ps1" not in guard
+    assert "windows_service_lifecycle.ps1" not in guard
+    assert "windows_lifecycle_receipt.ps1" not in guard
+    acquired = guard.index("Lock = Enter-TicketboxLifecycleLock")
     waited = guard.index("Wait-TicketboxDirectoryMutationGuardLease")
-    assert acquired < released < waited
+    assert acquired < waited
+    assert "-InstallDir $InstallDir" in guard[waited:]
+    assert "-OwnerIdentity $guardOperationState.Lock.ExternalOwnerIdentity" in guard[waited:]
+    assert "-OnLeaseReady $releaseGuardStartupLease" in guard[waited:]
+    assert "& $releaseGuardStartupLease" in guard
+    startup_release = guard.rindex("& $releaseGuardStartupLease")
+    owner_handle = guard.index("Open-TicketboxVerifiedProcessIdentityHandle")
+    acknowledge = guard.rindex("Write-TicketboxDataRootGuardStoppedAcknowledgement")
+    assert owner_handle < startup_release < acknowledge
+    acknowledgement = guard[
+        guard.index("function Write-TicketboxDataRootGuardStoppedAcknowledgement") :
+        guard.rindex("Assert-TicketboxDataRootGuardAdministrator")
+    ]
+    assert acknowledgement.index("Test-TicketboxProcessIdentityHandleExited") < acknowledgement.index(
+        '"STATE=stopped$([Environment]::NewLine)"'
+    )
+    assert "-ReplaceExisting" in acknowledgement
+    assert '$guardExitReason -cne "control"' in guard
+    assert "Read-TicketboxProtectedUtf8Artifact" in guard
+    assert "Assert-TicketboxDataRootGuardRecoveryControl" in guard
+    assert '"confirmed_inactive"' in guard
+    recovery = guard[
+        guard.index("function Assert-TicketboxDataRootGuardRecoveryControl") :
+        guard.index("function Write-TicketboxDataRootGuardStoppedAcknowledgement")
+    ]
+    assert "Get-TicketboxPathEntryKindNoFollow" in recovery
+    assert "Get-TicketboxProcessIdentity" in recovery
+    assert "Test-TicketboxProcessIdentityEquals" in recovery
+    assert "holder 仍以原进程身份存活" in recovery
+
+    safety = _read("windows_installation_safety.ps1")
+    lease = safety[
+        safety.index("function Wait-TicketboxDirectoryMutationGuardLease") : safety.index(
+            "function Test-TicketboxExclusiveFileLockHeld"
+        )
+    ]
+    guard_implementation = safety[
+        safety.index("function Enter-TicketboxDirectoryMutationGuard") : safety.index(
+            "function Initialize-TicketboxDurableFileNativeMethods"
+        )
+    ]
+    before_create_callback = guard_implementation.index("& $OnBeforeFirstDirectoryCreation")
+    protected_directory_create = guard_implementation.index(
+        "Initialize-TicketboxProtectedDirectoryAtomically"
+    )
+    assert before_create_callback < protected_directory_create
+    assert "$creationCallbackInvoked = $false" in guard_implementation
+    assert "$creationCallbackInvoked = $true" in guard_implementation
+    assert "GetVolumeNameForVolumeMountPoint" in safety
+    assert "DATA_VOLUME_UTF8_B64=" in safety
+    assert "DataVolumeIdentity" in safety
+
+    provisioning_callback = lease.index("$publishProvisioningIntent = {")
+    provisioning_write = lease.index(
+        "Write-TicketboxProtectedUtf8FileDurable",
+        provisioning_callback,
+    )
+    guard_enter = lease.index("$guard = Enter-TicketboxDirectoryMutationGuard")
+    callback_binding = lease.index(
+        "-OnBeforeFirstDirectoryCreation $publishProvisioningIntent",
+        guard_enter,
+    )
+    ready_text = lease.index("$readyText =")
+    ready = lease.index("Write-TicketboxProtectedUtf8FileDurable", ready_text)
+    ready_readback = lease.index("$persistedReady = Read-TicketboxProtectedUtf8Artifact")
+    handoff = lease.index("& $OnLeaseReady")
+    long_lived_wait = lease.index("while ($true)", handoff)
+    secure_create = lease.index("$dataRootCreated")
+    marker = lease.index("Write-TicketboxDataRootMarker", secure_create)
+    marker_volume_binding = lease.index(
+        "-DataVolumeIdentity $provisioningState.ExpectedVolumeIdentity",
+        marker,
+    )
+    marker_readback = lease.index("Assert-TicketboxProtectedDataRootMarker", marker)
+    provisioning_retire = lease.index(
+        "Remove-TicketboxDirectoryGuardCoordinationArtifacts",
+        marker,
+    )
+    reject_preexisting = lease.index("预先存在的空 DataRoot", marker)
+    assert (
+        provisioning_callback
+        < provisioning_write
+        < guard_enter
+        < callback_binding
+        < secure_create
+        < marker
+        < marker_volume_binding
+        < marker_readback
+        < provisioning_retire
+        < reject_preexisting
+        < ready
+        < ready_readback
+        < handoff
+        < long_lived_wait
+    )
+    assert "Open-TicketboxVerifiedProcessIdentityHandle" in lease
+    assert "Test-TicketboxProcessIdentityHandleExited" in lease
+    assert '"STATE=abort$([Environment]::NewLine)"' in lease
+    assert 'return "control"' in lease
+    assert 'return "owner_exit"' in lease
+    assert "$ownerProcess.Refresh()" not in lease
+
+    lifecycle = _read("windows_lifecycle_lock.ps1")
+    assert "SafeWaitHandle OpenProcess" in lifecycle
+    assert "GetProcessTimes" in lifecycle
+    assert "WaitForSingleObject" in lifecycle
+    assert "$ownerProcess.Refresh()" not in lifecycle
+
+    windows = _read("ticketbox-installer-windows.isph")
+    start_guard = windows[
+        windows.index("function StartDataRootMutationGuard") : windows.index(
+            "procedure AssertDataRootMutationGuardActive"
+        )
+    ]
+    assert "finally" in start_guard
+    assert "AbortDataRootMutationGuardStartup()" in start_guard
+    abort_guard = windows[
+        windows.index("function AbortDataRootMutationGuardStartup") : windows.index(
+            "function StartDataRootMutationGuard"
+        )
+    ]
+    assert abort_guard.count("DataRootGuardStoppedAcknowledged()") >= 2
+    assert "ConfirmDataRootGuardStoppedAfterControlFailure()" in abort_guard
+    assert "RunPowerShellChecked(" in windows[
+        windows.index("function ConfirmDataRootGuardStoppedAfterControlFailure") :
+        windows.index("function AbortDataRootMutationGuardStartup")
+    ]
+    release_guard = windows[
+        windows.index("procedure ReleaseDataRootMutationGuard") :
+    ]
+    assert "if DataRootGuardStoppedAcknowledged() then" in release_guard
+    assert "if WaitForDataRootGuardStoppedAcknowledgement() then" in release_guard
+    assert "if ConfirmDataRootGuardStoppedAfterControlFailure() then" in release_guard
+    assert "if not WaitForDataRootGuardStoppedAcknowledgement()" not in release_guard
+
+    flow = _read("ticketbox-installer-flow.isph")
+    preflight_start = flow.index("if not RunPowerShellChecked(")
+    preflight_failure = flow[
+        preflight_start : flow.index("升级前备份或服务检查失败", preflight_start)
+    ]
+    assert "ReleaseDataRootMutationGuard();" in preflight_failure
 
 
 def test_installer_never_bundles_local_runtime_data() -> None:
@@ -585,8 +1011,10 @@ def test_uninstall_preflights_marker_and_paths_before_mutation() -> None:
     preflight = uninstall.index("$safeRoot = Assert-UninstallInputs")
     first_remove = uninstall.index("Remove-ServiceIfExists $BackendServiceName")
     assert preflight < first_remove
-    assert "ticketbox-data-root-v1" in safety
-    assert "拒绝把非空目录收编" in safety
+    assert '$script:TicketboxDataRootMarkerSchema = "ticketbox-data-root-v2"' in safety
+    assert '$script:TicketboxLegacyDataRootMarkerSchema = "ticketbox-data-root-v1"' in safety
+    assert "data_volume_identity" in safety
+    assert "拒绝把 markerless 非空目录收编为小票夹数据根" in safety
     assert "Assert-NoTicketboxReparsePoints" in safety
     assert "Assert-NoTicketboxAncestorReparsePoints" in safety
     assert "Get-TicketboxProtectedProfileRoots" in safety
@@ -602,14 +1030,63 @@ def test_uninstall_preflights_marker_and_paths_before_mutation() -> None:
             "Write-Ok \"数据目录已删除。\""
         )
     ]
+    root_revalidation = deletion_guard.index("Assert-TicketboxDataRootForDeletion $GuardedPath")
+    intent_revalidation = deletion_guard.index("Read-TicketboxDeleteDataIntent", root_revalidation)
+    runtime_revalidation = deletion_guard.index(
+        "Assert-TicketboxRuntimeProcessesStoppedForDataDeletion",
+        intent_revalidation,
+    )
+    assert root_revalidation < intent_revalidation < runtime_revalidation
+    assert "-DataRoot $revalidatedRoot" in deletion_guard
+    assert "if (-not $script:DeleteDataIntentValidated)" in deletion_guard
     assert "Assert-TicketboxRuntimeProcessesStoppedForDataDeletion" in deletion_guard
     assert "Assert-TicketboxBackendPortStoppedForDataDeletion" in deletion_guard
     assert "Assert-TicketboxPgScmProcessAgreement" in deletion_guard
     assert "TicketboxExactTreeDeleteNativeMethods" in safety
     assert "SetFileInformationByHandle" in safety
-    assert "FileShareRead," in safety
-    assert "FileShareRead | FileShareWrite" not in safety
+    delete_open = safety[
+        safety.index("private static SafeFileHandle OpenExact") : safety.index(
+            "private static FILE_ATTRIBUTE_TAG_INFO ReadAttributes"
+        )
+    ]
+    assert "FileShareRead," in delete_open
+    assert "FileShareRead | FileShareWrite" not in delete_open
+    no_follow_inspection = safety[
+        safety.index("public static int InspectEntry") : safety.index(
+            "private static void DeleteOpenedNode"
+        )
+    ]
+    assert "FileShareRead | FileShareWrite | FileShareDelete" in no_follow_inspection
     assert "Remove-Item -LiteralPath $safeRoot -Recurse" not in uninstall
+
+    retain_branch = uninstall[
+        uninstall.index("else {", uninstall.index("if ($DeleteData) {", first_remove)) : uninstall.index(
+            'Write-Host "=== 卸载脚本完成 ==="'
+        )
+    ]
+    projection_cleanup = uninstall.index(
+        "Remove-TicketboxInstallerRuntimeProjectionForUninstall", preflight
+    )
+    installer_state_staging = uninstall.index(
+        "Remove-TicketboxInstallerStateStagingAfterRuntimeProjection", projection_cleanup
+    )
+    pg_recovery = uninstall.index(
+        "Save-TicketboxUninstallPgRecoveryIfRequired", projection_cleanup
+    )
+    remove_backend = uninstall.index("Remove-ServiceIfExists $BackendServiceName", projection_cleanup)
+    retire_completed_receipt = uninstall.index(
+        "Remove-TicketboxCompletedLifecycleReceipt", remove_backend
+    )
+    assert (
+        projection_cleanup
+        < installer_state_staging
+        < pg_recovery
+        < remove_backend
+        < retire_completed_receipt
+    )
+    assert "Remove-TicketboxCompletedLifecycleReceipt" in retain_branch
+    assert "Remove-TicketboxPreservedInstallationIdentity" not in retain_branch
+    assert "Remove-TicketboxPgRecoveryToolset" not in retain_branch
 
 
 def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_missing() -> None:
@@ -619,7 +1096,6 @@ def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_m
             "function Assert-UninstallInputs"
         )
     ]
-
     assert "$DeleteData" in helper
     assert "$InstallationIdentityCleanupIncomplete" in uninstall
     identity_cleanup = uninstall[
@@ -650,7 +1126,10 @@ def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_m
     assert "($InstallationIdentityAlreadyRemoved -or $InstallationIdentityCleanupIncomplete) -and" in uninstall
     assert "[string]::IsNullOrWhiteSpace($DataRoot)" in uninstall
     assert "$DeleteData -and" in uninstall
-    assert "($ExplicitDataRootProvided -or $RegisteredDataRoot.Trim().Length -gt 0)" in uninstall
+    assert "$deleteDataRetryAuthority -ceq \"resolved\"" in uninstall
+    assert "Resolve-TicketboxDeleteDataRetryAuthority" in uninstall
+    assert "Read-TicketboxDeleteDataIntent `" in uninstall
+    assert "Set-TicketboxUninstallDataRoot ([string]$intent.data_root)" in uninstall
     port_helper = uninstall[
         uninstall.index("function Assert-TicketboxBackendPortStoppedForDataDeletion") : uninstall.index(
             "function Remove-TicketboxPgServiceIfExists"
@@ -667,12 +1146,32 @@ def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_m
     assert uninstall.index("$safeRoot = Assert-UninstallInputs") < uninstall.index(
         "Remove-ServiceIfExists $BackendServiceName"
     )
-
-    receipt_validation = uninstall.index("Get-TicketboxCompletedLifecycleReceiptForDataDeletion")
     first_service_cleanup = uninstall.index("Remove-ServiceIfExists $BackendServiceName")
-    receipt_removal = uninstall.rindex("Remove-TicketboxCompletedLifecycleReceipt")
-    recovery_cleanup = uninstall.index("Remove-TicketboxPgRecoveryToolset -ExpectedMajor $preservedPgMajor")
-    assert receipt_validation < first_service_cleanup < recovery_cleanup < receipt_removal
+    state_preflight = uninstall.index("Assert-TicketboxInstallerStateForDataDeletion", uninstall.index("$safeRoot"))
+    data_deletion = uninstall.rindex("Remove-TicketboxDataRootForUninstall $safeRoot")
+    state_cleanup = uninstall.rindex("Remove-TicketboxInstallerStateAfterDataDeletion")
+    identity_removal = uninstall.rindex("Remove-TicketboxPreservedInstallationIdentity")
+    recovery_cleanup = uninstall.index("-ExpectedMajor $preservedPgMajor", data_deletion)
+    assert (
+        state_preflight
+        < first_service_cleanup
+        < data_deletion
+        < recovery_cleanup
+        < identity_removal
+        < state_cleanup
+    )
+
+    receipt_validation = uninstall.index("Get-TicketboxCompletedLifecycleReceiptForUninstall")
+    receipt_removal = uninstall.index(
+        "Remove-TicketboxCompletedLifecycleReceipt", first_service_cleanup
+    )
+    assert receipt_validation < first_service_cleanup < receipt_removal < recovery_cleanup < identity_removal
+    retry_delete = retry_cleanup.index("Remove-TicketboxDataRootForUninstall $DataRoot")
+    retry_tools = retry_cleanup.index("-ExpectedMajor 0", retry_delete)
+    retry_identity = retry_cleanup.index("Remove-TicketboxPreservedInstallationIdentity")
+    retry_state = retry_cleanup.index("Remove-TicketboxInstallerStateAfterDataDeletion")
+    assert retry_delete < retry_tools < retry_identity < retry_state
+    assert uninstall.count("-DeleteDataIntentValidated:$script:DeleteDataIntentValidated") == 2
     assert "Read-TicketboxCompletedLifecycleReceipt" in uninstall
     assert '"InstallDir"' in identity_cleanup
     for binding in (
@@ -682,6 +1181,427 @@ def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_m
         "-ExpectedBackendServiceName $RegisteredBackendServiceName",
     ):
         assert binding in uninstall
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows delete-data receipt contract")
+def test_delete_data_requires_completed_receipt_or_bound_retry_intent(tmp_path: Path) -> None:
+    uninstall = _read("uninstall_bundled_services.ps1")
+    lifecycle_receipt = _read("windows_lifecycle_receipt.ps1")
+    installation_safety = _read("windows_installation_safety.ps1")
+    exact_entry_init = installation_safety[
+        installation_safety.index("function Initialize-TicketboxExactTreeDeleteNativeMethods") : installation_safety.index(
+            "function Remove-TicketboxTreeExact"
+        )
+    ]
+    no_follow_entry_kind = installation_safety[
+        installation_safety.index("function Get-TicketboxPathEntryKindNoFollow") : installation_safety.index(
+            "function Assert-NoTicketboxAncestorReparsePoints"
+        )
+    ]
+    helper = uninstall[
+        uninstall.index("function Get-TicketboxCompletedLifecycleReceiptForUninstall") : uninstall.index(
+            "function Remove-TicketboxPreservedInstallationIdentity"
+        )
+    ]
+    runtime_projection_helper = uninstall[
+        uninstall.index("function Remove-TicketboxInstallerRuntimeProjectionForUninstall") : uninstall.index(
+            "function Assert-UninstallInputs"
+        )
+    ].replace(
+        "function Remove-TicketboxInstallerRuntimeProjectionForUninstall",
+        "function Invoke-TicketboxProductionRuntimeProjectionRemoval",
+        1,
+    )
+    remove_identity_helper = uninstall[
+        uninstall.index("function Remove-TicketboxPreservedInstallationIdentity") : uninstall.index(
+            "function Remove-TicketboxDataRootForUninstall"
+        )
+    ].replace(
+        "function Remove-TicketboxPreservedInstallationIdentity",
+        "function Invoke-TicketboxProductionIdentityRemoval",
+        1,
+    )
+    set_data_root_helper = uninstall[
+        uninstall.index("function Set-TicketboxUninstallDataRoot") : uninstall.index(
+            "Set-TicketboxUninstallDataRoot $DataRoot"
+        )
+    ]
+    retry_authority_helper = uninstall[
+        uninstall.index("function Get-TicketboxInstallerStateDataDeletionSnapshot") : uninstall.index(
+            'Write-Host "=== \u5c0f\u7968\u5939\u670d\u52a1\u5378\u8f7d ==="'
+        )
+    ]
+    retry_entrypoint = uninstall[
+        uninstall.index("$deleteDataRetryAuthority = Resolve-TicketboxDeleteDataRetryAuthority") : uninstall.index(
+            "$safeRoot = Assert-UninstallInputs"
+        )
+    ]
+    read_intent_helper = lifecycle_receipt[
+        lifecycle_receipt.index("function Read-TicketboxDeleteDataIntent") : lifecycle_receipt.index(
+            "function Write-TicketboxDeleteDataIntent"
+        )
+    ]
+    remove_completed_receipt_helper = lifecycle_receipt[
+        lifecycle_receipt.index("function Remove-TicketboxCompletedLifecycleReceipt") : lifecycle_receipt.index(
+            "function Read-TicketboxInstallerRecoveryMarker"
+        )
+    ]
+    runtime_shape_helper = lifecycle_receipt[
+        lifecycle_receipt.index("function Get-TicketboxInstallerRuntimeStateShape") : lifecycle_receipt.index(
+            "function Assert-TicketboxInstallerRuntimeRecoveryGuardPath"
+        )
+    ]
+    receipt_path = tmp_path / "installer-lifecycle-receipt.json"
+    installer_state = tmp_path / "installer-state"
+    intent_path = installer_state / "delete-data-in-progress.json"
+    resolved_data_root = tmp_path / "resolved-data"
+    runtime_state_path = tmp_path / "runtime-state-projection"
+    registry_path = f"HKCU:\\Software\\Ticketbox\\InstallerTests\\{tmp_path.name}"
+    harness = tmp_path / "delete-data-receipt-authority.ps1"
+    harness.write_text(
+        f"""
+$ErrorActionPreference = 'Stop'
+$DeleteData = $true
+$LifecycleReceiptPath = '{str(receipt_path).replace("'", "''")}'
+$DeleteDataIntentPath = '{str(intent_path).replace("'", "''")}'
+$InstallerState = '{str(installer_state).replace("'", "''")}'
+$OwnerBootstrapPath = Join-Path $InstallerState 'owner-bootstrap.txt'
+$OwnerHandoffPendingPath = Join-Path $InstallerState 'owner-handoff-pending'
+$RecoveryRequiredPath = Join-Path $InstallerState 'installer-recovery-required.json'
+$InstallDir = 'C:\\Program Files\\Ticketbox'
+$RegisteredInstallDir = $InstallDir
+$DataRoot = 'C:\\ProgramData\\Ticketbox'
+$ExplicitDataRootProvided = $false
+$RegisteredDataRoot = ''
+$InstallationIdentityAlreadyRemoved = $true
+$InstallationIdentityCleanupIncomplete = $false
+$ReleaseConfig = [pscustomobject]@{{}}
+$RegisteredPgPortNumber = 5432
+$BackendPort = 8000
+$RegisteredPgServiceName = 'TicketboxPg'
+$RegisteredBackendServiceName = 'TicketboxBackend'
+$script:DeleteDataIntentValidated = $false
+$script:TicketboxDeleteDataIntentSchema = 'ticketbox-delete-data-intent-v1'
+$script:TicketboxLifecycleReceiptAclAccounts = @('SYSTEM', 'BUILTIN\\Administrators')
+$script:TicketboxLifecycleReceiptOwnerAccount = 'SYSTEM'
+$runtimeStateDirectory = '{str(runtime_state_path).replace("'", "''")}'
+$regPath = '{registry_path.replace("'", "''")}'
+$PreservedIdentityNames = @('InstallDir', 'DataRoot')
+if (Test-Path -LiteralPath $regPath) {{ Remove-Item -LiteralPath $regPath -Recurse -Force }}
+New-Item -Path $regPath -Force | Out-Null
+function Test-TicketboxPathEquals {{
+    param($Left, $Right)
+    return [System.IO.Path]::GetFullPath($Left) -ceq [System.IO.Path]::GetFullPath($Right)
+}}
+function ConvertTo-TicketboxCanonicalPath {{
+    param([string]$Path)
+    return [System.IO.Path]::GetFullPath($Path)
+}}
+function Get-TicketboxInstallerRuntimeStateDirectory {{ return $runtimeStateDirectory }}
+function Get-TicketboxInstallerRuntimeRecoveryGuardPath {{ return Join-Path $runtimeStateDirectory 'installer-runtime-recovery-pending' }}
+function Test-TicketboxPathWithin {{ param($Path, $Parent); return $false }}
+function Assert-NoTicketboxAncestorReparsePoints {{ param($Path) }}
+{exact_entry_init}
+{no_follow_entry_kind}
+function Assert-TicketboxProtectedDirectoryAcl {{ param($Path, $FullControlAccounts, $OwnerAccount) }}
+function Remove-TicketboxProtectedStagingArtifacts {{ param($Path, $FullControlAccounts, $OwnerAccount) }}
+function Read-TicketboxProtectedUtf8Artifact {{
+    param($Path, $FullControlAccounts, $OwnerAccount, $MaximumBytes)
+    return [pscustomobject]@{{ Text = [System.IO.File]::ReadAllText($Path) }}
+}}
+function Read-TicketboxCompletedLifecycleReceipt {{
+    param($Path, $InstallDir, $DataRoot, $TargetReleaseConfig, $ExpectedPgPort, $ExpectedBackendPort, $ExpectedPgServiceName, $ExpectedBackendServiceName)
+    return [pscustomobject]@{{ install_completed = $true }}
+}}
+function Assert-TicketboxCompletedLifecycleReceipt {{ param($Receipt) }}
+function Assert-TicketboxLifecycleReceiptPath {{ param($Path); return [System.IO.Path]::GetFullPath($Path) }}
+function Assert-TicketboxProtectedLifecycleReceipt {{ param($Path) }}
+{remove_completed_receipt_helper}
+{runtime_shape_helper}
+{read_intent_helper}
+{set_data_root_helper}
+{helper}
+{runtime_projection_helper}
+{retry_authority_helper}
+{remove_identity_helper}
+function Write-ValidDeleteDataIntent([string]$IntentDataRoot) {{
+    New-Item -ItemType Directory -Force -Path $InstallerState | Out-Null
+    [ordered]@{{
+        schema = 'ticketbox-delete-data-intent-v1'
+        install_dir = $InstallDir
+        data_root = $IntentDataRoot
+        completed_receipt_sha256 = ('A' * 64)
+        created_at_utc = '2026-07-13T00:00:00.0000000Z'
+    }} | ConvertTo-Json | Set-Content -LiteralPath $DeleteDataIntentPath -Encoding UTF8
+}}
+$missingRejected = $false
+try {{ Get-TicketboxCompletedLifecycleReceiptForUninstall | Out-Null }} catch {{ $missingRejected = $true }}
+if (-not $missingRejected) {{ throw 'missing receipt without retry intent was accepted' }}
+New-Item -ItemType Directory -Path $LifecycleReceiptPath | Out-Null
+$directoryRejected = $false
+try {{ Get-TicketboxCompletedLifecycleReceiptForUninstall | Out-Null }} catch {{ $directoryRejected = $true }}
+if (-not $directoryRejected) {{ throw 'directory-shaped receipt was treated as absent' }}
+Remove-Item -LiteralPath $LifecycleReceiptPath -Force
+[System.IO.File]::WriteAllText($LifecycleReceiptPath, 'completed')
+$completed = Get-TicketboxCompletedLifecycleReceiptForUninstall
+if (-not [bool]$completed.install_completed -or $script:DeleteDataIntentValidated) {{
+    throw 'regular completed receipt did not remain primary authority'
+}}
+Remove-Item -LiteralPath $LifecycleReceiptPath -Force
+Write-ValidDeleteDataIntent $DataRoot
+$resumed = Get-TicketboxCompletedLifecycleReceiptForUninstall
+if ($null -ne $resumed -or -not $script:DeleteDataIntentValidated) {{
+    throw 'receipt-retired retry did not require the bound delete-data intent'
+}}
+Remove-Item -LiteralPath $InstallerState -Recurse -Force
+
+$script:DeleteDataIntentValidated = $false
+$resolvedDataRoot = '{str(resolved_data_root).replace("'", "''")}'
+Write-ValidDeleteDataIntent $resolvedDataRoot
+$resolved = Resolve-TicketboxDeleteDataRetryAuthority
+if ($resolved -cne 'resolved' -or -not $script:DeleteDataIntentValidated) {{
+    throw 'identity-removed retry did not resolve its durable intent'
+}}
+if (-not (Test-TicketboxPathEquals $DataRoot $resolvedDataRoot) -or
+    -not (Test-TicketboxPathEquals $PgData (Join-Path $resolvedDataRoot 'pgdata')) -or
+    -not (Test-TicketboxPathEquals $AppData (Join-Path $resolvedDataRoot 'app'))) {{
+    throw 'resolved intent did not rebind the complete uninstall data-root projection'
+}}
+Remove-Item -LiteralPath $InstallerState -Recurse -Force
+
+New-Item -ItemType Directory -Path $InstallerState | Out-Null
+$retired = Resolve-TicketboxDeleteDataRetryAuthority
+if ($retired -cne 'retired' -or -not (Test-Path -LiteralPath $InstallerState -PathType Container)) {{
+    throw 'read-only retry authority resolution mutated empty retired installer-state'
+}}
+Remove-TicketboxRetiredInstallerStateAfterRuntimeProjection
+if (Test-Path -LiteralPath $InstallerState) {{ throw 'validated retired installer-state was not removed' }}
+
+$InstallationIdentityAlreadyRemoved = $false
+$InstallationIdentityCleanupIncomplete = $true
+$script:DeleteDataIntentValidated = $false
+Write-ValidDeleteDataIntent $resolvedDataRoot
+$partial = Resolve-TicketboxDeleteDataRetryAuthority
+if ($partial -cne 'resolved' -or -not $script:DeleteDataIntentValidated) {{
+    throw 'partial identity removal did not use the same durable retry authority'
+}}
+Remove-Item -LiteralPath $InstallerState -Recurse -Force
+
+$InstallationIdentityAlreadyRemoved = $true
+$InstallationIdentityCleanupIncomplete = $false
+New-Item -ItemType Directory -Path $InstallerState | Out-Null
+[System.IO.File]::WriteAllText($OwnerBootstrapPath, 'orphaned state')
+$missingIntentRejected = $false
+try {{ Resolve-TicketboxDeleteDataRetryAuthority | Out-Null }} catch {{ $missingIntentRejected = $true }}
+if (-not $missingIntentRejected -or -not (Test-Path -LiteralPath $OwnerBootstrapPath -PathType Leaf)) {{
+    throw 'non-empty installer-state without delete intent was accepted or mutated'
+}}
+Remove-Item -LiteralPath $InstallerState -Recurse -Force
+
+New-Item -ItemType Directory -Path $InstallerState | Out-Null
+[System.IO.File]::WriteAllText($DeleteDataIntentPath, '{{ malformed json')
+$script:DeleteDataIntentValidated = $false
+$malformedIntentRejected = $false
+try {{ Resolve-TicketboxDeleteDataRetryAuthority | Out-Null }} catch {{ $malformedIntentRejected = $true }}
+if (-not $malformedIntentRejected -or $script:DeleteDataIntentValidated -or
+    -not (Test-Path -LiteralPath $DeleteDataIntentPath -PathType Leaf)) {{
+    throw 'malformed delete intent was accepted, marked valid, or destroyed'
+}}
+Remove-Item -LiteralPath $InstallerState -Recurse -Force
+
+$script:DataRoot = 'C:\\ProgramData\\Ticketbox-placeholder'
+$DataRoot = $script:DataRoot
+$PgData = Join-Path $DataRoot 'pgdata'
+$AppData = Join-Path $DataRoot 'app'
+$script:DeleteDataIntentValidated = $false
+Write-ValidDeleteDataIntent $resolvedDataRoot
+$script:RetryEntrypointCalls = [System.Collections.Generic.List[string]]::new()
+$ServiceWaitArguments = @{{}}
+$BackendServiceName = 'TicketboxBackend'
+$PgServiceName = 'TicketboxPg'
+$BackendPort = 8000
+$BackendExe = 'C:\\Program Files\\Ticketbox\\backend.exe'
+$ShawlExe = 'C:\\Program Files\\Ticketbox\\shawl.exe'
+$PgBin = 'C:\\Program Files\\Ticketbox\\pg\\bin'
+$PgCtl = Join-Path $PgBin 'pg_ctl.exe'
+function Set-TicketboxUninstallRuntimeServiceContract {{
+    if (-not (Test-TicketboxPathEquals $DataRoot $resolvedDataRoot) -or
+        ($RegisteredDataRoot.Trim().Length -eq 0 -and -not $script:DeleteDataIntentValidated)) {{
+        throw 'runtime contract was configured before durable retry authority resolution'
+    }}
+    $script:RetryEntrypointCalls.Add('runtime-contract')
+}}
+function Service-Exists {{ return $false }}
+function Wait-TicketboxBackendRuntimeStopped {{
+    param($Name, $BackendPort, $ExpectedRuntimeExecutables)
+    $script:RetryEntrypointCalls.Add("wait:$Name")
+}}
+function Remove-TicketboxUninstallRuntimeDataBindingIfPresent {{
+    $script:RetryEntrypointCalls.Add('runtime-binding')
+}}
+function Remove-TicketboxInstallerRuntimeProjectionForUninstall {{
+    $script:RetryEntrypointCalls.Add('runtime-projection')
+    Invoke-TicketboxProductionRuntimeProjectionRemoval
+}}
+function Remove-TicketboxDataRootForUninstall {{
+    param($Path)
+    if (-not (Test-TicketboxPathEquals $Path $resolvedDataRoot)) {{
+        throw 'retry entrypoint used the placeholder DataRoot'
+    }}
+    $script:RetryEntrypointCalls.Add('data-root')
+}}
+function Remove-TicketboxPgRecoveryToolset {{
+    param($ExpectedMajor, [switch]$DeleteDataIntentValidated)
+    if (-not $DeleteDataIntentValidated) {{ throw 'PG cleanup lost validated delete intent' }}
+    $script:RetryEntrypointCalls.Add('pg-recovery')
+}}
+function Remove-TicketboxPreservedInstallationIdentity {{
+    $script:RetryEntrypointCalls.Add('identity')
+    Invoke-TicketboxProductionIdentityRemoval
+}}
+function Remove-TicketboxInstallerStateAfterDataDeletion {{
+    $script:RetryEntrypointCalls.Add('installer-state')
+}}
+function Invoke-ProductionDeleteDataRetryEntrypoint {{
+{retry_entrypoint}
+}}
+Invoke-ProductionDeleteDataRetryEntrypoint
+$expectedCalls = @(
+    'runtime-contract',
+    'wait:TicketboxBackend',
+    'wait:TicketboxPg',
+    'runtime-projection',
+    'runtime-binding',
+    'data-root',
+    'pg-recovery',
+    'identity',
+    'installer-state'
+)
+if ([string]::Join('|', $script:RetryEntrypointCalls) -cne [string]::Join('|', $expectedCalls)) {{
+    throw "production retry entrypoint order mismatch: $($script:RetryEntrypointCalls -join '|')"
+}}
+Remove-Item -LiteralPath $InstallerState -Recurse -Force
+$script:RetryEntrypointCalls.Clear()
+New-Item -ItemType Directory -Path $InstallerState | Out-Null
+[System.IO.File]::WriteAllText($runtimeStateDirectory, 'malformed runtime projection')
+$projectionRejected = $false
+try {{ Invoke-ProductionDeleteDataRetryEntrypoint }} catch {{
+    $projectionRejected = $true
+    $projectionError = $_.Exception.Message
+}}
+if (-not $projectionRejected -or -not (Test-Path -LiteralPath $InstallerState -PathType Container)) {{
+    throw 'malformed runtime projection did not fail before preserving retired installer-state'
+}}
+if (-not $projectionError.StartsWith('machine runtime-state 路径不是可信普通目录')) {{
+    throw "retired-state rejection came from the wrong boundary: $projectionError"
+}}
+if ($script:RetryEntrypointCalls -contains 'runtime-binding' -or
+    $script:RetryEntrypointCalls -contains 'identity' -or
+    $script:RetryEntrypointCalls -contains 'installer-state') {{
+    throw 'runtime projection failure allowed downstream retry mutation'
+}}
+Remove-Item -LiteralPath $runtimeStateDirectory -Force
+$script:RetryEntrypointCalls.Clear()
+Invoke-ProductionDeleteDataRetryEntrypoint
+if (Test-Path -LiteralPath $InstallerState) {{
+    throw 'retired installer-state was not removed after runtime projection validation'
+}}
+
+Write-ValidDeleteDataIntent $resolvedDataRoot
+$intentBytesBefore = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($DeleteDataIntentPath))
+[System.IO.File]::WriteAllText($runtimeStateDirectory, 'malformed runtime projection')
+$script:RetryEntrypointCalls.Clear()
+$resolvedIntentRejected = $false
+try {{ Invoke-ProductionDeleteDataRetryEntrypoint }} catch {{
+    $resolvedIntentRejected = $true
+    $resolvedIntentError = $_.Exception.Message
+}}
+$intentBytesAfter = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($DeleteDataIntentPath))
+if (-not $resolvedIntentRejected -or $intentBytesAfter -cne $intentBytesBefore) {{
+    throw 'runtime projection failure mutated the durable resolved delete intent'
+}}
+if (-not $resolvedIntentError.StartsWith('machine runtime-state 路径不是可信普通目录')) {{
+    throw "resolved-intent rejection came from the wrong boundary: $resolvedIntentError"
+}}
+if ($script:RetryEntrypointCalls -contains 'runtime-binding' -or
+    $script:RetryEntrypointCalls -contains 'identity' -or
+    $script:RetryEntrypointCalls -contains 'installer-state') {{
+    throw 'resolved-intent projection failure allowed downstream authority mutation'
+}}
+Remove-Item -LiteralPath $runtimeStateDirectory -Force
+Remove-Item -LiteralPath $InstallerState -Recurse -Force
+
+$InstallationIdentityAlreadyRemoved = $false
+$InstallationIdentityCleanupIncomplete = $true
+$RegisteredDataRoot = $resolvedDataRoot
+Set-TicketboxUninstallDataRoot $resolvedDataRoot
+$script:DeleteDataIntentValidated = $false
+[System.IO.File]::WriteAllText($LifecycleReceiptPath, 'completed-receipt-sentinel')
+New-ItemProperty -LiteralPath $regPath -Name InstallDir -Value 'partial-identity-sentinel' -PropertyType String -Force | Out-Null
+$receiptBytesBefore = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($LifecycleReceiptPath))
+$identityBefore = [string](Get-ItemPropertyValue -LiteralPath $regPath -Name InstallDir)
+$script:RetryEntrypointCalls.Clear()
+[System.IO.File]::WriteAllText($runtimeStateDirectory, 'malformed runtime projection')
+$partialIdentityRejected = $false
+try {{ Invoke-ProductionDeleteDataRetryEntrypoint }} catch {{
+    $partialIdentityRejected = $true
+    $partialIdentityError = $_.Exception.Message
+}}
+$receiptBytesAfter = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($LifecycleReceiptPath))
+$identityAfter = [string](Get-ItemPropertyValue -LiteralPath $regPath -Name InstallDir)
+if (-not $partialIdentityRejected -or $receiptBytesAfter -cne $receiptBytesBefore -or
+    $identityAfter -cne $identityBefore) {{
+    throw 'runtime projection failure mutated completed receipt or partial registry identity'
+}}
+if (-not $partialIdentityError.StartsWith('machine runtime-state 路径不是可信普通目录')) {{
+    throw "partial-identity rejection came from the wrong boundary: $partialIdentityError"
+}}
+if ($script:RetryEntrypointCalls -contains 'runtime-binding' -or
+    $script:RetryEntrypointCalls -contains 'identity' -or
+    $script:RetryEntrypointCalls -contains 'installer-state') {{
+    throw 'partial-identity projection failure allowed downstream authority mutation'
+}}
+Remove-Item -LiteralPath $runtimeStateDirectory -Force
+Remove-Item -LiteralPath $LifecycleReceiptPath -Force
+$InstallationIdentityAlreadyRemoved = $true
+$InstallationIdentityCleanupIncomplete = $false
+$RegisteredDataRoot = ''
+$script:DeleteDataIntentValidated = $false
+Write-ValidDeleteDataIntent $resolvedDataRoot
+$danglingTarget = Join-Path (Split-Path -Parent $LifecycleReceiptPath) 'missing-receipt-target'
+New-Item -ItemType Directory -Path $danglingTarget | Out-Null
+& cmd.exe /d /c mklink /J $LifecycleReceiptPath $danglingTarget | Out-Null
+if ($LASTEXITCODE -ne 0) {{ throw 'failed to create dangling lifecycle receipt junction' }}
+[System.IO.Directory]::Delete($danglingTarget)
+$danglingReceiptRejected = $false
+try {{ Resolve-TicketboxDeleteDataRetryAuthority | Out-Null }} catch {{ $danglingReceiptRejected = $true }}
+if (-not $danglingReceiptRejected -or -not (Test-Path -LiteralPath $DeleteDataIntentPath -PathType Leaf)) {{
+    throw 'dangling lifecycle receipt bypassed no-follow classification beside a valid intent'
+}}
+$DeleteData = $false
+$retainReceiptRejected = $false
+try {{ Get-TicketboxCompletedLifecycleReceiptForUninstall | Out-Null }} catch {{ $retainReceiptRejected = $true }}
+if (-not $retainReceiptRejected) {{ throw 'retain-data uninstall treated dangling receipt as absent' }}
+Remove-Item -LiteralPath $regPath -Recurse -Force
+""",
+        encoding="utf-8-sig",
+    )
+    for engine in powershell_contract_engines():
+        if receipt_path.is_dir():
+            receipt_path.rmdir()
+        else:
+            receipt_path.unlink(missing_ok=True)
+        shutil.rmtree(installer_state, ignore_errors=True)
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
 def test_inno_acl_and_post_child_failure_compensation_mutations() -> None:
@@ -740,15 +1660,40 @@ def test_inno_acl_and_post_child_failure_compensation_mutations() -> None:
     assert "DeleteFile(ExpandConstant('{commoncf64}\\Ticketbox\\installer-lifecycle-receipt.json'))" not in deinitialize
 
 
-def test_installer_rejects_wizard_silent_before_mutation_and_holds_data_root_guard() -> None:
+def test_installer_uses_protected_lifecycle_lock_as_sole_serial_authority() -> None:
+    setup = _read("ticketbox-installer.iss")
     windows = _read("ticketbox-installer-windows.isph")
     flow = _read("ticketbox-installer-flow.isph")
+
+    assert "TicketboxLifecycleProcessMutex" not in setup
+    assert "AppMutex=" not in setup
+    assert "LifecycleProcessMutex" not in windows
+    assert "CreateMutex(" not in windows
+    assert "ReleaseMutex(" not in windows
 
     initialize = windows[
         windows.index("function InitializeSetup") : windows.index("function InitializeUninstall")
     ]
-    assert initialize.index("if WizardSilent then") < initialize.index("AcquireLifecycleLock()")
+    silent_rejection = initialize.index("if WizardSilent then")
+    holder_staging = initialize.index("PrepareSetupLifecycleLockHolderScripts()")
+    authority_lock = initialize.index("AcquireLifecycleLock()")
+    assert silent_rejection < holder_staging < authority_lock
     assert "无人值守安装合同" in initialize
+    initialize_uninstall = windows[
+        windows.index("function InitializeUninstall") : windows.index(
+            "procedure DeinitializeUninstall"
+        )
+    ]
+    assert initialize_uninstall.index("PrepareUninstallLifecycleLockHolderScript()") < (
+        initialize_uninstall.index("AcquireLifecycleLock()")
+    )
+    deinitialize_uninstall = windows[
+        windows.index("procedure DeinitializeUninstall") : windows.index(
+            "function IsSupportedPowerShell7Host"
+        )
+    ]
+    assert deinitialize_uninstall.count("ReleaseLifecycleLock()") == 1
+    assert "LifecycleProcessMutex" not in deinitialize_uninstall
 
     prepare = flow[flow.index("function PrepareToInstall") : flow.index("procedure CurStepChanged")]
     guard_start = prepare.index("StartDataRootMutationGuard")
@@ -768,7 +1713,8 @@ def test_installer_rejects_wizard_silent_before_mutation_and_holds_data_root_gua
     assert deinitialize.index("ReleaseDataRootMutationGuard()") < deinitialize.index(
         "ReleaseLifecycleLock()"
     )
-    holder = _read("prepare_bundled_upgrade.ps1")
+    assert "LifecycleProcessMutex" not in deinitialize
+    holder = _read("hold_data_root_mutation_guard.ps1")
     assert "Wait-TicketboxDirectoryMutationGuardLease" in holder
     safety = _read("windows_installation_safety.ps1")
     guard = safety[
@@ -779,6 +1725,30 @@ def test_installer_rejects_wizard_silent_before_mutation_and_holds_data_root_gua
     assert "0x02200000" in guard
     assert "0x3" in guard
     assert "FileShareDelete" not in guard
+
+
+def test_powershell7_selector_requires_core_v7_x64_and_is_deterministic() -> None:
+    windows = _read("ticketbox-installer-windows.isph")
+    probe = windows[
+        windows.index("function IsSupportedPowerShell7Host") : windows.index(
+            "function IsProtectedProgramFilesPath"
+        )
+    ]
+    assert "$PSVersionTable.PSEdition -ceq ''Core''" in probe
+    assert "$PSVersionTable.PSVersion.Major -ge 7" in probe
+    assert "[Environment]::Is64BitProcess" in probe
+    assert "exit 0" in probe and "exit 1" in probe
+
+    selector = windows[
+        windows.index("function FindMachinePowerShell7") : windows.index(
+            "function PowerShellExecutable"
+        )
+    ]
+    assert "HasValidMicrosoftSignature(Candidate)" in selector
+    assert "IsSupportedPowerShell7Host(Candidate)" in selector
+    assert "CompareText(ExpandFileName(Candidate), ExpandFileName(Result)) < 0" in selector
+    selected_branch = selector[selector.index("Result := Candidate;") :]
+    assert "exit;" not in selected_branch
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Inno argv contract")
@@ -890,13 +1860,1038 @@ end;
             kernel32.LocalFree(argv)
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows lifecycle lock holder contract")
+def test_external_lifecycle_lock_holder_keeps_authority_until_release(
+    tmp_path: Path,
+) -> None:
+    for engine_index, engine in enumerate(powershell_contract_engines()):
+        for case in ("valid", "forged", "active-operation", "owner-identity-mismatch"):
+            lock_root = tmp_path / f"machine-lifecycle-{engine_index}-{case}"
+            validation_root = tmp_path / f"lifecycle-bootstrap-{engine_index}-{case}"
+            root_validated_path = validation_root / "root-validated.ready"
+            ready_path = lock_root / "lifecycle.ready"
+            release_path = lock_root / "lifecycle.release"
+            owner_path = lock_root / "installer-lifecycle.owner"
+            owner_started_high, owner_started_low = _windows_process_creation_filetime_parts(
+                os.getpid()
+            )
+            owner_high_argument = (
+                (owner_started_high + 1) & 0xFFFFFFFF
+                if case == "owner-identity-mismatch"
+                else owner_started_high
+            )
+            harness = tmp_path / f"hold-lifecycle-lock-{engine_index}-{case}.ps1"
+            harness.write_text(
+                f"""
+$ErrorActionPreference = 'Stop'
+. '{str(PACKAGING / 'windows_installation_safety.ps1').replace("'", "''")}'
+. '{str(PACKAGING / 'windows_lifecycle_lock.ps1').replace("'", "''")}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{str(validation_root).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+$expectedOwnerIdentity = New-TicketboxProcessIdentityFromFileTimeParts `
+    -ProcessId {os.getpid()} `
+    -StartedFileTimeHigh {owner_high_argument} `
+    -StartedFileTimeLow {owner_started_low}
+$ownerHandleLease = Open-TicketboxVerifiedProcessIdentityHandle `
+    -ProcessId {os.getpid()} `
+    -ExpectedIdentity $expectedOwnerIdentity
+try {{
+    Wait-TicketboxExternalInstallerLifecycleLock `
+        -LockDirectory '{str(lock_root).replace("'", "''")}' `
+        -RootValidatedPath '{str(root_validated_path).replace("'", "''")}' `
+        -ReadyPath '{str(ready_path).replace("'", "''")}' `
+        -ReleasePath '{str(release_path).replace("'", "''")}' `
+        -OwnerProcessId {os.getpid()} `
+        -OwnerStartedFileTimeHigh {owner_high_argument} `
+        -OwnerStartedFileTimeLow {owner_started_low} `
+        -OwnerProcessHandleLease $ownerHandleLease `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
+finally {{
+    try {{
+        if (Test-Path -LiteralPath '{str(root_validated_path).replace("'", "''")}' -PathType Leaf) {{
+            Remove-TicketboxProtectedUtf8Artifact `
+                -Path '{str(root_validated_path).replace("'", "''")}' `
+                -FullControlAccounts @($currentAccount) `
+                -OwnerAccount $currentAccount
+        }}
+    }}
+    finally {{
+        Close-TicketboxProcessIdentityHandle $ownerHandleLease
+    }}
+}}
+""",
+                encoding="utf-8-sig",
+            )
+            process = subprocess.Popen(
+                [
+                    engine,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    harness,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if case == "owner-identity-mismatch":
+                stdout, stderr = process.communicate(timeout=15)
+                assert process.returncode != 0
+                assert "创建时间" in stderr
+                assert not owner_path.exists()
+                assert not ready_path.exists()
+                continue
+            deadline = time.monotonic() + 20
+            while (
+                not root_validated_path.is_file()
+                and process.poll() is None
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.05)
+            if not root_validated_path.is_file():
+                stdout, stderr = process.communicate(timeout=5)
+                pytest.fail(f"{engine} holder never validated its root:\n{stdout}\n{stderr}")
+            assert root_validated_path.read_text(encoding="utf-8") == (
+                f"STATE=root_validated\nOWNER_PID={os.getpid()}\n"
+            )
+            while (
+                not ready_path.is_file()
+                and process.poll() is None
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.05)
+            if not ready_path.is_file():
+                stdout, stderr = process.communicate(timeout=5)
+                pytest.fail(f"{engine} holder never became ready:\n{stdout}\n{stderr}")
+            assert process.poll() is None
+            ready_text = ready_path.read_text(encoding="utf-8")
+            match = re.fullmatch(
+                rf"STATE=holding\nOWNER_PID={os.getpid()}\nHOLDER_PID=(\d+)\n"
+                rf"HOLDER_STARTED_FILETIME_HIGH=(\d+)\n"
+                rf"HOLDER_STARTED_FILETIME_LOW=(\d+)\n"
+                rf"INSTALLER_STATE=(.+)\nNONCE=([0-9a-f]{{64}})\n",
+                ready_text,
+            )
+            assert match is not None, ready_text
+            assert int(match.group(1)) == process.pid
+            assert (int(match.group(2)), int(match.group(3))) == (
+                _windows_process_creation_filetime_parts(process.pid)
+            )
+            assert Path(match.group(4)) == lock_root / "installer-state"
+            assert owner_path.read_text(encoding="utf-8") == (
+                "SCHEMA=ticketbox-lifecycle-owner-v2\n"
+                f"OWNER_PID={os.getpid()}\n"
+                f"OWNER_STARTED_FILETIME_HIGH={owner_started_high}\n"
+                f"OWNER_STARTED_FILETIME_LOW={owner_started_low}\n"
+            )
+            nonce = match.group(5)
+            if case == "forged":
+                nonce = "0" * 64 if nonce != "0" * 64 else "1" * 64
+            activity_process = None
+            activity_release = None
+            if case == "active-operation":
+                activity_process, activity_release = _start_exclusive_file_lock(
+                    engine,
+                    tmp_path,
+                    f"lifecycle-activity-{engine_index}",
+                    lock_root / "installer-operation.lock",
+                )
+            writer = tmp_path / f"write-release-{engine_index}-{case}.ps1"
+            writer.write_text(
+                f"""
+$ErrorActionPreference = 'Stop'
+. '{str(PACKAGING / 'windows_installation_safety.ps1').replace("'", "''")}'
+. '{str(PACKAGING / 'windows_lifecycle_lock.ps1').replace("'", "''")}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$releaseText =
+    "STATE=release$([Environment]::NewLine)" +
+    "OWNER_PID={os.getpid()}$([Environment]::NewLine)" +
+    "NONCE={nonce}$([Environment]::NewLine)"
+Write-TicketboxLifecycleCoordinationArtifact `
+    -Path '{str(release_path).replace("'", "''")}' `
+    -Text $releaseText `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+""",
+                encoding="utf-8-sig",
+            )
+            writer_result = subprocess.run(
+                [
+                    engine,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    writer,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+            )
+            assert writer_result.returncode == 0, writer_result.stderr
+            if activity_process is not None:
+                time.sleep(0.3)
+                assert process.poll() is None
+                assert ready_path.is_file()
+                assert activity_release is not None
+                activity_release.write_text("release", encoding="utf-8")
+                activity_stdout, activity_stderr = activity_process.communicate(timeout=10)
+                assert activity_process.returncode == 0, (
+                    f"{engine}:\n{activity_stdout}\n{activity_stderr}"
+                )
+            stdout, stderr = process.communicate(timeout=15)
+            if case in {"valid", "active-operation"}:
+                assert process.returncode == 0, f"{engine}:\n{stdout}\n{stderr}"
+            else:
+                assert process.returncode != 0
+                assert "release IPC" in stderr
+            assert not owner_path.exists()
+            assert not root_validated_path.exists()
+            assert not ready_path.exists()
+            assert not release_path.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows DataRoot guard contract")
+def test_data_root_guard_authenticates_holder_and_cleans_ipc_after_owner_death(
+    tmp_path: Path,
+) -> None:
+    safety = str(PACKAGING / "windows_installation_safety.ps1").replace("'", "''")
+    lifecycle = str(PACKAGING / "windows_lifecycle_lock.ps1").replace("'", "''")
+    for engine_index, engine in enumerate(powershell_contract_engines()):
+        for case in ("release", "abort", "owner-death", "owner-death-active-operation"):
+            ipc_root = tmp_path / f"data-root-ipc-{engine_index}-{case}"
+            guarded_root = tmp_path / f"guarded-data-{engine_index}-{case}"
+            guard_install_dir = tmp_path / f"guarded-program-{engine_index}-{case}"
+            ready_path = ipc_root / "guard.ready"
+            release_path = ipc_root / "guard.release"
+            activity_lock_path = ipc_root / "installer-operation.lock"
+            acl_probe = tmp_path / f"runtime-state-acl-{engine_index}"
+            owner = None
+            owner_pid = os.getpid()
+            if case.startswith("owner-death"):
+                owner = subprocess.Popen(
+                    [engine, "-NoLogo", "-NoProfile", "-Command", "Start-Sleep -Seconds 30"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                owner_pid = owner.pid
+            acl_probe_contract = ""
+            if case == "release":
+                acl_probe_contract = fr"""
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{str(acl_probe).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -ReadExecuteAccounts @('BUILTIN\Users') `
+    -OwnerAccount $currentAccount | Out-Null
+Assert-TicketboxProtectedDirectoryAcl `
+    -Path '{str(acl_probe).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -ReadExecuteAccounts @('BUILTIN\Users') `
+    -OwnerAccount $currentAccount
+"""
+            harness = tmp_path / f"hold-data-root-{engine_index}-{case}.ps1"
+            harness.write_text(
+                f"""
+$ErrorActionPreference = 'Stop'
+. '{safety}'
+. '{lifecycle}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+{acl_probe_contract}
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{str(ipc_root).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+$startupLeaseState = [pscustomobject]@{{
+    Lock = [System.IO.File]::Open(
+        '{str(activity_lock_path).replace("'", "''")}',
+        [System.IO.FileMode]::OpenOrCreate,
+        [System.IO.FileAccess]::ReadWrite,
+        [System.IO.FileShare]::None
+    )
+}}
+$ownerIdentity = Get-TicketboxProcessIdentity -ProcessId {owner_pid}
+$releaseStartupLease = {{
+    param([bool]$RequireReady)
+    if ($null -ne $startupLeaseState.Lock) {{
+        if ($RequireReady -and -not (Test-Path -LiteralPath '{str(ready_path).replace("'", "''")}' -PathType Leaf)) {{
+            throw 'startup operation lease was released before durable ready publication'
+        }}
+        $startupLeaseState.Lock.Dispose()
+        $startupLeaseState.Lock = $null
+    }}
+}}
+$handoffStartupLease = {{ & $releaseStartupLease $true }}
+try {{
+    Wait-TicketboxDirectoryMutationGuardLease `
+        -Path '{str(guarded_root).replace("'", "''")}' `
+        -InstallDir '{str(guard_install_dir).replace("'", "''")}' `
+        -ReadyPath '{str(ready_path).replace("'", "''")}' `
+        -ReleasePath '{str(release_path).replace("'", "''")}' `
+        -OwnerProcessId {owner_pid} `
+        -OwnerIdentity $ownerIdentity `
+        -OnLeaseReady $handoffStartupLease `
+        -RetainWhileLockPath '{str(activity_lock_path).replace("'", "''")}' `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
+finally {{ & $releaseStartupLease $false }}
+""",
+                encoding="utf-8-sig",
+            )
+            process = subprocess.Popen(
+                [
+                    engine,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    harness,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            deadline = time.monotonic() + 20
+            while (
+                not ready_path.is_file()
+                and process.poll() is None
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.05)
+            if not ready_path.is_file():
+                stdout, stderr = process.communicate(timeout=5)
+                if owner is not None and owner.poll() is None:
+                    owner.terminate()
+                pytest.fail(f"{engine} DataRoot guard never became ready:\n{stdout}\n{stderr}")
+
+            ready_text = ready_path.read_text(encoding="utf-8")
+            match = re.fullmatch(
+                rf"STATE=holding\nOWNER_PID={owner_pid}\nHOLDER_PID=(\d+)\n"
+                rf"HOLDER_STARTED_FILETIME_HIGH=(\d+)\n"
+                rf"HOLDER_STARTED_FILETIME_LOW=(\d+)\n"
+                rf"NONCE=([0-9a-f]{{64}})\n",
+                ready_text,
+            )
+            assert match is not None, ready_text
+            assert int(match.group(1)) == process.pid
+            assert (int(match.group(2)), int(match.group(3))) == (
+                _windows_process_creation_filetime_parts(process.pid)
+            )
+            nonce = match.group(4)
+            activity_process = None
+            activity_release = None
+            if case == "owner-death-active-operation":
+                activity_process, activity_release = _start_exclusive_file_lock(
+                    engine,
+                    tmp_path,
+                    f"data-root-activity-{engine_index}",
+                    activity_lock_path,
+                )
+
+            if case in {"release", "abort"}:
+                control_text = (
+                    '"STATE=release$([Environment]::NewLine)" +\n'
+                    f'    "OWNER_PID={owner_pid}$([Environment]::NewLine)" +\n'
+                    f'    "NONCE={nonce}$([Environment]::NewLine)"'
+                    if case == "release"
+                    else '"STATE=abort$([Environment]::NewLine)" +\n'
+                    f'    "OWNER_PID={owner_pid}$([Environment]::NewLine)"'
+                )
+                writer = tmp_path / f"release-data-root-{engine_index}.ps1"
+                writer.write_text(
+                    f"""
+$ErrorActionPreference = 'Stop'
+. '{safety}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$releaseText =
+    {control_text}
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path '{str(release_path).replace("'", "''")}' `
+    -Text $releaseText `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+""",
+                    encoding="utf-8-sig",
+                )
+                writer_result = subprocess.run(
+                    [
+                        engine,
+                        "-NoLogo",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        writer,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=15,
+                )
+                assert writer_result.returncode == 0, writer_result.stderr
+            else:
+                (release_path.parent / f"{release_path.name}.tmp").write_text(
+                    "partial",
+                    encoding="utf-8",
+                )
+                assert owner is not None
+                owner.terminate()
+                owner.wait(timeout=10)
+                if activity_process is not None:
+                    time.sleep(0.3)
+                    assert process.poll() is None
+                    assert ready_path.is_file()
+                    assert activity_release is not None
+                    activity_release.write_text("release", encoding="utf-8")
+                    activity_stdout, activity_stderr = activity_process.communicate(timeout=10)
+                    assert activity_process.returncode == 0, (
+                        f"{engine}:\n{activity_stdout}\n{activity_stderr}"
+                    )
+
+            stdout, stderr = process.communicate(timeout=15)
+            assert process.returncode == 0, f"{engine}:\n{stdout}\n{stderr}"
+            assert not ready_path.exists()
+            assert not release_path.exists()
+            assert not Path(f"{release_path}.tmp").exists()
+            marker = guarded_root / ".ticketbox-data-root.json"
+            assert marker.is_file()
+            marker_value = json.loads(marker.read_text(encoding="utf-8"))
+            assert marker_value["schema"] == "ticketbox-data-root-v2"
+            assert Path(marker_value["data_root"]) == guarded_root
+            assert Path(marker_value["install_dir"]) == guard_install_dir
+            assert re.fullmatch(
+                r"\\\\\?\\VOLUME\{[0-9A-F-]{36}\}\\",
+                marker_value["data_volume_identity"],
+            )
+            assert not (ipc_root / "data-root-provisioning-pending").exists()
+
+        untrusted_root = tmp_path / f"guarded-data-{engine_index}-preexisting-empty"
+        untrusted_root.mkdir()
+        ipc_root = tmp_path / f"data-root-ipc-{engine_index}-preexisting-empty"
+        ready_path = ipc_root / "guard.ready"
+        release_path = ipc_root / "guard.release"
+        reject_harness = tmp_path / f"hold-data-root-{engine_index}-preexisting-empty.ps1"
+        reject_harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{safety}'
+. '{lifecycle}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{str(ipc_root).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+Wait-TicketboxDirectoryMutationGuardLease `
+    -Path '{str(untrusted_root).replace("'", "''")}' `
+    -InstallDir '{str(tmp_path / f"guarded-program-{engine_index}-preexisting-empty").replace("'", "''")}' `
+    -ReadyPath '{str(ready_path).replace("'", "''")}' `
+    -ReleasePath '{str(release_path).replace("'", "''")}' `
+    -OwnerProcessId {os.getpid()} `
+    -OwnerIdentity (Get-TicketboxProcessIdentity -ProcessId {os.getpid()}) `
+    -OnLeaseReady {{ }} `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+""",
+            encoding="utf-8-sig",
+        )
+        rejected = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", reject_harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert rejected.returncode != 0
+        assert "预先存在的空 DataRoot" in rejected.stderr
+        assert not ready_path.exists()
+        assert not (untrusted_root / ".ticketbox-data-root.json").exists()
+
+        junction_target = tmp_path / f"guarded-data-{engine_index}-junction-target"
+        junction_parent = tmp_path / f"guarded-data-{engine_index}-junction-parent"
+        junction_leaf = junction_parent / "missing-child"
+        junction_ipc_root = tmp_path / f"data-root-ipc-{engine_index}-junction-parent"
+        junction_ready_path = junction_ipc_root / "guard.ready"
+        junction_release_path = junction_ipc_root / "guard.release"
+        junction_intent_path = junction_ipc_root / "data-root-provisioning-pending"
+        junction_harness = tmp_path / f"hold-data-root-{engine_index}-junction-parent.ps1"
+        junction_harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{safety}'
+. '{lifecycle}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{str(junction_ipc_root).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+New-Item -ItemType Directory -Path '{str(junction_target).replace("'", "''")}' | Out-Null
+New-Item `
+    -ItemType Junction `
+    -Path '{str(junction_parent).replace("'", "''")}' `
+    -Target '{str(junction_target).replace("'", "''")}' | Out-Null
+try {{
+    $rejected = $false
+    try {{
+        Wait-TicketboxDirectoryMutationGuardLease `
+            -Path '{str(junction_leaf).replace("'", "''")}' `
+            -InstallDir '{str(tmp_path / f"guarded-program-{engine_index}-junction-parent").replace("'", "''")}' `
+            -ReadyPath '{str(junction_ready_path).replace("'", "''")}' `
+            -ReleasePath '{str(junction_release_path).replace("'", "''")}' `
+            -OwnerProcessId {os.getpid()} `
+            -OwnerIdentity (Get-TicketboxProcessIdentity -ProcessId {os.getpid()}) `
+            -OnLeaseReady {{ throw 'junction-backed DataRoot unexpectedly became ready' }} `
+            -FullControlAccounts @($currentAccount) `
+            -OwnerAccount $currentAccount
+    }}
+    catch {{
+        if ($_.Exception.Message -cnotmatch '重解析点') {{ throw }}
+        $rejected = $true
+    }}
+    if (-not $rejected) {{ throw 'junction-backed DataRoot was accepted' }}
+    if (Test-Path -LiteralPath '{str(junction_intent_path).replace("'", "''")}') {{
+        throw 'rejected ancestor published a provisioning intent'
+    }}
+    if (Test-Path -LiteralPath '{str(junction_target / "missing-child").replace("'", "''")}') {{
+        throw 'rejected ancestor created content through the junction'
+    }}
+}}
+finally {{
+    if (Test-Path -LiteralPath '{str(junction_parent).replace("'", "''")}') {{
+        [System.IO.Directory]::Delete('{str(junction_parent).replace("'", "''")}')
+    }}
+}}
+""",
+            encoding="utf-8-sig",
+        )
+        junction_result = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                junction_harness,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert junction_result.returncode == 0, (
+            junction_result.stdout + junction_result.stderr
+        )
+        assert not junction_intent_path.exists()
+
+        retarget_ipc_root = tmp_path / f"data-root-ipc-{engine_index}-retarget"
+        abandoned_root = tmp_path / f"guarded-data-{engine_index}-abandoned"
+        abandoned_install_dir = tmp_path / f"guarded-program-{engine_index}-abandoned"
+        retargeted_root = tmp_path / f"guarded-data-{engine_index}-retargeted"
+        retargeted_install_dir = tmp_path / f"guarded-program-{engine_index}-retargeted"
+        retarget_ready_path = retarget_ipc_root / "guard.ready"
+        retarget_release_path = retarget_ipc_root / "guard.release"
+        retarget_intent_path = retarget_ipc_root / "data-root-provisioning-pending"
+        retarget_harness = tmp_path / f"hold-data-root-{engine_index}-retarget.ps1"
+        retarget_harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{safety}'
+. '{lifecycle}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{str(retarget_ipc_root).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+$abandonedIntent = Get-TicketboxDataRootProvisioningIntentText `
+    -DataRoot '{str(abandoned_root).replace("'", "''")}' `
+    -InstallDir '{str(abandoned_install_dir).replace("'", "''")}'
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path '{str(retarget_intent_path).replace("'", "''")}' `
+    -Text $abandonedIntent `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$ownerIdentity = Get-TicketboxProcessIdentity -ProcessId {os.getpid()}
+$script:originalVolumeIdentityProvider = ${{function:Get-TicketboxVolumeIdentityForPath}}
+try {{
+    function Get-TicketboxVolumeIdentityForPath {{
+        param([string]$Path)
+        if (Test-TicketboxPathEquals $Path '{str(abandoned_root).replace("'", "''")}') {{
+            return '\\\\?\\Volume{{00000000-0000-0000-0000-000000000000}}\\'
+        }}
+        return & $script:originalVolumeIdentityProvider $Path
+    }}
+    $replacementVolumeRejected = $false
+    try {{
+        Wait-TicketboxDirectoryMutationGuardLease `
+            -Path '{str(abandoned_root).replace("'", "''")}' `
+            -InstallDir '{str(abandoned_install_dir).replace("'", "''")}' `
+            -ReadyPath '{str(retarget_ready_path).replace("'", "''")}' `
+            -ReleasePath '{str(retarget_release_path).replace("'", "''")}' `
+            -OwnerProcessId {os.getpid()} `
+            -OwnerIdentity $ownerIdentity `
+            -OnLeaseReady {{ throw 'replacement volume unexpectedly became ready' }} `
+            -FullControlAccounts @($currentAccount) `
+            -OwnerAccount $currentAccount
+    }}
+    catch {{
+        if ($_.Exception.Message -cnotmatch '原卷当前不可用或已被替换') {{ throw }}
+        $replacementVolumeRejected = $true
+    }}
+    if (-not $replacementVolumeRejected) {{ throw 'replacement volume reused the old drive letter' }}
+    $preservedAbandonedIntent = Read-TicketboxDataRootProvisioningIntent `
+        -Path '{str(retarget_intent_path).replace("'", "''")}' `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+    if (-not (Test-TicketboxPathEquals $preservedAbandonedIntent.DataRoot '{str(abandoned_root).replace("'", "''")}')) {{
+        throw 'replacement-volume rejection changed the original intent'
+    }}
+}}
+finally {{
+    Set-Item `
+        -LiteralPath Function:\\Get-TicketboxVolumeIdentityForPath `
+        -Value $script:originalVolumeIdentityProvider
+}}
+$differentPathRejected = $false
+try {{
+    Wait-TicketboxDirectoryMutationGuardLease `
+        -Path '{str(retargeted_root).replace("'", "''")}' `
+        -InstallDir '{str(retargeted_install_dir).replace("'", "''")}' `
+        -ReadyPath '{str(retarget_ready_path).replace("'", "''")}' `
+        -ReleasePath '{str(retarget_release_path).replace("'", "''")}' `
+        -OwnerProcessId {os.getpid()} `
+        -OwnerIdentity $ownerIdentity `
+        -OnLeaseReady {{ throw 'different path unexpectedly became ready' }} `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
+catch {{
+    if ($_.Exception.Message -cnotmatch '固定绑定') {{ throw }}
+    $differentPathRejected = $true
+}}
+if (-not $differentPathRejected) {{ throw 'provisioning intent was automatically retargeted' }}
+if (Test-Path -LiteralPath '{str(retargeted_root).replace("'", "''")}') {{
+    throw 'rejected different path was created'
+}}
+$script:retargetReadyPath = '{str(retarget_ready_path).replace("'", "''")}'
+$script:retargetReleasePath = '{str(retarget_release_path).replace("'", "''")}'
+$script:retargetCurrentAccount = $currentAccount
+$script:retargetOwnerProcessId = {os.getpid()}
+$releaseRetargetedGuard = {{
+    $readyArtifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path $script:retargetReadyPath `
+        -FullControlAccounts @($script:retargetCurrentAccount) `
+        -OwnerAccount $script:retargetCurrentAccount `
+        -MaximumBytes 512
+    $nonceLines = @($readyArtifact.Text -split "`r?`n" | Where-Object {{ $_.StartsWith('NONCE=') }})
+    if ($nonceLines.Count -ne 1) {{ throw 'retarget ready artifact lacks one nonce' }}
+    $releaseText =
+        "STATE=release$([Environment]::NewLine)" +
+        "OWNER_PID=$script:retargetOwnerProcessId$([Environment]::NewLine)" +
+        "NONCE=$($nonceLines[0].Substring(6))$([Environment]::NewLine)"
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $script:retargetReleasePath `
+        -Text $releaseText `
+        -FullControlAccounts @($script:retargetCurrentAccount) `
+        -OwnerAccount $script:retargetCurrentAccount
+}}
+Wait-TicketboxDirectoryMutationGuardLease `
+    -Path '{str(abandoned_root).replace("'", "''")}' `
+    -InstallDir '{str(abandoned_install_dir).replace("'", "''")}' `
+    -ReadyPath '{str(retarget_ready_path).replace("'", "''")}' `
+    -ReleasePath '{str(retarget_release_path).replace("'", "''")}' `
+    -OwnerProcessId {os.getpid()} `
+    -OwnerIdentity $ownerIdentity `
+    -OnLeaseReady $releaseRetargetedGuard `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+if (Test-Path -LiteralPath '{str(retarget_intent_path).replace("'", "''")}') {{
+    throw 'same-path retry did not retire the provisioning intent'
+}}
+Assert-TicketboxProtectedDataRootMarker `
+    -DataRoot '{str(abandoned_root).replace("'", "''")}' `
+    -InstallDir '{str(abandoned_install_dir).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+""",
+            encoding="utf-8-sig",
+        )
+        retarget_result = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                retarget_harness,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        assert retarget_result.returncode == 0, (
+            retarget_result.stdout + retarget_result.stderr
+        )
+
+        retry_ipc_root = tmp_path / f"data-root-ipc-{engine_index}-provisioning-retry"
+        retry_guarded_root = tmp_path / f"guarded-data-{engine_index}-provisioning-retry"
+        retry_alternate_root = tmp_path / f"guarded-data-{engine_index}-unsafe-retarget"
+        retry_install_dir = tmp_path / f"guarded-program-{engine_index}-provisioning-retry"
+        retry_ready_path = retry_ipc_root / "guard.ready"
+        retry_release_path = retry_ipc_root / "guard.release"
+        retry_intent_path = retry_ipc_root / "data-root-provisioning-pending"
+        retry_harness = tmp_path / f"hold-data-root-{engine_index}-provisioning-retry.ps1"
+        retry_harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{safety}'
+. '{lifecycle}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{str(retry_ipc_root).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+$ownerIdentity = Get-TicketboxProcessIdentity -ProcessId {os.getpid()}
+function Write-TicketboxDataRootMarker {{
+    param(
+        [string]$DataRoot,
+        [string]$InstallDir,
+        [string]$DataVolumeIdentity,
+        [string[]]$FullControlAccounts,
+        [string]$OwnerAccount
+    )
+    [System.IO.File]::WriteAllText(
+        (Join-Path $DataRoot '.ticketbox-durable-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.tmp'),
+        'partial marker staging'
+    )
+    throw 'injected marker persistence failure'
+}}
+$firstAttemptFailed = $false
+try {{
+    Wait-TicketboxDirectoryMutationGuardLease `
+        -Path '{str(retry_guarded_root).replace("'", "''")}' `
+        -InstallDir '{str(retry_install_dir).replace("'", "''")}' `
+        -ReadyPath '{str(retry_ready_path).replace("'", "''")}' `
+        -ReleasePath '{str(retry_release_path).replace("'", "''")}' `
+        -OwnerProcessId {os.getpid()} `
+        -OwnerIdentity $ownerIdentity `
+        -OnLeaseReady {{ throw 'first attempt unexpectedly reached ready' }} `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
+catch {{
+    if ($_.Exception.Message -cnotmatch 'injected marker persistence failure') {{ throw }}
+    $firstAttemptFailed = $true
+}}
+if (-not $firstAttemptFailed) {{ throw 'first marker failure was not observed' }}
+if (-not (Test-Path -LiteralPath '{str(retry_intent_path).replace("'", "''")}' -PathType Leaf)) {{
+    throw 'failed provisioning attempt did not preserve durable intent'
+}}
+if (-not (Test-Path -LiteralPath '{str(retry_guarded_root).replace("'", "''")}' -PathType Container)) {{
+    throw 'failed provisioning attempt did not leave the created protected root'
+}}
+if (Test-Path -LiteralPath '{str(retry_guarded_root / ".ticketbox-data-root.json").replace("'", "''")}') {{
+    throw 'failed marker write unexpectedly published authority'
+}}
+if (-not (Test-Path -LiteralPath '{str(retry_guarded_root / ".ticketbox-durable-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.tmp").replace("'", "''")}' -PathType Leaf)) {{
+    throw 'injected marker staging artifact was not preserved'
+}}
+$unsafeRetargetRejected = $false
+try {{
+    Wait-TicketboxDirectoryMutationGuardLease `
+        -Path '{str(retry_alternate_root).replace("'", "''")}' `
+        -InstallDir '{str(retry_install_dir).replace("'", "''")}' `
+        -ReadyPath '{str(retry_ready_path).replace("'", "''")}' `
+        -ReleasePath '{str(retry_release_path).replace("'", "''")}' `
+        -OwnerProcessId {os.getpid()} `
+        -OwnerIdentity $ownerIdentity `
+        -OnLeaseReady {{ throw 'unsafe retarget unexpectedly became ready' }} `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+}}
+catch {{
+    if ($_.Exception.Message -cnotmatch '固定绑定') {{ throw }}
+    $unsafeRetargetRejected = $true
+}}
+if (-not $unsafeRetargetRejected) {{ throw 'existing partial DataRoot was retargeted' }}
+$preservedIntent = Read-TicketboxDataRootProvisioningIntent `
+    -Path '{str(retry_intent_path).replace("'", "''")}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+if (-not (Test-TicketboxPathEquals $preservedIntent.DataRoot '{str(retry_guarded_root).replace("'", "''")}')) {{
+    throw 'rejected retarget replaced the original provisioning intent'
+}}
+
+. '{safety}'
+$script:retryReadyPath = '{str(retry_ready_path).replace("'", "''")}'
+$script:retryReleasePath = '{str(retry_release_path).replace("'", "''")}'
+$script:retryCurrentAccount = $currentAccount
+$script:retryOwnerProcessId = {os.getpid()}
+$releaseAfterReady = {{
+    $readyArtifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path $script:retryReadyPath `
+        -FullControlAccounts @($script:retryCurrentAccount) `
+        -OwnerAccount $script:retryCurrentAccount `
+        -MaximumBytes 512
+    $nonceLines = @($readyArtifact.Text -split "`r?`n" | Where-Object {{ $_.StartsWith('NONCE=') }})
+    if ($nonceLines.Count -ne 1) {{ throw 'retry ready artifact lacks one nonce' }}
+    $nonce = $nonceLines[0].Substring(6)
+    $releaseText =
+        "STATE=release$([Environment]::NewLine)" +
+        "OWNER_PID=$script:retryOwnerProcessId$([Environment]::NewLine)" +
+        "NONCE=$nonce$([Environment]::NewLine)"
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $script:retryReleasePath `
+        -Text $releaseText `
+        -FullControlAccounts @($script:retryCurrentAccount) `
+        -OwnerAccount $script:retryCurrentAccount
+}}
+Wait-TicketboxDirectoryMutationGuardLease `
+    -Path '{str(retry_guarded_root).replace("'", "''")}' `
+    -InstallDir '{str(retry_install_dir).replace("'", "''")}' `
+    -ReadyPath '{str(retry_ready_path).replace("'", "''")}' `
+    -ReleasePath '{str(retry_release_path).replace("'", "''")}' `
+    -OwnerProcessId {os.getpid()} `
+    -OwnerIdentity $ownerIdentity `
+    -OnLeaseReady $releaseAfterReady `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+if (Test-Path -LiteralPath '{str(retry_intent_path).replace("'", "''")}') {{
+    throw 'successful retry did not retire provisioning intent'
+}}
+if (Test-Path -LiteralPath '{str(retry_guarded_root / ".ticketbox-durable-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.tmp").replace("'", "''")}') {{
+    throw 'successful retry did not retire marker staging artifact'
+}}
+Assert-TicketboxDataRootMarker `
+    -DataRoot '{str(retry_guarded_root).replace("'", "''")}' `
+    -InstallDir '{str(retry_install_dir).replace("'", "''")}'
+""",
+            encoding="utf-8-sig",
+        )
+        retry_result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", retry_harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert retry_result.returncode == 0, retry_result.stdout + retry_result.stderr
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows holder entrypoint contract")
+def test_holder_entrypoint_independently_rejects_wrong_parent_and_non_authoritative_root(
+    tmp_path: Path,
+) -> None:
+    holder = PACKAGING / "hold_installer_lifecycle_lock.ps1"
+    authoritative_root = Path(os.environ["COMMONPROGRAMFILES"]) / "Ticketbox"
+    owner_started_high, owner_started_low = _windows_process_creation_filetime_parts(os.getpid())
+    for engine in powershell_contract_engines():
+        wrong_parent = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                holder,
+                "-InstallerOwnerProcessId",
+                "2147483647",
+                "-InstallerOwnerStartedFileTimeHigh",
+                "0",
+                "-InstallerOwnerStartedFileTimeLow",
+                "0",
+                "-ExpectedLockDirectory",
+                str(authoritative_root),
+                "-RootValidatedPath",
+                str(tmp_path / "wrong-parent-root-validated.ready"),
+                "-ReadyPath",
+                str(authoritative_root / "wrong-parent.ready"),
+                "-ReleasePath",
+                str(authoritative_root / "wrong-parent.release"),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert wrong_parent.returncode != 0
+        assert "生命周期锁 holder 不是当前安装器的直接子进程" in wrong_parent.stderr
+
+        result = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                holder,
+                "-InstallerOwnerProcessId",
+                str(os.getpid()),
+                "-InstallerOwnerStartedFileTimeHigh",
+                str(owner_started_high),
+                "-InstallerOwnerStartedFileTimeLow",
+                str(owner_started_low),
+                "-ExpectedLockDirectory",
+                str(tmp_path / "not-common-program-files"),
+                "-RootValidatedPath",
+                str(tmp_path / "entry-root-validated.ready"),
+                "-ReadyPath",
+                str(tmp_path / "entry.ready"),
+                "-ReleasePath",
+                str(tmp_path / "entry.release"),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert result.returncode != 0
+        assert "Inno 与 PowerShell 解析出的机器生命周期根不一致" in result.stderr
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows exact deletion contract")
+def test_exact_deletion_defers_data_root_authority_marker_and_retries_only_empty_root(
+    tmp_path: Path,
+) -> None:
+    safety = str(PACKAGING / "windows_installation_safety.ps1").replace("'", "''")
+    for index, engine in enumerate(powershell_contract_engines()):
+        base = ROOT / "backend" / "build" / f"exact-delete-{uuid.uuid4().hex}-{index}"
+        data_root = base / "data"
+        install_dir = base / "program"
+        markerless_empty = base / "markerless-empty"
+        markerless_nonempty = base / "markerless-nonempty"
+        harness = tmp_path / f"exact-delete-{index}.ps1"
+
+        def literal(path: Path) -> str:
+            return str(path).replace("'", "''")
+
+        harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{safety}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+New-Item -ItemType Directory -Force -Path '{literal(data_root)}', '{literal(install_dir)}' | Out-Null
+Initialize-TicketboxDataRootMarker `
+    -DataRoot '{literal(data_root)}' `
+    -InstallDir '{literal(install_dir)}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$markerPath = Get-TicketboxDataRootMarkerPath '{literal(data_root)}'
+Set-Content -LiteralPath (Join-Path '{literal(data_root)}' 'payload.txt') -Value 'payload'
+$markerLease = [System.IO.File]::Open(
+    $markerPath,
+    [System.IO.FileMode]::Open,
+    [System.IO.FileAccess]::Read,
+    [System.IO.FileShare]::Read
+)
+$interrupted = $false
+try {{
+    try {{
+        Remove-TicketboxDataRootExact `
+            -Path '{literal(data_root)}' `
+            -DeferredRootLeafName $script:TicketboxDataRootMarkerName
+    }}
+    catch {{ $interrupted = $true }}
+}}
+finally {{ $markerLease.Dispose() }}
+if (-not $interrupted) {{ throw 'locked authority marker did not interrupt exact deletion' }}
+$remaining = @(Get-ChildItem -LiteralPath '{literal(data_root)}' -Force)
+if ($remaining.Count -ne 1 -or $remaining[0].Name -cne $script:TicketboxDataRootMarkerName) {{
+    throw "data-root authority marker was not deleted last: $($remaining.Name -join ',')"
+}}
+Assert-TicketboxDataRootDeletionSafety `
+    -DataRoot '{literal(data_root)}' `
+    -RegisteredDataRoot '{literal(data_root)}' `
+    -InstallDir '{literal(install_dir)}' | Out-Null
+Remove-TicketboxDataRootExact `
+    -Path '{literal(data_root)}' `
+    -DeferredRootLeafName $script:TicketboxDataRootMarkerName
+if (Test-Path -LiteralPath '{literal(data_root)}') {{ throw 'deferred data-root retry did not converge' }}
+New-Item -ItemType Directory -Path '{literal(markerless_empty)}' | Out-Null
+$missingMarkerRejected = $false
+try {{
+    Assert-TicketboxDataRootDeletionSafety `
+        -DataRoot '{literal(markerless_empty)}' `
+        -RegisteredDataRoot '{literal(markerless_empty)}' `
+        -InstallDir '{literal(install_dir)}' | Out-Null
+}}
+catch {{ $missingMarkerRejected = $true }}
+if (-not $missingMarkerRejected) {{ throw 'markerless root was accepted without retry authority' }}
+Assert-TicketboxDataRootDeletionSafety `
+    -DataRoot '{literal(markerless_empty)}' `
+    -RegisteredDataRoot '{literal(markerless_empty)}' `
+    -InstallDir '{literal(install_dir)}' `
+    -AllowMarkerlessEmptyRoot | Out-Null
+Remove-TicketboxDataRootExact -Path '{literal(markerless_empty)}'
+New-Item -ItemType Directory -Path '{literal(markerless_nonempty)}' | Out-Null
+Set-Content -LiteralPath (Join-Path '{literal(markerless_nonempty)}' 'unknown.txt') -Value 'keep'
+$nonemptyRejected = $false
+try {{
+    Assert-TicketboxDataRootDeletionSafety `
+        -DataRoot '{literal(markerless_nonempty)}' `
+        -RegisteredDataRoot '{literal(markerless_nonempty)}' `
+        -InstallDir '{literal(install_dir)}' `
+        -AllowMarkerlessEmptyRoot | Out-Null
+}}
+catch {{ $nonemptyRejected = $true }}
+if (-not $nonemptyRejected) {{ throw 'markerless non-empty root was accepted as deletion continuation' }}
+Remove-TicketboxDataRootExact -Path '{literal(markerless_nonempty)}'
+""",
+            encoding="utf-8-sig",
+        )
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        shutil.rmtree(base, ignore_errors=True)
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows DataRoot handle lease contract")
 def test_data_root_guard_lease_blocks_cross_process_root_and_ancestor_rename(
     tmp_path: Path,
 ) -> None:
     safety = str(PACKAGING / "windows_installation_safety.ps1").replace("'", "''")
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    lifecycle = str(PACKAGING / "windows_lifecycle_lock.ps1").replace("'", "''")
+    engines = powershell_contract_engines()
 
     for index, engine in enumerate(engines):
         protocol = tmp_path / f"lease-{index}"
@@ -912,7 +2907,11 @@ def test_data_root_guard_lease_blocks_cross_process_root_and_ancestor_rename(
             f"""
 $ErrorActionPreference = 'Stop'
 . '{safety}'
-function Assert-TicketboxProtectedDirectoryAcl([string]$Path) {{ }}
+. '{lifecycle}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+function Assert-TicketboxProtectedDirectoryAcl {{
+    param($Path, $FullControlAccounts, $OwnerAccount)
+}}
 function Assert-TicketboxExactFileAcl {{ param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount) }}
 function Write-TicketboxProtectedUtf8FileDurable {{
     param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount)
@@ -920,9 +2919,14 @@ function Write-TicketboxProtectedUtf8FileDurable {{
 }}
 Wait-TicketboxDirectoryMutationGuardLease `
     -Path '{str(data_root).replace("'", "''")}' `
+    -InstallDir '{str(protocol / "program").replace("'", "''")}' `
     -ReadyPath '{str(ready).replace("'", "''")}' `
     -ReleasePath '{str(release).replace("'", "''")}' `
-    -OwnerProcessId {os.getpid()}
+    -OwnerProcessId {os.getpid()} `
+    -OwnerIdentity (Get-TicketboxProcessIdentity -ProcessId {os.getpid()}) `
+    -OnLeaseReady {{ }} `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
 """,
             encoding="utf-8-sig",
         )
@@ -944,8 +2948,23 @@ Wait-TicketboxDirectoryMutationGuardLease `
                 data_root.rename(moved_root)
             with pytest.raises(OSError):
                 phase_parent.rename(moved_parent)
+            ready_match = re.fullmatch(
+                rf"STATE=holding\nOWNER_PID={os.getpid()}\nHOLDER_PID=(\d+)\n"
+                rf"HOLDER_STARTED_FILETIME_HIGH=(\d+)\n"
+                rf"HOLDER_STARTED_FILETIME_LOW=(\d+)\n"
+                rf"NONCE=([0-9a-f]{{64}})\n",
+                ready.read_text(encoding="utf-8"),
+            )
+            assert ready_match is not None
+            assert int(ready_match.group(1)) == process.pid
+            assert (int(ready_match.group(2)), int(ready_match.group(3))) == (
+                _windows_process_creation_filetime_parts(process.pid)
+            )
             release.write_bytes(
-                f"STATE=release\r\nOWNER_PID={os.getpid()}\r\n".encode()
+                (
+                    f"STATE=release\r\nOWNER_PID={os.getpid()}\r\n"
+                    f"NONCE={ready_match.group(4)}\r\n"
+                ).encode()
             )
             stdout, stderr = process.communicate(timeout=15)
             assert process.returncode == 0, f"{engine}:\n{stdout}\n{stderr}"
@@ -965,12 +2984,19 @@ def test_windows_safety_helpers_execute_in_available_powershells(tmp_path: Path)
     lifecycle = PACKAGING / "windows_service_lifecycle.ps1"
     safety = PACKAGING / "windows_installation_safety.ps1"
     lifecycle_lock = PACKAGING / "windows_lifecycle_lock.ps1"
+    lifecycle_receipt = PACKAGING / "windows_lifecycle_receipt.ps1"
+    backend_bootstrap = PACKAGING / "windows_backend_bootstrap.ps1"
     database_safety = PACKAGING / "windows_database_safety.ps1"
     release_config_script = PACKAGING / "windows_release_config.ps1"
     uninstall = _read("uninstall_bundled_services.ps1")
     process_guard = uninstall[
         uninstall.index("function Assert-TicketboxRuntimeProcessesStoppedForDataDeletion") : uninstall.index(
             "function Assert-TicketboxBackendPortStoppedForDataDeletion"
+        )
+    ]
+    installer_state_cleanup = uninstall[
+        uninstall.index("function Get-TicketboxInstallerStateDataDeletionSnapshot") : uninstall.index(
+            'Write-Host "=== 小票夹服务卸载 ==="'
         )
     ]
     base = ROOT / "backend" / "build" / f"installer-safety-{uuid.uuid4().hex}"
@@ -1010,6 +3036,8 @@ $ErrorActionPreference = 'Stop'
 . '{literal(lifecycle)}'
 . '{literal(safety)}'
 . '{literal(lifecycle_lock)}'
+. '{literal(lifecycle_receipt)}'
+. '{literal(backend_bootstrap)}'
 . '{literal(database_safety)}'
 . '{literal(release_config_script)}'
 $BackendExe = 'C:\\Ticketbox\\program\\ticketbox-backend.exe'
@@ -1017,6 +3045,7 @@ $ShawlExe = 'C:\\Ticketbox\\shawl\\shawl.exe'
 $PgBin = 'C:\\Ticketbox\\pg\\bin'
 $PgCtl = Join-Path $PgBin 'pg_ctl.exe'
 {process_guard}
+{installer_state_cleanup}
 $rejected = $false
 try {{
     Assert-TicketboxRuntimeProcessesStoppedForDataDeletion -ProcessReader {{
@@ -1095,16 +3124,42 @@ $rejected = $false
 try {{ Assert-TicketboxPgServiceCommand -Name TicketboxPg -ExpectedExecutable 'C:\\Ticketbox\\pg_ctl.exe' -ExpectedServiceName TicketboxPg -ExpectedDataRoot 'D:\\Ticketbox Data\\pgdata' }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'PostgreSQL option smuggling accepted' }}
 $script:testServiceDependencies = @('TicketboxPg')
-$script:testServiceImagePath = '"C:\\Ticketbox\\shawl.exe" run --name TicketboxBackend --stop-timeout 25000 --restart --kill-process-tree --restart-delay 5000 --cwd "D:\\Ticketbox Data\\app" --log-dir "D:\\Ticketbox Data\\app\\logs" --env "TICKETBOX_DATA_DIR=D:\\Ticketbox Data\\app" --env "PG_DUMP_PATH=C:\\Ticketbox\\pg_dump.exe" --env "PG_RESTORE_PATH=C:\\Ticketbox\\pg_restore.exe" --env "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH=D:\\Ticketbox Data\\bootstrap-exposure-recovery-pending" -- "C:\\Ticketbox\\backend.exe"'
+$script:testServiceImagePath = '"C:\\Ticketbox\\shawl.exe" run --name TicketboxBackend --stop-timeout 25000 --restart --kill-process-tree --restart-delay 5000 --cwd "D:\\Ticketbox Data\\app" --log-dir "D:\\Ticketbox Data\\app\\logs" --env "TICKETBOX_DATA_DIR=D:\\Ticketbox Data\\app" --env "PG_DUMP_PATH=C:\\Ticketbox\\pg_dump.exe" --env "PG_RESTORE_PATH=C:\\Ticketbox\\pg_restore.exe" --env "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH=D:\\Ticketbox Data\\bootstrap-exposure-recovery-pending" --env "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH=D:\\Ticketbox Data\\installer-runtime-recovery-pending" --env "TICKETBOX_DATA_ROOT_MARKER_PATH=C:\\ProgramData\\TicketboxRuntimeBinding\\data-root\\.ticketbox-data-root.json" --env "TICKETBOX_DATA_VOLUME_IDENTITY=\\\\?\\VOLUME{{01234567-89AB-CDEF-0123-456789ABCDEF}}\\\\" -- "C:\\Ticketbox\\backend.exe"'
 $shawlArgs = @{{
     Name = 'TicketboxBackend'; ExpectedExecutable = 'C:\\Ticketbox\\shawl.exe'; ExpectedServiceName = 'TicketboxBackend'
     ExpectedCwd = 'D:\\Ticketbox Data\\app'; ExpectedPayload = 'C:\\Ticketbox\\backend.exe'; ExpectedDependency = 'TicketboxPg'
     ExpectedLogDir = 'D:\\Ticketbox Data\\app\\logs'; ExpectedPgDumpPath = 'C:\\Ticketbox\\pg_dump.exe'
     ExpectedPgRestorePath = 'C:\\Ticketbox\\pg_restore.exe'; ExpectedBootstrapRecoveryGuardPath = 'D:\\Ticketbox Data\\bootstrap-exposure-recovery-pending'
+    ExpectedInstallerRecoveryGuardPath = 'D:\\Ticketbox Data\\installer-runtime-recovery-pending'
+    ExpectedDataRootMarkerPath = 'C:\\ProgramData\\TicketboxRuntimeBinding\\data-root\\.ticketbox-data-root.json'
+    ExpectedDataVolumeIdentity = '\\\\?\\VOLUME{{01234567-89AB-CDEF-0123-456789ABCDEF}}\\'
     ExpectedStopTimeoutMs = 25000; ExpectedRestartDelayMs = 5000
 }}
 Assert-TicketboxShawlServiceCommand @shawlArgs
 $validShawlImagePath = $script:testServiceImagePath
+$legacyShawlImagePath = $validShawlImagePath.Replace(' --env "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH=D:\\Ticketbox Data\\installer-runtime-recovery-pending"', '')
+$script:testServiceImagePath = $legacyShawlImagePath
+$rejected = $false
+try {{ Assert-TicketboxShawlServiceCommand @shawlArgs }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'legacy Shawl command bypassed the explicit compatibility switch' }}
+$shawlArgs.AllowMissingInstallerRecoveryGuard = $true
+Assert-TicketboxShawlServiceCommand @shawlArgs
+$shawlArgs.Remove('AllowMissingInstallerRecoveryGuard')
+$legacyRuntimeImagePath = $validShawlImagePath.Replace(
+    ' --env "TICKETBOX_DATA_ROOT_MARKER_PATH=C:\\ProgramData\\TicketboxRuntimeBinding\\data-root\\.ticketbox-data-root.json"',
+    ''
+)
+$legacyRuntimeImagePath = $legacyRuntimeImagePath.Replace(
+    ' --env "TICKETBOX_DATA_VOLUME_IDENTITY=\\\\?\\VOLUME{{01234567-89AB-CDEF-0123-456789ABCDEF}}\\\\"',
+    ''
+)
+$script:testServiceImagePath = $legacyRuntimeImagePath
+$rejected = $false
+try {{ Assert-TicketboxShawlServiceCommand @shawlArgs }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'legacy runtime path bypassed the explicit compatibility switch' }}
+$shawlArgs.AllowMissingRuntimeDataAuthority = $true
+Assert-TicketboxShawlServiceCommand @shawlArgs
+$shawlArgs.Remove('AllowMissingRuntimeDataAuthority')
 $script:testServiceImagePath = $validShawlImagePath.Replace(' --kill-process-tree', '')
 $rejected = $false
 try {{ Assert-TicketboxShawlServiceCommand @shawlArgs }} catch {{ $rejected = $true }}
@@ -1119,6 +3174,46 @@ $script:testServiceImagePath = $script:testServiceImagePath.Replace(' -- "C:\\Ti
 $rejected = $false
 try {{ Assert-TicketboxShawlServiceCommand @shawlArgs }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'Shawl option smuggling accepted' }}
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$protectedLockRoot = Join-Path '{literal(base)}' 'protected-lock-root'
+$malformedLockTarget = Join-Path '{literal(base)}' 'malformed-lock-target'
+$malformedOperationLock = Join-Path $protectedLockRoot 'installer-operation.lock'
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path $protectedLockRoot `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+New-Item -ItemType Directory -Path $malformedLockTarget -Force | Out-Null
+New-Item -ItemType Junction -Path $malformedOperationLock -Target $malformedLockTarget | Out-Null
+if (-not (Test-TicketboxExclusiveFileLockHeld -Path $malformedOperationLock)) {{
+    throw 'malformed operation lock was treated as safely absent'
+}}
+$rejected = $false
+try {{
+    $malformedLease = Enter-TicketboxProtectedExclusiveFileLock `
+        -Path $malformedOperationLock `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+    $malformedLease.Dispose()
+}}
+catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'operation lock reparse point was followed' }}
+if (-not (Test-Path -LiteralPath $malformedLockTarget -PathType Container)) {{
+    throw 'operation lock rejection touched the reparse target'
+}}
+[System.IO.Directory]::Delete($malformedOperationLock)
+$originalNoFollowClassifier = ${{function:Get-TicketboxPathEntryKindNoFollow}}
+try {{
+    Set-Item -LiteralPath Function:Get-TicketboxPathEntryKindNoFollow -Value {{
+        param([string]$Path)
+        throw 'simulated sharing violation during no-follow classification'
+    }}
+    if (-not (Test-TicketboxExclusiveFileLockHeld -Path $malformedOperationLock)) {{
+        throw 'indeterminate operation lock classification was treated as absent'
+    }}
+}}
+finally {{
+    Set-Item -LiteralPath Function:Get-TicketboxPathEntryKindNoFollow -Value $originalNoFollowClassifier
+}}
 $testLockPath = Join-Path '{literal(base)}' 'lifecycle.lock'
 $operationLock = Enter-TicketboxExclusiveFileLock $testLockPath
 try {{
@@ -1132,12 +3227,192 @@ $queue = [System.Collections.Generic.Queue[string]]::new()
 @('startpending', 'running') | ForEach-Object {{ $queue.Enqueue($_) }}
 $state = Wait-TicketboxServiceSettledState -Name Demo -TimeoutMilliseconds 1000 -PollMilliseconds 1 -StateReader {{ param($Name) $queue.Dequeue() }} -SleepAction {{ param($Ms) }}
 if ($state -ne 'running') {{ throw 'settled-state wait failed' }}
-Initialize-TicketboxDataRootMarker -DataRoot '{literal(data_root)}' -InstallDir '{literal(install_dir)}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+Initialize-TicketboxDataRootMarker `
+    -DataRoot '{literal(data_root)}' `
+    -InstallDir '{literal(install_dir)}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
 $safe = Assert-TicketboxDataRootDeletionSafety -DataRoot '{literal(data_root)}' -RegisteredDataRoot '{literal(data_root)}' -InstallDir '{literal(install_dir)}'
 if ($safe -ne [System.IO.Path]::GetFullPath('{literal(data_root)}')) {{ throw 'safe root mismatch' }}
 $rejected = $false
 try {{ Assert-TicketboxDataRootDeletionSafety -DataRoot '{literal(data_root)}' -RegisteredDataRoot '' -InstallDir '{literal(install_dir)}' | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'missing registration was accepted without explicit recovery mode' }}
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$script:TicketboxLifecycleReceiptAclAccounts = @($currentAccount)
+$script:TicketboxLifecycleReceiptOwnerAccount = $currentAccount
+$DataRoot = Join-Path '{literal(base)}' 'state-data'
+$InstallDir = Join-Path '{literal(base)}' 'state-program'
+$machineRoot = Join-Path '{literal(base)}' 'state-machine'
+$InstallerState = Join-Path $machineRoot 'installer-state'
+$OwnerBootstrapPath = Join-Path $InstallerState 'owner-bootstrap.txt'
+$OwnerHandoffPendingPath = Join-Path $InstallerState 'owner-handoff-pending'
+$RecoveryRequiredPath = Join-Path $InstallerState 'installer-recovery-required.json'
+$DeleteDataIntentPath = Join-Path $InstallerState 'delete-data-in-progress.json'
+New-Item -ItemType Directory -Path $DataRoot, $InstallDir, $machineRoot -Force | Out-Null
+Set-TicketboxExactDirectoryAcl `
+    -Path $machineRoot `
+    -Accounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Initialize-TicketboxDataRootMarker `
+    -DataRoot $DataRoot `
+    -InstallDir $InstallDir `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Initialize-TicketboxInstallerStateDirectory `
+    -Path $InstallerState `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+function Read-TicketboxOwnerHandoffArtifact([string]$Path) {{
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path (Split-Path -Parent $Path) `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount
+    Read-TicketboxProtectedUtf8Artifact `
+        -Path $Path `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount `
+        -MaximumBytes 16384
+}}
+function Assert-TicketboxOwnerHandoffArtifact([string]$Path) {{
+    Read-TicketboxOwnerHandoffArtifact $Path | Out-Null
+}}
+$credential = 'owner-credential-for-delete-data'
+$credentialHash = Get-TicketboxOwnerHandoffTextSha256 $credential
+$ownerStarted = (Get-Process -Id $PID).StartTime.ToUniversalTime().ToString(
+    'yyyy-MM-ddTHH:mm:ss.fffffffZ',
+    [System.Globalization.CultureInfo]::InvariantCulture
+)
+$handoff = [string]::Join([Environment]::NewLine, @(
+    'SCHEMA=ticketbox-owner-handoff-v2',
+    'STATE=pending',
+    "GENERATION=$([Guid]::NewGuid().ToString('D'))",
+    "INSTALLATION_ID=$(Get-TicketboxOwnerHandoffInstallationId)",
+    "CREDENTIAL_SHA256=$credentialHash",
+    "INSTALLER_OWNER_PID=$PID",
+    "INSTALLER_OWNER_STARTED_UTC=$ownerStarted"
+)) + [Environment]::NewLine
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $OwnerBootstrapPath `
+    -Text $credential `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $OwnerHandoffPendingPath `
+    -Text $handoff `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+[System.IO.File]::WriteAllBytes($OwnerHandoffPendingPath, [byte[]](0xC3, 0x28))
+$invalidOwnerMarkerRejected = $false
+try {{ Read-TicketboxOwnerHandoffRecord | Out-Null }} catch {{ $invalidOwnerMarkerRejected = $true }}
+if (-not $invalidOwnerMarkerRejected -or
+    -not (Test-Path -LiteralPath $OwnerHandoffPendingPath -PathType Leaf)) {{
+    throw 'invalid UTF-8 owner marker was accepted or destroyed'
+}}
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $OwnerHandoffPendingPath `
+    -Text $handoff `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount `
+    -ReplaceExisting
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $OwnerBootstrapPath `
+    -Text ('x' * 16385) `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount `
+    -ReplaceExisting
+$oversizedCredentialRejected = $false
+try {{
+    $ownerRecord = Read-TicketboxOwnerHandoffRecord
+    Assert-TicketboxOwnerHandoffCredential $ownerRecord
+}}
+catch {{ $oversizedCredentialRejected = $true }}
+if (-not $oversizedCredentialRejected -or
+    -not (Test-Path -LiteralPath $OwnerBootstrapPath -PathType Leaf)) {{
+    throw 'oversized owner credential was accepted or destroyed'
+}}
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $OwnerBootstrapPath `
+    -Text $credential `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount `
+    -ReplaceExisting
+Write-TicketboxInstallerRecoveryMarker `
+    -Path $RecoveryRequiredPath `
+    -InstallDir $InstallDir `
+    -DataRoot $DataRoot `
+    -Reason 'delete-data retirement test'
+Assert-TicketboxInstallerStateForDataDeletion
+$unknownState = Join-Path $InstallerState 'unknown-state.txt'
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $unknownState `
+    -Text 'unknown' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$unknownRejected = $false
+try {{ Assert-TicketboxInstallerStateForDataDeletion }} catch {{ $unknownRejected = $true }}
+if (-not $unknownRejected) {{ throw 'unknown installer state was accepted for data deletion' }}
+Remove-TicketboxProtectedUtf8Artifact `
+    -Path $unknownState `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Assert-TicketboxInstallerStateForDataDeletion
+$danglingChildTarget = Join-Path $machineRoot 'dangling-child-target'
+Remove-TicketboxProtectedUtf8Artifact `
+    -Path $OwnerHandoffPendingPath `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+New-Item -ItemType Directory -Path $danglingChildTarget | Out-Null
+New-Item -ItemType Junction -Path $OwnerHandoffPendingPath -Target $danglingChildTarget | Out-Null
+Remove-Item -LiteralPath $danglingChildTarget -Recurse -Force
+$danglingChildRejected = $false
+try {{ Assert-TicketboxInstallerStateForDataDeletion }}
+catch {{
+    if ($_.Exception.Message -notlike 'installer-state 已知状态不是普通文件*') {{ throw }}
+    $danglingChildRejected = $true
+}}
+if (-not $danglingChildRejected) {{ throw 'dangling known installer-state child was accepted' }}
+[System.IO.Directory]::Delete($OwnerHandoffPendingPath)
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $OwnerHandoffPendingPath `
+    -Text $handoff `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Remove-TicketboxProtectedUtf8Artifact `
+    -Path $OwnerHandoffPendingPath `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+$unboundCredentialRejected = $false
+try {{ Assert-TicketboxInstallerStateForDataDeletion }} catch {{ $unboundCredentialRejected = $true }}
+if (-not $unboundCredentialRejected -or
+    -not (Test-Path -LiteralPath $OwnerBootstrapPath -PathType Leaf)) {{
+    throw 'unbound current owner credential was accepted or destroyed before data deletion'
+}}
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $OwnerHandoffPendingPath `
+    -Text $handoff `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+Assert-TicketboxInstallerStateForDataDeletion
+Remove-TicketboxDataRootExact -Path $DataRoot
+Remove-TicketboxInstallerStateAfterDataDeletion
+if ((Test-Path -LiteralPath $DataRoot) -or (Test-Path -LiteralPath $InstallerState)) {{
+    throw 'delete-data retirement left data or installer state behind'
+}}
+$danglingStateTarget = Join-Path $machineRoot 'dangling-state-target'
+New-Item -ItemType Directory -Path $danglingStateTarget | Out-Null
+New-Item -ItemType Junction -Path $InstallerState -Target $danglingStateTarget | Out-Null
+Remove-Item -LiteralPath $danglingStateTarget -Recurse -Force
+$danglingStateRejected = $false
+try {{ Assert-TicketboxInstallerStateForDataDeletion }}
+catch {{
+    if ($_.Exception.Message -notlike 'installer-state 不是普通目录*') {{ throw }}
+    $danglingStateRejected = $true
+}}
+if (-not $danglingStateRejected) {{ throw 'dangling installer-state root was accepted' }}
+[System.IO.Directory]::Delete($InstallerState)
+$DataRoot = '{literal(data_root)}'
+$InstallDir = '{literal(install_dir)}'
 $originalMarkerAclAssertion = ${{function:Assert-TicketboxExactFileAcl}}
 $script:protectedMarkerAclChecked = $false
 try {{
@@ -1309,12 +3584,13 @@ $rejected = $false
 try {{ Assert-TicketboxDataRootDomain -DataRoot '{literal(data_root)}' -InstallDir '{literal(install_dir)}' | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'mapped network drive data root was accepted' }}
 """
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    assert len(engines) == 2, "Windows PowerShell 5.1 and PowerShell 7 are required"
+    engines = powershell_contract_engines()
     behavior_script = base / "installer-safety-behavior.ps1"
     behavior_script.write_text(command, encoding="utf-8-sig")
     try:
         for engine in engines:
+            shutil.rmtree(data_root, ignore_errors=True)
+            data_root.mkdir()
             result = subprocess.run(
                 [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", behavior_script],
                 check=False,
@@ -1345,12 +3621,14 @@ def test_installer_input_gate_requires_all_safety_scripts() -> None:
 def test_installer_input_gate_requires_lifecycle_scripts() -> None:
     build = _read("build_inno_installer.ps1")
 
+    assert '$DataRootGuardScript = Join-Path $ScriptDir "hold_data_root_mutation_guard.ps1"' in build
     assert '$PrepareScript = Join-Path $ScriptDir "prepare_bundled_upgrade.ps1"' in build
     assert '$ServiceContractScript = Join-Path $ScriptDir "windows_service_contract.ps1"' in build
     assert '$LifecycleScript = Join-Path $ScriptDir "windows_service_lifecycle.ps1"' in build
     assert '$DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"' in build
     assert '$BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"' in build
     assert '$ReleaseConfigScript = Join-Path $ScriptDir "windows_release_config.ps1"' in build
+    assert 'Assert-File $DataRootGuardScript "Windows DataRoot guard holder 脚本"' in build
     assert 'Assert-File $PrepareScript "升级前预检脚本"' in build
     assert 'Assert-File $ServiceContractScript "Windows 服务命令契约脚本"' in build
     assert 'Assert-File $LifecycleScript "Windows 服务生命周期脚本"' in build
