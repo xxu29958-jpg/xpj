@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
+from app.services.installation_health_service import configured_mobile_endpoint_url
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
@@ -28,7 +29,7 @@ def _runtime_recovery_message() -> str:
 
 
 def _add_android_connection_context(context: dict[str, object]) -> None:
-    context["android_server_url"] = get_settings().public_base_url or None
+    context["android_server_url"] = configured_mobile_endpoint_url(get_settings().public_base_url)
 
 
 @router.get("/pairing", response_class=HTMLResponse)
@@ -75,7 +76,7 @@ def owner_pairing_post(
             else "请选择一个有权限的账本。"
         )
         return templates.TemplateResponse(request=request, name="pairing.html", context=ctx)
-    android_server_url = get_settings().public_base_url or None
+    android_server_url = configured_mobile_endpoint_url(get_settings().public_base_url)
     if android_server_url is None:
         ctx = _base(request, db)
         ctx["pairing_result"] = None
@@ -93,5 +94,5 @@ def owner_pairing_post(
     ctx["ledger_id"] = ledger_id
     ctx["selected_ledger_id"] = ledger_id
     ctx["error"] = None
-    _add_android_connection_context(ctx)
+    ctx["android_server_url"] = android_server_url
     return templates.TemplateResponse(request=request, name="pairing.html", context=ctx)

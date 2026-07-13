@@ -91,7 +91,7 @@ def test_frozen_manager_identity_accepts_the_installer_numeric_version_contract(
 
 @pytest.mark.parametrize(
     "version",
-    ("1.2", "1.2.0-rc.1", "1.2.0+build.7", "1.2.65536"),
+    ("1.2", "1.2.0-rc.1", "1.2.0+build.7", "1.2.65536", f"{'9' * 5000}.2.3"),
 )
 def test_frozen_manager_identity_rejects_versions_the_installer_cannot_publish(
     monkeypatch,

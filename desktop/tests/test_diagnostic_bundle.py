@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import zipfile
 from datetime import UTC, datetime
 from types import SimpleNamespace
+
+import pytest
 
 from backend_manager import diagnostic_bundle
 from backend_manager.diagnostic_bundle import export_diagnostic_bundle
@@ -114,6 +117,29 @@ def test_bundle_contains_only_allowlisted_runtime_evidence_and_never_overwrites(
     assert b"secret.example" not in raw
     assert b"ProgramData" not in raw
     assert b"192.168.1.8" not in raw
+
+
+def test_bundle_publication_does_not_require_windows_hard_links_or_overwrite(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    if os.name == "nt":
+        monkeypatch.setattr(
+            diagnostic_bundle.os,
+            "link",
+            lambda *_args: (_ for _ in ()).throw(AssertionError("hard links are not portable")),
+        )
+    bundle = export_diagnostic_bundle({}, output_dir=tmp_path)
+    assert bundle.path.is_file()
+
+    temporary = tmp_path / "publish.tmp"
+    target = tmp_path / "existing.zip"
+    temporary.write_bytes(b"new")
+    target.write_bytes(b"existing")
+    with pytest.raises(FileExistsError):
+        diagnostic_bundle._publish_without_replace(temporary, target)
+    assert temporary.read_bytes() == b"new"
+    assert target.read_bytes() == b"existing"
 
 
 def test_bundle_validates_manager_and_backend_manifest_schemas(tmp_path, monkeypatch) -> None:

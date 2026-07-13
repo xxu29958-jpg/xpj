@@ -461,6 +461,7 @@
       if (actionInFlight) return;
       const original = button ? button.innerHTML : "";
       const originalAriaLabel = button ? button.getAttribute("aria-label") : null;
+      let actionRendered = false;
       actionInFlight = true;
       applyActionAvailability(latestStatus);
       if (button) {
@@ -479,13 +480,14 @@
         if (response.status === 409) throw new Error("busy");
         if (!response.ok) throw new Error("action");
         render(await response.json());
+        actionRendered = true;
       } catch (error) {
         setMessage(
           "controlError",
           error.message === "busy" ? "另一项操作正在进行，请等待完成。" : "管理器未能完成操作，请稍后重试。"
         );
       } finally {
-        if (button) {
+        if (button && (!actionRendered || button.id !== "primaryAction")) {
           button.innerHTML = original;
           if (originalAriaLabel === null) button.removeAttribute("aria-label");
           else button.setAttribute("aria-label", originalAriaLabel);

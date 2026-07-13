@@ -253,15 +253,23 @@ def test_owner_pairing_shows_the_exact_android_server_address(
     assert probe.copy_server_urls == [endpoint]
 
 
-def test_owner_pairing_refuses_to_issue_code_without_server_address(
+@pytest.mark.parametrize(
+    "server_url",
+    ("", "https://127.0.0.1:8000", "https://localhost", "https://[::1]:8000"),
+)
+def test_owner_pairing_refuses_to_issue_code_without_phone_usable_server_address(
     local_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
+    server_url: str,
 ) -> None:
     issued: list[bool] = []
     monkeypatch.setattr(
         owner_pairing_route,
         "get_settings",
-        lambda: SimpleNamespace(owner_recovery_channel="managed_host", public_base_url=""),
+        lambda: SimpleNamespace(
+            owner_recovery_channel="managed_host",
+            public_base_url=server_url,
+        ),
     )
     monkeypatch.setattr(
         owner_pairing_route.svc,
@@ -347,19 +355,27 @@ def test_owner_pairing_post_uses_selected_ledger(
     local_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    settings_reads = 0
+
+    def settings() -> SimpleNamespace:
+        nonlocal settings_reads
+        settings_reads += 1
+        return SimpleNamespace(
+            owner_recovery_channel="managed_host",
+            public_base_url="https://finance.example.test",
+        )
+
     monkeypatch.setattr(
         owner_pairing_route,
         "get_settings",
-        lambda: SimpleNamespace(
-            owner_recovery_channel="managed_host",
-            public_base_url="https://finance.example.test",
-        ),
+        settings,
     )
     response = local_client.post(
         "/owner/pairing",
         data={"ledger_id": "tester_1", "ttl_minutes": "10"},
     )
     assert response.status_code == 200
+    assert settings_reads == 1
     html = response.text
     # The success card shows the chosen ledger name (not the default one).
     assert "灰度用户1" in html

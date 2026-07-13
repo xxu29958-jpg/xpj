@@ -113,6 +113,56 @@ def _render_with_edge(tmp_path: Path, *, width: int, height: int, degraded: bool
     return json.loads(value)
 
 
+def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the Windows Desktop Manager behavior gate"
+    source = _UI_HTML.read_text(encoding="utf-8")
+    assert source.count(_STARTUP_SCRIPT) == 1
+    healthy = _status(degraded=False)
+    stopped = {**healthy, "running": False, "health": False, "backend_service_state": "stopped"}
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(healthy, ensure_ascii=False)};
+      const stopped = {json.dumps(stopped, ensure_ascii=False)};
+      render(healthy);
+      window.fetch = async () => {{ throw new Error("offline"); }};
+      let offlineThrew = false;
+      try {{ await refresh(); }} catch (_error) {{ offlineThrew = true; }}
+      const offline = {{
+        threw: offlineThrew,
+        primaryDisabled: document.getElementById("primaryAction").disabled,
+        androidDisabled: document.getElementById("androidAction").disabled,
+        overallText: document.getElementById("overallText").textContent
+      }};
+
+      render(healthy);
+      window.fetch = async (url) => {{
+        if (url === "/api/stop") {{
+          return {{status: 200, ok: true, json: async () => stopped}};
+        }}
+        throw new Error("offline");
+      }};
+      await act("stop", document.getElementById("primaryAction"));
+      const primary = document.getElementById("primaryAction");
+      document.body.setAttribute("data-behavior-probe", JSON.stringify({{
+        offline,
+        primaryAction: primary.dataset.action,
+        primaryText: primary.textContent.trim()
+      }}));
+    }})();"""
+    page = tmp_path / "manager-behavior.html"
+    page.write_text(source.replace(_STARTUP_SCRIPT, script), encoding="utf-8")
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / "edge-profile-behavior",
+        url=page.as_uri(),
+        width=820,
+        height=660,
+        expression="document.body && document.body.getAttribute('data-behavior-probe') || undefined",
+    )
+    assert isinstance(value, str)
+    return json.loads(value)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
 @pytest.mark.parametrize(("width", "height"), [(390, 844), (820, 660)])
 @pytest.mark.parametrize("degraded", [False, True])
@@ -135,6 +185,20 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
     assert probe["overallText"] == ("需要处理" if degraded else "运行正常")
     assert probe["runtimeText"] == "本机安装"
     assert probe["serviceTitle"] == ("小票夹需要修复" if degraded else "小票夹正在运行")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+def test_manager_offline_and_service_action_states_remain_coherent(tmp_path: Path) -> None:
+    probe = _render_behavior_probe(tmp_path)
+
+    assert probe["offline"] == {
+        "threw": False,
+        "primaryDisabled": True,
+        "androidDisabled": True,
+        "overallText": "管理器离线",
+    }
+    assert probe["primaryAction"] == "start"
+    assert probe["primaryText"] == "▶启动"
 
 
 def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(

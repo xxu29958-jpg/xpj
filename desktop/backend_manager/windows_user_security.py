@@ -19,7 +19,7 @@ _MB_ICONWARNING = 0x00000030
 _NONCE_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}\Z")
 
 
-def show_elevated_manager_warning() -> None:
+def _show_warning(message: str, title: str) -> None:
     if os.name != "nt":
         return
     user32 = ctypes.WinDLL("User32", use_last_error=True)
@@ -32,10 +32,25 @@ def show_elevated_manager_warning() -> None:
     user32.MessageBoxW.restype = ctypes.c_int
     user32.MessageBoxW(
         None,
+        message,
+        title,
+        _MB_OK | _MB_ICONWARNING,
+    )
+
+
+def show_elevated_manager_warning() -> None:
+    _show_warning(
         "小票夹管理器不能以管理员身份运行。请从 Windows 开始菜单正常打开；"
         "需要控制服务时会单独请求 UAC 授权。",
         "小票夹管理器",
-        _MB_OK | _MB_ICONWARNING,
+    )
+
+
+def show_manager_repair_required_warning() -> None:
+    _show_warning(
+        "小票夹管理器文件不完整、已变化或与当前安装版本不一致。"
+        "为保护服务和数据，本次不会继续运行。请使用可信安装包执行修复。",
+        "小票夹管理器需要修复",
     )
 
 

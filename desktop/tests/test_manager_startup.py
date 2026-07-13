@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -16,6 +17,7 @@ from backend_manager.config import (
     ManagerConfig,
     SourceRuntimeConfig,
 )
+from backend_manager.elevation import HELPER_EXIT_CONFIG
 from backend_manager.instance_owner import InstanceRegistration
 from backend_manager.manager_startup import ManagerWindowSession, run_manager, run_owned_manager
 from backend_manager.runtime import RuntimeControlError, RuntimeStatus
@@ -332,6 +334,116 @@ def test_frozen_manager_starts_restricted_maintenance_shell_when_install_config_
             startup_failure_stage="runtime_discovery",
         ),
     ]
+
+
+def test_frozen_manager_validates_payload_before_normal_runtime(monkeypatch, tmp_path: Path) -> None:
+    events: list[str] = []
+    executable = tmp_path / "manager" / "ticketbox-manager.exe"
+    config = replace(_config(), expected_backend_version="1.2.0")
+    monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: False)
+    monkeypatch.setattr(
+        "backend_manager.__main__.load_frozen_manager_identity",
+        lambda: (events.append("identity"), FrozenManagerIdentity(executable, "1.2.0"))[1],
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.load_config",
+        lambda: (events.append("runtime"), config)[1],
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.run_manager",
+        lambda resolved: (events.append("run"), 0)[1] if resolved is config else 1,
+    )
+
+    assert main([]) == 0
+    assert events == ["identity", "runtime", "run"]
+
+
+def test_frozen_manager_rejects_invalid_payload_before_runtime_discovery(monkeypatch) -> None:
+    warnings: list[bool] = []
+    monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: False)
+    monkeypatch.setattr("backend_manager.__main__.sys.frozen", True, raising=False)
+    monkeypatch.setattr("backend_manager.__main__.load_frozen_manager_identity", lambda: None)
+    monkeypatch.setattr(
+        "backend_manager.__main__.load_config",
+        lambda: (_ for _ in ()).throw(AssertionError("runtime discovery must stay closed")),
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.show_manager_repair_required_warning",
+        lambda: warnings.append(True),
+    )
+
+    assert main([]) == 3
+    assert warnings == [True]
+
+
+def test_frozen_manager_version_mismatch_enters_diagnostics_only_mode(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    started: list[MaintenanceManagerConfig] = []
+    executable = tmp_path / "manager" / "ticketbox-manager.exe"
+    config = replace(_config(), expected_backend_version="1.2.1")
+    monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: False)
+    monkeypatch.setattr(
+        "backend_manager.__main__.load_frozen_manager_identity",
+        lambda: FrozenManagerIdentity(executable, "1.2.0"),
+    )
+    monkeypatch.setattr("backend_manager.__main__.load_config", lambda: config)
+    monkeypatch.setattr(
+        "backend_manager.__main__.run_manager",
+        lambda resolved: (started.append(resolved), 0)[1],
+    )
+
+    assert main([]) == 0
+    assert started == [
+        MaintenanceManagerConfig(
+            "127.0.0.1",
+            8799,
+            "1.2.0",
+            startup_failure_code="manager_identity_mismatch",
+            startup_failure_stage="manager_identity",
+        ),
+    ]
+
+
+def test_elevated_helper_rejects_invalid_frozen_payload_before_service_access(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    results: list[tuple[int, str]] = []
+    monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: True)
+    monkeypatch.setattr("backend_manager.__main__.sys.frozen", True, raising=False)
+    monkeypatch.setattr("backend_manager.__main__.validate_helper_result_channel", lambda *_args: None)
+    monkeypatch.setattr("backend_manager.__main__.load_frozen_manager_identity", lambda: None)
+    monkeypatch.setattr(
+        "backend_manager.__main__.load_config",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("service access must stay closed")),
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.write_helper_result",
+        lambda *_args: results.append((_args[-2], _args[-1])),
+    )
+    nonce = "a" * 32
+
+    exit_code = main(
+        [
+            "--elevated-service-action",
+            "start",
+            "--helper-result-path",
+            str(tmp_path / f"{nonce}.json"),
+            "--helper-result-root",
+            str(tmp_path),
+            "--helper-result-nonce",
+            nonce,
+            "--helper-channel-owner-sid",
+            "S-1-5-21-1",
+            "--helper-channel-file-id",
+            "file-id",
+        ],
+    )
+
+    assert exit_code == HELPER_EXIT_CONFIG
+    assert results == [(HELPER_EXIT_CONFIG, "桌面管理器载荷身份无效，请使用可信安装包执行修复。")]
 
 
 def test_source_startup_error_does_not_forge_an_installed_maintenance_shell(monkeypatch) -> None:

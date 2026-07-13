@@ -57,16 +57,40 @@ def installation_owner_state(db: Session) -> Literal["configured", "recovery_req
     return "configured" if owner_id is not None else "recovery_required"
 
 
+def configured_mobile_endpoint_url(public_base_url: str) -> str | None:
+    """Return one phone-usable HTTPS origin, without claiming reachability."""
+    value = public_base_url.strip().rstrip("/")
+    try:
+        parsed = urlsplit(value)
+        host = (parsed.hostname or "").casefold().rstrip(".")
+        _ = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme.casefold() != "https"
+        or not host
+        or parsed.username
+        or parsed.password
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    if host == "localhost" or host.endswith(".localhost"):
+        return None
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        if address.is_loopback or address.is_unspecified:
+            return None
+    return value
+
+
 def installation_mobile_capabilities(public_base_url: str) -> InstallationMobileCapabilities:
     """Project configured mobile access without claiming external reachability."""
-    host = ""
-    try:
-        host = (urlsplit(public_base_url).hostname or "").casefold()
-        loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        loopback = not host
-    configured = bool(public_base_url) and bool(host) and not loopback
-    if configured:
+    if configured_mobile_endpoint_url(public_base_url) is not None:
         return InstallationMobileCapabilities(
             mobile_endpoint_state="public_configured_unverified",
             android_binding_state="configured_unverified",

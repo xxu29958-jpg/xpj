@@ -2,15 +2,14 @@
 
 Same shape as ``_devices``: every public function looks up the managed
 ledger set first, then delegates to ``admin_service``. The
-``compose_public_upload_url`` helper is local because it also reads
-``PUBLIC_BASE_URL`` from app config.
+``compose_public_upload_url`` keeps public credential URLs behind the
+shared mobile-endpoint contract.
 """
 
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.services.admin_service import (
     UploadLinkSecret,
     UploadLinkSummary,
@@ -22,6 +21,7 @@ from app.services.admin_service import (
     rotate_upload_link,
     update_upload_link_limits,
 )
+from app.services.installation_health_service import configured_mobile_endpoint_url
 from app.services.owner_console_service._ledger_console import (
     _managed_console_ledger_ids,
     _require_owner_id,
@@ -113,19 +113,21 @@ def do_delete_upload_link(db: Session, public_id: str) -> None:
     )
 
 
-def compose_public_upload_url(secret: UploadLinkSecret) -> str | None:
+def compose_public_upload_url(
+    secret: UploadLinkSecret,
+    *,
+    public_base_url: str,
+) -> str | None:
     """Return the absolute public URL for an UploadLink secret.
 
     Combines :envvar:`PUBLIC_BASE_URL` with the relative ``upload_url_path``
     produced by :mod:`app.services.admin_service`. Returns ``None`` when
-    ``PUBLIC_BASE_URL`` is not configured so the caller can render a
-    configuration hint instead of a half-broken URL.
+    the supplied origin is not usable by a phone.
 
     The relative path already includes ``?tz=...``; do not append it again.
     Never log or persist the returned value.
     """
-    cfg = get_settings()
-    base = (cfg.public_base_url or "").rstrip("/")
-    if not base:
+    base = configured_mobile_endpoint_url(public_base_url)
+    if base is None:
         return None
     return base + secret.upload_url_path
