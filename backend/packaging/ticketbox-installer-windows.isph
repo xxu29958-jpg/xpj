@@ -2045,8 +2045,8 @@ begin
     '    $scriptName = [IO.Path]::GetFileName($command.Source)' + #13#10 +
     '    $allowedByScript = @{' + #13#10 +
     '        "hold_data_root_mutation_guard.ps1" = @("InstallDir","DataRoot","InstallerLockOwnerProcessId","Hold","ConfirmStopped","DataRootGuardReadyPath","DataRootGuardReleasePath","ExpectedHolderProcessId","ExpectedHolderStartedFileTimeHigh","ExpectedHolderStartedFileTimeLow","ExpectedNonce")' + #13#10 +
-    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced")' + #13#10 +
-    '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","LifecycleReceiptPath","InstallerLockOwnerProcessId","CompleteOwnerHandoffOnly")' + #13#10 +
+    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced")' + #13#10 +
+    '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","LifecycleReceiptPath","InstallerLockOwnerProcessId","CompleteOwnerHandoffOnly")' + #13#10 +
     '        "uninstall_bundled_services.ps1" = @("InstallDir","InstallerLockOwnerProcessId","DeleteData")' + #13#10 +
     '    }' + #13#10 +
     '    if (-not $allowedByScript.ContainsKey($scriptName)) { throw "Installer child script is not allowlisted: $scriptName" }' + #13#10 +

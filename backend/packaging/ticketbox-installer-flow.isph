@@ -504,6 +504,7 @@ begin
       ' -PgPort ' + SelectedPgPort() +
       ' -BackendPort ' + SelectedBackendPort() +
       ' -TargetPgMajor {#TargetPgMajor}' +
+      ' -TargetBackendVersion {#AppVersion}' +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
       ' -CompleteOwnerHandoffOnly';
     if not RunPowerShellChecked(
@@ -646,6 +647,7 @@ begin
     ' -PgPort ' + SelectedPgPort() +
     ' -BackendPort ' + SelectedBackendPort() +
     ' -TargetPgMajor {#TargetPgMajor}' +
+    ' -TargetBackendVersion {#AppVersion}' +
     ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
     ' -InstalledReleaseConfigPath ' + Quote(ExpandConstant('{app}\installer\windows-release-config.json')) +
     ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
@@ -735,6 +737,7 @@ begin
       ' -PgPort ' + SelectedPgPort() +
       ' -BackendPort ' + SelectedBackendPort() +
       ' -TargetPgMajor {#TargetPgMajor}' +
+      ' -TargetBackendVersion {#AppVersion}' +
       ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
@@ -764,6 +767,7 @@ begin
       ' -PgPort ' + SelectedPgPort() +
       ' -BackendPort ' + SelectedBackendPort() +
       ' -TargetPgMajor {#TargetPgMajor}' +
+      ' -TargetBackendVersion {#AppVersion}' +
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);
     if not RunPowerShellChecked(
@@ -782,6 +786,7 @@ begin
       ' -PgPort ' + SelectedPgPort() +
       ' -BackendPort ' + SelectedBackendPort() +
       ' -TargetPgMajor {#TargetPgMajor}' +
+      ' -TargetBackendVersion {#AppVersion}' +
       ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
@@ -811,6 +816,7 @@ begin
       ' -PgPort ' + SelectedPgPort() +
       ' -BackendPort ' + SelectedBackendPort() +
       ' -TargetPgMajor {#TargetPgMajor}' +
+      ' -TargetBackendVersion {#AppVersion}' +
       ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +

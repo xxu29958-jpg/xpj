@@ -55,6 +55,45 @@ def _looks_like_legacy_ipv4_literal(host: str) -> bool:
     )
 
 
+def _canonical_mobile_endpoint_host(host: str) -> str | None:
+    """Normalize one host before applying phone-endpoint safety policy."""
+    candidate = host[:-1] if host.endswith(".") else host
+    if not candidate or candidate.endswith(".") or "%" in candidate:
+        return None
+
+    try:
+        address = ipaddress.ip_address(candidate)
+    except ValueError:
+        try:
+            candidate = candidate.encode("idna").decode("ascii").casefold()
+        except UnicodeError:
+            return None
+        if not candidate or len(candidate) > 253:
+            return None
+        labels = candidate.split(".")
+        if any(
+            not label
+            or len(label) > 63
+            or label.startswith("-")
+            or label.endswith("-")
+            or any(not (char.isascii() and (char.isalnum() or char == "-")) for char in label)
+            for label in labels
+        ):
+            return None
+        if _looks_like_legacy_ipv4_literal(candidate):
+            return None
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            return candidate
+
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return None
+    if address.is_loopback or address.is_unspecified:
+        return None
+    return address.compressed
+
+
 def installation_runtime_access_state(
     scope: Mapping[str, object],
 ) -> Literal["available", "repair_required"]:
@@ -89,7 +128,7 @@ def configured_mobile_endpoint_url(public_base_url: str) -> str | None:
     value = public_base_url.strip().rstrip("/")
     try:
         parsed = urlsplit(value)
-        host = (parsed.hostname or "").casefold().rstrip(".")
+        host = parsed.hostname or ""
         port = parsed.port
     except ValueError:
         return None
@@ -104,19 +143,15 @@ def configured_mobile_endpoint_url(public_base_url: str) -> str | None:
         or port == 0
     ):
         return None
-    if host == "localhost" or host.endswith(".localhost"):
+    canonical_host = _canonical_mobile_endpoint_host(host)
+    if canonical_host is None:
         return None
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        if _looks_like_legacy_ipv4_literal(host):
-            return None
-    else:
-        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
-            address = address.ipv4_mapped
-        if address.is_loopback or address.is_unspecified:
-            return None
-    return value
+    if canonical_host == "localhost" or canonical_host.endswith(".localhost"):
+        return None
+    authority = f"[{canonical_host}]" if ":" in canonical_host else canonical_host
+    if port is not None:
+        authority = f"{authority}:{port}"
+    return f"https://{authority}"
 
 
 def installation_mobile_capabilities(public_base_url: str) -> InstallationMobileCapabilities:

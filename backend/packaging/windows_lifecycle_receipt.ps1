@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 
-$script:TicketboxLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v7"
+$script:TicketboxLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v8"
 $script:TicketboxLifecycleReceiptModes = @(
     "fresh_install",
     "preserved_data_reinstall",
@@ -30,6 +30,51 @@ $script:TicketboxDeleteDataIntentSchema = "ticketbox-delete-data-intent-v1"
 $script:TicketboxInstallerRuntimeRecoveryGuardSchema = "ticketbox-installer-runtime-recovery-guard-v1"
 $script:TicketboxInstallerRuntimeRecoveryGuardFileName = "installer-runtime-recovery-pending"
 $script:TicketboxInstallerRuntimeStateDirectoryName = "TicketboxRuntimeState"
+
+function ConvertTo-TicketboxLifecycleVersion {
+    param(
+        [Parameter(Mandatory = $true)][string]$Version,
+        [string]$FieldName = "版本"
+    )
+
+    $value = $Version.Trim()
+    $parts = @($value -split '\.')
+    if ($parts.Count -lt 3 -or $parts.Count -gt 4) {
+        throw "$FieldName 必须是三段或四段数字版本。"
+    }
+    $components = @(0, 0, 0, 0)
+    for ($index = 0; $index -lt $parts.Count; $index++) {
+        $component = 0
+        if (
+            $parts[$index] -cnotmatch '^[0-9]+$' -or
+            -not [int]::TryParse($parts[$index], [ref]$component)
+        ) {
+            throw "$FieldName 包含无效版本分量。"
+        }
+        $components[$index] = $component
+    }
+    $canonical = "$($components[0]).$($components[1]).$($components[2])"
+    if ($parts.Count -eq 4) { $canonical += ".$($components[3])" }
+    return [pscustomobject]@{
+        Canonical = $canonical
+        Components = $components
+    }
+}
+
+function Compare-TicketboxLifecycleVersions {
+    param(
+        [Parameter(Mandatory = $true)][string]$Left,
+        [Parameter(Mandatory = $true)][string]$Right
+    )
+
+    $leftVersion = ConvertTo-TicketboxLifecycleVersion $Left "当前安装器目标版本"
+    $rightVersion = ConvertTo-TicketboxLifecycleVersion $Right "生命周期回执目标版本下限"
+    for ($index = 0; $index -lt 4; $index++) {
+        if ($leftVersion.Components[$index] -lt $rightVersion.Components[$index]) { return -1 }
+        if ($leftVersion.Components[$index] -gt $rightVersion.Components[$index]) { return 1 }
+    }
+    return 0
+}
 
 function Get-TicketboxLifecycleReceiptPath {
     if ($null -eq (Get-Command Get-TicketboxLifecycleLockPath -ErrorAction SilentlyContinue)) {
@@ -238,6 +283,7 @@ function Write-TicketboxLifecycleReceipt {
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
         [Parameter(Mandatory = $true)][object]$InstalledReleaseConfig,
+        [Parameter(Mandatory = $true)][string]$TargetBackendVersionFloor,
         [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
         [Parameter(Mandatory = $true)][ValidateSet("absent", "stopped", "running")][string]$PreviousPgState,
         [Parameter(Mandatory = $true)][ValidateSet("absent", "stopped", "running")][string]$PreviousBackendState,
@@ -277,6 +323,9 @@ function Write-TicketboxLifecycleReceipt {
     if ($InstallerOwnerProcessId -le 0) {
         throw "Inno 生命周期回执必须绑定有效的安装器进程。"
     }
+    $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
+        $TargetBackendVersionFloor `
+        "生命周期回执目标版本下限"
     $dataRootMarker = Read-TicketboxProtectedDataRootMarker `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
@@ -358,6 +407,35 @@ function Write-TicketboxLifecycleReceipt {
             throw "已存在安装生命周期回执；拒绝静默覆盖旧的运行态或备份证据。"
         }
         Assert-TicketboxProtectedLifecycleReceipt $canonicalPath
+        try {
+            $existingReceipt = Get-Content `
+                -LiteralPath $canonicalPath `
+                -Encoding UTF8 `
+                -Raw | ConvertFrom-Json
+        }
+        catch {
+            throw "既有安装生命周期回执不是有效 JSON；拒绝替换。"
+        }
+        $existingFloorProperty =
+            $existingReceipt.PSObject.Properties["target_backend_version_floor"]
+        if (
+            $existingReceipt.schema -cne $script:TicketboxLifecycleReceiptSchema -or
+            $null -eq $existingFloorProperty -or
+            $existingFloorProperty.Value -isnot [string]
+        ) {
+            throw "既有安装生命周期回执缺少受支持的目标版本下限；拒绝替换。"
+        }
+        $existingFloor = ConvertTo-TicketboxLifecycleVersion `
+            ([string]$existingFloorProperty.Value) `
+            "既有生命周期回执目标版本下限"
+        if (
+            [string]$existingFloorProperty.Value -cne $existingFloor.Canonical -or
+            (Compare-TicketboxLifecycleVersions `
+                -Left $targetVersionFloor.Canonical `
+                -Right $existingFloor.Canonical) -lt 0
+        ) {
+            throw "安装生命周期回执目标版本下限不能回退。"
+        }
     }
     $payload = [ordered]@{
         schema = $script:TicketboxLifecycleReceiptSchema
@@ -367,6 +445,7 @@ function Write-TicketboxLifecycleReceipt {
         data_volume_identity = $dataRootMarker.DataVolumeIdentity
         pg_port = $PgPort
         backend_port = $BackendPort
+        target_backend_version_floor = $targetVersionFloor.Canonical
         installer_owner_process_id = $InstallerOwnerProcessId
         previous_pg_state = $PreviousPgState
         previous_backend_state = $PreviousBackendState
@@ -404,6 +483,7 @@ function Read-TicketboxLifecycleReceipt {
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
         [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
+        [Parameter(Mandatory = $true)][string]$CurrentTargetBackendVersion,
         [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
         [switch]$AllowPreviousInstallerOwnerProcessId
     )
@@ -418,6 +498,23 @@ function Read-TicketboxLifecycleReceipt {
     }
     if ($receipt.schema -ne $script:TicketboxLifecycleReceiptSchema) {
         throw "安装生命周期回执 schema 不受支持。"
+    }
+    $targetVersionProperty = $receipt.PSObject.Properties["target_backend_version_floor"]
+    if ($null -eq $targetVersionProperty -or $targetVersionProperty.Value -isnot [string]) {
+        throw "安装生命周期回执缺少目标版本下限。"
+    }
+    $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
+        ([string]$targetVersionProperty.Value) `
+        "生命周期回执目标版本下限"
+    if ([string]$targetVersionProperty.Value -cne $targetVersionFloor.Canonical) {
+        throw "安装生命周期回执目标版本下限不是规范版本。"
+    }
+    if (
+        (Compare-TicketboxLifecycleVersions `
+            -Left $CurrentTargetBackendVersion `
+            -Right $targetVersionFloor.Canonical) -lt 0
+    ) {
+        throw "当前安装器目标版本低于已开始安装事务的版本下限；拒绝降级覆盖。"
     }
     foreach ($name in @(
         "backup_required",
@@ -582,6 +679,51 @@ function Assert-TicketboxLifecycleReceiptStage([object]$Receipt, [string]$Expect
     }
 }
 
+function Set-TicketboxLifecycleReceiptTargetVersionFloor {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
+        [Parameter(Mandatory = $true)][string]$TargetBackendVersionFloor
+    )
+
+    $comparison = Compare-TicketboxLifecycleVersions `
+        -Left $TargetBackendVersionFloor `
+        -Right ([string]$Receipt.target_backend_version_floor)
+    if ($comparison -lt 0) {
+        throw "安装生命周期回执目标版本下限不能回退。"
+    }
+    if ($comparison -eq 0) {
+        Close-TicketboxLifecycleBackupGuard $Receipt
+        return
+    }
+    Write-TicketboxLifecycleReceipt `
+        -Path $Path `
+        -Mode ([string]$Receipt.mode) `
+        -InstallDir ([string]$Receipt.install_dir) `
+        -DataRoot ([string]$Receipt.data_root) `
+        -PgPort ([int]$Receipt.pg_port) `
+        -BackendPort ([int]$Receipt.backend_port) `
+        -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor $TargetBackendVersionFloor `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId `
+        -PreviousPgState ([string]$Receipt.previous_pg_state) `
+        -PreviousBackendState ([string]$Receipt.previous_backend_state) `
+        -PreviousPgStartPolicy ([string]$Receipt.previous_pg_start_policy) `
+        -PreviousBackendStartPolicy ([string]$Receipt.previous_backend_start_policy) `
+        -BackupRequired ([bool]$Receipt.backup_required) `
+        -BackupCompleted ([bool]$Receipt.backup_completed) `
+        -PreparationStage ([string]$Receipt.preparation_stage) `
+        -BackupPath ([string]$Receipt.backup_path) `
+        -BackupSha256 ([string]$Receipt.backup_sha256) `
+        -BackupByteLength ([long]$Receipt.backup_byte_length) `
+        -FilesMayHaveBeenReplaced ([bool]$Receipt.files_may_have_been_replaced) `
+        -InstallCompleted ([bool]$Receipt.install_completed) `
+        -TemporaryPgServiceCleanupPending ([bool]$Receipt.temporary_pg_service_cleanup_pending) `
+        -ReplaceProtectedReceipt
+    Close-TicketboxLifecycleBackupGuard $Receipt
+}
+
 function Set-TicketboxLifecycleReceiptDeferredBackup {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -601,6 +743,7 @@ function Set-TicketboxLifecycleReceiptDeferredBackup {
         -PgPort ([int]$Receipt.pg_port) `
         -BackendPort ([int]$Receipt.backend_port) `
         -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor ([string]$Receipt.target_backend_version_floor) `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
         -PreviousPgState ([string]$Receipt.previous_pg_state) `
         -PreviousBackendState ([string]$Receipt.previous_backend_state) `
@@ -632,6 +775,7 @@ function Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending {
         -PgPort ([int]$Receipt.pg_port) `
         -BackendPort ([int]$Receipt.backend_port) `
         -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor ([string]$Receipt.target_backend_version_floor) `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
         -PreviousPgState ([string]$Receipt.previous_pg_state) `
         -PreviousBackendState ([string]$Receipt.previous_backend_state) `
@@ -662,6 +806,7 @@ function Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending {
         -PgPort ([int]$Receipt.pg_port) `
         -BackendPort ([int]$Receipt.backend_port) `
         -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor ([string]$Receipt.target_backend_version_floor) `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
         -PreviousPgState ([string]$Receipt.previous_pg_state) `
         -PreviousBackendState ([string]$Receipt.previous_backend_state) `
@@ -700,6 +845,7 @@ function Set-TicketboxLifecycleReceiptDeferredBackupCompleted {
         -PgPort ([int]$Receipt.pg_port) `
         -BackendPort ([int]$Receipt.backend_port) `
         -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor ([string]$Receipt.target_backend_version_floor) `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
         -PreviousPgState ([string]$Receipt.previous_pg_state) `
         -PreviousBackendState ([string]$Receipt.previous_backend_state) `
@@ -732,6 +878,7 @@ function Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced {
         -PgPort ([int]$Receipt.pg_port) `
         -BackendPort ([int]$Receipt.backend_port) `
         -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor ([string]$Receipt.target_backend_version_floor) `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
         -PreviousPgState ([string]$Receipt.previous_pg_state) `
         -PreviousBackendState ([string]$Receipt.previous_backend_state) `
@@ -765,6 +912,7 @@ function Set-TicketboxLifecycleReceiptInstallCompleted {
         -PgPort ([int]$Receipt.pg_port) `
         -BackendPort ([int]$Receipt.backend_port) `
         -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor ([string]$Receipt.target_backend_version_floor) `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
         -PreviousPgState ([string]$Receipt.previous_pg_state) `
         -PreviousBackendState ([string]$Receipt.previous_backend_state) `
@@ -1093,6 +1241,7 @@ function Complete-TicketboxInstalledLifecycleTransaction {
         [Parameter(Mandatory = $true)][int]$PgPort,
         [Parameter(Mandatory = $true)][int]$BackendPort,
         [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
+        [Parameter(Mandatory = $true)][string]$TargetBackendVersion,
         [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
         [Parameter(Mandatory = $true)][string]$BuildManifestPath,
         [Parameter(Mandatory = $true)][string]$RecoveryRequiredPath,
@@ -1106,6 +1255,7 @@ function Complete-TicketboxInstalledLifecycleTransaction {
         -PgPort $PgPort `
         -BackendPort $BackendPort `
         -TargetReleaseConfig $TargetReleaseConfig `
+        -CurrentTargetBackendVersion $TargetBackendVersion `
         -InstallerOwnerProcessId $InstallerOwnerProcessId
     if ([string]$receipt.preparation_stage -notin @(
         "files_may_have_been_replaced",
@@ -1133,6 +1283,7 @@ function Complete-TicketboxInstalledLifecycleTransaction {
             -PgPort $PgPort `
             -BackendPort $BackendPort `
             -TargetReleaseConfig $TargetReleaseConfig `
+            -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerOwnerProcessId
     }
     Assert-TicketboxCompletedLifecycleReceipt $receipt
@@ -1178,6 +1329,7 @@ function Set-TicketboxLifecycleReceiptInstallerOwner {
         -PgPort ([int]$Receipt.pg_port) `
         -BackendPort ([int]$Receipt.backend_port) `
         -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor ([string]$Receipt.target_backend_version_floor) `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
         -PreviousPgState ([string]$Receipt.previous_pg_state) `
         -PreviousBackendState ([string]$Receipt.previous_backend_state) `
@@ -1221,6 +1373,7 @@ function Set-TicketboxLifecycleReceiptPrepared {
         -PgPort ([int]$Receipt.pg_port) `
         -BackendPort ([int]$Receipt.backend_port) `
         -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor ([string]$Receipt.target_backend_version_floor) `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
         -PreviousPgState ([string]$Receipt.previous_pg_state) `
         -PreviousBackendState ([string]$Receipt.previous_backend_state) `
@@ -1274,6 +1427,16 @@ function Read-TicketboxCompletedLifecycleReceipt {
     }
     $pgPort = 0
     $backendPort = 0
+    $targetVersionProperty = $envelope.PSObject.Properties["target_backend_version_floor"]
+    if ($null -eq $targetVersionProperty -or $targetVersionProperty.Value -isnot [string]) {
+        throw "安装生命周期回执缺少目标版本下限。"
+    }
+    $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
+        ([string]$targetVersionProperty.Value) `
+        "生命周期回执目标版本下限"
+    if ([string]$targetVersionProperty.Value -cne $targetVersionFloor.Canonical) {
+        throw "安装生命周期回执目标版本下限不是规范版本。"
+    }
     if (
         -not [int]::TryParse([string]$envelope.pg_port, [ref]$pgPort) -or
         -not [int]::TryParse([string]$envelope.backend_port, [ref]$backendPort) -or
@@ -1289,6 +1452,7 @@ function Read-TicketboxCompletedLifecycleReceipt {
         -PgPort $pgPort `
         -BackendPort $backendPort `
         -TargetReleaseConfig $TargetReleaseConfig `
+        -CurrentTargetBackendVersion $targetVersionFloor.Canonical `
         -InstallerOwnerProcessId $PID `
         -AllowPreviousInstallerOwnerProcessId
     Assert-TicketboxCompletedLifecycleReceipt $receipt

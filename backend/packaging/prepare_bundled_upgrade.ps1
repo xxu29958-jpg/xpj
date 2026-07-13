@@ -16,6 +16,7 @@ param(
     [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
     [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
     [Parameter(Mandatory = $true)][ValidateRange(1, 99)][int]$TargetPgMajor,
+    [Parameter(Mandatory = $true)][string]$TargetBackendVersion,
     [string]$ReleaseConfigPath = "",
     [string]$InstalledReleaseConfigPath = "",
     [Parameter(Mandatory = $true)][string]$LifecycleReceiptPath,
@@ -960,6 +961,7 @@ try {
             -PgPort $PgPort `
             -BackendPort $BackendPort `
             -TargetReleaseConfig $TargetReleaseConfig `
+            -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId
         if ([string]$receipt.preparation_stage -eq "backup_deferred_until_program_files_installed") {
             Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending `
@@ -979,6 +981,38 @@ try {
         )) {
             throw "程序文件复制边界与 preserved-data 生命周期回执阶段不一致。"
         }
+        Close-TicketboxLifecycleBackupGuard $receipt
+        $receipt = Read-TicketboxLifecycleReceipt `
+            -Path $LifecycleReceiptPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot `
+            -PgPort $PgPort `
+            -BackendPort $BackendPort `
+            -TargetReleaseConfig $TargetReleaseConfig `
+            -CurrentTargetBackendVersion $TargetBackendVersion `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+        Set-TicketboxLifecycleReceiptTargetVersionFloor `
+            -Path $LifecycleReceiptPath `
+            -Receipt $receipt `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+            -TargetBackendVersionFloor $TargetBackendVersion
+        $receipt = Read-TicketboxLifecycleReceipt `
+            -Path $LifecycleReceiptPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot `
+            -PgPort $PgPort `
+            -BackendPort $BackendPort `
+            -TargetReleaseConfig $TargetReleaseConfig `
+            -CurrentTargetBackendVersion $TargetBackendVersion `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+        if (
+            (Compare-TicketboxLifecycleVersions `
+                -Left $TargetBackendVersion `
+                -Right ([string]$receipt.target_backend_version_floor)) -ne 0
+        ) {
+            throw "程序文件复制边界未持久化当前安装器目标版本下限。"
+        }
+        Close-TicketboxLifecycleBackupGuard $receipt
         return
     }
     if ($RecoverPreparedInstall) {
@@ -989,6 +1023,7 @@ try {
             -PgPort $PgPort `
             -BackendPort $BackendPort `
             -TargetReleaseConfig $TargetReleaseConfig `
+            -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId
         $recoveryStage = [string]$receipt.preparation_stage
         if ([bool]$receipt.temporary_pg_service_cleanup_pending) {
@@ -1069,6 +1104,7 @@ try {
             -PgPort $PgPort `
             -BackendPort $BackendPort `
             -TargetReleaseConfig $TargetReleaseConfig `
+            -TargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -BuildManifestPath $InstalledBuildManifestPath `
             -RecoveryRequiredPath $RecoveryRequiredPath `
@@ -1084,6 +1120,7 @@ try {
             -PgPort $PgPort `
             -BackendPort $BackendPort `
             -TargetReleaseConfig $TargetReleaseConfig `
+            -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -AllowPreviousInstallerOwnerProcessId
         if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending) {
@@ -1114,6 +1151,7 @@ try {
                 -PgPort $PgPort `
                 -BackendPort $BackendPort `
                 -TargetReleaseConfig $TargetReleaseConfig `
+                -TargetBackendVersion $TargetBackendVersion `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
                 -BuildManifestPath $InstalledBuildManifestPath `
                 -RecoveryRequiredPath $RecoveryRequiredPath `
@@ -1125,6 +1163,7 @@ try {
                 -PgPort $PgPort `
                 -BackendPort $BackendPort `
                 -TargetReleaseConfig $TargetReleaseConfig `
+                -CurrentTargetBackendVersion $TargetBackendVersion `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId
             Remove-TicketboxCompletedLifecycleReceipt `
                 -Path $LifecycleReceiptPath `
@@ -1306,6 +1345,7 @@ try {
         -PgPort $PgPort `
         -BackendPort $BackendPort `
         -InstalledReleaseConfig $InstalledReleaseConfig `
+        -TargetBackendVersionFloor $TargetBackendVersion `
         -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
         -PreviousPgState $pgState `
         -PreviousBackendState $backendState `
@@ -1321,6 +1361,7 @@ try {
         -PgPort $PgPort `
         -BackendPort $BackendPort `
         -TargetReleaseConfig $TargetReleaseConfig `
+        -CurrentTargetBackendVersion $TargetBackendVersion `
         -InstallerOwnerProcessId $InstallerLockOwnerProcessId
     if ($deferredPreservedBackup) {
         Set-TicketboxLifecycleReceiptDeferredBackup `

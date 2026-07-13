@@ -95,6 +95,9 @@ def test_resolver_rejects_downgrade_or_unscoped_values(raw: str) -> None:
         "https://0177.0.0.1",
         "https://0x7f000001",
         "https://[::ffff:127.0.0.1]",
+        "https://%31%32%37.0.0.1",
+        "https://[::ffff:192.168.1.10]",
+        "https://\uff11\uff12\uff17\u3002\uff10\u3002\uff10\u3002\uff11",
         "https://api.example.com:0",
     ],
 )
@@ -102,6 +105,20 @@ def test_mobile_endpoint_rejects_ambiguous_loopback_or_unusable_port(raw: str) -
     assert _resolve_public_base_url(raw) == raw
     assert configured_mobile_endpoint_url(raw) is None
     assert installation_mobile_capabilities(raw).mobile_endpoint_state == "local_only"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("https://API.Example.COM./", "https://api.example.com"),
+        ("https://[2001:0DB8:0:0::1]:8443", "https://[2001:db8::1]:8443"),
+    ],
+)
+def test_mobile_endpoint_returns_one_canonical_cross_stack_origin(
+    raw: str,
+    expected: str,
+) -> None:
+    assert configured_mobile_endpoint_url(raw) == expected
 
 
 @pytest.mark.parametrize(

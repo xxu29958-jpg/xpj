@@ -12,6 +12,7 @@ from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
 from app.services.installation_health_service import (
     configured_mobile_endpoint_url,
+    installation_owner_state,
     owner_recovery_message,
 )
 
@@ -71,6 +72,14 @@ def owner_upload_links_create(
 ) -> HTMLResponse:
     cfg = get_settings()
     mobile_endpoint = configured_mobile_endpoint_url(cfg.public_base_url)
+    if installation_owner_state(db) == "recovery_required":
+        return _render_upload_links(
+            request,
+            db,
+            mobile_endpoint=mobile_endpoint,
+            links=[],
+            error=owner_recovery_message(cfg.owner_recovery_channel),
+        )
     ledger_id = svc.get_default_ledger_id(db)
     account_id = svc.get_owner_account_id(db)
     if ledger_id is None or account_id is None:
@@ -104,6 +113,14 @@ def owner_upload_links_rotate(
 ) -> HTMLResponse:
     cfg = get_settings()
     mobile_endpoint = configured_mobile_endpoint_url(cfg.public_base_url)
+    if installation_owner_state(db) == "recovery_required":
+        return _render_upload_links(
+            request,
+            db,
+            mobile_endpoint=mobile_endpoint,
+            links=[],
+            error=owner_recovery_message(cfg.owner_recovery_channel),
+        )
     if svc.get_owner_account_id(db) is None:
         return _render_upload_links(
             request,
