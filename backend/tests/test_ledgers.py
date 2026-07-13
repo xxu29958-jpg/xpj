@@ -15,6 +15,7 @@ Anti-cross-ledger guarantees are tested in
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
 from types import SimpleNamespace
 
 import pytest
@@ -29,6 +30,23 @@ from app.routes.owner_console import _pairing as owner_pairing_route
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
 from app.services import ledger_service
+
+
+class _PairingPageProbe(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.copy_server_urls: list[str] = []
+        self.text_nodes: list[str] = []
+
+    def handle_starttag(self, _tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        server_url = dict(attrs).get("data-copy-server-url")
+        if server_url is not None:
+            self.copy_server_urls.append(server_url)
+
+    def handle_data(self, data: str) -> None:
+        text = data.strip()
+        if text:
+            self.text_nodes.append(text)
 
 
 @pytest.fixture()
@@ -216,20 +234,23 @@ def test_owner_pairing_shows_the_exact_android_server_address(
     local_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    endpoint = "https://finance.example.test"
     monkeypatch.setattr(
         owner_pairing_route,
         "get_settings",
         lambda: SimpleNamespace(
             owner_recovery_channel="managed_host",
-            public_base_url="https://finance.example.test",
+            public_base_url=endpoint,
         ),
     )
 
     response = local_client.get("/owner/pairing")
 
     assert response.status_code == 200
-    assert "https://finance.example.test" in response.text
-    assert 'data-copy-server-url="https://finance.example.test"' in response.text
+    probe = _PairingPageProbe()
+    probe.feed(response.text)
+    assert endpoint in probe.text_nodes
+    assert probe.copy_server_urls == [endpoint]
 
 
 def test_owner_pairing_refuses_to_issue_code_without_server_address(

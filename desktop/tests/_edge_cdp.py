@@ -16,6 +16,11 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 _WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+_EVALUATE_PAGE_ATTEMPTS = 2
+
+
+class _DevToolsTransportError(RuntimeError):
+    """Raised when a bounded Edge DevTools session cannot carry commands."""
 
 
 class _WebSocket:
@@ -55,7 +60,7 @@ class _WebSocket:
             "sec-websocket-accept",
         ) != expected:
             self.close()
-            raise AssertionError(f"DevTools websocket handshake failed: {status}")
+            raise _DevToolsTransportError(f"DevTools websocket handshake failed: {status}")
         self._next_id = 1
 
     def close(self) -> None:
@@ -86,7 +91,7 @@ class _WebSocket:
         while remaining:
             chunk = self._stream.read(remaining)
             if not chunk:
-                raise AssertionError("DevTools websocket closed unexpectedly")
+                raise _DevToolsTransportError("DevTools websocket closed unexpectedly")
             chunks.append(chunk)
             remaining -= len(chunk)
         return b"".join(chunks)
@@ -108,7 +113,9 @@ class _WebSocket:
             if masked:
                 payload = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
             if opcode == 8:
-                raise AssertionError("DevTools websocket closed before returning a response")
+                raise _DevToolsTransportError(
+                    "DevTools websocket closed before returning a response",
+                )
             if opcode == 9:
                 self._send_frame(payload, opcode=10)
                 continue
@@ -150,7 +157,7 @@ def _wait_for_devtools(profile: Path, process: subprocess.Popen[bytes]) -> tuple
         if len(lines) >= 2:
             return int(lines[0]), lines[1]
         time.sleep(0.05)
-    raise AssertionError(
+    raise _DevToolsTransportError(
         f"Edge did not publish DevToolsActivePort (launcher exit={process.poll()})",
     )
 
@@ -168,7 +175,7 @@ def _page_websocket(port: int) -> str:
         for target in targets:
             if target.get("type") == "page" and target.get("webSocketDebuggerUrl"):
                 return str(target["webSocketDebuggerUrl"])
-    raise AssertionError("Edge did not expose a page DevTools target")
+    raise _DevToolsTransportError("Edge did not expose a page DevTools target")
 
 
 def _devtools_targets(port: int) -> list[dict[str, object]]:
@@ -217,7 +224,7 @@ def _stop_edge(
             if browser_endpoint is not None:
                 browser = _WebSocket(browser_endpoint)
                 browser.request("Browser.close")
-        except (AssertionError, OSError):
+        except (AssertionError, OSError, _DevToolsTransportError):
             pass
         finally:
             _close_websocket_safely(browser)
@@ -225,7 +232,7 @@ def _stop_edge(
         _reap_edge_process(process)
 
 
-def evaluate_page(
+def _evaluate_page_once(
     edge: str,
     *,
     profile: Path,
@@ -275,6 +282,36 @@ def evaluate_page(
         raise AssertionError("layout probe did not become available")
     finally:
         _stop_edge(process, page=page, browser_endpoint=browser_endpoint)
+
+
+def evaluate_page(
+    edge: str,
+    *,
+    profile: Path,
+    url: str,
+    width: int,
+    height: int,
+    expression: str,
+) -> object:
+    failures: list[BaseException] = []
+    for attempt in range(1, _EVALUATE_PAGE_ATTEMPTS + 1):
+        try:
+            return _evaluate_page_once(
+                edge,
+                profile=profile / f"attempt-{attempt}",
+                url=url,
+                width=width,
+                height=height,
+                expression=expression,
+            )
+        except (OSError, _DevToolsTransportError) as exc:
+            failures.append(exc)
+    last_failure = failures[-1]
+    raise _DevToolsTransportError(
+        "Edge DevTools transport failed after "
+        f"{_EVALUATE_PAGE_ATTEMPTS} fresh sessions: "
+        f"{type(last_failure).__name__}: {last_failure}",
+    ) from last_failure
 
 
 def wait_for_app_window_close(edge: str, *, profile: Path, url: str) -> None:
