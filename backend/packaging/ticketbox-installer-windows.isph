@@ -1569,6 +1569,9 @@ var
   HasPersistentIdentity: Boolean;
   HasPreservedPgData: Boolean;
   RegisteredDataRoot: String;
+  RegisteredVersion: String;
+  VersionsComparable: Boolean;
+  VersionComparison: Integer;
 begin
   FormalVersion := '';
   LegacyVersion := '';
@@ -1593,6 +1596,36 @@ begin
         '安装器已 fail closed，未读取服务/版本身份，也不会复制文件。';
       Result := False;
       exit;
+    end;
+    if RegQueryStringValue(
+         HKLM64,
+         'Software\Ticketbox',
+         'DataRoot',
+         RegisteredDataRoot) and
+       (CanonicalVersionGateInstallPath(RegisteredDataRoot) =
+        CanonicalVersionGateInstallPath(PreservedDataRoot)) and
+       RegQueryStringValue(
+         HKLM64,
+         'Software\Ticketbox',
+         'BackendVersion',
+         RegisteredVersion) then
+    begin
+      VersionComparison := CompareSupportedNumericVersions(
+        RegisteredVersion,
+        FormalVersion,
+        VersionsComparable);
+      if not VersionsComparable then
+      begin
+        FailureReason :=
+          '同一 DataRoot 的机器级 BackendVersion 不符合受支持的版本契约。' + #13#10 +
+          '安装器无法安全计算中断升级后的防降级下限，已停止且不会复制文件。';
+        Result := False;
+        exit;
+      end;
+      if VersionComparison > 0 then
+      begin
+        FormalVersion := Trim(RegisteredVersion);
+      end;
     end;
   end
   else if HasPreservedPgData then

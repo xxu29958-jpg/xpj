@@ -711,6 +711,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   Args: String;
   PreparationFailure: String;
+  VersionFailureReason: String;
 begin
   if CurStep = ssInstall then
   begin
@@ -720,6 +721,12 @@ begin
     if PreparationFailure <> '' then
     begin
       RaiseException(PreparationFailure);
+    end;
+    if not CheckBackendVersionFloorForDataRoot(
+      SelectedDataRoot(),
+      VersionFailureReason) then
+    begin
+      RaiseException(VersionFailureReason);
     end;
     AssertDataRootMutationGuardActive();
     Args :=

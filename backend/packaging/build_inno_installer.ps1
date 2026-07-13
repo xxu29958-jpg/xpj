@@ -599,27 +599,40 @@ function Assert-SupportedNumericInstallerVersion([string]$Value) {
 
 function Invoke-VersionFloorContractProbe([string]$Value) {
     $parts = @($Value.Split([char]"|"))
-    if ($parts.Count -ne 4 -or $parts[0].Trim().Length -eq 0) {
-        throw "版本下限 probe 必须是 target|formal|legacy|existing。"
+    if ($parts.Count -notin @(4, 5) -or $parts[0].Trim().Length -eq 0) {
+        throw "版本下限 probe 必须是 target|persistent|machine|legacy|existing（旧四段格式仍可用于无 machine 投影的测试）。"
     }
     $target = $parts[0].Trim()
-    $formal = $parts[1].Trim()
-    $legacy = $parts[2].Trim()
-    $existingText = $parts[3].Trim().ToLowerInvariant()
+    $persistent = $parts[1].Trim()
+    if ($parts.Count -eq 5) {
+        $machine = $parts[2].Trim()
+        $legacy = $parts[3].Trim()
+        $existingText = $parts[4].Trim().ToLowerInvariant()
+    }
+    else {
+        $machine = ""
+        $legacy = $parts[2].Trim()
+        $existingText = $parts[3].Trim().ToLowerInvariant()
+    }
     if ($existingText -notin @("true", "false")) {
         throw "版本下限 probe 的 existing 必须是 true 或 false。"
     }
     $existing = $existingText -eq "true"
-    if ($formal.Length -gt 0) {
-        $floor = $formal
+    $floor = ""
+    foreach ($candidate in @($persistent, $machine)) {
+        if ($candidate.Length -eq 0) { continue }
+        Assert-SupportedNumericInstallerVersion $candidate
+        if ($floor.Length -eq 0 -or (Compare-SupportedNumericVersions $candidate $floor) -gt 0) {
+            $floor = $candidate
+        }
     }
-    elseif ($legacy.Length -gt 0) {
+    if ($floor.Length -eq 0 -and $legacy.Length -gt 0) {
         $floor = $legacy
     }
-    elseif ($existing) {
+    elseif ($floor.Length -eq 0 -and $existing) {
         throw "现有安装缺少可信版本下限。"
     }
-    else {
+    elseif ($floor.Length -eq 0) {
         Assert-SupportedNumericInstallerVersion $target
         return "fresh"
     }

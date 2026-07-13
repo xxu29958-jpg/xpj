@@ -136,7 +136,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2555,  # Adds fail-closed mobile credential issuance contracts.
+    "backend_pytest_count": 2587,  # Adds endpoint ambiguity, recovery-channel, and no-mutation contracts.
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 

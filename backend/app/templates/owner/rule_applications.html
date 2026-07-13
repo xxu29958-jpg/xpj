@@ -14,7 +14,7 @@
 <div class="card">
   <h2>选择账本</h2>
   {% if not rule_audit.ledger_choices %}
-  <p class="meta">服务未初始化，请先运行 <code>bootstrap_dev_owner.ps1</code>。</p>
+  <p class="meta">{{ owner_recovery_message }}</p>
   {% else %}
   <form method="get" action="/owner/rule-applications">
     <label>账本：

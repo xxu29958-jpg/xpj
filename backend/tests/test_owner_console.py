@@ -354,9 +354,142 @@ def test_owner_upload_links_warns_when_public_base_url_missing(
         app_config.get_settings.cache_clear()
 
 
+@pytest.mark.parametrize(
+    "public_base_url",
+    (
+        "https://127.1",
+        "https://2130706433",
+        "https://0177.0.0.1",
+        "https://0x7f000001",
+        "https://[::ffff:127.0.0.1]",
+        "https://finance.example.test:0",
+    ),
+)
+def test_owner_upload_links_rejects_ambiguous_endpoint_before_create(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    public_base_url: str,
+) -> None:
+    from app import config as app_config
+    from app.database import SessionLocal
+    from app.models import UploadLink
+
+    monkeypatch.setenv("PUBLIC_BASE_URL", public_base_url)
+    app_config.get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            count_before = db.query(UploadLink).count()
+
+        response = local_client.post("/owner/upload-links")
+
+        assert response.status_code == 200
+        assert "可供手机访问的 HTTPS 地址" in response.text
+        with SessionLocal() as db:
+            assert db.query(UploadLink).count() == count_before
+    finally:
+        app_config.get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("channel", "expected", "excluded"),
+    [
+        ("development", "bootstrap_dev_owner.ps1", "普通修复不会重建身份"),
+        ("managed_host", "普通修复不会重建身份", "bootstrap_dev_owner.ps1"),
+        ("operator", "联系部署管理员完成初始化", "bootstrap_dev_owner.ps1"),
+    ],
+)
+def test_owner_upload_links_create_uses_deployment_recovery_capability(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    channel: str,
+    expected: str,
+    excluded: str,
+) -> None:
+    from app.routes.owner_console import _upload_links as upload_links_route
+
+    created: list[bool] = []
+    monkeypatch.setattr(upload_links_route.svc, "get_default_ledger_id", lambda _db: None)
+    monkeypatch.setattr(upload_links_route.svc, "get_owner_account_id", lambda _db: None)
+    monkeypatch.setattr(
+        upload_links_route.svc,
+        "do_create_upload_link",
+        lambda *_args, **_kwargs: created.append(True),
+    )
+    monkeypatch.setattr(
+        upload_links_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            owner_recovery_channel=channel,
+            public_base_url="https://finance.example.test",
+            ocr_default_timezone="Asia/Shanghai",
+        ),
+    )
+
+    response = local_client.post("/owner/upload-links")
+
+    assert response.status_code == 200
+    assert expected in response.text
+    assert excluded not in response.text
+    assert created == []
+
+
+@pytest.mark.parametrize(
+    ("channel", "expected", "excluded"),
+    [
+        ("development", "bootstrap_dev_owner.ps1", "普通修复不会重建身份"),
+        ("managed_host", "普通修复不会重建身份", "bootstrap_dev_owner.ps1"),
+        ("operator", "联系部署管理员完成初始化", "bootstrap_dev_owner.ps1"),
+    ],
+)
+def test_owner_upload_links_rotate_uses_deployment_recovery_capability(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    channel: str,
+    expected: str,
+    excluded: str,
+) -> None:
+    from app.routes.owner_console import _upload_links as upload_links_route
+
+    rotated: list[bool] = []
+    monkeypatch.setattr(upload_links_route.svc, "get_owner_account_id", lambda _db: None)
+    monkeypatch.setattr(
+        upload_links_route.svc,
+        "do_rotate_upload_link",
+        lambda *_args, **_kwargs: rotated.append(True),
+    )
+    monkeypatch.setattr(
+        upload_links_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            owner_recovery_channel=channel,
+            public_base_url="https://finance.example.test",
+        ),
+    )
+
+    response = local_client.post("/owner/upload-links/missing/rotate")
+
+    assert response.status_code == 200
+    assert expected in response.text
+    assert excluded not in response.text
+    assert rotated == []
+
+
+@pytest.mark.parametrize(
+    "unusable_endpoint",
+    (
+        "http://127.0.0.1:8000",
+        "https://127.1",
+        "https://2130706433",
+        "https://0177.0.0.1",
+        "https://0x7f000001",
+        "https://[::ffff:127.0.0.1]",
+        "https://finance.example.test:0",
+    ),
+)
 def test_owner_upload_link_rotate_preserves_credential_without_phone_usable_endpoint(
     local_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
+    unusable_endpoint: str,
 ) -> None:
     import re
 
@@ -373,7 +506,7 @@ def test_owner_upload_link_rotate_preserves_credential_without_phone_usable_endp
         with SessionLocal() as db:
             token_hash = db.query(UploadLink).filter_by(public_id=public_id.group(1)).one().token_hash
 
-        monkeypatch.setenv("PUBLIC_BASE_URL", "http://127.0.0.1:8000")
+        monkeypatch.setenv("PUBLIC_BASE_URL", unusable_endpoint)
         app_config.get_settings.cache_clear()
         response = local_client.post(f"/owner/upload-links/{public_id.group(1)}/rotate")
 
