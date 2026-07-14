@@ -64,10 +64,12 @@ def _canonical_mobile_endpoint_host(host: str) -> str | None:
     try:
         address = ipaddress.ip_address(candidate)
     except ValueError:
-        try:
-            candidate = candidate.encode("idna").decode("ascii").casefold()
-        except UnicodeError:
+        # Python and OkHttp use different IDNA profiles. Keep the authority
+        # byte-stable across pairing/upload consumers until one shared profile
+        # is an explicit protocol dependency.
+        if not candidate.isascii():
             return None
+        candidate = candidate.casefold()
         if not candidate or len(candidate) > 253:
             return None
         labels = candidate.split(".")

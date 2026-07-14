@@ -365,6 +365,8 @@ def test_owner_upload_links_warns_when_public_base_url_missing(
         "https://%31%32%37.0.0.1",
         "https://[::ffff:192.168.1.10]",
         "https://\uff11\uff12\uff17\u3002\uff10\u3002\uff10\u3002\uff11",
+        "https://fa\u00df.de",
+        "https://example\u200c.test",
         "https://finance.example.test:0",
     ),
 )
@@ -548,6 +550,8 @@ def test_owner_upload_links_rotate_checks_installation_owner_before_mutation(
         "https://%31%32%37.0.0.1",
         "https://[::ffff:192.168.1.10]",
         "https://\uff11\uff12\uff17\u3002\uff10\u3002\uff10\u3002\uff11",
+        "https://fa\u00df.de",
+        "https://example\u200c.test",
         "https://finance.example.test:0",
     ),
 )

@@ -98,6 +98,8 @@ def test_resolver_rejects_downgrade_or_unscoped_values(raw: str) -> None:
         "https://%31%32%37.0.0.1",
         "https://[::ffff:192.168.1.10]",
         "https://\uff11\uff12\uff17\u3002\uff10\u3002\uff10\u3002\uff11",
+        "https://fa\u00df.de",
+        "https://example\u200c.test",
         "https://api.example.com:0",
     ],
 )
@@ -111,6 +113,7 @@ def test_mobile_endpoint_rejects_ambiguous_loopback_or_unusable_port(raw: str) -
     "raw,expected",
     [
         ("https://API.Example.COM./", "https://api.example.com"),
+        ("https://xn--fa-hia.de", "https://xn--fa-hia.de"),
         ("https://[2001:0DB8:0:0::1]:8443", "https://[2001:db8::1]:8443"),
     ],
 )
