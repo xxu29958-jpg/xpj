@@ -36,6 +36,7 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
     assert '"ticketbox-windows-lifecycle-receipt-v8"' in receipt
     assert '"ticketbox-windows-lifecycle-receipt-v7"' in receipt
     assert "target_backend_version_floor" in receipt
+    assert "Read-TicketboxCompatibleLifecycleReceipt" in receipt
     assert "ConvertTo-TicketboxCurrentLifecycleReceipt" in receipt
     assert "ReplaceVerifiedLegacyReceipt" in receipt
     assert "AllowLegacyV7WithoutTargetVersionFloor" in receipt
@@ -165,9 +166,7 @@ def test_completed_stale_receipt_cannot_reuse_previous_backup_mutation() -> None
     install = _read("install_bundled_services.ps1")
     flow = _read("ticketbox-installer-flow.isph")
 
-    stale_start = prepare.index(
-        "$staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt"
-    )
+    stale_start = prepare.index("$staleReceipt = Read-TicketboxCompatibleLifecycleReceipt")
     completed_check = prepare.index("if ([bool]$staleReceipt.install_completed)", stale_start)
     resume_commit = prepare.index("Complete-TicketboxInstalledLifecycleTransaction", completed_check)
     invalidate = prepare.index("Remove-TicketboxCompletedLifecycleReceipt", resume_commit)
@@ -184,6 +183,9 @@ def test_completed_stale_receipt_cannot_reuse_previous_backup_mutation() -> None
     assert completed_check < resume_commit < invalidate < initialize_current < reset_backup < write_new_receipt
     assert "Set-TicketboxLifecycleReceiptInstallerOwner" in completed_branch
     assert "Complete-TicketboxInstalledLifecycleTransaction" in completed_branch
+    assert completed_branch.index("Assert-TicketboxPreparedServiceContracts") < completed_branch.index(
+        "ConvertTo-TicketboxCurrentLifecycleReceipt"
+    )
     assert "backup_completed" not in completed_branch
     assert "return" not in completed_branch
     assert "Set-TicketboxLifecycleReceiptInstallCompleted" not in install
@@ -1387,6 +1389,26 @@ function Convert-TestLegacyReceipt(
     ) {{
         throw "legacy $ExpectedStage receipt was accepted without migration or mutated first"
     }}
+    $compatibleReceipt = Read-TicketboxCompatibleLifecycleReceipt `
+        -Path '{_literal(receipt_path)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -DataRoot '{_literal(data_root)}' `
+        -PgPort 5544 `
+        -BackendPort 8765 `
+        -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.3.0 `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId `
+        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
+    if (
+        [string]$compatibleReceipt.schema -cne 'ticketbox-windows-lifecycle-receipt-v7' -or
+        [string]$compatibleReceipt.preparation_stage -cne $ExpectedStage -or
+        -not (Test-TicketboxByteArrayEquals `
+            $legacyBytes `
+            ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
+    ) {{
+        throw "legacy $ExpectedStage receipt was not classified without mutation"
+    }}
+    Close-TicketboxLifecycleBackupGuard $compatibleReceipt
     $migratedReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
         -Path '{_literal(receipt_path)}' `
         -InstallDir '{_literal(install_dir)}' `
@@ -1424,6 +1446,20 @@ try {{ Get-TicketboxPreparedInstallMode $false $false $true $false $false | Out-
 catch {{ $rejectedMode = $true }}
 if (-not $rejectedMode) {{ throw 'unrecoverable partial data was accepted' }}
 $config = Read-TicketboxWindowsReleaseConfig '{_literal(config_path)}'
+foreach ($version in @('0.2.3', '65535.0.0')) {{
+    $parsedVersion = ConvertTo-TicketboxLifecycleVersion $version
+    if ([string]$parsedVersion.Canonical -cne $version) {{
+        throw "supported lifecycle version changed identity: $version"
+    }}
+}}
+foreach ($version in @('01.2.3', '1.02.3', '1.2.3.04', '000000.2.3', '65536.0.0')) {{
+    $invalidVersionRejected = $false
+    try {{ ConvertTo-TicketboxLifecycleVersion $version | Out-Null }}
+    catch {{ $invalidVersionRejected = $true }}
+    if (-not $invalidVersionRejected) {{
+        throw "unsupported lifecycle version was accepted: $version"
+    }}
+}}
 Write-TicketboxLifecycleReceipt `
     -Path '{_literal(receipt_path)}' `
     -Mode upgrade `

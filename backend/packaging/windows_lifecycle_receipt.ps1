@@ -47,8 +47,9 @@ function ConvertTo-TicketboxLifecycleVersion {
     for ($index = 0; $index -lt $parts.Count; $index++) {
         $component = 0
         if (
-            $parts[$index] -cnotmatch '^[0-9]+$' -or
-            -not [int]::TryParse($parts[$index], [ref]$component)
+            $parts[$index] -cnotmatch '^(0|[1-9][0-9]{0,4})$' -or
+            -not [int]::TryParse($parts[$index], [ref]$component) -or
+            $component -gt 65535
         ) {
             throw "$FieldName 包含无效版本分量。"
         }
@@ -704,7 +705,7 @@ function Read-TicketboxLifecycleReceipt {
     return $receipt
 }
 
-function ConvertTo-TicketboxCurrentLifecycleReceipt {
+function Read-TicketboxCompatibleLifecycleReceipt {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$InstallDir,
@@ -726,62 +727,85 @@ function ConvertTo-TicketboxCurrentLifecycleReceipt {
     catch {
         throw "安装生命周期回执不是有效 JSON。"
     }
-    if ([string]$envelope.schema -ceq $script:TicketboxLifecycleReceiptSchema) {
-        return Read-TicketboxLifecycleReceipt `
-            -Path $canonicalPath `
-            -InstallDir $InstallDir `
-            -DataRoot $DataRoot `
-            -PgPort $PgPort `
-            -BackendPort $BackendPort `
-            -TargetReleaseConfig $TargetReleaseConfig `
-            -CurrentTargetBackendVersion $CurrentTargetBackendVersion `
-            -InstallerOwnerProcessId $InstallerOwnerProcessId `
-            -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
+    $readArguments = @{
+        Path = $canonicalPath
+        InstallDir = $InstallDir
+        DataRoot = $DataRoot
+        PgPort = $PgPort
+        BackendPort = $BackendPort
+        TargetReleaseConfig = $TargetReleaseConfig
+        InstallerOwnerProcessId = $InstallerOwnerProcessId
+        AllowPreviousInstallerOwnerProcessId = $AllowPreviousInstallerOwnerProcessId
     }
-    if ([string]$envelope.schema -cne $script:TicketboxLegacyLifecycleReceiptSchema) {
+    if ([string]$envelope.schema -ceq $script:TicketboxLegacyLifecycleReceiptSchema) {
+        $readArguments.AllowLegacyV7WithoutTargetVersionFloor = $true
+    }
+    elseif ([string]$envelope.schema -ceq $script:TicketboxLifecycleReceiptSchema) {
+        $readArguments.CurrentTargetBackendVersion = $CurrentTargetBackendVersion
+    }
+    else {
         throw "安装生命周期回执 schema 不受支持。"
     }
+    return Read-TicketboxLifecycleReceipt @readArguments
+}
 
-    $legacyReceipt = Read-TicketboxLifecycleReceipt `
-        -Path $canonicalPath `
+function ConvertTo-TicketboxCurrentLifecycleReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
+        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
+        [Parameter(Mandatory = $true)][string]$CurrentTargetBackendVersion,
+        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
+        [switch]$AllowPreviousInstallerOwnerProcessId
+    )
+
+    $compatibleReceipt = Read-TicketboxCompatibleLifecycleReceipt `
+        -Path $Path `
         -InstallDir $InstallDir `
         -DataRoot $DataRoot `
         -PgPort $PgPort `
         -BackendPort $BackendPort `
         -TargetReleaseConfig $TargetReleaseConfig `
+        -CurrentTargetBackendVersion $CurrentTargetBackendVersion `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
-        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId `
-        -AllowLegacyV7WithoutTargetVersionFloor
+        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
+    if ([string]$compatibleReceipt.schema -ceq $script:TicketboxLifecycleReceiptSchema) {
+        return $compatibleReceipt
+    }
+    $canonicalPath = Assert-TicketboxLifecycleReceiptPath $Path
     try {
         Write-TicketboxLifecycleReceipt `
             -Path $canonicalPath `
-            -Mode ([string]$legacyReceipt.mode) `
-            -InstallDir ([string]$legacyReceipt.install_dir) `
-            -DataRoot ([string]$legacyReceipt.data_root) `
-            -PgPort ([int]$legacyReceipt.pg_port) `
-            -BackendPort ([int]$legacyReceipt.backend_port) `
-            -InstalledReleaseConfig $legacyReceipt.installed_release_config `
+            -Mode ([string]$compatibleReceipt.mode) `
+            -InstallDir ([string]$compatibleReceipt.install_dir) `
+            -DataRoot ([string]$compatibleReceipt.data_root) `
+            -PgPort ([int]$compatibleReceipt.pg_port) `
+            -BackendPort ([int]$compatibleReceipt.backend_port) `
+            -InstalledReleaseConfig $compatibleReceipt.installed_release_config `
             -TargetBackendVersionFloor $CurrentTargetBackendVersion `
             -InstallerOwnerProcessId $InstallerOwnerProcessId `
-            -PreviousPgState ([string]$legacyReceipt.previous_pg_state) `
-            -PreviousBackendState ([string]$legacyReceipt.previous_backend_state) `
-            -PreviousPgStartPolicy ([string]$legacyReceipt.previous_pg_start_policy) `
-            -PreviousBackendStartPolicy ([string]$legacyReceipt.previous_backend_start_policy) `
-            -BackupRequired ([bool]$legacyReceipt.backup_required) `
-            -BackupCompleted ([bool]$legacyReceipt.backup_completed) `
-            -PreparationStage ([string]$legacyReceipt.preparation_stage) `
-            -BackupPath ([string]$legacyReceipt.backup_path) `
-            -BackupSha256 ([string]$legacyReceipt.backup_sha256) `
-            -BackupByteLength ([long]$legacyReceipt.backup_byte_length) `
-            -FilesMayHaveBeenReplaced ([bool]$legacyReceipt.files_may_have_been_replaced) `
-            -InstallCompleted ([bool]$legacyReceipt.install_completed) `
+            -PreviousPgState ([string]$compatibleReceipt.previous_pg_state) `
+            -PreviousBackendState ([string]$compatibleReceipt.previous_backend_state) `
+            -PreviousPgStartPolicy ([string]$compatibleReceipt.previous_pg_start_policy) `
+            -PreviousBackendStartPolicy ([string]$compatibleReceipt.previous_backend_start_policy) `
+            -BackupRequired ([bool]$compatibleReceipt.backup_required) `
+            -BackupCompleted ([bool]$compatibleReceipt.backup_completed) `
+            -PreparationStage ([string]$compatibleReceipt.preparation_stage) `
+            -BackupPath ([string]$compatibleReceipt.backup_path) `
+            -BackupSha256 ([string]$compatibleReceipt.backup_sha256) `
+            -BackupByteLength ([long]$compatibleReceipt.backup_byte_length) `
+            -FilesMayHaveBeenReplaced ([bool]$compatibleReceipt.files_may_have_been_replaced) `
+            -InstallCompleted ([bool]$compatibleReceipt.install_completed) `
             -TemporaryPgServiceCleanupPending `
-                ([bool]$legacyReceipt.temporary_pg_service_cleanup_pending) `
+                ([bool]$compatibleReceipt.temporary_pg_service_cleanup_pending) `
             -ReplaceProtectedReceipt `
             -ReplaceVerifiedLegacyReceipt
     }
     finally {
-        Close-TicketboxLifecycleBackupGuard $legacyReceipt
+        Close-TicketboxLifecycleBackupGuard $compatibleReceipt
     }
     return Read-TicketboxLifecycleReceipt `
         -Path $canonicalPath `

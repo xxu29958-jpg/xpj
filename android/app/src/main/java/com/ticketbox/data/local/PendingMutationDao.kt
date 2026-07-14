@@ -670,6 +670,24 @@ interface PendingMutationDao {
     suspend fun clearAll(): Int
 
     /**
+     * Rewrite one byte-distinct URL alias after both spellings have been
+     * proven to identify the same canonical origin. The repository invokes
+     * this only while the binding-transition lease excludes enqueue/drain.
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET serverUrl = :newServerUrl
+        WHERE serverUrl = :oldServerUrl AND ledgerId = :ledgerId
+        """,
+    )
+    suspend fun migrateServerUrlAlias(
+        oldServerUrl: String,
+        newServerUrl: String,
+        ledgerId: String,
+    ): Int
+
+    /**
      * One-time v9 → v10 backfill. The 9→10 migration added the
      * ``serverUrl`` / ``ledgerId`` columns with an empty-string default but
      * could not know the active binding (it lives in settings, not the DB),

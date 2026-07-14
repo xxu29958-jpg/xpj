@@ -377,6 +377,21 @@ class FakePendingMutationDao : PendingMutationDao {
         return removed
     }
 
+    override suspend fun migrateServerUrlAlias(
+        oldServerUrl: String,
+        newServerUrl: String,
+        ledgerId: String,
+    ): Int {
+        val aliases = rows.values.filter {
+            it.serverUrl == oldServerUrl && it.ledgerId == ledgerId
+        }
+        for (row in aliases) {
+            rows[row.id] = row.copy(serverUrl = newServerUrl)
+        }
+        if (aliases.isNotEmpty()) refreshObservables()
+        return aliases.size
+    }
+
     override suspend fun adoptLegacyBinding(serverUrl: String, ledgerId: String): Int {
         val legacy = rows.values.filter { it.serverUrl == "" && it.ledgerId == "" }
         for (row in legacy) {

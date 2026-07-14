@@ -1113,7 +1113,7 @@ try {
     }
 
     if (Test-Path -LiteralPath $LifecycleReceiptPath -PathType Leaf) {
-        $staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
+        $staleReceipt = Read-TicketboxCompatibleLifecycleReceipt `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
             -DataRoot $DataRoot `
@@ -1123,23 +1123,25 @@ try {
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -AllowPreviousInstallerOwnerProcessId
-        if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending) {
-            Set-TicketboxInstalledReleaseConfiguration `
-                -Config $staleReceipt.installed_release_config `
-                -Persisted $true
-            Remove-TicketboxDeferredPreservedPgServiceIfExists
-            Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending `
-                -Path $LifecycleReceiptPath `
-                -Receipt $staleReceipt `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-                -CleanupPending $false
-            $staleReceipt.temporary_pg_service_cleanup_pending = $false
-        }
-        Remove-TicketboxRecoveryPgServiceIfExists
         if ([bool]$staleReceipt.install_completed) {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
                 -Persisted $true
+            Remove-TicketboxRecoveryPgServiceIfExists
+            Assert-TicketboxPreparedServiceContracts `
+                -AllowTargetPolicyFallback `
+                -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+            Close-TicketboxLifecycleBackupGuard $staleReceipt
+            $staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -TargetReleaseConfig $TargetReleaseConfig `
+                -CurrentTargetBackendVersion $TargetBackendVersion `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+                -AllowPreviousInstallerOwnerProcessId
             Set-TicketboxLifecycleReceiptInstallerOwner `
                 -Path $LifecycleReceiptPath `
                 -Receipt $staleReceipt `
@@ -1177,6 +1179,7 @@ try {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
                 -Persisted $true
+            Remove-TicketboxRecoveryPgServiceIfExists
             Assert-TicketboxPreparedServiceContracts
             Invoke-TicketboxPreparedInstallRecovery `
                 -Receipt $staleReceipt `
@@ -1188,9 +1191,32 @@ try {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
                 -Persisted $true
+            Remove-TicketboxRecoveryPgServiceIfExists
+            if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending) {
+                Remove-TicketboxDeferredPreservedPgServiceIfExists
+            }
             Assert-TicketboxPreparedServiceContracts `
                 -AllowTargetPolicyFallback `
                 -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+            Close-TicketboxLifecycleBackupGuard $staleReceipt
+            $staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -TargetReleaseConfig $TargetReleaseConfig `
+                -CurrentTargetBackendVersion $TargetBackendVersion `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+                -AllowPreviousInstallerOwnerProcessId
+            if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending) {
+                Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending `
+                    -Path $LifecycleReceiptPath `
+                    -Receipt $staleReceipt `
+                    -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+                    -CleanupPending $false
+                $staleReceipt.temporary_pg_service_cleanup_pending = $false
+            }
             Invoke-TicketboxPreparedInstallRecovery `
                 -Receipt $staleReceipt `
                 -ProgramFilesWereReplaced $true
@@ -1205,9 +1231,21 @@ try {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
                 -Persisted $true
+            Remove-TicketboxRecoveryPgServiceIfExists
             Assert-TicketboxPreparedServiceContracts `
                 -AllowTargetPolicyFallback `
                 -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+            Close-TicketboxLifecycleBackupGuard $staleReceipt
+            $staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -TargetReleaseConfig $TargetReleaseConfig `
+                -CurrentTargetBackendVersion $TargetBackendVersion `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+                -AllowPreviousInstallerOwnerProcessId
             Invoke-TicketboxPreparedInstallRecovery `
                 -Receipt $staleReceipt `
                 -ProgramFilesWereReplaced $true

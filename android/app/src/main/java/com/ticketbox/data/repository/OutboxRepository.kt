@@ -6,11 +6,12 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Clock
@@ -56,9 +57,10 @@ class OutboxRepository(
      * Reactive binding source for the live UI streams ([observeStatus] and
      * friends). When supplied (AppContainer wires it from the active-ledger
      * settings flow), observe* re-subscribe to the new binding on a ledger
-     * switch instead of staying pinned to the binding present when the UI
-     * first subscribed. Null (tests / non-Android) falls back to a one-shot
-     * snapshot read lazily at collection time — the historical behaviour.
+     * switch. [bindingRevision] also re-reads [bindingProvider] after a
+     * same-ledger server transition, so status flows cannot stay pinned to
+     * the previous origin. Null keeps the same revision-driven behaviour for
+     * tests and non-Android callers.
      */
     private val bindingChanges: Flow<OutboxBinding>? = null,
     /**
@@ -89,12 +91,11 @@ class OutboxRepository(
      */
     private val onClearAll: () -> Unit = {},
 ) {
-    private fun currentBinding(): OutboxBinding = bindingProvider().normalized()
 
     /**
      * ADR-0038 PR-2g.3 round-9 P1: session-boundary epoch.
      *
-     * Incremented at the start of [clearAll]. A drain pass captures
+     * Incremented at the start of every [withBindingTransition]. A drain pass captures
      * this value before dequeue and re-checks it after [tryClaim]
      * but before dispatch. If the epoch changed, the drain knows a
      * session boundary fired mid-pass. The drain must not dispatch
@@ -110,14 +111,14 @@ class OutboxRepository(
 
     /**
      * Snapshot of the session-boundary epoch — used by
-     * [OutboxDrainEngine.drainOnce] to detect whether a [clearAll]
+     * [OutboxDrainEngine.drainOnce] to detect whether a binding transition
      * fired between dequeue and dispatch.
      */
     fun currentSessionEpoch(): Long = sessionEpoch.get()
 
     /**
      * Test-only hook: bump the epoch counter without wiping the
-     * DAO. Production code uses [clearAll] which does both
+     * DAO. Production code uses [withBindingTransition], which also
      * atomically; this lets the OutboxDrainEngine post-claim guard
      * be exercised in a unit test without the dao.clearAll() also
      * deleting the row the test wants to keep claimed.
@@ -165,11 +166,36 @@ class OutboxRepository(
      */
     private val dispatchLease = Mutex()
     private val bindingTransitionLease = Mutex()
+    private val bindingRevision = MutableStateFlow(0L)
+
+    private suspend fun currentBinding(): OutboxBinding =
+        bindingTransitionLease.withLock {
+            canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+        }
+
+    private suspend fun canonicalBindingWithAliasesMigratedLocked(
+        binding: OutboxBinding,
+    ): OutboxBinding {
+        val raw = binding.trimmed()
+        val canonical = raw.normalized()
+        if (
+            raw.serverUrl != canonical.serverUrl &&
+            raw.ledgerId.isNotEmpty() &&
+            canonical.serverUrl.isNotEmpty()
+        ) {
+            dao.migrateServerUrlAlias(
+                oldServerUrl = raw.serverUrl,
+                newServerUrl = canonical.serverUrl,
+                ledgerId = raw.ledgerId,
+            )
+        }
+        return canonical
+    }
 
     /**
      * Run [block] while holding the dispatch lease. Used by
      * [OutboxDrainEngine.drainOnce] to serialise dispatch against
-     * [clearAll]. See [dispatchLease] KDoc for the race this closes.
+     * binding transitions. See [dispatchLease] KDoc for the race this closes.
      */
     suspend fun <T> withDispatchLease(block: suspend () -> T): T =
         dispatchLease.withLock { block() }
@@ -188,6 +214,7 @@ class OutboxRepository(
      */
     suspend fun <T> withBindingTransition(
         clearExistingRows: Boolean = false,
+        serverAliasMigration: OutboxServerAliasMigration? = null,
         block: suspend () -> T,
     ): T {
         var notifyBoundary = false
@@ -196,10 +223,21 @@ class OutboxRepository(
                 bindingTransitionLease.withLock {
                     sessionEpoch.incrementAndGet()
                     notifyBoundary = true
-                    if (clearExistingRows) {
-                        dao.clearAll()
+                    try {
+                        if (clearExistingRows) {
+                            dao.clearAll()
+                        }
+                        serverAliasMigration?.let { migration ->
+                            dao.migrateServerUrlAlias(
+                                oldServerUrl = migration.oldServerUrl,
+                                newServerUrl = migration.newServerUrl,
+                                ledgerId = migration.ledgerId,
+                            )
+                        }
+                        block()
+                    } finally {
+                        bindingRevision.update { revision -> revision + 1 }
                     }
-                    block()
                 }
             }
         } finally {
@@ -248,7 +286,7 @@ class OutboxRepository(
         idempotencyKey: String? = null,
     ): Long {
         val id = bindingTransitionLease.withLock {
-            val binding = currentBinding()
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             val row = PendingMutationEntity(
                 serverUrl = binding.serverUrl,
                 ledgerId = binding.ledgerId,
@@ -364,12 +402,16 @@ class OutboxRepository(
      * this at the start of every pass; it's a no-op once adopted (or while
      * unbound), so no extra startup wiring is needed.
      *
-     * @return the number of legacy rows adopted into the current binding.
+     * URL aliases are migrated in the same lease first. This makes the
+     * operation an idempotent process-death repair when Room committed an
+     * alias rewrite before the settings projection reached disk.
+     *
+     * @return the number of empty-binding legacy rows adopted.
      */
     suspend fun adoptLegacyRowsForCurrentBinding(): Int {
-        val binding = currentBinding()
-        if (binding.serverUrl.isEmpty() || binding.ledgerId.isEmpty()) return 0
         return bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            if (binding.serverUrl.isEmpty() || binding.ledgerId.isEmpty()) return@withLock 0
             dao.adoptLegacyBinding(serverUrl = binding.serverUrl, ledgerId = binding.ledgerId)
         }
     }
@@ -607,15 +649,18 @@ class OutboxRepository(
 
     /**
      * Binding source the live UI streams follow. A reactive [bindingChanges]
-     * (AppContainer wires it from the active-ledger settings flow) lets the
-     * observe* streams re-target the new binding on a ledger switch via
-     * [flatMapLatest]; null falls back to a single snapshot read lazily at
-     * collection time so tests / non-Android callers keep the old behaviour.
+     * (AppContainer wires it from the active-ledger settings flow) and the
+     * internal revision are invalidation signals only. Every emission re-reads
+     * the authoritative binding under [bindingTransitionLease].
      */
-    private fun bindingFlow(): Flow<OutboxBinding> =
-        (bindingChanges ?: flow { emit(currentBinding()) })
-            .map { it.normalized() }
+    private fun bindingFlow(): Flow<OutboxBinding> {
+        val invalidations = bindingChanges?.combine(bindingRevision) { _, revision ->
+            revision
+        } ?: bindingRevision
+        return invalidations
+            .map { currentBinding() }
             .distinctUntilChanged()
+    }
 
     /**
      * Live queue-depth surface for the global "你有 N 笔待同步"
@@ -834,14 +879,39 @@ data class OutboxBinding(
     val serverUrl: String,
     val ledgerId: String,
 ) {
-    fun normalized(): OutboxBinding =
+    internal fun trimmed(): OutboxBinding =
         OutboxBinding(
             serverUrl = serverUrl.trim().trimEnd('/'),
             ledgerId = ledgerId.trim(),
         )
 
+    fun normalized(): OutboxBinding {
+        val trimmed = trimmed()
+        return trimmed.copy(
+            serverUrl = canonicalServerOriginOrNull(trimmed.serverUrl) ?: trimmed.serverUrl,
+        )
+    }
+
     companion object {
         val DEFAULT = OutboxBinding(serverUrl = "", ledgerId = "")
+    }
+}
+
+data class OutboxServerAliasMigration(
+    val oldServerUrl: String,
+    val newServerUrl: String,
+    val ledgerId: String,
+) {
+    init {
+        val oldCanonical = canonicalServerOriginOrNull(oldServerUrl)
+        require(
+            ledgerId.isNotBlank() &&
+                oldCanonical != null &&
+                oldCanonical == newServerUrl &&
+                oldCanonical == canonicalServerOriginOrNull(newServerUrl),
+        ) {
+            "Outbox rows may only migrate between aliases of one canonical origin."
+        }
     }
 }
 

@@ -1,9 +1,12 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.BuildConfig
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.ConnectException
+import java.net.InetAddress
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
@@ -40,13 +43,15 @@ fun networkDiagnosticMessage(error: IOException, serverUrl: String?): String {
  *  unbound entry path (pairing-code bind AND cold-start invitation join), so
  *  the HTTPS / non-local rules can never fork between the two. */
 fun validateServerUrlInput(serverUrl: String): String {
-    val normalized = serverUrl.trim().trimEnd('/')
+    val input = serverUrl.trim()
+    require(input.isNotBlank()) { "请输入账本地址。" }
+    val normalized = canonicalServerOriginOrNull(input)
+    require(normalized != null) { "请输入有效的账本地址。" }
     val allowDebugLocalDevelopmentUrl = BuildConfig.DEBUG && isLocalDevelopmentServerUrl(normalized)
     val allowInternalInsecureBinding = BuildConfig.DEBUG && BuildConfig.SHOW_ADVANCED_TOOLS
     val allowInsecureBinding = allowInternalInsecureBinding || allowDebugLocalDevelopmentUrl
-    require(normalized.isNotBlank()) { "请输入账本地址。" }
     require(allowInsecureBinding || !isLocalDevelopmentServerUrl(normalized)) { "请填写可在手机上访问的地址。" }
-    require(allowInsecureBinding || normalized.startsWith("https://", ignoreCase = true)) { "请使用 HTTPS 地址。" }
+    require(allowInsecureBinding || normalized.toHttpUrl().scheme == "https") { "请使用 HTTPS 地址。" }
     return normalized
 }
 
@@ -56,14 +61,54 @@ fun validateBindingInput(serverUrl: String, pairingCode: String): String {
     return normalized
 }
 
+internal fun canonicalServerOriginOrNull(serverUrl: String): String? {
+    val input = serverUrl.trim()
+    if (
+        input.isEmpty() ||
+        input.any { !it.isAscii() } ||
+        '%' in input ||
+        input.contains("::ffff:", ignoreCase = true)
+    ) {
+        return null
+    }
+    val parsed = input.toHttpUrlOrNull() ?: return null
+    if (
+        parsed.scheme !in setOf("http", "https") ||
+        parsed.username.isNotEmpty() ||
+        parsed.password.isNotEmpty() ||
+        parsed.encodedPath != "/" ||
+        parsed.query != null ||
+        parsed.fragment != null
+    ) {
+        return null
+    }
+    val canonicalHost = canonicalOriginHostOrNull(parsed.host) ?: return null
+    val canonical = if (canonicalHost == parsed.host) {
+        parsed
+    } else {
+        parsed.newBuilder().host(canonicalHost).build()
+    }
+    return canonical.toString().removeSuffix("/")
+}
+
+private fun canonicalOriginHostOrNull(host: String): String? {
+    val canonical = host.removeSuffix(".")
+    return canonical.takeIf { it.isNotEmpty() && !it.endsWith(".") }
+}
+
 fun isLocalOnlyServerUrl(serverUrl: String): Boolean {
-    return serverUrl.contains("127.0.0.1") ||
-        serverUrl.contains("localhost", ignoreCase = true) ||
-        serverUrl.contains("[::1]") ||
-        serverUrl.contains("::1")
+    val parsed = serverUrl.trim().toHttpUrlOrNull() ?: return false
+    if (parsed.host.equals("localhost", ignoreCase = true)) return true
+    val numericHost = parsed.host.takeIf { host ->
+        ':' in host || host.all { it.isDigit() || it == '.' }
+    } ?: return false
+    val address = runCatching { InetAddress.getByName(numericHost) }.getOrNull() ?: return false
+    return address.isLoopbackAddress || address.isAnyLocalAddress
 }
 
 fun isLocalDevelopmentServerUrl(serverUrl: String): Boolean {
-    return isLocalOnlyServerUrl(serverUrl) ||
-        serverUrl.contains("10.0.2.2")
+    val parsed = serverUrl.trim().toHttpUrlOrNull()
+    return isLocalOnlyServerUrl(serverUrl) || parsed?.host == "10.0.2.2"
 }
+
+private fun Char.isAscii(): Boolean = code <= 0x7f

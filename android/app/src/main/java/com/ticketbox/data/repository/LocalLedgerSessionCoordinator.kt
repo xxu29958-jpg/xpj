@@ -91,8 +91,15 @@ class LocalLedgerSessionCoordinator(
 
     private suspend fun applyTransitionLocked(transition: LedgerSessionTransition) {
         val identity = transition.identity
+        transition.serverUrl?.let { serverUrl ->
+            require(serverUrl == canonicalServerOriginOrNull(serverUrl)) {
+                "Ledger session transitions must persist a canonical server origin."
+            }
+        }
         if (transition.cacheInvalidation != LedgerCacheInvalidation.None && outbox != null) {
-            outbox.withBindingTransition {
+            outbox.withBindingTransition(
+                serverAliasMigration = serverAliasMigration(transition),
+            ) {
                 transition.serverUrl?.let(settingsStore::saveServerUrl)
                 transition.sessionToken?.let { token ->
                     tokenStore.saveToken(
@@ -192,6 +199,23 @@ class LocalLedgerSessionCoordinator(
         if (transition.markUnlocked) {
             settingsStore.markUnlocked()
         }
+    }
+
+    private fun serverAliasMigration(
+        transition: LedgerSessionTransition,
+    ): OutboxServerAliasMigration? {
+        val oldServerUrl = currentServerUrl() ?: return null
+        val newServerUrl = transition.serverUrl ?: return null
+        val oldLedgerId = settingsStore.activeLedgerId() ?: return null
+        if (oldServerUrl == newServerUrl || oldLedgerId != transition.identity.ledgerId) return null
+        val oldOrigin = canonicalServerOriginOrNull(oldServerUrl) ?: return null
+        val newOrigin = canonicalServerOriginOrNull(newServerUrl) ?: return null
+        if (oldOrigin != newOrigin) return null
+        return OutboxServerAliasMigration(
+            oldServerUrl = oldServerUrl,
+            newServerUrl = newOrigin,
+            ledgerId = oldLedgerId,
+        )
     }
 
     private fun currentServerUrl(): String? =

@@ -151,7 +151,7 @@ def configured_mobile_endpoint_url(public_base_url: str) -> str | None:
     if canonical_host == "localhost" or canonical_host.endswith(".localhost"):
         return None
     authority = f"[{canonical_host}]" if ":" in canonical_host else canonical_host
-    if port is not None:
+    if port not in {None, 443}:
         authority = f"{authority}:{port}"
     return f"https://{authority}"
 

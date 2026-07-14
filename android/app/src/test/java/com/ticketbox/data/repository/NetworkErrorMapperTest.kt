@@ -81,12 +81,43 @@ class NetworkErrorMapperTest {
 
     @Test
     fun normalizesBindingServerUrl() {
-        val normalized = validateBindingInput(
-            serverUrl = " https://api.example.com/ ",
-            pairingCode = "123456",
+        val cases = listOf(
+            " https://api.example.com/ " to "https://api.example.com",
+            "https://API.EXAMPLE.COM:443" to "https://api.example.com",
+            "https://API.Example.COM./" to "https://api.example.com",
+            "https://xn--fa-hia.de" to "https://xn--fa-hia.de",
+            "https://[2001:0DB8:0:0::1]:8443" to "https://[2001:db8::1]:8443",
         )
 
-        assertEquals("https://api.example.com", normalized)
+        cases.forEach { (input, expected) ->
+            assertEquals(
+                expected,
+                validateBindingInput(serverUrl = input, pairingCode = "123456"),
+            )
+        }
+    }
+
+    @Test
+    fun rejectsAmbiguousOrNonOriginBindingServerUrls() {
+        val invalid = listOf(
+            "https://faß.de",
+            "https://ＡＰＩ.example.com",
+            "https://%31%32%37.0.0.1",
+            "https://[::ffff:192.168.1.10]",
+            "https://user:pass@api.example.com",
+            "https://api.example.com../",
+            "https://api.example.com/path",
+            "https://api.example.com?next=/web",
+            "https://api.example.com#fragment",
+            "https://api.example.com:0",
+        )
+
+        invalid.forEach { input ->
+            val error = assertFailsWith<IllegalArgumentException>(input) {
+                validateBindingInput(serverUrl = input, pairingCode = "123456")
+            }
+            assertEquals("请输入有效的账本地址。", error.message, input)
+        }
     }
 
     @Test

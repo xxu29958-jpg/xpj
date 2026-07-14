@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Device, PairingCode
+from app.models import Account, Device, LedgerMember, PairingCode
 from app.services.identity_service._models import (
     PAIRING_CODE_TTL_MINUTES,
     PairingCodeResult,
@@ -109,6 +109,18 @@ def _create_pairing_code(
     ledger = _ledger_by_id(db, ledger_id)
     if ledger is None or ledger.archived_at is not None:
         raise AppError("invalid_request", status_code=422)
+    account = db.get(Account, account_id) if account_id is not None else None
+    if account is None or account.disabled_at is not None or ledger.owner_account_id != account.id:
+        raise AppError("invalid_request", "当前账本拥有者身份需要修复。", status_code=409)
+    owner_membership_id = db.scalar(
+        select(LedgerMember.id)
+        .where(LedgerMember.ledger_id == ledger.ledger_id)
+        .where(LedgerMember.account_id == account.id)
+        .where(LedgerMember.role == "owner")
+        .where(LedgerMember.disabled_at.is_(None))
+    )
+    if owner_membership_id is None:
+        raise AppError("invalid_request", "当前账本拥有者身份需要修复。", status_code=409)
     ttl = max(1, min(ttl_minutes, 60))
     expires_at = now_utc() + timedelta(minutes=ttl)
     if pairing_code_value is None:

@@ -1054,9 +1054,14 @@ function IsDecimalVersionComponent(Value: String): Boolean;
 var
   Index: Integer;
 begin
-  Result := Value <> '';
+  Result := (Value <> '') and (Length(Value) <= 5);
   if not Result then
   begin
+    exit;
+  end;
+  if (Length(Value) > 1) and (Value[1] = '0') then
+  begin
+    Result := False;
     exit;
   end;
   for Index := 1 to Length(Value) do
