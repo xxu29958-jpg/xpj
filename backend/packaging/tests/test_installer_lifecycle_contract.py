@@ -405,7 +405,9 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         args_start = flow.rfind("Args :=\n", 0, call.start())
         assert args_start >= 0
         assert " -TargetBackendVersion {#AppVersion}" in flow[args_start : call.start()]
-    stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
+    stale_start = prepare.index(
+        "$staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt"
+    )
     stale_branch = prepare[
         stale_start : prepare.index(
             "Initialize-TicketboxInstalledReleaseConfiguration",
@@ -624,7 +626,7 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
         "-CleanupPending $false"
     )
     stale_recovery = prepare[
-        prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt") :
+        prepare.index("$staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt") :
         prepare.index("if ([bool]$staleReceipt.install_completed)")
     ]
     assert stale_recovery.index("Remove-TicketboxDeferredPreservedPgServiceIfExists") < stale_recovery.index(

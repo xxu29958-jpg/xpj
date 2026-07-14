@@ -1113,7 +1113,7 @@ try {
     }
 
     if (Test-Path -LiteralPath $LifecycleReceiptPath -PathType Leaf) {
-        $staleReceipt = Read-TicketboxLifecycleReceipt `
+        $staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
             -DataRoot $DataRoot `

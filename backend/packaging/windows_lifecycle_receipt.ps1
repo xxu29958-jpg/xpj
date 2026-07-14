@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 
 $script:TicketboxLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v8"
+$script:TicketboxLegacyLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v7"
 $script:TicketboxLifecycleReceiptModes = @(
     "fresh_install",
     "preserved_data_reinstall",
@@ -317,11 +318,15 @@ function Write-TicketboxLifecycleReceipt {
         [bool]$FilesMayHaveBeenReplaced = $false,
         [bool]$InstallCompleted = $false,
         [bool]$TemporaryPgServiceCleanupPending = $false,
-        [switch]$ReplaceProtectedReceipt
+        [switch]$ReplaceProtectedReceipt,
+        [switch]$ReplaceVerifiedLegacyReceipt
     )
 
     if ($InstallerOwnerProcessId -le 0) {
         throw "Inno 生命周期回执必须绑定有效的安装器进程。"
+    }
+    if ($ReplaceVerifiedLegacyReceipt -and -not $ReplaceProtectedReceipt) {
+        throw "legacy 生命周期回执只能通过受保护原子替换迁移。"
     }
     $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
         $TargetBackendVersionFloor `
@@ -418,24 +423,37 @@ function Write-TicketboxLifecycleReceipt {
         }
         $existingFloorProperty =
             $existingReceipt.PSObject.Properties["target_backend_version_floor"]
-        if (
-            $existingReceipt.schema -cne $script:TicketboxLifecycleReceiptSchema -or
-            $null -eq $existingFloorProperty -or
-            $existingFloorProperty.Value -isnot [string]
-        ) {
-            throw "既有安装生命周期回执缺少受支持的目标版本下限；拒绝替换。"
+        if ($ReplaceVerifiedLegacyReceipt) {
+            if (
+                $existingReceipt.schema -cne $script:TicketboxLegacyLifecycleReceiptSchema -or
+                $null -ne $existingFloorProperty
+            ) {
+                throw "只有已验证且尚无版本下限的 v7 生命周期回执可以迁移。"
+            }
         }
-        $existingFloor = ConvertTo-TicketboxLifecycleVersion `
-            ([string]$existingFloorProperty.Value) `
-            "既有生命周期回执目标版本下限"
-        if (
-            [string]$existingFloorProperty.Value -cne $existingFloor.Canonical -or
-            (Compare-TicketboxLifecycleVersions `
-                -Left $targetVersionFloor.Canonical `
-                -Right $existingFloor.Canonical) -lt 0
-        ) {
-            throw "安装生命周期回执目标版本下限不能回退。"
+        else {
+            if (
+                $existingReceipt.schema -cne $script:TicketboxLifecycleReceiptSchema -or
+                $null -eq $existingFloorProperty -or
+                $existingFloorProperty.Value -isnot [string]
+            ) {
+                throw "既有安装生命周期回执缺少受支持的目标版本下限；拒绝替换。"
+            }
+            $existingFloor = ConvertTo-TicketboxLifecycleVersion `
+                ([string]$existingFloorProperty.Value) `
+                "既有生命周期回执目标版本下限"
+            if (
+                [string]$existingFloorProperty.Value -cne $existingFloor.Canonical -or
+                (Compare-TicketboxLifecycleVersions `
+                    -Left $targetVersionFloor.Canonical `
+                    -Right $existingFloor.Canonical) -lt 0
+            ) {
+                throw "安装生命周期回执目标版本下限不能回退。"
+            }
         }
+    }
+    elseif ($ReplaceVerifiedLegacyReceipt) {
+        throw "legacy 生命周期回执迁移缺少既有受保护回执。"
     }
     $payload = [ordered]@{
         schema = $script:TicketboxLifecycleReceiptSchema
@@ -483,9 +501,10 @@ function Read-TicketboxLifecycleReceipt {
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
         [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
-        [Parameter(Mandatory = $true)][string]$CurrentTargetBackendVersion,
+        [string]$CurrentTargetBackendVersion = "",
         [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
-        [switch]$AllowPreviousInstallerOwnerProcessId
+        [switch]$AllowPreviousInstallerOwnerProcessId,
+        [switch]$AllowLegacyV7WithoutTargetVersionFloor
     )
 
     $canonicalPath = Assert-TicketboxLifecycleReceiptPath $Path
@@ -496,25 +515,37 @@ function Read-TicketboxLifecycleReceipt {
     catch {
         throw "安装生命周期回执不是有效 JSON。"
     }
-    if ($receipt.schema -ne $script:TicketboxLifecycleReceiptSchema) {
-        throw "安装生命周期回执 schema 不受支持。"
-    }
     $targetVersionProperty = $receipt.PSObject.Properties["target_backend_version_floor"]
-    if ($null -eq $targetVersionProperty -or $targetVersionProperty.Value -isnot [string]) {
-        throw "安装生命周期回执缺少目标版本下限。"
+    $isLegacyV7 =
+        [string]$receipt.schema -ceq $script:TicketboxLegacyLifecycleReceiptSchema
+    if ($isLegacyV7) {
+        if (-not $AllowLegacyV7WithoutTargetVersionFloor -or $null -ne $targetVersionProperty) {
+            throw "legacy v7 生命周期回执只能由显式迁移或只读卸载合同接管。"
+        }
     }
-    $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
-        ([string]$targetVersionProperty.Value) `
-        "生命周期回执目标版本下限"
-    if ([string]$targetVersionProperty.Value -cne $targetVersionFloor.Canonical) {
-        throw "安装生命周期回执目标版本下限不是规范版本。"
-    }
-    if (
-        (Compare-TicketboxLifecycleVersions `
-            -Left $CurrentTargetBackendVersion `
-            -Right $targetVersionFloor.Canonical) -lt 0
-    ) {
-        throw "当前安装器目标版本低于已开始安装事务的版本下限；拒绝降级覆盖。"
+    else {
+        if ([string]$receipt.schema -cne $script:TicketboxLifecycleReceiptSchema) {
+            throw "安装生命周期回执 schema 不受支持。"
+        }
+        if ($null -eq $targetVersionProperty -or $targetVersionProperty.Value -isnot [string]) {
+            throw "安装生命周期回执缺少目标版本下限。"
+        }
+        if ([string]::IsNullOrWhiteSpace($CurrentTargetBackendVersion)) {
+            throw "读取当前生命周期回执必须提供安装器目标版本。"
+        }
+        $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
+            ([string]$targetVersionProperty.Value) `
+            "生命周期回执目标版本下限"
+        if ([string]$targetVersionProperty.Value -cne $targetVersionFloor.Canonical) {
+            throw "安装生命周期回执目标版本下限不是规范版本。"
+        }
+        if (
+            (Compare-TicketboxLifecycleVersions `
+                -Left $CurrentTargetBackendVersion `
+                -Right $targetVersionFloor.Canonical) -lt 0
+        ) {
+            throw "当前安装器目标版本低于已开始安装事务的版本下限；拒绝降级覆盖。"
+        }
     }
     foreach ($name in @(
         "backup_required",
@@ -671,6 +702,96 @@ function Read-TicketboxLifecycleReceipt {
         throw "未完成的安装生命周期回执携带了备份证据。"
     }
     return $receipt
+}
+
+function ConvertTo-TicketboxCurrentLifecycleReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
+        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
+        [Parameter(Mandatory = $true)][string]$CurrentTargetBackendVersion,
+        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
+        [switch]$AllowPreviousInstallerOwnerProcessId
+    )
+
+    $canonicalPath = Assert-TicketboxLifecycleReceiptPath $Path
+    Assert-TicketboxProtectedLifecycleReceipt $canonicalPath
+    try {
+        $envelope = Get-Content -LiteralPath $canonicalPath -Encoding UTF8 -Raw |
+            ConvertFrom-Json
+    }
+    catch {
+        throw "安装生命周期回执不是有效 JSON。"
+    }
+    if ([string]$envelope.schema -ceq $script:TicketboxLifecycleReceiptSchema) {
+        return Read-TicketboxLifecycleReceipt `
+            -Path $canonicalPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot `
+            -PgPort $PgPort `
+            -BackendPort $BackendPort `
+            -TargetReleaseConfig $TargetReleaseConfig `
+            -CurrentTargetBackendVersion $CurrentTargetBackendVersion `
+            -InstallerOwnerProcessId $InstallerOwnerProcessId `
+            -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
+    }
+    if ([string]$envelope.schema -cne $script:TicketboxLegacyLifecycleReceiptSchema) {
+        throw "安装生命周期回执 schema 不受支持。"
+    }
+
+    $legacyReceipt = Read-TicketboxLifecycleReceipt `
+        -Path $canonicalPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -TargetReleaseConfig $TargetReleaseConfig `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId `
+        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId `
+        -AllowLegacyV7WithoutTargetVersionFloor
+    try {
+        Write-TicketboxLifecycleReceipt `
+            -Path $canonicalPath `
+            -Mode ([string]$legacyReceipt.mode) `
+            -InstallDir ([string]$legacyReceipt.install_dir) `
+            -DataRoot ([string]$legacyReceipt.data_root) `
+            -PgPort ([int]$legacyReceipt.pg_port) `
+            -BackendPort ([int]$legacyReceipt.backend_port) `
+            -InstalledReleaseConfig $legacyReceipt.installed_release_config `
+            -TargetBackendVersionFloor $CurrentTargetBackendVersion `
+            -InstallerOwnerProcessId $InstallerOwnerProcessId `
+            -PreviousPgState ([string]$legacyReceipt.previous_pg_state) `
+            -PreviousBackendState ([string]$legacyReceipt.previous_backend_state) `
+            -PreviousPgStartPolicy ([string]$legacyReceipt.previous_pg_start_policy) `
+            -PreviousBackendStartPolicy ([string]$legacyReceipt.previous_backend_start_policy) `
+            -BackupRequired ([bool]$legacyReceipt.backup_required) `
+            -BackupCompleted ([bool]$legacyReceipt.backup_completed) `
+            -PreparationStage ([string]$legacyReceipt.preparation_stage) `
+            -BackupPath ([string]$legacyReceipt.backup_path) `
+            -BackupSha256 ([string]$legacyReceipt.backup_sha256) `
+            -BackupByteLength ([long]$legacyReceipt.backup_byte_length) `
+            -FilesMayHaveBeenReplaced ([bool]$legacyReceipt.files_may_have_been_replaced) `
+            -InstallCompleted ([bool]$legacyReceipt.install_completed) `
+            -TemporaryPgServiceCleanupPending `
+                ([bool]$legacyReceipt.temporary_pg_service_cleanup_pending) `
+            -ReplaceProtectedReceipt `
+            -ReplaceVerifiedLegacyReceipt
+    }
+    finally {
+        Close-TicketboxLifecycleBackupGuard $legacyReceipt
+    }
+    return Read-TicketboxLifecycleReceipt `
+        -Path $canonicalPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -TargetReleaseConfig $TargetReleaseConfig `
+        -CurrentTargetBackendVersion $CurrentTargetBackendVersion `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId
 }
 
 function Assert-TicketboxLifecycleReceiptStage([object]$Receipt, [string]$ExpectedStage) {
@@ -1428,14 +1549,26 @@ function Read-TicketboxCompletedLifecycleReceipt {
     $pgPort = 0
     $backendPort = 0
     $targetVersionProperty = $envelope.PSObject.Properties["target_backend_version_floor"]
-    if ($null -eq $targetVersionProperty -or $targetVersionProperty.Value -isnot [string]) {
-        throw "安装生命周期回执缺少目标版本下限。"
+    $isLegacyV7 =
+        [string]$envelope.schema -ceq $script:TicketboxLegacyLifecycleReceiptSchema
+    if ($isLegacyV7) {
+        if ($null -ne $targetVersionProperty) {
+            throw "legacy v7 生命周期回执不能携带目标版本下限。"
+        }
     }
-    $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
-        ([string]$targetVersionProperty.Value) `
-        "生命周期回执目标版本下限"
-    if ([string]$targetVersionProperty.Value -cne $targetVersionFloor.Canonical) {
-        throw "安装生命周期回执目标版本下限不是规范版本。"
+    else {
+        if ([string]$envelope.schema -cne $script:TicketboxLifecycleReceiptSchema) {
+            throw "安装生命周期回执 schema 不受支持。"
+        }
+        if ($null -eq $targetVersionProperty -or $targetVersionProperty.Value -isnot [string]) {
+            throw "安装生命周期回执缺少目标版本下限。"
+        }
+        $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
+            ([string]$targetVersionProperty.Value) `
+            "生命周期回执目标版本下限"
+        if ([string]$targetVersionProperty.Value -cne $targetVersionFloor.Canonical) {
+            throw "安装生命周期回执目标版本下限不是规范版本。"
+        }
     }
     if (
         -not [int]::TryParse([string]$envelope.pg_port, [ref]$pgPort) -or
@@ -1445,16 +1578,23 @@ function Read-TicketboxCompletedLifecycleReceipt {
     ) {
         throw "安装生命周期回执端口无效。"
     }
-    $receipt = Read-TicketboxLifecycleReceipt `
-        -Path $canonicalPath `
-        -InstallDir $InstallDir `
-        -DataRoot $DataRoot `
-        -PgPort $pgPort `
-        -BackendPort $backendPort `
-        -TargetReleaseConfig $TargetReleaseConfig `
-        -CurrentTargetBackendVersion $targetVersionFloor.Canonical `
-        -InstallerOwnerProcessId $PID `
-        -AllowPreviousInstallerOwnerProcessId
+    $readArguments = @{
+        Path = $canonicalPath
+        InstallDir = $InstallDir
+        DataRoot = $DataRoot
+        PgPort = $pgPort
+        BackendPort = $backendPort
+        TargetReleaseConfig = $TargetReleaseConfig
+        InstallerOwnerProcessId = $PID
+        AllowPreviousInstallerOwnerProcessId = $true
+    }
+    if ($isLegacyV7) {
+        $readArguments.AllowLegacyV7WithoutTargetVersionFloor = $true
+    }
+    else {
+        $readArguments.CurrentTargetBackendVersion = $targetVersionFloor.Canonical
+    }
+    $receipt = Read-TicketboxLifecycleReceipt @readArguments
     Assert-TicketboxCompletedLifecycleReceipt $receipt
     if (
         ($ExpectedPgPort -gt 0 -and $pgPort -ne $ExpectedPgPort) -or

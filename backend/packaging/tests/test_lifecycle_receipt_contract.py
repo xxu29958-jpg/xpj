@@ -34,7 +34,11 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
     assert "$PreUpgradeBackupAlreadyCompleted = [bool]$lifecycleReceipt.backup_completed" in install
     assert "InstallerOwnerProcessId" in receipt
     assert '"ticketbox-windows-lifecycle-receipt-v8"' in receipt
+    assert '"ticketbox-windows-lifecycle-receipt-v7"' in receipt
     assert "target_backend_version_floor" in receipt
+    assert "ConvertTo-TicketboxCurrentLifecycleReceipt" in receipt
+    assert "ReplaceVerifiedLegacyReceipt" in receipt
+    assert "AllowLegacyV7WithoutTargetVersionFloor" in receipt
     assert "Set-TicketboxLifecycleReceiptTargetVersionFloor" in receipt
     assert "Assert-TicketboxProtectedLifecycleReceipt" in receipt
     assert "Write-TicketboxProtectedUtf8FileDurable" in receipt
@@ -161,7 +165,9 @@ def test_completed_stale_receipt_cannot_reuse_previous_backup_mutation() -> None
     install = _read("install_bundled_services.ps1")
     flow = _read("ticketbox-installer-flow.isph")
 
-    stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
+    stale_start = prepare.index(
+        "$staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt"
+    )
     completed_check = prepare.index("if ([bool]$staleReceipt.install_completed)", stale_start)
     resume_commit = prepare.index("Complete-TicketboxInstalledLifecycleTransaction", completed_check)
     invalidate = prepare.index("Remove-TicketboxCompletedLifecycleReceipt", resume_commit)
@@ -1338,6 +1344,69 @@ function Set-TestBackupContent([string]$Text) {{
         -Accounts @($currentAccount) `
         -OwnerAccount $currentAccount
 }}
+function Set-TestReceiptLegacyV7 {{
+    $legacyReceipt = Get-Content `
+        -LiteralPath '{_literal(receipt_path)}' `
+        -Encoding UTF8 `
+        -Raw | ConvertFrom-Json
+    $legacyReceipt.schema = 'ticketbox-windows-lifecycle-receipt-v7'
+    $legacyReceipt.PSObject.Properties.Remove('target_backend_version_floor')
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path '{_literal(receipt_path)}' `
+        -Text ($legacyReceipt | ConvertTo-Json -Depth 20 -Compress) `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount `
+        -ReplaceExisting
+}}
+function Convert-TestLegacyReceipt(
+    [string]$ExpectedStage,
+    [int]$InstallerOwnerProcessId,
+    [switch]$AllowPreviousInstallerOwnerProcessId
+) {{
+    Set-TestReceiptLegacyV7
+    $legacyBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+    $implicitLegacyReadRejected = $false
+    try {{
+        Read-TicketboxLifecycleReceipt `
+            -Path '{_literal(receipt_path)}' `
+            -InstallDir '{_literal(install_dir)}' `
+            -DataRoot '{_literal(data_root)}' `
+            -PgPort 5544 `
+            -BackendPort 8765 `
+            -TargetReleaseConfig $config `
+            -CurrentTargetBackendVersion 1.3.0 `
+            -InstallerOwnerProcessId $InstallerOwnerProcessId `
+            -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId | Out-Null
+    }}
+    catch {{ $implicitLegacyReadRejected = $true }}
+    if (
+        -not $implicitLegacyReadRejected -or
+        -not (Test-TicketboxByteArrayEquals `
+            $legacyBytes `
+            ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
+    ) {{
+        throw "legacy $ExpectedStage receipt was accepted without migration or mutated first"
+    }}
+    $migratedReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
+        -Path '{_literal(receipt_path)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -DataRoot '{_literal(data_root)}' `
+        -PgPort 5544 `
+        -BackendPort 8765 `
+        -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.3.0 `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId `
+        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
+    if (
+        [string]$migratedReceipt.schema -cne 'ticketbox-windows-lifecycle-receipt-v8' -or
+        [string]$migratedReceipt.target_backend_version_floor -cne '1.3.0' -or
+        [string]$migratedReceipt.preparation_stage -cne $ExpectedStage -or
+        [int]$migratedReceipt.installer_owner_process_id -ne $InstallerOwnerProcessId
+    ) {{
+        throw "legacy $ExpectedStage receipt migration lost lifecycle authority"
+    }}
+    return $migratedReceipt
+}}
 $freshMode = Get-TicketboxPreparedInstallMode $false $false $false $false $false
 $preservedMode = Get-TicketboxPreparedInstallMode $false $false $true $true $false
 $repairMode = Get-TicketboxPreparedInstallMode $true $false $true $true $false
@@ -1397,6 +1466,54 @@ if (
 ) {{
     throw 'lifecycle receipt did not durably bind the v2 DataRoot volume authority'
 }}
+$capturedReceiptText = Get-Content `
+    -LiteralPath '{_literal(receipt_path)}' `
+    -Encoding UTF8 `
+    -Raw
+Set-TestReceiptLegacyV7
+$legacyCapturedText = Get-Content `
+    -LiteralPath '{_literal(receipt_path)}' `
+    -Encoding UTF8 `
+    -Raw
+$malformedLegacy = $legacyCapturedText | ConvertFrom-Json
+$malformedLegacy.files_may_have_been_replaced = $true
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path '{_literal(receipt_path)}' `
+    -Text ($malformedLegacy | ConvertTo-Json -Depth 20 -Compress) `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount `
+    -ReplaceExisting
+$malformedLegacyBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+$malformedLegacyRejected = $false
+try {{
+    ConvertTo-TicketboxCurrentLifecycleReceipt `
+        -Path '{_literal(receipt_path)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -DataRoot '{_literal(data_root)}' `
+        -PgPort 5544 `
+        -BackendPort 8765 `
+        -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.3.0 `
+        -InstallerOwnerProcessId $PID | Out-Null
+}}
+catch {{ $malformedLegacyRejected = $true }}
+if (
+    -not $malformedLegacyRejected -or
+    -not (Test-TicketboxByteArrayEquals `
+        $malformedLegacyBytes `
+        ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
+) {{
+    throw 'malformed legacy receipt was accepted or mutated before rejection'
+}}
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path '{_literal(receipt_path)}' `
+    -Text $capturedReceiptText `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount `
+    -ReplaceExisting
+$capturedReceipt = Convert-TestLegacyReceipt `
+    -ExpectedStage captured `
+    -InstallerOwnerProcessId $PID
 $dataRootMarkerPath = Get-TicketboxDataRootMarkerPath '{_literal(data_root)}'
 $dataRootMarkerText = Get-Content -LiteralPath $dataRootMarkerPath -Encoding UTF8 -Raw
 $receiptBytesBeforeAuthorityFailure = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
@@ -1489,6 +1606,17 @@ if ($receipt.mode -ne 'upgrade' -or
     $receipt.previous_backend_start_policy -ne 'manual') {{
     throw 'receipt mode, policy, or backup changed'
 }}
+Close-TicketboxLifecycleBackupGuard $receipt
+$receipt = Convert-TestLegacyReceipt `
+    -ExpectedStage prepared `
+    -InstallerOwnerProcessId $PID
+if (-not $receipt.backup_completed -or
+    $receipt.backup_sha256 -cnotmatch '^[0-9A-F]{{64}}$' -or
+    [long]$receipt.backup_byte_length -ne 15 -or
+    $receipt.previous_pg_start_policy -cne 'delayed_auto' -or
+    $receipt.previous_backend_start_policy -cne 'manual') {{
+    throw 'legacy prepared migration discarded backup or service policy evidence'
+}}
 $overwriteRejected = $false
 try {{
     Write-TicketboxLifecycleReceipt `
@@ -1576,6 +1704,16 @@ if (-not $repairReceipt.files_may_have_been_replaced -or
     [long]$repairReceipt.backup_byte_length -ne [long]$receipt.backup_byte_length) {{
     throw 'repair rebind discarded previous state or backup evidence'
 }}
+Close-TicketboxLifecycleBackupGuard $repairReceipt
+$repairReceipt = Convert-TestLegacyReceipt `
+    -ExpectedStage files_may_have_been_replaced `
+    -InstallerOwnerProcessId ($PID + 1)
+if (-not $repairReceipt.files_may_have_been_replaced -or
+    -not $repairReceipt.backup_completed -or
+    $repairReceipt.backup_sha256 -cne $receipt.backup_sha256 -or
+    [long]$repairReceipt.backup_byte_length -ne [long]$receipt.backup_byte_length) {{
+    throw 'legacy post-copy migration discarded recovery or backup evidence'
+}}
 Set-TicketboxLifecycleReceiptInstallerOwner `
     -Path '{_literal(receipt_path)}' `
     -Receipt $repairReceipt `
@@ -1633,6 +1771,62 @@ if (-not $completedReceipt.install_completed -or
     $completedReceipt.target_backend_version_floor -cne '1.3.0') {{
     throw 'completed receipt was not persisted'
 }}
+Set-TestReceiptLegacyV7
+$legacyCompletedBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+$legacyCompletedReceipt = Read-TicketboxCompletedLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -TargetReleaseConfig $config `
+    -ExpectedPgPort 5544 `
+    -ExpectedBackendPort 8765 `
+    -ExpectedPgServiceName ([string]$config.pg_service_name) `
+    -ExpectedBackendServiceName ([string]$config.backend_service_name)
+if (-not $legacyCompletedReceipt.install_completed -or
+    $legacyCompletedReceipt.preparation_stage -cne 'install_completed' -or
+    -not (Test-TicketboxByteArrayEquals `
+        $legacyCompletedBytes `
+        ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
+    throw 'read-only legacy completed receipt adoption mutated or lost authority'
+}}
+$completedReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId ($PID + 3) `
+    -AllowPreviousInstallerOwnerProcessId
+if (-not $completedReceipt.install_completed -or
+    $completedReceipt.preparation_stage -cne 'install_completed' -or
+    $completedReceipt.target_backend_version_floor -cne '1.3.0' -or
+    $completedReceipt.backup_sha256 -cne $legacyCompletedReceipt.backup_sha256 -or
+    [long]$completedReceipt.backup_byte_length -ne
+        [long]$legacyCompletedReceipt.backup_byte_length) {{
+    throw 'legacy completed receipt migration discarded completion or backup evidence'
+}}
+$adoptedCompletedBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+$adoptedDowngradeRejected = $false
+try {{
+    Read-TicketboxLifecycleReceipt `
+        -Path '{_literal(receipt_path)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -DataRoot '{_literal(data_root)}' `
+        -PgPort 5544 `
+        -BackendPort 8765 `
+        -TargetReleaseConfig $config `
+        -CurrentTargetBackendVersion 1.2.9 `
+        -InstallerOwnerProcessId ($PID + 3) | Out-Null
+}}
+catch {{ $adoptedDowngradeRejected = $true }}
+if (-not $adoptedDowngradeRejected -or
+    -not (Test-TicketboxByteArrayEquals `
+        $adoptedCompletedBytes `
+        ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
+    throw 'legacy adoption failed to establish a monotonic target version floor'
+}}
 Set-TestBackupContent 'completed-corruption'
 $completedCorruptionRejected = $false
 try {{
@@ -1687,6 +1881,90 @@ Remove-TicketboxCompletedLifecycleReceipt `
     -Path '{_literal(receipt_path)}' `
     -Receipt $boundCompletedReceipt
 if (Test-Path -LiteralPath '{_literal(receipt_path)}') {{ throw 'completed receipt survived invalidation' }}
+Write-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -Mode preserved_data_reinstall `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -InstalledReleaseConfig $config `
+    -TargetBackendVersionFloor 1.3.0 `
+    -InstallerOwnerProcessId $PID `
+    -PreviousPgState absent `
+    -PreviousBackendState absent `
+    -PreviousPgStartPolicy absent `
+    -PreviousBackendStartPolicy absent `
+    -BackupRequired $true `
+    -BackupCompleted $false `
+    -PreparationStage captured
+$deferredReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId $PID
+Set-TicketboxLifecycleReceiptDeferredBackup `
+    -Path '{_literal(receipt_path)}' `
+    -Receipt $deferredReceipt `
+    -InstallerOwnerProcessId $PID
+$deferredReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId $PID
+$deferredReceipt = Convert-TestLegacyReceipt `
+    -ExpectedStage backup_deferred_until_program_files_installed `
+    -InstallerOwnerProcessId $PID
+if ($deferredReceipt.mode -cne 'preserved_data_reinstall' -or
+    -not $deferredReceipt.backup_required -or
+    $deferredReceipt.backup_completed -or
+    $deferredReceipt.files_may_have_been_replaced) {{
+    throw 'legacy deferred-backup migration changed its recovery boundary'
+}}
+Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending `
+    -Path '{_literal(receipt_path)}' `
+    -Receipt $deferredReceipt `
+    -InstallerOwnerProcessId $PID
+$backupPendingReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId $PID
+Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending `
+    -Path '{_literal(receipt_path)}' `
+    -Receipt $backupPendingReceipt `
+    -InstallerOwnerProcessId $PID `
+    -CleanupPending $true
+$backupPendingReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId $PID
+$backupPendingReceipt = Convert-TestLegacyReceipt `
+    -ExpectedStage program_files_installed_backup_pending `
+    -InstallerOwnerProcessId $PID
+if (-not $backupPendingReceipt.files_may_have_been_replaced -or
+    -not $backupPendingReceipt.temporary_pg_service_cleanup_pending -or
+    $backupPendingReceipt.backup_completed) {{
+    throw 'legacy backup-pending migration discarded copy or cleanup obligations'
+}}
+Remove-Item -LiteralPath '{_literal(receipt_path)}' -Force
 Write-TicketboxLifecycleReceipt `
     -Path '{_literal(receipt_path)}' `
     -Mode repair_install `
