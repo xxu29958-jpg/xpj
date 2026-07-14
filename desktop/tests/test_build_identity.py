@@ -74,24 +74,36 @@ def test_frozen_manager_identity_requires_complete_matching_payload(monkeypatch,
     assert identity == build_identity.FrozenManagerIdentity(executable.absolute(), "1.2.0")
 
 
+@pytest.mark.parametrize("version", ("1.2.0.7", "0.2.3", "65535.0.0"))
 def test_frozen_manager_identity_accepts_the_installer_numeric_version_contract(
     monkeypatch,
     tmp_path: Path,
+    version: str,
 ) -> None:
     executable, manifest_path = _frozen_payload(monkeypatch, tmp_path)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["version"] = "1.2.0.7"
+    manifest["version"] = version
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     assert build_identity.load_frozen_manager_identity() == build_identity.FrozenManagerIdentity(
         executable.absolute(),
-        "1.2.0.7",
+        version,
     )
 
 
 @pytest.mark.parametrize(
     "version",
-    ("1.2", "1.2.0-rc.1", "1.2.0+build.7", "1.2.65536", f"{'9' * 5000}.2.3"),
+    (
+        "1.2",
+        "1.2.0-rc.1",
+        "1.2.0+build.7",
+        "01.2.3",
+        "1.02.3",
+        "1.2.3.04",
+        "1.2.65536",
+        "000000.2.3",
+        f"{'9' * 5000}.2.3",
+    ),
 )
 def test_frozen_manager_identity_rejects_versions_the_installer_cannot_publish(
     monkeypatch,

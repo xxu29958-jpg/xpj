@@ -405,9 +405,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         args_start = flow.rfind("Args :=\n", 0, call.start())
         assert args_start >= 0
         assert " -TargetBackendVersion {#AppVersion}" in flow[args_start : call.start()]
-    stale_start = prepare.index(
-        "$staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt"
-    )
+    stale_start = prepare.index("$staleReceipt = Read-TicketboxCompatibleLifecycleReceipt")
     stale_branch = prepare[
         stale_start : prepare.index(
             "Initialize-TicketboxInstalledReleaseConfiguration",
@@ -618,20 +616,64 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
     assert "Register-PgService" not in direct_backup
     assert "Initialize-PgClusterIfNeeded" not in direct_backup
 
-    stale_cleanup = prepare[
-        prepare.index("if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending") :
-        prepare.index("if ([bool]$staleReceipt.install_completed)")
+    prepared_recovery = prepare[
+        prepare.index("if ($RecoverPreparedInstall)") :
+        prepare.index("if ($CommitCompletedInstall)")
     ]
-    assert stale_cleanup.index("Remove-TicketboxDeferredPreservedPgServiceIfExists") < stale_cleanup.index(
+    cleanup_obligation = prepared_recovery[
+        prepared_recovery.index("if ([bool]$receipt.temporary_pg_service_cleanup_pending") :
+        prepared_recovery.index("Remove-TicketboxRecoveryPgServiceIfExists")
+    ]
+    assert cleanup_obligation.index("Remove-TicketboxDeferredPreservedPgServiceIfExists") < cleanup_obligation.index(
         "-CleanupPending $false"
     )
-    stale_recovery = prepare[
-        prepare.index("$staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt") :
-        prepare.index("if ([bool]$staleReceipt.install_completed)")
+    stale_start = prepare.index("$staleReceipt = Read-TicketboxCompatibleLifecycleReceipt")
+    stale_dispatch = prepare[
+        stale_start : prepare.index(
+            "Initialize-TicketboxInstalledReleaseConfiguration",
+            stale_start,
+        )
     ]
-    assert stale_recovery.index("Remove-TicketboxDeferredPreservedPgServiceIfExists") < stale_recovery.index(
-        "Remove-TicketboxRecoveryPgServiceIfExists"
+    completed_branch = stale_dispatch[
+        stale_dispatch.index("if ([bool]$staleReceipt.install_completed)") :
+        stale_dispatch.index('elseif ([string]$staleReceipt.preparation_stage -in @(')
+    ]
+    captured_branch = stale_dispatch[
+        stale_dispatch.index('elseif ([string]$staleReceipt.preparation_stage -in @(') :
+        stale_dispatch.index(
+            'elseif ([string]$staleReceipt.preparation_stage -eq "program_files_installed_backup_pending")'
+        )
+    ]
+    backup_pending_branch = stale_dispatch[
+        stale_dispatch.index(
+            'elseif ([string]$staleReceipt.preparation_stage -eq "program_files_installed_backup_pending")'
+        ) : stale_dispatch.index("else {", stale_dispatch.index("program_files_installed_backup_pending"))
+    ]
+    post_copy_branch = stale_dispatch[
+        stale_dispatch.index("else {", stale_dispatch.index("program_files_installed_backup_pending")) :
+    ]
+    assert completed_branch.index("Assert-TicketboxPreparedServiceContracts") < completed_branch.index(
+        "ConvertTo-TicketboxCurrentLifecycleReceipt"
     )
+    assert captured_branch.index("Remove-TicketboxRecoveryPgServiceIfExists") < captured_branch.index(
+        "Assert-TicketboxPreparedServiceContracts"
+    ) < captured_branch.index(
+        "Invoke-TicketboxPreparedInstallRecovery"
+    ) < captured_branch.index("Remove-TicketboxLifecycleReceipt")
+    assert "ConvertTo-TicketboxCurrentLifecycleReceipt" not in captured_branch
+    for branch in (completed_branch, post_copy_branch):
+        assert branch.index("Remove-TicketboxRecoveryPgServiceIfExists") < branch.index(
+            "Assert-TicketboxPreparedServiceContracts"
+        ) < branch.index(
+            "ConvertTo-TicketboxCurrentLifecycleReceipt"
+        )
+    assert backup_pending_branch.index("Remove-TicketboxRecoveryPgServiceIfExists") < backup_pending_branch.index(
+        "Remove-TicketboxDeferredPreservedPgServiceIfExists"
+    ) < backup_pending_branch.index(
+        "Assert-TicketboxPreparedServiceContracts"
+    ) < backup_pending_branch.index(
+        "ConvertTo-TicketboxCurrentLifecycleReceipt"
+    ) < backup_pending_branch.index("Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending")
 
 
 def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
@@ -936,52 +978,70 @@ def test_installer_version_only_comes_from_backend_source_of_truth() -> None:
     assert 'Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath' in build
     assert '"/DDefaultPgPort=$($releaseConfig.default_pg_port)"' in build
     assert "SelectInitialPort('TicketboxPgPort', ExistingPgPort, '5432', '5440')" not in installer
+    assert "Result := (Value <> '') and (Length(Value) <= 5);" in installer
+    assert "if (Length(Value) > 1) and (Value[1] = '0') then" in installer
 
-    powershell = shutil.which("powershell")
-    assert powershell
-    for version, expected in (("1.3.0", "1.3.0.0"), ("1.3.0.9", "1.3.0.9")):
-        result = subprocess.run(
-            [
-                powershell,
-                "-NoLogo",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                PACKAGING / "build_inno_installer.ps1",
-                "-VersionContractProbe",
-                version,
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=15,
-        )
-        assert result.returncode == 0, result.stderr
-        assert result.stdout.strip() == expected
-    for version in ("1.3.0a1", "1.3.0rc2", "1.3.0-rc.2+build.7", "release-latest"):
-        rejected = subprocess.run(
-            [
-                powershell,
-                "-NoLogo",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                PACKAGING / "build_inno_installer.ps1",
-                "-VersionContractProbe",
-                version,
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=15,
-        )
-        assert rejected.returncode != 0
+    accepted = (
+        ("1.3.0", "1.3.0.0"),
+        ("1.3.0.9", "1.3.0.9"),
+        ("0.2.3", "0.2.3.0"),
+        ("65535.0.0", "65535.0.0.0"),
+    )
+    rejected_versions = (
+        "1.3.0a1",
+        "1.3.0rc2",
+        "1.3.0-rc.2+build.7",
+        "release-latest",
+        "01.2.3",
+        "1.02.3",
+        "1.2.3.04",
+        "000000.2.3",
+        "65536.0.0",
+    )
+    for powershell in powershell_contract_engines():
+        for version, expected in accepted:
+            result = subprocess.run(
+                [
+                    powershell,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    PACKAGING / "build_inno_installer.ps1",
+                    "-VersionContractProbe",
+                    version,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8-sig",
+                errors="replace",
+                timeout=15,
+            )
+            assert result.returncode == 0, result.stderr
+            assert result.stdout.strip() == expected
+        for version in rejected_versions:
+            rejected = subprocess.run(
+                [
+                    powershell,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    PACKAGING / "build_inno_installer.ps1",
+                    "-VersionContractProbe",
+                    version,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8-sig",
+                errors="replace",
+                timeout=15,
+            )
+            assert rejected.returncode != 0
 
 
 def test_mutable_windows_runtime_policy_is_read_from_release_config() -> None:

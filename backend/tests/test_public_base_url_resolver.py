@@ -112,6 +112,7 @@ def test_mobile_endpoint_rejects_ambiguous_loopback_or_unusable_port(raw: str) -
 @pytest.mark.parametrize(
     "raw,expected",
     [
+        ("https://API.Example.COM:443/", "https://api.example.com"),
         ("https://API.Example.COM./", "https://api.example.com"),
         ("https://xn--fa-hia.de", "https://xn--fa-hia.de"),
         ("https://[2001:0DB8:0:0::1]:8443", "https://[2001:db8::1]:8443"),

@@ -102,23 +102,35 @@ class LocalLedgerSessionCoordinatorOrderingTest {
     }
 
     @Test
-    fun allLedgersTransitionRunsInsideOutboxBindingBoundary() = runTest {
+    fun canonicalServerAliasMigrationKeepsSameLedgerOutboxVisible() = runTest {
         val dao = FakePendingMutationDao()
         val settings = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://old.example.com")
+            saveServerUrl("https://API.EXAMPLE.COM:443")
+            saveIdentity(
+                PersistedLedgerIdentity(
+                    accountName = "我",
+                    ledgerId = "same-ledger",
+                    ledgerName = "同一账本",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                ),
+            )
         }
         val tokens = FakeSessionTokenStore().apply { saveToken("old-token") }
 
         var serverUrlAtBoundary: String? = null
-        val outbox = OutboxRepository(
-            dao = dao,
-            onClearAll = { serverUrlAtBoundary = settings.serverUrl() },
-        )
-        outbox.enqueue(
+        val outbox = outboxBoundTo(settings, dao) {
+            serverUrlAtBoundary = settings.serverUrl()
+        }
+        val queuedId = outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:7",
             payloadJson = "{}",
             expectedRowVersion = 1L,
+        )
+        dao.rows[queuedId] = dao.rows.getValue(queuedId).copy(
+            serverUrl = "https://API.EXAMPLE.COM:443",
         )
 
         val coordinator = LocalLedgerSessionCoordinator(
@@ -132,19 +144,23 @@ class LocalLedgerSessionCoordinatorOrderingTest {
             LedgerSessionTransition(
                 identity = LedgerSessionIdentity(
                     accountName = "我",
-                    ledgerId = "new",
-                    ledgerName = "new",
+                    ledgerId = "same-ledger",
+                    ledgerName = "同一账本",
                     deviceName = "Pixel",
                     role = "owner",
                     boundAt = "2026-05-04T12:00:00Z",
                 ),
-                serverUrl = "https://new.example.com",
+                serverUrl = "https://api.example.com",
                 sessionToken = "new-token",
                 cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
             ),
         )
 
-        assertEquals("https://new.example.com", serverUrlAtBoundary)
+        assertEquals("https://api.example.com", serverUrlAtBoundary)
+        assertEquals("https://api.example.com", dao.rows.values.single().serverUrl)
+        settings.saveServerUrl("https://API.EXAMPLE.COM:443")
+        val restartedOutbox = outboxBoundTo(settings, dao)
+        assertEquals("expense:7", restartedOutbox.dequeueNextRunnable().single().targetId)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -310,4 +326,19 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         assertTrue(!clearAllFired, "None cacheInvalidation must not wipe the outbox")
         assertEquals(1, dao.rows.size, "outbox row should still be there")
     }
+
+    private fun outboxBoundTo(
+        settings: FakeTicketboxSettingsStore,
+        dao: FakePendingMutationDao,
+        onBindingTransition: () -> Unit = {},
+    ): OutboxRepository = OutboxRepository(
+        dao = dao,
+        bindingProvider = {
+            OutboxBinding(
+                serverUrl = settings.serverUrl().orEmpty(),
+                ledgerId = settings.activeLedgerId().orEmpty(),
+            )
+        },
+        onClearAll = onBindingTransition,
+    )
 }

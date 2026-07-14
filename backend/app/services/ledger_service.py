@@ -118,8 +118,21 @@ def list_managed_ledgers_for_account(db: Session, *, account_id: int) -> list[Le
     authority: a member/viewer can see a ledger, but must not mint pairing
     codes, manage upload links, or revoke devices for it.
     """
-
-    return [summary for summary in list_ledgers_for_account(db, account_id=account_id) if summary.role == "owner"]
+    rows = list(
+        db.execute(
+            select(Ledger, LedgerMember.role)
+            .join(LedgerMember, LedgerMember.ledger_id == Ledger.ledger_id)
+            .where(LedgerMember.account_id == account_id)
+            .where(LedgerMember.role == "owner")
+            .where(LedgerMember.disabled_at.is_(None))
+            .where(Ledger.owner_account_id == account_id)
+            .where(Ledger.archived_at.is_(None))
+            .order_by(Ledger.id.asc())
+        ).all()
+    )
+    summaries = [_summary(ledger, role) for ledger, role in rows]
+    summaries.sort(key=lambda summary: (0 if summary.is_default else 1, summary.ledger_id))
+    return summaries
 
 
 def managed_ledger_ids_for_account(db: Session, *, account_id: int) -> set[str]:

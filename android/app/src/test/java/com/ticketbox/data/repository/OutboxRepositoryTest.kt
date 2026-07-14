@@ -3,8 +3,14 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import java.time.Clock
@@ -12,6 +18,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -554,6 +561,92 @@ class OutboxRepositoryTest {
         assertEquals(listOf(activeConflict), status.conflicts.map { it.id })
         assertTrue(status.needsUserAction)
         assertEquals("active", dao.rows[activePending]?.ledgerId)
+    }
+
+    @Test
+    fun observeStatusRetargetsAfterSameLedgerServerTransition() = runTest {
+        val dao = FakePendingMutationDao()
+        var binding = OutboxBinding("https://old.example.com", "active")
+        val unchangedLedgerSignal = MutableStateFlow(binding)
+        val repo = OutboxRepository(
+            dao = dao,
+            bindingProvider = { binding },
+            bindingChanges = unchangedLedgerSignal,
+        )
+        repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
+        val initialObserved = CompletableDeferred<Unit>()
+        val observed = async(start = CoroutineStart.UNDISPATCHED) {
+            repo.observeQueueDepth()
+                .onEach { initialObserved.complete(Unit) }
+                .take(2)
+                .toList()
+        }
+        initialObserved.await()
+
+        repo.withBindingTransition {
+            binding = OutboxBinding("https://new.example.com", "active")
+        }
+
+        assertEquals(listOf(1, 0), observed.await())
+    }
+
+    @Test
+    fun concurrentBindingInvalidationsRetargetToFinalServer() = runTest {
+        val dao = FakePendingMutationDao()
+        var binding = OutboxBinding("https://old.example.com", "active")
+        val unchangedLedgerSignal = MutableStateFlow(binding)
+        val repo = OutboxRepository(
+            dao = dao,
+            bindingProvider = { binding },
+            bindingChanges = unchangedLedgerSignal,
+        )
+        repo.enqueue(PendingMutationType.PatchExpense, "old", "{}", 0L)
+        binding = OutboxBinding("https://middle.example.com", "active")
+        repo.enqueue(PendingMutationType.PatchExpense, "middle", "{}", 0L)
+        binding = OutboxBinding("https://final.example.com", "active")
+        repo.enqueue(PendingMutationType.PatchExpense, "final-1", "{}", 0L)
+        repo.enqueue(PendingMutationType.PatchExpense, "final-2", "{}", 0L)
+        binding = OutboxBinding("https://old.example.com", "active")
+
+        val initialObserved = CompletableDeferred<Unit>()
+        val finalDepth = async(start = CoroutineStart.UNDISPATCHED) {
+            repo.observeQueueDepth()
+                .onEach { depth -> if (depth == 1) initialObserved.complete(Unit) }
+                .first { depth -> depth == 2 }
+        }
+        initialObserved.await()
+        val firstTransitionEntered = CompletableDeferred<Unit>()
+        val releaseFirstTransition = CompletableDeferred<Unit>()
+        val firstTransition = launch {
+            repo.withBindingTransition {
+                binding = OutboxBinding("https://middle.example.com", "active")
+                firstTransitionEntered.complete(Unit)
+                releaseFirstTransition.await()
+            }
+        }
+        firstTransitionEntered.await()
+        val finalTransition = launch {
+            repo.withBindingTransition {
+                binding = OutboxBinding("https://final.example.com", "active")
+            }
+        }
+
+        releaseFirstTransition.complete(Unit)
+        firstTransition.join()
+        finalTransition.join()
+
+        assertEquals(2, finalDepth.await())
+    }
+
+    @Test
+    fun aliasMigrationRejectsDifferentCanonicalOrigins() {
+        assertFailsWith<IllegalArgumentException> {
+            OutboxServerAliasMigration(
+                oldServerUrl = "https://old.example.com",
+                newServerUrl = "https://new.example.com",
+                ledgerId = "active",
+            )
+        }
     }
 
     @Test

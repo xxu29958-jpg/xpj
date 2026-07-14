@@ -564,7 +564,10 @@ function Resolve-VersionInfoVersion([string]$Value) {
 }
 
 function ConvertTo-SupportedNumericVersionParts([string]$Value) {
-    $match = [regex]::Match($Value, '^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$')
+    $match = [regex]::Match(
+        $Value,
+        '^(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})(?:\.(0|[1-9][0-9]{0,4}))?$'
+    )
     if (-not $match.Success) {
         throw "安装器版本必须遵守三段或四段纯数字契约，才能安全比较并阻止降级：$Value"
     }

@@ -5,17 +5,19 @@ from __future__ import annotations
 import re
 
 _MANAGED_RELEASE_VERSION_PATTERN = re.compile(
-    r"([0-9]+)\.([0-9]+)\.([0-9]+)(?:\.([0-9]+))?\Z",
+    r"(0|[1-9][0-9]{0,4})\."
+    r"(0|[1-9][0-9]{0,4})\."
+    r"(0|[1-9][0-9]{0,4})"
+    r"(?:\.(0|[1-9][0-9]{0,4}))?\Z",
 )
 _WINDOWS_VERSION_COMPONENT_MAX = 65_535
 _WINDOWS_VERSION_COMPONENT_MAX_TEXT = str(_WINDOWS_VERSION_COMPONENT_MAX)
 
 
 def _component_is_supported(component: str) -> bool:
-    normalized = component.lstrip("0") or "0"
-    return len(normalized) < len(_WINDOWS_VERSION_COMPONENT_MAX_TEXT) or (
-        len(normalized) == len(_WINDOWS_VERSION_COMPONENT_MAX_TEXT)
-        and normalized <= _WINDOWS_VERSION_COMPONENT_MAX_TEXT
+    return len(component) < len(_WINDOWS_VERSION_COMPONENT_MAX_TEXT) or (
+        len(component) == len(_WINDOWS_VERSION_COMPONENT_MAX_TEXT)
+        and component <= _WINDOWS_VERSION_COMPONENT_MAX_TEXT
     )
 
 
