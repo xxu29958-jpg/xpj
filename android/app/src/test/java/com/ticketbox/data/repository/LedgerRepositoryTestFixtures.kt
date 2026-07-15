@@ -58,9 +58,9 @@ import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
+import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.BackgroundSettings
-import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.MultipartBody
@@ -69,10 +69,12 @@ import retrofit2.Response
 
 internal class LedgerStubApiFactory(private val service: ApiService) : ApiServiceFactory {
     val tokenProviders: MutableList<() -> String?> = mutableListOf()
+    val tokenSnapshots: MutableList<String?> = mutableListOf()
     val baseUrls: MutableList<String> = mutableListOf()
 
     override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
         tokenProviders += tokenProvider
+        tokenSnapshots += tokenProvider()
         baseUrls += baseUrl
         return service
     }
@@ -93,6 +95,7 @@ internal data class LedgerStubApiState(
     var previewResult: InvitationPreviewResponseDto? = null,
     var previewError: Throwable? = null,
     var acceptResult: InvitationAcceptResponseDto? = null,
+    var acceptHandler: (suspend (InvitationAcceptRequestDto) -> InvitationAcceptResponseDto)? = null,
     var acceptError: Throwable? = null,
     var createInvitationResult: com.ticketbox.data.remote.dto.InvitationCreateResponseDto? = null,
     var createInvitationError: Throwable? = null,
@@ -141,6 +144,8 @@ internal class StubApi(
     var deleteDeviceError: Throwable? = null
     val deleteDeviceTargets: MutableList<Pair<String, String>> = mutableListOf()
     val pairingCodeTargets: MutableList<String> = mutableListOf()
+    val pairingCodeRequests: MutableList<com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto> =
+        mutableListOf()
     var recycleBinResult: com.ticketbox.data.remote.dto.RecycleBinListResponseDto? = null
     var recycleBinError: Throwable? = null
     var recycleBinRestoreResult: com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto? = null
@@ -227,13 +232,21 @@ internal class StubApi(
 
     override suspend fun acceptInvitation(request: InvitationAcceptRequestDto): InvitationAcceptResponseDto {
         acceptRequests += request
+        state.acceptHandler?.let { return it(request) }
         state.acceptError?.let { throw it }
         onAcceptInvitation?.invoke()
-        return state.acceptResult ?: error("Unexpected accept call")
+        val response = state.acceptResult ?: error("Unexpected accept call")
+        return if (response.enrollmentAttemptId == null && request.enrollmentAttemptId != null) {
+            response.copy(enrollmentAttemptId = request.enrollmentAttemptId)
+        } else {
+            response
+        }
     }
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto = ledgerUnsupported()
-    override suspend fun refreshSession(): RefreshSessionResponseDto = ledgerUnsupported()
+    override suspend fun refreshSession(
+        request: com.ticketbox.data.remote.dto.RefreshSessionRequestDto,
+    ): RefreshSessionResponseDto = ledgerUnsupported()
     override suspend fun checkAuth(): AuthCheckDto = ledgerUnsupported()
     override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto = ledgerUnsupported()
     override suspend fun pendingExpenses(): List<ExpenseDto> = ledgerUnsupported()
@@ -587,6 +600,7 @@ internal class StubApi(
         request: com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto,
     ): com.ticketbox.data.remote.dto.PairingCodeResponseDto {
         pairingCodeTargets += ledgerId
+        pairingCodeRequests += request
         pairingCodeError?.let { throw it }
         return pairingCodeResult ?: error("Unexpected pairing code call")
     }
@@ -616,26 +630,26 @@ internal class LedgerFakeSettingsStore : TicketboxSettingsStore {
     var capturedDeviceName: String? = null
     var capturedRole: String? = null
     var capturedBoundAt: String? = null
-    override fun serverUrl(): String? = serverUrl
+    fun serverUrl(): String? = serverUrl
     override fun appSkinKey(): String? = null
     override fun monthlyBudgetCents(): Long? = null
     override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
     override fun lastConfirmedSyncAt(): String? = null
-    override fun accountName(): String? = capturedAccountName
-    override fun ledgerName(): String? = ledgerName
-    override fun activeLedgerId(): String? = ledgerIdFlow.value
-    override fun activeLedgerName(): String? = ledgerName
+    fun accountName(): String? = capturedAccountName
+    fun ledgerName(): String? = ledgerName
+    fun activeLedgerId(): String? = ledgerIdFlow.value
+    fun activeLedgerName(): String? = ledgerName
     override fun availableLedgersJson(): String? = ledgersJson
-    override fun observeActiveLedgerId(): Flow<String?> = ledgerIdFlow
-    override fun saveActiveLedger(ledgerId: String, ledgerName: String) {
+    fun observeActiveLedgerId(): Flow<String?> = ledgerIdFlow
+    fun saveActiveLedger(ledgerId: String, ledgerName: String) {
         ledgerIdFlow.value = ledgerId
         this.ledgerName = ledgerName
     }
     override fun saveAvailableLedgersJson(json: String?) { ledgersJson = json }
-    override fun deviceName(): String? = capturedDeviceName
-    override fun role(): String? = capturedRole
-    override fun boundAt(): String? = capturedBoundAt
-    override fun saveIdentity(identity: PersistedLedgerIdentity) {
+    fun deviceName(): String? = capturedDeviceName
+    fun role(): String? = capturedRole
+    fun boundAt(): String? = capturedBoundAt
+    fun saveIdentity(identity: PersistedLedgerIdentity) {
         ledgerIdFlow.value = identity.ledgerId
         ledgerName = identity.ledgerName
         capturedAccountName = identity.accountName
@@ -653,11 +667,11 @@ internal class LedgerFakeSettingsStore : TicketboxSettingsStore {
     override fun currencyCodeKey(): String? = null
     override fun saveCurrencyCodeKey(currencyKey: String) = Unit
     override fun observeCurrencyCodeKey(): Flow<String?> = MutableStateFlow(null)
-    override fun saveServerUrl(serverUrl: String) {
+    fun saveServerUrl(serverUrl: String) {
         this.serverUrl = serverUrl.trim().trimEnd('/')
     }
     var unlockedMarked: Boolean = false
-    override fun isBound(): Boolean = !serverUrl.isNullOrBlank()
+    fun isBound(): Boolean = !serverUrl.isNullOrBlank()
     override fun markUnlocked() {
         unlockedMarked = true
     }
@@ -668,12 +682,46 @@ internal class LedgerFakeSettingsStore : TicketboxSettingsStore {
     }
 }
 
-internal class LedgerFakeTokenStore : SessionTokenStore {
-    private var token: String? = null
-    override fun saveToken(token: String) { this.token = token }
-    override fun getToken(): String? = token
-    override fun clear() { token = null }
-}
+internal typealias LedgerFakeTokenStore = TestSessionFixture
+
+internal fun ledgerSessionFixture(
+    ledgerId: String,
+    ledgerName: String,
+    role: String = "owner",
+    token: String = "session-token",
+    serverUrl: String = "https://api.example.com",
+): LedgerFakeTokenStore = LedgerFakeTokenStore(
+    serverUrl = serverUrl,
+    identity = LocalSessionIdentity(
+        accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+        devicePublicId = TEST_DEVICE_PUBLIC_ID,
+        accountName = "我",
+        ledgerId = ledgerId,
+        ledgerName = ledgerName,
+        deviceName = "Pixel",
+        role = role,
+        boundAt = "2026-05-01T00:00:00Z",
+    ),
+).apply { saveToken(token) }
+
+internal fun existingOwnerSessionFixture(
+    ledgerId: String,
+    ledgerName: String,
+    accountName: String,
+    deviceName: String,
+    token: String = "session-token",
+): LedgerFakeTokenStore = LedgerFakeTokenStore(
+    identity = LocalSessionIdentity(
+        accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+        devicePublicId = TEST_DEVICE_PUBLIC_ID,
+        accountName = accountName,
+        ledgerId = ledgerId,
+        ledgerName = ledgerName,
+        deviceName = deviceName,
+        role = "owner",
+        boundAt = "2026-05-01T00:00:00Z",
+    ),
+).apply { saveToken(token) }
 
 internal class LedgerFakeDao : ExpenseDao {
     private val map = linkedMapOf<Long, ExpenseEntity>()

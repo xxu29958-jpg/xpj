@@ -8,6 +8,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -32,10 +33,10 @@ class ExpenseRepositoryNotificationDraftTest {
         val apiClient = FakeApiServiceFactory(apiService)
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiClient,
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -48,6 +49,7 @@ class ExpenseRepositoryNotificationDraftTest {
                 category = "吃饭",
                 expenseTime = "2026-05-13T10:05:00Z",
             ),
+            expectedBinding = assertNotNull(repository.captureDeferredLedgerBinding()),
         ).getOrThrow()
 
         assertEquals("pending", result.status)
@@ -74,29 +76,19 @@ class ExpenseRepositoryNotificationDraftTest {
                 )
             )
         }
-        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-owner") }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-owner") }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,
             ),
             deviceNameProvider = { "Android Test Device" },
         )
-        val ledgerIdAtNotification = repository.currentActiveLedgerId()
-        tokenStore.saveToken("session-family")
-        settingsStore.saveIdentity(
-            PersistedLedgerIdentity(
-                accountName = "我",
-                ledgerId = "family",
-                ledgerName = "家庭账本",
-                deviceName = "Pixel",
-                role = "member",
-                boundAt = "2026-05-01T00:05:00Z",
-            )
-        )
+        val bindingAtNotification = assertNotNull(repository.captureDeferredLedgerBinding())
+        tokenStore.switchLedgerForFixture("family", "家庭账本", role = "member")
 
         val result = repository.createNotificationDraft(
             NotificationDraft(
@@ -106,7 +98,44 @@ class ExpenseRepositoryNotificationDraftTest {
                 category = "餐饮",
                 expenseTime = "2026-05-13T10:05:00Z",
             ),
-            expectedLedgerId = ledgerIdAtNotification,
+            expectedBinding = bindingAtNotification,
+        )
+
+        assertEquals("账本已切换，请重新操作。", result.exceptionOrNull()?.message)
+        assertNull(apiService.lastNotificationDraftRequest)
+    }
+
+    @Test
+    fun notificationDraftDoesNotCrossPrincipalWithSameLedgerId() = runTest {
+        val tokenStore = TestSessionFixture().apply { saveToken("session-owner") }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            binding = testServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = boundSettingsStore(),
+                tokenStore = tokenStore,
+            ),
+            deviceNameProvider = { "Android Test Device" },
+        )
+        val bindingAtNotification = assertNotNull(repository.captureDeferredLedgerBinding())
+        tokenStore.rebindAsDifferentAccountForFixture(
+            accountName = "家人",
+            ledgerId = "owner",
+            ledgerName = "另一个服务器的默认账本",
+            deviceName = "Replacement Phone",
+            token = "replacement-session",
+        )
+
+        val result = repository.createNotificationDraft(
+            draft = NotificationDraft(
+                source = NotificationDraftSource.WeChat,
+                amountCents = 2680,
+                merchant = "星巴克",
+                category = "餐饮",
+                expenseTime = "2026-05-13T10:05:00Z",
+            ),
+            expectedBinding = bindingAtNotification,
         )
 
         assertEquals("账本已切换，请重新操作。", result.exceptionOrNull()?.message)

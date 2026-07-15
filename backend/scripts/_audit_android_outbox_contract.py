@@ -2,8 +2,9 @@
 
 The backend release audit is the repo-wide preflight entrypoint, so it also
 checks the Android offline queue invariants that previously regressed:
-injectable scheduler wiring, one aggregated status surface, and SQL-side
-runnable selection that de-duplicates targets before applying LIMIT.
+injectable scheduler wiring, one aggregated status surface, stable owner
+identity isolation, and SQL-side runnable selection that de-duplicates targets
+before applying LIMIT.
 """
 
 from __future__ import annotations
@@ -23,77 +24,117 @@ def _fail(message: str) -> None:
     print(f"FAIL: {message}")
 
 
-def main() -> int:
+def _requires(source: str, tokens: tuple[str, ...], *, surface: str) -> bool:
     ok = True
+    for token in tokens:
+        if token not in source:
+            ok = False
+            _fail(f"{surface} missing contract token: {token}")
+    return ok
 
+
+def _check_scheduler_wiring() -> bool:
+    ok = True
     scheduler = _read("main/java/com/ticketbox/data/repository/OutboxScheduler.kt")
     if "class OutboxScheduler(" not in scheduler or "object OutboxScheduler" in scheduler:
         ok = False
         _fail("OutboxScheduler must stay an injectable class, not a singleton object")
-
     container = _read("main/java/com/ticketbox/AppContainer.kt")
     if "val outboxScheduler = OutboxScheduler()" not in container:
         ok = False
         _fail("AppContainer must explicitly wire an OutboxScheduler instance")
+    return ok
 
+
+def _check_repository_contract() -> bool:
     repository = _read("main/java/com/ticketbox/data/repository/OutboxRepository.kt")
-    required_repository_tokens = (
-        "fun observeStatus(): Flow<OutboxStatus>",
-        "data class OutboxStatus",
-        "data class OutboxBinding",
-        "withBindingTransition",
-        "bindingTransitionLease.withLock",
+    return _requires(
+        repository,
+        (
+            "fun observeStatus(): Flow<OutboxStatus>",
+            "data class OutboxStatus",
+            "data class OutboxBinding",
+            "withBindingTransition",
+            "bindingTransitionLease.withLock",
+        ),
+        surface="OutboxRepository",
     )
-    for token in required_repository_tokens:
-        if token not in repository:
-            ok = False
-            _fail(f"OutboxRepository missing contract token: {token}")
 
+
+def _check_entity_contract() -> bool:
     entity = _read("main/java/com/ticketbox/data/local/PendingMutationEntity.kt")
-    required_entity_tokens = (
-        '@ColumnInfo(name = "serverUrl", defaultValue = "")',
-        '@ColumnInfo(name = "ledgerId", defaultValue = "")',
-        'Index(value = ["serverUrl", "ledgerId", "createdAt"])',
-        'Index(value = ["serverUrl", "ledgerId", "targetId", "status"])',
-        'Index(value = ["serverUrl", "ledgerId", "status"])',
+    return _requires(
+        entity,
+        (
+            '@ColumnInfo(name = "serverUrl", defaultValue = "")',
+            '@ColumnInfo(name = "ledgerId", defaultValue = "")',
+            '@ColumnInfo(name = "ownerKey")',
+            'Index(value = ["ownerKey", "ledgerId", "createdAt"])',
+            'Index(value = ["ownerKey", "ledgerId", "targetId", "status"])',
+            'Index(value = ["ownerKey", "ledgerId", "status"])',
+        ),
+        surface="PendingMutationEntity",
     )
-    for token in required_entity_tokens:
-        if token not in entity:
-            ok = False
-            _fail(f"PendingMutationEntity missing binding-scope token: {token}")
 
+
+def _check_dao_contract() -> bool:
     dao = _read("main/java/com/ticketbox/data/local/PendingMutationDao.kt")
-    required_dao_tokens = (
-        "fun nextRunnableBatch",
-        "WHERE pm.serverUrl = :serverUrl",
-        "AND pm.ledgerId = :ledgerId",
-        "WHERE serverUrl = :serverUrl",
-        "AND ledgerId = :ledgerId",
-        "NOT EXISTS (",
-        "sib.serverUrl = pm.serverUrl",
-        "older.ledgerId = pm.ledgerId",
-        "older.targetId = pm.targetId",
-        "LIMIT :limit",
+    return _requires(
+        dao,
+        (
+            "fun nextRunnableBatch",
+            "WHERE pm.ownerKey = :ownerKey",
+            "AND pm.ledgerId = :ledgerId",
+            "WHERE ownerKey = :ownerKey",
+            "AND ledgerId = :ledgerId",
+            "NOT EXISTS (",
+            "sib.ownerKey = pm.ownerKey",
+            "older.ownerKey = pm.ownerKey",
+            "older.ledgerId = pm.ledgerId",
+            "older.targetId = pm.targetId",
+            "LIMIT :limit",
+        ),
+        surface="PendingMutationDao nextRunnableBatch",
     )
-    for token in required_dao_tokens:
-        if token not in dao:
-            ok = False
-            _fail(f"PendingMutationDao nextRunnableBatch missing token: {token}")
 
+
+def _check_regression_tests() -> bool:
     tests = _read("test/java/com/ticketbox/data/repository/OutboxRepositoryTest.kt")
-    required_test_tokens = (
-        "dequeueDedupesSameTargetBeforeApplyingLimit",
-        "bindingScopedQueueDoesNotDrainRowsFromPreviousLedger",
-        "observeStatusAggregatesCurrentBindingOnly",
-        "recoverStaleInFlightScopesToCurrentBindingOnly",
-        "enqueueWaitsForBindingTransitionAndCannotPersistMixedBinding",
+    repository_tests_ok = _requires(
+        tests,
+        (
+            "dequeueDedupesSameTargetBeforeApplyingLimit",
+            "bindingScopedQueueDoesNotDrainRowsFromPreviousLedger",
+            "observeStatusAggregatesCurrentBindingOnly",
+            "recoverStaleInFlightScopesToCurrentBindingOnly",
+            "enqueueWaitsForBindingTransitionAndCannotPersistMixedBinding",
+        ),
+        surface="OutboxRepositoryTest",
     )
-    for token in required_test_tokens:
-        if token not in tests:
-            ok = False
-            _fail(f"OutboxRepositoryTest missing regression test: {token}")
+    isolation_tests = _read("test/java/com/ticketbox/data/repository/OutboxBindingIsolationTest.kt")
+    isolation_tests_ok = _requires(
+        isolation_tests,
+        (
+            "sameDeviceRecoveryMakesItsQuarantinedIntentRunnableAgain",
+            "anotherDeviceCannotSeeOrReplayThePreviousDevicesIntent",
+            "rebindAtEnqueueLinearizationPointRejectsTheOldIntent",
+            "staleStatusActionCannotResolveRowFromPreviousBinding",
+        ),
+        surface="OutboxBindingIsolationTest",
+    )
+    return repository_tests_ok and isolation_tests_ok
 
-    if ok:
+
+def main() -> int:
+    checks = (
+        _check_scheduler_wiring(),
+        _check_repository_contract(),
+        _check_entity_contract(),
+        _check_dao_contract(),
+        _check_regression_tests(),
+    )
+
+    if all(checks):
         print("PASS: Android outbox design contract is enforced")
         return 0
     return 1

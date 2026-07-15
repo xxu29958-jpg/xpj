@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
 import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentDraftStatuses
 import com.ticketbox.domain.model.RepaymentNotificationDraft
+import com.ticketbox.security.LocalSessionIdentity
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -21,6 +22,7 @@ import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RepaymentDraftRepositoryTest {
@@ -58,15 +60,16 @@ class RepaymentDraftRepositoryTest {
     @Test
     fun createDraftPostsCapturePayloadBoundToPostTimeLedger() = runTest {
         val handler = RepaymentDraftApiHandler()
+        val repository = repository(handler)
 
-        val created = repository(handler).createDraft(
+        val created = repository.createDraft(
             draft = RepaymentNotificationDraft(
                 source = RepaymentDraftSource.Alipay,
                 amountCents = 50_000,
                 merchantLabel = "  花呗  ",
                 capturedAt = "2026-06-17T08:00:00Z",
             ),
-            expectedLedgerId = "owner",
+            expectedBinding = assertNotNull(repository.captureDeferredLedgerBinding()),
             notificationKey = "key-1",
         ).getOrThrow()
 
@@ -83,12 +86,14 @@ class RepaymentDraftRepositoryTest {
     @Test
     fun createDraftRejectedWhenLedgerSwitchedSincePost() = runTest {
         val handler = RepaymentDraftApiHandler()
+        val repository = repository(handler)
+        val bindingAtPost = assertNotNull(repository.captureDeferredLedgerBinding())
 
         // The post-time ledger no longer matches the active ledger → reject rather than capture into
         // the wrong book (mirrors createNotificationDraft). The API must not be hit.
-        val result = repository(handler).createDraft(
+        val result = repository.createDraft(
             draft = RepaymentNotificationDraft(RepaymentDraftSource.Alipay, 50_000, null, "2026-06-17T08:00:00Z"),
-            expectedLedgerId = "another-ledger",
+            expectedBinding = bindingAtPost.copy(ledgerId = "another-ledger"),
             notificationKey = "key-1",
         )
 
@@ -120,7 +125,7 @@ class RepaymentDraftRepositoryTest {
     fun confirmDraftViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = RepaymentDraftApiHandler()
 
-        val result = repository(handler, viewerSettingsStore())
+        val result = repository(handler, role = "viewer")
             .confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 1L)
 
         assertTrue(result.isFailure)
@@ -157,7 +162,7 @@ class RepaymentDraftRepositoryTest {
     fun dismissDraftViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = RepaymentDraftApiHandler()
 
-        val result = repository(handler, viewerSettingsStore()).dismissDraft("d1")
+        val result = repository(handler, role = "viewer").dismissDraft("d1")
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -166,30 +171,23 @@ class RepaymentDraftRepositoryTest {
 
     private fun repository(
         handler: RepaymentDraftApiHandler,
-        settings: FakeTicketboxSettingsStore = boundSettingsStore(),
+        role: String = "owner",
     ): RepaymentDraftRepository {
-        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val tokenStore = TestSessionFixture(
+            identity = LocalSessionIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = role,
+                boundAt = "2026-05-01T00:00:00Z",
+            ),
+        ).apply { saveToken("session-token") }
+        val apiClient = RepaymentDraftApiFactory(handler)
         return RepaymentDraftRepository(
-            apiClient = RepaymentDraftApiFactory(handler),
-            settingsStore = settings,
-            tokenStore = tokenStore,
+            apiProvider = testApiServiceProvider(apiClient, tokenStore),
         )
     }
-
-    private fun viewerSettingsStore(): FakeTicketboxSettingsStore =
-        FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.example.com")
-            saveIdentity(
-                PersistedLedgerIdentity(
-                    accountName = "我",
-                    ledgerId = "owner",
-                    ledgerName = "我的小票夹",
-                    deviceName = "Pixel",
-                    role = "viewer",
-                    boundAt = "2026-05-01T00:00:00Z",
-                )
-            )
-        }
 }
 
 private fun draftDto(

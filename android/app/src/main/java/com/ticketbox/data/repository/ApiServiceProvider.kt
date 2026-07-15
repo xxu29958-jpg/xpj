@@ -1,77 +1,113 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.SessionAwareApiServiceFactory
-import com.ticketbox.security.SessionTokenStore
+import com.ticketbox.security.LocalSessionRecord
+import com.ticketbox.security.LocalSessionStore
+import com.ticketbox.security.PendingSessionRefresh
+import com.ticketbox.security.SessionCredentialRotator
+import com.ticketbox.security.StoredSessionToken
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
-/**
- * Owns the bound ledger ApiService cache shared by repositories.
- *
- * The cached service reads the token lazily for every request, so token
- * rotation after ledger switching does not require rebuilding Retrofit.
- */
+/** Builds API services from explicit local-session snapshots. */
 class ApiServiceProvider(
     private val apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
+    private val sessionStore: LocalSessionStore,
+    private val credentials: SessionCredentialRotator,
 ) {
-    private val lock = Any()
-    private var cachedServerUrl: String? = null
-    private var cachedApi: ApiService? = null
-
-    fun current(): ApiService {
-        val serverUrl = requireServerUrl(settingsStore.serverUrl())
-        val cached = cachedApi
-        if (cached != null && cachedServerUrl == serverUrl) {
-            return cached
-        }
-
-        return synchronized(lock) {
-            val lockedCached = cachedApi
-            if (lockedCached != null && cachedServerUrl == serverUrl) {
-                lockedCached
-            } else {
-                createBoundService(serverUrl)
-                    .also { service ->
-                        cachedServerUrl = serverUrl
-                        cachedApi = service
-                    }
-            }
-        }
-    }
-
-    fun temporary(serverUrl: String, tokenOverride: String? = null): ApiService {
+    internal fun bound(
+        serverUrl: String,
+        sessionGeneration: String,
+        ledgerId: String,
+    ): ApiService {
         val cleanServerUrl = requireServerUrl(serverUrl)
-        if (tokenOverride == null && apiClient is SessionAwareApiServiceFactory) {
-            return apiClient.create(cleanServerUrl, tokenStore)
-        }
-        return apiClient.create(cleanServerUrl) { tokenOverride ?: tokenStore.getToken() }
-    }
-
-    fun unauthenticated(serverUrl: String): ApiService {
-        val cleanServerUrl = requireServerUrl(serverUrl)
-        return apiClient.create(cleanServerUrl) { null }
-    }
-
-    fun clear() {
-        synchronized(lock) {
-            cachedServerUrl = null
-            cachedApi = null
+        val scopedCredentials = ScopedSessionCredentials(
+            delegate = credentials,
+            expectedSessionGeneration = sessionGeneration,
+            ledgerId = ledgerId,
+        )
+        return if (apiClient is SessionAwareApiServiceFactory) {
+            apiClient.create(cleanServerUrl, scopedCredentials)
+        } else {
+            apiClient.create(
+                cleanServerUrl,
+                scopedCredentials::getToken,
+                scopedCredentials::currentLedgerId,
+            )
         }
     }
+
+    fun unauthenticated(serverUrl: String): ApiService =
+        apiClient.create(requireServerUrl(serverUrl)) { null }
+
+    internal fun currentSession(): LocalSessionRecord? = sessionStore.currentSession()
+
+    internal fun currentLedgerRole(): String? = currentSession()?.identity?.role
+
+    internal fun currentLedgerId(): String? = currentSession()?.identity?.ledgerId
+
+    internal fun observeActiveLedgerId(): Flow<String?> =
+        sessionStore.observeSession()
+            .map { session -> session?.identity?.ledgerId }
+            .distinctUntilChanged()
 
     private fun requireServerUrl(value: String?): String {
         val serverUrl = value?.trim()?.trimEnd('/')
         require(!serverUrl.isNullOrBlank()) { "账本地址未绑定" }
         return serverUrl
     }
+}
 
-    private fun createBoundService(serverUrl: String): ApiService {
-        if (apiClient is SessionAwareApiServiceFactory) {
-            return apiClient.create(serverUrl, tokenStore)
+private class ScopedSessionCredentials(
+    private val delegate: SessionCredentialRotator,
+    private val expectedSessionGeneration: String,
+    private val ledgerId: String,
+) : SessionCredentialRotator {
+    override fun getToken(): String? =
+        if (isCurrentGeneration()) delegate.getToken() else null
+
+    override fun currentLedgerId(): String? =
+        ledgerId.takeIf { isCurrentGeneration() }
+
+    override fun getSessionToken(): StoredSessionToken? =
+        if (isCurrentGeneration()) delegate.getSessionToken() else null
+
+    override fun sessionGeneration(): String? =
+        expectedSessionGeneration.takeIf { isCurrentGeneration() }
+
+    override suspend fun beginOrReuseSessionRefresh(
+        expectedSessionGeneration: String,
+        expectedToken: String,
+    ): PendingSessionRefresh? {
+        if (expectedSessionGeneration != this.expectedSessionGeneration || !isCurrentGeneration()) {
+            return null
         }
-        return apiClient.create(serverUrl) { tokenStore.getToken() }
+        return delegate.beginOrReuseSessionRefresh(
+            expectedSessionGeneration = expectedSessionGeneration,
+            expectedToken = expectedToken,
+        )
     }
+
+    override suspend fun completeSessionRefreshIfCurrent(
+        expectedSessionGeneration: String,
+        expectedToken: String,
+        refreshAttemptId: String,
+        replacement: StoredSessionToken,
+    ): Boolean {
+        if (expectedSessionGeneration != this.expectedSessionGeneration || !isCurrentGeneration()) {
+            return false
+        }
+        return delegate.completeSessionRefreshIfCurrent(
+            expectedSessionGeneration = expectedSessionGeneration,
+            expectedToken = expectedToken,
+            refreshAttemptId = refreshAttemptId,
+            replacement = replacement,
+        )
+    }
+
+    private fun isCurrentGeneration(): Boolean =
+        delegate.sessionGeneration() == expectedSessionGeneration
 }

@@ -2,7 +2,7 @@ package com.ticketbox
 
 import android.content.Context
 import android.os.SystemClock
-import com.ticketbox.data.local.LocalSettingsStore
+import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.RecurringRepository
@@ -26,7 +26,7 @@ import com.ticketbox.notification.recurring.RecurringReminderRuntime
 import com.ticketbox.notification.recurring.RepositoryRecurringReminderSource
 import com.ticketbox.notification.recurring.SharedPrefsRecurringReminderStore
 import com.ticketbox.notification.recurring.WorkManagerRecurringReminderScheduler
-import com.ticketbox.security.SecureTokenStore
+import com.ticketbox.security.LocalSessionStore
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -36,8 +36,8 @@ import kotlinx.coroutines.SupervisorJob
 
 internal data class NotificationRuntimeDependencies(
     val appContext: Context,
-    val settingsStore: LocalSettingsStore,
-    val tokenStore: SecureTokenStore,
+    val settingsStore: TicketboxSettingsStore,
+    val sessionStore: LocalSessionStore,
     val apiServiceProvider: ApiServiceProvider,
     val recurringRepository: RecurringRepository,
     val budgetRepository: BudgetRepository,
@@ -65,9 +65,7 @@ internal class NotificationRuntimeGraph(
                 dependencies.settingsStore.notificationPreferences().recurringReminders
             },
             sessionReady = {
-                !dependencies.tokenStore.getToken().isNullOrBlank() &&
-                    !dependencies.settingsStore.activeLedgerId().isNullOrBlank() &&
-                    !dependencies.settingsStore.serverUrl().isNullOrBlank()
+                dependencies.sessionStore.currentSession() != null
             },
             today = { LocalDate.now() },
         ),
@@ -86,7 +84,9 @@ internal class NotificationRuntimeGraph(
             budgetOverspendAlertsEnabled = {
                 dependencies.settingsStore.notificationPreferences().budgetOverspendAlerts
             },
-            activeLedgerId = { dependencies.settingsStore.activeLedgerId() },
+            activeLedgerId = {
+                dependencies.sessionStore.currentSession()?.identity?.ledgerId
+            },
             currentMonth = { YearMonth.now(budgetOverspendZone).toString() },
             monotonicNowMillis = { SystemClock.elapsedRealtime() },
         ),
@@ -97,7 +97,6 @@ internal class NotificationRuntimeGraph(
 
     private val serverStatusRepository = ServerStatusRepository(
         apiProvider = dependencies.apiServiceProvider,
-        settingsStore = dependencies.settingsStore,
     )
 
     val backupStaleEngine = BackupStaleEngine(
@@ -109,8 +108,7 @@ internal class NotificationRuntimeGraph(
                 dependencies.settingsStore.notificationPreferences().backupStaleAlerts
             },
             sessionReady = {
-                !dependencies.tokenStore.getToken().isNullOrBlank() &&
-                    !dependencies.settingsStore.serverUrl().isNullOrBlank()
+                dependencies.sessionStore.currentSession() != null
             },
             today = { LocalDate.now() },
         ),

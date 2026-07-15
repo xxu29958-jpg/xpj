@@ -19,7 +19,7 @@ import retrofit2.HttpException
  * same-target PENDING rows.
  */
 class MarkNotDuplicateDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.MarkNotDuplicate
@@ -53,7 +53,7 @@ class MarkNotDuplicateDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
-            val updated = apiProvider().markNotDuplicate(expenseRef, request, idempotencyKey)
+            val updated = apiProvider(row).markNotDuplicate(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

@@ -7,13 +7,13 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeApiServiceFactory
 import com.ticketbox.data.repository.FakeExpenseDao
-import com.ticketbox.data.repository.FakeSessionTokenStore
+import com.ticketbox.data.repository.ledgerSessionFixture
 import com.ticketbox.data.repository.FakeTicketboxSettingsStore
 import com.ticketbox.data.repository.MerchantConflictDetails
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RepositoryConflictDetails
 import com.ticketbox.data.repository.RepositoryException
-import com.ticketbox.data.repository.ServerSessionBinding
+import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MessageTone
@@ -206,11 +206,15 @@ class MerchantAliasViewModelTest {
                 )
             )
         }
-        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val tokenStore = ledgerSessionFixture(
+            ledgerId = "owner",
+            ledgerName = "我的小票夹",
+            role = role,
+        )
         val api = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply(configureApi)
         val apiFactory = FakeApiServiceFactory(api)
         val merchantRepository = MerchantRepository(
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiFactory,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,
@@ -218,7 +222,7 @@ class MerchantAliasViewModelTest {
         )
         val expenseRepository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiFactory,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,

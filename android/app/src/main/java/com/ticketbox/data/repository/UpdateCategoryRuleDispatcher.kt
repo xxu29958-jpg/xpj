@@ -24,7 +24,7 @@ import retrofit2.HttpException
  * decision for PatchExpenseDispatcher).
  */
 class UpdateCategoryRuleDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<CategoryRuleUpdateRequest>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.UpdateCategoryRule
@@ -66,7 +66,7 @@ class UpdateCategoryRuleDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
-            val updated = apiProvider().updateCategoryRule(ruleId, request, idempotencyKey)
+            val updated = apiProvider(row).updateCategoryRule(ruleId, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

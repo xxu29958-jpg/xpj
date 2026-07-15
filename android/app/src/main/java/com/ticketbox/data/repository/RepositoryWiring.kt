@@ -13,7 +13,8 @@ import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
-import com.ticketbox.security.SessionTokenStore
+import com.ticketbox.security.LocalSessionStore
+import com.ticketbox.security.SessionCredentialProvider
 
 /**
  * Server/session plumbing shared by repositories that issue guarded API calls.
@@ -21,8 +22,9 @@ import com.ticketbox.security.SessionTokenStore
 data class ServerSessionBinding(
     val apiClient: ApiServiceFactory,
     val settingsStore: TicketboxSettingsStore,
-    val tokenStore: SessionTokenStore,
-    val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
+    val sessionStore: LocalSessionStore,
+    val credentials: SessionCredentialProvider,
+    val apiProvider: ApiServiceProvider,
 )
 
 /**

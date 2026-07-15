@@ -17,7 +17,7 @@ import retrofit2.HttpException
  * id but follows the same ``<resource>:<id>`` pattern).
  */
 class DeleteMerchantAliasDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<MerchantAliasDeleteRequest>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.DeleteMerchantAlias
@@ -51,7 +51,7 @@ class DeleteMerchantAliasDispatcher(
             // ADR-0042: replay carries the row's original intent-time key so a
             // committed-but-unseen first attempt is deduped server-side (HIT)
             // instead of false-409ing on the stale row_version.
-            apiProvider().deleteMerchantAlias(publicId, request, idempotencyKey)
+            apiProvider(row).deleteMerchantAlias(publicId, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = null)
         } catch (e: HttpException) {
             mapHttpException(e)

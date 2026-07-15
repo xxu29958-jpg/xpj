@@ -51,6 +51,7 @@ fun SyncStatusScreen(
             onDropMine = viewModel::dropMine,
             onRetry = viewModel::retry,
             onDropFailed = viewModel::dropFailed,
+            onClearQuarantined = viewModel::clearQuarantined,
         )
     }
     SyncStatusScreenContent(state = state, actions = actions, onBack = onBack)
@@ -62,6 +63,7 @@ internal data class SyncStatusActions(
     val onDropMine: (OutboxRow) -> Unit,
     val onRetry: (OutboxRow) -> Unit,
     val onDropFailed: (OutboxRow) -> Unit,
+    val onClearQuarantined: () -> Unit,
 )
 
 private data class SyncStatusActionButton(
@@ -80,6 +82,7 @@ internal fun SyncStatusScreenContent(
     // Dropping an offline edit is irreversible, so both paths require confirmation.
     var confirmingDropMine by remember { mutableStateOf<OutboxRow?>(null) }
     var confirmingDropFailed by remember { mutableStateOf<OutboxRow?>(null) }
+    var confirmingClearQuarantined by remember { mutableStateOf(false) }
 
     confirmingDropMine?.let { row ->
         DropConfirmDialog(
@@ -105,6 +108,17 @@ internal fun SyncStatusScreenContent(
             onDismiss = { confirmingDropFailed = null },
         )
     }
+    if (confirmingClearQuarantined) {
+        ClearQuarantinedDialog(
+            count = state.status.quarantinedCount,
+            busy = state.isClearingQuarantine,
+            onConfirm = {
+                confirmingClearQuarantined = false
+                actions.onClearQuarantined()
+            },
+            onDismiss = { confirmingClearQuarantined = false },
+        )
+    }
 
     SettingsPageFrame(
         title = stringResource(R.string.sync_status_page_title),
@@ -114,10 +128,11 @@ internal fun SyncStatusScreenContent(
     ) {
         SyncStatusPageBody(
             state = state,
-            onKeepMine = actions.onKeepMine,
-            onDropMine = { confirmingDropMine = it },
-            onRetry = actions.onRetry,
-            onDropFailed = { confirmingDropFailed = it },
+            actions = actions.copy(
+                onDropMine = { confirmingDropMine = it },
+                onDropFailed = { confirmingDropFailed = it },
+                onClearQuarantined = { confirmingClearQuarantined = true },
+            ),
         )
     }
 }
@@ -125,13 +140,40 @@ internal fun SyncStatusScreenContent(
 @Composable
 private fun SyncStatusPageBody(
     state: OutboxStatusUiState,
-    onKeepMine: (OutboxRow) -> Unit,
-    onDropMine: (OutboxRow) -> Unit,
-    onRetry: (OutboxRow) -> Unit,
-    onDropFailed: (OutboxRow) -> Unit,
+    actions: SyncStatusActions,
 ) {
     val status = state.status
     SyncStatusOverviewSection(status)
+
+    if (status.quarantinedCount > 0) {
+        SettingsSection(
+            title = stringResource(R.string.sync_status_section_quarantined),
+            icon = Icons.Filled.SyncProblem,
+        ) {
+            SettingsOpenPanel {
+                Text(
+                    text = stringResource(
+                        R.string.sync_status_quarantined_body,
+                        status.quarantinedCount,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                AppAdaptiveTrailingActionRow {
+                    AppOutlinedButton(
+                        modifier = it,
+                        onClick = actions.onClearQuarantined,
+                        options = AppOutlinedButtonOptions(
+                            enabled = !state.isClearingQuarantine && state.busyRowId == null,
+                            danger = true,
+                        ),
+                    ) {
+                        Text(stringResource(R.string.sync_status_quarantined_remove_button))
+                    }
+                }
+            }
+        }
+    }
 
     if (status.conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
@@ -139,8 +181,8 @@ private fun SyncStatusPageBody(
                 ConflictCard(
                     row = row,
                     busy = state.busyRowId == row.id,
-                    onKeepMine = { onKeepMine(row) },
-                    onDropMine = { onDropMine(row) },
+                    onKeepMine = { actions.onKeepMine(row) },
+                    onDropMine = { actions.onDropMine(row) },
                 )
             }
         }
@@ -152,8 +194,8 @@ private fun SyncStatusPageBody(
                 FailedCard(
                     row = row,
                     busy = state.busyRowId == row.id,
-                    onRetry = { onRetry(row) },
-                    onDrop = { onDropFailed(row) },
+                    onRetry = { actions.onRetry(row) },
+                    onDrop = { actions.onDropFailed(row) },
                 )
             }
         }

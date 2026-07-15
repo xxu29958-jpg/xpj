@@ -86,6 +86,35 @@ class OutboxStatusViewModel(
         outbox.resolveFailed(row.id, FailedResolution.Drop)
     }
 
+    /** Remove only ownerless or foreign-owner rows after the screen confirms it. */
+    fun clearQuarantined() {
+        if (_uiState.value.busyRowId != null || _uiState.value.isClearingQuarantine) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(isClearingQuarantine = true, message = null, messageTone = MessageTone.Neutral)
+            }
+            runCatching { outbox.clearQuarantined() }
+                .onSuccess { removed ->
+                    _uiState.update {
+                        it.copy(
+                            isClearingQuarantine = false,
+                            message = UiText.res(R.string.sync_status_quarantined_removed, removed),
+                            messageTone = MessageTone.Success,
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.update {
+                        it.copy(
+                            isClearingQuarantine = false,
+                            message = UiText.res(R.string.sync_status_quarantined_remove_failed),
+                            messageTone = MessageTone.Danger,
+                        )
+                    }
+                }
+        }
+    }
+
     fun consumeMessage() = _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
 
     private fun resolve(row: OutboxRow, block: suspend () -> Unit) {
@@ -109,6 +138,7 @@ class OutboxStatusViewModel(
 data class OutboxStatusUiState(
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
     val busyRowId: Long? = null,
+    val isClearingQuarantine: Boolean = false,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
 )

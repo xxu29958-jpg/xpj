@@ -13,7 +13,9 @@ internal class ExpenseLedgerRepositoryActions(
 ) : LedgerActions {
     override fun canModifyLedger(): Boolean = core.canModifyLedger()
 
-    override fun lastConfirmedSyncAt(): String? = core.settingsStore.lastConfirmedSyncAt()
+    override fun lastConfirmedSyncAt(): String? =
+        core.apiProvider.currentLedgerId()
+            ?.let(core.settingsStore::lastConfirmedSyncAtForLedger)
 
     override fun observeConfirmed(): Flow<List<Expense>> = core.observeConfirmed()
 
@@ -38,9 +40,8 @@ internal class ExpenseLedgerRepositoryActions(
     ): Result<List<Expense>> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         core.syncConfirmedFromService(
-            service = bound.service,
+            bound = bound,
             request = ConfirmedSyncRequest(
-                ledgerIdAtRequest = bound.ledgerId,
                 month = month,
                 category = category,
                 tag = tag,
@@ -88,7 +89,7 @@ internal class ExpenseLedgerRepositoryActions(
             // client_ref; any failure surfaces as Result.failure.
             val created = core.cacheIfConfirmed(
                 bound.call { it.createManualExpense(draft.toManualCreateRequest()) },
-                bound.ledgerId,
+                bound,
             )
             return@safeCall created.toDomain()
         }
@@ -101,7 +102,7 @@ internal class ExpenseLedgerRepositoryActions(
         try {
             val created = core.cacheIfConfirmed(
                 bound.call { it.createManualExpense(draft.toManualCreateRequest(clientRef = clientRef)) },
-                bound.ledgerId,
+                bound,
             )
             created.toDomain()
         } catch (networkError: IOException) {

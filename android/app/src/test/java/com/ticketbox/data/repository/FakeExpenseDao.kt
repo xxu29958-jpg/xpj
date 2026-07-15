@@ -11,6 +11,7 @@ internal class FakeExpenseDao(
     private val expenses = linkedMapOf<Long, ExpenseEntity>()
     private val flows = mutableMapOf<String, MutableStateFlow<List<ExpenseEntity>>>()
     private var nextId = 1L
+    var beforeApplyConfirmedSync: (suspend () -> Unit)? = null
     var onAfterApplyConfirmedSync: (() -> Unit)? = null
 
     override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> = flowFor(ledgerId)
@@ -117,6 +118,7 @@ internal class FakeExpenseDao(
         replaceCache: Boolean,
         pruneScope: Set<Long>?,
     ) {
+        beforeApplyConfirmedSync?.invoke()
         if (replaceCache) {
             clearForLedger(ledgerId)
         }

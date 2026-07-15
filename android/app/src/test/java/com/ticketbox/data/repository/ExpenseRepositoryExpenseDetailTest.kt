@@ -18,10 +18,10 @@ class ExpenseRepositoryExpenseDetailTest {
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -85,10 +85,10 @@ class ExpenseRepositoryExpenseDetailTest {
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -117,26 +117,18 @@ class ExpenseRepositoryExpenseDetailTest {
                 )
             )
         }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply {
             onExpenseFetch = {
-                settingsStore.saveIdentity(
-                    PersistedLedgerIdentity(
-                        accountName = "Account",
-                        ledgerId = "family",
-                        ledgerName = "Family Ledger",
-                        deviceName = "Pixel",
-                        role = "member",
-                        boundAt = "2026-05-01T00:00:00Z",
-                    )
-                )
+                tokenStore.switchLedgerForFixture("family", "Family Ledger", role = "member")
             }
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = tokenStore,
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -165,26 +157,16 @@ class ExpenseRepositoryExpenseDetailTest {
                 )
             )
         }
-        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-owner") }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-owner") }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply {
             onConfirmExpense = {
-                tokenStore.saveToken("session-family")
-                settingsStore.saveIdentity(
-                    PersistedLedgerIdentity(
-                        accountName = "Account",
-                        ledgerId = "family",
-                        ledgerName = "Family Ledger",
-                        deviceName = "Pixel",
-                        role = "member",
-                        boundAt = "2026-05-01T00:00:00Z",
-                    )
-                )
+                tokenStore.switchLedgerForFixture("family", "Family Ledger", role = "member")
             }
         }
         val apiClient = FakeApiServiceFactory(apiService)
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiClient,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,
@@ -206,10 +188,10 @@ class ExpenseRepositoryExpenseDetailTest {
         val dao = FakeExpenseDao()
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
                 settingsStore = boundSettingsStore(),
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -239,10 +221,14 @@ class ExpenseRepositoryExpenseDetailTest {
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = ledgerSessionFixture(
+                    ledgerId = "owner",
+                    ledgerName = "我的小票夹",
+                    role = "viewer",
+                ),
             ),
             deviceNameProvider = { "Android Test Device" },
         )

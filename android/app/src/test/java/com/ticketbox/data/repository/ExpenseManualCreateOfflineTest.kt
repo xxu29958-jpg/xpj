@@ -60,13 +60,19 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     private fun confirmedDto(id: Long = 42L, rowVersion: Long = 1L): ExpenseDto =
         successExpenseDto().copy(id = id, status = "confirmed", rowVersion = rowVersion, publicId = "server-pub-$id")
 
+    private fun outbox(dao: FakePendingMutationDao): OutboxRepository =
+        testOutboxRepository(
+            dao = dao,
+            bindingProvider = { testOutboxBinding(ledgerId = activeLedger) },
+        )
+
     private fun createRepo(api: ApiService, dao: FakeExpenseDao, outbox: OutboxRepository): ExpenseRepository =
         ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = TestApiServiceFactory(api),
                 settingsStore = seededSettingsStore(),
-                tokenStore = seededTokenStore(),
+                tokenStore = ledgerSessionFixture(activeLedger, "家庭账本"),
             ),
             deviceNameProvider = { "Android Test" },
             offlineMutations = ExpenseOfflineMutationWiring(
@@ -80,7 +86,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     fun `offline create writes a pending local row and queues CreateExpense`() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = pendingDao)
+        val outbox = outbox(pendingDao)
         val api = ManualCreateApi(failure = IOException("airplane mode"))
         val repo = createRepo(api, dao, outbox)
 
@@ -114,7 +120,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         // negative id).
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = pendingDao)
+        val outbox = outbox(pendingDao)
         val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
         val pending = repo.createManualExpense(draft).getOrThrow()
 
@@ -134,7 +140,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         // but gains a server id. Matching by Room PK (not serverId == null) means
         // the edit screen still loads it — now as the synced, positive-id row.
         val dao = FakeExpenseDao()
-        val outbox = OutboxRepository(dao = FakePendingMutationDao())
+        val outbox = outbox(FakePendingMutationDao())
         val repo = createRepo(ManualCreateApi(), dao, outbox)
         // The row was created locally (Room PK) and has since synced (serverId set).
         val roomPk = dao.insert(
@@ -151,7 +157,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     fun `online create stays direct, sends client_ref, enqueues nothing`() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = pendingDao)
+        val outbox = outbox(pendingDao)
         val api = ManualCreateApi(dto = confirmedDto(id = 42L))
         val repo = createRepo(api, dao, outbox)
 
@@ -168,7 +174,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     fun `a later edit of a create-response-lost row addresses it by local ref`() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = pendingDao)
+        val outbox = outbox(pendingDao)
         // Create offline → local row + queued CreateExpense (response lost / airplane mode).
         // The direct PATCH would SUCCEED if attempted (updateDto set), so the only
         // way this edit ends up Queued against the local ref is the FIFO guard

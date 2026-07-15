@@ -5,10 +5,14 @@ import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.repository.LedgerFakeDao
 import com.ticketbox.data.repository.LedgerFakeSettingsStore
 import com.ticketbox.data.repository.LedgerFakeTokenStore
-import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.testLedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiFactory
 import com.ticketbox.data.repository.LedgerStubApiState
 import com.ticketbox.data.repository.StubApi
+import com.ticketbox.data.repository.TEST_ACCOUNT_PUBLIC_ID
+import com.ticketbox.data.repository.TEST_DATA_GENERATION
+import com.ticketbox.data.repository.TEST_DEVICE_PUBLIC_ID
+import com.ticketbox.data.repository.TEST_SERVER_ID
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -38,7 +42,7 @@ class JoinFamilyLedgerViewModelTest {
     private fun unboundHarness(api: StubApi): Triple<JoinFamilyLedgerViewModel, LedgerFakeSettingsStore, LedgerFakeTokenStore> {
         val store = LedgerFakeSettingsStore()
         val tokenStore = LedgerFakeTokenStore()
-        val repository = LedgerRepository(
+        val repository = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
@@ -60,6 +64,10 @@ class JoinFamilyLedgerViewModelTest {
                 ),
                 acceptResult = InvitationAcceptResponseDto(
                     sessionToken = "tk_joined",
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
+                    accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                    devicePublicId = TEST_DEVICE_PUBLIC_ID,
                     accountName = "新成员",
                     ledgerId = "L_family",
                     ledgerName = "家庭账本",
@@ -92,7 +100,11 @@ class JoinFamilyLedgerViewModelTest {
             assertNotNull(done.success)
             assertTrue(accepted)
             assertTrue(consumed)
-            assertEquals("https://join.example.com", store.serverUrl())
+            assertNull(store.serverUrl(), "ordinary settings must not become a second binding authority")
+            assertEquals(
+                "https://join.example.com",
+                tokenStore.sessionStore.currentSession()?.serverUrl,
+            )
             assertEquals("tk_joined", tokenStore.getToken())
             assertEquals("inv_VM", api.acceptRequests.single().inviteToken)
         } finally {

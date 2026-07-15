@@ -36,14 +36,14 @@ class MerchantRepositoryCatalogTest {
             )
         }
 
-    private fun tokenStore(): FakeSessionTokenStore =
-        FakeSessionTokenStore().apply { saveToken("session-token") }
+    private fun tokenStore(): TestSessionFixture =
+        TestSessionFixture().apply { saveToken("session-token") }
 
     private fun repository(
         api: ApiService,
         outbox: OutboxRepository? = null,
     ): MerchantRepository = MerchantRepository(
-        binding = ServerSessionBinding(
+        binding = testServerSessionBinding(
             apiClient = TestApiServiceFactory(api),
             settingsStore = settingsStore(),
             tokenStore = tokenStore(),
@@ -111,7 +111,7 @@ class MerchantRepositoryCatalogTest {
             deleteFailure = IOException("network down")
         }
         val dao = FakePendingMutationDao()
-        val repo = repository(api, outbox = OutboxRepository(dao))
+        val repo = repository(api, outbox = testOutboxRepository(dao))
 
         val result = repo.deleteMerchantCatalog(publicId = "catalog-1", expectedRowVersion = 3L)
 

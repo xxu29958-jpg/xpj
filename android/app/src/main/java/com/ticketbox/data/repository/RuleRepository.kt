@@ -27,22 +27,17 @@ class RuleRepository(
     private val onConfirmedChanged: suspend () -> Unit = { },
     private val offlineMutations: CategoryRuleOfflineMutationWiring = CategoryRuleOfflineMutationWiring(),
 ) {
-    private val settingsStore = binding.settingsStore
     private val outbox get() = offlineMutations.outbox
     private val categoryRuleUpdateAdapter get() = offlineMutations.updateAdapter
     private val categoryRuleDeleteAdapter get() = offlineMutations.deleteAdapter
-    private val ledgerRequestGuard = LedgerRequestGuard(
-        binding.settingsStore,
-        binding.tokenStore,
-        binding.apiProvider,
-    )
+    private val ledgerRequestGuard = LedgerRequestGuard(binding.apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { binding.apiProvider.currentSession()?.serverUrl },
         context = "Rule",
         statusMessages = mapOf(404 to "分类规则不存在。"),
     )
 
-    fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    fun canModifyLedger(): Boolean = ledgerRoleCanModify(binding.apiProvider.currentLedgerRole())
 
     suspend fun categoryRules(): Result<List<CategoryRule>> =
         errorHandler.safeCall {
@@ -160,7 +155,7 @@ class RuleRepository(
             token = baseline.rowVersion,
             idempotencyKey = idempotencyKey,
         )
-        if (outboxRef.activeForTarget("category_rule:${baseline.id}").isNotEmpty()) {
+        if (outboxRef.activeForTarget(bound, "category_rule:${baseline.id}").isNotEmpty()) {
             // Per-target FIFO guard (codex follow-up review): an unresolved
             // queued mutation for this rule must replay BEFORE any later
             // mutation — a direct PATCH now would jump the queue. Same
@@ -200,13 +195,15 @@ class RuleRepository(
         adapter: JsonAdapter<CategoryRuleUpdateRequest>,
         request: CategoryRuleUpdateRequest,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.UpdateCategoryRule,
-            targetId = context.targetId,
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = context.token,
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.UpdateCategoryRule,
+                targetId = context.targetId,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 
@@ -286,7 +283,7 @@ class RuleRepository(
             token = rule.rowVersion,
             idempotencyKey = idempotencyKey,
         )
-        if (outboxRef.activeForTarget("category_rule:${rule.id}").isNotEmpty()) {
+        if (outboxRef.activeForTarget(bound, "category_rule:${rule.id}").isNotEmpty()) {
             // Per-target FIFO guard — see updateCategoryRuleAllowingOffline:
             // a direct DELETE must not jump an unresolved queued mutation
             // (e.g. a queued toggle) for the same rule.
@@ -316,13 +313,15 @@ class RuleRepository(
         adapter: JsonAdapter<CategoryRuleDeleteRequest>,
         request: CategoryRuleDeleteRequest,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.DeleteCategoryRule,
-            targetId = context.targetId,
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = context.token,
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.DeleteCategoryRule,
+                targetId = context.targetId,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 

@@ -29,4 +29,5 @@ data class DevicePairingCode(
     val pairingCode: String,
     val ledgerName: String,
     val expiresAt: String,
+    val recoveryDeviceName: String? = null,
 )

@@ -3,7 +3,6 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.RepaymentDraftStatuses
-import com.ticketbox.domain.model.RepaymentNotificationDraft
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -165,12 +164,6 @@ private class FakeBadgeDrafts(
     var listGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = true
-
-    override suspend fun createDraft(
-        draft: RepaymentNotificationDraft,
-        expectedLedgerId: String?,
-        notificationKey: String?,
-    ): Result<RepaymentDraft> = Result.failure(UnsupportedOperationException())
 
     override suspend fun listPendingDrafts(): Result<List<RepaymentDraft>> {
         listCalls++

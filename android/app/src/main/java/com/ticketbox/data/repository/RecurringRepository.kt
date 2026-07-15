@@ -1,11 +1,8 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.util.TimeZone
@@ -30,23 +27,20 @@ interface RecurringActions {
 }
 
 class RecurringRepository(
-    private val apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
+    private val apiProvider: ApiServiceProvider,
 ) : RecurringActions {
-    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "Recurring",
         statusMessages = mapOf(404 to "固定支出不存在。"),
     )
 
     private fun currentTimezoneId(): String = TimeZone.getDefault().id
 
-    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
+    override fun observeActiveLedgerId(): Flow<String?> = apiProvider.observeActiveLedgerId()
 
     override suspend fun items(
         status: String?,

@@ -92,8 +92,10 @@ internal fun canonicalServerOriginOrNull(serverUrl: String): String? {
 }
 
 private fun canonicalOriginHostOrNull(host: String): String? {
-    val canonical = host.removeSuffix(".")
-    return canonical.takeIf { it.isNotEmpty() && !it.endsWith(".") }
+    // RFC 1034 distinguishes an absolute name (trailing root dot) from
+    // the dotless spelling interpreted by local resolver search policy.
+    // They are not aliases we can silently merge into one outbox origin.
+    return host.takeIf { it.isNotEmpty() && !it.endsWith(".") }
 }
 
 fun isLocalOnlyServerUrl(serverUrl: String): Boolean {

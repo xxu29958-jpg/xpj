@@ -7,7 +7,6 @@ import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.AccountDevice
 import com.ticketbox.domain.model.DevicePairingCode
-import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,11 +16,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * issue #65 slice 6b: Settings → My devices. Mirrors [FamilyMembersViewModel]'s
- * shape (Screen → ViewModel → Repository → IO). The list itself is owner-gated
- * on the backend (slice 6a, manager context → 403/404), so the upper-level Root
- * entry is shown only to owners; [deviceIsOwner] re-checks before every mutate
- * (backend stays the final guard).
+ * Account-scoped device lifecycle. Ledger role never decides whether a person
+ * may rename, revoke, add, or explicitly recover their own Device.
  */
 data class MyDevicesUiState(
     val devices: List<AccountDevice> = emptyList(),
@@ -45,11 +41,6 @@ class MyDevicesViewModel(
     private val _uiState = MutableStateFlow(MyDevicesUiState())
     val uiState: StateFlow<MyDevicesUiState> = _uiState.asStateFlow()
 
-    /** True if the bound device's session is OWNER on the active ledger. The
-     * screen gates management affordances on this; backend 403/404 兜底. */
-    fun deviceIsOwner(): Boolean =
-        repository.currentLedgerRole() == LEDGER_ROLE_OWNER
-
     fun refresh(activeLedgerId: String?) {
         if (_uiState.value.loading) return
         viewModelScope.launch {
@@ -66,7 +57,6 @@ class MyDevicesViewModel(
     }
 
     fun rename(device: AccountDevice, newName: String, activeLedgerId: String?) {
-        if (!deviceIsOwner()) return
         val cleanName = newName.trim()
         if (cleanName.isEmpty()) {
             _uiState.update {
@@ -86,7 +76,6 @@ class MyDevicesViewModel(
     }
 
     fun revoke(device: AccountDevice, activeLedgerId: String?) {
-        if (!deviceIsOwner()) return
         viewModelScope.launch {
             _uiState.update { it.copy(busyDeviceId = device.publicId, message = null, messageTone = MessageTone.Neutral) }
             repository.revokeDevice(device.publicId, activeLedgerId)
@@ -95,10 +84,8 @@ class MyDevicesViewModel(
         }
     }
 
-    /** Permanently remove an already-revoked device, then re-list. Owner-gated
-     * (backend 403/404 兜底); the screen only offers this on revoked rows. */
+    /** Permanently remove an already-revoked device, then re-list. */
     fun delete(device: AccountDevice, activeLedgerId: String?) {
-        if (!deviceIsOwner()) return
         viewModelScope.launch {
             _uiState.update { it.copy(busyDeviceId = device.publicId, message = null, messageTone = MessageTone.Neutral) }
             repository.deleteDevice(device.publicId, activeLedgerId)
@@ -141,14 +128,36 @@ class MyDevicesViewModel(
     }
 
     fun createPairingCode(activeLedgerId: String?) {
-        if (!deviceIsOwner()) return
+        requestPairingCode(recoveryDevice = null, activeLedgerId = activeLedgerId)
+    }
+
+    fun recover(device: AccountDevice, activeLedgerId: String?) {
+        if (device.isCurrent) return
+        requestPairingCode(recoveryDevice = device, activeLedgerId = activeLedgerId)
+    }
+
+    private fun requestPairingCode(
+        recoveryDevice: AccountDevice?,
+        activeLedgerId: String?,
+    ) {
         viewModelScope.launch {
-            _uiState.update { it.copy(pairingCreating = true, message = null, messageTone = MessageTone.Neutral) }
-            repository.createDevicePairingCode(activeLedgerId)
+            _uiState.update {
+                it.copy(
+                    pairingCreating = true,
+                    busyDeviceId = recoveryDevice?.publicId,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                )
+            }
+            repository.createDevicePairingCode(
+                recoveryDevice = recoveryDevice,
+                ledgerId = activeLedgerId,
+            )
                 .onSuccess { created ->
                     _uiState.update {
                         it.copy(
                             pairingCreating = false,
+                            busyDeviceId = null,
                             createdPairingCode = created,
                             messageTone = MessageTone.Neutral,
                         )
@@ -158,6 +167,7 @@ class MyDevicesViewModel(
                     _uiState.update {
                         it.copy(
                             pairingCreating = false,
+                            busyDeviceId = null,
                             message = err.toUiText(R.string.my_devices_message_pairing_failed),
                             messageTone = MessageTone.Danger,
                         )

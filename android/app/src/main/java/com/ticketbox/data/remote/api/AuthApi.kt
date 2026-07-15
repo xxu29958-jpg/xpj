@@ -3,6 +3,7 @@ package com.ticketbox.data.remote.api
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.PairRequestDto
 import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
+import com.ticketbox.data.remote.dto.RefreshSessionRequestDto
 import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.StatusPrivateDto
 import retrofit2.http.Body
@@ -21,5 +22,5 @@ interface AuthApi {
     suspend fun pairDevice(@Body request: PairRequestDto): PairResponseDto
 
     @POST("api/auth/refresh")
-    suspend fun refreshSession(): RefreshSessionResponseDto
+    suspend fun refreshSession(@Body request: RefreshSessionRequestDto): RefreshSessionResponseDto
 }

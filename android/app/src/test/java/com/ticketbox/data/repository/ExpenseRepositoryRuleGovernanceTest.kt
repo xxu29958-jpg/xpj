@@ -27,11 +27,11 @@ class ExpenseRepositoryRuleGovernanceTest {
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val apiClient = FakeApiServiceFactory(apiService)
         val expenseRepository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiClient,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,
@@ -39,7 +39,7 @@ class ExpenseRepositoryRuleGovernanceTest {
             deviceNameProvider = { "Android Test Device" },
         )
         val ruleRepository = RuleRepository(
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiClient,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,
@@ -75,10 +75,10 @@ class ExpenseRepositoryRuleGovernanceTest {
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val ruleRepository = RuleRepository(
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
         )
 
@@ -107,10 +107,10 @@ class ExpenseRepositoryRuleGovernanceTest {
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val merchantRepository = MerchantRepository(
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
         )
 

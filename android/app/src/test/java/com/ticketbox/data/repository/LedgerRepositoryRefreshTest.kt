@@ -22,7 +22,7 @@ class LedgerRepositoryRefreshTest {
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val dao = LedgerFakeDao()
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
@@ -59,18 +59,19 @@ class LedgerRepositoryRefreshTest {
                 )
             )
         }
-        val repo = LedgerRepository(
+        val session = ledgerSessionFixture("L_family", "家庭账本", role = "owner", token = "t")
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = session,
             expenseDao = LedgerFakeDao(),
         )
 
         val ledgers = repo.refreshLedgers().getOrThrow()
 
         assertEquals("viewer", ledgers.single().role)
-        assertEquals("viewer", store.role())
-        assertEquals("L_family", store.activeLedgerId())
+        assertEquals("viewer", repo.currentLedgerRole())
+        assertEquals("L_family", repo.activeLedgerId())
     }
 
     @Test
@@ -104,38 +105,40 @@ class LedgerRepositoryRefreshTest {
                 """.trimIndent(),
             )
         }
-        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val tokenStore = existingOwnerSessionFixture(
+            ledgerId = "L_old",
+            ledgerName = "旧账本",
+            accountName = "旧账号",
+            deviceName = "Old Pixel",
+            token = "old-token",
+        )
         api.onListLedgers = {
-            tokenStore.saveToken("new-token")
-            store.saveIdentity(
-                PersistedLedgerIdentity(
-                    accountName = "新账号",
-                    ledgerId = "L_new",
-                    ledgerName = "新账本",
-                    deviceName = "New Pixel",
-                    role = "owner",
-                    boundAt = "2026-05-01T00:05:00Z",
-                )
+            tokenStore.rebindAsDifferentAccountForFixture(
+                accountName = "新账号",
+                ledgerId = "L_new",
+                ledgerName = "新账本",
+                deviceName = "New Pixel",
+                token = "new-token",
             )
         }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
             expenseDao = LedgerFakeDao(),
         )
 
-        val ledgers = repo.refreshLedgers().getOrThrow()
+        val failure = repo.refreshLedgers().exceptionOrNull()
 
-        assertEquals(listOf("L_old"), ledgers.map { it.ledgerId })
-        assertEquals("L_new", store.activeLedgerId())
-        assertEquals("owner", store.role())
+        assertEquals(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE, failure?.message)
+        assertEquals("L_new", repo.activeLedgerId())
+        assertEquals("owner", repo.currentLedgerRole())
         assertEquals(listOf("L_new"), repo.cachedLedgers().map { it.ledgerId })
     }
 
     @Test
     fun refreshLedgersWrapsRuntimeExceptions() = runTest {
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(StubApi(LedgerStubApiState(listLedgersError = RuntimeException("json bad")))),
             settingsStore = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") },
             tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },

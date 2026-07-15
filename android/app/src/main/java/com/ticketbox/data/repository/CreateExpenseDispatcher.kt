@@ -30,7 +30,7 @@ import retrofit2.HttpException
  * ``expense:local:{client_ref}`` gets the real token).
  */
 class CreateExpenseDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseManualCreateRequestDto>,
     private val applyServerIdentity: suspend (ledgerId: String, clientRef: String, created: ExpenseDto) -> Unit,
 ) : OutboxMutationDispatcher {
@@ -64,7 +64,7 @@ class CreateExpenseDispatcher(
         clientRef: String,
     ): DispatchResult {
         val created = try {
-            apiProvider().createManualExpense(request)
+            apiProvider(row).createManualExpense(request)
         } catch (e: HttpException) {
             return mapHttpException(e)
         } catch (e: IOException) {

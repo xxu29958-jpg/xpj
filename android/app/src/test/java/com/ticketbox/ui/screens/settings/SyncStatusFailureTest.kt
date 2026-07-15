@@ -37,13 +37,15 @@ class SyncStatusFailureTest {
                 queueDepth = 3,
                 conflicts = listOf(row(id = 1), row(id = 2)),
                 failed = listOf(row(id = 3)),
+                quarantinedCount = 4,
             ),
         )
 
         assertEquals(3, overview.queuedCount)
         assertEquals(2, overview.conflictCount)
         assertEquals(1, overview.failedCount)
-        assertEquals(3, overview.needsActionCount)
+        assertEquals(4, overview.quarantinedCount)
+        assertEquals(7, overview.needsActionCount)
         assertFalse(overview.isSettled)
     }
 

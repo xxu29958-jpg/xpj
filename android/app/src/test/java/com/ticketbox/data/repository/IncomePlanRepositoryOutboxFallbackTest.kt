@@ -79,8 +79,8 @@ class IncomePlanRepositoryOutboxFallbackTest {
             )
         }
 
-    private fun seededTokenStore(): FakeSessionTokenStore =
-        FakeSessionTokenStore().apply { saveToken("session-token") }
+    private fun seededTokenStore(): TestSessionFixture =
+        TestSessionFixture().apply { saveToken("session-token") }
 
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
@@ -118,13 +118,16 @@ class IncomePlanRepositoryOutboxFallbackTest {
         api: ApiService,
         outbox: OutboxRepository? = null,
         adapter: com.squareup.moshi.JsonAdapter<IncomePlanUpdateRequestDto>? = null,
-    ): IncomePlanRepository = IncomePlanRepository(
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = seededSettingsStore(),
-        tokenStore = seededTokenStore(),
-        outbox = outbox,
-        incomePlanUpdateAdapter = adapter,
-    )
+    ): IncomePlanRepository {
+        val settingsStore = seededSettingsStore()
+        val tokenStore = seededTokenStore()
+        val apiClient = TestApiServiceFactory(api)
+        return IncomePlanRepository(
+            apiProvider = testApiServiceProvider(apiClient, tokenStore),
+            outbox = outbox,
+            incomePlanUpdateAdapter = adapter,
+        )
+    }
 
     @Test
     fun `update with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
@@ -132,7 +135,7 @@ class IncomePlanRepositoryOutboxFallbackTest {
         // guards. ISE (not IOException) so a broken guard fails loudly.
         val baseline = baselinePlan()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(IncomePlanUpdateRequestDto::class.java)
         val api = ApiServiceStub(
             updatePlanResult = ApiResult.Throw(IllegalStateException("direct PATCH must not run")),
@@ -164,7 +167,7 @@ class IncomePlanRepositoryOutboxFallbackTest {
     fun `direct 2xx returns Synced with server plan, no enqueue`() = runTest {
         val baseline = baselinePlan()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(IncomePlanUpdateRequestDto::class.java)
         val api = ApiServiceStub(updatePlanResult = ApiResult.Success(successDto()))
 
@@ -185,7 +188,7 @@ class IncomePlanRepositoryOutboxFallbackTest {
     fun `IOException returns Queued with optimistic plan + enqueues row`() = runTest {
         val baseline = baselinePlan()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(IncomePlanUpdateRequestDto::class.java)
         val api = ApiServiceStub(updatePlanResult = ApiResult.Throw(IOException("net out")))
 

@@ -17,7 +17,7 @@ import retrofit2.HttpException
  * same-target PENDING rows.
  */
 class RetryOcrDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.RetryOcr
@@ -51,7 +51,7 @@ class RetryOcrDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
-            val retried = apiProvider().retryOcr(expenseRef, request, idempotencyKey)
+            val retried = apiProvider(row).retryOcr(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = retried.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

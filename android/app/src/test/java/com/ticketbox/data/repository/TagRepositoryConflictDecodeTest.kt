@@ -64,11 +64,14 @@ class TagRepositoryConflictDecodeTest {
         assertNull(ex.conflictTagRowVersion)
     }
 
-    private fun buildRepository(api: ApiService): TagRepository = TagRepository(
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = boundSettingsStore(), // server url + owner ledger seeded
-        tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
-    )
+    private fun buildRepository(api: ApiService): TagRepository {
+        val settingsStore = boundSettingsStore()
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val apiClient = TestApiServiceFactory(api)
+        return TagRepository(
+            apiProvider = testApiServiceProvider(apiClient, tokenStore),
+        )
+    }
 
     /** Wraps any [ApiService] into the factory TagRepository's [ApiServiceProvider] resolves through. */
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {

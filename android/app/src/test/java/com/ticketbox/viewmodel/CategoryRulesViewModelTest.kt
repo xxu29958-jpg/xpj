@@ -15,11 +15,11 @@ import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeExpenseDao
-import com.ticketbox.data.repository.FakeSessionTokenStore
+import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.repository.FakeTicketboxSettingsStore
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.RuleRepository
-import com.ticketbox.data.repository.ServerSessionBinding
+import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
@@ -187,10 +187,10 @@ class CategoryRulesViewModelTest {
                 )
             )
         }
-        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val apiFactory = TestApiServiceFactory(api)
         val ruleRepository = RuleRepository(
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiFactory,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,
@@ -198,7 +198,7 @@ class CategoryRulesViewModelTest {
         )
         val expenseRepository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiFactory,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,

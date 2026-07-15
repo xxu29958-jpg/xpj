@@ -15,10 +15,20 @@ data class PersistedLedgerIdentity(
     val boundAt: String,
 )
 
+data class PersistedSessionProjection(
+    val serverUrl: String,
+    val identity: PersistedLedgerIdentity,
+)
+
+/** Startup-only access to the pre-v1.3 session projection. */
+internal interface LegacySessionProjectionStore {
+    fun readLegacySessionProjection(): PersistedSessionProjection?
+
+    fun clearLegacySessionProjection()
+}
+
 interface TicketboxSettingsStore {
     val backgroundSettingsFlow: Flow<BackgroundSettings>
-
-    fun serverUrl(): String?
 
     fun appSkinKey(): String?
 
@@ -62,33 +72,11 @@ interface TicketboxSettingsStore {
 
     fun lastConfirmedSyncAt(): String?
 
-    fun accountName(): String?
-
-    fun ledgerName(): String?
-
-    fun activeLedgerId(): String?
-
-    fun activeLedgerName(): String?
+    fun lastConfirmedSyncAtForLedger(ledgerId: String): String? = lastConfirmedSyncAt()
 
     fun availableLedgersJson(): String?
 
-    /**
-     * Emits whenever the active ledger id changes (login, switch, clear).
-     * Emits the current value on subscription.
-     */
-    fun observeActiveLedgerId(): Flow<String?>
-
-    fun saveActiveLedger(ledgerId: String, ledgerName: String)
-
     fun saveAvailableLedgersJson(json: String?)
-
-    fun deviceName(): String?
-
-    fun role(): String?
-
-    fun boundAt(): String?
-
-    fun saveIdentity(identity: PersistedLedgerIdentity)
 
     fun saveLastConfirmedSyncAt(value: String)
 
@@ -104,7 +92,13 @@ interface TicketboxSettingsStore {
 
     fun lastUploadAt(): String?
 
+    fun lastUploadAtForLedger(ledgerId: String): String? = lastUploadAt()
+
     fun saveLastUploadAt(value: String)
+
+    fun saveLastUploadAtForLedger(ledgerId: String, value: String) {
+        saveLastUploadAt(value)
+    }
 
     fun saveAppSkinKey(skinKey: String)
 
@@ -120,8 +114,6 @@ interface TicketboxSettingsStore {
      */
     fun observeCurrencyCodeKey(): Flow<String?>
 
-    fun saveServerUrl(serverUrl: String)
-
     /**
      * Recently committed global-search queries, most-recent-first. A non-secure
      * local convenience (like [appSkinKey] / budget) — never holds tokens or
@@ -131,8 +123,6 @@ interface TicketboxSettingsStore {
     fun recentSearches(): List<String> = emptyList()
 
     fun saveRecentSearches(queries: List<String>) = Unit
-
-    fun isBound(): Boolean
 
     fun markUnlocked()
 

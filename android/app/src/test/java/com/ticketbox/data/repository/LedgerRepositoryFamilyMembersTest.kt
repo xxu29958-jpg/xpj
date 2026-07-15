@@ -49,10 +49,10 @@ class LedgerRepositoryFamilyMembersTest {
             saveServerUrl("https://api.example.com")
             saveActiveLedger("L_family", "家庭账本")
         }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = ledgerSessionFixture("L_family", "家庭账本", token = "t"),
             expenseDao = LedgerFakeDao(),
         )
 
@@ -101,18 +101,19 @@ class LedgerRepositoryFamilyMembersTest {
                 )
             )
         }
-        val repo = LedgerRepository(
+        val session = ledgerSessionFixture("L_family", "家庭账本", role = "owner", token = "t")
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = session,
             expenseDao = LedgerFakeDao(),
         )
 
         val members = repo.refreshFamilyMembers().getOrThrow()
 
         assertEquals("viewer", members.single().role)
-        assertEquals("viewer", store.role())
-        assertEquals("L_family", store.activeLedgerId())
+        assertEquals("viewer", repo.currentLedgerRole())
+        assertEquals("L_family", repo.activeLedgerId())
     }
 
     @Test
@@ -148,30 +149,31 @@ class LedgerRepositoryFamilyMembersTest {
                 )
             )
         }
+        val session = ledgerSessionFixture("L_family", "家庭账本", role = "owner", token = "t")
         api.onLedgerMembers = {
-            store.saveIdentity(
-                PersistedLedgerIdentity(
-                    accountName = "我",
-                    ledgerId = "L_other",
-                    ledgerName = "另一个账本",
-                    deviceName = "Pixel",
-                    role = "owner",
-                    boundAt = "2026-05-01T00:05:00Z",
-                )
+            val current = requireNotNull(session.sessionStore.currentSession())
+            session.sessionStore.replaceForFixture(
+                current.copy(
+                    bindingRevision = "switched-during-members-request",
+                    identity = current.identity.copy(
+                        ledgerId = "L_other",
+                        ledgerName = "另一个账本",
+                    ),
+                ),
             )
         }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = session,
             expenseDao = LedgerFakeDao(),
         )
 
-        val members = repo.refreshFamilyMembers().getOrThrow()
+        val failure = repo.refreshFamilyMembers().exceptionOrNull()
 
-        assertEquals("viewer", members.single().role)
-        assertEquals("L_other", store.activeLedgerId())
-        assertEquals("owner", store.role())
+        assertEquals(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE, failure?.message)
+        assertEquals("L_other", repo.activeLedgerId())
+        assertEquals("owner", repo.currentLedgerRole())
     }
 
     @Test
@@ -212,10 +214,10 @@ class LedgerRepositoryFamilyMembersTest {
             saveServerUrl("https://api.example.com")
             saveActiveLedger("L_family", "家庭账本")
         }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = ledgerSessionFixture("L_family", "家庭账本", token = "t"),
             expenseDao = LedgerFakeDao(),
         )
 
@@ -243,7 +245,7 @@ class LedgerRepositoryFamilyMembersTest {
     private fun makeRepo(): LedgerRepository {
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("t") }
-        return LedgerRepository(
+        return testLedgerRepository(
             apiClient = LedgerStubApiFactory(StubApi()),
             settingsStore = store,
             tokenStore = tokenStore,

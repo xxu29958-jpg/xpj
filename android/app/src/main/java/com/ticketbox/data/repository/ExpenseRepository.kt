@@ -34,12 +34,12 @@ import kotlinx.coroutines.flow.Flow
 class ExpenseRepository(
     expenseDao: ExpenseDao,
     binding: ServerSessionBinding,
-    deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
     sessionCoordinator: LocalLedgerSessionCoordinator = LocalLedgerSessionCoordinator(
-        binding.settingsStore,
-        binding.tokenStore,
-        expenseDao,
+        settingsStore = binding.settingsStore,
+        sessionStore = binding.sessionStore,
+        expenseDao = expenseDao,
     ),
+    deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
     offlineMutations: ExpenseOfflineMutationWiring = ExpenseOfflineMutationWiring(),
 ) : ServerBindingRepository,
     PendingReviewActions,
@@ -74,7 +74,11 @@ class ExpenseRepository(
     private val billSplitRepository = ExpenseBillSplitRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
+    override fun hasActiveSession(): Boolean = bindingRepository.hasActiveSession()
+
     fun currentLedgerRole(): String? = connectionRepository.currentLedgerRole()
+
+    fun localBinding(): LocalBindingInfo? = core.localBinding()
 
     override fun canModifyLedger(): Boolean = pendingRepository.canModifyLedger()
 
@@ -84,6 +88,12 @@ class ExpenseRepository(
 
     override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> =
         bindingRepository.bindServer(serverUrl, pairingCode)
+
+    override suspend fun resumePendingBinding(): Result<BindServerResult>? =
+        bindingRepository.resumePendingBinding()
+
+    override suspend fun reconcileActiveSession(): Result<Unit>? =
+        connectionRepository.reconcileActiveSession()
 
     suspend fun testConnection(): Result<Unit> = connectionRepository.testConnection()
 
@@ -211,11 +221,14 @@ class ExpenseRepository(
         tags: String?,
     ): Result<BatchApplyResult> = ledgerRepository.applyConfirmedBatch(expenses, category, tags)
 
-    suspend fun createNotificationDraft(
+    internal suspend fun createNotificationDraft(
         draft: NotificationDraft,
-        expectedLedgerId: String? = null,
+        expectedBinding: LogicalSessionBinding,
         notificationKey: String? = null,
-    ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedLedgerId, notificationKey)
+    ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedBinding, notificationKey)
+
+    internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
+        core.ledgerRequestGuard.captureLogicalBinding()
 
     override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> =
         detailRepository.createRepaymentDraftFromExpense(expense)
