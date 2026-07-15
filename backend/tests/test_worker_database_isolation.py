@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from threading import Event
+
+import psycopg
 import pytest
 from sqlalchemy.engine import make_url
 
@@ -136,6 +139,36 @@ def test_worker_lifecycle_refuses_non_worker_database() -> None:
         pass
 
 
+def test_orphan_quarantine_restores_connections_for_a_late_lease() -> None:
+    events: list[str] = []
+
+    class FakeResult:
+        def __init__(self, row: tuple[bool] | None = None) -> None:
+            self.row = row
+
+        def fetchone(self) -> tuple[bool] | None:
+            return self.row
+
+    class FakeConnection:
+        def execute(self, statement, parameters=()):
+            rendered = str(statement)
+            events.append(rendered)
+            if "pg_stat_activity" in rendered:
+                return FakeResult((True,))
+            if "pg_database" in rendered:
+                return FakeResult((True,))
+            return FakeResult()
+
+    worker_db_infra._quarantine_and_drop_orphan(
+        FakeConnection(),
+        "xpj_test_0123456789abcdef_gw0",
+    )
+
+    assert any("ALLOW_CONNECTIONS false" in event for event in events)
+    assert any("ALLOW_CONNECTIONS true" in event for event in events)
+    assert not any("DROP DATABASE" in event for event in events)
+
+
 @pytest.mark.parametrize("database_name", ["ticketbox", "xpj_testimony"])
 def test_schema_reset_refuses_non_test_database(
     monkeypatch: pytest.MonkeyPatch,
@@ -257,3 +290,31 @@ def test_shared_cluster_lock_and_query_target_contract(
         "host": "query-only.example",
         "port": "5545",
     }
+
+
+def test_authority_watchdog_fails_closed_when_connection_disappears() -> None:
+    aborted = Event()
+    messages: list[str] = []
+
+    class LostConnection:
+        def execute(self, statement: str, parameters: tuple[object, ...]):
+            raise psycopg.OperationalError("server connection was terminated")
+
+    def record_abort(message: str) -> None:
+        messages.append(message)
+        aborted.set()
+
+    with (
+        pytest.raises(RuntimeError, match="Lost PostgreSQL worker lease"),
+        test_pg_contract.authority_connection_watchdog(
+            LostConnection(),
+            label="worker lease",
+            heartbeat_seconds=0.001,
+            abort_process=record_abort,
+        ),
+    ):
+        assert aborted.wait(timeout=1)
+
+    assert messages == [
+        "Lost PostgreSQL worker lease; aborting this test process."
+    ]

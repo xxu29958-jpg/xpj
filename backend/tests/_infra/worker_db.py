@@ -19,6 +19,7 @@ from sqlalchemy.engine import URL, make_url
 
 from scripts.test_pg_contract import (
     admin_connection_args,
+    authority_connection_watchdog,
     validate_test_database_name,
     validate_test_database_url,
 )
@@ -79,7 +80,11 @@ def worker_database_lifecycle(
     base_name = _worker_base_name(database_name, worker_id, run_uid)
     lease = _prepare_worker_database(parsed, base_name=base_name)
     try:
-        yield
+        with authority_connection_watchdog(
+            lease,
+            label=f"worker database lease {database_name}",
+        ):
+            yield
     finally:
         lease.close()
         with _worker_lifecycle_guard(parsed) as connection:
@@ -146,11 +151,15 @@ def _reclaim_orphan_databases(
     *,
     base_name: str,
 ) -> None:
+    marker = _worker_database_marker(base_name)
+    prefix = f"{base_name}_"
     rows = connection.execute(
         """
-        SELECT database.datname
+        SELECT
+            database.datname,
+            shobj_description(database.oid, 'pg_database')
         FROM pg_database AS database
-        WHERE shobj_description(database.oid, 'pg_database') = %s
+        WHERE left(database.datname, length(%s)) = %s
           AND NOT EXISTS (
               SELECT 1
               FROM pg_stat_activity AS activity
@@ -158,11 +167,57 @@ def _reclaim_orphan_databases(
           )
         ORDER BY database.datname
         """,
-        (_worker_database_marker(base_name),),
+        (prefix, prefix),
     ).fetchall()
-    for (database_name,) in rows:
-        if _is_owned_worker_database(base_name, database_name):
-            _drop_database(connection, database_name)
+    for database_name, database_marker in rows:
+        if (
+            _is_owned_worker_database(base_name, database_name)
+            and database_marker in (None, marker)
+        ):
+            _quarantine_and_drop_orphan(connection, database_name)
+
+
+def _quarantine_and_drop_orphan(
+    connection: psycopg.Connection,
+    database_name: str,
+) -> None:
+    """Close the reconnect race before deleting one proven worker orphan."""
+
+    connection.execute(
+        sql.SQL("ALTER DATABASE {} WITH ALLOW_CONNECTIONS false").format(
+            sql.Identifier(database_name)
+        )
+    )
+    dropped = False
+    try:
+        active = connection.execute(
+            "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname = %s)",
+            (database_name,),
+        ).fetchone()
+        if active == (False,):
+            connection.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {}").format(
+                    sql.Identifier(database_name)
+                )
+            )
+            dropped = True
+    finally:
+        if not dropped and _database_exists(connection, database_name):
+            connection.execute(
+                sql.SQL("ALTER DATABASE {} WITH ALLOW_CONNECTIONS true").format(
+                    sql.Identifier(database_name)
+                )
+            )
+
+
+def _database_exists(
+    connection: psycopg.Connection,
+    database_name: str,
+) -> bool:
+    return connection.execute(
+        "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = %s)",
+        (database_name,),
+    ).fetchone() == (True,)
 
 
 def _drop_database(connection: psycopg.Connection, database_name: str) -> None:

@@ -15,6 +15,7 @@ COMMON_PYTEST_ARGS = (
     "-q",
     "-ra",
     "--tb=short",
+    "--strict-markers",
     "-p",
     "no:cacheprovider",
     "-o",

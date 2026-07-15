@@ -34,6 +34,7 @@ from tests._infra.db import (
 from tests._infra.identity import TestIdentity, seed_identity
 from tests._infra.lane_policy import (
     managed_runner_configuration_violation,
+    managed_runner_outcome_violation,
     parallel_lane_configuration_violation,
     postgres_test_markers,
     stateful_selection_violation,
@@ -217,3 +218,23 @@ def pytest_collection_finish(session: pytest.Session) -> None:
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     cleanup_runtime()
+    if os.environ.get("PYTEST_XDIST_WORKER"):
+        return
+    active_lane = os.environ.get(RUNNER_LANE_ENV)
+    terminal = session.config.pluginmanager.get_plugin("terminalreporter")
+    outcome_counts = (
+        {
+            name: len(terminal.stats.get(name, ()))
+            for name in ("skipped", "xfailed", "xpassed")
+        }
+        if terminal is not None
+        else None
+    )
+    violation = managed_runner_outcome_violation(
+        active_lane=active_lane,
+        outcome_counts=outcome_counts,
+    )
+    if violation:
+        if terminal is not None:
+            terminal.write_sep("!", violation, red=True)
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED

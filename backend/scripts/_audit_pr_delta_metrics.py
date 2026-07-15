@@ -142,6 +142,7 @@ def _count_pytest_tests(target: str) -> int:
             target,
             "--collect-only",
             "-q",
+            "--strict-markers",
             "-o",
             "addopts=",
         ],

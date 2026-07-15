@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import re
-from collections.abc import Iterator, Mapping
+import sys
+import threading
+from collections.abc import Callable, Iterator, Mapping
 from hashlib import sha256
 
 import psycopg
@@ -18,6 +21,9 @@ _STATEFUL_LOCK_KEY = int.from_bytes(
     signed=True,
 )
 _STATEFUL_LOCK_TIMEOUT_MS = 15 * 60 * 1000
+_AUTHORITY_HEARTBEAT_SECONDS = 1.0
+_AUTHORITY_WATCHDOG_JOIN_SECONDS = 5.0
+_AUTHORITY_LOST_EXIT_CODE = 3
 
 
 def configured_test_database_url(environment: Mapping[str, str]) -> str:
@@ -64,6 +70,55 @@ def validate_test_database_url(database_url: str | URL) -> URL:
     return parsed
 
 
+def _abort_disposable_test_process(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+    os._exit(_AUTHORITY_LOST_EXIT_CODE)
+
+
+@contextlib.contextmanager
+def authority_connection_watchdog(
+    connection: psycopg.Connection,
+    *,
+    label: str,
+    heartbeat_seconds: float = _AUTHORITY_HEARTBEAT_SECONDS,
+    abort_process: Callable[[str], None] = _abort_disposable_test_process,
+) -> Iterator[None]:
+    """Abort a disposable pytest process if its authority session disappears."""
+
+    stop = threading.Event()
+    failures: list[BaseException] = []
+
+    def monitor() -> None:
+        while not stop.wait(heartbeat_seconds):
+            try:
+                connection.execute("SELECT 1", ()).fetchone()
+            except psycopg.Error as exc:
+                if stop.is_set():
+                    return
+                failures.append(exc)
+                stop.set()
+                abort_process(f"Lost PostgreSQL {label}; aborting this test process.")
+                return
+
+    thread = threading.Thread(
+        target=monitor,
+        name=f"postgres-{label}-watchdog",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=_AUTHORITY_WATCHDOG_JOIN_SECONDS)
+        if thread.is_alive():
+            message = f"PostgreSQL {label} watchdog did not stop; aborting this test process."
+            abort_process(message)
+            raise RuntimeError(message)
+        if failures:
+            raise RuntimeError(f"Lost PostgreSQL {label}") from failures[0]
+
+
 @contextlib.contextmanager
 def test_cluster_lock(
     environment: Mapping[str, str],
@@ -97,14 +152,18 @@ def test_cluster_lock(
         )
         connection.execute(lock_statement, (_STATEFUL_LOCK_KEY,))
         try:
-            yield
+            mode = "exclusive" if exclusive else "shared"
+            with authority_connection_watchdog(
+                connection,
+                label=f"test-lane {mode} lock",
+            ):
+                yield
         finally:
             released = connection.execute(
                 unlock_statement,
                 (_STATEFUL_LOCK_KEY,),
             ).fetchone()
             if released != (True,):
-                mode = "exclusive" if exclusive else "shared"
                 raise RuntimeError(
                     f"PostgreSQL test-lane {mode} lock was not owned"
                 )

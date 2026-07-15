@@ -10,6 +10,7 @@ import pytest
 from scripts import run_test_lanes
 from tests._infra.lane_policy import (
     managed_runner_configuration_violation,
+    managed_runner_outcome_violation,
     stateful_selection_violation,
 )
 
@@ -28,6 +29,7 @@ def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:
         "-q",
         "-ra",
         "--tb=short",
+        "--strict-markers",
         "-p",
         "no:cacheprovider",
         "-o",
@@ -153,6 +155,33 @@ def test_managed_runner_rejects_partial_or_collection_only_execution() -> None:
     assert "complete tests root" in (
         managed_runner_configuration_violation(
             **(common | {"collection_roots": ["tests/test_owner_console.py"]})
+        )
+        or ""
+    )
+
+
+def test_managed_runner_rejects_skipped_or_expected_failure_outcomes() -> None:
+    assert managed_runner_outcome_violation(
+        active_lane=None,
+        outcome_counts=None,
+    ) is None
+    assert managed_runner_outcome_violation(
+        active_lane="parallel",
+        outcome_counts={"skipped": 0, "xfailed": 0, "xpassed": 0},
+    ) is None
+
+    for outcome in ("skipped", "xfailed", "xpassed"):
+        violation = managed_runner_outcome_violation(
+            active_lane="parallel",
+            outcome_counts={outcome: 1},
+        )
+        assert violation is not None
+        assert f"{outcome}=1" in violation
+
+    assert "could not verify" in (
+        managed_runner_outcome_violation(
+            active_lane="stateful",
+            outcome_counts=None,
         )
         or ""
     )

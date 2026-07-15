@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 _STATEFUL_SERIAL_MODULE_PREFIXES = (
     "tests/test_alembic_",
@@ -177,3 +177,28 @@ def managed_runner_configuration_violation(
             f"{expected_mark!r}."
         )
     return None
+
+
+def managed_runner_outcome_violation(
+    *,
+    active_lane: str | None,
+    outcome_counts: Mapping[str, int] | None,
+) -> str | None:
+    """Reject managed lanes that silently omitted or tolerated test behavior."""
+
+    if active_lane is None:
+        return None
+    if outcome_counts is None:
+        return "Managed PostgreSQL test lane could not verify terminal outcomes."
+    forbidden = {
+        name: outcome_counts.get(name, 0)
+        for name in ("skipped", "xfailed", "xpassed")
+        if outcome_counts.get(name, 0)
+    }
+    if not forbidden:
+        return None
+    summary = ", ".join(f"{name}={count}" for name, count in forbidden.items())
+    return (
+        f"Managed PostgreSQL {active_lane} lane requires every selected test to "
+        f"pass normally; forbidden outcomes: {summary}."
+    )
