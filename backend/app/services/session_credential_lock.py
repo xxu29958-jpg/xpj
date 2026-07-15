@@ -61,7 +61,8 @@ def _reload_auth_context(
         .limit(1)
     ).first()
     if row is None:
-        raise AppError("invalid_token", status_code=401)
+        _reload_session_principal(db, token)
+        raise AppError("ledger_forbidden", status_code=403)
     account, device, ledger, role = row
     return AuthContext(
         account_id=account.id,
@@ -76,6 +77,48 @@ def _reload_auth_context(
         scope=token.scope,
         credential_id=token.id,
         credential_hash=token.token_hash,
+    )
+
+
+def _same_auth_binding(left: AuthContext, right: AuthContext) -> bool:
+    return (
+        left.account_id,
+        left.account_public_id,
+        left.ledger_id,
+        left.device_id,
+        left.device_public_id,
+        left.scope,
+        left.credential_id,
+        left.credential_hash,
+    ) == (
+        right.account_id,
+        right.account_public_id,
+        right.ledger_id,
+        right.device_id,
+        right.device_public_id,
+        right.scope,
+        right.credential_id,
+        right.credential_hash,
+    )
+
+
+def _same_session_binding(left: SessionPrincipal, right: SessionPrincipal) -> bool:
+    return (
+        left.account_id,
+        left.account_public_id,
+        left.device_id,
+        left.device_public_id,
+        left.scope,
+        left.credential_id,
+        left.credential_hash,
+    ) == (
+        right.account_id,
+        right.account_public_id,
+        right.device_id,
+        right.device_public_id,
+        right.scope,
+        right.credential_id,
+        right.credential_hash,
     )
 
 
@@ -132,8 +175,10 @@ def lock_and_revalidate_credential_mint_context(
         token,
         selected_ledger_id=auth.ledger_id,
     )
-    if refreshed != auth:
+    if not _same_auth_binding(refreshed, auth):
         raise AppError("invalid_token", status_code=401)
+    if refreshed.role != auth.role:
+        raise AppError("permission_denied", status_code=403)
     return refreshed
 
 
@@ -156,7 +201,7 @@ def lock_and_revalidate_session_principal(
     if token is None or not _token_is_usable(token, checked_at=now_utc()):
         raise AppError("invalid_token", status_code=401)
     refreshed = _reload_session_principal(db, token)
-    if refreshed != principal:
+    if not _same_session_binding(refreshed, principal):
         raise AppError("invalid_token", status_code=401)
     return refreshed
 
@@ -180,5 +225,5 @@ def lock_and_revalidate_mutation_actor(
     if actor_account_id is None or locked_auth.account_id != actor_account_id:
         raise AppError("invalid_token", status_code=401)
     if ledger_id is not None and locked_auth.ledger_id != ledger_id:
-        raise AppError("invalid_token", status_code=401)
+        raise AppError("ledger_forbidden", status_code=403)
     return locked_auth

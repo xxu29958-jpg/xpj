@@ -353,6 +353,46 @@ def test_legacy_invitation_accept_requires_upgrade_without_consuming_token(
     assert retried.status_code == 200, retried.text
 
 
+def test_accept_invitation_rejects_invalid_optional_bearer_without_consuming_token(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
+    invite = _mint(client, family_id, family_app)
+
+    rejected = client.post(
+        "/api/invitations/accept",
+        headers={"Authorization": "Bearer invalid-existing-session"},
+        json=invitation_accept_payload(
+            invite,
+            account_name="不得创建的新身份",
+            device_name="invalid-session-device",
+        ),
+    )
+    assert rejected.status_code == 401
+    assert rejected.json()["error"] == "invalid_token"
+
+    with SessionLocal() as db:
+        invitation = db.scalar(
+            select(Invitation).where(Invitation.token_hash == hash_secret(invite))
+        )
+        assert invitation is not None
+        assert invitation.used_at is None
+        assert invitation.used_by_account_id is None
+
+    accepted = client.post(
+        "/api/invitations/accept",
+        json=invitation_accept_payload(
+            invite,
+            account_name="有效的新成员",
+            device_name="valid-session-device",
+        ),
+    )
+    assert accepted.status_code == 200, accepted.text
+
+
 def test_accept_invitation_issues_app_token_and_membership(client: TestClient, *, identity) -> None:
     family_id = _create_family_ledger(client, identity=identity)
     family_app = _switch_to(client, family_id, identity.app_headers)

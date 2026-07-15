@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.config import get_settings
 from app.errors import AppError
@@ -73,6 +73,65 @@ def _session_principal_is_active(db: Session, token: AuthToken) -> bool:
         .where(Device.revoked_at.is_(None))
     )
     return row is not None
+
+
+def set_session_family_ledger_default(
+    db: Session,
+    *,
+    token: AuthToken,
+    ledger_id: str,
+) -> None:
+    """Keep the compatibility ledger default linearizable across refreshes.
+
+    ``SessionRefreshAttempt`` is the durable edge between predecessor and
+    replacement credentials. A graced predecessor may finish work that was
+    authenticated before rotation, so every credential in that receipt chain
+    must observe the same default ledger.
+    """
+
+    source_token = aliased(AuthToken)
+    edges = db.execute(
+        select(
+            SessionRefreshAttempt.source_token_id,
+            SessionRefreshAttempt.replacement_token_id,
+        )
+        .join(
+            source_token,
+            source_token.id == SessionRefreshAttempt.source_token_id,
+        )
+        .where(source_token.account_id == token.account_id)
+        .where(source_token.device_id == token.device_id)
+        .where(source_token.scope == "app")
+    ).all()
+    family_ids = {token.id}
+    while True:
+        expanded = family_ids | {
+            token_id
+            for source_token_id, replacement_token_id in edges
+            if source_token_id in family_ids or replacement_token_id in family_ids
+            for token_id in (source_token_id, replacement_token_id)
+        }
+        if expanded == family_ids:
+            break
+        family_ids = expanded
+
+    family = list(
+        db.scalars(
+            select(AuthToken)
+            .where(AuthToken.id.in_(family_ids))
+            .order_by(AuthToken.id.asc())
+            .with_for_update()
+        )
+    )
+    if len(family) != len(family_ids) or any(
+        member.account_id != token.account_id
+        or member.device_id != token.device_id
+        or member.scope != "app"
+        for member in family
+    ):
+        raise _invalid_refresh()
+    for member in family:
+        member.ledger_id = ledger_id
 
 
 def _recover_committed_refresh(

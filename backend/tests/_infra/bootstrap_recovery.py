@@ -212,6 +212,59 @@ def assert_response_loss_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
         get_settings.cache_clear()
 
 
+def assert_migration_revoked_pairing_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
+    Base.metadata.drop_all(bind=engine)
+    init_db()
+
+    try:
+        with TestClient(app) as client:
+            initial = _post_bootstrap(
+                client,
+                secret=_VECTOR_SECRET,
+                body={
+                    "account_name": "Vector Owner",
+                    "ledger_name": "Vector Ledger",
+                    "device_name": "Vector Windows",
+                },
+            )
+            assert initial.status_code == 200, initial.text
+
+            migration_time = now_utc()
+            with SessionLocal() as db:
+                pairing = db.query(PairingCode).filter(
+                    PairingCode.code_hash == hash_pairing_code(_VECTOR_PAIRING_CODE)
+                ).one()
+                issuer_device_id = pairing.created_by_device_id
+                assert issuer_device_id is not None
+                pairing.created_by_device_id = None
+                pairing.revoked_at = migration_time
+                db.commit()
+
+            recovered = _post_bootstrap(client, secret=_VECTOR_SECRET)
+            assert recovered.status_code == 200, recovered.text
+            assert recovered.json()["pairing_code"] == _VECTOR_PAIRING_CODE
+
+            with SessionLocal() as db:
+                pairing = db.query(PairingCode).filter(
+                    PairingCode.code_hash == hash_pairing_code(_VECTOR_PAIRING_CODE)
+                ).one()
+                assert pairing.created_by_device_id == issuer_device_id
+                assert pairing.revoked_at is None
+                assert ensure_utc(pairing.expires_at) > migration_time
+
+            paired = client.post(
+                "/api/auth/pair",
+                json=pairing_payload(
+                    _VECTOR_PAIRING_CODE,
+                    device_name="Recovered Android",
+                ),
+            )
+            assert paired.status_code == 200, paired.text
+    finally:
+        get_settings.cache_clear()
+
+
 def assert_failure_rolls_back_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     secret = "rollback-bootstrap-secret-with-32-byte-minimum"
     _enable_http_bootstrap(monkeypatch, secret)

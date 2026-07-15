@@ -22,6 +22,7 @@ from tests._infra.assets import PNG_BYTES
 from tests._infra.bootstrap_recovery import (
     assert_expired_pairing_recovery_fails_closed,
     assert_failure_rolls_back_and_retries,
+    assert_migration_revoked_pairing_recovery,
     assert_response_loss_recovery,
     assert_revoked_admin_recovery_fails_closed,
     assert_used_pairing_recovery_finalizes_existing_identity,
@@ -150,6 +151,12 @@ def test_bootstrap_owner_accepts_valid_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     assert_response_loss_recovery(monkeypatch)
+
+
+def test_bootstrap_owner_recovers_pairing_revoked_by_provenance_migration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert_migration_revoked_pairing_recovery(monkeypatch)
 
 
 def test_bootstrap_owner_rolls_back_if_pairing_creation_fails(
