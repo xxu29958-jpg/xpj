@@ -19,7 +19,7 @@ from app.models import Account, AuthToken, Device, Invitation, Ledger, LedgerMem
 from app.services.identity_service import hash_secret
 from app.services.invitation_service import create_invitation
 from app.services.time_service import now_utc, to_iso
-from tests.pairing_test_support import invitation_accept_payload
+from tests.pairing_test_support import invitation_accept_payload, session_refresh_payload
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -64,6 +64,23 @@ def _prepare_existing_session_invitation(token: str) -> tuple[datetime, int, tup
         token_row.expires_at = expected_expiry
         db.commit()
         return expected_expiry, token_row.account_id, _identity_row_counts(db)
+
+
+def _disable_default_membership(token: str) -> tuple[int, str]:
+    with SessionLocal() as db:
+        token_row = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(token))
+        )
+        assert token_row is not None
+        membership = db.scalar(
+            select(LedgerMember)
+            .where(LedgerMember.ledger_id == token_row.ledger_id)
+            .where(LedgerMember.account_id == token_row.account_id)
+        )
+        assert membership is not None
+        membership.disabled_at = now_utc()
+        db.commit()
+        return token_row.account_id, token_row.ledger_id
 
 
 def _identity_row_counts(db: Session) -> tuple[int, int, int]:
@@ -378,6 +395,149 @@ def test_existing_session_accepts_new_ledger_without_changing_identity(
     )
 
 
+def test_graced_source_token_can_finish_invitation_acceptance_after_refresh_wins(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    family_id, invite = _mint_foreign_ledger_invitation()
+    original_token = identity.app_headers["Authorization"].removeprefix("Bearer ")
+    with SessionLocal() as db:
+        token = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(original_token))
+        )
+        assert token is not None
+        token.expires_at = now_utc() + timedelta(days=30)
+        db.commit()
+
+    refreshed = client.post(
+        "/api/auth/refresh",
+        headers=identity.app_headers,
+        json=session_refresh_payload(),
+    )
+    assert refreshed.status_code == 200, refreshed.text
+
+    accepted = _accept_existing_session_invitation(
+        client,
+        headers=identity.app_headers,
+        invite=invite,
+        account_name="不得覆盖原成员名",
+        device_name="不得覆盖原设备名",
+    )
+    assert accepted["session_token"] == original_token
+
+    selected = client.get(
+        "/api/auth/check",
+        headers={
+            "Authorization": f"Bearer {refreshed.json()['session_token']}",
+            "X-Ticketbox-Ledger-ID": family_id,
+        },
+    )
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["ledger_id"] == family_id
+
+
+def test_session_principal_lists_devices_and_switches_after_default_membership_is_disabled(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    token = identity.app_headers["Authorization"].removeprefix("Bearer ")
+    with SessionLocal() as db:
+        token_row = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(token))
+        )
+        assert token_row is not None
+        target_ledger_id = "principal-surviving-ledger"
+        db.add(
+            Ledger(
+                ledger_id=target_ledger_id,
+                name="主体存活账本",
+                owner_account_id=token_row.account_id,
+            )
+        )
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id=target_ledger_id,
+                account_id=token_row.account_id,
+                role="owner",
+            )
+        )
+        db.commit()
+    _, disabled_ledger_id = _disable_default_membership(token)
+    stale_headers = {
+        **identity.app_headers,
+        "X-Ticketbox-Ledger-ID": disabled_ledger_id,
+    }
+
+    listed = client.get("/api/ledgers", headers=stale_headers)
+    assert listed.status_code == 200, listed.text
+    assert target_ledger_id in {
+        ledger["ledger_id"] for ledger in listed.json()["ledgers"]
+    }
+
+    devices = client.get(
+        f"/api/ledgers/{disabled_ledger_id}/devices",
+        headers=stale_headers,
+    )
+    assert devices.status_code == 200, devices.text
+    assert any(device["is_current"] for device in devices.json()["devices"])
+
+    switched = client.post(
+        f"/api/ledgers/{target_ledger_id}/switch",
+        headers=stale_headers,
+    )
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["ledger"]["ledger_id"] == target_ledger_id
+
+
+def test_session_principal_accepts_invitation_without_an_active_ledger(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    family_id, invite = _mint_foreign_ledger_invitation()
+    token = identity.app_headers["Authorization"].removeprefix("Bearer ")
+    with SessionLocal() as db:
+        token_row = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(token))
+        )
+        assert token_row is not None
+        token_row.expires_at = now_utc() + timedelta(days=30)
+        db.commit()
+    _, disabled_ledger_id = _disable_default_membership(token)
+    stale_headers = {
+        **identity.app_headers,
+        "X-Ticketbox-Ledger-ID": disabled_ledger_id,
+    }
+
+    refreshed = client.post(
+        "/api/auth/refresh",
+        headers=stale_headers,
+        json=session_refresh_payload(),
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    refreshed_token = refreshed.json()["session_token"]
+
+    accepted = _accept_existing_session_invitation(
+        client,
+        headers={"Authorization": f"Bearer {refreshed_token}"},
+        invite=invite,
+        account_name="不得覆盖原成员名",
+        device_name="不得覆盖原设备名",
+    )
+    assert accepted["session_token"] == refreshed_token
+    assert accepted["ledger_id"] == family_id
+
+    listed = client.get(
+        "/api/ledgers",
+        headers={"Authorization": f"Bearer {refreshed_token}"},
+    )
+    assert listed.status_code == 200, listed.text
+    assert family_id in {ledger["ledger_id"] for ledger in listed.json()["ledgers"]}
+
+
 def test_accept_already_used_invitation(client: TestClient, *, identity) -> None:
     family_id = _create_family_ledger(client, identity=identity)
     family_app = _switch_to(client, family_id, identity.app_headers)
@@ -629,14 +789,37 @@ def test_member_cannot_change_roles_and_owner_role_is_fixed(client: TestClient, 
 
 
 # ---------------------------------------------------------------------------
-# T11 — disabling member revokes their token
+# T11 — disabling one membership does not revoke the Account device session
 # ---------------------------------------------------------------------------
 
 
-def test_disable_member_revokes_active_tokens(client: TestClient, *, identity) -> None:
+def test_disable_member_blocks_only_that_ledger(client: TestClient, *, identity) -> None:
     family_id = _create_family_ledger(client, identity=identity)
     family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
+
+    with SessionLocal() as db:
+        token = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(member_token))
+        )
+        assert token is not None
+        private_ledger_id = "disabled_member_private"
+        db.add(
+            Ledger(
+                ledger_id=private_ledger_id,
+                name="成员个人账本",
+                owner_account_id=token.account_id,
+            )
+        )
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id=private_ledger_id,
+                account_id=token.account_id,
+                role="owner",
+            )
+        )
+        db.commit()
 
     # Member token works at first.
     ok = client.get("/api/auth/check", headers=_bearer(member_token))
@@ -652,9 +835,19 @@ def test_disable_member_revokes_active_tokens(client: TestClient, *, identity) -
     assert disable.status_code == 200
     assert disable.json()["disabled_at"] is not None
 
-    # Token is now 401.
+    # The disabled ledger is closed by Membership, not by destroying a
+    # DeviceSession that remains valid for the same Account's other ledger.
     fail = client.get("/api/auth/check", headers=_bearer(member_token))
     assert fail.status_code == 401
+    private = client.get(
+        "/api/auth/check",
+        headers={
+            **_bearer(member_token),
+            "X-Ticketbox-Ledger-ID": private_ledger_id,
+        },
+    )
+    assert private.status_code == 200, private.text
+    assert private.json()["ledger_id"] == private_ledger_id
 
 
 def test_cannot_disable_owner_or_self(client: TestClient, *, identity) -> None:

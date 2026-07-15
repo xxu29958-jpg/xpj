@@ -41,15 +41,15 @@ from app.services.ledger_archive_service import (
 )
 from app.services.ledger_contracts import LedgerSummary, SwitchLedgerResult
 from app.services.session_credential_lock import (
-    lock_and_revalidate_credential_mint_context,
     lock_and_revalidate_mutation_actor,
+    lock_and_revalidate_session_principal,
 )
 from app.services.session_lifecycle_service import (
     app_token_soft_refresh_after,
     hash_secret,
 )
 from app.services.time_service import ensure_utc, to_iso
-from app.tenants import DEFAULT_TENANT_ID, AuthContext
+from app.tenants import DEFAULT_TENANT_ID, AuthContext, SessionPrincipal
 
 LEDGER_ID_PREFIX = "ledger_"
 LEDGER_NAME_MAX_LEN = 60
@@ -250,17 +250,17 @@ def list_archived_ledgers_for_account(db: Session, *, account_id: int) -> list[L
 def _lock_ledger_switch_context(
     db: Session,
     *,
-    auth: AuthContext,
+    principal: SessionPrincipal,
     account_id: int,
     device_id: int,
     target_ledger_id: str,
-) -> tuple[AuthContext, Ledger, LedgerMember, Device]:
-    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
+) -> tuple[SessionPrincipal, Ledger, LedgerMember, Device]:
+    locked_principal = lock_and_revalidate_session_principal(db, principal)
     if (
-        locked_auth is None
-        or locked_auth.scope != "app"
-        or locked_auth.account_id != account_id
-        or locked_auth.device_id != device_id
+        locked_principal is None
+        or locked_principal.scope != "app"
+        or locked_principal.account_id != account_id
+        or locked_principal.device_id != device_id
     ):
         raise AppError("invalid_token", status_code=401)
 
@@ -278,45 +278,44 @@ def _lock_ledger_switch_context(
     membership = db.scalar(
         select(LedgerMember)
         .where(LedgerMember.ledger_id == ledger.ledger_id)
-        .where(LedgerMember.account_id == locked_auth.account_id)
+        .where(LedgerMember.account_id == locked_principal.account_id)
         .with_for_update()
     )
     if membership is None or membership.disabled_at is not None:
         raise AppError("ledger_forbidden", status_code=403)
-    device = db.get(Device, locked_auth.device_id)
+    device = db.get(Device, locked_principal.device_id)
     if device is None or device.revoked_at is not None:
         raise AppError("invalid_token", status_code=401)
-    return locked_auth, ledger, membership, device
+    return locked_principal, ledger, membership, device
 
 
 def switch_ledger(
     db: Session,
     *,
-    auth: AuthContext,
+    principal: SessionPrincipal,
     current_token_value: str,
     account_id: int,
     device_id: int,
     target_ledger_id: str,
 ) -> SwitchLedgerResult:
     """Select a ledger without replacing the Account/Device session."""
-    locked_auth, ledger, membership, device = _lock_ledger_switch_context(
+    locked_principal, ledger, membership, device = _lock_ledger_switch_context(
         db,
-        auth=auth,
+        principal=principal,
         account_id=account_id,
         device_id=device_id,
         target_ledger_id=target_ledger_id,
     )
 
-    if hash_secret(current_token_value) != locked_auth.credential_hash:
+    if hash_secret(current_token_value) != locked_principal.credential_hash:
         raise AppError("invalid_token", status_code=401)
-    token = db.get(AuthToken, locked_auth.credential_id)
+    token = db.get(AuthToken, locked_principal.credential_id)
     if (
         token is None
-        or token.token_hash != locked_auth.credential_hash
-        or token.account_id != locked_auth.account_id
+        or token.token_hash != locked_principal.credential_hash
+        or token.account_id != locked_principal.account_id
         or token.device_id != device.id
         or token.scope != "app"
-        or token.revoked_at is not None
     ):
         raise AppError("invalid_token", status_code=401)
 
@@ -329,7 +328,7 @@ def switch_ledger(
 
     return SwitchLedgerResult(
         session_token=current_token_value,
-        account_public_id=locked_auth.account_public_id,
+        account_public_id=locked_principal.account_public_id,
         device_public_id=device.public_id,
         expires_at=to_iso(ensure_utc(token.expires_at)),
         soft_refresh_after=to_iso(app_token_soft_refresh_after(token.expires_at)),
@@ -339,7 +338,7 @@ def switch_ledger(
         is_default=(ledger.ledger_id == DEFAULT_TENANT_ID),
         created_at=to_iso(ledger.created_at),
         archived_at=to_iso(ledger.archived_at),
-        account_name=locked_auth.account_name,
+        account_name=locked_principal.account_name,
         device_name=device.device_name,
     )
 

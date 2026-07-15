@@ -204,7 +204,7 @@ def accept_invitation_endpoint(
         device_name=payload.device_name,
         platform=payload.platform,
         session_token=current_session.token if current_session is not None else None,
-        auth=current_session.auth if current_session is not None else None,
+        principal=current_session.principal if current_session is not None else None,
         enrollment_attempt_id=(
             str(payload.enrollment_attempt_id)
             if payload.enrollment_attempt_id is not None

@@ -30,7 +30,7 @@ from app.errors import AppError
 from app.network_boundary import pairing_rate_limit_key
 from app.routes.web_common import _safe_same_site_redirect_path, templates
 from app.services.identity_service import (
-    ENROLLMENT_ATTEMPT_RECOVERY_SECONDS,
+    ENROLLMENT_PROOF_COOKIE_SECONDS,
     WEB_SESSION_TTL_SECONDS,
     authenticate_web_session_token,
     pair_device,
@@ -44,7 +44,7 @@ SESSION_COOKIE_NAME = "__Host-session"
 SESSION_COOKIE_MAX_AGE_SECONDS = WEB_SESSION_TTL_SECONDS  # fixed 8h server-side TTL
 PAIRING_ATTEMPT_COOKIE_NAME = "__Secure-pairing-attempt"
 PAIRING_ATTEMPT_COOKIE_PATH = "/web/auth"
-PAIRING_ATTEMPT_COOKIE_MAX_AGE_SECONDS = ENROLLMENT_ATTEMPT_RECOVERY_SECONDS
+PAIRING_ATTEMPT_COOKIE_MAX_AGE_SECONDS = ENROLLMENT_PROOF_COOKIE_SECONDS
 # `__Host-` prefix demands: Secure, Path=/, no Domain attribute. Browsers
 # refuse to honour the cookie if any of these is missing or modified.
 # See the MDN cookie-prefix reference for the browser-side invariants.

@@ -21748,22 +21748,6 @@
               ],
               "title": "Authorization"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-Ticketbox-Ledger-ID",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Ticketbox-Ledger-Id"
-            }
           }
         ],
         "requestBody": {
@@ -21883,22 +21867,6 @@
                 }
               ],
               "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Ticketbox-Ledger-ID",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Ticketbox-Ledger-Id"
             }
           }
         ],
@@ -23040,22 +23008,6 @@
                 }
               ],
               "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Ticketbox-Ledger-ID",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Ticketbox-Ledger-Id"
             }
           }
         ],

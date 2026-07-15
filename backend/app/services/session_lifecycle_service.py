@@ -289,38 +289,6 @@ def consume_pairing_code(
     return "expired"
 
 
-def revoke_active_tokens(
-    db: Session,
-    *,
-    revoked_at: datetime | None = None,
-    account_ids: list[int] | tuple[int, ...] | set[int] | None = None,
-    account_id: int | None = None,
-    device_id: int | None = None,
-    ledger_id: str | None = None,
-    scope: str | None = None,
-) -> int:
-    lock_bootstrap_owner_transaction(db)
-    revoked_at = revoked_at or now_utc()
-    statement = update(AuthToken).where(AuthToken.revoked_at.is_(None))
-    if account_ids is not None:
-        ids = list(account_ids)
-        if not ids:
-            return 0
-        statement = statement.where(AuthToken.account_id.in_(ids))
-    if account_id is not None:
-        statement = statement.where(AuthToken.account_id == account_id)
-    if device_id is not None:
-        statement = statement.where(AuthToken.device_id == device_id)
-    if ledger_id is not None:
-        statement = statement.where(AuthToken.ledger_id == ledger_id)
-    if scope is not None:
-        statement = statement.where(AuthToken.scope == scope)
-    result = db.execute(
-        statement.values(revoked_at=revoked_at, grace_until=None).execution_options(synchronize_session=False)
-    )
-    return int(result.rowcount or 0)
-
-
 def revoke_web_session_token(db: Session, *, token_value: str, revoked_at: datetime | None = None) -> bool:
     """Revoke a /web logout cookie if (and only if) it backs an active web session.
 

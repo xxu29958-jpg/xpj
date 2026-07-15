@@ -138,7 +138,6 @@ def _run_stale_admin_mutation(
             new_name="must not commit",
             auth=auth,
             actor_account_id=auth.account_id,
-            ledger_ids=scope,
         )
     elif label == "device-revoke":
         assert public_id is not None
@@ -148,7 +147,6 @@ def _run_stale_admin_mutation(
             current_device_public_id=_current_device_public_id(auth),
             auth=auth,
             actor_account_id=auth.account_id,
-            ledger_ids=scope,
         )
     elif label == "device-delete":
         assert public_id is not None
@@ -158,7 +156,6 @@ def _run_stale_admin_mutation(
             current_device_public_id=_current_device_public_id(auth),
             auth=auth,
             actor_account_id=auth.account_id,
-            ledger_ids=scope,
         )
     elif label == "upload-create":
         admin_service.create_upload_link(

@@ -56,7 +56,7 @@ def list_devices_endpoint(
 ) -> list[AdminDeviceResponse]:
     return [
         _device_response(s)
-        for s in admin_service.list_devices(db, ledger_ids=manageable_ledger_ids(db, auth))
+        for s in admin_service.list_devices(db, account_id=auth.account_id)
     ]
 
 

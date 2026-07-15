@@ -8,11 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select
-
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import Ledger
 from app.services.admin_service import cleanup_revoked_devices
 from app.services.scheduler_lease_service import try_claim_scheduler_lease
 
@@ -75,35 +72,9 @@ def _seconds_until_next_run(now: datetime, daily_at: time) -> float:
 
 
 def _run_cleanup_once() -> tuple[int, int]:
-    ledgers_scanned = 0
-    devices_deleted = 0
-    failed_ledgers = 0
     with SessionLocal() as db:
-        ledger_ids = list(
-            db.scalars(
-                select(Ledger.ledger_id)
-                .where(Ledger.archived_at.is_(None))
-                .order_by(Ledger.ledger_id.asc())
-            )
-        )
-        for ledger_id in ledger_ids:
-            try:
-                result = cleanup_revoked_devices(db, tenant_id=ledger_id)
-            except Exception:  # noqa: BLE001 - one ledger must not abort the whole sweep
-                failed_ledgers += 1
-                # Reset the session so a half-applied failure doesn't poison the
-                # next ledger's queries.
-                db.rollback()
-                logger.exception("device cleanup failed for ledger %s", ledger_id)
-                continue
-            ledgers_scanned += 1
-            devices_deleted += result.deleted_devices
-    if failed_ledgers:
-        logger.warning(
-            "device cleanup: %s ledger(s) failed and were skipped this run",
-            failed_ledgers,
-        )
-    return ledgers_scanned, devices_deleted
+        result = cleanup_revoked_devices(db)
+    return result.scanned, result.deleted_devices
 
 
 def _scheduler_loop(
@@ -125,12 +96,12 @@ def _scheduler_loop(
                 ):
                     logger.info("device cleanup skipped: scheduler lease is held")
                     continue
-            ledgers_scanned, devices_deleted = _run_cleanup_once()
+            devices_scanned, devices_deleted = _run_cleanup_once()
             _status.success_count += 1
             _status.last_success_at = datetime.now(timezone)
             logger.info(
-                "device cleanup: ledgers=%s deleted_devices=%s",
-                ledgers_scanned,
+                "device cleanup: scanned=%s deleted_devices=%s",
+                devices_scanned,
                 devices_deleted,
             )
         except Exception as exc:  # noqa: BLE001 - daemon thread guard

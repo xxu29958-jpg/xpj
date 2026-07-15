@@ -15,14 +15,11 @@ from app.models import (
     Account,
     AuthToken,
     Device,
-    Ledger,
-    LedgerMember,
     SessionRefreshAttempt,
 )
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import (
     app_token_expiry_window,
-    app_token_soft_refresh_after,
     derive_session_refresh_token,
     hash_secret,
     hash_session_refresh_attempt_secret,
@@ -64,23 +61,16 @@ def _proof(secret: str, attempt_id: str) -> tuple[str, str]:
         raise _invalid_refresh() from exc
 
 
-def _principal_is_active(db: Session, token: AuthToken) -> bool:
+def _session_principal_is_active(db: Session, token: AuthToken) -> bool:
+    """Validate the Account/Device session independently of its ledger default."""
+
     row = db.scalar(
-        select(LedgerMember.id)
-        .join(Account, Account.id == LedgerMember.account_id)
-        .join(Ledger, Ledger.ledger_id == LedgerMember.ledger_id)
-        .join(
-            Device,
-            (Device.id == token.device_id) & (Device.account_id == Account.id),
-        )
+        select(Device.id)
+        .join(Account, Account.id == Device.account_id)
         .where(Account.id == token.account_id)
         .where(Account.disabled_at.is_(None))
+        .where(Device.id == token.device_id)
         .where(Device.revoked_at.is_(None))
-        .where(Ledger.ledger_id == token.ledger_id)
-        .where(Ledger.archived_at.is_(None))
-        .where(LedgerMember.account_id == token.account_id)
-        .where(LedgerMember.disabled_at.is_(None))
-        .limit(1)
     )
     return row is not None
 
@@ -114,7 +104,7 @@ def _recover_committed_refresh(
         or replacement.device_id != source.device_id
         or replacement.ledger_id != source.ledger_id
         or not hmac.compare_digest(replacement.token_hash, hash_secret(replacement_value))
-        or not _principal_is_active(db, replacement)
+        or not _session_principal_is_active(db, replacement)
     ):
         raise _invalid_refresh()
     attempt.last_issued_at = checked_at
@@ -122,7 +112,7 @@ def _recover_committed_refresh(
         session_token=replacement_value,
         refresh_attempt_id=attempt.public_id,
         expires_at=replacement_expires_at,
-        soft_refresh_after=app_token_soft_refresh_after(replacement_expires_at),
+        soft_refresh_after=ensure_utc(attempt.session_soft_refresh_after),
     )
 
 
@@ -148,7 +138,7 @@ def refresh_legacy_app_session(
         source.revoked_at is not None
         or source_expires_at is None
         or source_expires_at <= refreshed_at
-        or not _principal_is_active(db, source)
+        or not _session_principal_is_active(db, source)
     ):
         raise _invalid_refresh()
     expiry = app_token_expiry_window(refreshed_at)
@@ -193,7 +183,7 @@ def _rotate_new_refresh(
         source.revoked_at is not None
         or source_expires_at is None
         or source_expires_at <= checked_at
-        or not _principal_is_active(db, source)
+        or not _session_principal_is_active(db, source)
     ):
         raise _invalid_refresh()
 
@@ -222,6 +212,7 @@ def _rotate_new_refresh(
             source_token_id=source.id,
             replacement_token_id=replacement.id,
             secret_hash=secret_hash,
+            session_soft_refresh_after=expiry.soft_refresh_after,
             expires_at=expiry.expires_at,
             last_issued_at=checked_at,
             created_at=checked_at,

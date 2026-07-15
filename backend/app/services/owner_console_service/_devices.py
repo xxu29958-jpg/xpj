@@ -1,5 +1,4 @@
-"""Owner Console device management — thin wrappers over admin_service that
-scope every operation to the local owner's managed ledger set."""
+"""Owner Console device management for the canonical local owner Account."""
 
 from __future__ import annotations
 
@@ -12,10 +11,7 @@ from app.services.admin_service import (
     rename_device,
     revoke_device,
 )
-from app.services.owner_console_service._ledger_console import (
-    _managed_console_ledger_ids,
-    _require_owner_id,
-)
+from app.services.owner_console_service._ledger_console import _require_owner_id
 
 __all__ = [
     "DeviceSummary",
@@ -27,7 +23,7 @@ __all__ = [
 
 
 def get_devices(db: Session) -> list[DeviceSummary]:
-    return list_devices(db, ledger_ids=_managed_console_ledger_ids(db))
+    return list_devices(db, account_id=_require_owner_id(db))
 
 
 def do_revoke_device(db: Session, public_id: str, current_device_public_id: str) -> DeviceSummary:
