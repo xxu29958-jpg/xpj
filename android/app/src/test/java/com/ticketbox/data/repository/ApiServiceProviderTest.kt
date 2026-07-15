@@ -1,6 +1,7 @@
 ﻿package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.SessionAwareApiServiceFactory
 import com.ticketbox.security.LocalSessionIdentity
@@ -8,11 +9,20 @@ import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.SessionCredentialRotator
 import com.ticketbox.security.StoredSessionToken
+import kotlinx.coroutines.runBlocking
+import java.io.IOException
 import java.lang.reflect.Proxy
+import java.net.ServerSocket
+import java.net.SocketTimeoutException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ApiServiceProviderTest {
     @Test
@@ -20,10 +30,11 @@ class ApiServiceProviderTest {
         val sessionStore = providerSessionStore(token = "token-1")
         val factory = RecordingApiFactory()
         val provider = provider(factory, sessionStore)
+        val initial = requireNotNull(sessionStore.currentSession())
 
         provider.bound(
             serverUrl = "https://api.example.com",
-            sessionGeneration = "session-1",
+            expectedVersion = initial.version,
             ledgerId = "owner",
         )
 
@@ -31,20 +42,27 @@ class ApiServiceProviderTest {
         assertEquals("token-1", factory.creations.single().tokenProvider())
         assertEquals("owner", factory.creations.single().ledgerIdProvider())
 
-        val currentSession = requireNotNull(sessionStore.currentSession())
         sessionStore.replaceForFixture(
-            currentSession.copy(
-                bindingRevision = "binding-2",
+            initial.copy(
                 credential = StoredSessionToken("token-2"),
-                identity = currentSession.identity.copy(
+            ),
+        )
+
+        assertEquals("token-2", factory.creations.single().tokenProvider())
+        assertEquals("owner", factory.creations.single().ledgerIdProvider())
+
+        sessionStore.replaceForFixture(
+            requireNotNull(sessionStore.currentSession()).copy(
+                bindingRevision = "binding-2",
+                identity = initial.identity.copy(
                     ledgerId = "family",
                     ledgerName = "家庭账本",
                 ),
             ),
         )
 
-        assertEquals("token-2", factory.creations.single().tokenProvider())
-        assertEquals("owner", factory.creations.single().ledgerIdProvider())
+        assertNull(factory.creations.single().tokenProvider())
+        assertNull(factory.creations.single().ledgerIdProvider())
 
         sessionStore.replaceForFixture(
             requireNotNull(sessionStore.currentSession()).copy(
@@ -56,6 +74,45 @@ class ApiServiceProviderTest {
 
         assertNull(factory.creations.single().tokenProvider())
         assertNull(factory.creations.single().ledgerIdProvider())
+    }
+
+    @Test
+    fun requestInvalidatedBeforeAuthSnapshotDoesNotReachNetwork() {
+        ServerSocket(0).use { server ->
+            server.soTimeout = 300
+            val sessionStore = providerSessionStore(
+                serverUrl = "http://127.0.0.1:${server.localPort}",
+            )
+            val initial = requireNotNull(sessionStore.currentSession())
+            val credentials = BlockingSessionCredentials(SessionCredentialAdapter(sessionStore))
+            val provider = ApiServiceProvider(ApiClient(), sessionStore, credentials)
+            val service = provider.bound(
+                serverUrl = initial.serverUrl,
+                expectedVersion = initial.version,
+                ledgerId = initial.identity.ledgerId,
+            )
+            val failure = AtomicReference<Throwable>()
+            val request = thread(name = "ticketbox-auth-snapshot-race") {
+                failure.set(runCatching { runBlocking { service.checkAuth() } }.exceptionOrNull())
+            }
+
+            assertTrue(credentials.readStarted.await(2, TimeUnit.SECONDS))
+            sessionStore.replaceForFixture(
+                initial.copy(
+                    bindingRevision = "binding-2",
+                    identity = initial.identity.copy(
+                        ledgerId = "family",
+                        ledgerName = "家庭账本",
+                    ),
+                ),
+            )
+            credentials.continueRead.countDown()
+            request.join(5_000)
+
+            assertTrue(!request.isAlive)
+            assertTrue(failure.get() is IOException)
+            assertFailsWith<SocketTimeoutException> { server.accept() }
+        }
     }
 
     @Test
@@ -95,6 +152,19 @@ class ApiServiceProviderTest {
         assertNull(factory.creations.single().tokenProvider())
     }
 
+}
+
+private class BlockingSessionCredentials(
+    private val delegate: SessionCredentialRotator,
+) : SessionCredentialRotator by delegate {
+    val readStarted = CountDownLatch(1)
+    val continueRead = CountDownLatch(1)
+
+    override fun requestAuthSnapshot() = run {
+        readStarted.countDown()
+        check(continueRead.await(2, TimeUnit.SECONDS))
+        delegate.requestAuthSnapshot()
+    }
 }
 
 private fun provider(

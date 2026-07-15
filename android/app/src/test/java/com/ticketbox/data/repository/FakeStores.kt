@@ -364,6 +364,23 @@ internal class InMemoryLocalSessionStore(
                 }
         }
 
+        override suspend fun resume(
+            expectedSessionGeneration: String,
+            expectedToken: String,
+        ): PendingSessionRefresh? = synchronized(lock) {
+            val current = session ?: return@synchronized null
+            if (current.sessionGeneration != expectedSessionGeneration ||
+                current.credential.token != expectedToken
+            ) {
+                return@synchronized null
+            }
+            val fingerprint = testTokenFingerprint(expectedToken)
+            pendingRefresh?.takeIf {
+                it.sessionGeneration == expectedSessionGeneration &&
+                    it.sourceTokenFingerprint == fingerprint
+            }
+        }
+
         override suspend fun completeIfCurrent(
             expectedSessionGeneration: String,
             expectedToken: String,

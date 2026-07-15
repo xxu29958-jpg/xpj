@@ -5,7 +5,9 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.SessionAwareApiServiceFactory
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
+import com.ticketbox.security.LocalSessionVersion
 import com.ticketbox.security.PendingSessionRefresh
+import com.ticketbox.security.RequestAuthSnapshot
 import com.ticketbox.security.SessionCredentialRotator
 import com.ticketbox.security.StoredSessionToken
 import kotlinx.coroutines.flow.Flow
@@ -20,13 +22,13 @@ class ApiServiceProvider(
 ) {
     internal fun bound(
         serverUrl: String,
-        sessionGeneration: String,
+        expectedVersion: LocalSessionVersion,
         ledgerId: String,
     ): ApiService {
         val cleanServerUrl = requireServerUrl(serverUrl)
         val scopedCredentials = ScopedSessionCredentials(
             delegate = credentials,
-            expectedSessionGeneration = sessionGeneration,
+            expectedVersion = expectedVersion,
             ledgerId = ledgerId,
         )
         return if (apiClient is SessionAwareApiServiceFactory) {
@@ -63,29 +65,47 @@ class ApiServiceProvider(
 
 private class ScopedSessionCredentials(
     private val delegate: SessionCredentialRotator,
-    private val expectedSessionGeneration: String,
+    private val expectedVersion: LocalSessionVersion,
     private val ledgerId: String,
 ) : SessionCredentialRotator {
     override fun getToken(): String? =
-        if (isCurrentGeneration()) delegate.getToken() else null
+        requestAuthSnapshot()?.credential?.token
 
     override fun currentLedgerId(): String? =
-        ledgerId.takeIf { isCurrentGeneration() }
+        requestAuthSnapshot()?.ledgerId
 
     override fun getSessionToken(): StoredSessionToken? =
-        if (isCurrentGeneration()) delegate.getSessionToken() else null
+        requestAuthSnapshot()?.credential
 
     override fun sessionGeneration(): String? =
-        expectedSessionGeneration.takeIf { isCurrentGeneration() }
+        expectedVersion.sessionGeneration.takeIf { isCurrentGeneration() }
+
+    override fun requestAuthSnapshot(): RequestAuthSnapshot? =
+        delegate.requestAuthSnapshot()?.takeIf { snapshot ->
+            snapshot.version == expectedVersion && snapshot.ledgerId == ledgerId
+        }
 
     override suspend fun beginOrReuseSessionRefresh(
         expectedSessionGeneration: String,
         expectedToken: String,
     ): PendingSessionRefresh? {
-        if (expectedSessionGeneration != this.expectedSessionGeneration || !isCurrentGeneration()) {
+        if (expectedSessionGeneration != expectedVersion.sessionGeneration || !isCurrentGeneration()) {
             return null
         }
         return delegate.beginOrReuseSessionRefresh(
+            expectedSessionGeneration = expectedSessionGeneration,
+            expectedToken = expectedToken,
+        )
+    }
+
+    override suspend fun resumeSessionRefresh(
+        expectedSessionGeneration: String,
+        expectedToken: String,
+    ): PendingSessionRefresh? {
+        if (expectedSessionGeneration != expectedVersion.sessionGeneration || !isCurrentGeneration()) {
+            return null
+        }
+        return delegate.resumeSessionRefresh(
             expectedSessionGeneration = expectedSessionGeneration,
             expectedToken = expectedToken,
         )
@@ -97,7 +117,7 @@ private class ScopedSessionCredentials(
         refreshAttemptId: String,
         replacement: StoredSessionToken,
     ): Boolean {
-        if (expectedSessionGeneration != this.expectedSessionGeneration || !isCurrentGeneration()) {
+        if (expectedSessionGeneration != expectedVersion.sessionGeneration || !isCurrentGeneration()) {
             return false
         }
         return delegate.completeSessionRefreshIfCurrent(
@@ -109,5 +129,5 @@ private class ScopedSessionCredentials(
     }
 
     private fun isCurrentGeneration(): Boolean =
-        delegate.sessionGeneration() == expectedSessionGeneration
+        delegate.sessionGeneration() == expectedVersion.sessionGeneration
 }

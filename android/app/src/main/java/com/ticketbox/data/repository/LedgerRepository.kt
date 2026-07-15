@@ -51,8 +51,8 @@ import java.time.Instant
  * Repository for v0.4-alpha1 multi-ledger management.
  *
  * Owns the small surface that is **not** about expenses: listing the
- * ledgers an account belongs to, creating a new ledger, and switching
- * the active session token to a different ledger.
+ * ledgers an account belongs to, creating a new ledger, and selecting
+ * the request ledger for the existing Account/Device session.
  *
  * Ownership is decided server-side; this repository never persists or
  * trusts a client-supplied role beyond display purposes.
@@ -140,18 +140,15 @@ class LedgerRepository(
         dto.toSummary()
     }
 
-    /**
-     * Switch the active session token to [ledgerId]. The previous token is
-     * revoked server-side, so we must persist the freshly issued token
-     * before doing any post-switch network calls. The local confirmed-cache
-     * for the *new* ledger is wiped so the next sync repopulates it
-     * exclusively with rows belonging to [ledgerId].
-     */
+    /** Select [ledgerId] without replacing or rotating the device session. */
     suspend fun switchLedger(ledgerId: String): Result<LedgerSummary> = wrap {
         switchLedgerMutex.withLock {
             val session = sessionCoordinator.currentSnapshot()
             val bound = requestGuard.bind(expectedLedgerId = session.activeLedgerId)
             val response = bound.call { api -> api.switchLedger(ledgerId) }
+            check(response.sessionToken == session.sessionToken) {
+                "账本切换返回了不同的设备凭据，已拒绝更新本地会话。"
+            }
             val serverId = response.serverId.requireSessionProtocolId("服务器身份")
             val dataGeneration = response.dataGeneration.requireSessionProtocolId("数据代际")
             val accountPublicId = response.accountPublicId.requireSessionProtocolId("成员身份")
@@ -162,9 +159,6 @@ class LedgerRepository(
                     change = LocalSessionChange.SelectLedger,
                     serverId = serverId,
                     dataGeneration = dataGeneration,
-                    sessionToken = response.sessionToken,
-                    tokenExpiresAt = response.expiresAt,
-                    tokenSoftRefreshAfter = response.softRefreshAfter,
                     identity = LedgerSessionIdentity(
                         accountPublicId = accountPublicId,
                         devicePublicId = devicePublicId,

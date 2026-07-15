@@ -20,9 +20,20 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 
 /** Android Keystore-encrypted source for session and in-flight enrollment state. */
-class SecureSessionStore(context: Context) : LocalSessionStore {
-    private val appContext = context.applicationContext
-    private val persistence = SecureSessionPersistenceProvider.get(appContext)
+class SecureSessionStore private constructor(
+    private val appContext: Context,
+    private val persistence: SecureSessionPersistence,
+) : LocalSessionStore {
+    constructor(context: Context) : this(
+        appContext = context.applicationContext,
+        persistence = SecureSessionPersistenceProvider.get(context.applicationContext),
+    )
+
+    internal constructor(context: Context, dataStore: DataStore<Preferences>) : this(
+        appContext = context.applicationContext,
+        persistence = SecureSessionPersistence(dataStore),
+    )
+
     override val sessionRefresh: SessionRefreshStore = SecureSessionRefreshStore(persistence)
 
     override fun hasPersistedSessionState(): Boolean = persistence.current.hasStateMarker
@@ -133,10 +144,7 @@ private class SecureSessionRefreshStore(
         }
         val fingerprint = sessionTokenFingerprint(expectedToken)
         persisted.pendingSessionRefresh
-            ?.takeIf {
-                it.sessionGeneration == expectedSessionGeneration &&
-                    it.sourceTokenFingerprint == fingerprint
-            }
+            ?.takeIf { it.matches(expectedSessionGeneration, fingerprint) }
             ?: PendingSessionRefresh(
                 attemptId = UUID.randomUUID().toString(),
                 attemptSecret = newAttemptSecret(),
@@ -144,6 +152,22 @@ private class SecureSessionRefreshStore(
                 sourceTokenFingerprint = fingerprint,
                 createdAt = Instant.now().toString(),
             ).also { writeSessionRefresh(it) }
+    }
+
+    override suspend fun resume(
+        expectedSessionGeneration: String,
+        expectedToken: String,
+    ): PendingSessionRefresh? {
+        val persisted = persistence.current
+        val current = persisted.session ?: return null
+        if (current.sessionGeneration != expectedSessionGeneration ||
+            current.credential.token != expectedToken
+        ) {
+            return null
+        }
+        val fingerprint = sessionTokenFingerprint(expectedToken)
+        return persisted.pendingSessionRefresh
+            ?.takeIf { it.matches(expectedSessionGeneration, fingerprint) }
     }
 
     override suspend fun completeIfCurrent(
@@ -157,8 +181,10 @@ private class SecureSessionRefreshStore(
         if (current.sessionGeneration != expectedSessionGeneration ||
             current.credential.token != expectedToken ||
             attempt.attemptId != refreshAttemptId ||
-            attempt.sessionGeneration != expectedSessionGeneration ||
-            attempt.sourceTokenFingerprint != sessionTokenFingerprint(expectedToken)
+            !attempt.matches(
+                expectedSessionGeneration,
+                sessionTokenFingerprint(expectedToken),
+            )
         ) {
             return@update false
         }
@@ -169,6 +195,13 @@ private class SecureSessionRefreshStore(
         true
     }
 }
+
+private fun PendingSessionRefresh.matches(
+    expectedSessionGeneration: String,
+    expectedTokenFingerprint: String,
+): Boolean =
+    sessionGeneration == expectedSessionGeneration &&
+        sourceTokenFingerprint == expectedTokenFingerprint
 
 private fun newAttemptSecret(): String {
     val bytes = ByteArray(32).also(SecureRandom()::nextBytes)

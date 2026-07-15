@@ -15,13 +15,14 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SessionRefreshControllerTest {
     private val scheduler = SessionRefreshScheduler()
 
     @Test
-    fun responseLossReusesPersistedAttemptAfterControllerReconstruction() {
+    fun responseLossReusesPersistedAttemptAfterOldTokenExpires() {
         val session = session()
         val store = InMemoryLocalSessionStore(session)
         val credentials = SessionCredentialAdapter(store)
@@ -31,15 +32,33 @@ class SessionRefreshControllerTest {
         assertTrue(api.firstRequestFinished.await(2, TimeUnit.SECONDS))
         val pendingAfterLoss = assertNotNull(store.sessionRefresh.pending())
 
-        controller(credentials, api).refreshAsync(Instant.parse("2026-07-15T00:00:01Z"))
+        val recovered = controller(credentials, api).prepareForRequest(
+            snapshot = requireNotNull(credentials.requestAuthSnapshot()),
+            now = Instant.parse("2026-08-16T00:00:00Z"),
+        )
         assertTrue(api.secondRequestFinished.await(2, TimeUnit.SECONDS))
-        awaitCredential(store, "token-after-refresh")
 
         assertEquals(2, api.requests.size)
         assertEquals(api.requests[0], api.requests[1])
         assertEquals(pendingAfterLoss.attemptId, api.requests[1].refreshAttemptId)
+        assertEquals("token-after-refresh", recovered?.credential?.token)
         assertEquals(session.sessionGeneration, store.currentSession()?.sessionGeneration)
         assertEquals(null, store.sessionRefresh.pending())
+    }
+
+    @Test
+    fun expiredTokenWithoutPendingAttemptDoesNotCreateRefresh() {
+        val store = InMemoryLocalSessionStore(session())
+        val credentials = SessionCredentialAdapter(store)
+        val snapshot = requireNotNull(credentials.requestAuthSnapshot())
+
+        val unchanged = controller(credentials, UnexpectedRefreshApi()).prepareForRequest(
+            snapshot = snapshot,
+            now = Instant.parse("2026-08-16T00:00:00Z"),
+        )
+
+        assertEquals(snapshot, unchanged)
+        assertNull(store.sessionRefresh.pending())
     }
 
     @Test
@@ -151,4 +170,12 @@ private class ResponseLossRefreshApi(
             rotated = true,
         )
     }
+}
+
+private class UnexpectedRefreshApi(
+    private val delegate: ApiService = FakeApiService(mutableListOf(), 0),
+) : ApiService by delegate {
+    override suspend fun refreshSession(
+        request: RefreshSessionRequestDto,
+    ): RefreshSessionResponseDto = error("Expired credentials must not start a new refresh attempt.")
 }

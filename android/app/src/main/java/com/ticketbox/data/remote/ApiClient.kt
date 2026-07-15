@@ -55,7 +55,7 @@ class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
                 createInternal(
                     baseUrl = serviceBaseUrl,
                     tokenProvider = provider,
-                    ledgerIdProvider = credentials::currentLedgerId,
+                    ledgerIdProvider = { null },
                     refreshController = null,
                 )
             },
