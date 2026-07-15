@@ -7,6 +7,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -61,6 +62,10 @@ class ExpenseEditScreenContractTest {
         // (which isn't reliably exposed in the semantics tree — was the flaky "标签" lookup).
         composeRule.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag(TAG_TAGS_FIELD).performTextReplacement("家庭")
+        // The following controls sit above a measured floating action bar. Let the IME
+        // finish closing before bring-into-view computes their clickable viewport.
+        closeSoftKeyboard()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag(TAG_VALUE_SCORE_FIELD).performScrollTo()
         composeRule.onNodeWithText("查看识别原文").performScrollTo().performClick()
         composeRule.onNodeWithText("重新识别").performScrollTo().performClick()

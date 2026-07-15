@@ -7,9 +7,12 @@ gray/internal 泄漏验收口径是"普通用户 UI 不可见"：gray 版主流�
 ## 验收环境
 
 - Windows 11 主机（小票夹后端运行机）
+- 源码验收主机已安装 Python 3.11 x64 和 PostgreSQL 17；`setup.bat -Dev` 只创建 Python 环境，`start_test_pg.ps1` 只启动已安装的 PostgreSQL，不负责安装这两个运行时
 - Android 真机（灰度用户版 APK）
 - iPhone（快捷指令上传）
 - Cloudflare Tunnel 公网域名
+
+本清单验证源码工作区。普通干净 Windows 机器的一键安装、运行时供应和升级恢复由 RC clean-VM 安装器验收覆盖，不以本清单冒充。
 
 ---
 

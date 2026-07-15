@@ -311,7 +311,10 @@ configurations.configureEach {
     // carry that release profile. Several AndroidX dependencies pull
     // profileinstaller transitively, so keep debug runtime manifests free of
     // its Startup initializer explicitly.
-    if (name.endsWith("DebugRuntimeClasspath")) {
+    if (
+        name.endsWith("DebugRuntimeClasspath") ||
+        name.endsWith("DebugAndroidTestRuntimeClasspath")
+    ) {
         exclude(group = "androidx.profileinstaller", module = "profileinstaller")
     }
     resolutionStrategy {
@@ -382,14 +385,13 @@ dependencies {
     testImplementation(libs.sqlite.jdbc)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // Declared directly because the Compose test artifact exposes Espresso only at runtime;
+    // UI contracts use closeSoftKeyboard() to settle IME-driven viewport changes before taps.
+    androidTestImplementation(libs.androidx.test.espresso.core)
     // ADR-0041 follow-up: real Room v10→v11 MigrationTestHelper coverage,
     // unblocked by aligning kotlinx-serialization to 1.10.0 (configurations
     // force above). Test-only artifact of the adopted Room library (same 2.8.4).
     androidTestImplementation(libs.androidx.room.testing)
-    // The androidTest APK gets its own merged manifest; keep the startup provider
-    // class available there too, otherwise connected tests crash when Android
-    // binds androidx.startup.InitializationProvider in the test process.
-    androidTestImplementation(libs.androidx.startup.runtime)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 

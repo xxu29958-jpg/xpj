@@ -63,7 +63,7 @@ gradlew :app:lintGrayDebug
 gradlew :app:detektGrayDebug :app:detektGrayDebugUnitTest   # Kotlin 复杂度门（六阈值；type-resolving——plain :app:detekt 会静默跳过 LongParameterList；存量冻结 per-variant baseline）
 gradlew :app:assembleGrayDebug
 gradlew :app:assembleInternalDebug
-gradlew --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease   # GitHub；local-Gitea 单 runner 保持 1；PR 仅 Android/CI 相关变更跑
+gradlew --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease   # GitHub 与 local-Gitea；PR 仅 Android/CI 相关变更跑
 # apksigner 校验两个 debug APK = 仓库级稳定 debug 证书（指纹钉自 android/config/debug/README.md）
 ```
 

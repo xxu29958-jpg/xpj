@@ -21,6 +21,7 @@ detekt = "2.0.0-alpha.3"
 exifinterface = "1.4.2"
 fragment = "1.8.9"
 junit = "4.13.2"
+espresso = "3.5.0"
 kotlin = "2.3.21"
 ksp = "2.3.7"
 lifecycle = "2.10.0"
@@ -32,7 +33,6 @@ profileinstaller = "1.4.1"
 retrofit = "3.0.0"
 room = "2.8.4"
 shimmer = "1.4.0"
-startup = "1.2.0"
 test-ext-junit = "1.2.1"
 uiautomator = "2.3.0"
 work = "2.11.2"
@@ -46,6 +46,7 @@ androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "b
 androidx-benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "benchmark" }
 androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "test-ext-junit" }
+androidx-test-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 androidx-test-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
@@ -71,7 +72,6 @@ androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref =
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
-androidx-startup-runtime = { module = "androidx.startup:startup-runtime", version.ref = "startup" }
 coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
