@@ -18,6 +18,8 @@ from _powershell_contract import powershell_contract_engines
 PACKAGING = Path(__file__).resolve().parents[1]
 BOOTSTRAP_SCRIPT = PACKAGING / "windows_backend_bootstrap.ps1"
 SAFETY_SCRIPT = PACKAGING / "windows_installation_safety.ps1"
+# Host startup plus three ACL-protected writes; keep each legal stage a 15s budget.
+_PROTECTED_WRITER_CONTRACT_TIMEOUT_SECONDS = 60
 
 
 def _read() -> str:
@@ -210,7 +212,7 @@ if (@(Get-ChildItem -LiteralPath '{str(tmp_path).replace("'", "''")}' -Filter '.
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=20,
+            timeout=_PROTECTED_WRITER_CONTRACT_TIMEOUT_SECONDS,
         )
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
