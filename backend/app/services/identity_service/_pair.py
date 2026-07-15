@@ -2,14 +2,32 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models import Account, AuthToken, Device, Ledger, PairingCode
+from app.errors import AppError
+from app.models import (
+    Account,
+    AuthToken,
+    Device,
+    DeviceEnrollmentAttempt,
+    Ledger,
+    PairingCode,
+    UploadLink,
+)
 from app.services.identity_service._auth import _role_for
 from app.services.identity_service._device import _create_auth_token, _create_device
+from app.services.identity_service._enrollment import (
+    EnrollmentProof,
+    enrollment_attempt_proves_source,
+    load_enrollment_attempt,
+    prepare_enrollment_proof,
+    record_enrollment_attempt,
+    recover_enrollment_identity,
+)
 from app.services.identity_service._models import (
     WEB_SESSION_TTL_SECONDS,
     PairingResult,
@@ -28,134 +46,264 @@ from app.services.session_lifecycle_service import (
 from app.services.time_service import ensure_utc, now_utc
 
 
-def _load_pairing_identity(
+@dataclass(frozen=True)
+class PairingCompletion:
+    ledger: Ledger
+    account: Account
+    device: Device
+    role: str
+    attempt: DeviceEnrollmentAttempt
+
+
+def _load_pairing_code(
     db: Session,
     *,
     code_hash: str,
     remote_id: str | None,
-) -> tuple[PairingCode, Ledger, Account, str]:
+) -> PairingCode:
     pairing = db.scalar(
         select(PairingCode)
         .where(PairingCode.code_hash == code_hash)
+        .with_for_update()
         .execution_options(populate_existing=True)
         .limit(1)
     )
-    if pairing is None or pairing.used_at is not None:
+    if pairing is None:
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
+    return pairing
+
+
+def _load_new_pairing_identity(
+    db: Session,
+    *,
+    pairing: PairingCode,
+    remote_id: str | None,
+) -> tuple[Ledger, Account, Device | None, str]:
+    if pairing.used_at is not None:
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
     if (ensure_utc(pairing.expires_at) or pairing.expires_at) <= now_utc():
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
 
     ledger = db.scalar(
-        select(Ledger)
-        .where(Ledger.ledger_id == pairing.ledger_id)
-        .execution_options(populate_existing=True)
-        .limit(1)
+        select(Ledger).where(Ledger.ledger_id == pairing.ledger_id).execution_options(populate_existing=True).limit(1)
     )
     if ledger is None or ledger.archived_at is not None:
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
     account_id = pairing.account_id or ledger.owner_account_id
     account = db.scalar(
-        select(Account)
-        .where(Account.id == account_id)
-        .execution_options(populate_existing=True)
-        .limit(1)
+        select(Account).where(Account.id == account_id).execution_options(populate_existing=True).limit(1)
     )
     if account is None or account.disabled_at is not None:
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
-    return pairing, ledger, account, _role_for(db, ledger.ledger_id, account.id)
+    recovery_device: Device | None = None
+    if pairing.recovery_device_id is not None:
+        recovery_device = db.scalar(
+            select(Device)
+            .where(Device.id == pairing.recovery_device_id)
+            .where(Device.account_id == account.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+            .limit(1)
+        )
+        if recovery_device is None:
+            _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
+    return ledger, account, recovery_device, _role_for(db, ledger.ledger_id, account.id)
 
 
-def pair_device(
+def _recover_or_create_device(
     db: Session,
     *,
-    pairing_code: str,
+    account: Account,
+    recovery_device: Device | None,
     device_name: str,
     platform: str,
-    remote_id: str | None = None,
-) -> PairingResult:
-    _check_pairing_attempt_limit(db, remote_id)
-    lock_bootstrap_owner_transaction(db)
-    code_hash = hash_pairing_code(pairing_code.strip())
-    pairing, ledger, account, role = _load_pairing_identity(
+    replaced_at: datetime,
+) -> Device:
+    if recovery_device is None:
+        return _create_device(db, account.id, device_name, platform)
+
+    requested_platform = (platform or "unknown").strip().lower()[:32] or "unknown"
+    if recovery_device.platform != requested_platform:
+        raise AppError("device_recovery_platform_mismatch", status_code=409)
+
+    db.execute(
+        update(AuthToken)
+        .where(AuthToken.device_id == recovery_device.id)
+        .where(AuthToken.revoked_at.is_(None))
+        .values(revoked_at=replaced_at, grace_until=None)
+    )
+    db.execute(
+        update(UploadLink)
+        .where(UploadLink.device_id == recovery_device.id)
+        .where(UploadLink.revoked_at.is_(None))
+        .values(revoked_at=replaced_at)
+    )
+    recovery_device.revoked_at = None
+    recovery_device.device_name = (device_name or "").strip()[:120] or recovery_device.device_name
+    db.flush()
+    return recovery_device
+
+
+def _session_window(
+    *,
+    platform: str,
+    issued_at: datetime,
+) -> tuple[datetime | None, datetime | None]:
+    if platform == "web":
+        return issued_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS), None
+    expiry = app_token_expiry_window(issued_at)
+    return expiry.expires_at, expiry.soft_refresh_after
+
+
+def _create_pairing_completion(
+    db: Session,
+    *,
+    pairing: PairingCode,
+    proof: EnrollmentProof,
+    device_name: str,
+    platform: str,
+    remote_id: str | None,
+    issued_at: datetime,
+) -> PairingCompletion:
+    ledger, account, recovery_device, role = _load_new_pairing_identity(
         db,
-        code_hash=code_hash,
+        pairing=pairing,
         remote_id=remote_id,
     )
-
-    used_at = now_utc()
     consume_result = consume_pairing_code(
         db,
         pairing_id=pairing.id,
         expected_code_hash=pairing.code_hash,
-        used_at=used_at,
+        used_at=issued_at,
     )
     if consume_result != "consumed":
         db.rollback()
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
-
-    device = _create_device(db, account.id, device_name, platform)
-    # Web cookie sessions stay capped at WEB_SESSION_TTL_SECONDS (existing
-    # contract). Non-web app tokens honor APP_TOKEN_TTL_DAYS so v1.1
-    # clients can silently rotate before expiry; 0 keeps the historical
-    # "never expires" semantics for environments that opt out.
-    platform_value = device.platform
-    if platform_value == "web":
-        token_expires_at: datetime | None = used_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS)
-    else:
-        expiry = app_token_expiry_window(used_at)
-        token_expires_at = expiry.expires_at
-    _revoke_same_platform_app_tokens(
+    device = _recover_or_create_device(
         db,
-        account_id=account.id,
-        ledger_id=ledger.ledger_id,
-        platform=platform_value,
-        revoked_at=used_at,
+        account=account,
+        recovery_device=recovery_device,
+        device_name=device_name,
+        platform=platform,
+        replaced_at=issued_at,
     )
-    token = _create_auth_token(
+    token_expires_at, soft_refresh_after = _session_window(
+        platform=device.platform,
+        issued_at=issued_at,
+    )
+    _create_auth_token(
         db,
         account_id=account.id,
         device_id=device.id,
         ledger_id=ledger.ledger_id,
         scope="app",
         expires_at=token_expires_at,
+        token_value=proof.session_token,
     )
-    db.commit()
-    _clear_pairing_failures(db, remote_id)
-    soft_refresh_after = None
-    if platform_value != "web":
-        soft_refresh_after = app_token_expiry_window(used_at).soft_refresh_after
-    return PairingResult(
-        session_token=token,
-        account_name=account.display_name,
+    attempt = record_enrollment_attempt(
+        db,
+        proof=proof,
+        pairing_code_id=pairing.id,
+        account_id=account.id,
+        device_id=device.id,
         ledger_id=ledger.ledger_id,
-        ledger_name=ledger.name,
-        device_name=device.device_name,
-        role=role,
-        expires_at=token_expires_at,
-        soft_refresh_after=soft_refresh_after,
+        issued_at=issued_at,
+        session_expires_at=token_expires_at,
+        session_soft_refresh_after=soft_refresh_after,
     )
+    return PairingCompletion(ledger, account, device, role, attempt)
 
 
-def _revoke_same_platform_app_tokens(
+def _recover_pairing_completion(
     db: Session,
     *,
-    account_id: int,
-    ledger_id: str,
-    platform: str,
-    revoked_at: datetime,
-) -> int:
-    """Conservatively replace only old app tokens on the same platform."""
-
-    platform_value = (platform or "unknown").strip().lower()[:32]
-    device_ids = select(Device.id).where(Device.account_id == account_id).where(Device.platform == platform_value)
-    result = db.execute(
-        update(AuthToken)
-        .where(AuthToken.account_id == account_id)
-        .where(AuthToken.ledger_id == ledger_id)
-        .where(AuthToken.scope == "app")
-        .where(AuthToken.revoked_at.is_(None))
-        .where(AuthToken.device_id.in_(device_ids))
-        .values(revoked_at=revoked_at, grace_until=None)
-        .execution_options(synchronize_session=False)
+    pairing: PairingCode,
+    proof: EnrollmentProof,
+    attempt: DeviceEnrollmentAttempt,
+    remote_id: str | None,
+    issued_at: datetime,
+) -> PairingCompletion:
+    if not enrollment_attempt_proves_source(
+        attempt,
+        proof,
+        pairing_code_id=pairing.id,
+    ):
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
+    identity = recover_enrollment_identity(
+        db,
+        attempt=attempt,
+        proof=proof,
+        expired_error="pairing_attempt_expired",
+        closed_error="pairing_attempt_closed",
     )
-    return int(result.rowcount or 0)
+    attempt.last_issued_at = issued_at
+    return PairingCompletion(
+        identity.ledger,
+        identity.account,
+        identity.device,
+        identity.role,
+        attempt,
+    )
+
+
+def _pairing_result(proof: EnrollmentProof, completion: PairingCompletion) -> PairingResult:
+    return PairingResult(
+        session_token=proof.session_token,
+        pairing_attempt_id=completion.attempt.public_id,
+        account_public_id=completion.account.public_id,
+        device_public_id=completion.device.public_id,
+        account_name=completion.account.display_name,
+        ledger_id=completion.ledger.ledger_id,
+        ledger_name=completion.ledger.name,
+        device_name=completion.device.device_name,
+        role=completion.role,
+        expires_at=completion.attempt.session_expires_at,
+        soft_refresh_after=completion.attempt.session_soft_refresh_after,
+    )
+
+
+def pair_device(
+    db: Session,
+    *,
+    pairing_code: str,
+    pairing_attempt_id: str,
+    pairing_attempt_secret: str,
+    device_name: str,
+    platform: str,
+    remote_id: str | None = None,
+) -> PairingResult:
+    lock_bootstrap_owner_transaction(db)
+    _check_pairing_attempt_limit(db, remote_id)
+    proof = prepare_enrollment_proof(pairing_attempt_id, pairing_attempt_secret)
+    code_hash = hash_pairing_code(pairing_code.strip())
+    pairing = _load_pairing_code(
+        db,
+        code_hash=code_hash,
+        remote_id=remote_id,
+    )
+
+    used_at = now_utc()
+    attempt = load_enrollment_attempt(db, public_id=proof.public_id)
+    if attempt is None:
+        completion = _create_pairing_completion(
+            db,
+            pairing=pairing,
+            proof=proof,
+            device_name=device_name,
+            platform=platform,
+            remote_id=remote_id,
+            issued_at=used_at,
+        )
+    else:
+        completion = _recover_pairing_completion(
+            db,
+            pairing=pairing,
+            proof=proof,
+            attempt=attempt,
+            remote_id=remote_id,
+            issued_at=used_at,
+        )
+
+    _clear_pairing_failures(db, remote_id)
+    db.commit()
+    return _pairing_result(proof, completion)

@@ -168,12 +168,14 @@ async def lifespan(_: FastAPI):
     from app.database import SessionLocal as _SessionLocal
     from app.middleware.csrf import assert_csrf_signing_key_available, set_persisted_csrf_key
     from app.services.csrf_key_service import get_or_create_csrf_signing_key
+    from app.services.server_identity_service import read_server_data_identity
 
     with _SessionLocal() as _db:
         # ADR-0045: provision + stash the per-install CSRF signing key so the HMAC
         # key is a real per-install secret, never the public placeholder ADMIN_TOKEN
         # default. Auto-generated in app_meta on first boot (no operator step, no brick).
         set_persisted_csrf_key(get_or_create_csrf_signing_key(_db))
+        read_server_data_identity(_db)
     assert_csrf_signing_key_available()
     # ADR-0049 §4 / P3b: when the Debt rollout is ON, backfill the member Debt for
     # any bill split accepted while the rollout was OFF — a deliberate self-heal that

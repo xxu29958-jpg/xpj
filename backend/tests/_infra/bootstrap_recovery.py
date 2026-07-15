@@ -31,6 +31,7 @@ from app.services.session_lifecycle_service import (
     derive_bootstrap_upload_key,
 )
 from app.services.time_service import ensure_utc, now_utc
+from tests.pairing_test_support import pairing_payload
 
 _VECTOR_SECRET = "ticketbox-bootstrap-vector-2026-07-10"
 _VECTOR_ADMIN_TOKEN = "tbx_f1cz5I0IKi0r6iUzmoexescoDH0xYOF7_-R39LpN7lY"
@@ -319,11 +320,10 @@ def assert_used_pairing_recovery_finalizes_existing_identity(
 
             paired = client.post(
                 "/api/auth/pair",
-                json={
-                    "pairing_code": _VECTOR_PAIRING_CODE,
-                    "device_name": "Vector Android",
-                    "platform": "android",
-                },
+                json=pairing_payload(
+                    _VECTOR_PAIRING_CODE,
+                    device_name="Vector Android",
+                ),
             )
             assert paired.status_code == 200, paired.text
             paired_token_hash = hash_secret(paired.json()["session_token"])

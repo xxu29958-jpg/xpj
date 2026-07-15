@@ -7,15 +7,19 @@ Covers the 15 scenarios listed in
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import AuthToken, Invitation, Ledger, LedgerMember
+from app.models import Account, AuthToken, Device, Invitation, Ledger, LedgerMember
 from app.services.identity_service import hash_secret
-from app.services.time_service import now_utc
+from app.services.invitation_service import create_invitation
+from app.services.time_service import now_utc, to_iso
+from tests.pairing_test_support import invitation_accept_payload
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -52,6 +56,63 @@ def _set_member_role(ledger_id: str, account_id: int, role: str) -> None:
         db.commit()
 
 
+def _prepare_existing_session_invitation(token: str) -> tuple[datetime, int, tuple[int, int, int]]:
+    with SessionLocal() as db:
+        token_row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert token_row is not None
+        expected_expiry = now_utc() + timedelta(days=12)
+        token_row.expires_at = expected_expiry
+        db.commit()
+        return expected_expiry, token_row.account_id, _identity_row_counts(db)
+
+
+def _identity_row_counts(db: Session) -> tuple[int, int, int]:
+    return (
+        db.scalar(select(func.count()).select_from(Account)),
+        db.scalar(select(func.count()).select_from(Device)),
+        db.scalar(select(func.count()).select_from(AuthToken)),
+    )
+
+
+def _accept_existing_session_invitation(
+    client: TestClient,
+    *,
+    headers: dict[str, str],
+    invite: str,
+    account_name: str,
+    device_name: str,
+) -> dict[str, object]:
+    response = client.post(
+        "/api/invitations/accept",
+        headers=headers,
+        json={
+            "invite_token": invite,
+            "account_name": account_name,
+            "device_name": device_name,
+            "platform": "android",
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _assert_existing_session_invitation_rows(
+    *,
+    family_id: str,
+    account_id: int,
+    token: str,
+    counts_before: tuple[int, int, int],
+) -> None:
+    with SessionLocal() as db:
+        assert _identity_row_counts(db) == counts_before
+        membership = db.scalar(
+            select(LedgerMember).where(LedgerMember.ledger_id == family_id).where(LedgerMember.account_id == account_id)
+        )
+        assert membership is not None and membership.role == "member"
+        token_row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert token_row is not None and token_row.ledger_id == family_id
+
+
 # ---------------------------------------------------------------------------
 # T1-T3 — invitation create permission
 # ---------------------------------------------------------------------------
@@ -85,9 +146,7 @@ def test_owner_can_create_invitation_and_token_is_returned_once(client: TestClie
         assert rows[0].token_hash != plain
 
     # Listing does NOT echo invite_token plain.
-    listed = client.get(
-        f"/api/ledgers/{family_id}/invitations", headers=_bearer(family_app)
-    )
+    listed = client.get(f"/api/ledgers/{family_id}/invitations", headers=_bearer(family_app))
     assert listed.status_code == 200
     listed_body = listed.json()
     assert len(listed_body["invitations"]) == 1
@@ -157,6 +216,32 @@ def _mint(client: TestClient, family_id: str, family_app: str, role: str = "memb
     return resp.json()["invite_token"]
 
 
+def _mint_foreign_ledger_invitation(role: str = "member") -> tuple[str, str]:
+    ledger_id = f"foreign_{uuid4().hex[:12]}"
+    with SessionLocal() as db:
+        owner = Account(display_name="另一家庭的拥有者")
+        db.add(owner)
+        db.flush()
+        db.add(
+            Ledger(
+                ledger_id=ledger_id,
+                name="另一家庭账本",
+                owner_account_id=owner.id,
+            )
+        )
+        db.add(LedgerMember(ledger_id=ledger_id, account_id=owner.id, role="owner"))
+        db.flush()
+        invitation = create_invitation(
+            db,
+            ledger_id=ledger_id,
+            role=role,
+            note=None,
+            created_by_account_id=owner.id,
+            auth=None,
+        )
+    return ledger_id, invitation.invite_token
+
+
 def test_preview_invitation_returns_target_without_consuming_token(client: TestClient, *, identity) -> None:
     ledger_name = "家庭共同账本" + "很长" * 20
     family_id = _create_family_ledger(client, name=ledger_name, identity=identity)
@@ -175,21 +260,18 @@ def test_preview_invitation_returns_target_without_consuming_token(client: TestC
     assert body["expires_at"] is not None
 
     with SessionLocal() as db:
-        invitation = db.scalar(
-            select(Invitation).where(Invitation.token_hash == hash_secret(invite))
-        )
+        invitation = db.scalar(select(Invitation).where(Invitation.token_hash == hash_secret(invite)))
         assert invitation is not None
         assert invitation.used_at is None
         assert invitation.used_by_account_id is None
 
     accepted = client.post(
         "/api/invitations/accept",
-        json={
-            "invite_token": invite,
-            "account_name": "只读成员",
-            "device_name": "Preview-Phone",
-            "platform": "android",
-        },
+        json=invitation_accept_payload(
+            invite,
+            account_name="只读成员",
+            device_name="Preview-Phone",
+        ),
     )
     assert accepted.status_code == 200, accepted.json()
     assert accepted.json()["role"] == "viewer"
@@ -202,7 +284,7 @@ def test_preview_used_invitation_is_invalid(client: TestClient, *, identity) -> 
 
     accepted = client.post(
         "/api/invitations/accept",
-        json={"invite_token": invite, "account_name": "A", "device_name": "d1", "platform": "android"},
+        json=invitation_accept_payload(invite, account_name="A", device_name="d1"),
     )
     assert accepted.status_code == 200
 
@@ -221,12 +303,11 @@ def test_accept_invitation_issues_app_token_and_membership(client: TestClient, *
 
     resp = client.post(
         "/api/invitations/accept",
-        json={
-            "invite_token": invite,
-            "account_name": "妈妈",
-            "device_name": "Mom-Pixel",
-            "platform": "android",
-        },
+        json=invitation_accept_payload(
+            invite,
+            account_name="妈妈",
+            device_name="Mom-Pixel",
+        ),
     )
     assert resp.status_code == 200, resp.json()
     body = resp.json()
@@ -242,31 +323,59 @@ def test_accept_invitation_issues_app_token_and_membership(client: TestClient, *
     assert check.json()["ledger_id"] == family_id
 
 
-def test_accept_invitation_with_existing_session_revokes_replaced_token(client: TestClient, *, identity) -> None:
-    family_id = _create_family_ledger(client, identity=identity)
-    family_app = _switch_to(client, family_id, identity.app_headers)
-    invite = _mint(client, family_id, family_app, role="member")
+def test_existing_session_accepts_new_ledger_without_changing_identity(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    family_id, invite = _mint_foreign_ledger_invitation()
+    before = client.get("/api/auth/check", headers=identity.app_headers)
+    assert before.status_code == 200, before.text
+    original_token = identity.app_headers["Authorization"].removeprefix("Bearer ")
+    expected_expiry, account_id, counts_before = _prepare_existing_session_invitation(original_token)
 
-    resp = client.post(
-        "/api/invitations/accept",
-        headers=_bearer(family_app),
-        json={
-            "invite_token": invite,
-            "account_name": "New Member",
-            "device_name": "Existing-Pixel",
-            "platform": "android",
-        },
+    body = _accept_existing_session_invitation(
+        client,
+        headers=identity.app_headers,
+        invite=invite,
+        account_name="不得覆盖原成员名",
+        device_name="不得覆盖原设备名",
     )
-    assert resp.status_code == 200, resp.json()
+    assert body["session_token"] == original_token
+    assert body["account_public_id"] == before.json()["account_public_id"]
+    assert body["device_public_id"] == before.json()["device_public_id"]
+    assert body["account_name"] == before.json()["account_name"]
+    assert body["device_name"] == before.json()["device_name"]
+    assert body["ledger_id"] == family_id
+    assert body["expires_at"] == to_iso(expected_expiry)
+    assert body["soft_refresh_after"] is not None
 
-    old_check = client.get("/api/auth/check", headers=_bearer(family_app))
-    assert old_check.status_code == 401
-    assert old_check.json()["error"] == "invalid_token"
+    old_ledger_check = client.get("/api/auth/check", headers=identity.app_headers)
+    assert old_ledger_check.status_code == 200
+    assert old_ledger_check.json()["ledger_id"] == family_id
+    joined_check = client.get(
+        "/api/auth/check",
+        headers={**identity.app_headers, "X-Ticketbox-Ledger-ID": family_id},
+    )
+    assert joined_check.status_code == 200, joined_check.text
+    assert joined_check.json()["role"] == "member"
 
-    new_token = resp.json()["session_token"]
-    new_check = client.get("/api/auth/check", headers=_bearer(new_token))
-    assert new_check.status_code == 200
-    assert new_check.json()["ledger_id"] == family_id
+    replay = _accept_existing_session_invitation(
+        client,
+        headers=identity.app_headers,
+        invite=invite,
+        account_name="仍不得覆盖",
+        device_name="仍不得覆盖",
+    )
+    assert replay["session_token"] == original_token
+    assert replay["account_public_id"] == body["account_public_id"]
+    assert replay["device_public_id"] == body["device_public_id"]
+    _assert_existing_session_invitation_rows(
+        family_id=family_id,
+        account_id=account_id,
+        token=original_token,
+        counts_before=counts_before,
+    )
 
 
 def test_accept_already_used_invitation(client: TestClient, *, identity) -> None:
@@ -276,12 +385,12 @@ def test_accept_already_used_invitation(client: TestClient, *, identity) -> None
 
     first = client.post(
         "/api/invitations/accept",
-        json={"invite_token": invite, "account_name": "A", "device_name": "d1", "platform": "android"},
+        json=invitation_accept_payload(invite, account_name="A", device_name="d1"),
     )
     assert first.status_code == 200
     second = client.post(
         "/api/invitations/accept",
-        json={"invite_token": invite, "account_name": "B", "device_name": "d2", "platform": "android"},
+        json=invitation_accept_payload(invite, account_name="B", device_name="d2"),
     )
     assert second.status_code == 400
     assert second.json()["error"] == "invitation_invalid"
@@ -293,9 +402,7 @@ def test_accept_revoked_invitation(client: TestClient, *, identity) -> None:
     invite = _mint(client, family_id, family_app)
 
     # Fetch public_id via list endpoint.
-    listed = client.get(
-        f"/api/ledgers/{family_id}/invitations", headers=_bearer(family_app)
-    ).json()["invitations"]
+    listed = client.get(f"/api/ledgers/{family_id}/invitations", headers=_bearer(family_app)).json()["invitations"]
     public_id = listed[0]["public_id"]
 
     revoke = client.post(
@@ -307,7 +414,7 @@ def test_accept_revoked_invitation(client: TestClient, *, identity) -> None:
 
     resp = client.post(
         "/api/invitations/accept",
-        json={"invite_token": invite, "account_name": "x", "device_name": "d", "platform": "android"},
+        json=invitation_accept_payload(invite, account_name="x", device_name="d"),
     )
     assert resp.status_code == 400
     assert resp.json()["error"] == "invitation_invalid"
@@ -325,7 +432,7 @@ def test_accept_expired_invitation(client: TestClient, *, identity) -> None:
 
     resp = client.post(
         "/api/invitations/accept",
-        json={"invite_token": invite, "account_name": "x", "device_name": "d", "platform": "android"},
+        json=invitation_accept_payload(invite, account_name="x", device_name="d"),
     )
     assert resp.status_code == 400
     assert resp.json()["error"] == "invitation_invalid"
@@ -333,7 +440,9 @@ def test_accept_expired_invitation(client: TestClient, *, identity) -> None:
 
 def test_accept_invitation_rechecks_expiry_when_consuming_token(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch, *, identity,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
 ) -> None:
     family_id = _create_family_ledger(client, identity=identity)
     family_app = _switch_to(client, family_id, identity.app_headers)
@@ -346,11 +455,11 @@ def test_accept_invitation_rechecks_expiry_when_consuming_token(
         db.commit()
 
     ticks = iter([base, base + timedelta(seconds=2)])
-    monkeypatch.setattr("app.services.invitation_invites.now_utc", lambda: next(ticks))
+    monkeypatch.setattr("app.services.invitation_acceptance.now_utc", lambda: next(ticks))
 
     resp = client.post(
         "/api/invitations/accept",
-        json={"invite_token": invite, "account_name": "x", "device_name": "d", "platform": "android"},
+        json=invitation_accept_payload(invite, account_name="x", device_name="d"),
     )
     assert resp.status_code == 400
     assert resp.json()["error"] == "invitation_invalid"
@@ -365,7 +474,11 @@ def test_accept_invitation_rechecks_expiry_when_consuming_token(
 def test_accept_unknown_token(client: TestClient) -> None:
     resp = client.post(
         "/api/invitations/accept",
-        json={"invite_token": "inv_totally-bogus-xxxxxxxxxxxxxxx", "account_name": "x", "device_name": "d", "platform": "android"},
+        json=invitation_accept_payload(
+            "inv_totally-bogus-xxxxxxxxxxxxxxx",
+            account_name="x",
+            device_name="d",
+        ),
     )
     assert resp.status_code == 400
     assert resp.json()["error"] == "invitation_invalid"
@@ -381,7 +494,11 @@ def _make_role_token(client: TestClient, family_id: str, family_app: str, role: 
     invite = _mint(client, family_id, family_app, role=role)
     resp = client.post(
         "/api/invitations/accept",
-        json={"invite_token": invite, "account_name": f"u-{role}", "device_name": f"d-{role}", "platform": "android"},
+        json=invitation_accept_payload(
+            invite,
+            account_name=f"u-{role}",
+            device_name=f"d-{role}",
+        ),
     )
     assert resp.status_code == 200
     return resp.json()["session_token"]
@@ -419,9 +536,7 @@ def test_member_cannot_disable_other_member(client: TestClient, *, identity) -> 
     family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
 
-    members = client.get(
-        f"/api/ledgers/{family_id}/members", headers=_bearer(member_token)
-    ).json()["members"]
+    members = client.get(f"/api/ledgers/{family_id}/members", headers=_bearer(member_token)).json()["members"]
     assert any(m["role"] == "owner" for m in members)
     owner_member_id = next(m for m in members if m["role"] == "owner")["member_id"]
 
@@ -437,9 +552,7 @@ def test_owner_can_change_member_between_writer_and_viewer(client: TestClient, *
     family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
 
-    members = client.get(
-        f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)
-    ).json()["members"]
+    members = client.get(f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)).json()["members"]
     member_id = next(m for m in members if m["role"] == "member")["member_id"]
 
     # ADR-0029 拆账发起 enabler：成员 API 必须带内部 account_id（receiver_account_id
@@ -495,9 +608,7 @@ def test_member_cannot_change_roles_and_owner_role_is_fixed(client: TestClient, 
     family_id = _create_family_ledger(client, identity=identity)
     family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
-    members = client.get(
-        f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)
-    ).json()["members"]
+    members = client.get(f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)).json()["members"]
     owner_id = next(m for m in members if m["role"] == "owner")["member_id"]
     member_id = next(m for m in members if m["role"] == "member")["member_id"]
 
@@ -531,9 +642,7 @@ def test_disable_member_revokes_active_tokens(client: TestClient, *, identity) -
     ok = client.get("/api/auth/check", headers=_bearer(member_token))
     assert ok.status_code == 200
 
-    members = client.get(
-        f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)
-    ).json()["members"]
+    members = client.get(f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)).json()["members"]
     member_id = next(m for m in members if m["role"] == "member")["member_id"]
 
     disable = client.post(
@@ -551,9 +660,7 @@ def test_disable_member_revokes_active_tokens(client: TestClient, *, identity) -
 def test_cannot_disable_owner_or_self(client: TestClient, *, identity) -> None:
     family_id = _create_family_ledger(client, identity=identity)
     family_app = _switch_to(client, family_id, identity.app_headers)
-    members = client.get(
-        f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)
-    ).json()["members"]
+    members = client.get(f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)).json()["members"]
     owner_member_id = next(m for m in members if m["role"] == "owner")["member_id"]
 
     resp = client.post(
@@ -603,17 +710,20 @@ def test_existing_owner_role_unchanged_after_invite(client: TestClient, *, ident
 # ---------------------------------------------------------------------------
 
 
-def test_cannot_administer_other_ledger_through_url(client: TestClient, *, identity) -> None:
+def test_ledger_neutral_session_can_administer_owned_ledger_through_path(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
     family_id = _create_family_ledger(client, identity=identity)
-    # App token is still bound to "owner" ledger; try to mint invitations for
-    # the family ledger without switching. Must 404 (we collapse to ledger_not_found).
+    # DeviceSession is account/device scoped. The path chooses a ledger and the
+    # server rechecks this Account's current owner Membership for that ledger.
     resp = client.post(
         f"/api/ledgers/{family_id}/invitations",
         headers=identity.app_headers,
         json={"role": "member"},
     )
-    assert resp.status_code == 404
-    assert resp.json()["error"] == "ledger_not_found"
+    assert resp.status_code == 201, resp.text
 
 
 # ---------------------------------------------------------------------------

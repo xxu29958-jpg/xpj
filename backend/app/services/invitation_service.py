@@ -3,7 +3,8 @@
 Routes and tests import this module as the stable service boundary. The
 implementation is split by responsibility across smaller modules:
 
-* ``invitation_invites`` owns invite token create/list/revoke/preview/accept.
+* ``invitation_invites`` owns invite token create/list/revoke/preview.
+* ``invitation_acceptance`` owns identity-preserving, recoverable acceptance.
 * ``invitation_members`` owns member role, disable, and owner-transfer flows.
 * ``invitation_audit`` owns ledger audit-log shaping and listing.
 * ``invitation_common`` owns shared constants and role/membership helpers.
@@ -12,6 +13,10 @@ implementation is split by responsibility across smaller modules:
 from __future__ import annotations
 
 from app.services.identity_service import new_session_token  # noqa: F401
+from app.services.invitation_acceptance import (
+    AcceptInvitationResult,
+    accept_invitation,
+)
 from app.services.invitation_audit import (
     LedgerAuditSummary,
     account_identity,
@@ -36,11 +41,9 @@ from app.services.invitation_common import (
     require_active_owner,
 )
 from app.services.invitation_invites import (
-    AcceptInvitationResult,
     CreateInvitationResult,
     InvitationPreviewResult,
     InvitationSummary,
-    accept_invitation,
     create_invitation,
     invitation_summary,
     list_invitations,

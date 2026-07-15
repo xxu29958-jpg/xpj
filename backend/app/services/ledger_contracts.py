@@ -18,6 +18,8 @@ class LedgerSummary:
 @dataclass(frozen=True)
 class SwitchLedgerResult:
     session_token: str
+    account_public_id: str
+    device_public_id: str
     expires_at: str | None
     soft_refresh_after: str | None
     ledger_id: str

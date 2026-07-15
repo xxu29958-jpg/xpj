@@ -1,11 +1,10 @@
 """Cross-ledger isolation tests for v0.4-alpha1.
 
-These tests target the *switch* flow: after ``POST /api/ledgers/{id}/switch``
-the new token must read **only** the target ledger, and any attempt to fall
-back to the previous token or to forge ``ledger_id`` query parameters must
-fail. The legacy ``test_tenant_isolation.py`` already covers the pre-v0.4
-case where two tokens are pre-bound to two ledgers; this file exercises the
-v0.4-specific token-rotation path.
+These tests target the selected-ledger boundary. An Account/Device session is
+stable across ``POST /api/ledgers/{id}/switch``; every request still resolves
+one ledger and revalidates active Membership before touching financial data.
+Query-string forgery never selects a ledger, and a request header is context,
+not authority.
 """
 
 from __future__ import annotations
@@ -26,6 +25,7 @@ from app.routes.owner_console import _pairing as owner_pairing_route
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
 from tests._infra.assets import PNG_BYTES
+from tests.pairing_test_support import pairing_payload
 
 
 @pytest.fixture()
@@ -54,49 +54,60 @@ def _switch(client: TestClient, headers: dict[str, str], ledger_id: str) -> str:
     return response.json()["session_token"]
 
 
-def test_switched_token_only_sees_target_ledger_pending(client: TestClient, *, identity) -> None:
+def test_switched_session_only_sees_selected_ledger_pending(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
     # Seed ledger "owner" with a confirmed-track expense via owner upload key.
     owner_pending_id = upload_png(client, identity=identity)
     assert owner_pending_id > 0
 
     new_ledger = _create_ledger(client, "家庭账本", identity=identity)
 
-    # Switch the app token to the new (empty) ledger.
-    new_token = _switch(client, identity.app_headers, new_ledger)
-    new_headers = {"Authorization": f"Bearer {new_token}"}
+    # Select the new (empty) ledger without replacing the session secret.
+    session_token = _switch(client, identity.app_headers, new_ledger)
+    original_token = identity.app_headers["Authorization"].removeprefix("Bearer ")
+    assert session_token == original_token
 
     # Pending list reflects ONLY the new ledger.
-    pending = client.get("/api/expenses/pending", headers=new_headers)
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200
     assert pending.json() == []
 
-    # Owner-side pending is still visible via the old upload-link based flow,
-    # confirming the owner ledger expense was not deleted by the switch.
-    # We can't query the owner pending without a token bound to "owner";
-    # switching back proves the data is intact.
-    back_token = _switch(client, new_headers, "owner")
-    back_headers = {"Authorization": f"Bearer {back_token}"}
-    pending_again = client.get("/api/expenses/pending", headers=back_headers)
+    # The same session can select the owner ledger because the Account has an
+    # active Membership there. This does not mutate or replace the session.
+    owner_headers = {
+        **identity.app_headers,
+        "X-Ticketbox-Ledger-ID": "owner",
+    }
+    pending_again = client.get("/api/expenses/pending", headers=owner_headers)
     assert pending_again.status_code == 200
     assert any(item["id"] == owner_pending_id for item in pending_again.json())
 
 
-def test_old_token_revoked_after_switch(client: TestClient, *, identity) -> None:
+def test_switch_keeps_one_session_valid_across_authorized_ledgers(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
     new_ledger = _create_ledger(client, "家庭账本", identity=identity)
-    old_token_value = identity.app_headers["Authorization"].removeprefix("Bearer ")
+    token = _switch(client, identity.app_headers, new_ledger)
+    assert token == identity.app_headers["Authorization"].removeprefix("Bearer ")
 
-    _switch(client, identity.app_headers, new_ledger)
+    target = client.get("/api/auth/check", headers=identity.app_headers)
+    assert target.status_code == 200
+    assert target.json()["ledger_id"] == new_ledger
 
-    # The original token must no longer authenticate anywhere.
-    old_headers = {"Authorization": f"Bearer {old_token_value}"}
-    for path in (
+    owner = client.get(
         "/api/auth/check",
-        "/api/expenses/pending",
-        "/api/stats/monthly?month=2026-05",
-        "/api/ledgers",
-    ):
-        response = client.get(path, headers=old_headers)
-        assert response.status_code == 401, f"{path} should reject revoked token"
+        headers={
+            **identity.app_headers,
+            "X-Ticketbox-Ledger-ID": "owner",
+        },
+    )
+    assert owner.status_code == 200
+    assert owner.json()["ledger_id"] == "owner"
 
 
 def test_forged_ledger_id_query_does_not_cross(client: TestClient, *, identity) -> None:
@@ -125,6 +136,36 @@ def test_forged_ledger_id_query_does_not_cross(client: TestClient, *, identity) 
         headers=identity.app_headers,
     )
     assert image.status_code == 404
+
+
+def test_selected_ledger_write_revalidates_membership_inside_commit_lock(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    selected_headers = {
+        **identity.app_headers,
+        "X-Ticketbox-Ledger-ID": "tester_1",
+    }
+
+    uploaded = client.post(
+        "/api/app/upload-screenshot",
+        headers=selected_headers,
+        files={"file": ("selected-ledger.png", PNG_BYTES, "image/png")},
+    )
+
+    assert uploaded.status_code == 200, uploaded.text
+    public_id = uploaded.json()["public_id"]
+    selected_rows = client.get(
+        "/api/expenses/pending",
+        headers=selected_headers,
+    ).json()
+    owner_rows = client.get(
+        "/api/expenses/pending",
+        headers=identity.app_headers,
+    ).json()
+    assert any(row["public_id"] == public_id for row in selected_rows)
+    assert all(row["public_id"] != public_id for row in owner_rows)
 
 
 def test_upload_link_uploads_only_into_its_ledger(client: TestClient, *, identity) -> None:
@@ -182,11 +223,10 @@ def test_pairing_to_new_ledger_yields_isolated_token(
     # Pair as a new device.
     pair = local_client.post(
         "/api/auth/pair",
-        json={
-            "pairing_code": pairing_code,
-            "device_name": "pytest-family-android",
-            "platform": "android",
-        },
+        json=pairing_payload(
+            pairing_code,
+            device_name="pytest-family-android",
+        ),
     )
     assert pair.status_code == 200, pair.text
     new_token = pair.json()["session_token"]

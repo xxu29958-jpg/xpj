@@ -26,7 +26,9 @@
 
 {% if pairing_result %}
 <div class="card">
-  <div class="alert alert-success">绑定码已生成，请在有效期内完成绑定。</div>
+  <div class="alert alert-success">
+    {% if selected_recovery_device_id %}设备恢复码已生成{% else %}新设备绑定码已生成{% endif %}，请在有效期内完成绑定。
+  </div>
   <div class="code-big">{{ pairing_result.pairing_code }}</div>
   <div class="meta text-center">
     账本：{{ pairing_result.ledger_name }} &nbsp;·&nbsp;
@@ -57,8 +59,8 @@
 <div class="card">
   <h2>生成新绑定码</h2>
   <p class="text-meta mb-5">
-    绑定码用于把 Android 设备配成所选账本<strong>拥有者</strong>的账号，过期自动失效；
-    同一账号再次绑定会把旧设备踢下线。家庭成员入伙请改用「成员管理」里的邀请，不要把绑定码发给成员。
+    添加新设备不会挤掉现有手机；恢复已有设备会保留原设备身份，并撤销那台设备之前的登录状态。
+    家庭成员入伙请改用「成员管理」里的邀请，不要把绑定码发给成员。
   </p>
   {% if not ledger_choices %}
   <div class="alert alert-danger">
@@ -83,6 +85,17 @@
       <label>有效时长（分钟）：
         <input type="number" name="ttl_minutes" value="15" min="1" max="60"
                class="inline-input inline-input--narrow">
+      </label>
+      <label>设备方式：
+        <select name="recovery_device_public_id" class="inline-input">
+          <option value="">添加一台新设备</option>
+          {% for device in recovery_devices %}
+          <option value="{{ device.public_id }}"
+                  {% if device.public_id == selected_recovery_device_id %}selected{% endif %}>
+            恢复「{{ device.device_name }}」{% if device.is_revoked %}（已停用）{% endif %}
+          </option>
+          {% endfor %}
+        </select>
       </label>
       <button type="submit" class="btn btn-primary">生成绑定码</button>
     </div>

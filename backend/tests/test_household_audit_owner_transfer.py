@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models import AuthToken, Ledger, LedgerAuditLog, LedgerMember
 from app.services.identity_service import hash_secret
+from tests.pairing_test_support import invitation_accept_payload
 
 
 def _bearer(token: str) -> dict[str, str]:
@@ -45,12 +46,11 @@ def _accept_invitation(
 ) -> str:
     resp = client.post(
         "/api/invitations/accept",
-        json={
-            "invite_token": invite_token,
-            "account_name": account_name,
-            "device_name": device_name,
-            "platform": "android",
-        },
+        json=invitation_accept_payload(
+            invite_token,
+            account_name=account_name,
+            device_name=device_name,
+        ),
     )
     assert resp.status_code == 200, resp.json()
     return str(resp.json()["session_token"])

@@ -43,6 +43,7 @@ from tests._infra.bootstrap_recovery import (
     _enable_http_bootstrap,
     _post_bootstrap,
 )
+from tests.pairing_test_support import invitation_accept_payload, pairing_payload
 
 
 def _setup_exposed_sessions() -> tuple[str, str]:
@@ -53,11 +54,10 @@ def _setup_exposed_sessions() -> tuple[str, str]:
         assert initial.status_code == 200, initial.text
         paired = client.post(
             "/api/auth/pair",
-            json={
-                "pairing_code": _VECTOR_PAIRING_CODE,
-                "device_name": "Pre-authenticated owner",
-                "platform": "android",
-            },
+            json=pairing_payload(
+                _VECTOR_PAIRING_CODE,
+                device_name="Pre-authenticated owner",
+            ),
         )
         assert paired.status_code == 200, paired.text
         return _VECTOR_ADMIN_TOKEN, paired.json()["session_token"]
@@ -75,9 +75,10 @@ def _attempt_pairing_while_bootstrap_locked(started: threading.Event) -> str:
         try:
             pair_device(
                 db,
-                pairing_code=_VECTOR_PAIRING_CODE,
-                device_name="Concurrent Pair",
-                platform="android",
+                **pairing_payload(
+                    _VECTOR_PAIRING_CODE,
+                    device_name="Concurrent Pair",
+                ),
                 remote_id="bootstrap-lock-pair",
             )
         except AppError as error:
@@ -125,6 +126,11 @@ def _attempt_invitation_accept_while_bootstrap_locked(
         )
         assert invitation is not None and invitation.revoked_at is None
         started.set()
+        request = invitation_accept_payload(
+            invite_token,
+            account_name="Concurrent Invitee",
+            device_name="Concurrent Invite Device",
+        )
         try:
             invitation_service.accept_invitation(
                 db,
@@ -132,6 +138,8 @@ def _attempt_invitation_accept_while_bootstrap_locked(
                 account_name="Concurrent Invitee",
                 device_name="Concurrent Invite Device",
                 platform="android",
+                enrollment_attempt_id=request["enrollment_attempt_id"],
+                enrollment_attempt_secret=request["enrollment_attempt_secret"],
             )
         except AppError as error:
             db.rollback()

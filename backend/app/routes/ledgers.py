@@ -10,14 +10,12 @@ The Bearer token determines who the caller is:
 * ``POST /api/ledgers``               — app token with ``role == 'owner'`` or
                                         any admin token; creates a new ledger
                                         owned by the calling account.
-* ``POST /api/ledgers/{id}/switch``   — app token only; rotates the caller's
-                                        session token to a new ledger-scoped
-                                        token. The previous token is revoked.
+* ``POST /api/ledgers/{id}/switch``   — app token only; selects a ledger while
+                                        preserving the Account/Device session.
 
-Routes never trust ledger ids that arrive in request bodies or headers as a
-substitute for ``AuthContext.ledger_id``; only the ledger explicitly named in
-the URL of ``/switch`` is used, and even then it is validated against the
-account's active membership before any token is issued.
+Routes never trust a ledger id as authorization. The server resolves the
+authenticated Account/Device first, then validates active membership for the
+selected or path ledger on every request.
 """
 
 from __future__ import annotations
@@ -44,6 +42,7 @@ from app.services.ledger_service import (
     list_ledgers_for_account,
     switch_ledger,
 )
+from app.services.server_identity_service import read_server_data_identity
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/ledgers", tags=["ledgers"])
@@ -91,9 +90,8 @@ def switch_ledger_endpoint(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> LedgerSwitchResponse:
-    # The dependency above already validated and returned an AuthContext for
-    # the caller's *current* (pre-switch) ledger. We still need the raw token
-    # value so the service can revoke it atomically with issuing the new one.
+    # The dependency above already validated the Account/Device session. The
+    # raw value is revalidated under the credential lock and returned unchanged.
     if not authorization:
         raise AppError("invalid_token", status_code=401)
     current_token = _bearer_token(authorization)
@@ -105,8 +103,13 @@ def switch_ledger_endpoint(
         device_id=auth.device_id,
         target_ledger_id=ledger_id,
     )
+    server = read_server_data_identity(db)
     return LedgerSwitchResponse(
         session_token=result.session_token,
+        server_id=server.server_id,
+        data_generation=server.data_generation,
+        account_public_id=result.account_public_id,
+        device_public_id=result.device_public_id,
         expires_at=result.expires_at,
         soft_refresh_after=result.soft_refresh_after,
         ledger=LedgerResponse(

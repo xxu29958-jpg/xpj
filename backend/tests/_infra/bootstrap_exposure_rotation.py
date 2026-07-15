@@ -18,6 +18,7 @@ from app.models import (
     AuthToken,
     BootstrapSecretConsumption,
     Device,
+    DeviceEnrollmentAttempt,
     Invitation,
     Ledger,
     LedgerMember,
@@ -51,6 +52,7 @@ from tests._infra.bootstrap_recovery import (
     _VECTOR_UPLOAD_KEY,
     _enable_http_bootstrap,
 )
+from tests.pairing_test_support import pairing_payload
 
 
 def _rotate_and_assert_initial_ttl(replacement_secret: str) -> BootstrapResult:
@@ -83,7 +85,7 @@ def _assert_stale_pairing_cannot_be_consumed(exposure: _ExposureWindow) -> None:
         pairing_id=exposure.stale_pairing_id,
         expected_code_hash=exposure.stale_pairing_hash,
     )
-    assert stale_consume == "expired"
+    assert stale_consume == "expired", stale_consume
     exposure.stale_pairing_session.rollback()
 
 
@@ -91,11 +93,10 @@ def _assert_replacement_pairing_succeeds(replacement_secret: str) -> None:
     with TestClient(app) as client:
         replacement_pair = client.post(
             "/api/auth/pair",
-            json={
-                "pairing_code": derive_bootstrap_pairing_code(replacement_secret),
-                "device_name": "Replacement Device",
-                "platform": "android",
-            },
+            json=pairing_payload(
+                derive_bootstrap_pairing_code(replacement_secret),
+                device_name="Replacement Device",
+            ),
         )
         assert replacement_pair.status_code == 200, replacement_pair.text
 
@@ -257,9 +258,16 @@ def _assert_exposure_rotation_persisted(
         assert db.query(UploadLink).filter(
             UploadLink.token_hash == hash_secret(_VECTOR_UPLOAD_KEY)
         ).count() == 0
-        assert db.query(PairingCode).filter(
+        exposed_pairing = db.query(PairingCode).filter(
             PairingCode.code_hash == hash_pairing_code(_VECTOR_PAIRING_CODE)
-        ).count() == 0
+        ).one()
+        assert exposed_pairing.used_at is not None
+        exposed_pairing_expiration = ensure_utc(exposed_pairing.expires_at)
+        assert exposed_pairing_expiration is not None
+        assert exposed_pairing_expiration <= now_utc()
+        assert db.query(DeviceEnrollmentAttempt).filter(
+            DeviceEnrollmentAttempt.pairing_code_id == exposed_pairing.id
+        ).count() == 1
         _assert_exposed_principals_revoked(
             db,
             exposed_session_hash=exposed_session_hash,

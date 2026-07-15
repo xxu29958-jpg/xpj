@@ -39,7 +39,13 @@ def _token_is_usable(token: AuthToken, *, checked_at: datetime) -> bool:
     return expires_at is None or expires_at > checked_at
 
 
-def _reload_auth_context(db: Session, token: AuthToken) -> AuthContext:
+def _reload_auth_context(
+    db: Session,
+    token: AuthToken,
+    *,
+    selected_ledger_id: str | None = None,
+) -> AuthContext:
+    ledger_id = selected_ledger_id or token.ledger_id
     row = db.execute(
         select(Account, Device, Ledger, LedgerMember.role)
         .where(Account.id == token.account_id)
@@ -47,7 +53,7 @@ def _reload_auth_context(db: Session, token: AuthToken) -> AuthContext:
         .where(Device.id == token.device_id)
         .where(Device.account_id == Account.id)
         .where(Device.revoked_at.is_(None))
-        .where(Ledger.ledger_id == token.ledger_id)
+        .where(Ledger.ledger_id == ledger_id)
         .where(Ledger.archived_at.is_(None))
         .where(LedgerMember.ledger_id == Ledger.ledger_id)
         .where(LedgerMember.account_id == Account.id)
@@ -59,10 +65,12 @@ def _reload_auth_context(db: Session, token: AuthToken) -> AuthContext:
     account, device, ledger, role = row
     return AuthContext(
         account_id=account.id,
+        account_public_id=account.public_id,
         account_name=account.display_name,
         ledger_id=ledger.ledger_id,
         ledger_name=ledger.name,
         device_id=device.id,
+        device_public_id=device.public_id,
         device_name=device.device_name,
         role=str(role),
         scope=token.scope,
@@ -90,7 +98,11 @@ def lock_and_revalidate_credential_mint_context(
     )
     if token is None or not _token_is_usable(token, checked_at=now_utc()):
         raise AppError("invalid_token", status_code=401)
-    refreshed = _reload_auth_context(db, token)
+    refreshed = _reload_auth_context(
+        db,
+        token,
+        selected_ledger_id=auth.ledger_id,
+    )
     if refreshed != auth:
         raise AppError("invalid_token", status_code=401)
     return refreshed

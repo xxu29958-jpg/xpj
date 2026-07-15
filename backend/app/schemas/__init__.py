@@ -190,6 +190,7 @@ from app.schemas._identity import (
     PairingCodeResponse,
     PairRequest,
     PairResponse,
+    RefreshSessionRequest,
     RefreshSessionResponse,
 )
 from app.schemas._income_plan import (
@@ -435,6 +436,7 @@ __all__ = [
     "PairResponse",
     "PendingCategorySuggestionResponse",
     "PendingDuplicateCandidateResponse",
+    "RefreshSessionRequest",
     "RefreshSessionResponse",
     "PairingCodeCreateRequest",
     "PairingCodeResponse",

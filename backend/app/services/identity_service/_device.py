@@ -103,6 +103,7 @@ def _create_pairing_code(
     ledger_id: str,
     account_id: int | None,
     device_name_hint: str | None = None,
+    recovery_device_id: int | None = None,
     ttl_minutes: int = PAIRING_CODE_TTL_MINUTES,
     pairing_code_value: str | None = None,
 ) -> PairingCodeResult:
@@ -110,17 +111,25 @@ def _create_pairing_code(
     if ledger is None or ledger.archived_at is not None:
         raise AppError("invalid_request", status_code=422)
     account = db.get(Account, account_id) if account_id is not None else None
-    if account is None or account.disabled_at is not None or ledger.owner_account_id != account.id:
-        raise AppError("invalid_request", "当前账本拥有者身份需要修复。", status_code=409)
-    owner_membership_id = db.scalar(
+    if account is None or account.disabled_at is not None:
+        raise AppError("invalid_request", "当前成员身份需要修复。", status_code=409)
+    membership_id = db.scalar(
         select(LedgerMember.id)
         .where(LedgerMember.ledger_id == ledger.ledger_id)
         .where(LedgerMember.account_id == account.id)
-        .where(LedgerMember.role == "owner")
         .where(LedgerMember.disabled_at.is_(None))
     )
-    if owner_membership_id is None:
-        raise AppError("invalid_request", "当前账本拥有者身份需要修复。", status_code=409)
+    if membership_id is None:
+        raise AppError("permission_denied", status_code=403)
+    if recovery_device_id is not None:
+        recovery_device = db.scalar(
+            select(Device.id)
+            .where(Device.id == recovery_device_id)
+            .where(Device.account_id == account.id)
+            .limit(1)
+        )
+        if recovery_device is None:
+            raise AppError("invalid_request", "要恢复的设备不存在。", status_code=404)
     ttl = max(1, min(ttl_minutes, 60))
     expires_at = now_utc() + timedelta(minutes=ttl)
     if pairing_code_value is None:
@@ -132,6 +141,7 @@ def _create_pairing_code(
         code_hash=code_hash,
         ledger_id=ledger.ledger_id,
         account_id=account_id,
+        recovery_device_id=recovery_device_id,
         device_name_hint=_clean_name(device_name_hint, "") or None,
         expires_at=expires_at,
     )
@@ -146,6 +156,7 @@ def create_pairing_code(
     ledger_id: str,
     account_id: int | None,
     device_name_hint: str | None = None,
+    recovery_device_id: int | None = None,
     ttl_minutes: int = PAIRING_CODE_TTL_MINUTES,
     auth: AuthContext | None = None,
 ) -> PairingCodeResult:
@@ -159,6 +170,7 @@ def create_pairing_code(
         ledger_id=ledger_id,
         account_id=account_id,
         device_name_hint=device_name_hint,
+        recovery_device_id=recovery_device_id,
         ttl_minutes=ttl_minutes,
     )
     db.commit()

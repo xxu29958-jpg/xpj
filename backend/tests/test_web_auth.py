@@ -28,6 +28,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import AuthToken, Device
 from app.routes.web_auth import (
+    PAIRING_ATTEMPT_COOKIE_NAME,
     SESSION_COOKIE_MAX_AGE_SECONDS,
     SESSION_COOKIE_NAME,
     _safe_next_url,
@@ -47,11 +48,25 @@ def _request_pairing_code(client: TestClient, *, identity) -> str:
     return resp.json()["pairing_code"]
 
 
+def _pairing_attempt_cookie_header(client: TestClient) -> dict[str, str]:
+    form = client.get("/web/auth/login")
+    assert form.status_code == 200
+    attempt = form.cookies.get(PAIRING_ATTEMPT_COOKIE_NAME)
+    assert attempt is not None
+    return {"Cookie": f"{PAIRING_ATTEMPT_COOKIE_NAME}={attempt}"}
+
+
 def test_login_form_renders(client: TestClient) -> None:
     resp = client.get("/web/auth/login")
     assert resp.status_code == 200
     assert "绑定码" in resp.text
     assert 'action="/web/auth/login"' in resp.text
+    cookie_header = resp.headers.get("set-cookie", "")
+    assert PAIRING_ATTEMPT_COOKIE_NAME in cookie_header
+    assert "Secure" in cookie_header
+    assert "HttpOnly" in cookie_header
+    assert "Path=/web/auth" in cookie_header
+    assert "samesite=strict" in cookie_header.lower()
 
 
 def test_login_form_shows_error_param(client: TestClient) -> None:
@@ -62,10 +77,12 @@ def test_login_form_shows_error_param(client: TestClient) -> None:
 
 def test_valid_pairing_code_sets_secure_session_cookie(client: TestClient, *, identity) -> None:
     before = now_utc()
+    attempt_headers = _pairing_attempt_cookie_header(client)
     code = _request_pairing_code(client, identity=identity)
     resp = client.post(
         "/web/auth/login",
         data={"pairing_code": code, "device_name": "我的笔记本"},
+        headers=attempt_headers,
         follow_redirects=False,
     )
     after = now_utc()
@@ -90,13 +107,63 @@ def test_valid_pairing_code_sets_secure_session_cookie(client: TestClient, *, id
         assert expires_at >= before + timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS)
         assert expires_at <= after + timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS)
 
+    replay = client.post(
+        "/web/auth/login",
+        data={"pairing_code": code, "device_name": "我的笔记本"},
+        headers=attempt_headers,
+        follow_redirects=False,
+    )
+    assert replay.status_code == 303
+    assert _extract_session_cookie(replay) == token
+
+
+def test_closed_pairing_attempt_cookie_is_cleared_before_next_login(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    attempt_headers = _pairing_attempt_cookie_header(client)
+    stale_attempt = attempt_headers["Cookie"].split("=", 1)[1]
+    code = _request_pairing_code(client, identity=identity)
+    paired = client.post(
+        "/web/auth/login",
+        data={"pairing_code": code, "device_name": "浏览器"},
+        headers=attempt_headers,
+        follow_redirects=False,
+    )
+    token = _extract_session_cookie(paired)
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        row.revoked_at = now_utc()
+        db.commit()
+
+    closed = client.post(
+        "/web/auth/login",
+        data={"pairing_code": code, "device_name": "浏览器"},
+        headers=attempt_headers,
+        follow_redirects=False,
+    )
+
+    assert closed.status_code == 303
+    assert "error=pairing_attempt_closed" in closed.headers["location"]
+    clear_cookie = closed.headers.get("set-cookie", "")
+    assert PAIRING_ATTEMPT_COOKIE_NAME in clear_cookie
+    assert "Max-Age=0" in clear_cookie
+    fresh = client.get("/web/auth/login")
+    fresh_attempt = fresh.cookies.get(PAIRING_ATTEMPT_COOKIE_NAME)
+    assert fresh_attempt is not None
+    assert fresh_attempt != stale_attempt
+
 
 def test_login_redirects_to_safe_next_only(client: TestClient, *, identity) -> None:
+    attempt_headers = _pairing_attempt_cookie_header(client)
     code = _request_pairing_code(client, identity=identity)
     # External URL is rejected → falls back to /web
     resp = client.post(
         "/web/auth/login",
         data={"pairing_code": code, "next": "https://evil.example.com"},
+        headers=attempt_headers,
         follow_redirects=False,
     )
     assert resp.status_code == 303
@@ -104,10 +171,12 @@ def test_login_redirects_to_safe_next_only(client: TestClient, *, identity) -> N
 
 
 def test_login_honors_internal_next(client: TestClient, *, identity) -> None:
+    attempt_headers = _pairing_attempt_cookie_header(client)
     code = _request_pairing_code(client, identity=identity)
     resp = client.post(
         "/web/auth/login",
         data={"pairing_code": code, "next": "/web/pending"},
+        headers=attempt_headers,
         follow_redirects=False,
     )
     assert resp.status_code == 303
@@ -115,9 +184,11 @@ def test_login_honors_internal_next(client: TestClient, *, identity) -> None:
 
 
 def test_invalid_pairing_code_redirects_with_error(client: TestClient) -> None:
+    attempt_headers = _pairing_attempt_cookie_header(client)
     resp = client.post(
         "/web/auth/login",
         data={"pairing_code": "00000000"},
+        headers=attempt_headers,
         follow_redirects=False,
     )
     assert resp.status_code == 303
@@ -174,10 +245,12 @@ def test_whoami_round_trips_after_login(client: TestClient, *, identity) -> None
     # and pass it back as an explicit Cookie header so we exercise the
     # real read path. (Real browsers see api.zen70.cn over HTTPS and
     # preserve the cookie automatically — this is a testclient quirk.)
+    attempt_headers = _pairing_attempt_cookie_header(client)
     code = _request_pairing_code(client, identity=identity)
     login = client.post(
         "/web/auth/login",
         data={"pairing_code": code, "device_name": "PyTest 浏览器"},
+        headers=attempt_headers,
         follow_redirects=False,
     )
     assert login.status_code == 303
@@ -194,10 +267,12 @@ def test_whoami_round_trips_after_login(client: TestClient, *, identity) -> None
 
 
 def test_whoami_rejects_server_side_expired_cookie(client: TestClient, *, identity) -> None:
+    attempt_headers = _pairing_attempt_cookie_header(client)
     code = _request_pairing_code(client, identity=identity)
     login = client.post(
         "/web/auth/login",
         data={"pairing_code": code, "device_name": "PyTest 浏览器"},
+        headers=attempt_headers,
         follow_redirects=False,
     )
     assert login.status_code == 303
@@ -230,10 +305,12 @@ def test_whoami_rejects_server_side_expired_cookie(client: TestClient, *, identi
 
 
 def test_logout_revokes_auth_token_server_side(client: TestClient, *, identity) -> None:
+    attempt_headers = _pairing_attempt_cookie_header(client)
     code = _request_pairing_code(client, identity=identity)
     login = client.post(
         "/web/auth/login",
         data={"pairing_code": code},
+        headers=attempt_headers,
         follow_redirects=False,
     )
     assert login.status_code == 303

@@ -17,9 +17,11 @@ from app.models.ai_advisor import (
 )
 from app.models.app_meta import AppMeta
 from app.models.auth import (
+    DeviceEnrollmentAttempt,
     Invitation,
     PairingAttemptFailure,
     PairingCode,
+    SessionRefreshAttempt,
     UploadLink,
     UploadLinkDailyUsage,
     UploadLinkRemoteAttempt,
@@ -127,11 +129,13 @@ __all__ = [
     "MonthlyIncomePlan",
     "OcrFact",
     "PairingAttemptFailure",
+    "DeviceEnrollmentAttempt",
     "PairingCode",
     "RecurringItem",
     "Repayment",
     "RepaymentDraft",
     "RepaymentVoid",
+    "SessionRefreshAttempt",
     "RuleApplicationBatch",
     "RuleApplicationChange",
     "SchedulerLease",

@@ -34,6 +34,13 @@ ERROR_MESSAGES = {
     "bootstrap_secret_required": "缺少一次性初始化口令。",
     "invalid_bootstrap_secret": "初始化口令无效或已使用。",
     "invalid_pairing_code": "绑定码无效，请重新生成。",
+    "device_recovery_platform_mismatch": "这个恢复码不是给 Android 设备用的，请重新生成。",
+    "server_identity_invalid": "服务器身份记录损坏或缺失，请导出诊断包并停止写入。",
+    "pairing_attempt_expired": "连接恢复凭据已过期，请重新生成绑定码。",
+    "pairing_attempt_closed": "这次连接已完成或已失效，请使用当前会话；设备已移除时请重新绑定。",
+    "invitation_attempt_expired": "邀请接入恢复凭据已过期，请让账本成员重新生成邀请。",
+    "invitation_attempt_closed": "这次邀请接入已失效，请使用当前会话或重新接受新邀请。",
+    "client_upgrade_required": "当前客户端版本过旧，无法安全完成此操作，请先升级。",
     "rate_limited": "尝试太频繁，请稍后再试。",
     "file_too_large": "图片太大，请换一张较小的截图。",
     "unsupported_file_type": "暂不支持这种图片格式。",
@@ -62,6 +69,7 @@ ERROR_MESSAGES = {
     "cannot_archive_default_ledger": "默认账本不能归档，它是系统的兜底账本。",
     "permission_denied": "当前角色为只读，无法修改账本。",
     "invitation_invalid": "邀请码无效、已过期或已被使用。",
+    "invitation_already_joined": "你已经是这个账本的成员，无需再次接受邀请。",
     "invitation_role_invalid": "邀请角色只能是成员或只读。",
     "invitation_note_too_long": "备注最多 80 个字。",
     "member_not_found": "成员不存在或已停用。",
@@ -289,9 +297,7 @@ def html_error_response(request: Request, status_code: int) -> HTMLResponse:
     # the operator into the session-gated user surface.
     path = request.url.path
     home_href = "/owner" if path == "/owner" or path.startswith("/owner/") else "/web"
-    rid_line = (
-        f'<p class="error-page__rid">问题编号 {_html_escape(request_id)}</p>' if request_id else ""
-    )
+    rid_line = f'<p class="error-page__rid">问题编号 {_html_escape(request_id)}</p>' if request_id else ""
     body = (
         "<!DOCTYPE html>"
         f'<html lang="zh-CN" data-theme="{_html_escape(theme)}">'
@@ -357,9 +363,13 @@ async def http_error_handler(request: Request, exc: StarletteHTTPException) -> R
     if exc.status_code in {401, 403}:
         return error_response("invalid_token", ERROR_MESSAGES["invalid_token"], exc.status_code, request_id=request_id)
     if exc.status_code == 404:
-        return error_response("route_not_found", ERROR_MESSAGES["route_not_found"], exc.status_code, request_id=request_id)
+        return error_response(
+            "route_not_found", ERROR_MESSAGES["route_not_found"], exc.status_code, request_id=request_id
+        )
     if exc.status_code == 405:
-        return error_response("method_not_allowed", ERROR_MESSAGES["method_not_allowed"], exc.status_code, request_id=request_id)
+        return error_response(
+            "method_not_allowed", ERROR_MESSAGES["method_not_allowed"], exc.status_code, request_id=request_id
+        )
     return error_response("invalid_request", str(exc.detail), exc.status_code, request_id=request_id)
 
 

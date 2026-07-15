@@ -337,9 +337,20 @@ def _replace_credentials(
     upload.token_hash = hash_secret(credentials.upload_key)
     upload.revoked_at = None
     upload.expires_at = upload_link_expires_at(rotated_at)
-    pairing.code_hash = hash_pairing_code(credentials.pairing_code)
-    pairing.used_at = None
-    pairing.expires_at = rotated_at + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
+    current_pairing_expiration = ensure_utc(pairing.expires_at)
+    if current_pairing_expiration is None or current_pairing_expiration > rotated_at:
+        pairing.expires_at = rotated_at
+    db.add(
+        PairingCode(
+            code_hash=hash_pairing_code(credentials.pairing_code),
+            ledger_id=pairing.ledger_id,
+            account_id=pairing.account_id,
+            recovery_device_id=pairing.recovery_device_id,
+            device_name_hint=pairing.device_name_hint,
+            expires_at=rotated_at + timedelta(minutes=PAIRING_CODE_TTL_MINUTES),
+            created_at=rotated_at,
+        )
+    )
     db.add(BootstrapSecretConsumption(secret_hash=secret_hash))
     db.flush()
 

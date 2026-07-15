@@ -10,9 +10,9 @@ Key invariants:
 * Ledger ownership is decided server-side from ``AuthContext.account_id``;
   callers MUST NOT trust ``ledger_id`` taken from request bodies for cross
   ledger reads or writes.
-* ``switch_ledger`` revokes the caller's previous app-scoped session token
-  and issues a new ledger-scoped one for the same ``(account, device)`` pair
-  to prevent old tokens from reading the previous ledger after a switch.
+* ``switch_ledger`` changes the session's compatibility default ledger without
+  changing the Account/Device session secret. Authorization is recalculated
+  from the selected ledger's active membership on every request.
 * Database-internal autoincrement IDs are never returned; only the public
   ``ledger_id`` string is surfaced.
 """
@@ -45,10 +45,10 @@ from app.services.session_credential_lock import (
     lock_and_revalidate_mutation_actor,
 )
 from app.services.session_lifecycle_service import (
-    app_token_expiry_window,
-    rotate_app_token_for_ledger,
+    app_token_soft_refresh_after,
+    hash_secret,
 )
-from app.services.time_service import to_iso
+from app.services.time_service import ensure_utc, to_iso
 from app.tenants import DEFAULT_TENANT_ID, AuthContext
 
 LEDGER_ID_PREFIX = "ledger_"
@@ -266,8 +266,8 @@ def _lock_ledger_switch_context(
 
     # Credential lock -> Ledger -> LedgerMember -> source AuthToken is the
     # global order shared with archive/member-disable/token revocation.  The
-    # target rows are re-read under FOR UPDATE before the source token can be
-    # revoked, so a losing switch rolls back without stranding the caller.
+    # target rows are re-read under FOR UPDATE before the session's compatibility
+    # default is changed, so a losing switch leaves the caller untouched.
     ledger = db.scalar(
         select(Ledger)
         .where(Ledger.ledger_id == target_ledger_id)
@@ -298,7 +298,7 @@ def switch_ledger(
     device_id: int,
     target_ledger_id: str,
 ) -> SwitchLedgerResult:
-    """Atomically switch the calling device and rotate its app token."""
+    """Select a ledger without replacing the Account/Device session."""
     locked_auth, ledger, membership, device = _lock_ledger_switch_context(
         db,
         auth=auth,
@@ -307,27 +307,32 @@ def switch_ledger(
         target_ledger_id=target_ledger_id,
     )
 
+    if hash_secret(current_token_value) != locked_auth.credential_hash:
+        raise AppError("invalid_token", status_code=401)
+    token = db.get(AuthToken, locked_auth.credential_id)
+    if (
+        token is None
+        or token.token_hash != locked_auth.credential_hash
+        or token.account_id != locked_auth.account_id
+        or token.device_id != device.id
+        or token.scope != "app"
+        or token.revoked_at is not None
+    ):
+        raise AppError("invalid_token", status_code=401)
+
     from app.services.time_service import now_utc
 
     switched_at = now_utc()
-    expiry = app_token_expiry_window(switched_at)
-    new_token, switched_at = rotate_app_token_for_ledger(
-        db,
-        auth=locked_auth,
-        current_token_value=current_token_value,
-        account_id=locked_auth.account_id,
-        device_id=device.id,
-        target_ledger_id=ledger.ledger_id,
-        rotated_at=switched_at,
-        expires_at=expiry.expires_at,
-    )
+    token.ledger_id = ledger.ledger_id
     device.last_seen_at = switched_at
     db.commit()
 
     return SwitchLedgerResult(
-        session_token=new_token,
-        expires_at=to_iso(expiry.expires_at),
-        soft_refresh_after=to_iso(expiry.soft_refresh_after),
+        session_token=current_token_value,
+        account_public_id=locked_auth.account_public_id,
+        device_public_id=device.public_id,
+        expires_at=to_iso(ensure_utc(token.expires_at)),
+        soft_refresh_after=to_iso(app_token_soft_refresh_after(token.expires_at)),
         ledger_id=ledger.ledger_id,
         ledger_name=ledger.name,
         role=membership.role,
@@ -347,22 +352,24 @@ def ledger_member_counts(db: Session, *, ledger_id: str) -> dict[str, int]:
     focused; ``/owner/ledgers`` composes Expense counters via ``stats_service``
     or its own queries.
     """
-    devices = int(
-        db.scalar(
-            select(func.count(func.distinct(AuthToken.device_id)))
-            .where(AuthToken.ledger_id == ledger_id)
-            .where(AuthToken.revoked_at.is_(None))
+    authorized_sessions = (
+        select(AuthToken.id, AuthToken.device_id)
+        .join(Device, Device.id == AuthToken.device_id)
+        .join(
+            LedgerMember,
+            (LedgerMember.account_id == AuthToken.account_id)
+            & (LedgerMember.ledger_id == ledger_id),
         )
+        .where(AuthToken.revoked_at.is_(None))
+        .where(Device.revoked_at.is_(None))
+        .where(LedgerMember.disabled_at.is_(None))
+    ).subquery()
+    devices = int(
+        db.scalar(select(func.count(func.distinct(authorized_sessions.c.device_id))))
         or 0
     )
     tokens = int(
-        db.scalar(
-            select(func.count())
-            .select_from(AuthToken)
-            .where(AuthToken.ledger_id == ledger_id)
-            .where(AuthToken.revoked_at.is_(None))
-        )
-        or 0
+        db.scalar(select(func.count()).select_from(authorized_sessions)) or 0
     )
     return {"active_devices": devices, "active_tokens": tokens}
 

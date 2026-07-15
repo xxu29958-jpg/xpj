@@ -17,7 +17,9 @@ Android app tokens must never be accepted from ``__Host-session`` cookies.
 
 from __future__ import annotations
 
+import secrets
 from urllib.parse import urlencode
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -28,6 +30,7 @@ from app.errors import AppError
 from app.network_boundary import pairing_rate_limit_key
 from app.routes.web_common import _safe_same_site_redirect_path, templates
 from app.services.identity_service import (
+    ENROLLMENT_ATTEMPT_RECOVERY_SECONDS,
     WEB_SESSION_TTL_SECONDS,
     authenticate_web_session_token,
     pair_device,
@@ -39,6 +42,9 @@ router = APIRouter(prefix="/web/auth", tags=["web"])
 
 SESSION_COOKIE_NAME = "__Host-session"
 SESSION_COOKIE_MAX_AGE_SECONDS = WEB_SESSION_TTL_SECONDS  # fixed 8h server-side TTL
+PAIRING_ATTEMPT_COOKIE_NAME = "__Secure-pairing-attempt"
+PAIRING_ATTEMPT_COOKIE_PATH = "/web/auth"
+PAIRING_ATTEMPT_COOKIE_MAX_AGE_SECONDS = ENROLLMENT_ATTEMPT_RECOVERY_SECONDS
 # `__Host-` prefix demands: Secure, Path=/, no Domain attribute. Browsers
 # refuse to honour the cookie if any of these is missing or modified.
 # See the MDN cookie-prefix reference for the browser-side invariants.
@@ -68,6 +74,48 @@ def clear_session_cookie(response: Response) -> None:
     )
 
 
+def _set_pairing_attempt_cookie(response: Response, value: str) -> None:
+    response.set_cookie(
+        key=PAIRING_ATTEMPT_COOKIE_NAME,
+        value=value,
+        max_age=PAIRING_ATTEMPT_COOKIE_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        path=PAIRING_ATTEMPT_COOKIE_PATH,
+    )
+
+
+def _clear_pairing_attempt_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=PAIRING_ATTEMPT_COOKIE_NAME,
+        path=PAIRING_ATTEMPT_COOKIE_PATH,
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
+
+
+def _new_pairing_attempt_cookie() -> str:
+    return f"{uuid4()}.{secrets.token_urlsafe(32)}"
+
+
+def _read_pairing_attempt(request: Request) -> tuple[str, str] | None:
+    raw = request.cookies.get(PAIRING_ATTEMPT_COOKIE_NAME, "").strip()
+    attempt_id, separator, attempt_secret = raw.partition(".")
+    if separator != "." or len(attempt_secret) != 43:
+        return None
+    if not all(char.isascii() and (char.isalnum() or char in "_-") for char in attempt_secret):
+        return None
+    try:
+        canonical_id = str(UUID(attempt_id))
+    except ValueError:
+        return None
+    if canonical_id != attempt_id:
+        return None
+    return canonical_id, attempt_secret
+
+
 def read_session_token(request: Request) -> str | None:
     raw = request.cookies.get(SESSION_COOKIE_NAME, "").strip()
     return raw or None
@@ -79,7 +127,7 @@ def web_login_form(
     next: str | None = None,  # noqa: A002 - matches `?next=` convention
     error: str | None = None,
 ) -> HTMLResponse:
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="auth/login.html",
         context={
@@ -89,6 +137,9 @@ def web_login_form(
             "asset_version": STATIC_ASSET_VERSION,
         },
     )
+    if _read_pairing_attempt(request) is None:
+        _set_pairing_attempt_cookie(response, _new_pairing_attempt_cookie())
+    return response
 
 
 @router.post("/login", response_class=HTMLResponse, include_in_schema=False)
@@ -102,20 +153,31 @@ def web_login_submit(
     code = (pairing_code or "").strip()
     if not code or not code.isdigit() or len(code) != 8:
         return _redirect_login(next=next, error="invalid_pairing_code")
+    attempt = _read_pairing_attempt(request)
+    if attempt is None:
+        redirect = _redirect_login(next=next, error="pairing_attempt_expired")
+        _clear_pairing_attempt_cookie(redirect)
+        return redirect
     cleaned_device_name = _clean_device_name(device_name, request)
     remote_id = pairing_rate_limit_key(request)
     try:
         result = pair_device(
             db,
             pairing_code=code,
+            pairing_attempt_id=attempt[0],
+            pairing_attempt_secret=attempt[1],
             device_name=cleaned_device_name,
             platform="web",
             remote_id=remote_id,
         )
     except AppError as exc:
-        return _redirect_login(next=next, error=exc.error)
+        redirect = _redirect_login(next=next, error=exc.error)
+        if exc.error in {"pairing_attempt_expired", "pairing_attempt_closed"}:
+            _clear_pairing_attempt_cookie(redirect)
+        return redirect
     redirect = RedirectResponse(url=_safe_next_url(next) or "/web", status_code=303)
     set_session_cookie(redirect, result.session_token)
+    _clear_pairing_attempt_cookie(redirect)
     return redirect
 
 
@@ -170,6 +232,7 @@ def web_whoami(
 _ERROR_MESSAGES = {
     "invalid_pairing_code": "绑定码不正确，请重新输入 8 位数字。",
     "invalid_token": "登录已失效，请重新输入绑定码。",
+    "pairing_attempt_expired": "登录页面已过期，请刷新后重新输入绑定码。",
     "rate_limited": "请求过于频繁，请稍后再试。",
 }
 

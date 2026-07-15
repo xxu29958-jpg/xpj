@@ -30,6 +30,7 @@ from tests._infra.bootstrap_recovery import (
     _VECTOR_UPLOAD_KEY,
     _post_bootstrap,
 )
+from tests.pairing_test_support import invitation_accept_payload, pairing_payload
 
 
 @dataclass(frozen=True)
@@ -101,12 +102,11 @@ def _accept_invitation_token(
 ) -> _MemberEvidence:
     accepted = client.post(
         "/api/invitations/accept",
-        json={
-            "invite_token": invite_token,
-            "account_name": account_name,
-            "device_name": device_name,
-            "platform": "android",
-        },
+        json=invitation_accept_payload(
+            invite_token,
+            account_name=account_name,
+            device_name=device_name,
+        ),
     )
     assert accepted.status_code == 200, accepted.text
     session_hash = hash_secret(accepted.json()["session_token"])
@@ -245,11 +245,10 @@ def _bootstrap_and_pair_owner(
     ).one()
     paired = client.post(
         "/api/auth/pair",
-        json={
-            "pairing_code": _VECTOR_PAIRING_CODE,
-            "device_name": "Exposure Window Device",
-            "platform": "android",
-        },
+        json=pairing_payload(
+            _VECTOR_PAIRING_CODE,
+            device_name="Exposure Window Device",
+        ),
     )
     assert paired.status_code == 200, paired.text
     return paired.json()["session_token"], stale_pairing

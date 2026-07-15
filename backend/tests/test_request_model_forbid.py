@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from app import schemas
+from tests.pairing_test_support import pairing_payload
 
 
 def _request_models() -> list[type[BaseModel]]:
@@ -59,9 +60,7 @@ def test_pair_rejects_unknown_body_field(client: TestClient, *, identity) -> Non
     rejected = client.post(
         "/api/auth/pair",
         json={
-            "pairing_code": pairing_code,
-            "device_name": "小米 15 Pro",
-            "platform": "android",
+            **pairing_payload(pairing_code, device_name="小米 15 Pro"),
             "is_admin": True,  # unknown field must 422, not be ignored
         },
     )
@@ -71,10 +70,6 @@ def test_pair_rejects_unknown_body_field(client: TestClient, *, identity) -> Non
     # have consumed the single-use pairing code.
     paired = client.post(
         "/api/auth/pair",
-        json={
-            "pairing_code": pairing_code,
-            "device_name": "小米 15 Pro",
-            "platform": "android",
-        },
+        json=pairing_payload(pairing_code, device_name="小米 15 Pro"),
     )
     assert paired.status_code == 200

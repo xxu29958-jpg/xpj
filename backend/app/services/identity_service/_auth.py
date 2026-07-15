@@ -58,12 +58,17 @@ def _context_parts_from_ids(
     return account, device, ledger, str(role)
 
 
-def _context_parts_from_token(db: Session, token: AuthToken) -> tuple[Account, Device, Ledger, str]:
+def _context_parts_from_token(
+    db: Session,
+    token: AuthToken,
+    *,
+    selected_ledger_id: str | None = None,
+) -> tuple[Account, Device, Ledger, str]:
     return _context_parts_from_ids(
         db,
         account_id=token.account_id,
         device_id=token.device_id,
-        ledger_id=token.ledger_id,
+        ledger_id=selected_ledger_id or token.ledger_id,
     )
 
 
@@ -72,10 +77,12 @@ def _auth_context_from_parts(
 ) -> AuthContext:
     return AuthContext(
         account_id=account.id,
+        account_public_id=account.public_id,
         account_name=account.display_name,
         ledger_id=ledger.ledger_id,
         ledger_name=ledger.name,
         device_id=device.id,
+        device_public_id=device.public_id,
         device_name=device.device_name,
         role=role,
         scope=token.scope,
@@ -108,8 +115,17 @@ def _refresh_token_activity(
     return True
 
 
-def _context_from_token(db: Session, token: AuthToken) -> AuthContext:
-    account, device, ledger, role = _context_parts_from_token(db, token)
+def _context_from_token(
+    db: Session,
+    token: AuthToken,
+    *,
+    selected_ledger_id: str | None = None,
+) -> AuthContext:
+    account, device, ledger, role = _context_parts_from_token(
+        db,
+        token,
+        selected_ledger_id=selected_ledger_id,
+    )
     context = _auth_context_from_parts(token, account, device, ledger, role)
     now = now_utc()
     _refresh_token_activity(db, token, device, now=now)
@@ -149,7 +165,14 @@ def _refresh_upload_link_activity(
     return True
 
 
-def authenticate_session_token(db: Session, token_value: str, allowed_scopes: set[str]) -> AuthContext:
+def authenticate_session_token(
+    db: Session,
+    token_value: str,
+    allowed_scopes: set[str],
+    *,
+    selected_ledger_id: str | None = None,
+    selected_ledger_error: str | None = None,
+) -> AuthContext:
     token_hash = hash_secret(token_value)
     token = db.scalar(
         select(AuthToken).where(AuthToken.token_hash == token_hash).limit(1)
@@ -165,7 +188,16 @@ def authenticate_session_token(db: Session, token_value: str, allowed_scopes: se
         token.grace_until = None
         db.commit()
         raise AppError("invalid_token", status_code=401)
-    return _context_from_token(db, token)
+    try:
+        return _context_from_token(
+            db,
+            token,
+            selected_ledger_id=selected_ledger_id,
+        )
+    except AppError as exc:
+        if selected_ledger_id is not None and selected_ledger_error and exc.error == "invalid_token":
+            raise AppError(selected_ledger_error, status_code=404) from exc
+        raise
 
 
 def authenticate_web_session_token(
@@ -230,10 +262,12 @@ def _upload_link_context(db: Session, link: UploadLink) -> AuthContext:
     )
     return AuthContext(
         account_id=account.id,
+        account_public_id=account.public_id,
         account_name=account.display_name,
         ledger_id=ledger.ledger_id,
         ledger_name=ledger.name,
         device_id=device.id,
+        device_public_id=device.public_id,
         device_name=device.device_name,
         role=role,
         scope="upload",
