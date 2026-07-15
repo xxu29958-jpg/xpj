@@ -23,10 +23,14 @@ class LedgerRepositoryCreateInvitationTest {
         }
 
     private fun repoWith(api: StubApi, store: LedgerFakeSettingsStore): LedgerRepository =
-        LedgerRepository(
+        testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("session-token") },
+            tokenStore = ledgerSessionFixture(
+                ledgerId = "L_family",
+                ledgerName = "家庭账本",
+                serverUrl = "https://family.example.com",
+            ),
             expenseDao = LedgerFakeDao(),
         )
 

@@ -23,7 +23,7 @@ import retrofit2.HttpException
  * doesn't fake-conflict itself).
  */
 class ConfirmExpenseDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.ConfirmExpense
@@ -57,7 +57,7 @@ class ConfirmExpenseDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
-            val confirmed = apiProvider().confirmExpense(expenseRef, request, idempotencyKey)
+            val confirmed = apiProvider(row).confirmExpense(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = confirmed.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

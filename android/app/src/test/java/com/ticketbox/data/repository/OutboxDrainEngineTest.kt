@@ -356,7 +356,7 @@ class OutboxDrainEngineTest {
         // attemptedAt 抵消回 null。lastError 不写——保留先前任何诊断(本例 row 是新加的,
         // lastError 一直是 null)。
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val dispatcher = object : OutboxMutationDispatcher {
             override val type = PendingMutationType.PatchExpense
             override suspend fun dispatch(row: OutboxRow): DispatchResult {
@@ -388,7 +388,7 @@ class OutboxDrainEngineTest {
         // threshold back to PENDING before dequeueing.
         val dao = FakePendingMutationDao()
         val now = java.time.Instant.parse("2026-05-04T12:00:00Z")
-        val outbox = OutboxRepository(
+        val outbox = testOutboxRepository(
             dao = dao,
             clock = java.time.Clock.fixed(now, java.time.ZoneOffset.UTC),
         )
@@ -428,7 +428,7 @@ class OutboxDrainEngineTest {
         // grabbed this row" by claiming it before drainOnce reads
         // the batch. The dispatcher must NOT be called.
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         var calls = 0
         val dispatcher = object : OutboxMutationDispatcher {
             override val type = PendingMutationType.PatchExpense
@@ -461,7 +461,7 @@ class OutboxDrainEngineTest {
         // either claims. The DAO-level status predicate must allow
         // exactly one claim, so only one dispatcher call may happen.
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val batchArrivals = AtomicInteger(0)
         val bothWorkersReadBatch = CompletableDeferred<Unit>()
         dao.beforeNextRunnableBatchReturn = {
@@ -508,7 +508,7 @@ class OutboxDrainEngineTest {
         // atomically in production; here we drive the partial
         // state the guard exists to defend against).
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         var dispatchCalls = 0
         val dispatcher = object : OutboxMutationDispatcher {
             override val type = PendingMutationType.PatchExpense
@@ -545,7 +545,7 @@ class OutboxDrainEngineTest {
         // nobody's holding a pre-capture snapshot to compare
         // against. Verifies the trivial path.
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         var dispatchCalls = 0
         val dispatcher = object : OutboxMutationDispatcher {
             override val type = PendingMutationType.PatchExpense
@@ -572,7 +572,7 @@ class OutboxDrainEngineTest {
         // clearAll must wait. Otherwise the session coordinator can
         // rotate credentials while dispatch lazily reads the token.
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val dispatchEntered = CompletableDeferred<Unit>()
         val releaseDispatch = CompletableDeferred<Unit>()
         val dispatcher = object : OutboxMutationDispatcher {
@@ -614,7 +614,7 @@ class OutboxDrainEngineTest {
         // SyncStatusScreen 看到 + 手动 retry(retryCount 由 DAO 在 resolveFailed.Retry
         // 时重置为 0)/丢弃。
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val engine = OutboxDrainEngine(
             outbox,
             listOf(StubDispatcher(result = DispatchResult.RetryableFailure("server 503"))),
@@ -655,7 +655,7 @@ class OutboxDrainEngineTest {
         // 回 PENDING、retryCount-- (因为没真的 dispatch)、attemptedAt=null。lastError 不写
         // (保留先前 markRetryable 留下的诊断, abort 是窗口期事件不该淹没根因)。
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         var dispatchCalls = 0
         val dispatcher = object : OutboxMutationDispatcher {
             override val type = PendingMutationType.PatchExpense
@@ -694,7 +694,7 @@ class OutboxDrainEngineTest {
         // retryCount 静默累积到 max_attempts。CancellationException 路径用 revertClaim
         // (跟 epoch-abort 对称), 跨 N 次 cancel 后 retryCount 仍是 0。
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val dispatcher = object : OutboxMutationDispatcher {
             override val type = PendingMutationType.PatchExpense
             override suspend fun dispatch(row: OutboxRow): DispatchResult {
@@ -727,7 +727,7 @@ class OutboxDrainEngineTest {
         // max_attempts → 永困 FAILED。本测试覆盖 PR description 承诺但之前没断言的核心
         // 行为(原 PR review P2 gap)。
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val engine = OutboxDrainEngine(
             outbox,
             listOf(StubDispatcher(result = DispatchResult.RetryableFailure("server 503"))),
@@ -764,7 +764,7 @@ class OutboxDrainEngineTest {
         // replay would double-apply. A fresh PENDING row dispatches as usual.
         val dao = FakePendingMutationDao()
         val now = java.time.Instant.parse("2026-05-04T12:00:00Z")
-        val outbox = OutboxRepository(
+        val outbox = testOutboxRepository(
             dao = dao,
             clock = java.time.Clock.fixed(now, java.time.ZoneOffset.UTC),
         )
@@ -814,7 +814,7 @@ class OutboxDrainEngineTest {
         // shared IDLE summary, so the scheduler/UI refreshes the FAILED banner.
         val dao = FakePendingMutationDao()
         val now = java.time.Instant.parse("2026-05-04T12:00:00Z")
-        val outbox = OutboxRepository(
+        val outbox = testOutboxRepository(
             dao = dao,
             clock = java.time.Clock.fixed(now, java.time.ZoneOffset.UTC),
         )
@@ -843,7 +843,7 @@ class OutboxDrainEngineTest {
         dispatcher: OutboxMutationDispatcher,
     ): Pair<OutboxDrainEngine, OutboxRepository> {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
         return engine to outbox
     }

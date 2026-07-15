@@ -52,11 +52,9 @@ import androidx.room.PrimaryKey
  * Stored as TEXT; Moshi adapter is owned by the Repository layer
  * (the Entity is dumb storage).
  *
- * Indices: ``createdAt`` keeps legacy migrations cheap, while the
- * binding-scoped indices on ``serverUrl`` + ``ledgerId`` drive all
- * current drain/UI reads. They prevent rows captured under one
- * server or ledger binding from replaying or rendering under a
- * different binding after cloud sync, device rebind, or ledger switch.
+ * ``ownerKey`` is the versioned server/data/account/device identity that
+ * issued the intent. ``serverUrl`` is only a transport hint. Legacy rows
+ * without a proven owner remain null and are quarantined rather than adopted.
  */
 @Entity(
     tableName = "pending_mutations",
@@ -64,9 +62,9 @@ import androidx.room.PrimaryKey
         Index(value = ["createdAt"]),
         Index(value = ["targetId", "status"]),
         Index(value = ["status"]),
-        Index(value = ["serverUrl", "ledgerId", "createdAt"]),
-        Index(value = ["serverUrl", "ledgerId", "targetId", "status"]),
-        Index(value = ["serverUrl", "ledgerId", "status"]),
+        Index(value = ["ownerKey", "ledgerId", "createdAt"]),
+        Index(value = ["ownerKey", "ledgerId", "targetId", "status"]),
+        Index(value = ["ownerKey", "ledgerId", "status"]),
     ],
 )
 data class PendingMutationEntity(
@@ -78,6 +76,9 @@ data class PendingMutationEntity(
 
     @ColumnInfo(name = "ledgerId", defaultValue = "")
     val ledgerId: String = "",
+
+    @ColumnInfo(name = "ownerKey")
+    val ownerKey: String? = null,
 
     /**
      * Wire identifier for the route this row replays — see

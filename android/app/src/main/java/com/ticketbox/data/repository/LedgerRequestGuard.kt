@@ -1,46 +1,76 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.security.SessionTokenStore
 
 internal class LedgerRequestGuard(
-    private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
     private val apiProvider: ApiServiceProvider,
 ) {
-    fun activeLedgerIdOrLegacy(): String =
-        settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
+    fun activeLedgerIdOrLegacy(): String = currentSessionSnapshotOrNull()?.ledgerId
+        ?: LEGACY_LEDGER_ID
 
     fun bind(
         expectedLedgerId: String? = null,
         ledgerChangedMessage: String = LEDGER_CHANGED_MESSAGE,
     ): BoundLedgerRequest {
-        val ledgerId = activeLedgerIdOrLegacy()
-        if (expectedLedgerId != null && expectedLedgerId != ledgerId) {
+        val snapshot = currentSessionSnapshotOrNull()
+            ?: throw RepositoryException("登录状态已失效，请重新绑定。")
+        if (expectedLedgerId != null && expectedLedgerId != snapshot.ledgerId) {
             throw RepositoryException(ledgerChangedMessage)
         }
-        val serverUrl = requireNotNull(settingsStore.serverUrl()) { "账本地址未绑定" }
-        requireNotNull(tokenStore.getToken()?.takeIf { it.isNotBlank() }) { "账本未绑定" }
-        return BoundLedgerRequest(
-            service = apiProvider.temporary(serverUrl),
-            ledgerId = ledgerId,
-            currentLedgerId = ::activeLedgerIdOrLegacy,
-        )
+        return bindSnapshot(snapshot)
     }
+
+    fun captureLogicalBinding(): LogicalSessionBinding? =
+        currentSessionSnapshotOrNull()?.logicalBinding
+
+    fun bindExact(
+        expectedBinding: LogicalSessionBinding,
+        ledgerChangedMessage: String = LEDGER_CHANGED_MESSAGE,
+    ): BoundLedgerRequest {
+        val snapshot = currentSessionSnapshotOrNull()
+            ?: throw RepositoryException("登录状态已失效，请重新绑定。")
+        if (snapshot.logicalBinding != expectedBinding) {
+            throw RepositoryException(ledgerChangedMessage)
+        }
+        return bindSnapshot(snapshot)
+    }
+
+    private fun bindSnapshot(snapshot: BoundSessionSnapshot): BoundLedgerRequest =
+        BoundLedgerRequest(
+            service = apiProvider.bound(
+                serverUrl = snapshot.serverUrl,
+                sessionGeneration = snapshot.sessionGeneration,
+                ledgerId = snapshot.ledgerId,
+            ),
+            snapshot = snapshot,
+            currentSnapshot = ::currentSessionSnapshotOrNull,
+        )
 
     suspend fun <T> guardedCall(
         expectedLedgerId: String? = null,
         ledgerChangedMessage: String = LEDGER_CHANGED_MESSAGE,
         block: suspend BoundLedgerRequest.(ApiService) -> T,
     ): T {
-        val bound = bind(
-            expectedLedgerId = expectedLedgerId,
-            ledgerChangedMessage = ledgerChangedMessage,
+        val bound = bind(expectedLedgerId, ledgerChangedMessage)
+        return bound.call(ledgerChangedMessage) { service -> bound.block(service) }
+    }
+
+    private fun currentSessionSnapshotOrNull(): BoundSessionSnapshot? {
+        val session = apiProvider.currentSession() ?: return null
+        val owner = OutboxOwnerIdentity.fromOrNull(
+            serverId = session.serverId,
+            dataGeneration = session.dataGeneration,
+            accountPublicId = session.identity.accountPublicId,
+            devicePublicId = session.identity.devicePublicId,
+        ) ?: return null
+        return BoundSessionSnapshot(
+            serverUrl = session.serverUrl,
+            ledgerId = session.identity.ledgerId,
+            owner = owner,
+            token = session.credential.token,
+            sessionGeneration = session.sessionGeneration,
+            bindingRevision = session.bindingRevision,
         )
-        return bound.call(ledgerChangedMessage) { service ->
-            bound.block(service)
-        }
     }
 
     companion object {
@@ -50,17 +80,65 @@ internal class LedgerRequestGuard(
     }
 }
 
-internal class BoundLedgerRequest(
-    val service: ApiService,
+internal data class BoundSessionSnapshot(
+    val serverUrl: String,
     val ledgerId: String,
-    private val currentLedgerId: () -> String,
+    val owner: OutboxOwnerIdentity,
+    val token: String,
+    val sessionGeneration: String,
+    val bindingRevision: String,
 ) {
-    fun isStillActive(): Boolean = currentLedgerId() == ledgerId
+    val outboxBinding: OutboxBinding
+        get() = OutboxBinding(serverUrl, ledgerId, owner)
+
+    val logicalBinding: LogicalSessionBinding
+        get() = LogicalSessionBinding(
+            serverUrl = serverUrl,
+            ledgerId = ledgerId,
+            ownerKey = owner.storageKey,
+            sessionGeneration = sessionGeneration,
+            bindingRevision = bindingRevision,
+        )
+}
+
+internal data class LogicalSessionBinding(
+    val serverUrl: String,
+    val ledgerId: String,
+    val ownerKey: String,
+    val sessionGeneration: String,
+    val bindingRevision: String,
+)
+
+internal class BoundLedgerRequest(
+    private val service: ApiService,
+    private val snapshot: BoundSessionSnapshot,
+    private val currentSnapshot: () -> BoundSessionSnapshot?,
+) {
+    val ledgerId: String
+        get() = snapshot.ledgerId
+
+    internal val outboxBinding: OutboxBinding
+        get() = snapshot.outboxBinding
+
+    fun isStillActive(): Boolean =
+        currentSnapshot()?.logicalBinding == snapshot.logicalBinding
 
     fun requireStillActive(message: String = LedgerRequestGuard.LEDGER_CHANGED_MESSAGE) {
-        if (!isStillActive()) {
+        if (!isStillActive()) throw RepositoryException(message)
+    }
+
+    internal fun requireStillActiveFor(
+        binding: OutboxBinding,
+        message: String = LedgerRequestGuard.LEDGER_CHANGED_MESSAGE,
+    ) {
+        if (binding.normalized() != outboxBinding || !isStillActive()) {
             throw RepositoryException(message)
         }
+    }
+
+    internal fun serviceFor(binding: OutboxBinding): ApiService {
+        requireStillActiveFor(binding)
+        return service
     }
 
     suspend fun <T> call(

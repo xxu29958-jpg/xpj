@@ -14,25 +14,19 @@ private val Context.ticketboxBackgroundDataStore by preferencesDataStore(
     name = "ticketbox_background_settings",
 )
 
-class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
+internal const val TICKETBOX_SETTINGS_PREFERENCES = "ticketbox_settings"
+
+internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     private val appContext = context.applicationContext
-    private val prefs = appContext.getSharedPreferences("ticketbox_settings", Context.MODE_PRIVATE)
+    private val prefs = appContext.getSharedPreferences(TICKETBOX_SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
     private val backgroundStore = BackgroundSettingsDataStore(appContext.ticketboxBackgroundDataStore)
 
     override val backgroundSettingsFlow: Flow<BackgroundSettings> = backgroundStore.settingsFlow
 
-    // Hot flow over active ledger id. Initialized from disk so that
-    // first subscribers observe the persisted value without a race.
-    private val activeLedgerIdFlow = MutableStateFlow(prefs.getString(KEY_ACTIVE_LEDGER_ID, null))
-
     // 币种偏好 hot flow，与 ledger id 同理：磁盘初值保证首订阅者不会错过当前值。
     private val currencyCodeFlow = MutableStateFlow(prefs.getString(KEY_CURRENCY_CODE, null))
 
-    override fun observeActiveLedgerId(): Flow<String?> = activeLedgerIdFlow
-
     override fun observeCurrencyCodeKey(): Flow<String?> = currencyCodeFlow
-
-    override fun serverUrl(): String? = prefs.getString(KEY_SERVER_URL, null)
 
     override fun appSkinKey(): String? = prefs.getString(KEY_APP_SKIN, null)
 
@@ -74,8 +68,10 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
-    override fun lastConfirmedSyncAt(): String? {
-        val key = lastConfirmedSyncAtKey()
+    override fun lastConfirmedSyncAt(): String? = lastConfirmedSyncAtForLedger(LEGACY_LEDGER_ID)
+
+    override fun lastConfirmedSyncAtForLedger(ledgerId: String): String? {
+        val key = lastConfirmedSyncAtKey(ledgerId)
         prefs.getString(key, null)?.let { return it }
 
         val legacyValue = prefs.getString(KEY_LAST_CONFIRMED_SYNC_AT, null) ?: return null
@@ -89,25 +85,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         return legacyValue
     }
 
-    override fun accountName(): String? = prefs.getString(KEY_ACCOUNT_NAME, null)
-
-    override fun ledgerName(): String? = prefs.getString(KEY_LEDGER_NAME, null)
-
-    override fun activeLedgerId(): String? = prefs.getString(KEY_ACTIVE_LEDGER_ID, null)
-
-    override fun activeLedgerName(): String? = prefs.getString(KEY_ACTIVE_LEDGER_NAME, null)
-
     override fun availableLedgersJson(): String? = prefs.getString(KEY_AVAILABLE_LEDGERS_JSON, null)
-
-    override fun saveActiveLedger(ledgerId: String, ledgerName: String) {
-        prefs.edit {
-            putString(KEY_ACTIVE_LEDGER_ID, ledgerId)
-            putString(KEY_ACTIVE_LEDGER_NAME, ledgerName)
-            // Mirror legacy ledgerName field so existing screens keep working.
-            putString(KEY_LEDGER_NAME, ledgerName)
-        }
-        activeLedgerIdFlow.value = ledgerId
-    }
 
     override fun saveAvailableLedgersJson(json: String?) {
         prefs.edit {
@@ -119,54 +97,28 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
-    override fun deviceName(): String? = prefs.getString(KEY_DEVICE_NAME, null)
-
-    override fun role(): String? = prefs.getString(KEY_ROLE, null)
-
-    override fun boundAt(): String? = prefs.getString(KEY_BOUND_AT, null)
-
-    override fun saveIdentity(identity: PersistedLedgerIdentity) {
-        prefs.edit {
-            putString(KEY_ACCOUNT_NAME, identity.accountName)
-            putString(KEY_ACTIVE_LEDGER_ID, identity.ledgerId)
-            putString(KEY_ACTIVE_LEDGER_NAME, identity.ledgerName)
-            putString(KEY_LEDGER_NAME, identity.ledgerName)
-            putString(KEY_DEVICE_NAME, identity.deviceName)
-            putString(KEY_ROLE, identity.role)
-            putString(KEY_BOUND_AT, identity.boundAt)
-        }
-        activeLedgerIdFlow.value = identity.ledgerId
-    }
-
-    override fun saveLastConfirmedSyncAt(value: String) {
-        val ledgerId = activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
-        saveLastConfirmedSyncAtForLedger(ledgerId, value)
-    }
+    override fun saveLastConfirmedSyncAt(value: String) =
+        saveLastConfirmedSyncAtForLedger(LEGACY_LEDGER_ID, value)
 
     override fun saveLastConfirmedSyncAtForLedger(ledgerId: String, value: String) {
         prefs.edit {
             putString(lastConfirmedSyncAtKey(ledgerId), value)
-            if (ledgerId == (activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID)) {
-                putString(KEY_LAST_CONFIRMED_SYNC_AT, value)
-            }
+            remove(KEY_LAST_CONFIRMED_SYNC_AT)
             putBoolean(KEY_LAST_CONFIRMED_SYNC_AT_MIGRATED, true)
         }
     }
 
     override fun clearLastConfirmedSyncAt() {
         prefs.edit {
-            remove(lastConfirmedSyncAtKey())
+            remove(lastConfirmedSyncAtKey(LEGACY_LEDGER_ID))
             remove(KEY_LAST_CONFIRMED_SYNC_AT)
         }
     }
 
     override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) {
-        val activeLedgerId = activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
         prefs.edit {
             remove(lastConfirmedSyncAtKey(ledgerId))
-            if (ledgerId == activeLedgerId) {
-                remove(KEY_LAST_CONFIRMED_SYNC_AT)
-            }
+            remove(KEY_LAST_CONFIRMED_SYNC_AT)
         }
     }
 
@@ -185,8 +137,10 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
-    override fun lastUploadAt(): String? {
-        val key = lastUploadAtKey()
+    override fun lastUploadAt(): String? = lastUploadAtForLedger(LEGACY_LEDGER_ID)
+
+    override fun lastUploadAtForLedger(ledgerId: String): String? {
+        val key = lastUploadAtKey(ledgerId)
         prefs.getString(key, null)?.let { return it }
 
         val legacyValue = prefs.getString(KEY_LAST_UPLOAD_AT, null) ?: return null
@@ -200,10 +154,14 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         return legacyValue
     }
 
-    override fun saveLastUploadAt(value: String) {
+    override fun saveLastUploadAt(value: String) =
+        saveLastUploadAtForLedger(LEGACY_LEDGER_ID, value)
+
+    override fun saveLastUploadAtForLedger(ledgerId: String, value: String) {
         prefs.edit {
-            putString(lastUploadAtKey(), value)
-            putString(KEY_LAST_UPLOAD_AT, value)
+            putString(lastUploadAtKey(ledgerId), value)
+            remove(KEY_LAST_UPLOAD_AT)
+            putBoolean(KEY_LAST_UPLOAD_AT_MIGRATED, true)
         }
     }
 
@@ -220,12 +178,6 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
             putString(KEY_CURRENCY_CODE, sanitized)
         }
         currencyCodeFlow.value = sanitized
-    }
-
-    override fun saveServerUrl(serverUrl: String) {
-        prefs.edit {
-            putString(KEY_SERVER_URL, serverUrl.trim().trimEnd('/'))
-        }
     }
 
     // Recent global-search queries persist as a newline-joined string (queries
@@ -246,8 +198,6 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
             }
         }
     }
-
-    override fun isBound(): Boolean = !serverUrl().isNullOrBlank()
 
     override fun markUnlocked() {
         prefs.edit {
@@ -270,10 +220,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     }
 
     override fun clear() {
-        prefs.edit {
-            clear()
-        }
-        activeLedgerIdFlow.value = null
+        check(prefs.edit().clear().commit()) { "Unable to clear local settings." }
         currencyCodeFlow.value = null
     }
 
@@ -309,34 +256,19 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         backgroundStore.setReduceMotion(enabled)
     }
 
-    private fun lastUploadAtKey(): String {
-        val ledgerId = activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
-        return "$KEY_LAST_UPLOAD_AT_BY_LEDGER_PREFIX$ledgerId"
-    }
-
-    private fun lastConfirmedSyncAtKey(): String {
-        val ledgerId = activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
-        return lastConfirmedSyncAtKey(ledgerId)
-    }
+    private fun lastUploadAtKey(ledgerId: String): String =
+        "$KEY_LAST_UPLOAD_AT_BY_LEDGER_PREFIX$ledgerId"
 
     private fun lastConfirmedSyncAtKey(ledgerId: String): String {
         return "$KEY_LAST_CONFIRMED_SYNC_AT_BY_LEDGER_PREFIX$ledgerId"
     }
 
     private companion object {
-        const val KEY_SERVER_URL = "server_url"
         const val KEY_RECENT_SEARCHES = "recent_searches"
         const val KEY_APP_SKIN = "app_skin"
         const val KEY_CURRENCY_CODE = "currency_code"
         const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
-        const val KEY_ACCOUNT_NAME = "account_name"
-        const val KEY_LEDGER_NAME = "ledger_name"
-        const val KEY_ACTIVE_LEDGER_ID = "active_ledger_id"
-        const val KEY_ACTIVE_LEDGER_NAME = "active_ledger_name"
         const val KEY_AVAILABLE_LEDGERS_JSON = "available_ledgers_json"
-        const val KEY_DEVICE_NAME = "device_name"
-        const val KEY_ROLE = "role"
-        const val KEY_BOUND_AT = "bound_at"
         const val KEY_LAST_CONFIRMED_SYNC_AT = "last_confirmed_sync_at"
         const val KEY_LAST_CONFIRMED_SYNC_AT_BY_LEDGER_PREFIX = "last_confirmed_sync_at_by_ledger:"
         const val KEY_LAST_CONFIRMED_SYNC_AT_MIGRATED = "last_confirmed_sync_at_migrated"

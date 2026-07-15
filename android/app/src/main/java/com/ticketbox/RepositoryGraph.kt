@@ -1,7 +1,7 @@
 package com.ticketbox
 
 import com.ticketbox.data.local.AppDatabase
-import com.ticketbox.data.local.LocalSettingsStore
+import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring
@@ -21,13 +21,15 @@ import com.ticketbox.data.repository.ReportsRepository
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.ServerSessionBinding
 import com.ticketbox.data.repository.TagRepository
-import com.ticketbox.security.SecureTokenStore
+import com.ticketbox.security.LocalSessionStore
+import com.ticketbox.security.SessionCredentialProvider
 
 internal data class RepositoryGraphDependencies(
     val database: AppDatabase,
     val apiClient: ApiClient,
-    val settingsStore: LocalSettingsStore,
-    val tokenStore: SecureTokenStore,
+    val settingsStore: TicketboxSettingsStore,
+    val sessionStore: LocalSessionStore,
+    val credentials: SessionCredentialProvider,
     val apiServiceProvider: ApiServiceProvider,
     val outbox: RepositoryGraphOutbox,
 )
@@ -43,20 +45,22 @@ internal class RepositoryGraph(
     private val database = dependencies.database
     private val apiClient = dependencies.apiClient
     private val settingsStore = dependencies.settingsStore
-    private val tokenStore = dependencies.tokenStore
+    private val sessionStore = dependencies.sessionStore
+    private val credentials = dependencies.credentials
     private val apiServiceProvider = dependencies.apiServiceProvider
     private val outbox = dependencies.outbox.repository
     private val outboxAdapters = dependencies.outbox.adapters
     private val serverSessionBinding = ServerSessionBinding(
         apiClient = apiClient,
         settingsStore = settingsStore,
-        tokenStore = tokenStore,
+        sessionStore = sessionStore,
+        credentials = credentials,
         apiProvider = apiServiceProvider,
     )
 
     private val ledgerSessionCoordinator = LocalLedgerSessionCoordinator(
         settingsStore = settingsStore,
-        tokenStore = tokenStore,
+        sessionStore = sessionStore,
         expenseDao = database.expenseDao(),
         outbox = outbox,
     )
@@ -81,32 +85,22 @@ internal class RepositoryGraph(
     )
 
     val ledgerRepository = LedgerRepository(
-        apiClient = apiClient,
         settingsStore = settingsStore,
-        tokenStore = tokenStore,
         expenseDao = database.expenseDao(),
+        sessionStore = sessionStore,
         apiProvider = apiServiceProvider,
         sessionCoordinator = ledgerSessionCoordinator,
     )
 
     val recurringRepository = RecurringRepository(
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
     )
 
     val budgetRepository = BudgetRepository(
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
     )
 
     val incomePlanRepository = IncomePlanRepository(
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
         // ADR-0042 Slice F: outbox + adapter for updateAllowingOffline.
         outbox = outbox,
@@ -115,24 +109,15 @@ internal class RepositoryGraph(
 
     // ADR-0049 §2 (slice 8): Debt entity repository. Direct-only online (no outbox surface).
     val debtRepository = DebtRepository(
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
     )
 
     // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱仓库。direct-only online；NLS service 路由还款草稿到它。
     val repaymentDraftRepository = RepaymentDraftRepository(
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
     )
 
     val reportsRepository = ReportsRepository(
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
         // ADR-0042 Slice F: outbox + adapter for updateGoalAllowingOffline.
         outbox = outbox,
@@ -165,9 +150,10 @@ internal class RepositoryGraph(
     // ADR-0043 slice C — tag management. Online-only (契约 7): no outbox / no
     // idempotency adapters, unlike MerchantRepository.
     val tagRepository = TagRepository(
-        apiClient = apiClient,
-        settingsStore = settingsStore,
-        tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
     )
+
+    suspend fun replaceCredentialsForDebug(serverUrl: String, sessionToken: String) {
+        ledgerSessionCoordinator.replaceCredentialsForDebug(serverUrl, sessionToken)
+    }
 }

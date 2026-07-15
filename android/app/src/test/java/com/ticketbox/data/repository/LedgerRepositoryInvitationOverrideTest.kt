@@ -5,6 +5,7 @@ import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
 import kotlinx.coroutines.test.runTest
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -31,6 +32,10 @@ class LedgerRepositoryInvitationOverrideTest {
             LedgerStubApiState(
                 acceptResult = InvitationAcceptResponseDto(
                     sessionToken = newToken,
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
+                    accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                    devicePublicId = TEST_DEVICE_PUBLIC_ID,
                     accountName = "新成员",
                     ledgerId = "L_family",
                     ledgerName = "家庭账本",
@@ -45,7 +50,7 @@ class LedgerRepositoryInvitationOverrideTest {
         val store = LedgerFakeSettingsStore()
         val tokenStore = LedgerFakeTokenStore()
         val apiFactory = LedgerStubApiFactory(api)
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = apiFactory,
             settingsStore = store,
             tokenStore = tokenStore,
@@ -66,12 +71,17 @@ class LedgerRepositoryInvitationOverrideTest {
         // Unbound accept attaches no token (the override host never sees a
         // stored credential).
         assertNull(apiFactory.tokenProviders.first().invoke())
-        // Binding persisted: URL + rotated token + identity, device unlocked.
-        assertEquals("https://join.example.com", store.serverUrl())
+        assertNotNull(api.acceptRequests.single().enrollmentAttemptId)
+        assertNotNull(api.acceptRequests.single().enrollmentAttemptSecret)
+        // Binding persisted in the sole session authority; ordinary settings stay non-authoritative.
+        val session = requireNotNull(tokenStore.sessionStore.currentSession())
+        assertEquals("https://join.example.com", session.serverUrl)
         assertEquals(newToken, tokenStore.getToken())
-        assertEquals("L_family", store.activeLedgerId())
-        assertEquals("新成员", store.capturedAccountName)
-        assertEquals("member", store.capturedRole)
+        assertEquals("L_family", session.identity.ledgerId)
+        assertEquals("新成员", session.identity.accountName)
+        assertEquals("member", session.identity.role)
+        assertNull(tokenStore.sessionStore.pendingDeviceEnrollment())
+        assertNull(store.serverUrl())
         assertTrue(store.unlockedMarked)
     }
 
@@ -82,7 +92,7 @@ class LedgerRepositoryInvitationOverrideTest {
         val api = StubApi()
         val store = LedgerFakeSettingsStore()
         val tokenStore = LedgerFakeTokenStore()
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
@@ -103,46 +113,94 @@ class LedgerRepositoryInvitationOverrideTest {
     }
 
     @Test
-    fun acceptInvitationWithOverrideNeverAttachesStoredTokenToOverrideHost() = runTest {
-        // Security contract: an override is a caller-supplied host. Even when
-        // this device happens to hold a binding (no UI path today, but the
-        // repository API allows it), the stored token must NOT be attached to
-        // a request leaving for the override host.
-        val api = StubApi(
-            LedgerStubApiState(
-                acceptResult = InvitationAcceptResponseDto(
-                    sessionToken = "tk_other_server",
-                    accountName = "新成员",
-                    ledgerId = "L_other",
-                    ledgerName = "另一台账本",
-                    deviceName = "Pixel 9",
-                    role = "member",
-                ),
-            ),
-        )
+    fun acceptInvitationWithOverrideCannotReplaceActiveSession() = runTest {
+        val api = StubApi()
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://old.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val apiFactory = LedgerStubApiFactory(api)
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = apiFactory,
             settingsStore = store,
             tokenStore = tokenStore,
             expenseDao = LedgerFakeDao(),
         )
 
-        repo.acceptInvitation(
+        val failure = repo.acceptInvitation(
             inviteToken = "inv_SWITCH",
             accountName = "新成员",
             deviceName = "Pixel 9",
             serverUrlOverride = "https://new.example.com",
+        ).exceptionOrNull()
+
+        assertNotNull(failure)
+        assertTrue(failure.message!!.contains("不能通过邀请覆盖"))
+        assertTrue(api.acceptRequests.isEmpty())
+        assertTrue(apiFactory.baseUrls.isEmpty())
+        assertEquals("https://api.example.com", tokenStore.sessionStore.currentSession()?.serverUrl)
+        assertEquals("old-token", tokenStore.getToken())
+    }
+
+    @Test
+    fun invitationResponseLossReusesEnrollmentAfterRepositoryRecreation() = runTest {
+        val response = InvitationAcceptResponseDto(
+            sessionToken = "stable-session-token",
+            serverId = TEST_SERVER_ID,
+            dataGeneration = TEST_DATA_GENERATION,
+            accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+            devicePublicId = TEST_DEVICE_PUBLIC_ID,
+            accountName = "新成员",
+            ledgerId = "L_family",
+            ledgerName = "家庭账本",
+            deviceName = "Pixel 9",
+            role = "member",
+        )
+        var calls = 0
+        val api = StubApi(
+            LedgerStubApiState(
+                acceptHandler = { request ->
+                    calls += 1
+                    if (calls == 1) throw IOException("response lost after commit")
+                    response.copy(enrollmentAttemptId = request.enrollmentAttemptId)
+                },
+                listLedgersResult = LedgerListResponseDto(
+                    ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
+                ),
+            ),
+        )
+        val store = LedgerFakeSettingsStore()
+        val tokenStore = LedgerFakeTokenStore()
+        val apiFactory = LedgerStubApiFactory(api)
+        val firstRepository = testLedgerRepository(apiFactory, store, tokenStore, LedgerFakeDao())
+
+        assertTrue(
+            firstRepository.acceptInvitation(
+                "inv_RECOVERABLE",
+                "新成员",
+                "Pixel 9",
+                "https://join.example.com",
+            ).isFailure,
+        )
+        val pending = requireNotNull(tokenStore.sessionStore.pendingDeviceEnrollment())
+        assertNull(tokenStore.sessionStore.currentSession())
+
+        val reconstructed = testLedgerRepository(apiFactory, store, tokenStore, LedgerFakeDao())
+        reconstructed.acceptInvitation(
+            "inv_RECOVERABLE",
+            "不会覆盖首次意图",
+            "另一名称",
+            "https://join.example.com",
         ).getOrThrow()
 
-        assertEquals("https://new.example.com", apiFactory.baseUrls.first())
-        // The pre-existing "old-token" never rides along to the new host.
-        assertNull(apiFactory.tokenProviders.first().invoke())
-        // The binding switched to the override host.
-        assertEquals("https://new.example.com", store.serverUrl())
-        assertEquals("tk_other_server", tokenStore.getToken())
+        assertEquals(2, api.acceptRequests.size)
+        assertEquals(pending.attemptId, api.acceptRequests[0].enrollmentAttemptId)
+        assertEquals(pending.attemptId, api.acceptRequests[1].enrollmentAttemptId)
+        assertEquals(
+            api.acceptRequests[0].enrollmentAttemptSecret,
+            api.acceptRequests[1].enrollmentAttemptSecret,
+        )
+        assertEquals("新成员", api.acceptRequests[1].accountName)
+        assertNull(tokenStore.sessionStore.pendingDeviceEnrollment())
+        assertEquals("stable-session-token", tokenStore.getToken())
     }
 
     @Test
@@ -160,7 +218,7 @@ class LedgerRepositoryInvitationOverrideTest {
         val store = LedgerFakeSettingsStore()
         val tokenStore = LedgerFakeTokenStore()
         val apiFactory = LedgerStubApiFactory(api)
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = apiFactory,
             settingsStore = store,
             tokenStore = tokenStore,

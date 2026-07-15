@@ -23,7 +23,10 @@ import kotlin.test.assertTrue
  * exercised this decode/carrier path ([[feedback_occ_test_token_from_rendered_carrier]]).
  */
 class NetworkErrorHandlerTest {
-    private val handler = NetworkErrorHandler(boundSettingsStore(), context = "tag")
+    private val handler = NetworkErrorHandler(
+        serverUrlProvider = { "https://api.example.com" },
+        context = "tag",
+    )
 
     private val tagConflictBody =
         """{"error":"tag_conflict","message":"已有同名标签，可改为合并。",""" +

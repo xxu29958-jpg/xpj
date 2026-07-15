@@ -1,8 +1,9 @@
 package com.ticketbox.data.remote
 
 import android.util.Log
+import com.ticketbox.data.remote.dto.RefreshSessionRequestDto
 import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
-import com.ticketbox.security.SessionTokenStore
+import com.ticketbox.security.SessionCredentialRotator
 import com.ticketbox.security.StoredSessionToken
 import kotlinx.coroutines.runBlocking
 import java.time.Instant
@@ -12,49 +13,87 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal class SessionRefreshController(
     private val baseUrl: String,
-    private val tokenStore: SessionTokenStore,
+    private val credentials: SessionCredentialRotator,
     private val serviceFactory: (String, () -> String?) -> ApiService,
+    private val scheduler: SessionRefreshScheduler,
 ) {
-    private val refreshing = AtomicBoolean(false)
-    private val executor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "ticketbox-session-refresh").apply { isDaemon = true }
-    }
-
     fun refreshAsync(now: Instant = Instant.now()) {
-        val snapshot = tokenStore.getSessionToken() ?: return
+        val snapshot = credentials.getSessionToken() ?: return
+        val sessionGeneration = credentials.sessionGeneration() ?: return
         if (!shouldRefresh(snapshot, now)) return
-        if (!refreshing.compareAndSet(false, true)) return
-        executor.execute {
+        scheduler.execute {
             try {
                 runBlocking {
-                    refreshIfCurrent(snapshot)
+                    refreshIfCurrent(sessionGeneration, snapshot)
                 }
             } catch (error: Exception) {
                 Log.w(LOG_TAG, "Silent session refresh failed: ${error::class.java.simpleName}")
-            } finally {
-                refreshing.set(false)
             }
         }
     }
 
-    private suspend fun refreshIfCurrent(snapshot: StoredSessionToken) {
-        if (tokenStore.getToken() != snapshot.token) return
+    private suspend fun refreshIfCurrent(
+        sessionGeneration: String,
+        snapshot: StoredSessionToken,
+    ) {
+        if (credentials.sessionGeneration() != sessionGeneration ||
+            credentials.getToken() != snapshot.token
+        ) {
+            return
+        }
+        val attempt = credentials.beginOrReuseSessionRefresh(
+            expectedSessionGeneration = sessionGeneration,
+            expectedToken = snapshot.token,
+        ) ?: return
         val api = serviceFactory(baseUrl) { snapshot.token }
-        val response = api.refreshSession()
-        if (tokenStore.getToken() != snapshot.token) return
-        persistRefresh(response)
-    }
-
-    private fun persistRefresh(response: RefreshSessionResponseDto) {
-        tokenStore.saveToken(
-            token = response.sessionToken,
-            expiresAt = response.expiresAt,
-            softRefreshAfter = response.softRefreshAfter,
+        val response = api.refreshSession(
+            RefreshSessionRequestDto(
+                refreshAttemptId = attempt.attemptId,
+                refreshAttemptSecret = attempt.attemptSecret,
+            ),
+        )
+        if (response.rotated) {
+            check(response.refreshAttemptId == attempt.attemptId) {
+                "Session refresh response did not match the pending attempt."
+            }
+        } else {
+            check(response.sessionToken == snapshot.token) {
+                "A non-rotating refresh changed the session credential."
+            }
+        }
+        credentials.completeSessionRefreshIfCurrent(
+            expectedSessionGeneration = sessionGeneration,
+            expectedToken = snapshot.token,
+            refreshAttemptId = attempt.attemptId,
+            replacement = StoredSessionToken(
+                token = response.sessionToken,
+                expiresAt = response.expiresAt,
+                softRefreshAfter = response.softRefreshAfter,
+            ),
         )
     }
 
     private companion object {
         const val LOG_TAG = "TicketboxNetwork"
+    }
+}
+
+/** One app-level refresh queue shared by every short-lived bound API service. */
+internal class SessionRefreshScheduler {
+    private val refreshing = AtomicBoolean(false)
+    private val executor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "ticketbox-session-refresh").apply { isDaemon = true }
+    }
+
+    fun execute(block: () -> Unit) {
+        if (!refreshing.compareAndSet(false, true)) return
+        executor.execute {
+            try {
+                block()
+            } finally {
+                refreshing.set(false)
+            }
+        }
     }
 }
 

@@ -181,9 +181,8 @@
 
     <!-- MyDevicesScreen：设置→我的设备 屏（issue #65 slice 6b，owner-only） -->
     <string name="my_devices_page_title">我的设备</string>
-    <string name="my_devices_page_subtitle_manage">查看并管理可访问本账本的设备。重命名、停用或添加新设备。</string>
-    <string name="my_devices_page_subtitle_view">查看可访问本账本的设备。只有拥有者能管理设备。</string>
-    <string name="my_devices_section_devices">可访问的设备</string>
+    <string name="my_devices_page_subtitle_manage">管理你的设备；可添加新设备、恢复旧设备或撤销访问。</string>
+    <string name="my_devices_section_devices">我的账号设备</string>
     <string name="my_devices_loading_title">正在同步设备</string>
     <string name="my_devices_loading_body">同步完成后显示最新可访问设备。</string>
     <string name="my_devices_empty">还没有可显示的设备。</string>
@@ -198,6 +197,7 @@
     <string name="my_devices_platform_web">网页</string>
     <string name="my_devices_platform_iphone">iPhone</string>
     <string name="my_devices_action_rename">重命名</string>
+    <string name="my_devices_action_recover">恢复这台设备</string>
     <string name="my_devices_action_revoke">停用</string>
     <string name="my_devices_action_delete">移除</string>
     <string name="my_devices_actions_content_description">设备操作</string>
@@ -208,16 +208,22 @@
     <string name="my_devices_add_code_title">配对码（只显示一次）</string>
     <string name="my_devices_add_code_expires_at">有效期至 %1$s</string>
     <string name="my_devices_add_code_once_hint">服务器只保存它的哈希，收起后无法再次查看。请立即在新设备上使用。</string>
+    <string name="my_devices_recovery_code_title">恢复“%1$s”的配对码</string>
+    <string name="my_devices_recovery_code_once_hint">服务器只保存它的哈希。请立即在要恢复为“%1$s”的手机上使用，其他设备不会被接管。</string>
+    <string name="my_devices_clipboard_label">小票夹绑定码</string>
     <string name="my_devices_add_code_copy">复制配对码</string>
     <string name="my_devices_add_code_dismiss">收起</string>
     <string name="my_devices_rename_dialog_title">重命名设备</string>
     <string name="my_devices_rename_dialog_label">设备名称</string>
     <string name="my_devices_rename_dialog_confirm">保存</string>
+    <string name="my_devices_recovery_dialog_title">恢复这台设备？</string>
+    <string name="my_devices_recovery_dialog_text">将生成只用于“%1$s”的一次性恢复码。使用后会延续它的设备身份并撤销旧凭据，不会接管其他设备的离线记录。</string>
+    <string name="my_devices_recovery_dialog_confirm">生成恢复码</string>
     <string name="my_devices_revoke_dialog_title">停用设备？</string>
     <string name="my_devices_revoke_dialog_text">停用「%1$s」后，它将无法再访问本账本，需重新配对才能恢复。</string>
     <string name="my_devices_revoke_dialog_confirm">停用</string>
     <string name="my_devices_delete_dialog_title">移除设备？</string>
-    <string name="my_devices_delete_dialog_text">「%1$s」已停用。移除后将从设备列表中永久删除，无法恢复。</string>
+    <string name="my_devices_delete_dialog_text">“%1$s”已停用。移除后将永久删除这条设备身份，该设备尚未同步的记录也无法再恢复。</string>
     <string name="my_devices_delete_dialog_confirm">移除</string>
     <string name="my_devices_message_load_failed">加载设备列表失败，请稍后再试。</string>
     <string name="my_devices_message_refresh_failed_with_data">已保留上次读取的设备列表，刷新暂时没成功。</string>

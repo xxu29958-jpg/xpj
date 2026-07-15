@@ -5,13 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.BuildConfig
 import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.repository.BindServerResult
 import com.ticketbox.data.repository.ServerBindingRepository
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,11 +40,10 @@ data class AppUiState(
 class AppViewModel(
     private val repository: ServerBindingRepository,
     private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
     private val requireLocalUnlock: Boolean = BuildConfig.REQUIRE_LOCAL_UNLOCK,
 ) : ViewModel() {
     private val hasActiveBinding: Boolean
-        get() = settingsStore.isBound() && tokenStore.getToken() != null
+        get() = repository.hasActiveSession()
 
     // Normalize the persisted skin key on construction: if the stored key isn't the
     // canonical form, rewrite it. Inlined into the initializer (not a helper method)
@@ -90,25 +89,37 @@ class AppViewModel(
                 }
             }
         }
+        if (hasActiveBinding) {
+            viewModelScope.launch {
+                repository.reconcileActiveSession()
+                    ?.onSuccess {
+                        _uiState.update { state -> state.copy(authMessage = null) }
+                    }
+                    ?.onFailure {
+                        _uiState.update { state ->
+                            state.copy(
+                                authMessage = UiText.res(R.string.app_session_identity_pending),
+                            )
+                        }
+                    }
+            }
+        } else {
+            viewModelScope.launch {
+                _uiState.update { it.copy(binding = true, authMessage = null) }
+                val resumed = repository.resumePendingBinding()
+                if (resumed == null) {
+                    _uiState.update { it.copy(binding = false) }
+                } else {
+                    _uiState.finishBinding(resumed)
+                }
+            }
+        }
     }
 
     fun bind(serverUrl: String, pairingCode: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(binding = true, authMessage = null) }
-            repository.bindServer(serverUrl, pairingCode)
-                .onSuccess { result ->
-                    _uiState.update { state ->
-                        state.copy(
-                            isBound = true,
-                            unlocked = true,
-                            binding = false,
-                            authMessage = if (result.confirmedRestoreFailed) BIND_RESTORE_FAILED_MESSAGE else null,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update { it.copy(binding = false, authMessage = error.toUiText(R.string.app_bind_failed)) }
-                }
+            _uiState.finishBinding(repository.bindServer(serverUrl, pairingCode))
         }
     }
 
@@ -208,3 +219,30 @@ class AppViewModel(
 }
 
 internal val BIND_RESTORE_FAILED_MESSAGE: UiText = UiText.res(R.string.app_bind_restore_failed)
+
+private fun MutableStateFlow<AppUiState>.finishBinding(result: Result<BindServerResult>) {
+    result.fold(
+        onSuccess = { bindingResult ->
+            update { state ->
+                state.copy(
+                    isBound = true,
+                    unlocked = true,
+                    binding = false,
+                    authMessage = if (bindingResult.confirmedRestoreFailed) {
+                        BIND_RESTORE_FAILED_MESSAGE
+                    } else {
+                        null
+                    },
+                )
+            }
+        },
+        onFailure = { error ->
+            update {
+                it.copy(
+                    binding = false,
+                    authMessage = error.toUiText(R.string.app_bind_failed),
+                )
+            }
+        },
+    )
+}

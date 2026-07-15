@@ -36,6 +36,7 @@ private val errorCodeStringResByCode = mapOf(
     "invalid_token" to R.string.error_invalid_token,
     "legacy_auth_removed" to R.string.error_legacy_auth_removed,
     "invalid_pairing_code" to R.string.error_invalid_pairing_code,
+    "device_recovery_platform_mismatch" to R.string.error_device_recovery_platform_mismatch,
     "rate_limited" to R.string.error_rate_limited,
     "file_too_large" to R.string.error_file_too_large,
     "unsupported_file_type" to R.string.error_unsupported_file_type,

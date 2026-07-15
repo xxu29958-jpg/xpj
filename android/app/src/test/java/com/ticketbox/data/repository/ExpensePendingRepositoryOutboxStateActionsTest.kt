@@ -32,7 +32,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     fun `confirm direct 2xx returns Synced with server expense, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(
             confirmExpenseResult = ApiResult.Success(successExpenseDto(serverUpdatedAt = "2026-05-20T14:00:00.000Z")),
@@ -51,7 +51,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     fun `confirm IOException returns Queued confirmed projection + enqueues token-only row`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(confirmExpenseResult = ApiResult.Throw(IOException("net out")))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
@@ -86,7 +86,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     @Test
     fun `confirm HttpException 409 surfaces as failure, no enqueue`() = runTest {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(
             confirmExpenseResult = ApiResult.Throw(
@@ -115,7 +115,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     fun `reject direct 2xx returns Synced, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto()))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
@@ -130,7 +130,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     fun `reject IOException returns Queued rejected projection + enqueues row`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(rejectExpenseResult = ApiResult.Throw(IOException("net out")))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
@@ -161,7 +161,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     fun `markNotDuplicate IOException returns Queued none-projection + enqueues row`() = runTest {
         val baseline = baselineExpense().copy(duplicateStatus = "suspected")
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(markNotDuplicateResult = ApiResult.Throw(IOException("net out")))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
@@ -189,7 +189,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     fun `markNotDuplicate direct 2xx returns Synced, no enqueue`() = runTest {
         val baseline = baselineExpense().copy(duplicateStatus = "suspected")
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(markNotDuplicateResult = ApiResult.Success(successExpenseDto()))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
@@ -204,7 +204,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     fun `retryOcr IOException returns Queued unchanged + enqueues row`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(retryOcrResult = ApiResult.Throw(IOException("net out")))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
@@ -230,7 +230,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     fun `retryOcr direct 2xx returns Synced, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(retryOcrResult = ApiResult.Success(successExpenseDto()))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
@@ -250,7 +250,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         val baseline = baselineExpense()
         val current = mismatchKnownItems()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(extras = ApiServiceStubExtras(acknowledgeException = IOException("net out")))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
@@ -279,7 +279,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         val baseline = baselineExpense()
         val current = mismatchKnownItems()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         // acknowledgeException = null → success path.
         val api = ApiServiceStub()
@@ -301,7 +301,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         // user's edit, 409ing the queued PATCH on replay.
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         // Direct confirm WOULD succeed if attempted — only the guard, not the
         // network, may divert this call to the queue.
@@ -336,7 +336,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     fun `reject with unresolved queued mutation enqueues behind it instead of calling direct`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto()))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
@@ -374,7 +374,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         // and update this test when you do.
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val dto = successExpenseDto()
         val api = object : com.ticketbox.data.remote.ApiService by FakeApiService(
@@ -418,7 +418,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         val baseline = baselineExpense()
         val current = mismatchKnownItems()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(
             extras = ApiServiceStubExtras(

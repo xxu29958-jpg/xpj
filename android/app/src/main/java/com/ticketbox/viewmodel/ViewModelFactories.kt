@@ -2,7 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.ticketbox.data.local.LocalSettingsStore
+import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DashboardCardsActions
 import com.ticketbox.data.repository.DebtActions
@@ -20,16 +20,14 @@ import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.TagActions
-import com.ticketbox.security.SecureTokenStore
 
 @Suppress("UNCHECKED_CAST")
 fun appViewModelFactory(
     repository: ExpenseRepository,
-    settingsStore: LocalSettingsStore,
-    tokenStore: SecureTokenStore,
+    settingsStore: TicketboxSettingsStore,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return AppViewModel(repository, settingsStore, tokenStore) as T
+        return AppViewModel(repository, settingsStore) as T
     }
 }
 
@@ -161,7 +159,7 @@ fun createSpendingGoalViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun settingsViewModelFactory(
     repository: ExpenseRepository,
-    settingsStore: LocalSettingsStore,
+    settingsStore: TicketboxSettingsStore,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return SettingsViewModel(ExpenseRepositorySettingsActions(repository), settingsStore) as T
@@ -199,7 +197,7 @@ fun tagManagementViewModelFactory(
 
 @Suppress("UNCHECKED_CAST")
 fun appearanceViewModelFactory(
-    settingsStore: LocalSettingsStore,
+    settingsStore: TicketboxSettingsStore,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return AppearanceViewModel(settingsStore) as T

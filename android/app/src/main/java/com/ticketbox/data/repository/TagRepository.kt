@@ -1,7 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.TagDeleteRequest
 import com.ticketbox.data.remote.dto.TagMergeRequest
 import com.ticketbox.data.remote.dto.TagRenameRequest
@@ -10,7 +8,6 @@ import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.TagMutationResult
 import com.ticketbox.domain.model.TagUndoResult
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
 
 /**
  * Tag-management surface the [com.ticketbox.viewmodel.TagManagementViewModel]
@@ -41,19 +38,16 @@ interface TagActions {
  * `tag_conflict` → the caller offers a merge instead (契约 5).
  */
 class TagRepository(
-    private val apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
+    private val apiProvider: ApiServiceProvider,
 ) : TagActions {
-    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "Tag",
         statusMessages = mapOf(404 to "标签不存在或已删除。"),
     )
 
-    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
     override suspend fun tags(): Result<List<ManagedTag>> =
         errorHandler.safeCall {

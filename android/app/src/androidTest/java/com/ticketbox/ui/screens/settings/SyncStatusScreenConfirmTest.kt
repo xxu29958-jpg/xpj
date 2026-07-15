@@ -38,6 +38,7 @@ class SyncStatusScreenConfirmTest {
                 onDropMine = { dropped = it },
                 onRetry = {},
                 onDropFailed = {},
+                onClearQuarantined = {},
             ),
         )
 
@@ -64,6 +65,7 @@ class SyncStatusScreenConfirmTest {
                 onDropMine = {},
                 onRetry = {},
                 onDropFailed = { dropped = it },
+                onClearQuarantined = {},
             ),
         )
 
@@ -92,6 +94,7 @@ class SyncStatusScreenConfirmTest {
                 onDropMine = {},
                 onRetry = {},
                 onDropFailed = { dropped = it },
+                onClearQuarantined = {},
             ),
         )
 
@@ -103,16 +106,48 @@ class SyncStatusScreenConfirmTest {
         composeRule.runOnIdle { assertEquals(row, dropped) }
     }
 
+    @Test
+    fun quarantinedRowsRequireExplicitConfirmationBeforeClearing() {
+        var clearCount = 0
+        setScreenContent(
+            quarantinedCount = 2,
+            actions = SyncStatusActions(
+                onKeepMine = {},
+                onDropMine = {},
+                onRetry = {},
+                onDropFailed = {},
+                onClearQuarantined = { clearCount += 1 },
+            ),
+        )
+
+        composeRule.onNodeWithText("移除隔离数据").performScrollTo().performClick()
+        composeRule.onNodeWithText("移除全部隔离操作？").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(0, clearCount) }
+
+        composeRule.onNodeWithText("取消").performClick()
+        composeRule.runOnIdle { assertEquals(0, clearCount) }
+
+        composeRule.onNodeWithText("移除隔离数据").performScrollTo().performClick()
+        composeRule.onNodeWithText("确认移除").performClick()
+        composeRule.runOnIdle { assertEquals(1, clearCount) }
+    }
+
     private fun setScreenContent(
         conflicts: List<OutboxRow> = emptyList(),
         failed: List<OutboxRow> = emptyList(),
+        quarantinedCount: Int = 0,
         actions: SyncStatusActions,
     ) {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 SyncStatusScreenContent(
                     state = OutboxStatusUiState(
-                        status = OutboxStatus(queueDepth = 0, conflicts = conflicts, failed = failed),
+                        status = OutboxStatus(
+                            queueDepth = 0,
+                            conflicts = conflicts,
+                            failed = failed,
+                            quarantinedCount = quarantinedCount,
+                        ),
                     ),
                     actions = actions,
                     onBack = {},

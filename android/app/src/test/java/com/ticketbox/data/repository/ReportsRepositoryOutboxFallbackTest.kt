@@ -88,8 +88,8 @@ class ReportsRepositoryOutboxFallbackTest {
             )
         }
 
-    private fun seededTokenStore(): FakeSessionTokenStore =
-        FakeSessionTokenStore().apply { saveToken("session-token") }
+    private fun seededTokenStore(): TestSessionFixture =
+        TestSessionFixture().apply { saveToken("session-token") }
 
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
@@ -131,13 +131,16 @@ class ReportsRepositoryOutboxFallbackTest {
         api: ApiService,
         outbox: OutboxRepository? = null,
         adapter: com.squareup.moshi.JsonAdapter<GoalUpdateRequestDto>? = null,
-    ): ReportsRepository = ReportsRepository(
-        apiClient = TestApiServiceFactory(api),
-        settingsStore = seededSettingsStore(),
-        tokenStore = seededTokenStore(),
-        outbox = outbox,
-        goalUpdateAdapter = adapter,
-    )
+    ): ReportsRepository {
+        val settingsStore = seededSettingsStore()
+        val tokenStore = seededTokenStore()
+        val apiClient = TestApiServiceFactory(api)
+        return ReportsRepository(
+            apiProvider = testApiServiceProvider(apiClient, tokenStore),
+            outbox = outbox,
+            goalUpdateAdapter = adapter,
+        )
+    }
 
     @Test
     fun `update with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
@@ -145,7 +148,7 @@ class ReportsRepositoryOutboxFallbackTest {
         // guards. ISE (not IOException) so a broken guard fails loudly.
         val baseline = baselineGoal()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(GoalUpdateRequestDto::class.java)
         val api = ApiServiceStub(
             updateGoalResult = ApiResult.Throw(IllegalStateException("direct PATCH must not run")),
@@ -177,7 +180,7 @@ class ReportsRepositoryOutboxFallbackTest {
     fun `direct 2xx returns Synced with server goal, no enqueue`() = runTest {
         val baseline = baselineGoal()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(GoalUpdateRequestDto::class.java)
         val api = ApiServiceStub(updateGoalResult = ApiResult.Success(successDto()))
 
@@ -197,7 +200,7 @@ class ReportsRepositoryOutboxFallbackTest {
     fun `IOException returns Queued with optimistic goal + enqueues row`() = runTest {
         val baseline = baselineGoal()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(GoalUpdateRequestDto::class.java)
         val api = ApiServiceStub(updateGoalResult = ApiResult.Throw(IOException("net out")))
 

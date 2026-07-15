@@ -63,6 +63,7 @@ class ErrorUiTextTest {
         // TOCTOU 409 / background-task 404 fell back to each screen's generic
         // copy. Pinned per code against the backend ERROR_MESSAGES rows.
         val expected = mapOf(
+            "device_recovery_platform_mismatch" to R.string.error_device_recovery_platform_mismatch,
             "invitation_not_found" to R.string.error_invitation_not_found,
             "invitation_not_yours" to R.string.error_invitation_not_yours,
             "invitation_not_acceptable" to R.string.error_invitation_not_acceptable,

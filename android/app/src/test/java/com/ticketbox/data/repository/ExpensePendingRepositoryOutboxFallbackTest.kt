@@ -50,7 +50,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         // mutation on the same expense — a direct PATCH now would jump it.
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
         // Direct PATCH WOULD succeed if attempted — only the guard may divert.
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Success(successExpenseDto()))
@@ -84,7 +84,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
     fun `direct 2xx returns Synced with server expense, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
 
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Success(successExpenseDto()))
@@ -111,7 +111,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         // authoritative).
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
 
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(IOException("net out")))
@@ -154,7 +154,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
     fun `HttpException 409 surfaces as failure, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
 
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(httpException(409, """{"error":"state_conflict","message":"账单已修改"}""")))
@@ -170,7 +170,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
     fun `HttpException 422 surfaces as failure, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
 
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(httpException(422, """{"error":"invalid_amount"}""")))
@@ -189,7 +189,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         // to user instead.
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
 
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(httpException(500, """{"error":"internal"}""")))
@@ -218,12 +218,11 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         // Result.failure.
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
 
-        // Shared settings so the ApiService stub can flip the
-        // active ledger from the same store the repository binds
-        // against.
+        // Settings remains a compatibility projection; the durable session
+        // fixture below is the binding authority exercised by this race.
         val settings = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
             saveIdentity(
@@ -237,10 +236,10 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
                 )
             )
         }
-        val tokens = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val tokens = ledgerSessionFixture("ledger-a", "账本 A")
 
-        // Stub simulates "switch fired during the call": flip the
-        // settings store's active ledger BEFORE throwing IOException.
+        // Stub simulates "switch fired during the call" against the durable
+        // session authority before the request reports the network failure.
         val api = object : ApiService by FakeApiService(
             events = mutableListOf(),
             confirmedFailuresRemaining = 0,
@@ -250,23 +249,14 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
                 request: ExpenseUpdateRequest,
                 idempotencyKey: String?,
             ): ExpenseDto {
-                settings.saveIdentity(
-                    PersistedLedgerIdentity(
-                        accountName = "我",
-                        ledgerId = "ledger-b",
-                        ledgerName = "账本 B",
-                        deviceName = "Pixel",
-                        role = "owner",
-                        boundAt = "2026-05-04T12:00:00Z",
-                    )
-                )
+                tokens.switchLedgerForFixture("ledger-b", "账本 B")
                 throw IOException("net out")
             }
         }
 
         val repo = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = TestApiServiceFactory(api),
                 settingsStore = settings,
                 tokenStore = tokens,
@@ -326,7 +316,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         // testability of assertion (1).
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
 
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(IOException("net out")))

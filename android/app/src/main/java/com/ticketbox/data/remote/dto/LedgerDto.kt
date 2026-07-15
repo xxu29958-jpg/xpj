@@ -34,6 +34,14 @@ data class LedgerCreateRequestDto(
 data class LedgerSwitchResponseDto(
     @param:Json(name = "session_token")
     val sessionToken: String,
+    @param:Json(name = "server_id")
+    val serverId: String? = null,
+    @param:Json(name = "data_generation")
+    val dataGeneration: String? = null,
+    @param:Json(name = "account_public_id")
+    val accountPublicId: String? = null,
+    @param:Json(name = "device_public_id")
+    val devicePublicId: String? = null,
     val ledger: LedgerDto,
     @param:Json(name = "account_name")
     val accountName: String,
@@ -174,10 +182,9 @@ data class InvitationPreviewResponseDto(
 /**
  * v0.4-beta1 family-ledger invitation accept request.
  *
- * Posted to ``/api/invitations/accept`` **without** an Authorization header
- * — the server creates a brand-new Account + Device + LedgerMember row and
- * returns a freshly minted session token that the app must persist before
- * any further calls.
+ * An unbound device sends a durable enrollment proof before the one-shot
+ * invitation can be consumed. A bound device sends its existing session and
+ * only joins that Account to the ledger.
  */
 data class InvitationAcceptRequestDto(
     @param:Json(name = "invite_token")
@@ -187,11 +194,25 @@ data class InvitationAcceptRequestDto(
     @param:Json(name = "device_name")
     val deviceName: String,
     val platform: String = "android",
+    @param:Json(name = "enrollment_attempt_id")
+    val enrollmentAttemptId: String? = null,
+    @param:Json(name = "enrollment_attempt_secret")
+    val enrollmentAttemptSecret: String? = null,
 )
 
 data class InvitationAcceptResponseDto(
     @param:Json(name = "session_token")
     val sessionToken: String,
+    @param:Json(name = "enrollment_attempt_id")
+    val enrollmentAttemptId: String? = null,
+    @param:Json(name = "server_id")
+    val serverId: String? = null,
+    @param:Json(name = "data_generation")
+    val dataGeneration: String? = null,
+    @param:Json(name = "account_public_id")
+    val accountPublicId: String? = null,
+    @param:Json(name = "device_public_id")
+    val devicePublicId: String? = null,
     @param:Json(name = "account_name")
     val accountName: String,
     @param:Json(name = "ledger_id")

@@ -103,17 +103,24 @@ class FakePendingMutationDao : PendingMutationDao {
         return victims.size
     }
 
-    override suspend fun expireIfStatusAndOverAge(
+    override suspend fun expireBoundRowIfStatusAndOverAge(
         id: Long,
+        ownerKey: String,
+        ledgerId: String,
         fromStatus: String,
         cutoffCreatedAtIso: String,
-        expiredStatus: String,
-        lastError: String,
     ): Int {
         // Mirrors the DAO SQL: id AND status=fromStatus AND createdAt < cutoff.
         val current = rows[id] ?: return 0
-        if (current.status != fromStatus || current.createdAt >= cutoffCreatedAtIso) return 0
-        rows[id] = current.copy(status = expiredStatus, lastError = lastError)
+        if (
+            current.ownerKey != ownerKey ||
+            current.ledgerId != ledgerId ||
+            current.status != fromStatus ||
+            current.createdAt >= cutoffCreatedAtIso
+        ) {
+            return 0
+        }
+        rows[id] = current.copy(status = "failed", lastError = "outbox_row_expired")
         refreshObservables()
         return 1
     }
@@ -134,14 +141,14 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun cascadeFreshTokenForTarget(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         targetId: String,
         pendingStatus: String,
         freshToken: Long,
     ): Int {
         val matching = rows.values.filter {
-            it.serverUrl == serverUrl &&
+            it.ownerKey == ownerKey &&
                 it.ledgerId == ledgerId &&
                 it.targetId == targetId &&
                 it.status == pendingStatus
@@ -154,29 +161,29 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun nextPendingBatch(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         pendingStatus: String,
         limit: Int,
     ): List<PendingMutationEntity> =
         rows.values
-            .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status == pendingStatus }
+            .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == pendingStatus }
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
             .take(limit)
 
-    override suspend fun refreshTokenIfStatus(
+    override suspend fun requeueConflictWithFreshToken(
         id: Long,
-        fromStatus: String,
-        toStatus: String,
+        ownerKey: String,
+        ledgerId: String,
         freshToken: Long,
         rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.status != fromStatus) return 0
+        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "conflict") return 0
         // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
         // 重置预算的语义。
         rows[id] = current.copy(
-            status = toStatus,
+            status = "pending",
             expectedRowVersion = freshToken,
             // ADR-0042 §4.8: rotate only key-bearing rows (mirrors the DAO CASE).
             idempotencyKey = if (current.idempotencyKey != null) rotatedIdempotencyKey else null,
@@ -187,16 +194,30 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
-    override suspend fun markRetryableIfStatus(
+    override suspend fun requeueFailedWithFreshToken(
         id: Long,
-        fromStatus: String,
-        toStatus: String,
-        lastError: String,
+        ownerKey: String,
+        ledgerId: String,
+        freshToken: Long,
+        rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.status != fromStatus) return 0
-        // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置(理由同 refreshTokenIfStatus)。
-        rows[id] = current.copy(status = toStatus, retryCount = 0, lastError = lastError)
+        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
+        rows[id] = current.copy(
+            status = "pending",
+            expectedRowVersion = freshToken,
+            idempotencyKey = if (current.idempotencyKey != null) rotatedIdempotencyKey else null,
+            retryCount = 0,
+            lastError = null,
+        )
+        refreshObservables()
+        return 1
+    }
+
+    override suspend fun retryFailed(id: Long, ownerKey: String, ledgerId: String): Int {
+        val current = rows[id] ?: return 0
+        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
+        rows[id] = current.copy(status = "pending", retryCount = 0, lastError = "manual_retry")
         refreshObservables()
         return 1
     }
@@ -219,28 +240,39 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
-    override suspend fun deleteIfStatus(id: Long, expectedStatus: String): Int {
+    override suspend fun deleteIfStatus(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        expectedStatus: String,
+    ): Int {
         val current = rows[id] ?: return 0
-        if (current.status != expectedStatus) return 0
+        if (
+            current.ownerKey != ownerKey ||
+            current.ledgerId != ledgerId ||
+            current.status != expectedStatus
+        ) {
+            return 0
+        }
         rows.remove(id)
         refreshObservables()
         return 1
     }
 
     override suspend fun nextRunnableBatch(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         pendingStatus: String,
         unresolvedStatuses: Collection<String>,
         limit: Int,
     ): List<PendingMutationEntity> {
         val unresolvedTargets = rows.values
-            .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status in unresolvedStatuses }
+            .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status in unresolvedStatuses }
             .map { it.targetId }
             .toSet()
         val batch = rows.values
             .filter {
-                it.serverUrl == serverUrl &&
+                it.ownerKey == ownerKey &&
                     it.ledgerId == ledgerId &&
                     it.status == pendingStatus &&
                     it.targetId !in unresolvedTargets
@@ -253,26 +285,26 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun isTargetBusy(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         targetId: String,
         inFlightStatus: String,
     ): Boolean =
         rows.values.any {
-            it.serverUrl == serverUrl &&
+            it.ownerKey == ownerKey &&
                 it.ledgerId == ledgerId &&
                 it.targetId == targetId &&
                 it.status == inFlightStatus
         }
 
     override suspend fun hasUnresolvedRowForTarget(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         targetId: String,
         unresolvedStatuses: Collection<String>,
     ): Boolean {
         return rows.values.any {
-            it.serverUrl == serverUrl &&
+            it.ownerKey == ownerKey &&
                 it.ledgerId == ledgerId &&
                 it.targetId == targetId &&
                 it.status in unresolvedStatuses
@@ -280,13 +312,13 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun recoverStaleInFlight(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         staleCutoffIso: String,
         recoveryMessage: String,
     ): Int {
         val victims = rows.values.filter {
-            it.serverUrl == serverUrl &&
+            it.ownerKey == ownerKey &&
                 it.ledgerId == ledgerId &&
                 it.status == PendingMutationStatus.InFlight.wireValue &&
                 (it.attemptedAt == null || it.attemptedAt < staleCutoffIso)
@@ -299,14 +331,14 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun activeForTarget(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         targetId: String,
         activeStatuses: Collection<String>,
     ): List<PendingMutationEntity> {
         return rows.values
             .filter {
-                it.serverUrl == serverUrl &&
+                it.ownerKey == ownerKey &&
                     it.ledgerId == ledgerId &&
                     it.targetId == targetId &&
                     it.status in activeStatuses
@@ -315,13 +347,13 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override fun observeQueueDepth(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         pendingStatus: String,
         inFlightStatus: String,
     ): Flow<Int> = queueDepth.map { snapshot ->
         rows.values.count {
-            it.serverUrl == serverUrl &&
+            it.ownerKey == ownerKey &&
                 it.ledgerId == ledgerId &&
                 (it.status == pendingStatus || it.status == inFlightStatus)
         }
@@ -329,24 +361,24 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override fun observeConflictRows(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         conflictStatus: String,
     ): Flow<List<PendingMutationEntity>> =
         conflictRows.map { _ ->
             rows.values
-                .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status == conflictStatus }
+                .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == conflictStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
         }
 
     override fun observeFailedRows(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         failedStatus: String,
     ): Flow<List<PendingMutationEntity>> =
         conflictRows.map { _ ->
             rows.values
-                .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status == failedStatus }
+                .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == failedStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
         }
 
@@ -378,12 +410,13 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun migrateServerUrlAlias(
+        ownerKey: String,
         oldServerUrl: String,
         newServerUrl: String,
         ledgerId: String,
     ): Int {
         val aliases = rows.values.filter {
-            it.serverUrl == oldServerUrl && it.ledgerId == ledgerId
+            it.ownerKey == ownerKey && it.serverUrl == oldServerUrl && it.ledgerId == ledgerId
         }
         for (row in aliases) {
             rows[row.id] = row.copy(serverUrl = newServerUrl)
@@ -392,13 +425,19 @@ class FakePendingMutationDao : PendingMutationDao {
         return aliases.size
     }
 
-    override suspend fun adoptLegacyBinding(serverUrl: String, ledgerId: String): Int {
-        val legacy = rows.values.filter { it.serverUrl == "" && it.ledgerId == "" }
-        for (row in legacy) {
-            rows[row.id] = row.copy(serverUrl = serverUrl, ledgerId = ledgerId)
+    override fun observeQuarantinedCount(activeOwnerKey: String?): Flow<Int> =
+        queueDepth.map { snapshot ->
+            rows.values.count { activeOwnerKey == null || it.ownerKey == null || it.ownerKey != activeOwnerKey }
+                .also { snapshot.let { } }
         }
-        if (legacy.isNotEmpty()) refreshObservables()
-        return legacy.size
+
+    override suspend fun deleteQuarantined(activeOwnerKey: String): Int {
+        val ids = rows.values
+            .filter { it.ownerKey == null || it.ownerKey != activeOwnerKey }
+            .map { it.id }
+        ids.forEach(rows::remove)
+        if (ids.isNotEmpty()) refreshObservables()
+        return ids.size
     }
 
     private fun refreshObservables() {

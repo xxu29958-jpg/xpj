@@ -7,10 +7,11 @@ import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeApiServiceFactory
 import com.ticketbox.data.repository.FakeExpenseDao
 import com.ticketbox.data.repository.FakePendingMutationDao
-import com.ticketbox.data.repository.FakeSessionTokenStore
+import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
-import com.ticketbox.data.repository.ServerSessionBinding
+import com.ticketbox.data.repository.testOutboxRepository
+import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.data.repository.boundSettingsStore
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -88,18 +89,18 @@ class OutboxStatusViewModelTest {
     }
 
     private fun harness(): Harness {
-        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
         val expenseRepository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = api,
                 settingsStore = boundSettingsStore(),
                 tokenStore = tokenStore,
             ),
         )
         return Harness(
-            outbox = OutboxRepository(dao = FakePendingMutationDao()),
+            outbox = testOutboxRepository(dao = FakePendingMutationDao()),
             expenseRepository = expenseRepository,
         )
     }

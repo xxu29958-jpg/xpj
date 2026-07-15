@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import com.ticketbox.security.SessionTokenStore
+import com.ticketbox.security.SessionCredentialRotator
 import okhttp3.Dns
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -21,44 +21,68 @@ import javax.net.SocketFactory
 
 class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
     private val nonVpnNetworkProvider = context?.applicationContext?.let(::NonVpnNetworkProvider)
+    private val sessionRefreshScheduler = SessionRefreshScheduler()
 
     override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
-        return createInternal(baseUrl = baseUrl, tokenProvider = tokenProvider, refreshController = null)
+        return createInternal(
+            baseUrl = baseUrl,
+            tokenProvider = tokenProvider,
+            ledgerIdProvider = { null },
+            refreshController = null,
+        )
     }
 
-    override fun create(baseUrl: String, tokenStore: SessionTokenStore): ApiService {
+    override fun create(
+        baseUrl: String,
+        tokenProvider: () -> String?,
+        ledgerIdProvider: () -> String?,
+    ): ApiService {
+        return createInternal(
+            baseUrl = baseUrl,
+            tokenProvider = tokenProvider,
+            ledgerIdProvider = ledgerIdProvider,
+            refreshController = null,
+        )
+    }
+
+    override fun create(baseUrl: String, credentials: SessionCredentialRotator): ApiService {
         val normalized = normalizeBaseUrl(baseUrl)
         val refreshController = SessionRefreshController(
             baseUrl = normalized,
-            tokenStore = tokenStore,
+            credentials = credentials,
+            scheduler = sessionRefreshScheduler,
             serviceFactory = { serviceBaseUrl, provider ->
                 createInternal(
                     baseUrl = serviceBaseUrl,
                     tokenProvider = provider,
+                    ledgerIdProvider = credentials::currentLedgerId,
                     refreshController = null,
                 )
             },
         )
         return createInternal(
             baseUrl = normalized,
-            tokenProvider = { tokenStore.getToken() },
+            tokenProvider = credentials::getToken,
+            ledgerIdProvider = credentials::currentLedgerId,
             refreshController = refreshController,
-            tokenStore = tokenStore,
+            credentials = credentials,
         )
     }
 
     private fun createInternal(
         baseUrl: String,
         tokenProvider: () -> String?,
+        ledgerIdProvider: () -> String?,
         refreshController: SessionRefreshController?,
-        tokenStore: SessionTokenStore? = null,
+        credentials: SessionCredentialRotator? = null,
     ): ApiService {
         val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
         val client = buildApiHttpClient(
             routeProvider = routeProviderFor(normalizedBaseUrl),
             tokenProvider = tokenProvider,
+            ledgerIdProvider = ledgerIdProvider,
             refreshController = refreshController,
-            tokenStore = tokenStore,
+            credentials = credentials,
         )
         return buildApiService(normalizedBaseUrl = normalizedBaseUrl, client = client)
     }

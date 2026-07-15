@@ -28,7 +28,7 @@ import retrofit2.HttpException
  * doesn't replay with a stale token and false-409 (ADR-0041 P1).
  */
 class ReplaceItemsDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.ReplaceItems
@@ -61,7 +61,7 @@ class ReplaceItemsDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical items) instead of false-409ing on the stale row_version.
-            val response = apiProvider().replaceExpenseItems(expenseRef, request, idempotencyKey)
+            val response = apiProvider(row).replaceExpenseItems(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = response.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

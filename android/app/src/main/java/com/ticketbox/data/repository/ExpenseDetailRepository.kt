@@ -27,7 +27,7 @@ internal class ExpenseDetailRepository(
 ) {
     suspend fun fetchExpense(id: Long): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        core.cacheIfConfirmed(bound.call { it.expense(id) }, bound.ledgerId).toDomain()
+        core.cacheIfConfirmed(bound.call { it.expense(id) }, bound).toDomain()
     }
 
     /**
@@ -131,7 +131,10 @@ internal class ExpenseDetailRepository(
         // 409ing on the stale token. The dispatcher replays it from
         // row.idempotencyKey.
         val idempotencyKey = UUID.randomUUID().toString()
-        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
+        if (
+            core.canEnqueueStateTransition(expense) &&
+            core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))
+        ) {
             // Per-target FIFO guard — see confirmExpenseAllowingOffline
             // (ExpensePendingRepository): a direct call must not jump an
             // unresolved queued mutation for the same row.
@@ -217,7 +220,7 @@ internal class ExpenseDetailRepository(
             token = token,
             idempotencyKey = idempotencyKey,
         )
-        if (core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
+        if (core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
             enqueueReplaceItems(enqueueContext, adapter, request)
             return@safeCall ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items))
@@ -242,13 +245,15 @@ internal class ExpenseDetailRepository(
         adapter: com.squareup.moshi.JsonAdapter<ExpenseItemReplaceRequestDto>,
         request: ExpenseItemReplaceRequestDto,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.ReplaceItems,
-            targetId = expenseTargetId(context.expenseId),
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = context.token,
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.ReplaceItems,
+                targetId = expenseTargetId(context.expenseId),
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 
@@ -383,7 +388,7 @@ internal class ExpenseDetailRepository(
             token = token,
             idempotencyKey = idempotencyKey,
         )
-        if (core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
+        if (core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
             enqueueReplaceSplits(enqueueContext, adapter, request)
             return@safeCall ReplaceSplitsOutcome.Queued(projectOptimisticSplits(currentSplits, splits))
@@ -408,13 +413,15 @@ internal class ExpenseDetailRepository(
         adapter: com.squareup.moshi.JsonAdapter<ExpenseSplitReplaceRequestDto>,
         request: ExpenseSplitReplaceRequestDto,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.ReplaceSplits,
-            targetId = expenseTargetId(context.expenseId),
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = context.token,
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.ReplaceSplits,
+                targetId = expenseTargetId(context.expenseId),
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 
@@ -459,10 +466,10 @@ internal class ExpenseDetailRepository(
 
     suspend fun createNotificationDraft(
         draft: NotificationDraft,
-        expectedLedgerId: String? = null,
+        expectedBinding: LogicalSessionBinding,
         notificationKey: String? = null,
     ): Result<Expense> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind(expectedLedgerId = expectedLedgerId)
+        val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
         val created = bound.call { it.createNotificationDraft(draft.toRequest(notificationKey)) }
         created.toDomain()
     }
@@ -511,7 +518,10 @@ internal class ExpenseDetailRepository(
             // ADR-0042: one intent-time key for both the direct attempt and the
             // replay — see acknowledgeItemsMismatchAllowingOffline for rationale.
             val idempotencyKey = UUID.randomUUID().toString()
-            if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
+            if (
+                core.canEnqueueStateTransition(expense) &&
+                core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))
+            ) {
                 // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
                 core.enqueueStateTransition(
                     bound = bound,
@@ -588,7 +598,7 @@ internal class ExpenseDetailRepository(
             token = token,
             idempotencyKey = idempotencyKey,
         )
-        if (core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
+        if (core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))) {
             // Per-target FIFO guard — see acknowledgeItemsMismatchAllowingOffline.
             enqueueRecognizeText(enqueueContext, adapter, request)
             return@safeCall ExpenseStateOutcome.Queued(expense)
@@ -615,13 +625,15 @@ internal class ExpenseDetailRepository(
         adapter: com.squareup.moshi.JsonAdapter<ExpenseRecognizeTextRequestDto>,
         request: ExpenseRecognizeTextRequestDto,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.RecognizeText,
-            targetId = expenseTargetId(context.expenseId),
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = context.token,
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.RecognizeText,
+                targetId = expenseTargetId(context.expenseId),
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 

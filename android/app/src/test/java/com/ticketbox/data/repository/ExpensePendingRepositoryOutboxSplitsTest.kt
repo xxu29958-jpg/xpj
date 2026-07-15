@@ -40,7 +40,7 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
 
     private fun splitsRepo(api: ApiService, outbox: OutboxRepository): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
-        binding = ServerSessionBinding(
+        binding = testServerSessionBinding(
             apiClient = TestApiServiceFactory(api),
             settingsStore = seededSettingsStore(),
             tokenStore = seededTokenStore(),
@@ -56,7 +56,7 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
     fun `replaceSplits IOException returns Queued optimistic + enqueues body without token`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         // ADR-0042: capture the Idempotency-Key the repository supplied on the
         // direct PUT so we can assert the enqueued row carries the SAME key.
         var directIdempotencyKey: String? = null
@@ -107,7 +107,7 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
     fun `replaceSplits direct 2xx returns Synced, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun replaceExpenseSplits(
                 id: String,

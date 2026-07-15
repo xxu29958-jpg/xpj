@@ -4,7 +4,6 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
-import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.dto.ErrorDto
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +23,7 @@ import java.io.IOException
  * is the same domain rule across all callers.
  */
 internal class NetworkErrorHandler(
-    private val settingsStore: TicketboxSettingsStore,
+    private val serverUrlProvider: () -> String?,
     private val context: String,
     private val statusMessages: Map<Int, String> = emptyMap(),
 ) {
@@ -52,7 +51,7 @@ internal class NetworkErrorHandler(
         } catch (error: RepositoryException) {
             Result.failure(error)
         } catch (error: IOException) {
-            val serverUrl = serverUrlHint ?: settingsStore.serverUrl()
+            val serverUrl = serverUrlHint ?: serverUrlProvider()
             // codex round-9 follow-up: route through
             // [logNetworkWarning] (catches the android.util.Log
             // stub exception in pure-JVM unit tests). Letting Log.w

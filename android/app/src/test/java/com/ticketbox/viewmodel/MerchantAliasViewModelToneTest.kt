@@ -10,11 +10,11 @@ import com.ticketbox.data.remote.dto.MerchantCatalogListDto
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeExpenseDao
-import com.ticketbox.data.repository.FakeSessionTokenStore
+import com.ticketbox.data.repository.ledgerSessionFixture
 import com.ticketbox.data.repository.FakeTicketboxSettingsStore
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RepositoryException
-import com.ticketbox.data.repository.ServerSessionBinding
+import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
@@ -151,10 +151,10 @@ class MerchantAliasViewModelToneTest {
                 )
             )
         }
-        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val tokenStore = ledgerSessionFixture("owner", "My ledger")
         val apiFactory = FixedApiServiceFactory(service)
         val merchantRepository = MerchantRepository(
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiFactory,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,
@@ -162,7 +162,7 @@ class MerchantAliasViewModelToneTest {
         )
         val expenseRepository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = apiFactory,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,

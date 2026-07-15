@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.dto.StatusPrivateDto
 import com.ticketbox.domain.model.ServerBackupHealth
 
@@ -14,21 +13,19 @@ fun StatusPrivateDto.toBackupHealth(): ServerBackupHealth = ServerBackupHealth(
 /**
  * `GET /api/status/private` 的窄仓库(轴6 备份超龄通知数据源)。
  *
- * 与 [BudgetRepository] 等 ledger 域仓库的差别:status/private 是 **server 级**端点
- * (只要 app token,与 active ledger 无关),故不走 LedgerRequestGuard 的 ledger 绑定,
- * 直接用 [ApiServiceProvider.current](未绑定时其异常由 [NetworkErrorHandler.safeCall]
- * 折叠为 failure;调用方 engine 另有 sessionReady 前置门,这里只是兜底)。
+ * status/private 是 server 级端点，但请求仍必须固定到一次已验证的会话快照，
+ * 避免重绑或切换期间从动态 provider 读取另一套凭据。
  */
 class ServerStatusRepository(
     private val apiProvider: ApiServiceProvider,
-    settingsStore: TicketboxSettingsStore,
 ) {
+    private val requestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "ServerStatus",
     )
 
     suspend fun backupHealth(): Result<ServerBackupHealth> = errorHandler.safeCall {
-        apiProvider.current().privateStatus().toBackupHealth()
+        requestGuard.guardedCall { api -> api.privateStatus().toBackupHealth() }
     }
 }

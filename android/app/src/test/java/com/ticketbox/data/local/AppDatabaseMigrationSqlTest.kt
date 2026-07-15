@@ -93,13 +93,22 @@ class AppDatabaseMigrationSqlTest {
                 assertEquals(1L, rs.getLong(1), "migrated rows default to rowVersion 1")
             }
 
-            // pending_mutations: token column flipped TEXT→INTEGER, table rebuilt empty.
+            // pending_mutations: token column flips TEXT→INTEGER while the intent survives
+            // as a review-required failure. It cannot be replayed with the stale timestamp.
             val outboxCols = conn.columns("pending_mutations")
             assertTrue(outboxCols.contains("expectedRowVersion"), "outbox token column must be expectedRowVersion")
             assertFalse(outboxCols.contains("expectedUpdatedAt"), "old expectedUpdatedAt column must be gone")
-            conn.query("SELECT COUNT(*) FROM pending_mutations") { rs ->
-                rs.next()
-                assertEquals(0, rs.getInt(1), "v10→v11 intentionally drops + rebuilds the outbox empty")
+            conn.query(
+                "SELECT type, targetId, payload, expectedRowVersion, status, lastError " +
+                    "FROM pending_mutations WHERE id = 1",
+            ) { rs ->
+                assertTrue(rs.next(), "the pre-existing v10 outbox intent must survive")
+                assertEquals("patch_expense", rs.getString(1))
+                assertEquals("expense:9", rs.getString(2))
+                assertEquals("{}", rs.getString(3))
+                assertEquals(0L, rs.getLong(4))
+                assertEquals("failed", rs.getString(5))
+                assertEquals("legacy_concurrency_token_requires_review", rs.getString(6))
             }
             // All 6 outbox indices recreated.
             conn.query(
@@ -108,6 +117,43 @@ class AppDatabaseMigrationSqlTest {
             ) { rs ->
                 rs.next()
                 assertEquals(6, rs.getInt(1), "all 6 pending_mutations indices must be rebuilt")
+            }
+        }
+    }
+
+    @Test
+    fun directMigration10To14PreservesLegacyIntentInQuarantine() {
+        Class.forName("org.sqlite.JDBC")
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { conn ->
+            conn.createStatement().use { st ->
+                st.execute(v10Expenses)
+                st.execute(v10PendingMutations)
+                st.execute(
+                    "INSERT INTO pending_mutations (serverUrl, ledgerId, type, targetId, payload, " +
+                        "expectedUpdatedAt, status, createdAt) VALUES ('https://api.example.com', " +
+                        "'owner', 'patch_expense', 'expense:9', '{\"merchant\":\"咖啡\"}', " +
+                        "'2026-05-13T00:00:00Z', 'pending', '2026-05-13T00:00:00Z')",
+                )
+                AppDatabase.MIGRATION_10_11_STATEMENTS.forEach(st::execute)
+                AppDatabase.MIGRATION_11_12_STATEMENTS.forEach(st::execute)
+                AppDatabase.MIGRATION_12_13_STATEMENTS.forEach(st::execute)
+                AppDatabase.MIGRATION_13_14_STATEMENTS.forEach(st::execute)
+            }
+
+            conn.query(
+                "SELECT type, targetId, payload, expectedRowVersion, status, lastError, ownerKey " +
+                    "FROM pending_mutations",
+            ) { rs ->
+                assertTrue(rs.next(), "the v10 intent must survive the complete upgrade chain")
+                assertEquals("patch_expense", rs.getString(1))
+                assertEquals("expense:9", rs.getString(2))
+                assertEquals("{\"merchant\":\"咖啡\"}", rs.getString(3))
+                assertEquals(0L, rs.getLong(4))
+                assertEquals("failed", rs.getString(5))
+                assertEquals("legacy_concurrency_token_requires_review", rs.getString(6))
+                rs.getString(7)
+                assertTrue(rs.wasNull(), "legacy URL and ledger data must not be promoted to an owner")
+                assertFalse(rs.next(), "the migration must preserve exactly one seeded intent")
             }
         }
     }
@@ -189,6 +235,53 @@ class AppDatabaseMigrationSqlTest {
                 "the (ledgerId, clientRef) unique index must exist: $indexNames",
             )
             assertEquals(7, indexNames.size, "all 7 expenses indices must be present after the rebuild: $indexNames")
+        }
+    }
+
+    @Test
+    fun migration13To14PreservesRowsAsUnownedQuarantine() {
+        Class.forName("org.sqlite.JDBC")
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { conn ->
+            conn.createStatement().use { st ->
+                st.execute(v11PendingMutations)
+                AppDatabase.MIGRATION_11_12_STATEMENTS.forEach { st.execute(it) }
+                st.execute(
+                    "CREATE INDEX index_pending_mutations_serverUrl_ledgerId_createdAt " +
+                        "ON pending_mutations (serverUrl, ledgerId, createdAt)",
+                )
+                st.execute(
+                    "CREATE INDEX index_pending_mutations_serverUrl_ledgerId_targetId_status " +
+                        "ON pending_mutations (serverUrl, ledgerId, targetId, status)",
+                )
+                st.execute(
+                    "CREATE INDEX index_pending_mutations_serverUrl_ledgerId_status " +
+                        "ON pending_mutations (serverUrl, ledgerId, status)",
+                )
+                st.execute(
+                    "INSERT INTO pending_mutations (serverUrl, ledgerId, type, targetId, payload, " +
+                        "expectedRowVersion, status, createdAt) VALUES ('https://old.example.com', " +
+                        "'owner', 'create_expense', 'expense:local:abc', '{}', 0, 'pending', " +
+                        "'2026-07-15T00:00:00.000Z')",
+                )
+                AppDatabase.MIGRATION_13_14_STATEMENTS.forEach { st.execute(it) }
+            }
+
+            assertTrue(conn.columns("pending_mutations").contains("ownerKey"))
+            conn.query(
+                "SELECT serverUrl, ledgerId, ownerKey FROM pending_mutations WHERE targetId = 'expense:local:abc'",
+            ) { rs ->
+                assertTrue(rs.next(), "the pre-existing offline intent must survive")
+                assertEquals("https://old.example.com", rs.getString(1))
+                assertEquals("owner", rs.getString(2))
+                rs.getString(3)
+                assertTrue(rs.wasNull(), "a URL-only row must not be assigned to the current identity")
+            }
+
+            val indices = conn.indexNames("pending_mutations")
+            assertFalse(indices.any { "serverUrl_ledgerId" in it })
+            assertTrue(indices.contains("index_pending_mutations_ownerKey_ledgerId_createdAt"))
+            assertTrue(indices.contains("index_pending_mutations_ownerKey_ledgerId_targetId_status"))
+            assertTrue(indices.contains("index_pending_mutations_ownerKey_ledgerId_status"))
         }
     }
 

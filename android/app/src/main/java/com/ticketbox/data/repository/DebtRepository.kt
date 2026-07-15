@@ -1,7 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
@@ -16,7 +14,6 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -108,16 +105,11 @@ interface DebtProposalActions {
 }
 
 class DebtRepository(
-    apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    tokenStore: SessionTokenStore,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(
-        apiClient, settingsStore, tokenStore,
-    ),
+    private val apiProvider: ApiServiceProvider,
 ) : DebtActions, ReceivablesActions {
-    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "Debt",
         statusMessages = mapOf(
             // 403: the proposal flow's debtor-only / creditor-only guard (§3.2). The UI gates by
@@ -129,7 +121,7 @@ class DebtRepository(
         ),
     )
 
-    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
     override suspend fun listDebts(): Result<List<Debt>> =
         errorHandler.safeCall {

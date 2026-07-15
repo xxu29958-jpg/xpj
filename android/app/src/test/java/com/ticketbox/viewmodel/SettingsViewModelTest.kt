@@ -209,6 +209,8 @@ class SettingsViewModelTest {
         var diagnosticsFailure: Throwable? = null
         var serverSettingsValue: ServerSettings? = null
 
+        override fun localBinding(): com.ticketbox.data.repository.LocalBindingInfo? = null
+
         override fun currentLedgerRole(): String? = currentLedgerRoleValue
 
         override fun lastConfirmedSyncAt(): String? = lastConfirmedSyncAtValue

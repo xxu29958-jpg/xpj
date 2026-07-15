@@ -4,9 +4,13 @@ import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -32,10 +36,10 @@ class ExpenseRepositoryConfirmedSyncTest {
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -52,10 +56,10 @@ class ExpenseRepositoryConfirmedSyncTest {
         val apiService = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)
         val repository = ExpenseRepository(
             expenseDao = FakeExpenseDao(),
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = boundSettingsStore(),
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -73,10 +77,10 @@ class ExpenseRepositoryConfirmedSyncTest {
         val settingsStore = boundSettingsStore()
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -108,10 +112,10 @@ class ExpenseRepositoryConfirmedSyncTest {
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -130,10 +134,10 @@ class ExpenseRepositoryConfirmedSyncTest {
         val settingsStore = boundSettingsStore()
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -162,10 +166,10 @@ class ExpenseRepositoryConfirmedSyncTest {
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -200,10 +204,10 @@ class ExpenseRepositoryConfirmedSyncTest {
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = TestSessionFixture().apply { saveToken("session-token") },
             ),
             deviceNameProvider = { "Android Test Device" },
         )
@@ -217,7 +221,7 @@ class ExpenseRepositoryConfirmedSyncTest {
     }
 
     @Test
-    fun confirmedSyncSkipsCacheWhenLedgerChangesDuringRequest() = runTest {
+    fun confirmedSyncFailsWithoutCachingWhenLedgerChangesDuringRequest() = runTest {
         val events = mutableListOf<String>()
         val dao = FakeExpenseDao()
         val settingsStore = FakeTicketboxSettingsStore(events).apply {
@@ -233,35 +237,120 @@ class ExpenseRepositoryConfirmedSyncTest {
                 )
             )
         }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 0).apply {
             onConfirmedRequest = {
-                settingsStore.saveIdentity(
-                    PersistedLedgerIdentity(
-                        accountName = "Account",
-                        ledgerId = "family",
-                        ledgerName = "Family Ledger",
-                        deviceName = "Pixel",
-                        role = "member",
-                        boundAt = "2026-05-01T00:00:00Z",
-                    )
-                )
+                tokenStore.switchLedgerForFixture("family", "Family Ledger", role = "member")
             }
         }
         val repository = ExpenseRepository(
             expenseDao = dao,
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+                tokenStore = tokenStore,
             ),
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val result = repository.syncConfirmed().getOrThrow()
+        val failure = repository.syncConfirmed().exceptionOrNull()
 
-        assertTrue(result.isEmpty())
+        assertTrue(failure is RepositoryException)
+        assertTrue(failure.message.orEmpty().contains("账本已切换"))
         assertTrue(dao.getConfirmed("owner").isEmpty())
         assertTrue(dao.getConfirmed("family").isEmpty())
         assertNull(settingsStore.lastConfirmedSyncAt())
     }
+
+    @Test
+    fun confirmedSyncRejectsOldOriginResponseWhenLedgerIdIsReused() = runTest {
+        val dao = FakeExpenseDao()
+        val settingsStore = boundSettingsStore()
+        val tokenStore = TestSessionFixture().apply { saveToken("token-a") }
+        val apiService = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0).apply {
+            onConfirmedRequest = {
+                tokenStore.rebindToDifferentServerForFixture("https://other.example.com", "token-b")
+            }
+        }
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            binding = testServerSessionBinding(
+                apiClient = FakeApiServiceFactory(apiService),
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
+        )
+
+        val failure = repository.syncConfirmed().exceptionOrNull()
+
+        assertTrue(failure is RepositoryException)
+        assertTrue(dao.getConfirmed("owner").isEmpty())
+        assertNull(settingsStore.lastConfirmedSyncAt())
+    }
+
+    @Test
+    fun bindingTransitionWaitsForCacheCommitThenClearsTheOldOriginProjection() = runTest {
+        val dao = FakeExpenseDao()
+        val settingsStore = boundSettingsStore()
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val outbox = testOutboxRepository(dao = FakePendingMutationDao())
+        val coordinator = LocalLedgerSessionCoordinator(
+            settingsStore = settingsStore,
+            sessionStore = tokenStore.sessionStore,
+            expenseDao = dao,
+            outbox = outbox,
+        )
+        val commitEntered = CompletableDeferred<Unit>()
+        val releaseCommit = CompletableDeferred<Unit>()
+        dao.beforeApplyConfirmedSync = {
+            commitEntered.complete(Unit)
+            releaseCommit.await()
+        }
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            binding = testServerSessionBinding(
+                apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            ),
+            deviceNameProvider = { "Android Test Device" },
+            sessionCoordinator = coordinator,
+            offlineMutations = ExpenseOfflineMutationWiring(outbox = outbox),
+        )
+
+        val sync = async { repository.syncConfirmed().getOrThrow() }
+        commitEntered.await()
+        val transition = async {
+            coordinator.applyTransition(otherServerTransition())
+        }
+        yield()
+        assertFalse(transition.isCompleted)
+
+        releaseCommit.complete(Unit)
+        sync.await()
+        transition.await()
+
+        assertTrue(dao.getConfirmed("owner").isEmpty())
+        assertEquals("https://other.example.com", tokenStore.sessionStore.currentSession()?.serverUrl)
+        assertEquals("other-token", tokenStore.getToken())
+    }
 }
+
+private fun otherServerTransition() = LedgerSessionTransition(
+    change = LocalSessionChange.EstablishSession,
+    serverId = "20000000-0000-0000-0000-000000000001",
+    dataGeneration = "20000000-0000-0000-0000-000000000002",
+    serverUrl = "https://other.example.com",
+    sessionToken = "other-token",
+    identity = LedgerSessionIdentity(
+        accountPublicId = "20000000-0000-0000-0000-000000000003",
+        devicePublicId = "20000000-0000-0000-0000-000000000004",
+        accountName = "Other",
+        ledgerId = "owner",
+        ledgerName = "Other Ledger",
+        deviceName = "Pixel",
+        role = "owner",
+        boundAt = "2026-05-02T00:00:00Z",
+    ),
+    cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
+)

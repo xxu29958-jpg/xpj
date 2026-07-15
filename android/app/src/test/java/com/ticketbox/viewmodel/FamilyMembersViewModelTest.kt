@@ -10,8 +10,8 @@ import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import com.ticketbox.data.repository.LedgerFakeDao
 import com.ticketbox.data.repository.LedgerFakeSettingsStore
-import com.ticketbox.data.repository.LedgerFakeTokenStore
-import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.ledgerSessionFixture
+import com.ticketbox.data.repository.testLedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiState
 import com.ticketbox.data.repository.LedgerStubApiFactory
 import com.ticketbox.data.repository.StubApi
@@ -199,10 +199,10 @@ class FamilyMembersViewModelTest {
             saveActiveLedger(ledger, "Family")
             capturedRole = role
         }
-        val repository = LedgerRepository(
+        val repository = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = ledgerSessionFixture(ledger, "Family", role = role, token = "t"),
             expenseDao = LedgerFakeDao(),
         )
         return FamilyMembersViewModel(repository)

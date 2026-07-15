@@ -116,11 +116,7 @@ class MainActivity : FragmentActivity() {
         // ``setContent`` below assumes (bound credentials by the
         // time UI inflates).
         runBlocking {
-            container.outboxRepository.withBindingTransition(clearExistingRows = true) {
-                container.settingsStore.saveServerUrl(serverUrl)
-                container.tokenStore.saveToken(sessionToken)
-                container.settingsStore.markUnlocked()
-            }
+            container.replaceCredentialsForDebug(serverUrl, sessionToken)
         }
     }
 
@@ -150,7 +146,6 @@ class MainActivity : FragmentActivity() {
             appViewModelFactory = appViewModelFactory(
                 repository = expenseRepository,
                 settingsStore = settingsStore,
-                tokenStore = tokenStore,
             ),
             mainScreenFactories = MainScreenViewModelFactories(
                 settingsViewModelFactory = settingsViewModelFactory(

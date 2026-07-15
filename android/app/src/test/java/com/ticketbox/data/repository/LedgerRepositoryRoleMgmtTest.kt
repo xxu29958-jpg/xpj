@@ -34,10 +34,10 @@ class LedgerRepositoryRoleMgmtTest {
             saveServerUrl("https://api.example.com")
             saveActiveLedger("L_family", "家庭账本")
         }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = ledgerSessionFixture("L_family", "家庭账本", token = "t"),
             expenseDao = LedgerFakeDao(),
         )
 
@@ -77,10 +77,10 @@ class LedgerRepositoryRoleMgmtTest {
             saveServerUrl("https://api.example.com")
             saveActiveLedger("L_family", "家庭账本")
         }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = ledgerSessionFixture("L_family", "家庭账本", token = "t"),
             expenseDao = LedgerFakeDao(),
         )
 
@@ -135,10 +135,11 @@ class LedgerRepositoryRoleMgmtTest {
                 )
             )
         }
-        val repo = LedgerRepository(
+        val session = ledgerSessionFixture("L_family", "家庭账本", role = "owner", token = "t")
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = session,
             expenseDao = LedgerFakeDao(),
         )
 
@@ -146,7 +147,7 @@ class LedgerRepositoryRoleMgmtTest {
 
         assertEquals("member", result.previousOwner.role)
         assertEquals("owner", result.newOwner.role)
-        assertEquals("member", store.role())
+        assertEquals("member", repo.currentLedgerRole())
         assertEquals(listOf("L_family" to 2L), api.transferTargets)
         assertEquals("member", repo.cachedLedgers().single().role)
     }
@@ -154,7 +155,7 @@ class LedgerRepositoryRoleMgmtTest {
     private fun makeRepo(): LedgerRepository {
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("t") }
-        return LedgerRepository(
+        return testLedgerRepository(
             apiClient = LedgerStubApiFactory(StubApi()),
             settingsStore = store,
             tokenStore = tokenStore,

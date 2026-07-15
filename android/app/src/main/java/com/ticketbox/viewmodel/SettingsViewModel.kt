@@ -70,17 +70,14 @@ class SettingsViewModel(
         message: UiText? = this.message,
         messageTone: MessageTone = this.messageTone,
     ): SettingsUiState {
-        val localAccountName = settingsStore.accountName()
-        val localLedgerName = settingsStore.ledgerName()
-        val localDeviceName = settingsStore.deviceName()
-        val localRole = settingsStore.role()
+        val binding = repository.localBinding()
         return copy(
-            serverUrl = settingsStore.serverUrl(),
-            accountName = localAccountName,
-            ledgerName = localLedgerName,
-            deviceName = localDeviceName,
-            role = localRole,
-            boundAt = settingsStore.boundAt(),
+            serverUrl = binding?.serverUrl,
+            accountName = binding?.accountName,
+            ledgerName = binding?.ledgerName,
+            deviceName = binding?.deviceName,
+            role = binding?.role,
+            boundAt = binding?.boundAt,
             monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
             notificationPreferences = settingsStore.notificationPreferences(),
             lastUploadAt = repository.lastUploadAt(),
@@ -181,14 +178,14 @@ class SettingsViewModel(
 
     private fun loadServerSettings(showBusy: Boolean = false) {
         viewModelScope.launch {
-            val ledgerIdAtRequest = settingsStore.activeLedgerId()
+            val ledgerIdAtRequest = repository.localBinding()?.ledgerId
             if (showBusy) {
                 _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
             }
             repository.serverSettings()
                 .onSuccess { settings ->
                     _uiState.update {
-                        if (ledgerIdAtRequest != settingsStore.activeLedgerId()) {
+                        if (ledgerIdAtRequest != repository.localBinding()?.ledgerId) {
                             it.withLocalBindingFields(
                                 busy = if (showBusy) false else it.busy,
                                 message = null,
