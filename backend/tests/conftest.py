@@ -155,3 +155,7 @@ def pytest_collection_modifyitems(
     for item in items:
         for marker_name in postgres_test_markers(item.nodeid):
             item.add_marker(markers[marker_name])
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    cleanup_runtime()

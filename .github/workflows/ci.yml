@@ -327,11 +327,13 @@ jobs:
         # here and run once in the following explicit serial lane.
         env:
           XPJ_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_test
+          XPJ_TEST_CLUSTER_CONFIRMED: "1"
         run: ./.ci-venv/bin/python scripts/run_test_lanes.py parallel
 
       - name: PostgreSQL stateful serial pytest lane
         env:
           XPJ_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_test
+          XPJ_TEST_CLUSTER_CONFIRMED: "1"
         run: ./.ci-venv/bin/python scripts/run_test_lanes.py stateful
 
   desktop-manager:

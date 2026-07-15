@@ -14,7 +14,6 @@
   xpj_test / xpj_smoke databases are created only when missing.
 
   After it prints OK, run the suite with:
-    $env:XPJ_TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_test"
     .\.venv\Scripts\python.exe scripts\run_test_lanes.py full
 
   NEVER touches 5432 (prod) or 5433 (CI). Teardown: stop_test_pg.ps1.

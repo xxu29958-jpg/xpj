@@ -171,7 +171,6 @@ def _fresh_backup_entry(kind: str):
     )
 
 
-@pytest.mark.stateful_serial
 def test_manual_backup_holds_lock_during_dump(monkeypatch: pytest.MonkeyPatch) -> None:
     """create_manual_backup must run the dump *inside* the lock and release after."""
     from app.services import backup_service
@@ -192,7 +191,6 @@ def test_manual_backup_holds_lock_during_dump(monkeypatch: pytest.MonkeyPatch) -
         backup_service._lock_path().unlink(missing_ok=True)  # noqa: SLF001
 
 
-@pytest.mark.stateful_serial
 def test_manual_backup_skips_when_lock_held(monkeypatch: pytest.MonkeyPatch) -> None:
     """A fresh lock held by another job makes a manual backup raise 409, not dump."""
     from app.errors import AppError
@@ -214,7 +212,6 @@ def test_manual_backup_skips_when_lock_held(monkeypatch: pytest.MonkeyPatch) -> 
         lock.unlink(missing_ok=True)
 
 
-@pytest.mark.stateful_serial
 def test_stale_backup_lock_is_reclaimed() -> None:
     """A lock older than the TTL is a crashed job — acquiring reclaims it."""
     import os
@@ -234,7 +231,6 @@ def test_stale_backup_lock_is_reclaimed() -> None:
         lock.unlink(missing_ok=True)
 
 
-@pytest.mark.stateful_serial
 def test_backup_lock_file_invisible_to_listing() -> None:
     """The sentinel must never be mistaken for a backup (it starts with '.')."""
     from app.services import backup_service

@@ -20,7 +20,7 @@ from collections.abc import Iterator
 from sqlalchemy import text
 
 from app.database import engine, init_db
-from tests._infra.env import TEST_UPLOAD_DIR
+from tests._infra.env import TEST_DATA_DIR, TEST_UPLOAD_DIR
 
 
 def reset_db_state() -> None:
@@ -40,13 +40,15 @@ def reset_db_state() -> None:
     with engine.begin() as connection:
         connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         connection.execute(text("CREATE SCHEMA public"))
+    shutil.rmtree(TEST_DATA_DIR, ignore_errors=True)
     shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
     init_db()
 
 
 def cleanup_runtime() -> None:
-    """Dispose the engine and clear the test upload dir. Session-end hook."""
+    """Dispose the engine and clear this process's writable test data."""
     engine.dispose()
+    shutil.rmtree(TEST_DATA_DIR, ignore_errors=True)
     shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
 
 

@@ -5,10 +5,28 @@ from sqlalchemy.engine import make_url
 
 from tests._infra import db as db_infra
 from tests._infra.worker_db import (
+    configured_test_database_url,
     drop_worker_database,
     recreate_worker_database,
     worker_database_url,
 )
+
+
+def test_database_url_override_requires_explicit_cluster_confirmation() -> None:
+    override = "postgresql+psycopg://postgres@localhost:5432/xpj_test"
+
+    with pytest.raises(RuntimeError, match="XPJ_TEST_CLUSTER_CONFIRMED=1"):
+        configured_test_database_url({"XPJ_TEST_DATABASE_URL": override})
+
+    assert configured_test_database_url({}) == (
+        "postgresql+psycopg://postgres@localhost:5438/xpj_test"
+    )
+    assert configured_test_database_url(
+        {
+            "XPJ_TEST_DATABASE_URL": override,
+            "XPJ_TEST_CLUSTER_CONFIRMED": "1",
+        }
+    ) == override
 
 
 def test_worker_database_url_preserves_connection_contract() -> None:

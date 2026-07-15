@@ -14,7 +14,7 @@ import json
 import os
 from pathlib import Path
 
-from tests._infra.worker_db import worker_database_url
+from tests._infra.worker_db import configured_test_database_url, worker_database_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 TEST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER")
@@ -25,20 +25,19 @@ TEST_APP_TOKEN = "pytest-app-token"
 TEST_ADMIN_TOKEN = "pytest-admin-token"
 TEST_TENANT_UPLOAD_TOKEN = "pytest-tenant-upload-token"
 TEST_TENANT_APP_TOKEN = "pytest-tenant-app-token"
+TEST_RUNTIME_ROOT = BACKEND_ROOT / ".pytest-runtime"
+TEST_DATA_DIR = TEST_RUNTIME_ROOT / TEST_RUN_ID
 TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / f"pytest_test_{TEST_RUN_ID}"
 TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
 
 
 # Lane (PG-only — debt #4, building on ADR-0041). PostgreSQL is the only lane:
 # prod / dev / test share the engine so dialect drift can't hide.
-# - XPJ_TEST_DATABASE_URL set  -> that engine verbatim (CI's ephemeral PG, or any
-#   explicit override).
+# - XPJ_TEST_DATABASE_URL set  -> that engine verbatim only when paired with
+#   XPJ_TEST_CLUSTER_CONFIRMED=1 (CI's ephemeral PG or an explicit override).
 # - default                    -> local throwaway PostgreSQL on :5438, brought up
 #   by backend/scripts/start_test_pg.ps1.
-_base_database_url = (
-    os.environ.get("XPJ_TEST_DATABASE_URL")
-    or "postgresql+psycopg://postgres@localhost:5438/xpj_test"
-)
+_base_database_url = configured_test_database_url(os.environ)
 TEST_DATABASE_URL = (
     worker_database_url(_base_database_url, TEST_WORKER_ID, TEST_RUN_UID or "")
     if TEST_WORKER_ID is not None
@@ -51,7 +50,8 @@ os.environ.update(
         "APP_TOKEN": TEST_APP_TOKEN,
         "ADMIN_TOKEN": TEST_ADMIN_TOKEN,
         "DATABASE_URL": TEST_DATABASE_URL,
-        "UPLOAD_DIR": TEST_UPLOAD_RELATIVE,
+        "TICKETBOX_DATA_DIR": str(TEST_DATA_DIR),
+        "UPLOAD_DIR": str(TEST_UPLOAD_DIR),
         "MAX_UPLOAD_SIZE_MB": "10",
         "DELETE_IMAGE_AFTER_CONFIRM": "false",
         "GENERATE_THUMBNAIL": "true",
