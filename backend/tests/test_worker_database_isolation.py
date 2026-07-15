@@ -157,17 +157,19 @@ def test_stateful_lane_lock_releases_cluster_wide_advisory_lock_on_failure(
 
     monkeypatch.setattr(test_pg_contract.psycopg, "connect", fake_connect)
 
-    with pytest.raises(ZeroDivisionError):
-        with test_pg_contract.stateful_test_cluster_lock(
+    with (
+        pytest.raises(ZeroDivisionError),
+        test_pg_contract.stateful_test_cluster_lock(
             {
                 "XPJ_TEST_DATABASE_URL": (
                     "postgresql+psycopg://tester:secret@db.example:5432/xpj_test"
                 ),
                 "XPJ_TEST_CLUSTER_CONFIRMED": "1",
             }
-        ):
-            events.append(("body", None))
-            raise ZeroDivisionError
+        ),
+    ):
+        events.append(("body", None))
+        raise ZeroDivisionError
 
     assert events[0] == (
         "connect",
