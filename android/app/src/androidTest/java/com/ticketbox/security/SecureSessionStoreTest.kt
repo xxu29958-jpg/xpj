@@ -1,9 +1,17 @@
 package com.ticketbox.security
 
+import android.content.Context
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.runBlocking
@@ -15,6 +23,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class SecureSessionStoreTest {
@@ -28,24 +37,24 @@ class SecureSessionStoreTest {
 
     @Test
     fun completeSessionPersistsAndStaleCredentialCannotOverwriteIt() = runBlocking {
-        val firstProcess = SecureSessionStore(context)
-        firstProcess.clearSession()
-        firstProcess.establishSession(session(token = "token-one"))
+        val store = SecureSessionStore(context)
+        store.clearSession()
+        store.establishSession(session(token = "token-one"))
 
-        val reconstructed = SecureSessionStore(context)
-        val beforeRotation = requireNotNull(reconstructed.currentSession())
+        val consumer = SecureSessionStore(context)
+        val beforeRotation = requireNotNull(consumer.currentSession())
         assertEquals("https://api.example.com", beforeRotation.serverUrl)
         assertEquals("ledger-a", beforeRotation.identity.ledgerId)
         assertEquals("token-one", beforeRotation.credential.token)
 
         val refresh = requireNotNull(
-            reconstructed.sessionRefresh.beginOrReuse(
+            consumer.sessionRefresh.beginOrReuse(
                 expectedSessionGeneration = beforeRotation.sessionGeneration,
                 expectedToken = "token-one",
             ),
         )
         assertFalse(
-            firstProcess.sessionRefresh.completeIfCurrent(
+            store.sessionRefresh.completeIfCurrent(
                 expectedSessionGeneration = beforeRotation.sessionGeneration,
                 expectedToken = "token-one",
                 refreshAttemptId = "not-the-current-attempt",
@@ -53,7 +62,7 @@ class SecureSessionStoreTest {
             ),
         )
         assertTrue(
-            reconstructed.sessionRefresh.completeIfCurrent(
+            consumer.sessionRefresh.completeIfCurrent(
                 expectedSessionGeneration = beforeRotation.sessionGeneration,
                 expectedToken = "token-one",
                 refreshAttemptId = refresh.attemptId,
@@ -61,7 +70,7 @@ class SecureSessionStoreTest {
             ),
         )
         assertFalse(
-            firstProcess.sessionRefresh.completeIfCurrent(
+            store.sessionRefresh.completeIfCurrent(
                 expectedSessionGeneration = beforeRotation.sessionGeneration,
                 expectedToken = "token-one",
                 refreshAttemptId = refresh.attemptId,
@@ -76,98 +85,110 @@ class SecureSessionStoreTest {
 
     @Test
     fun bindingUpdateAfterRotationKeepsNewestCredentialAcrossReconstruction() = runBlocking {
-        val store = SecureSessionStore(context)
-        store.clearSession()
-        val initial = session(token = "token-one")
-        store.establishSession(initial)
+        val process = SessionProcessHarness(context)
+        try {
+            val store = process.start()
+            val initial = session(token = "token-one")
+            store.establishSession(initial)
 
-        val refresh = requireNotNull(
-            store.sessionRefresh.beginOrReuse(
-                expectedSessionGeneration = initial.sessionGeneration,
-                expectedToken = "token-one",
-            ),
-        )
-        assertTrue(
-            store.sessionRefresh.completeIfCurrent(
-                expectedSessionGeneration = initial.sessionGeneration,
-                expectedToken = "token-one",
-                refreshAttemptId = refresh.attemptId,
-                replacement = StoredSessionToken("token-two"),
-            ),
-        )
-        assertTrue(
-            store.updateBindingIfCurrent(
-                LocalSessionBindingUpdate(
-                    expectedVersion = initial.version,
-                    bindingRevision = "binding-two",
-                    serverId = initial.serverId,
-                    dataGeneration = initial.dataGeneration,
-                    serverUrl = initial.serverUrl,
-                    identity = initial.identity.copy(ledgerId = "ledger-b", ledgerName = "账本 B"),
+            val refresh = requireNotNull(
+                store.sessionRefresh.beginOrReuse(
+                    expectedSessionGeneration = initial.sessionGeneration,
+                    expectedToken = "token-one",
                 ),
-            ),
-        )
+            )
+            assertTrue(
+                store.sessionRefresh.completeIfCurrent(
+                    expectedSessionGeneration = initial.sessionGeneration,
+                    expectedToken = "token-one",
+                    refreshAttemptId = refresh.attemptId,
+                    replacement = StoredSessionToken("token-two"),
+                ),
+            )
+            assertTrue(
+                store.updateBindingIfCurrent(
+                    LocalSessionBindingUpdate(
+                        expectedVersion = initial.version,
+                        bindingRevision = "binding-two",
+                        serverId = initial.serverId,
+                        dataGeneration = initial.dataGeneration,
+                        serverUrl = initial.serverUrl,
+                        identity = initial.identity.copy(ledgerId = "ledger-b", ledgerName = "账本 B"),
+                    ),
+                ),
+            )
 
-        val reconstructed = requireNotNull(SecureSessionStore(context).currentSession())
-        assertEquals(initial.sessionGeneration, reconstructed.sessionGeneration)
-        assertEquals("binding-two", reconstructed.bindingRevision)
-        assertEquals("ledger-b", reconstructed.identity.ledgerId)
-        assertEquals("token-two", reconstructed.credential.token)
+            val reconstructed = requireNotNull(process.restart().currentSession())
+            assertEquals(initial.sessionGeneration, reconstructed.sessionGeneration)
+            assertEquals("binding-two", reconstructed.bindingRevision)
+            assertEquals("ledger-b", reconstructed.identity.ledgerId)
+            assertEquals("token-two", reconstructed.credential.token)
+        } finally {
+            process.close()
+        }
     }
 
     @Test
     fun invitationEnrollmentSurvivesReconstructionAndCommitsWithSession() = runBlocking {
-        val firstProcess = SecureSessionStore(context)
-        firstProcess.clearSession()
-        val attempt = firstProcess.beginOrReuseDeviceEnrollment(
-            DeviceEnrollmentIntent.Invitation(
-                serverUrl = "https://api.example.com",
-                inviteToken = "inv_recoverable",
-                accountName = "家人",
-                deviceName = "Pixel",
-            ),
-        )
+        val process = SessionProcessHarness(context)
+        try {
+            val firstProcess = process.start()
+            val attempt = firstProcess.beginOrReuseDeviceEnrollment(
+                DeviceEnrollmentIntent.Invitation(
+                    serverUrl = "https://api.example.com",
+                    inviteToken = "inv_recoverable",
+                    accountName = "家人",
+                    deviceName = "Pixel",
+                ),
+            )
 
-        val reconstructed = SecureSessionStore(context)
-        assertEquals(attempt, reconstructed.pendingDeviceEnrollment())
+            val reconstructed = process.restart()
+            assertEquals(attempt, reconstructed.pendingDeviceEnrollment())
 
-        reconstructed.establishSession(
-            session(token = "enrolled-token"),
-            completedEnrollmentAttemptId = attempt.attemptId,
-        )
-        val committed = SecureSessionStore(context)
-        assertEquals(null, committed.pendingDeviceEnrollment())
-        assertEquals("enrolled-token", committed.currentSession()?.credential?.token)
+            reconstructed.establishSession(
+                session(token = "enrolled-token"),
+                completedEnrollmentAttemptId = attempt.attemptId,
+            )
+            val committed = process.restart()
+            assertEquals(null, committed.pendingDeviceEnrollment())
+            assertEquals("enrolled-token", committed.currentSession()?.credential?.token)
+        } finally {
+            process.close()
+        }
     }
 
     @Test
     fun sessionRefreshSurvivesReconstructionAndCommitsWithCredential() = runBlocking {
-        val firstProcess = SecureSessionStore(context)
-        firstProcess.clearSession()
-        val initial = session(token = "token-before-refresh")
-        firstProcess.establishSession(initial)
-        val attempt = requireNotNull(
-            firstProcess.sessionRefresh.beginOrReuse(
-                expectedSessionGeneration = initial.sessionGeneration,
-                expectedToken = initial.credential.token,
-            ),
-        )
+        val process = SessionProcessHarness(context)
+        try {
+            val firstProcess = process.start()
+            val initial = session(token = "token-before-refresh")
+            firstProcess.establishSession(initial)
+            val attempt = requireNotNull(
+                firstProcess.sessionRefresh.beginOrReuse(
+                    expectedSessionGeneration = initial.sessionGeneration,
+                    expectedToken = initial.credential.token,
+                ),
+            )
 
-        val reconstructed = SecureSessionStore(context)
-        assertEquals(attempt, reconstructed.sessionRefresh.pending())
-        assertTrue(
-            reconstructed.sessionRefresh.completeIfCurrent(
-                expectedSessionGeneration = initial.sessionGeneration,
-                expectedToken = initial.credential.token,
-                refreshAttemptId = attempt.attemptId,
-                replacement = StoredSessionToken("token-after-refresh"),
-            ),
-        )
+            val reconstructed = process.restart()
+            assertEquals(attempt, reconstructed.sessionRefresh.pending())
+            assertTrue(
+                reconstructed.sessionRefresh.completeIfCurrent(
+                    expectedSessionGeneration = initial.sessionGeneration,
+                    expectedToken = initial.credential.token,
+                    refreshAttemptId = attempt.attemptId,
+                    replacement = StoredSessionToken("token-after-refresh"),
+                ),
+            )
 
-        val committed = SecureSessionStore(context)
-        assertEquals(null, committed.sessionRefresh.pending())
-        assertEquals("token-after-refresh", committed.currentSession()?.credential?.token)
-        assertEquals(initial.version, committed.currentSession()?.version)
+            val committed = process.restart()
+            assertEquals(null, committed.sessionRefresh.pending())
+            assertEquals("token-after-refresh", committed.currentSession()?.credential?.token)
+            assertEquals(initial.version, committed.currentSession()?.version)
+        } finally {
+            process.close()
+        }
     }
 
     @Test
@@ -207,4 +228,39 @@ class SecureSessionStoreTest {
             boundAt = "2026-07-14T00:00:00Z",
         ),
     )
+}
+
+private class SessionProcessHarness(
+    private val context: Context,
+) {
+    private val file = context.preferencesDataStoreFile(
+        "ticketbox_secure_session_process_test_${UUID.randomUUID()}",
+    )
+    private var processJob: Job? = null
+
+    suspend fun start(): SecureSessionStore {
+        check(processJob == null)
+        val job = SupervisorJob()
+        val dataStore = PreferenceDataStoreFactory.create(
+            scope = CoroutineScope(job + Dispatchers.IO),
+            produceFile = { file },
+        )
+        processJob = job
+        return SecureSessionStore(context, dataStore)
+    }
+
+    suspend fun restart(): SecureSessionStore {
+        stop()
+        return start()
+    }
+
+    suspend fun close() {
+        stop()
+        file.delete()
+    }
+
+    private suspend fun stop() {
+        processJob?.cancelAndJoin()
+        processJob = null
+    }
 }

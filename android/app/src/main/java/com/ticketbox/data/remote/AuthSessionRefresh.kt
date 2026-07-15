@@ -3,6 +3,7 @@ package com.ticketbox.data.remote
 import android.util.Log
 import com.ticketbox.data.remote.dto.RefreshSessionRequestDto
 import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
+import com.ticketbox.security.RequestAuthSnapshot
 import com.ticketbox.security.SessionCredentialRotator
 import com.ticketbox.security.StoredSessionToken
 import kotlinx.coroutines.runBlocking
@@ -18,13 +19,30 @@ internal class SessionRefreshController(
     private val scheduler: SessionRefreshScheduler,
 ) {
     fun refreshAsync(now: Instant = Instant.now()) {
-        val snapshot = credentials.getSessionToken() ?: return
-        val sessionGeneration = credentials.sessionGeneration() ?: return
-        if (!shouldRefresh(snapshot, now)) return
+        val snapshot = credentials.requestAuthSnapshot() ?: return
+        refreshAsync(snapshot, now)
+    }
+
+    fun prepareForRequest(
+        snapshot: RequestAuthSnapshot,
+        now: Instant = Instant.now(),
+    ): RequestAuthSnapshot? {
+        if (!isExpired(snapshot.credential, now)) {
+            refreshAsync(snapshot, now)
+            return snapshot
+        }
+        runBlocking {
+            refreshIfCurrent(snapshot, createAttemptIfMissing = false)
+        }
+        return credentials.requestAuthSnapshot()
+    }
+
+    private fun refreshAsync(snapshot: RequestAuthSnapshot, now: Instant) {
+        if (!shouldRefresh(snapshot.credential, now)) return
         scheduler.execute {
             try {
                 runBlocking {
-                    refreshIfCurrent(sessionGeneration, snapshot)
+                    refreshIfCurrent(snapshot, createAttemptIfMissing = true)
                 }
             } catch (error: Exception) {
                 Log.w(LOG_TAG, "Silent session refresh failed: ${error::class.java.simpleName}")
@@ -33,19 +51,26 @@ internal class SessionRefreshController(
     }
 
     private suspend fun refreshIfCurrent(
-        sessionGeneration: String,
-        snapshot: StoredSessionToken,
+        snapshot: RequestAuthSnapshot,
+        createAttemptIfMissing: Boolean,
     ) {
-        if (credentials.sessionGeneration() != sessionGeneration ||
-            credentials.getToken() != snapshot.token
+        if (credentials.sessionGeneration() != snapshot.sessionGeneration ||
+            credentials.getToken() != snapshot.credential.token
         ) {
             return
         }
-        val attempt = credentials.beginOrReuseSessionRefresh(
-            expectedSessionGeneration = sessionGeneration,
-            expectedToken = snapshot.token,
-        ) ?: return
-        val api = serviceFactory(baseUrl) { snapshot.token }
+        val attempt = if (createAttemptIfMissing) {
+            credentials.beginOrReuseSessionRefresh(
+                expectedSessionGeneration = snapshot.sessionGeneration,
+                expectedToken = snapshot.credential.token,
+            )
+        } else {
+            credentials.resumeSessionRefresh(
+                expectedSessionGeneration = snapshot.sessionGeneration,
+                expectedToken = snapshot.credential.token,
+            )
+        } ?: return
+        val api = serviceFactory(baseUrl) { snapshot.credential.token }
         val response = api.refreshSession(
             RefreshSessionRequestDto(
                 refreshAttemptId = attempt.attemptId,
@@ -57,13 +82,13 @@ internal class SessionRefreshController(
                 "Session refresh response did not match the pending attempt."
             }
         } else {
-            check(response.sessionToken == snapshot.token) {
+            check(response.sessionToken == snapshot.credential.token) {
                 "A non-rotating refresh changed the session credential."
             }
         }
         credentials.completeSessionRefreshIfCurrent(
-            expectedSessionGeneration = sessionGeneration,
-            expectedToken = snapshot.token,
+            expectedSessionGeneration = snapshot.sessionGeneration,
+            expectedToken = snapshot.credential.token,
             refreshAttemptId = attempt.attemptId,
             replacement = StoredSessionToken(
                 token = response.sessionToken,

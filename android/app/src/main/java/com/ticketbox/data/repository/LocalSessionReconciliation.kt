@@ -23,8 +23,7 @@ internal suspend fun reconcileLocalSession(
             return
         }
         if (session == null || canonicalServerOriginOrNull(session.serverUrl) != session.serverUrl) {
-            sessionStore.clearSession()
-            legacyProjectionStore.clearLegacySessionProjection()
+            clearInvalidSession(sessionStore, legacyProjectionStore)
             return
         }
         legacyProjectionStore.clearLegacySessionProjection()
@@ -34,8 +33,7 @@ internal suspend fun reconcileLocalSession(
     val projection = legacyProjectionStore.readLegacySessionProjection()
     val canonicalServerUrl = projection?.serverUrl?.let(::canonicalServerOriginOrNull)
     if (legacyCredential == null || projection == null || canonicalServerUrl == null) {
-        sessionStore.clearSession()
-        legacyProjectionStore.clearLegacySessionProjection()
+        clearInvalidSession(sessionStore, legacyProjectionStore)
         return
     }
 
@@ -47,6 +45,14 @@ internal suspend fun reconcileLocalSession(
         identity = projection.identity.toLocalSessionIdentity(),
     )
     sessionStore.establishSession(migrated)
+    legacyProjectionStore.clearLegacySessionProjection()
+}
+
+private suspend fun clearInvalidSession(
+    sessionStore: LocalSessionStore,
+    legacyProjectionStore: LegacySessionProjectionStore,
+) {
+    sessionStore.clearSession()
     legacyProjectionStore.clearLegacySessionProjection()
 }
 

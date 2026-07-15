@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -139,17 +140,17 @@ def _production_source_roots() -> list[Path]:
     return roots
 
 
-def _detected_sites() -> set[str]:
-    sites: set[str] = set()
+def _detected_site_counts() -> Counter[str]:
+    sites: Counter[str] = Counter()
     for root in _production_source_roots():
         for path in sorted(root.rglob("*.kt")):
             code = _code_only(path.read_text(encoding="utf-8"))
-            primitives = {match.group(1) for match in _CALL_PATTERN.finditer(code)}
+            primitives = [match.group(1) for match in _CALL_PATTERN.finditer(code)]
             if not primitives:
                 continue
             rel = f"{root.name}/{path.relative_to(root).as_posix()}"
             for primitive in primitives:
-                sites.add(f"{rel}::{primitive}")
+                sites[f"{rel}::{primitive}"] += 1
     return sites
 
 
@@ -158,7 +159,8 @@ def main() -> int:
         print(f"FAIL: android source root not found: {ANDROID_SRC}")
         return 1
 
-    detected = _detected_sites()
+    detected_counts = _detected_site_counts()
+    detected = set(detected_counts)
     allowed = set(ALLOWLIST)
     failures: list[str] = []
 
@@ -173,6 +175,12 @@ def main() -> int:
             f"stale ALLOWLIST entry {site} -- the credential write moved or was "
             "removed; drop the entry so the risk ledger stays honest"
         )
+    for site in sorted(detected & allowed):
+        if detected_counts[site] != 1:
+            failures.append(
+                f"sanctioned credential write {site} occurs {detected_counts[site]} times "
+                "-- each additional call site requires its own reviewable boundary"
+            )
 
     if failures:
         print("FAIL: session/ledger binding contract drift:")
@@ -181,7 +189,7 @@ def main() -> int:
         return 1
     print(
         "PASS: session/ledger binding mutations confined to sanctioned sites "
-        f"({len(detected)} credential-write site(s))"
+        f"({sum(detected_counts.values())} credential-write call(s))"
     )
     return 0
 

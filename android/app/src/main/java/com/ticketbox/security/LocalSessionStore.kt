@@ -127,6 +127,11 @@ interface SessionRefreshStore {
         expectedToken: String,
     ): PendingSessionRefresh?
 
+    suspend fun resume(
+        expectedSessionGeneration: String,
+        expectedToken: String,
+    ): PendingSessionRefresh?
+
     suspend fun completeIfCurrent(
         expectedSessionGeneration: String,
         expectedToken: String,
@@ -149,10 +154,28 @@ class SessionCredentialAdapter(
     override fun sessionGeneration(): String? =
         sessionStore.currentSession()?.sessionGeneration
 
+    override fun requestAuthSnapshot(): RequestAuthSnapshot? {
+        val session = sessionStore.currentSession() ?: return null
+        return RequestAuthSnapshot(
+            credential = session.credential,
+            ledgerId = session.identity.ledgerId,
+            sessionGeneration = session.sessionGeneration,
+            bindingRevision = session.bindingRevision,
+        )
+    }
+
     override suspend fun beginOrReuseSessionRefresh(
         expectedSessionGeneration: String,
         expectedToken: String,
     ): PendingSessionRefresh? = sessionStore.sessionRefresh.beginOrReuse(
+        expectedSessionGeneration = expectedSessionGeneration,
+        expectedToken = expectedToken,
+    )
+
+    override suspend fun resumeSessionRefresh(
+        expectedSessionGeneration: String,
+        expectedToken: String,
+    ): PendingSessionRefresh? = sessionStore.sessionRefresh.resume(
         expectedSessionGeneration = expectedSessionGeneration,
         expectedToken = expectedToken,
     )

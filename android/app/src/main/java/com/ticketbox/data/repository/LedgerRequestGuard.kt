@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.security.LocalSessionVersion
 
 internal class LedgerRequestGuard(
     private val apiProvider: ApiServiceProvider,
@@ -39,7 +40,10 @@ internal class LedgerRequestGuard(
         BoundLedgerRequest(
             service = apiProvider.bound(
                 serverUrl = snapshot.serverUrl,
-                sessionGeneration = snapshot.sessionGeneration,
+                expectedVersion = LocalSessionVersion(
+                    sessionGeneration = snapshot.sessionGeneration,
+                    bindingRevision = snapshot.bindingRevision,
+                ),
                 ledgerId = snapshot.ledgerId,
             ),
             snapshot = snapshot,

@@ -26,7 +26,7 @@ internal class ExpenseConnectionRepository(
         val check = if (establishedOwner == null) {
             core.apiProvider.bound(
                 serverUrl = session.serverUrl,
-                sessionGeneration = session.sessionGeneration,
+                expectedVersion = session.version,
                 ledgerId = session.identity.ledgerId,
             ).checkAuth()
         } else {

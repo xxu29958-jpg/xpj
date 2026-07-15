@@ -122,7 +122,7 @@ class LedgerSwitcherViewModelTest {
         try {
             val api = StubApi(LedgerStubApiState(
                 switchResult = LedgerSwitchResponseDto(
-                    sessionToken = "new-token",
+                    sessionToken = "t",
                     serverId = TEST_SERVER_ID,
                     dataGeneration = TEST_DATA_GENERATION,
                     accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
