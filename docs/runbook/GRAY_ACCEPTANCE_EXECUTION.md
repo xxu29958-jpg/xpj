@@ -64,7 +64,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/health
 cd /d E:\projects\xiaopiaojia\backend
 .venv\Scripts\python.exe -m compileall app scripts tests
 .venv\Scripts\ruff.exe check app scripts tests
-.venv\Scripts\python.exe -m pytest
+.venv\Scripts\python.exe scripts\run_test_lanes.py full
 .venv\Scripts\python.exe scripts\smoke_test.py
 ```
 

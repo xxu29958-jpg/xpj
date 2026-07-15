@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+TEST_LANE_ENV = "XPJ_TEST_LANE"
+
 _STATEFUL_SERIAL_MODULE_PREFIXES = (
     "tests/test_alembic_",
     "tests/test_db_migration_",
@@ -91,3 +95,31 @@ def postgres_test_markers(nodeid: str) -> tuple[str, ...]:
     if cluster:
         markers.append("cluster_serial")
     return tuple(markers)
+
+
+def stateful_selection_violation(
+    selected_nodeids: Sequence[str],
+    *,
+    active_lane: str | None,
+    xdist_worker: str | None,
+    configured_workers: object,
+) -> str | None:
+    """Reject stateful tests unless the serialized runner owns this process."""
+
+    if not selected_nodeids:
+        return None
+    instruction = (
+        "Stateful PostgreSQL tests must run through "
+        "`python scripts/run_test_lanes.py stateful`."
+    )
+    if active_lane != "stateful":
+        return f"{instruction} Selected: {selected_nodeids[0]}"
+    if xdist_worker:
+        return f"{instruction} xdist worker {xdist_worker} is not serialized."
+    try:
+        worker_count = int(configured_workers or 0)
+    except (TypeError, ValueError):
+        return f"{instruction} Invalid xdist worker count: {configured_workers!r}."
+    if worker_count != 0:
+        return f"{instruction} Configured xdist worker count is {worker_count}."
+    return None

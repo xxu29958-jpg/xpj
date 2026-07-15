@@ -39,6 +39,17 @@ def test_database_url_override_requires_explicit_cluster_confirmation() -> None:
             }
         )
 
+    with pytest.raises(ValueError, match="must not override"):
+        configured_test_database_url(
+            {
+                "XPJ_TEST_DATABASE_URL": (
+                    "postgresql+psycopg://postgres@localhost:5432/"
+                    "xpj_test?dbname=ticketbox"
+                ),
+                "XPJ_TEST_CLUSTER_CONFIRMED": "1",
+            }
+        )
+
 
 def test_worker_database_url_preserves_connection_contract() -> None:
     result = worker_database_url(
@@ -162,7 +173,8 @@ def test_stateful_lane_lock_releases_cluster_wide_advisory_lock_on_failure(
         test_pg_contract.stateful_test_cluster_lock(
             {
                 "XPJ_TEST_DATABASE_URL": (
-                    "postgresql+psycopg://tester:secret@db.example:5432/xpj_test"
+                    "postgresql+psycopg://tester:secret@authority.example:5432/"
+                    "xpj_test?host=query.example&port=5544&sslmode=require"
                 ),
                 "XPJ_TEST_CLUSTER_CONFIRMED": "1",
             }
@@ -176,10 +188,11 @@ def test_stateful_lane_lock_releases_cluster_wide_advisory_lock_on_failure(
         {
             "autocommit": True,
             "dbname": "postgres",
-            "host": "db.example",
-            "port": 5432,
+            "host": "query.example",
+            "port": "5544",
             "user": "tester",
             "password": "secret",
+            "sslmode": "require",
         },
     )
     event_names = [event[0] for event in events]
@@ -191,3 +204,14 @@ def test_stateful_lane_lock_releases_cluster_wide_advisory_lock_on_failure(
         "SELECT pg_advisory_unlock(%s)",
         "closed",
     ]
+
+    query_only = test_pg_contract.admin_connection_args(
+        make_url(
+            "postgresql+psycopg:///xpj_test?host=query-only.example&port=5545"
+        )
+    )
+    assert query_only == {
+        "dbname": "postgres",
+        "host": "query-only.example",
+        "port": "5545",
+    }

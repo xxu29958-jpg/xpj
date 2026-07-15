@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -74,30 +77,42 @@ def test_worker_count_rejects_unsafe_values(raw: str) -> None:
 
 
 def test_full_lane_stops_after_first_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], dict[str, str]]] = []
 
-    def fake_run(command: list[str], *, check: bool) -> subprocess.CompletedProcess[str]:
-        calls.append(command)
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        env: dict[str, str],
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((command, env))
         return subprocess.CompletedProcess(command, 7)
 
     monkeypatch.setattr(run_test_lanes.subprocess, "run", fake_run)
 
     assert run_test_lanes.run_lanes(("parallel", "stateful"), workers=2) == 7
     assert len(calls) == 1
-    assert "not stateful_serial" in calls[0]
+    assert "not stateful_serial" in calls[0][0]
+    assert calls[0][1][run_test_lanes.TEST_LANE_ENV] == "parallel"
 
 
 def test_full_lane_runs_parallel_then_stateful(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], dict[str, str]]] = []
     lock_events: list[str] = []
 
-    def fake_run(command: list[str], *, check: bool) -> subprocess.CompletedProcess[str]:
-        calls.append(command)
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        env: dict[str, str],
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((command, env))
         return subprocess.CompletedProcess(command, 0)
 
     @contextlib.contextmanager
     def fake_cluster_lock(environment):
-        assert environment is run_test_lanes.os.environ
+        assert environment is not run_test_lanes.os.environ
+        assert environment[run_test_lanes.TEST_LANE_ENV] == "stateful"
         lock_events.append("acquired")
         try:
             yield
@@ -112,6 +127,38 @@ def test_full_lane_runs_parallel_then_stateful(monkeypatch: pytest.MonkeyPatch) 
     )
 
     assert run_test_lanes.run_lanes(("parallel", "stateful"), workers=2) == 0
-    assert "not stateful_serial" in calls[0]
-    assert calls[1][-4:] == ["-m", "stateful_serial", "-n", "0"]
+    assert "not stateful_serial" in calls[0][0]
+    assert calls[0][1][run_test_lanes.TEST_LANE_ENV] == "parallel"
+    assert calls[1][0][-4:] == ["-m", "stateful_serial", "-n", "0"]
+    assert calls[1][1][run_test_lanes.TEST_LANE_ENV] == "stateful"
     assert lock_events == ["acquired", "released"]
+
+
+def test_raw_pytest_rejects_selected_stateful_tests() -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    environment = os.environ.copy()
+    environment.pop(run_test_lanes.TEST_LANE_ENV, None)
+    for key in tuple(environment):
+        if key.startswith("PYTEST_XDIST_"):
+            environment.pop(key)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_alembic_income_frequency_migration.py",
+            "-q",
+            "-n",
+            "0",
+        ],
+        cwd=backend_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode == pytest.ExitCode.USAGE_ERROR, output
+    assert "Stateful PostgreSQL tests must run through" in output

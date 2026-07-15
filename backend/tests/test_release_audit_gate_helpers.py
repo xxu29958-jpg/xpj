@@ -147,6 +147,21 @@ def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -
         assert str(current_count) in violations[0]
 
 
+def test_backend_pytest_count_cannot_drop_with_actuals_and_baseline(monkeypatch) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    baseline = dict(mod.STRICT_EQUALITY_BASELINE)
+    baseline["backend_pytest_count"] = 2649
+    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
+
+    _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
+        {"backend_pytest_count": 3000}
+    )
+
+    assert len(violations) == 1
+    assert "backend_pytest_count (UP-only)" in violations[0]
+    assert "base=3000, current=2649" in violations[0]
+
+
 def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
     monkeypatch,
     capsys,

@@ -14,6 +14,8 @@ modules. This file only defines the fixtures and the session-end hook.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 # Importing tests._infra.env sets os.environ before any app.* import.
@@ -27,7 +29,11 @@ from tests._infra.db import (
     transactional_isolation,
 )
 from tests._infra.identity import TestIdentity, seed_identity
-from tests._infra.lane_policy import postgres_test_markers
+from tests._infra.lane_policy import (
+    TEST_LANE_ENV,
+    postgres_test_markers,
+    stateful_selection_violation,
+)
 from tests._infra.worker_db import drop_worker_database, recreate_worker_database
 
 
@@ -163,6 +169,24 @@ def pytest_collection_modifyitems(
     for item in items:
         for marker_name in postgres_test_markers(item.nodeid):
             item.add_marker(markers[marker_name])
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    if session.config.option.collectonly:
+        return
+    selected_stateful = [
+        item.nodeid
+        for item in session.items
+        if item.get_closest_marker("stateful_serial") is not None
+    ]
+    violation = stateful_selection_violation(
+        selected_stateful,
+        active_lane=os.environ.get(TEST_LANE_ENV),
+        xdist_worker=os.environ.get("PYTEST_XDIST_WORKER"),
+        configured_workers=session.config.getoption("numprocesses", default=0),
+    )
+    if violation:
+        raise pytest.UsageError(violation)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

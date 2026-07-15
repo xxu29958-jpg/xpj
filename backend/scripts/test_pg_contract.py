@@ -45,13 +45,18 @@ def validate_test_database_name(database_name: str) -> str:
     return database_name
 
 
-def validate_test_database_url(database_url: str) -> URL:
+def validate_test_database_url(database_url: str | URL) -> URL:
     """Parse and validate one PostgreSQL test database URL."""
 
     parsed = make_url(database_url)
     if parsed.get_backend_name() != "postgresql":
         raise ValueError("Test database URL must use PostgreSQL")
-    validate_test_database_name(parsed.database or "")
+    path_database = validate_test_database_name(parsed.database or "")
+    resolved_database = _dialect_connection_args(parsed).get("dbname")
+    if resolved_database != path_database:
+        raise ValueError(
+            "Test database URL must not override its xpj_test path database"
+        )
     return parsed
 
 
@@ -81,22 +86,18 @@ def stateful_test_cluster_lock(environment: Mapping[str, str]) -> Iterator[None]
 
 
 def admin_connection_args(database_url: URL) -> dict[str, object]:
-    """Return a credential-preserving connection contract for the admin DB."""
+    """Resolve the exact engine target and replace only its database name."""
 
-    query: Mapping[str, str | tuple[str, ...]] = database_url.query
-    arguments: dict[str, object] = {
-        key: value for key, value in query.items() if isinstance(value, str)
-    }
-    arguments.update(
-        {
-            "dbname": "postgres",
-            "host": database_url.host or "localhost",
-        }
-    )
-    if database_url.port is not None:
-        arguments["port"] = database_url.port
-    if database_url.username is not None:
-        arguments["user"] = database_url.username
-    if database_url.password is not None:
-        arguments["password"] = database_url.password
+    parsed = validate_test_database_url(database_url)
+    arguments = _dialect_connection_args(parsed)
+    arguments["dbname"] = "postgres"
     return arguments
+
+
+def _dialect_connection_args(database_url: URL) -> dict[str, object]:
+    positional, keyword = database_url.get_dialect()().create_connect_args(
+        database_url
+    )
+    if positional:
+        raise ValueError("PostgreSQL test URLs must resolve without positional args")
+    return dict(keyword)

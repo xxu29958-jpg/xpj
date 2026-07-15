@@ -136,7 +136,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2647,
+    "backend_pytest_count": 2649,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 
@@ -147,9 +147,10 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 # cut-over PRs that touch both sides needing to update both baseline files.
 # Android count is NOT listed here.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
-# baseline/actual reductions. ``backend_pytest_count`` is strict-only, while
-# the release-critical installer behavior suite is also a monotonic floor.
+# baseline/actual reductions. Both backend and release-critical installer
+# behavior suites are monotonic floors.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
+    "backend_pytest_count",
     "installer_pytest_count",
     "mutate_token_carriers",
 })
