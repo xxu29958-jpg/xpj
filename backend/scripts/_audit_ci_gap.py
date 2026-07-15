@@ -23,6 +23,9 @@ from ci_gap_powershell import looks_like_powershell as _looks_like_powershell
 from ci_gap_powershell import (
     powershell_ast_propagates_failure as _powershell_ast_propagates_failure,
 )
+from ci_gap_pytest_lanes import (
+    pytest_lane_sequence_violations as _evaluate_pytest_lane_sequence,
+)
 from ci_gap_release_scope import release_apk_scope_policy_violations
 from ci_gap_required_commands import REQUIRED_CI_INVOCATIONS, REQUIRED_CI_INVOCATIONS_BY_PLATFORM
 from ci_gap_shell import (
@@ -324,6 +327,13 @@ def _missing_ci_invocations_by_platform(commands: list[WorkflowCommand]) -> list
     return missing
 
 
+def _pytest_lane_sequence_violations(commands: list[WorkflowCommand]) -> list[str]:
+    return _evaluate_pytest_lane_sequence(
+        commands,
+        segment_reader=_iter_executable_command_segments,
+    )
+
+
 def _missing_installer_hash_dataflow_by_platform(
     commands: list[WorkflowCommand],
 ) -> list[str]:
@@ -440,6 +450,8 @@ def main() -> int:
         missing.append(f"gradle task: {task}")
     for invocation in _missing_ci_invocations_by_platform(commands):
         missing.append(f"ci invocation: {invocation}")
+    for violation in _pytest_lane_sequence_violations(commands):
+        missing.append(f"ci policy: {violation}")
     for dataflow in _missing_installer_hash_dataflow_by_platform(commands):
         missing.append(f"ci dataflow: {dataflow}")
     for action in _missing_installer_publish_actions_by_platform(commands, actions):

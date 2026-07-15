@@ -17,13 +17,29 @@ import contextlib
 import shutil
 from collections.abc import Iterator
 
-from app.database import Base, engine, init_db
+from sqlalchemy import text
+
+from app.database import engine, init_db
 from tests._infra.env import TEST_UPLOAD_DIR
 
 
 def reset_db_state() -> None:
-    """Drop & recreate schema, run init_db (migrations + seed)."""
-    Base.metadata.drop_all(bind=engine)
+    """Recreate the test schema, then run migrations and seed data.
+
+    ``Base.metadata.drop_all`` cannot remove objects introduced by a newer or
+    different branch because the current ORM does not know their dependency
+    graph. Rebuilding ``public`` makes repeated branch runs hermetic. The name
+    guard keeps this destructive test helper away from non-test databases.
+    """
+
+    database_name = engine.url.database or ""
+    if not database_name.startswith("xpj_test"):
+        raise RuntimeError(
+            f"Refusing to reset non-test PostgreSQL database: {database_name!r}"
+        )
+    with engine.begin() as connection:
+        connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
     shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
     init_db()
 

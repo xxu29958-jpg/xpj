@@ -321,13 +321,18 @@ jobs:
           DRILL_RESTORE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_restore
         run: ./.ci-venv/bin/python scripts/postgres_backup_drill.py
 
-      - name: PostgreSQL pytest suite (ADR-0041)
-        # Full suite against real PostgreSQL — the comprehensive dialect catch
-        # the happy-path smoke can't reach. -ra summarises non-passing; --tb=short
-        # keeps each diagnosable.
+      - name: PostgreSQL parallel pytest lane
+        # Each xdist worker creates and removes its own xpj_test_gwN database.
+        # Tests requiring committed cross-process or schema state are excluded
+        # here and run once in the following explicit serial lane.
         env:
           XPJ_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_test
-        run: ./.ci-venv/bin/python -m pytest tests -q -ra --tb=short -p no:cacheprovider
+        run: ./.ci-venv/bin/python scripts/run_test_lanes.py parallel
+
+      - name: PostgreSQL stateful serial pytest lane
+        env:
+          XPJ_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_test
+        run: ./.ci-venv/bin/python scripts/run_test_lanes.py stateful
 
   desktop-manager:
     name: Desktop manager

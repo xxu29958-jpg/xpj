@@ -158,10 +158,17 @@ REQUIRED_CI_INVOCATIONS = (
         re.compile(_PYTHON_PREFIX + r"scripts[\\/]+release_audit\.py\b"),
     ),
     RequiredCommand(
-        "pytest business full-suite lane",
+        "pytest PostgreSQL parallel lane",
         re.compile(
-            _PYTEST_LINE
-            + r"tests\s+-q\s+-ra\s+--tb=short\s+-p\s+no:cacheprovider\s*$"
+            _PYTHON_PREFIX
+            + r"scripts[\\/]+run_test_lanes\.py\s+parallel\s*$"
+        ),
+    ),
+    RequiredCommand(
+        "pytest stateful serial lane",
+        re.compile(
+            _PYTHON_PREFIX
+            + r"scripts[\\/]+run_test_lanes\.py\s+stateful\s*$"
         ),
     ),
     RequiredCommand(

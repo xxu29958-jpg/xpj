@@ -15,8 +15,7 @@
 
   After it prints OK, run the suite with:
     $env:XPJ_TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_test"
-    .\.venv\Scripts\python.exe -m pytest
-  (or just `pytest` — the default test DB URL points at :5438/xpj_test too.)
+    .\.venv\Scripts\python.exe scripts\run_test_lanes.py full
 
   NEVER touches 5432 (prod) or 5433 (CI). Teardown: stop_test_pg.ps1.
 
@@ -101,4 +100,4 @@ foreach ($db in @("xpj_test", "xpj_smoke")) {
 Write-Host ""
 Write-Host "OK: test PostgreSQL ready on 127.0.0.1:$Port (xpj_test + xpj_smoke)."
 Write-Host "Run the suite from backend\:"
-Write-Host "  .\.venv\Scripts\python.exe -m pytest"
+Write-Host "  .\.venv\Scripts\python.exe scripts\run_test_lanes.py full"

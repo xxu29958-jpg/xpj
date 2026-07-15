@@ -32,7 +32,8 @@ jobs:
     # ``-p no:cacheprovider`` anchor, so every requirement is missing.
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
-        "pytest business full-suite lane",
+        "pytest PostgreSQL parallel lane",
+        "pytest stateful serial lane",
         "pytest installer safety lane",
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
@@ -46,6 +47,7 @@ jobs:
         "desktop ruff lint",
         "desktop pytest",
     ]
+
 
 def test_ci_gap_accepts_required_commands_across_workflows(tmp_path: Path) -> None:
     mod = _load()
@@ -81,7 +83,8 @@ jobs:
     steps:
       - run: .\\.ci-venv\\Scripts\\python.exe scripts\\smoke_test.py
       - run: .\\.ci-venv\\Scripts\\python.exe scripts\\postgres_backup_drill.py
-      - run: .\\.ci-venv\\Scripts\\python.exe -m pytest tests -q -ra --tb=short -p no:cacheprovider
+      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\run_test_lanes.py parallel
+      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\run_test_lanes.py stateful
   android:
     steps:
       - run: ./gradlew --no-daemon :app:kspGrayDebugKotlin --rerun-tasks
@@ -104,16 +107,24 @@ jobs:
 
     assert mod._missing_ci_invocations(commands) == []
     assert mod._missing_gradle_tasks(commands) == []
+    _assert_pytest_lane_scope(mod, commands)
+
+
+def _assert_pytest_lane_scope(mod, commands) -> None:
+    """The business and installer suites must not satisfy each other's gate."""
+
     installer_only = [command for command in commands if "packaging/tests" in command.text]
-    assert "pytest business full-suite lane" in mod._missing_ci_invocations(installer_only)
+    assert "pytest PostgreSQL parallel lane" in mod._missing_ci_invocations(installer_only)
+    assert "pytest stateful serial lane" in mod._missing_ci_invocations(installer_only)
     assert "pytest installer safety lane" not in mod._missing_ci_invocations(installer_only)
     business_only = [
         command
         for command in commands
-        if "-m pytest" in command.text and "packaging/tests" not in command.text
+        if "run_test_lanes.py" in command.text and "packaging/tests" not in command.text
     ]
     assert "pytest installer safety lane" in mod._missing_ci_invocations(business_only)
-    assert "pytest business full-suite lane" not in mod._missing_ci_invocations(business_only)
+    assert "pytest PostgreSQL parallel lane" not in mod._missing_ci_invocations(business_only)
+    assert "pytest stateful serial lane" not in mod._missing_ci_invocations(business_only)
     narrowed_business = mod.WorkflowCommand(
         Path("ci.yml"),
         "python -m pytest tests/test_audit_ci_gap.py -q -ra --tb=short -p no:cacheprovider",
@@ -122,7 +133,8 @@ jobs:
         Path("ci.yml"),
         "python -m pytest -q packaging/tests -p no:cacheprovider -k version",
     )
-    assert "pytest business full-suite lane" in mod._missing_ci_invocations([narrowed_business])
+    assert "pytest PostgreSQL parallel lane" in mod._missing_ci_invocations([narrowed_business])
+    assert "pytest stateful serial lane" in mod._missing_ci_invocations([narrowed_business])
     assert "pytest installer safety lane" in mod._missing_ci_invocations([filtered_installer])
 
 
@@ -155,7 +167,8 @@ jobs:
 
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
-        "pytest business full-suite lane",
+        "pytest PostgreSQL parallel lane",
+        "pytest stateful serial lane",
         "pytest installer safety lane",
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
@@ -322,7 +335,8 @@ jobs:
 
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
-        "pytest business full-suite lane",
+        "pytest PostgreSQL parallel lane",
+        "pytest stateful serial lane",
         "pytest installer safety lane",
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",

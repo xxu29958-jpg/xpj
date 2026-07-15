@@ -349,12 +349,15 @@ jobs:
             .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL backup/restore drill failed" }
 
-            # Full suite on real PG — the only engine now (debt #4). Own xpj_test
-            # DB (separate from xpj_smoke) so the smoke's rows never collide.
-            Write-Host "--- PostgreSQL pytest suite ---"
+            # Ordinary tests run through worker-owned xpj_test_gwN databases.
+            # Committed-state/schema/process tests stay in one explicit serial lane.
             $env:XPJ_TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_test"
-            .\.ci-venv\Scripts\python.exe -m pytest tests -q -ra --tb=short -p no:cacheprovider
-            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL pytest suite failed" }
+            Write-Host "--- PostgreSQL parallel pytest lane ---"
+            .\.ci-venv\Scripts\python.exe scripts\run_test_lanes.py parallel
+            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL parallel pytest lane failed" }
+            Write-Host "--- PostgreSQL stateful serial pytest lane ---"
+            .\.ci-venv\Scripts\python.exe scripts\run_test_lanes.py stateful
+            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL stateful serial pytest lane failed" }
           }
           finally {
             # Teardown MUST leave no live postgres (else the runner's post-step I/O

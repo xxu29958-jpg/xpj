@@ -759,7 +759,7 @@ def test_owner_ai_advisor_confirmation_updates_runtime_env(
     fake_env = tmp_path / ".env"
     fake_env.write_text("", encoding="utf-8")
     monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
-    monkeypatch.delenv("BUDGET_ADVISOR_OWNER_CONFIRMED", raising=False)
+    monkeypatch.setenv("BUDGET_ADVISOR_OWNER_CONFIRMED", "")
     app_config.get_settings.cache_clear()
     try:
         response = local_client.post(
@@ -771,7 +771,7 @@ def test_owner_ai_advisor_confirmation_updates_runtime_env(
         assert "BUDGET_ADVISOR_OWNER_CONFIRMED=true" in fake_env.read_text(encoding="utf-8")
         assert app_config.get_settings().budget_advisor_owner_confirmed is True
     finally:
-        monkeypatch.delenv("BUDGET_ADVISOR_OWNER_CONFIRMED", raising=False)
+        monkeypatch.undo()
         app_config.get_settings.cache_clear()
 
 
@@ -1133,7 +1133,7 @@ def test_owner_settings_save_public_base_url_writes_env(
     fake_env = tmp_path / ".env"
     fake_env.write_text("OCR_PROVIDER=empty\nPUBLIC_BASE_URL=\n", encoding="utf-8")
     monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
-    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "")
     app_config.get_settings.cache_clear()
     try:
         resp = local_client.post(
@@ -1147,7 +1147,7 @@ def test_owner_settings_save_public_base_url_writes_env(
         # cache must be refreshed so subsequent reads see the new value
         assert app_config.get_settings().public_base_url == "https://api.zen70.cn"
     finally:
-        monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+        monkeypatch.undo()
         app_config.get_settings.cache_clear()
 
 
@@ -1362,7 +1362,7 @@ def test_owner_settings_trailing_slash_stripped(
     fake_env = tmp_path / ".env"
     fake_env.write_text("", encoding="utf-8")
     monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
-    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "")
     app_config.get_settings.cache_clear()
     try:
         # bare trailing slash (no path segment) is accepted and stripped
@@ -1374,5 +1374,5 @@ def test_owner_settings_trailing_slash_stripped(
         text = fake_env.read_text(encoding="utf-8")
         assert "PUBLIC_BASE_URL=https://api.example.com\n" in text or "PUBLIC_BASE_URL=https://api.example.com" in text
     finally:
-        monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+        monkeypatch.undo()
         app_config.get_settings.cache_clear()

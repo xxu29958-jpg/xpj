@@ -14,8 +14,11 @@ import json
 import os
 from pathlib import Path
 
+from tests._infra.worker_db import worker_database_url
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
-TEST_RUN_ID = f"pid_{os.getpid()}"
+TEST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER")
+TEST_RUN_ID = f"{TEST_WORKER_ID or 'main'}_pid_{os.getpid()}"
 TEST_UPLOAD_TOKEN = "pytest-upload-token"
 TEST_APP_TOKEN = "pytest-app-token"
 TEST_ADMIN_TOKEN = "pytest-admin-token"
@@ -31,9 +34,14 @@ TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
 #   explicit override).
 # - default                    -> local throwaway PostgreSQL on :5438, brought up
 #   by backend/scripts/start_test_pg.ps1.
-_database_url = (
+_base_database_url = (
     os.environ.get("XPJ_TEST_DATABASE_URL")
     or "postgresql+psycopg://postgres@localhost:5438/xpj_test"
+)
+TEST_DATABASE_URL = (
+    worker_database_url(_base_database_url, TEST_WORKER_ID)
+    if TEST_WORKER_ID is not None
+    else _base_database_url
 )
 
 os.environ.update(
@@ -41,7 +49,7 @@ os.environ.update(
         "UPLOAD_TOKEN": TEST_UPLOAD_TOKEN,
         "APP_TOKEN": TEST_APP_TOKEN,
         "ADMIN_TOKEN": TEST_ADMIN_TOKEN,
-        "DATABASE_URL": _database_url,
+        "DATABASE_URL": TEST_DATABASE_URL,
         "UPLOAD_DIR": TEST_UPLOAD_RELATIVE,
         "MAX_UPLOAD_SIZE_MB": "10",
         "DELETE_IMAGE_AFTER_CONFIRM": "false",

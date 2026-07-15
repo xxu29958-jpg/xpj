@@ -147,7 +147,7 @@ if (-not $SkipBackend) {
         "-File",
         (Join-Path $BackendRoot "scripts\start_test_pg.ps1")
     ) -WorkingDirectory $BackendRoot
-    Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "pytest") -WorkingDirectory $BackendRoot
+    Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\run_test_lanes.py", "full") -WorkingDirectory $BackendRoot
     Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\check_api_contract.py") -WorkingDirectory $BackendRoot
     Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot
     if (-not $SkipSmoke) {

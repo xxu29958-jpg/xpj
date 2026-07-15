@@ -23,7 +23,8 @@ jobs:
   checks:
     steps:
       - run: python scripts/release_audit.py
-      - run: python -m pytest tests -q -ra --tb=short -p no:cacheprovider
+      - run: python scripts/run_test_lanes.py parallel
+      - run: python scripts/run_test_lanes.py stateful
       - run: python -m pytest -q packaging/tests -p no:cacheprovider
       - run: powershell -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
@@ -109,15 +110,19 @@ jobs:
     assert "backend ruff lint" in missing
     assert "backend compileall" in missing
 
-    business = "python -m pytest tests -q -ra --tb=short -p no:cacheprovider"
-    for masked in (
-        f"{business} || true",
-        f"{business}; cmd /c exit 0",
-        f"{business} | Write-Output",
-        f"{business}\ncmd /c exit 0",
+    for lane, requirement in (
+        ("parallel", "pytest PostgreSQL parallel lane"),
+        ("stateful", "pytest stateful serial lane"),
     ):
-        candidate = mod.WorkflowCommand(Path("ci.yml"), masked)
-        assert "pytest business full-suite lane" in mod._missing_ci_invocations([candidate])
+        business = f"python scripts/run_test_lanes.py {lane}"
+        for masked in (
+            f"{business} || true",
+            f"{business}; cmd /c exit 0",
+            f"{business} | Write-Output",
+            f"{business}\ncmd /c exit 0",
+        ):
+            candidate = mod.WorkflowCommand(Path("ci.yml"), masked)
+            assert requirement in mod._missing_ci_invocations([candidate])
 
 
 @pytest.mark.parametrize("platform", ["GitHub", "Gitea"])

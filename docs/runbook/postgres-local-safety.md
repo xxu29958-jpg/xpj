@@ -80,7 +80,7 @@ PG 测试 lane 的隔离单位是「测试」不是「进程」：session-scoped
   ```powershell
   cd E:\projects\xiaopiaojia\backend
   .\scripts\start_test_pg.ps1
-  .\.venv\Scripts\python.exe -m pytest          # 默认就连 :5438/xpj_test
+  .\.venv\Scripts\python.exe scripts\run_test_lanes.py full  # 并行普通测试，再串行状态生命周期
   ```
 
 - 本地 `:5438` 抖动 / 偶发 ERROR 以 CI 的 `Backend (PostgreSQL)` lane 为权威——CI 跑全量、单 runner 串行，不会自撞。

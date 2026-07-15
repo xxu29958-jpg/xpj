@@ -44,7 +44,7 @@ PG-only 之后该 job 没有数据库，不跑 pytest / smoke——全量测试�
 
 ### backend-postgres（全量测试）
 
-GitHub 主路径跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径跑在 Windows runner，用本机 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离）。两条路径都完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest（`xpj_test` 库，与 smoke 的 `xpj_smoke` 分库）。Gitea 的 teardown 必须按 postmaster PID 定向拆库，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
+GitHub 主路径跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径跑在 Windows runner，用本机 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离）。两条路径都完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest。普通测试按 runner 可用 CPU 动态选择 xdist worker（封顶 6），分别使用 `xpj_test_gwN`；migration、恢复、集群角色、schema 重建等 `stateful_serial` 测试随后独占 `xpj_test` 串行执行，两条 lane 不重叠。Gitea 的 teardown 必须按 postmaster PID 定向拆库，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
 
 ### desktop-manager
 
@@ -73,7 +73,7 @@ GitHub 云端 Android job 使用 hosted runner 的 Android SDK，并按需安装
 
 云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。
 
-`release_audit.py` 的 ci-gap lane 静态扫 `.github/workflows/*.yml` 和 `.gitea/workflows/*.yml`，钉住 11 个 gradle task（上述清单 + ksp regen + detekt 两变体 + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），并额外钉住 GitHub Android release APK 必须同一次 Gradle 调用构建 gray/internal 两个 release 变体、不得插入 `gradlew --stop`，且 PR release APK 必须按 Android/CI 相关路径 gate，防止 backend-only PR 白跑 R8 或 release APK lane 退回两次冷启动慢路径。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单 / policy pins**，否则该 lane 立刻红。
+`release_audit.py` 的 ci-gap lane 静态扫 `.github/workflows/*.yml` 和 `.gitea/workflows/*.yml`，钉住 11 个 gradle task 和 15 个 backend/desktop/installer 调用，其中 PostgreSQL 全量必须同时包含 parallel 与 stateful 两条 lane；任一 lane 被删、过滤或吞错都会失败。它还钉住 GitHub Android release APK 必须同一次 Gradle 调用构建 gray/internal 两个 release 变体、不得插入 `gradlew --stop`，且 PR release APK 必须按 Android/CI 相关路径 gate。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单 / policy pins**，否则该 lane 立刻红。
 
 ## 安全边界
 

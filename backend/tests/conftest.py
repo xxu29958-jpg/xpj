@@ -19,7 +19,7 @@ import pytest
 # Importing tests._infra.env sets os.environ before any app.* import.
 from fastapi.testclient import TestClient
 
-from tests._infra import env  # noqa: F401
+from tests._infra import env
 from tests._infra.client import make_test_client
 from tests._infra.db import (
     cleanup_runtime,
@@ -27,6 +27,8 @@ from tests._infra.db import (
     transactional_isolation,
 )
 from tests._infra.identity import TestIdentity, seed_identity
+from tests._infra.lane_policy import postgres_test_markers
+from tests._infra.worker_db import drop_worker_database, recreate_worker_database
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -36,12 +38,34 @@ def _isolation_schema():
     Per-test ``_db_isolation`` then wraps each test in a rolled-back transaction
     (or a full reset for ``@pytest.mark.real_db`` tests).
     """
-    reset_db_state()
-    yield
+    if env.TEST_WORKER_ID is not None:
+        recreate_worker_database(env.TEST_DATABASE_URL)
+    try:
+        reset_db_state()
+        yield
+    finally:
+        cleanup_runtime()
+        if env.TEST_WORKER_ID is not None:
+            drop_worker_database(env.TEST_DATABASE_URL)
 
 
 @pytest.fixture(autouse=True)
-def _db_isolation(request: pytest.FixtureRequest):
+def _settings_cache_isolation():
+    """Keep process-wide settings snapshots from crossing test boundaries."""
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _db_isolation(
+    request: pytest.FixtureRequest,
+    _settings_cache_isolation,
+):
     """Per-test DB lifecycle. Autouse so tests that touch the DB WITHOUT the
     ``identity`` fixture are isolated too — otherwise their ``SessionLocal()``
     stays bound to the engine and their commits leak into the shared DB.
@@ -108,100 +132,26 @@ def pytest_configure(config: pytest.Config) -> None:
         "tests that need real cross-connection commits — concurrency, true "
         "background-thread work.",
     )
-
-
-# Tests that cannot run under the PostgreSQL lane's per-test transaction-rollback
-# isolation, marked ``real_db`` centrally (one auditable place) instead of
-# scattering ``@pytest.mark.real_db`` across the suite. Matched as substrings of
-# ``item.nodeid`` (a trailing ``::`` pins a whole module; otherwise a test prefix).
-_PG_REAL_DB_NODES = (
-    # Schema/engine manipulation: drop_all / init_db / engine.begin / create_engine
-    # / reset_db_state auto-commit DDL OUTSIDE the per-test transaction while the
-    # re-seed lands in the rolled-back savepoint — so the committed baseline would
-    # be destroyed for every later test. Must run against a real committed DB.
-    "tests/test_ocr_facts_backfill_step3.py::",  # _backfill_legacy_raw_text via engine.begin
-    "tests/test_app_meta_service.py::",  # reset_db_state (fresh-DB schema-version seeding)
-    "tests/test_alembic_tag_migration.py::",  # alembic up/down round-trip via engine.begin DDL
-    "tests/test_alembic_debt_idempotency_unique_migration.py::",  # alembic up/down round-trip via engine.begin DDL
-    "tests/test_alembic_goal_debt_repayment_migration.py::",  # ADR-0049 §6 widen-goals alembic round-trip via engine.begin DDL
-    "tests/test_alembic_goal_target_date_migration.py::",  # ADR-0049 §7.0/8e-6c add-target_date alembic round-trip via engine.begin DDL
-    "tests/test_alembic_repayment_drafts_migration.py::",  # ADR-0049 §杠杆③ slice 3a add-repayment_drafts alembic round-trip via engine.begin DDL
-    "tests/test_alembic_debt_constraint_hardening_migration.py::",  # ADR-0049 #4 add FK + status<->committed CHECK alembic round-trip via engine.begin DDL
-    "tests/test_alembic_debt_shape_checks_migration.py::",  # ADR-0049 P2 add Debt 母表 shape CHECK alembic round-trip via engine.begin DDL
-    "tests/test_alembic_scheduler_leases_migration.py::",  # known-bugs 🟢#4 add scheduler_leases (typed timestamptz lease) alembic round-trip + app_meta cleanup via engine.begin DDL
-    "tests/test_alembic_debt_kind_migration.py::",  # ADR-0049 8e-6e add debts.debt_kind (NOT NULL server-default + CHECK) alembic round-trip via engine.begin DDL
-    "tests/test_alembic_debt_installment_migration.py::",  # ADR-0049 §B add debts.installment_count/_period_months (nullable + paired CHECK) alembic round-trip via engine.begin DDL
-    "tests/test_alembic_expense_draft_request_fingerprint_migration.py::",  # issue #65 slice 1 add expenses.draft_request_fingerprint (nullable) alembic round-trip via engine.begin DDL
-    "tests/test_alembic_expense_row_version_check_migration.py::",  # finding-三摊 Slice B add ck_expenses_row_version_positive CHECK alembic round-trip via engine.begin DDL
-    "tests/test_alembic_income_frequency_migration.py::",  # 20260629 income monthly/one_time fields alembic round-trip via engine.begin DDL
-    "tests/test_alembic_category_preferences_migration.py::",  # ADR-0052 slice 3 category_preferences alembic round-trip via engine.begin DDL
-    "tests/test_alembic_merchant_catalog_migration.py::",  # ADR-0053 merchant_catalog alembic round-trip via engine.begin DDL
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_delayed_recovery_rejects_expired_pairing",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_finalizes_after_pairing_is_used",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_rejects_revoked_admin",
-    "tests/test_auth_bootstrap_concurrency.py::test_bootstrap_owner_rotates_credentials_after_listener_exposure",
-    "tests/test_auth_bootstrap_concurrency.py::test_replacement_pairing_collision_is_reported_before_rotation",
-    "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",
-    "tests/test_db_migration_owner_preflight.py::",  # P1: CREATE/DROP ROLE + separate-engine role switching to exercise the migration owner-trap pre-flight guard
-    "tests/test_alembic_runtime_schema_reconcile.py::",  # v1.2 baseline/reconcile CHECK round-trip via engine.begin DDL
-    "tests/test_db_migration_backup_gate.py::",  # P1: stamp alembic_version below head via separate engine.begin connection to exercise the pre-migration backup gate
-
-    # True concurrency: need real independent connections (2-session races, FOR
-    # UPDATE lock contention) that one shared savepoint connection cannot model.
-    # Every race test follows the ``test_two_sessions_*`` naming convention, so a
-    # single nodeid pattern catches them across all *_optimistic_concurrency.py.
-    "::test_two_sessions",
-    "tests/test_bill_split_hardening.py::test_create_invitation_row_locks_parent_expense",
-    "tests/test_bill_split_debt_linkage.py::test_debt_failure_rolls_back_whole_accept",  # real rollback across the accept transaction
-    "tests/test_background_task_claim.py::",  # claim atomicity across sessions
-    "tests/test_background_tasks.py::",  # real background-task handler execution
-    # Stale-OCC-token tests stage the conflict with a second concurrent session
-    # (bumping row_version), which the shared savepoint connection can't model
-    # (psycopg "savepoint does not exist").
-    "tests/test_expenses_reject.py::test_stale_reject_cannot_overwrite_confirmed_expense",
-    "tests/test_expenses_ocr_routes.py::test_retry_ocr_rejects_stale_pending_snapshot",
-    "tests/test_merchant_alias_optimistic_concurrency.py::test_delete_alias_with_stale_token_after_concurrent_patch",
-    "tests/test_merchant_alias_optimistic_concurrency.py::test_delete_then_patch_race_resolves_to_404",
-    # Background enrichment (thumbnail / auto-OCR fact) is a FastAPI BackgroundTask
-    # run in a threadpool thread; its writes on the shared connection don't land
-    # back in the test's savepoint. These assert on that enriched output.
-    "tests/test_ocr_facts.py::test_upload_link_auto_ocr_writes_fact",
-    "tests/test_ocr_facts.py::test_android_upload_auto_ocr_writes_fact",
-    "tests/test_uploads.py::test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail",
-    "tests/test_expenses_upload_confirm.py::test_confirm_delete_after_confirm_hides_image_and_thumbnail",
-    # Legacy upload-path migration runs DDL/UPDATE via engine.begin (its own
-    # connection), outside the test transaction.
-    "tests/test_tenant_isolation.py::test_legacy_upload_paths_migrate_into_current_tenant_dir",
-    "tests/test_tenant_isolation.py::test_legacy_upload_migration_leaves_database_only_reference_untouched",
-    "tests/test_tenant_isolation.py::test_legacy_upload_migration_rename_failure_keeps_original_file_and_path",
-    # A read-only outer ``with SessionLocal()`` wraps a helper that commits a
-    # role change; on the shared connection the outer session's close-rollback
-    # discards the nested commit, so the demotion is lost (got 201, want 403).
-    "tests/test_family_ledger_permissions.py::test_member_cannot_create_invitation",
-    "tests/test_family_ledger_permissions.py::test_viewer_cannot_create_invitation",
-    # signal-hash suppression: seeds expenses + rejects (subject_id=1) and asserts
-    # the suggestion is suppressed. Passes alone and under real_db, but fails after
-    # earlier learning tests in the full run — it depends on a clean per-test DB
-    # (deterministic sequences / no residual state) that the rollback model, which
-    # leaves PG sequences advanced across tests, doesn't provide.
-    "tests/test_learning_signal_hash.py::test_backfilled_row_via_signal_hash_suppresses_suggestion",
-    "tests/test_learning_signal_hash.py::test_category_reject_via_signal_hash_suppresses_suggestion",
-)
+    config.addinivalue_line(
+        "markers",
+        "stateful_serial: committed-state, schema, migration, recovery, or "
+        "cross-process test that must run outside the xdist parallel lane.",
+    )
+    config.addinivalue_line(
+        "markers",
+        "cluster_serial: PostgreSQL cluster-level test that must run in the "
+        "exclusive stateful lane.",
+    )
 
 
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
-    real_db = pytest.mark.real_db
+    markers = {
+        "real_db": pytest.mark.real_db,
+        "stateful_serial": pytest.mark.stateful_serial,
+        "cluster_serial": pytest.mark.cluster_serial,
+    }
     for item in items:
-        # PostgreSQL isolation opt-outs (see _PG_REAL_DB_NODES). The nodeid uses
-        # forward slashes on every OS.
-        nodeid = item.nodeid.replace("\\", "/")
-        if any(pattern in nodeid for pattern in _PG_REAL_DB_NODES):
-            item.add_marker(real_db)
-
-
-def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    cleanup_runtime()
+        for marker_name in postgres_test_markers(item.nodeid):
+            item.add_marker(markers[marker_name])
