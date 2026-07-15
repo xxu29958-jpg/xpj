@@ -81,8 +81,26 @@ def test_worker_database_url_refuses_non_postgresql_engine() -> None:
     [recreate_worker_database, drop_worker_database],
 )
 def test_worker_lifecycle_refuses_non_worker_database(operation) -> None:
-    with pytest.raises(ValueError, match="xpj_test_<run>_gwN"):
-        operation("postgresql+psycopg://postgres@localhost:5432/ticketbox")
+    current_run = "run-alpha"
+    worker_id = "gw0"
+    with pytest.raises(ValueError, match="current xpj_test_<run>_gwN"):
+        operation(
+            "postgresql+psycopg://postgres@localhost:5432/ticketbox",
+            worker_id=worker_id,
+            run_uid=current_run,
+        )
+
+    another_run_url = worker_database_url(
+        "postgresql+psycopg://postgres@localhost:5438/xpj_test",
+        worker_id,
+        "run-beta",
+    )
+    with pytest.raises(ValueError, match="current xpj_test_<run>_gwN"):
+        operation(
+            another_run_url,
+            worker_id=worker_id,
+            run_uid=current_run,
+        )
 
 
 def test_schema_reset_refuses_non_test_database(

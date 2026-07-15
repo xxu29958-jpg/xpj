@@ -41,10 +41,7 @@ def worker_database_url(base_url: str, worker_id: str, run_uid: str) -> str:
     drop and recreate only databases rooted at ``xpj_test``.
     """
 
-    if _WORKER_ID.fullmatch(worker_id) is None:
-        raise ValueError(f"Invalid pytest-xdist worker id: {worker_id!r}")
-    if not run_uid:
-        raise ValueError("pytest-xdist run uid must not be empty")
+    _validate_worker_id(worker_id)
     parsed = make_url(base_url)
     if parsed.get_backend_name() != "postgresql":
         raise ValueError("Worker isolation requires a PostgreSQL test URL")
@@ -53,17 +50,26 @@ def worker_database_url(base_url: str, worker_id: str, run_uid: str) -> str:
         raise ValueError(
             "Worker isolation may derive databases only from an xpj_test base"
         )
-    run_key = sha256(run_uid.encode("utf-8")).hexdigest()[:16]
+    run_key = _run_key(run_uid)
     database_name = f"{base_name}_{run_key}_{worker_id}"
     if len(database_name.encode("utf-8")) > 63:
         raise ValueError("Derived PostgreSQL test database name exceeds 63 bytes")
     return parsed.set(database=database_name).render_as_string(hide_password=False)
 
 
-def recreate_worker_database(database_url: str) -> None:
+def recreate_worker_database(
+    database_url: str,
+    *,
+    worker_id: str,
+    run_uid: str,
+) -> None:
     """Drop any stale worker database and create a clean replacement."""
 
-    parsed = _validated_worker_url(database_url)
+    parsed = _validated_worker_url(
+        database_url,
+        worker_id=worker_id,
+        run_uid=run_uid,
+    )
     database_name = parsed.database
     assert database_name is not None
     with psycopg.connect(autocommit=True, **_admin_connection_args(parsed)) as connection:
@@ -77,10 +83,19 @@ def recreate_worker_database(database_url: str) -> None:
         )
 
 
-def drop_worker_database(database_url: str) -> None:
+def drop_worker_database(
+    database_url: str,
+    *,
+    worker_id: str,
+    run_uid: str,
+) -> None:
     """Remove one xdist worker database after its engine has been disposed."""
 
-    parsed = _validated_worker_url(database_url)
+    parsed = _validated_worker_url(
+        database_url,
+        worker_id=worker_id,
+        run_uid=run_uid,
+    )
     database_name = parsed.database
     assert database_name is not None
     with psycopg.connect(autocommit=True, **_admin_connection_args(parsed)) as connection:
@@ -91,16 +106,38 @@ def drop_worker_database(database_url: str) -> None:
         )
 
 
-def _validated_worker_url(database_url: str) -> URL:
+def _validated_worker_url(
+    database_url: str,
+    *,
+    worker_id: str,
+    run_uid: str,
+) -> URL:
+    _validate_worker_id(worker_id)
+    expected_suffix = f"_{_run_key(run_uid)}_{worker_id}"
     parsed = make_url(database_url)
     database_name = parsed.database or ""
-    if parsed.get_backend_name() != "postgresql" or re.fullmatch(
-        r"xpj_test(?:_[a-z0-9]+)*_gw[0-9]+", database_name
-    ) is None:
+    base_name = database_name.removesuffix(expected_suffix)
+    if (
+        parsed.get_backend_name() != "postgresql"
+        or base_name == database_name
+        or _SAFE_TEST_DATABASE.fullmatch(base_name) is None
+    ):
         raise ValueError(
-            "Refusing lifecycle operation outside an xpj_test_<run>_gwN database"
+            "Refusing lifecycle operation outside the current "
+            "xpj_test_<run>_gwN database"
         )
     return parsed
+
+
+def _validate_worker_id(worker_id: str) -> None:
+    if _WORKER_ID.fullmatch(worker_id) is None:
+        raise ValueError(f"Invalid pytest-xdist worker id: {worker_id!r}")
+
+
+def _run_key(run_uid: str) -> str:
+    if not run_uid:
+        raise ValueError("pytest-xdist run uid must not be empty")
+    return sha256(run_uid.encode("utf-8")).hexdigest()[:16]
 
 
 def _admin_connection_args(database_url: URL) -> dict[str, object]:

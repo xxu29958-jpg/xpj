@@ -39,14 +39,22 @@ def _isolation_schema():
     (or a full reset for ``@pytest.mark.real_db`` tests).
     """
     if env.TEST_WORKER_ID is not None:
-        recreate_worker_database(env.TEST_DATABASE_URL)
+        recreate_worker_database(
+            env.TEST_DATABASE_URL,
+            worker_id=env.TEST_WORKER_ID,
+            run_uid=env.TEST_RUN_UID or "",
+        )
     try:
         reset_db_state()
         yield
     finally:
         cleanup_runtime()
         if env.TEST_WORKER_ID is not None:
-            drop_worker_database(env.TEST_DATABASE_URL)
+            drop_worker_database(
+                env.TEST_DATABASE_URL,
+                worker_id=env.TEST_WORKER_ID,
+                run_uid=env.TEST_RUN_UID or "",
+            )
 
 
 @pytest.fixture(autouse=True)
