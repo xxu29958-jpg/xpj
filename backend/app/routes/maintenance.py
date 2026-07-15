@@ -109,7 +109,7 @@ def post_cleanup_devices(
 ) -> MaintenanceDeviceCleanupResponse:
     result = cleanup_revoked_devices(
         db,
-        tenant_id=auth.tenant_id,
+        account_id=auth.account_id,
         retention_days=retention_days,
         batch_size=batch_size,
     )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from hmac import compare_digest
 from uuid import UUID
 
@@ -20,10 +20,9 @@ from app.services.session_lifecycle_service import (
 )
 from app.services.time_service import ensure_utc, now_utc
 
-ENROLLMENT_ATTEMPT_RECOVERY_SECONDS = 24 * 60 * 60
-ENROLLMENT_ATTEMPT_RECOVERY_WINDOW = timedelta(
-    seconds=ENROLLMENT_ATTEMPT_RECOVERY_SECONDS,
-)
+# Browser proof storage is deliberately shorter than a DeviceSession. It is a
+# cookie retention policy, not the server-side receipt lifetime.
+ENROLLMENT_PROOF_COOKIE_SECONDS = 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -92,7 +91,8 @@ def recover_enrollment_identity(
     expired_error: str,
     closed_error: str,
 ) -> EnrollmentIdentity:
-    if (ensure_utc(attempt.expires_at) or attempt.expires_at) <= now_utc():
+    attempt_expires_at = ensure_utc(attempt.expires_at)
+    if attempt_expires_at is not None and attempt_expires_at <= now_utc():
         db.rollback()
         raise AppError(expired_error, status_code=409)
 
@@ -161,7 +161,12 @@ def record_enrollment_attempt(
         session_token_hash=hash_secret(proof.session_token),
         session_expires_at=session_expires_at,
         session_soft_refresh_after=session_soft_refresh_after,
-        expires_at=issued_at + ENROLLMENT_ATTEMPT_RECOVERY_WINDOW,
+        # The proof recovers the already-issued credential; it must remain
+        # replayable for exactly that credential's lifetime. A fixed 24-hour
+        # receipt stranded otherwise-valid 90-day Android sessions after a
+        # long response-loss/offline interval. Non-expiring sessions retain
+        # the receipt until explicit account/device/token revocation closes it.
+        expires_at=session_expires_at,
         last_issued_at=issued_at,
         created_at=issued_at,
     )
@@ -171,7 +176,7 @@ def record_enrollment_attempt(
 
 
 __all__ = [
-    "ENROLLMENT_ATTEMPT_RECOVERY_SECONDS",
+    "ENROLLMENT_PROOF_COOKIE_SECONDS",
     "EnrollmentIdentity",
     "EnrollmentProof",
     "enrollment_attempt_proves_source",

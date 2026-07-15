@@ -24,7 +24,6 @@ from app.services.invitation_common import (
 from app.services.session_credential_lock import (
     lock_and_revalidate_mutation_actor,
 )
-from app.services.session_lifecycle_service import revoke_active_tokens
 from app.services.time_service import now_utc, to_iso
 from app.tenants import AuthContext
 
@@ -137,15 +136,12 @@ def disable_member(
         raise AppError("member_cannot_disable_owner", status_code=409)
     if member.account_id == requester_account_id:
         raise AppError("member_cannot_disable_self", status_code=409)
-    # Revoke active tokens for that account in this ledger so they can't keep using it.
+    # Membership is the ledger authorization source. Device sessions are
+    # Account-scoped and may still be valid in other ledgers, so disabling one
+    # membership must not revoke a token merely because its mutable
+    # compatibility default currently points here.
     disabled_at = now_utc()
     member.disabled_at = disabled_at
-    revoke_active_tokens(
-        db,
-        account_id=member.account_id,
-        ledger_id=ledger_id,
-        revoked_at=disabled_at,
-    )
     add_audit_log(
         db,
         ledger_id=ledger_id,
@@ -292,22 +288,11 @@ def transfer_ledger_owner(
             .where(LedgerMember.disabled_at.is_(None))
         )
     )
-    transferred_at = now_utc()
-    demoted_owner_account_ids: list[int] = []
     for owner_member in active_owners:
         if owner_member.id != target.id:
             owner_member.role = "member"
-            demoted_owner_account_ids.append(owner_member.account_id)
     target.role = "owner"
     ledger.owner_account_id = target.account_id
-    if demoted_owner_account_ids:
-        revoke_active_tokens(
-            db,
-            account_ids=demoted_owner_account_ids,
-            ledger_id=ledger_id,
-            scope="admin",
-            revoked_at=transferred_at,
-        )
     add_audit_log(
         db,
         ledger_id=ledger_id,

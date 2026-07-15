@@ -107,7 +107,7 @@ class PairingCode(Base):
     account_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=True, index=True)
     recovery_device_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("devices.id", ondelete="CASCADE"),
+        ForeignKey("devices.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )
@@ -163,7 +163,7 @@ class DeviceEnrollmentAttempt(Base):
     session_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     session_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     session_soft_refresh_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
@@ -188,6 +188,9 @@ class SessionRefreshAttempt(Base):
         unique=True,
     )
     secret_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    session_soft_refresh_after: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     last_issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

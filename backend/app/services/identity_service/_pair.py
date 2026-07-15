@@ -187,6 +187,13 @@ def _create_pairing_completion(
         platform=platform,
         replaced_at=issued_at,
     )
+    if recovery_device is not None:
+        # The target protects an unconsumed recovery command from device
+        # cleanup. Once this transaction has consumed the code and recovered
+        # the exact Device, the durable DeviceEnrollmentAttempt becomes the
+        # replay receipt; retaining the one-shot FK would make that Device
+        # undeletable forever under the intentional RESTRICT constraint.
+        pairing.recovery_device_id = None
     token_expires_at, soft_refresh_after = _session_window(
         platform=device.platform,
         issued_at=issued_at,

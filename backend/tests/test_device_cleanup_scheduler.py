@@ -38,44 +38,33 @@ def test_device_cleanup_scheduler_starts_when_enabled(
         reset_settings_cache()
 
 
-def test_run_cleanup_once_continues_past_failing_ledger(
+def test_run_cleanup_once_uses_one_global_device_lifecycle_sweep(
     monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:
-    """A ledger whose cleanup raises is logged and skipped; the sweep still
-    processes every later ledger instead of aborting (ENGINEERING_RULES §7)."""
-    from app.database import SessionLocal
-    from app.models import Account, Ledger
     from app.services import device_cleanup_scheduler as sched
     from app.services.admin_service._devices import DeviceCleanupResult
 
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        db.add(Ledger(ledger_id="zzz_ledger", name="zzz", owner_account_id=owner.id))
-        db.commit()
+    calls = 0
 
-    seen: list[str] = []
-
-    def fake_cleanup(db, *, tenant_id, **kwargs):  # noqa: ANN001, ANN003
-        seen.append(tenant_id)
-        if len(seen) == 1:
-            raise RuntimeError("simulated per-ledger cleanup failure")
+    def fake_cleanup(db, **kwargs):  # noqa: ANN001, ANN003
+        nonlocal calls
+        calls += 1
+        assert "tenant_id" not in kwargs
         return DeviceCleanupResult(
             retention_days=0,
-            scanned=0,
-            deleted_devices=1,
+            scanned=3,
+            deleted_devices=2,
             deleted_tokens=0,
             deleted_upload_links=0,
         )
 
     monkeypatch.setattr(sched, "cleanup_revoked_devices", fake_cleanup)
 
-    # Must not raise; the first ledger fails and is skipped.
     scanned, deleted = sched._run_cleanup_once()
 
-    assert len(seen) >= 2  # zzz_ledger guarantees a second ledger past the failure
-    assert scanned == len(seen) - 1
-    assert deleted == scanned
+    assert calls == 1
+    assert scanned == 3
+    assert deleted == 2
 
 
 def test_device_cleanup_scheduler_invalid_config_noops(

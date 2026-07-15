@@ -1,17 +1,21 @@
-"""PostgreSQL round-trip for recoverable enrollment and server identity."""
+"""Real PostgreSQL upgrade contract for identity transaction receipts."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import pytest
 from alembic import command
 from sqlalchemy import inspect, text
+from sqlalchemy.engine import Connection
 
-from app.database import Base, engine
+from app.database import engine
 
 _PREVIOUS_REVISION = "20260711_0001"
-_EXPECTED_COLUMNS = {
+_HEAD_REVISION = "20260715_0001"
+_ENROLLMENT_COLUMNS = {
     "id",
     "public_id",
     "pairing_code_id",
@@ -27,13 +31,13 @@ _EXPECTED_COLUMNS = {
     "last_issued_at",
     "created_at",
 }
-_IDENTITY_KEYS = ("server_id", "data_generation")
 _REFRESH_COLUMNS = {
     "id",
     "public_id",
     "source_token_id",
     "replacement_token_id",
     "secret_hash",
+    "session_soft_refresh_after",
     "expires_at",
     "last_issued_at",
     "created_at",
@@ -56,134 +60,211 @@ def _run_alembic(action, *args) -> None:
         action(cfg, *args)
 
 
-def _table_names() -> set[str]:
-    return set(inspect(engine).get_table_names())
-
-
-def _identity_values() -> dict[str, str]:
+def _reset_schema() -> None:
     with engine.begin() as connection:
-        rows = connection.execute(
-            text("SELECT key, value FROM app_meta WHERE key IN ('server_id', 'data_generation')")
-        ).all()
-    return {str(key): str(value) for key, value in rows}
+        connection.execute(text("DROP SCHEMA public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
 
 
-def _rule_actor_device_foreign_key() -> dict:
-    return next(
-        foreign_key
-        for foreign_key in inspect(engine).get_foreign_keys("rule_application_batches")
-        if foreign_key["constrained_columns"] == ["actor_device_id"]
+def _seed_account_ledger_device(
+    connection: Connection,
+    values: dict[str, object],
+) -> None:
+    statements = (
+        "INSERT INTO accounts (id, public_id, display_name, created_at) "
+        "VALUES (101, :account_public_id, 'upgrade owner', :created_at)",
+        "INSERT INTO ledgers (id, ledger_id, name, owner_account_id, created_at) "
+        "VALUES (111, 'upgrade-ledger', 'upgrade ledger', 101, :created_at)",
+        "INSERT INTO ledger_members (id, ledger_id, account_id, role, created_at) "
+        "VALUES (121, 'upgrade-ledger', 101, 'owner', :created_at)",
+        "INSERT INTO devices (id, public_id, account_id, device_name, platform, created_at) "
+        "VALUES (201, :device_public_id, 101, 'upgrade phone', 'android', :created_at)",
+    )
+    for statement in statements:
+        connection.execute(text(statement), values)
+
+
+def _seed_identity_credentials(
+    connection: Connection,
+    values: dict[str, object],
+) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO auth_tokens "
+            "(id, token_hash, account_id, device_id, ledger_id, scope, created_at, expires_at, revoked_at) "
+            "VALUES "
+            "(401, :source_hash, 101, 201, 'upgrade-ledger', 'app', :created_at, :expires_at, :created_at), "
+            "(402, :replacement_hash, 101, 201, 'upgrade-ledger', 'app', :created_at, :expires_at, NULL)"
+        ),
+        {**values, "source_hash": "1" * 64, "replacement_hash": "2" * 64},
+    )
+    connection.execute(
+        text(
+            "INSERT INTO pairing_codes "
+            "(id, code_hash, ledger_id, account_id, expires_at, used_at, created_at) "
+            "VALUES (301, :code_hash, 'upgrade-ledger', 101, :expires_at, :created_at, :created_at)"
+        ),
+        {**values, "code_hash": "3" * 64},
+    )
+    connection.execute(
+        text(
+            "INSERT INTO invitations "
+            "(id, public_id, ledger_id, token_hash, role, created_by_account_id, expires_at, created_at) "
+            "VALUES (311, :invitation_public_id, 'upgrade-ledger', :invite_hash, 'member', 101, "
+            ":expires_at, :created_at)"
+        ),
+        {**values, "invite_hash": "4" * 64},
     )
 
 
-def _assert_enrollment_attempt_shape() -> None:
-    inspector = inspect(engine)
-    columns = {column["name"]: column for column in inspector.get_columns("device_enrollment_attempts")}
-    assert set(columns) == _EXPECTED_COLUMNS
-    assert columns["pairing_code_id"]["nullable"] is True
-    assert columns["invitation_id"]["nullable"] is True
-    assert columns["session_expires_at"]["nullable"] is True
-    assert columns["session_soft_refresh_after"]["nullable"] is True
-    assert all(
-        not column["nullable"]
-        for name, column in columns.items()
-        if name
-        not in {
-            "pairing_code_id",
-            "invitation_id",
-            "session_expires_at",
-            "session_soft_refresh_after",
-        }
+def _seed_rule_application_batch(
+    connection: Connection,
+    values: dict[str, object],
+) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO rule_application_batches "
+            "(id, public_id, tenant_id, status, pending_scanned, changed_count, "
+            "actor_account_id, actor_device_id, created_at) "
+            "VALUES (501, :batch_public_id, 'upgrade-ledger', 'applied', 0, 0, 101, 201, :created_at)"
+        ),
+        values,
     )
-    assert inspector.get_pk_constraint("device_enrollment_attempts")["constrained_columns"] == ["id"]
 
-    indexes = {index["name"]: index for index in inspector.get_indexes("device_enrollment_attempts")}
-    public_id_index = indexes["ix_device_enrollment_attempts_public_id"]
-    assert public_id_index["unique"] is True
-    assert public_id_index["column_names"] == ["public_id"]
 
-    unique_constraints = {
-        constraint["name"]: constraint for constraint in inspector.get_unique_constraints("device_enrollment_attempts")
+def _seed_previous_revision() -> dict[str, object]:
+    created_at = datetime.now(UTC)
+    values: dict[str, object] = {
+        "account_public_id": str(uuid4()),
+        "device_public_id": str(uuid4()),
+        "batch_public_id": str(uuid4()),
+        "invitation_public_id": str(uuid4()),
+        "created_at": created_at,
+        "expires_at": created_at + timedelta(days=90),
     }
-    assert unique_constraints["uq_device_enrollment_attempts_pairing_code_id"]["column_names"] == ["pairing_code_id"]
-    assert unique_constraints["uq_device_enrollment_attempts_invitation_id"]["column_names"] == ["invitation_id"]
-    checks = {constraint["name"] for constraint in inspector.get_check_constraints("device_enrollment_attempts")}
-    assert "ck_device_enrollment_attempts_one_source" in checks
-    pairing_columns = {column["name"] for column in inspector.get_columns("pairing_codes")}
-    assert "recovery_device_id" in pairing_columns
+    with engine.begin() as connection:
+        _seed_account_ledger_device(connection, values)
+        _seed_identity_credentials(connection, values)
+        _seed_rule_application_batch(connection, values)
+    return values
+
+
+def _assert_identity_schema() -> None:
+    inspector = inspect(engine)
+    enrollment = {
+        column["name"]: column
+        for column in inspector.get_columns("device_enrollment_attempts")
+    }
+    assert set(enrollment) == _ENROLLMENT_COLUMNS
+    assert enrollment["expires_at"]["nullable"] is True
+    assert enrollment["session_expires_at"]["nullable"] is True
+    assert enrollment["session_soft_refresh_after"]["nullable"] is True
+
     pairing_fks = {
         tuple(foreign_key["constrained_columns"]): foreign_key
         for foreign_key in inspector.get_foreign_keys("pairing_codes")
     }
-    assert pairing_fks[("recovery_device_id",)]["options"]["ondelete"] == "CASCADE"
-    enrollment_fks = {
-        tuple(foreign_key["constrained_columns"]): foreign_key
-        for foreign_key in inspector.get_foreign_keys("device_enrollment_attempts")
+    assert pairing_fks[("recovery_device_id",)]["options"]["ondelete"] == "RESTRICT"
+
+    refresh = {
+        column["name"]: column
+        for column in inspector.get_columns("session_refresh_attempts")
     }
-    assert enrollment_fks[("device_id",)]["options"]["ondelete"] == "CASCADE"
+    assert set(refresh) == _REFRESH_COLUMNS
+    assert refresh["session_soft_refresh_after"]["nullable"] is True
+    assert all(
+        not column["nullable"]
+        for name, column in refresh.items()
+        if name != "session_soft_refresh_after"
+    )
+
+    actor_device_fk = next(
+        foreign_key
+        for foreign_key in inspector.get_foreign_keys("rule_application_batches")
+        if foreign_key["constrained_columns"] == ["actor_device_id"]
+    )
+    assert actor_device_fk["options"]["ondelete"] == "SET NULL"
 
 
-def _assert_session_refresh_attempt_shape() -> None:
-    inspector = inspect(engine)
-    columns = {column["name"]: column for column in inspector.get_columns("session_refresh_attempts")}
-    assert set(columns) == _REFRESH_COLUMNS
-    assert all(not column["nullable"] for column in columns.values())
-    unique_constraints = {
-        constraint["name"]: constraint for constraint in inspector.get_unique_constraints("session_refresh_attempts")
-    }
-    assert unique_constraints["uq_session_refresh_attempts_source_token_id"]["column_names"] == ["source_token_id"]
-    assert unique_constraints["uq_session_refresh_attempts_replacement_token_id"]["column_names"] == [
-        "replacement_token_id"
-    ]
-    foreign_keys = inspector.get_foreign_keys("session_refresh_attempts")
-    assert {foreign_key["options"].get("ondelete") for foreign_key in foreign_keys} == {"CASCADE"}
-    assert _rule_actor_device_foreign_key()["options"]["ondelete"] == "SET NULL"
-
-
-def test_device_enrollment_and_server_identity_round_trip_on_postgres() -> None:
-    Base.metadata.drop_all(bind=engine)
+def _insert_committed_receipts(values: dict[str, object]) -> None:
     with engine.begin() as connection:
-        connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        connection.execute(
+            text(
+                "UPDATE pairing_codes SET recovery_device_id = 201 WHERE id = 301"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO device_enrollment_attempts "
+                "(public_id, pairing_code_id, account_id, device_id, ledger_id, secret_hash, "
+                "session_token_hash, session_expires_at, session_soft_refresh_after, expires_at, "
+                "last_issued_at, created_at) VALUES "
+                "(:enrollment_id, 301, 101, 201, 'upgrade-ledger', :secret_hash, :token_hash, "
+                ":expires_at, :soft_refresh_after, :expires_at, :created_at, :created_at)"
+            ),
+            {
+                **values,
+                "enrollment_id": str(uuid4()),
+                "secret_hash": "5" * 64,
+                "token_hash": "2" * 64,
+                "soft_refresh_after": values["expires_at"] - timedelta(days=7),
+            },
+        )
+        connection.execute(
+            text(
+                "INSERT INTO session_refresh_attempts "
+                "(public_id, source_token_id, replacement_token_id, secret_hash, "
+                "session_soft_refresh_after, expires_at, last_issued_at, created_at) VALUES "
+                "(:refresh_id, 401, 402, :secret_hash, :soft_refresh_after, :expires_at, "
+                ":created_at, :created_at)"
+            ),
+            {
+                **values,
+                "refresh_id": str(uuid4()),
+                "secret_hash": "6" * 64,
+                "soft_refresh_after": values["expires_at"] - timedelta(days=7),
+            },
+        )
+
+
+def test_identity_receipts_upgrade_real_previous_revision_and_reject_downgrade() -> None:
+    _reset_schema()
     try:
-        Base.metadata.create_all(bind=engine)
-        actor_device_fk = _rule_actor_device_foreign_key()
+        _run_alembic(command.upgrade, _PREVIOUS_REVISION)
+        values = _seed_previous_revision()
+
+        _run_alembic(command.upgrade, "head")
+        _assert_identity_schema()
         with engine.begin() as connection:
-            connection.execute(text("DROP TABLE session_refresh_attempts"))
-            connection.execute(text("DROP TABLE device_enrollment_attempts"))
-            connection.execute(text("ALTER TABLE pairing_codes DROP COLUMN recovery_device_id"))
-            connection.execute(
-                text('ALTER TABLE rule_application_batches DROP CONSTRAINT "' + str(actor_device_fk["name"]) + '"')
+            assert connection.scalar(
+                text("SELECT public_id FROM devices WHERE id = 201")
+            ) == values["device_public_id"]
+            identity_rows = dict(
+                connection.execute(
+                    text(
+                        "SELECT key, value FROM app_meta "
+                        "WHERE key IN ('server_id', 'data_generation')"
+                    )
+                ).all()
             )
-            connection.execute(
-                text(
-                    "ALTER TABLE rule_application_batches "
-                    "ADD CONSTRAINT rule_application_batches_actor_device_id_fkey "
-                    "FOREIGN KEY (actor_device_id) REFERENCES devices (id)"
-                )
-            )
-        _run_alembic(command.stamp, _PREVIOUS_REVISION)
+        assert set(identity_rows) == {"server_id", "data_generation"}
+        assert all(str(UUID(value)) == value for value in identity_rows.values())
 
-        _run_alembic(command.upgrade, "head")
-        _assert_enrollment_attempt_shape()
-        _assert_session_refresh_attempt_shape()
-        first_identity = _identity_values()
-        assert set(first_identity) == set(_IDENTITY_KEYS)
-        for value in first_identity.values():
-            assert str(UUID(value)) == value
+        _insert_committed_receipts(values)
+        with pytest.raises(RuntimeError, match="irreversible identity receipt"):
+            _run_alembic(command.downgrade, _PREVIOUS_REVISION)
 
-        _run_alembic(command.downgrade, _PREVIOUS_REVISION)
-        assert "device_enrollment_attempts" not in _table_names()
-        assert "session_refresh_attempts" not in _table_names()
-        assert _rule_actor_device_foreign_key()["options"].get("ondelete") is None
-        pairing_columns = {column["name"] for column in inspect(engine).get_columns("pairing_codes")}
-        assert "recovery_device_id" not in pairing_columns
-        assert _identity_values() == first_identity
-
-        _run_alembic(command.upgrade, "head")
-        _assert_enrollment_attempt_shape()
-        _assert_session_refresh_attempt_shape()
-        assert _identity_values() == first_identity
+        with engine.begin() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == _HEAD_REVISION
+            assert connection.scalar(
+                text("SELECT count(*) FROM device_enrollment_attempts")
+            ) == 1
+            assert connection.scalar(
+                text("SELECT count(*) FROM session_refresh_attempts")
+            ) == 1
+            assert connection.scalar(
+                text("SELECT recovery_device_id FROM pairing_codes WHERE id = 301")
+            ) == 201
+        _assert_identity_schema()
     finally:
-        Base.metadata.drop_all(bind=engine)
-        with engine.begin() as connection:
-            connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        _reset_schema()

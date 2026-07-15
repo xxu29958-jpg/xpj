@@ -13,9 +13,9 @@ The Bearer token determines who the caller is:
 * ``POST /api/ledgers/{id}/switch``   — app token only; selects a ledger while
                                         preserving the Account/Device session.
 
-Routes never trust a ledger id as authorization. The server resolves the
-authenticated Account/Device first, then validates active membership for the
-selected or path ledger on every request.
+Routes never trust a ledger id as authorization. Listing first proves the
+Account/Device principal; switching additionally validates active membership
+in the target path ledger.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import (
     _bearer_token,
-    get_current_app_context,
+    get_current_app_principal,
     get_current_owner_or_admin_context,
 )
 from app.database import get_db
@@ -43,7 +43,7 @@ from app.services.ledger_service import (
     switch_ledger,
 )
 from app.services.server_identity_service import read_server_data_identity
-from app.tenants import AuthContext
+from app.tenants import AuthContext, SessionPrincipal
 
 router = APIRouter(prefix="/api/ledgers", tags=["ledgers"])
 
@@ -61,10 +61,10 @@ def _to_response(summary: LedgerSummary) -> LedgerResponse:
 
 @router.get("", response_model=LedgerListResponse)
 def list_ledgers(
-    auth: AuthContext = Depends(get_current_app_context),
+    principal: SessionPrincipal = Depends(get_current_app_principal),
     db: Session = Depends(get_db),
 ) -> LedgerListResponse:
-    summaries = list_ledgers_for_account(db, account_id=auth.account_id)
+    summaries = list_ledgers_for_account(db, account_id=principal.account_id)
     return LedgerListResponse(ledgers=[_to_response(s) for s in summaries])
 
 
@@ -87,7 +87,7 @@ def create_ledger_endpoint(
 def switch_ledger_endpoint(
     ledger_id: str,
     authorization: str | None = Header(default=None),
-    auth: AuthContext = Depends(get_current_app_context),
+    principal: SessionPrincipal = Depends(get_current_app_principal),
     db: Session = Depends(get_db),
 ) -> LedgerSwitchResponse:
     # The dependency above already validated the Account/Device session. The
@@ -97,10 +97,10 @@ def switch_ledger_endpoint(
     current_token = _bearer_token(authorization)
     result = switch_ledger(
         db,
-        auth=auth,
+        principal=principal,
         current_token_value=current_token,
-        account_id=auth.account_id,
-        device_id=auth.device_id,
+        account_id=principal.account_id,
+        device_id=principal.device_id,
         target_ledger_id=ledger_id,
     )
     server = read_server_data_identity(db)

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember
 from app.services.time_service import ensure_utc, now_utc
-from app.tenants import AuthContext
+from app.tenants import AuthContext, SessionPrincipal
 
 _BOOTSTRAP_OWNER_LOCK_CONTEXT = b"ticketbox/bootstrap-owner/v1/global-transaction-lock"
 _BOOTSTRAP_OWNER_LOCK_ID = int.from_bytes(
@@ -79,6 +79,35 @@ def _reload_auth_context(
     )
 
 
+def _reload_session_principal(
+    db: Session,
+    token: AuthToken,
+) -> SessionPrincipal:
+    row = db.execute(
+        select(Account, Device)
+        .where(Account.id == token.account_id)
+        .where(Account.disabled_at.is_(None))
+        .where(Device.id == token.device_id)
+        .where(Device.account_id == Account.id)
+        .where(Device.revoked_at.is_(None))
+        .limit(1)
+    ).first()
+    if row is None:
+        raise AppError("invalid_token", status_code=401)
+    account, device = row
+    return SessionPrincipal(
+        account_id=account.id,
+        account_public_id=account.public_id,
+        account_name=account.display_name,
+        device_id=device.id,
+        device_public_id=device.public_id,
+        device_name=device.device_name,
+        scope=token.scope,
+        credential_id=token.id,
+        credential_hash=token.token_hash,
+    )
+
+
 def lock_and_revalidate_credential_mint_context(
     db: Session,
     auth: AuthContext | None,
@@ -104,6 +133,30 @@ def lock_and_revalidate_credential_mint_context(
         selected_ledger_id=auth.ledger_id,
     )
     if refreshed != auth:
+        raise AppError("invalid_token", status_code=401)
+    return refreshed
+
+
+def lock_and_revalidate_session_principal(
+    db: Session,
+    principal: SessionPrincipal | None,
+) -> SessionPrincipal | None:
+    """Lock and revalidate a ledger-independent Account/Device principal."""
+
+    lock_bootstrap_owner_transaction(db)
+    if principal is None:
+        return None
+    token = db.scalar(
+        select(AuthToken)
+        .where(AuthToken.id == principal.credential_id)
+        .where(AuthToken.token_hash == principal.credential_hash)
+        .execution_options(populate_existing=True)
+        .limit(1)
+    )
+    if token is None or not _token_is_usable(token, checked_at=now_utc()):
+        raise AppError("invalid_token", status_code=401)
+    refreshed = _reload_session_principal(db, token)
+    if refreshed != principal:
         raise AppError("invalid_token", status_code=401)
     return refreshed
 

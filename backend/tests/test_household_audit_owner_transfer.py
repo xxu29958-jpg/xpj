@@ -137,6 +137,13 @@ def test_family_member_audit_records_sensitive_safe_actions(client: TestClient, 
     assert all(row.result == "success" for row in stored)
 
 
+def test_owner_transfer_requires_authentication(client: TestClient) -> None:
+    response = client.post(
+        "/api/ledgers/not-visible/members/1/transfer-owner",
+    )
+    assert response.status_code == 401, response.text
+
+
 def test_owner_transfer_keeps_single_owner_and_demotes_previous_owner(client: TestClient, *, identity) -> None:
     ledger_id = _create_family_ledger(client, identity=identity)
     owner_token = _switch_to(client, ledger_id, identity.app_headers)
@@ -199,7 +206,11 @@ def test_owner_transfer_keeps_single_owner_and_demotes_previous_owner(client: Te
     assert transfer_rows[0]["new_role"] == "owner"
 
 
-def test_owner_transfer_revokes_demoted_owner_admin_tokens(client: TestClient, *, identity) -> None:
+def test_owner_transfer_rechecks_membership_without_destroying_host_session(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
     ledger_id = "owner"
     invite_token = _mint_invitation(client, ledger_id, identity.app_headers["Authorization"].removeprefix("Bearer "))
     member_token = _accept_invitation(client, invite_token, account_name="新 owner")
@@ -223,8 +234,11 @@ def test_owner_transfer_revokes_demoted_owner_admin_tokens(client: TestClient, *
         headers=identity.admin_headers,
         json={"ttl_minutes": 15},
     )
-    assert after.status_code == 401
-    assert after.json()["error"] == "invalid_token"
+    assert after.status_code == 403
+    assert after.json()["error"] == "permission_denied"
+
+    host_session = client.get("/api/admin/devices", headers=identity.admin_headers)
+    assert host_session.status_code == 200, host_session.text
 
     new_owner_allowed = client.post(
         f"/api/ledgers/{ledger_id}/invitations",

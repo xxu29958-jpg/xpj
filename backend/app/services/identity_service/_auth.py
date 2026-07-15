@@ -13,7 +13,7 @@ from app.services.identity_service._models import WebSessionAuthResult
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import hash_secret
 from app.services.time_service import ensure_utc, now_utc
-from app.tenants import AuthContext
+from app.tenants import AuthContext, SessionPrincipal
 
 ACTIVITY_REFRESH_MIN_INTERVAL_SECONDS = 60
 
@@ -69,6 +69,38 @@ def _context_parts_from_token(
         account_id=token.account_id,
         device_id=token.device_id,
         ledger_id=selected_ledger_id or token.ledger_id,
+    )
+
+
+def _principal_from_token(
+    db: Session,
+    token: AuthToken,
+) -> tuple[SessionPrincipal, Device]:
+    row = db.execute(
+        select(Account, Device)
+        .where(Account.id == token.account_id)
+        .where(Account.disabled_at.is_(None))
+        .where(Device.id == token.device_id)
+        .where(Device.account_id == Account.id)
+        .where(Device.revoked_at.is_(None))
+        .limit(1)
+    ).first()
+    if row is None:
+        raise AppError("invalid_token", status_code=401)
+    account, device = row
+    return (
+        SessionPrincipal(
+            account_id=account.id,
+            account_public_id=account.public_id,
+            account_name=account.display_name,
+            device_id=device.id,
+            device_public_id=device.public_id,
+            device_name=device.device_name,
+            scope=token.scope,
+            credential_id=token.id,
+            credential_hash=token.token_hash,
+        ),
+        device,
     )
 
 
@@ -141,6 +173,30 @@ def _token_revocation_allows_grace(token: AuthToken, *, now: datetime) -> bool:
     return grace_until is not None and grace_until > now
 
 
+def _load_usable_session_token(
+    db: Session,
+    token_value: str,
+    allowed_scopes: set[str],
+) -> AuthToken:
+    token = db.scalar(
+        select(AuthToken)
+        .where(AuthToken.token_hash == hash_secret(token_value))
+        .limit(1)
+    )
+    if token is None or token.scope not in allowed_scopes:
+        raise AppError("invalid_token", status_code=401)
+    checked_at = now_utc()
+    if not _token_revocation_allows_grace(token, now=checked_at):
+        raise AppError("invalid_token", status_code=401)
+    expires_at = ensure_utc(token.expires_at)
+    if expires_at is not None and expires_at <= checked_at:
+        token.revoked_at = checked_at
+        token.grace_until = None
+        db.commit()
+        raise AppError("invalid_token", status_code=401)
+    return token
+
+
 def _refresh_upload_link_activity(
     db: Session,
     link: UploadLink,
@@ -173,21 +229,7 @@ def authenticate_session_token(
     selected_ledger_id: str | None = None,
     selected_ledger_error: str | None = None,
 ) -> AuthContext:
-    token_hash = hash_secret(token_value)
-    token = db.scalar(
-        select(AuthToken).where(AuthToken.token_hash == token_hash).limit(1)
-    )
-    if token is None or token.scope not in allowed_scopes:
-        raise AppError("invalid_token", status_code=401)
-    now = now_utc()
-    if not _token_revocation_allows_grace(token, now=now):
-        raise AppError("invalid_token", status_code=401)
-    expires_at = ensure_utc(token.expires_at)
-    if expires_at is not None and expires_at <= now:
-        token.revoked_at = now
-        token.grace_until = None
-        db.commit()
-        raise AppError("invalid_token", status_code=401)
+    token = _load_usable_session_token(db, token_value, allowed_scopes)
     try:
         return _context_from_token(
             db,
@@ -198,6 +240,19 @@ def authenticate_session_token(
         if selected_ledger_id is not None and selected_ledger_error and exc.error == "invalid_token":
             raise AppError(selected_ledger_error, status_code=404) from exc
         raise
+
+
+def authenticate_session_principal(
+    db: Session,
+    token_value: str,
+    allowed_scopes: set[str],
+) -> SessionPrincipal:
+    """Authenticate Account/Device identity without choosing a ledger."""
+
+    token = _load_usable_session_token(db, token_value, allowed_scopes)
+    principal, device = _principal_from_token(db, token)
+    _refresh_token_activity(db, token, device, now=now_utc())
+    return principal
 
 
 def authenticate_web_session_token(

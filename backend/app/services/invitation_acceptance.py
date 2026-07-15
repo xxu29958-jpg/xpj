@@ -31,13 +31,13 @@ from app.services.invitation_common import (
     AUDIT_INVITATION_ACCEPTED,
     active_member_for_account,
 )
-from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
+from app.services.session_credential_lock import lock_and_revalidate_session_principal
 from app.services.session_lifecycle_service import (
     app_token_expiry_window,
     app_token_soft_refresh_after,
 )
 from app.services.time_service import ensure_utc, now_utc, to_iso
-from app.tenants import AuthContext
+from app.tenants import SessionPrincipal
 
 
 @dataclass(frozen=True)
@@ -170,21 +170,20 @@ def _accept_for_existing_session(
     *,
     invitation: Invitation,
     ledger: Ledger,
-    auth: AuthContext,
+    principal: SessionPrincipal,
     session_token: str,
 ) -> AcceptInvitationResult:
-    account = db.get(Account, auth.account_id)
-    device = db.get(Device, auth.device_id)
+    account = db.get(Account, principal.account_id)
+    device = db.get(Device, principal.device_id)
     if account is None or device is None or device.account_id != account.id:
         raise AppError("invalid_token", status_code=401)
-    token = db.get(AuthToken, auth.credential_id)
+    token = db.get(AuthToken, principal.credential_id)
     if (
         token is None
         or token.token_hash != hash_secret(session_token)
         or token.account_id != account.id
         or token.device_id != device.id
         or token.scope != "app"
-        or token.revoked_at is not None
     ):
         raise AppError("invalid_token", status_code=401)
 
@@ -401,34 +400,30 @@ def accept_invitation(
     device_name: str,
     platform: str,
     session_token: str | None = None,
-    auth: AuthContext | None = None,
+    principal: SessionPrincipal | None = None,
     enrollment_attempt_id: str | None = None,
     enrollment_attempt_secret: str | None = None,
 ) -> AcceptInvitationResult:
     """Join a ledger without changing an already authenticated identity."""
 
-    if auth is None:
+    if principal is None:
         if session_token is not None:
             raise AppError("invalid_token", status_code=401)
         lock_bootstrap_owner_transaction(db)
     else:
         if session_token is None:
             raise AppError("invalid_token", status_code=401)
-        locked_auth = lock_and_revalidate_mutation_actor(
-            db,
-            auth,
-            actor_account_id=auth.account_id,
-        )
-        if locked_auth is None:
+        locked_principal = lock_and_revalidate_session_principal(db, principal)
+        if locked_principal is None:
             raise AppError("invalid_token", status_code=401)
-        auth = locked_auth
+        principal = locked_principal
     invitation, ledger = _load_invitation_acceptance(db, invite_token=invite_token)
-    if auth is not None:
+    if principal is not None:
         return _accept_for_existing_session(
             db,
             invitation=invitation,
             ledger=ledger,
-            auth=auth,
+            principal=principal,
             session_token=session_token,
         )
     return _accept_for_new_session(

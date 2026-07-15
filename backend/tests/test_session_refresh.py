@@ -17,7 +17,7 @@ from sqlalchemy import event
 import app.services.session_refresh_service as session_refresh_service
 from app.config import reset_settings_cache
 from app.database import SessionLocal, engine
-from app.models import AuthToken, Device
+from app.models import AuthToken, Device, Ledger, LedgerMember, SessionRefreshAttempt
 from app.services.identity_service import authenticate_session_token, hash_secret
 from app.services.time_service import ensure_utc, now_utc
 from tests.pairing_test_support import pairing_payload, session_refresh_payload
@@ -183,6 +183,153 @@ def test_refresh_retry_recovers_same_token_after_grace_expires(
     assert retry.status_code == 200, retry.text
     assert retry.json()["session_token"] == first_token
     assert retry.json()["refresh_attempt_id"] == refresh["refresh_attempt_id"]
+
+
+def test_refresh_retry_replays_frozen_soft_refresh_receipt(
+    client: TestClient,
+    *,
+    identity,
+    ttl_env,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    old_token = _pair(client, code=identity.pairing_code)["session_token"]
+    refresh = session_refresh_payload()
+    first = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {old_token}"},
+        json=refresh,
+    )
+    assert first.status_code == 200, first.text
+    first_body = first.json()
+
+    with SessionLocal() as db:
+        attempt = db.query(SessionRefreshAttempt).filter(
+            SessionRefreshAttempt.public_id == refresh["refresh_attempt_id"]
+        ).one()
+        assert attempt.session_soft_refresh_after is not None
+        old_row = db.query(AuthToken).filter(
+            AuthToken.token_hash == hash_secret(old_token)
+        ).one()
+        old_row.grace_until = datetime.now(UTC) - timedelta(seconds=1)
+        db.commit()
+
+    monkeypatch.setenv("APP_TOKEN_REFRESH_WINDOW_DAYS", "1")
+    reset_settings_cache()
+    retry = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {old_token}"},
+        json=refresh,
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["session_token"] == first_body["session_token"]
+    assert retry.json()["expires_at"] == first_body["expires_at"]
+    assert retry.json()["soft_refresh_after"] == first_body["soft_refresh_after"]
+
+
+def test_refresh_survives_disabled_default_ledger_when_account_has_another_ledger(
+    client: TestClient,
+    *,
+    identity,
+    ttl_env,
+) -> None:
+    old_token = _pair(client, code=identity.pairing_code)["session_token"]
+    fallback_ledger_id = "refresh-surviving-ledger"
+    with SessionLocal() as db:
+        token = db.query(AuthToken).filter(
+            AuthToken.token_hash == hash_secret(old_token)
+        ).one()
+        db.add(
+            Ledger(
+                ledger_id=fallback_ledger_id,
+                name="续期存活账本",
+                owner_account_id=token.account_id,
+            )
+        )
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id=fallback_ledger_id,
+                account_id=token.account_id,
+                role="owner",
+            )
+        )
+        default_membership = db.query(LedgerMember).filter(
+            LedgerMember.ledger_id == token.ledger_id,
+            LedgerMember.account_id == token.account_id,
+        ).one()
+        default_membership.disabled_at = now_utc()
+        db.commit()
+
+    refresh = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {old_token}"},
+        json=session_refresh_payload(),
+    )
+    assert refresh.status_code == 200, refresh.text
+
+    selected = client.get(
+        "/api/auth/check",
+        headers={
+            "Authorization": f"Bearer {refresh.json()['session_token']}",
+            "X-Ticketbox-Ledger-ID": fallback_ledger_id,
+        },
+    )
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["ledger_id"] == fallback_ledger_id
+
+
+def test_graced_source_token_can_finish_ledger_switch_after_refresh_wins(
+    client: TestClient,
+    *,
+    identity,
+    ttl_env,
+) -> None:
+    old_token = _pair(client, code=identity.pairing_code)["session_token"]
+    target_ledger_id = "refresh-race-target"
+    with SessionLocal() as db:
+        token = db.query(AuthToken).filter(
+            AuthToken.token_hash == hash_secret(old_token)
+        ).one()
+        db.add(
+            Ledger(
+                ledger_id=target_ledger_id,
+                name="刷新竞态账本",
+                owner_account_id=token.account_id,
+            )
+        )
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id=target_ledger_id,
+                account_id=token.account_id,
+                role="owner",
+            )
+        )
+        db.commit()
+
+    refreshed = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {old_token}"},
+        json=session_refresh_payload(),
+    )
+    assert refreshed.status_code == 200, refreshed.text
+
+    switched = client.post(
+        f"/api/ledgers/{target_ledger_id}/switch",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["session_token"] == old_token
+
+    selected = client.get(
+        "/api/auth/check",
+        headers={
+            "Authorization": f"Bearer {refreshed.json()['session_token']}",
+            "X-Ticketbox-Ledger-ID": target_ledger_id,
+        },
+    )
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["ledger_id"] == target_ledger_id
 
 
 def test_refresh_retry_rejects_a_different_proof(

@@ -8,16 +8,17 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.services.identity_service import (
+    authenticate_session_principal,
     authenticate_session_token,
     is_legacy_app_token,
 )
-from app.tenants import AuthContext
+from app.tenants import AuthContext, SessionPrincipal
 
 
 @dataclass(frozen=True)
 class AuthenticatedAppSession:
     token: str
-    auth: AuthContext
+    principal: SessionPrincipal
 
 
 def _bearer_token(authorization: str | None) -> str:
@@ -55,10 +56,6 @@ def get_current_app_context(
 def get_optional_current_app_session(
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
-    x_ticketbox_ledger_id: str | None = Header(
-        default=None,
-        alias="X-Ticketbox-Ledger-ID",
-    ),
 ) -> AuthenticatedAppSession | None:
     """Authenticate an optional bearer without downgrading malformed auth.
 
@@ -71,13 +68,18 @@ def get_optional_current_app_session(
     token = _bearer_token(authorization)
     if is_legacy_app_token(token):
         _raise_legacy_app_removed()
-    auth = authenticate_session_token(
-        db,
-        token,
-        {"app"},
-        selected_ledger_id=(x_ticketbox_ledger_id or "").strip() or None,
-    )
-    return AuthenticatedAppSession(token=token, auth=auth)
+    principal = authenticate_session_principal(db, token, {"app"})
+    return AuthenticatedAppSession(token=token, principal=principal)
+
+
+def get_current_app_principal(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> SessionPrincipal:
+    token = _bearer_token(authorization)
+    if is_legacy_app_token(token):
+        _raise_legacy_app_removed()
+    return authenticate_session_principal(db, token, {"app"})
 
 
 def get_current_admin_context(

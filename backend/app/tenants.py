@@ -59,6 +59,21 @@ class AuthContext:
         return self.scope
 
 
+@dataclass(frozen=True)
+class SessionPrincipal:
+    """Ledger-independent identity proven by one Account/Device credential."""
+
+    account_id: int
+    account_public_id: str
+    account_name: str
+    device_id: int
+    device_public_id: str
+    device_name: str
+    scope: str
+    credential_id: int
+    credential_hash: str
+
+
 def _clean_tenant_id(value: str) -> str:
     tenant_id = value.strip()
     if not TENANT_ID_PATTERN.fullmatch(tenant_id):

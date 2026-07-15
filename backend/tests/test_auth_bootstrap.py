@@ -8,7 +8,14 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuthToken, BootstrapSecretConsumption, Device, PairingCode, UploadLink
+from app.models import (
+    AuthToken,
+    BootstrapSecretConsumption,
+    Device,
+    DeviceEnrollmentAttempt,
+    PairingCode,
+    UploadLink,
+)
 from app.services.identity_service import hash_pairing_code, hash_secret
 from app.services.time_service import ensure_utc, now_utc
 from tests._infra.assets import PNG_BYTES
@@ -261,6 +268,46 @@ def test_owner_can_create_pairing_code_and_android_can_pair_once(
     )
     assert different_attempt.status_code == 401
     assert different_attempt.json()["error"] == "invalid_pairing_code"
+
+
+def test_pairing_receipt_survives_past_24_hours_while_session_is_active(
+    client: TestClient,
+    *,
+    identity,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = client.post(
+        "/api/bootstrap/pairing-codes",
+        headers=identity.admin_headers,
+        json={"ttl_minutes": 15},
+    )
+    assert response.status_code == 200, response.text
+    request = pairing_payload(
+        response.json()["pairing_code"],
+        device_name="long offline recovery",
+    )
+    first = client.post("/api/auth/pair", json=request)
+    assert first.status_code == 200, first.text
+
+    with SessionLocal() as db:
+        attempt = db.query(DeviceEnrollmentAttempt).filter(
+            DeviceEnrollmentAttempt.public_id == request["pairing_attempt_id"]
+        ).one()
+        token = db.query(AuthToken).filter(
+            AuthToken.token_hash == hash_secret(first.json()["session_token"])
+        ).one()
+        assert ensure_utc(attempt.expires_at) == ensure_utc(token.expires_at)
+        assert ensure_utc(attempt.expires_at) > now_utc() + timedelta(hours=25)
+
+    future = now_utc() + timedelta(hours=25)
+    monkeypatch.setattr(
+        "app.services.identity_service._enrollment.now_utc",
+        lambda: future,
+    )
+    replay = client.post("/api/auth/pair", json=request)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["session_token"] == first.json()["session_token"]
+    assert replay.json()["device_public_id"] == first.json()["device_public_id"]
 
 
 def _new_pairing_code(client: TestClient, *, identity) -> str:

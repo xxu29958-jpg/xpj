@@ -45,8 +45,11 @@ from tests._infra.bootstrap_recovery_concurrency import (
     assert_distinct_bootstrap_secrets_create_one_identity,
 )
 from tests._infra.bootstrap_recovery_credential_concurrency import (
+    assert_cleanup_preserves_concurrent_device_recovery,
     assert_ordinary_revocations_serialize_credential_mints,
     assert_pre_authenticated_credential_mints_fail_after_rotation,
+)
+from tests._infra.ledger_switch_concurrency import (
     assert_switch_revalidates_locked_target_before_default_change,
 )
 from tests.pairing_test_support import pairing_payload
@@ -70,6 +73,16 @@ def test_two_sessions_ordinary_revocations_serialize_credential_mints(
         monkeypatch,
         token_value=identity.app_token,
         device_token_value=identity.tenant_app_token,
+    )
+
+
+def test_two_sessions_cleanup_waits_for_device_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    identity: TestIdentity,
+) -> None:
+    assert_cleanup_preserves_concurrent_device_recovery(
+        monkeypatch,
+        token_value=identity.app_token,
     )
 
 

@@ -41,7 +41,7 @@ def _add_pairing_recovery_target() -> None:
         "devices",
         ["recovery_device_id"],
         ["id"],
-        ondelete="CASCADE",
+        ondelete="RESTRICT",
     )
     op.create_index(
         op.f("ix_pairing_codes_recovery_device_id"),
@@ -69,7 +69,7 @@ def _create_device_enrollment_attempts() -> None:
             sa.DateTime(timezone=True),
             nullable=True,
         ),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_issued_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["account_id"], ["accounts.id"]),
@@ -143,6 +143,11 @@ def _create_session_refresh_attempts() -> None:
         sa.Column("source_token_id", sa.Integer(), nullable=False),
         sa.Column("replacement_token_id", sa.Integer(), nullable=False),
         sa.Column("secret_hash", sa.String(length=64), nullable=False),
+        sa.Column(
+            "session_soft_refresh_after",
+            sa.DateTime(timezone=True),
+            nullable=True,
+        ),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_issued_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -240,22 +245,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    inspector = sa.inspect(op.get_bind())
-    if inspector.has_table("session_refresh_attempts"):
-        op.drop_table("session_refresh_attempts")
-    if inspector.has_table("device_enrollment_attempts"):
-        op.drop_table("device_enrollment_attempts")
-    pairing_columns = {column["name"] for column in inspector.get_columns("pairing_codes")}
-    if "recovery_device_id" in pairing_columns:
-        op.drop_index(
-            op.f("ix_pairing_codes_recovery_device_id"),
-            table_name="pairing_codes",
-        )
-        op.drop_constraint(
-            "fk_pairing_codes_recovery_device_id_devices",
-            "pairing_codes",
-            type_="foreignkey",
-        )
-        op.drop_column("pairing_codes", "recovery_device_id")
-    _replace_rule_batch_device_fk(ondelete=None)
-    # Preserve logical server identity across a binary rollback/re-upgrade.
+    # These tables are the only replay evidence for already-committed device
+    # enrollment and token rotation. Dropping them while leaving the issued
+    # Device/AuthToken rows would turn an ordinary response loss into an
+    # unrecoverable identity fork. Binary rollback remains supported at this
+    # schema; destructive schema downgrade does not.
+    raise RuntimeError(
+        "20260715_0001 is an irreversible identity receipt migration; "
+        "roll back the binary without downgrading the database"
+    )

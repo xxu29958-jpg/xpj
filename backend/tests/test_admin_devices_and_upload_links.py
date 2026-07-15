@@ -75,7 +75,7 @@ def test_list_devices_returns_public_ids_not_db_ids(client: TestClient, *, ident
         assert "Bearer" not in str(device)
 
 
-def test_admin_device_management_is_scoped_to_visible_ledgers(client: TestClient, *, identity) -> None:
+def test_admin_device_management_is_scoped_to_credential_account(client: TestClient, *, identity) -> None:
     external_device_public_id, _ = insert_external_device_and_upload_link()
 
     response = client.get("/api/admin/devices", headers=identity.admin_headers)
@@ -170,7 +170,7 @@ def _insert_member_device_with_private_ledger_sessions() -> tuple[str, str, str,
     return public_id, shared_token_hash, private_token_hash, private_link_hash
 
 
-def _assert_only_shared_ledger_session_revoked(
+def _assert_member_device_unchanged(
     *,
     public_id: str,
     shared_token_hash: str,
@@ -182,13 +182,17 @@ def _assert_only_shared_ledger_session_revoked(
         private_token = db.query(AuthToken).filter(AuthToken.token_hash == private_token_hash).one()
         private_link = db.query(UploadLink).filter(UploadLink.token_hash == private_link_hash).one()
         device = db.query(Device).filter(Device.public_id == public_id).one()
-        assert shared_token.revoked_at is not None
+        assert shared_token.revoked_at is None
         assert private_token.revoked_at is None
         assert private_link.revoked_at is None
         assert device.revoked_at is None
 
 
-def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient, *, identity) -> None:
+def test_ledger_admin_cannot_revoke_another_accounts_device(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
     public_id, shared_token_hash, private_token_hash, private_link_hash = (
         _insert_member_device_with_private_ledger_sessions()
     )
@@ -197,8 +201,8 @@ def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient, 
         headers=identity.admin_headers,
     )
 
-    assert response.status_code == 200, response.text
-    _assert_only_shared_ledger_session_revoked(
+    assert response.status_code == 404, response.text
+    _assert_member_device_unchanged(
         public_id=public_id,
         shared_token_hash=shared_token_hash,
         private_token_hash=private_token_hash,

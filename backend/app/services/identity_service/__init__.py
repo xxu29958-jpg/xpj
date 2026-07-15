@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from app.services.identity_service._auth import (
     UPLOAD_LINK_INVALID_MESSAGE,
+    authenticate_session_principal,
     authenticate_session_token,
     authenticate_upload_link,
     authenticate_web_session_token,
@@ -43,7 +44,7 @@ from app.services.identity_service._device import (
     _create_pairing_code,
     create_pairing_code,
 )
-from app.services.identity_service._enrollment import ENROLLMENT_ATTEMPT_RECOVERY_SECONDS
+from app.services.identity_service._enrollment import ENROLLMENT_PROOF_COOKIE_SECONDS
 from app.services.identity_service._legacy_compat import (
     is_legacy_app_token,
     is_legacy_upload_token,
@@ -85,7 +86,7 @@ __all__ = [
     # constants
     "DEFAULT_ACCOUNT_NAME",
     "DEFAULT_BOOTSTRAP_DEVICE_NAME",
-    "ENROLLMENT_ATTEMPT_RECOVERY_SECONDS",
+    "ENROLLMENT_PROOF_COOKIE_SECONDS",
     "PAIRING_ATTEMPT_WINDOW",
     "PAIRING_CODE_TTL_MINUTES",
     "PAIRING_MAX_FAILED_ATTEMPTS",
@@ -99,6 +100,7 @@ __all__ = [
     "WebSessionAuthResult",
     # public API
     "active_auth_token_count",
+    "authenticate_session_principal",
     "authenticate_session_token",
     "authenticate_upload_link",
     "authenticate_web_session_token",

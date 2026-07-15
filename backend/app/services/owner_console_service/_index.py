@@ -31,6 +31,7 @@ from app.services.owner_console_service._common import (
 )
 from app.services.owner_console_service._ledger_console import (
     _managed_console_ledger_ids,
+    _require_owner_id,
     list_console_ledger_choices,
 )
 from app.services.owner_console_service._recurring_ops import (
@@ -95,7 +96,7 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
     pending_count = _expense_status_count(db, tenant_ids=managed_ledger_ids, status="pending")
     confirmed_count = _expense_status_count(db, tenant_ids=managed_ledger_ids, status="confirmed")
 
-    visible_devices = list_devices(db, ledger_ids=managed_ledger_ids)
+    visible_devices = list_devices(db, account_id=_require_owner_id(db))
     active_devices = sum(1 for device in visible_devices if device.revoked_at is None)
     active_links = _active_upload_link_count(db, ledger_ids=managed_ledger_ids)
 
