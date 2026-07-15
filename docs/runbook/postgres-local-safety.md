@@ -65,17 +65,17 @@ $env:DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_smoke"
 
 ---
 
-## 坑 3：本地 `:5438` 测试库一次只能跑一个 pytest 进程
+## 坑 3：本地 `:5438` 一次只跑一个顶层测试 runner
 
 ### 症状（怎么踩中）
-两个 pytest 进程并发打同一个 `:5438` 测试库（如「后台全量套件」+「前台针对性验证」同时跑），冒出**大片 ERROR**——注意是 setup 阶段的 **ERROR 不是 FAILED**。同一文件单独串行跑立即全绿。实测出现过：针对性测试 55 假 ERROR、全量套件被反向污染数个假 ERROR。看到这个形状先怀疑并发撞库，别当真 bug 调。
+同时启动两个顶层测试 runner（如「后台全量套件」+「前台针对性验证」），可能让两条 `stateful_serial` lane 同时改 `xpj_test`、角色或迁移状态，冒出 setup **ERROR** 或假红。单个 runner 内出现多个 pytest worker 是正常行为，不应手工关闭。
 
 ### 根因
-PG 测试 lane 的隔离单位是「测试」不是「进程」：session-scoped `_isolation_schema` fixture 在会话开头 **建一次 schema + base seed**，之后 `_db_isolation` 把每个测试包进一个回滚事务（`@pytest.mark.real_db` 的测试走整库 reset 例外）。这套设计假设**独占库**。两个进程并发时，一个进程重建 / reset schema，另一个进程在途的查询全炸。
+普通 lane 由 `run_test_lanes.py` 启动 xdist，每个 worker 使用本次 run uid 派生的独立 `xpj_test_<run>_gwN` 数据库；内部并行是受控的。migration、恢复、集群角色、schema 重建和共享宿主锁测试进入同一顶层 runner 的 `stateful_serial` lane，独占基础 `xpj_test` 和集群级资源。两个顶层 runner 仍可能在这些全局资源上相撞。
 
 ### 正确做法
-- 全量套件在跑（尤其后台任务）时，**绝不再起第二个 pytest**。针对性验证要么在全量前跑、要么等全量完。
-- 串行跑即可，不需要多库：
+- 全量套件在跑时，不再启动第二个顶层 pytest/runner；针对性验证等当前 runner 结束。
+- 使用统一 runner，让它内部安全并行普通测试、随后串行状态生命周期：
 
   ```powershell
   cd E:\projects\xiaopiaojia\backend
@@ -83,10 +83,10 @@ PG 测试 lane 的隔离单位是「测试」不是「进程」：session-scoped
   .\.venv\Scripts\python.exe scripts\run_test_lanes.py full  # 并行普通测试，再串行状态生命周期
   ```
 
-- 本地 `:5438` 抖动 / 偶发 ERROR 以 CI 的 `Backend (PostgreSQL)` lane 为权威——CI 跑全量、单 runner 串行，不会自撞。
+- 本地 `:5438` 抖动 / 偶发 ERROR 以 CI 的 `Backend (PostgreSQL)` lane 为交叉证据；CI 同样执行一个顶层 runner 的 parallel → stateful 顺序。
 
 ### 铁律
-**同一时刻只能有一个 pytest 打 `:5438`；满屏 ERROR（非 FAILED）先当并发撞库，串行重跑别当 bug 调。**
+**同一时刻只启动一个顶层测试 runner；runner 内部 xdist worker 按 run 隔离数据库，stateful lane 必须独占执行。**
 
 ---
 

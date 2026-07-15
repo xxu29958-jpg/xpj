@@ -44,7 +44,7 @@ PG-only 之后该 job 没有数据库，不跑 pytest / smoke——全量测试�
 
 ### backend-postgres（全量测试）
 
-GitHub 主路径跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径跑在 Windows runner，用本机 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离）。两条路径都完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest。普通测试按 runner 可用 CPU 动态选择 xdist worker（封顶 6），分别使用 `xpj_test_gwN`；migration、恢复、集群角色、schema 重建等 `stateful_serial` 测试随后独占 `xpj_test` 串行执行，两条 lane 不重叠。Gitea 的 teardown 必须按 postmaster PID 定向拆库，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
+GitHub 主路径跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径跑在 Windows runner，用本机 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离）。两条路径都完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest。普通测试按 runner 可用 CPU 动态选择 xdist worker（封顶 6），分别使用带本次 run uid 的 `xpj_test_<run>_gwN`；migration、恢复、集群角色、schema 重建等 `stateful_serial` 测试随后独占 `xpj_test` 串行执行，两条 lane 不重叠。Gitea 的 teardown 必须按 postmaster PID 定向拆库，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
 
 ### desktop-manager
 

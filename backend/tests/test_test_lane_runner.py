@@ -10,6 +10,20 @@ from scripts import run_test_lanes
 def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:
     command = run_test_lanes.pytest_command("parallel", workers=4)
 
+    assert command[: len(run_test_lanes.COMMON_PYTEST_ARGS) + 3] == [
+        run_test_lanes.sys.executable,
+        "-m",
+        "pytest",
+        *run_test_lanes.COMMON_PYTEST_ARGS,
+    ]
+    assert run_test_lanes.COMMON_PYTEST_ARGS == (
+        "tests",
+        "-q",
+        "-ra",
+        "--tb=short",
+        "-p",
+        "no:cacheprovider",
+    )
     assert command[-6:] == [
         "-m",
         "not stateful_serial",
@@ -23,6 +37,12 @@ def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:
 def test_stateful_lane_is_single_process() -> None:
     command = run_test_lanes.pytest_command("stateful", workers=4)
 
+    assert command[: len(run_test_lanes.COMMON_PYTEST_ARGS) + 3] == [
+        run_test_lanes.sys.executable,
+        "-m",
+        "pytest",
+        *run_test_lanes.COMMON_PYTEST_ARGS,
+    ]
     assert command[-2:] == ["-m", "stateful_serial"]
     assert "-n" not in command
 

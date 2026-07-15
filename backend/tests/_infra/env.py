@@ -18,6 +18,7 @@ from tests._infra.worker_db import worker_database_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 TEST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER")
+TEST_RUN_UID = os.environ.get("PYTEST_XDIST_TESTRUNUID")
 TEST_RUN_ID = f"{TEST_WORKER_ID or 'main'}_pid_{os.getpid()}"
 TEST_UPLOAD_TOKEN = "pytest-upload-token"
 TEST_APP_TOKEN = "pytest-app-token"
@@ -39,7 +40,7 @@ _base_database_url = (
     or "postgresql+psycopg://postgres@localhost:5438/xpj_test"
 )
 TEST_DATABASE_URL = (
-    worker_database_url(_base_database_url, TEST_WORKER_ID)
+    worker_database_url(_base_database_url, TEST_WORKER_ID, TEST_RUN_UID or "")
     if TEST_WORKER_ID is not None
     else _base_database_url
 )
