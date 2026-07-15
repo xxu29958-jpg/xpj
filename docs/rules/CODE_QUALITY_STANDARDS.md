@@ -72,7 +72,7 @@ GitHub `main` 已启用 strict branch protection、required checks 和管理员�
   GitHub PR 云端主路径全绿（Android 源变更再加 connected lane）才有资格合并，local-Gitea
   作为降级备用。
 - **merge 必须由用户显式授权**（GitHub 网页、`gh` 或 API；local-Gitea 仅降级备用），AI 不自行合并默认分支。
-- 纯文档改动可直推 main（2026-05-22 授权），推后仍跑 CI 校验。
+- 纯文档改动也走工作分支 + PR；受保护的 `main` 不接受绕过 required checks 的直推。
 - RC 发包另有 commit/CI 绑定硬门禁（`accept_gray_release.ps1` 的
   `Assert-ReleaseProvenance`，见 `docs/runbook/RELEASE_PACKAGING.md` §9）。
 - merge 后三端同步：GitHub origin → 本地 main → gitee；local-Gitea 启动后再补降级面同步。

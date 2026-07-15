@@ -29,6 +29,10 @@ What this lane counts
 - **backend_pytest_count** — exact count from ``pytest --collect-only``.
 - **backend_pytest_parallel_count** / **backend_pytest_stateful_count** —
   exact selected counts for the explicit ``stateful_serial`` partition.
+- **backend_pytest_stateful_membership_digest** records a SHA-256 fingerprint
+  of the sorted stateful node ids. Markers remain the execution authority; the
+  fingerprint only prevents equal-count marker swaps from silently demoting a
+  known serialized risk proof.
 - **installer_pytest_count** — exact count from the isolated Windows installer
   contract lane under ``packaging/tests``.
 
@@ -50,6 +54,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from hashlib import sha256
 
 # sys.path bootstrap so sibling scripts + ``app.*`` imports both resolve
 # whether the script is run directly, via release_audit subprocess, or
@@ -119,12 +124,12 @@ def _count_mutate_token_metrics() -> dict[str, int]:
     return out
 
 
-def _count_pytest_tests(
+def _collect_pytest_tests(
     target: str,
     *,
     mark_expression: str | None = None,
-) -> int:
-    """Exact pytest test count for one explicit collection root.
+) -> tuple[int, tuple[str, ...]]:
+    """Exact pytest count and node ids for one explicit collection root.
 
     NOT regex on ``def test_*``. Per ADR-0038 prep design: regex has
     built-in tolerance for parametrize / commented-out tests / multiline
@@ -170,16 +175,48 @@ def _count_pytest_tests(
             f"stderr:\n{result.stderr}"
         )
     # With -m, pytest reports "selected/total tests collected". Count the
-    # selected side; without -m the optional numerator is absent.
+    # selected side; without -m the optional numerator is absent. Quiet
+    # collection also emits one canonical node id per selected test.
+    count: int | None = None
     for line in reversed(result.stdout.splitlines()):
         match = re.search(r"(?:(\d+)/)?(\d+)\s+tests?\s+collected", line)
         if match:
-            return int(match.group(1) or match.group(2))
-    raise RuntimeError(
-        f"could not parse `pytest {target} --collect-only` output.\n"
-        f"stdout:\n{result.stdout}\n"
-        f"stderr:\n{result.stderr}"
+            count = int(match.group(1) or match.group(2))
+            break
+    if count is None:
+        raise RuntimeError(
+            f"could not parse `pytest {target} --collect-only` output.\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+    nodeid_prefix = f"{target.rstrip('/')}/"
+    nodeids = tuple(
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.startswith(nodeid_prefix) and "::" in line
     )
+    if len(nodeids) != count:
+        raise RuntimeError(
+            f"pytest reported {count} selected tests for {target!r}, but the "
+            f"collector emitted {len(nodeids)} node ids."
+        )
+    return count, nodeids
+
+
+def _count_pytest_tests(
+    target: str,
+    *,
+    mark_expression: str | None = None,
+) -> int:
+    return _collect_pytest_tests(
+        target,
+        mark_expression=mark_expression,
+    )[0]
+
+
+def _pytest_membership_digest(nodeids: tuple[str, ...]) -> int:
+    canonical = "".join(f"{nodeid}\n" for nodeid in sorted(nodeids))
+    return int.from_bytes(sha256(canonical.encode("utf-8")).digest(), "big")
 
 
 def main() -> int:
@@ -200,9 +237,13 @@ def main() -> int:
         "tests",
         mark_expression="not stateful_serial",
     )
-    counts["backend_pytest_stateful_count"] = _count_pytest_tests(
+    stateful_count, stateful_nodeids = _collect_pytest_tests(
         "tests",
         mark_expression="stateful_serial",
+    )
+    counts["backend_pytest_stateful_count"] = stateful_count
+    counts["backend_pytest_stateful_membership_digest"] = (
+        _pytest_membership_digest(stateful_nodeids)
     )
     counts["installer_pytest_count"] = _count_pytest_tests("packaging/tests")
 

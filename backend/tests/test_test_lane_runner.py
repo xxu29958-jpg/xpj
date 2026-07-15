@@ -222,13 +222,29 @@ def test_worker_side_guard_rejects_a_retained_stateful_item() -> None:
     assert "xdist worker gw0" in violation
 
 
-def test_stateful_tests_reject_xdist_even_with_forged_lane() -> None:
+def test_managed_runner_rejects_collection_hook_identity_drift(
+    tmp_path: Path,
+) -> None:
     backend_root = Path(__file__).resolve().parents[1]
+    plugin = tmp_path / "drop_selected_item.py"
+    plugin.write_text(
+        "def pytest_collection_modifyitems(items):\n"
+        "    for index, item in enumerate(items):\n"
+        "        if item.get_closest_marker('stateful_serial') is None:\n"
+        "            items.pop(index)\n"
+        "            break\n",
+        encoding="utf-8",
+    )
     environment = os.environ.copy()
-    environment["XPJ_TEST_LANE"] = "stateful"
+    environment[run_test_lanes.RUNNER_LANE_ENV] = "parallel"
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     environment.pop("PYTEST_PLUGINS", None)
-    environment.pop(run_test_lanes.RUNNER_LANE_ENV, None)
+    environment.pop("PYTEST_ADDOPTS", None)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        part
+        for part in (str(tmp_path), environment.get("PYTHONPATH"))
+        if part
+    )
     for key in tuple(environment):
         if key.startswith("PYTEST_XDIST_"):
             environment.pop(key)
@@ -238,12 +254,18 @@ def test_stateful_tests_reject_xdist_even_with_forged_lane() -> None:
             sys.executable,
             "-m",
             "pytest",
-            "tests/test_alembic_income_frequency_migration.py",
+            "tests",
             "-q",
             "-p",
             "xdist.plugin",
+            "-p",
+            "drop_selected_item",
+            "-o",
+            "addopts=",
+            "-m",
+            "not stateful_serial",
             "-n",
-            "2",
+            "0",
         ],
         cwd=backend_root,
         env=environment,
@@ -254,4 +276,4 @@ def test_stateful_tests_reject_xdist_even_with_forged_lane() -> None:
 
     output = completed.stdout + completed.stderr
     assert completed.returncode == pytest.ExitCode.USAGE_ERROR, output
-    assert "Parallel PostgreSQL tests must exclude the serialized lane" in output
+    assert "changed the committed test identity set" in output

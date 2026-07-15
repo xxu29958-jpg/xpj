@@ -41,7 +41,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/health
 **失败处理**：
 
 - 如果端口被占用，运行 `scripts\stop_backend.ps1` 后再启动。
-- 如果 `.venv` 缺失，先运行 `setup.bat`。
+- 如果 `.venv` 缺失，先运行 `setup.bat -Dev`，确保测试依赖也已安装。
 - 如果返回非 JSON 或超时，检查 `backend\logs\ticketbox-backend-*.out.log` 中的启动异常。
 
 **是否阻断灰度**：是。后端不启动，整条链路不可用。
@@ -62,6 +62,8 @@ Invoke-RestMethod http://127.0.0.1:8000/api/health
 
 ```bat
 cd /d E:\projects\xiaopiaojia\backend
+setup.bat -Dev
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_test_pg.ps1
 .venv\Scripts\python.exe -m compileall app scripts tests
 .venv\Scripts\ruff.exe check app scripts tests
 .venv\Scripts\python.exe scripts\run_test_lanes.py full
@@ -77,7 +79,7 @@ cd /d E:\projects\xiaopiaojia\backend
 
 **失败处理**：
 
-- 若 pytest 失败，查看具体失败用例，确认不是环境配置问题后再决定是否放行。
+- 若 pytest 因环境失败，修复环境后重跑；测试未正常全绿不得放行。
 - 若 smoke_test 失败，检查后端是否已启动、`.env` 是否存在。
 
 **是否阻断灰度**：是。冒烟失败说明基础接口异常。

@@ -139,6 +139,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "backend_pytest_count": 2656,
     "backend_pytest_parallel_count": 2596,
     "backend_pytest_stateful_count": 60,
+    "backend_pytest_stateful_membership_digest":
+        84_921_623_996_850_322_135_801_642_845_622_950_572_520_630_286_615_424_765_212_085_377_005_744_928_858,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 

@@ -177,9 +177,14 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
         assert isinstance(environment, dict)
         captured.append((command, environment))
         stdout = (
-            "60/2653 tests collected (2593 deselected) in 1.00s\n"
+            "tests/test_stateful.py::test_one\n"
+            "1/2 tests collected (1 deselected) in 1.00s\n"
             if "stateful_serial" in command
-            else "2653 tests collected in 1.00s\n"
+            else (
+                "tests/test_parallel.py::test_one\n"
+                "tests/test_stateful.py::test_one\n"
+                "2 tests collected in 1.00s\n"
+            )
         )
         return subprocess.CompletedProcess(
             command,
@@ -190,10 +195,20 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
 
     monkeypatch.setattr(mod.subprocess, "run", fake_run)
 
-    assert mod._count_pytest_tests("tests") == 2653
+    assert mod._count_pytest_tests("tests") == 2
     assert mod._count_pytest_tests(
         "tests", mark_expression="stateful_serial"
-    ) == 60
+    ) == 1
+    assert mod._pytest_membership_digest(
+        ("tests/test_stateful.py::test_one",)
+    ) != mod._pytest_membership_digest(
+        ("tests/test_parallel.py::test_one",)
+    )
+    assert mod._pytest_membership_digest(
+        ("tests/test_b.py::test_two", "tests/test_a.py::test_one")
+    ) == mod._pytest_membership_digest(
+        ("tests/test_a.py::test_one", "tests/test_b.py::test_two")
+    )
     assert captured[1][0][-4:] == [
         "-m",
         "stateful_serial",

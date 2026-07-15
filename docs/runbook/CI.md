@@ -44,7 +44,7 @@ PG-only 之后该 job 没有数据库，不跑 pytest / smoke——全量测试�
 
 ### backend-postgres（全量测试）
 
-GitHub 主路径跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径跑在 Windows runner，用本机 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离）。两条路径都完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest。普通测试按 runner 可用 CPU 动态选择 xdist worker（封顶 6），分别使用带本次 run uid 的 `xpj_test_<run>_gwN`；migration、恢复、集群角色、schema 重建等 `stateful_serial` 测试随后独占 `xpj_test` 串行执行，两条 lane 不重叠。任何 `XPJ_TEST_DATABASE_URL` 覆盖都必须同时声明 `XPJ_TEST_CLUSTER_CONFIRMED=1`，防止把测试 DDL 静默指向未确认集群。Gitea 的 teardown 必须按 postmaster PID 定向拆库，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
+GitHub 主路径跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径跑在 Windows runner，用本机 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离）。两条路径都完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest。普通测试按 runner 可用 CPU 动态选择 xdist worker（封顶 6），分别使用带本次 run uid 的 `xpj_test_<run>_gwN`；migration、恢复、集群角色、schema 重建等测试必须显式声明 `stateful_serial`，随后独占 `xpj_test` 串行执行。marker 是执行权威，成员指纹只防止已登记风险测试被等量降级；两条 lane 不重叠。任何 `XPJ_TEST_DATABASE_URL` 覆盖都必须同时声明 `XPJ_TEST_CLUSTER_CONFIRMED=1`，防止把测试 DDL 静默指向未确认集群。Gitea 的 teardown 必须按 postmaster PID 定向拆库，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
 
 ### desktop-manager
 
@@ -63,7 +63,7 @@ gradlew :app:lintGrayDebug
 gradlew :app:detektGrayDebug :app:detektGrayDebugUnitTest   # Kotlin 复杂度门（六阈值；type-resolving——plain :app:detekt 会静默跳过 LongParameterList；存量冻结 per-variant baseline）
 gradlew :app:assembleGrayDebug
 gradlew :app:assembleInternalDebug
-gradlew --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease   # R8 minify + shrinkResources；PR 仅 Android/CI 相关变更跑，main/manual 必跑
+gradlew --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease   # GitHub；local-Gitea 单 runner 保持 1；PR 仅 Android/CI 相关变更跑
 # apksigner 校验两个 debug APK = 仓库级稳定 debug 证书（指纹钉自 android/config/debug/README.md）
 ```
 
