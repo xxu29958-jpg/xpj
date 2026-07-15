@@ -27,6 +27,7 @@ from app.services.session_credential_lock import (
     lock_and_revalidate_credential_mint_context,
     lock_bootstrap_owner_transaction,
 )
+from app.services.session_lifecycle_service import revoke_pairing_capabilities_for_device
 from app.services.time_service import now_utc, to_iso
 from app.tenants import AuthContext
 
@@ -108,6 +109,7 @@ def _active_recovery_pairing_exists(
                 exists()
                 .where(PairingCode.recovery_device_id == device_id)
                 .where(PairingCode.used_at.is_(None))
+                .where(PairingCode.revoked_at.is_(None))
                 .where(PairingCode.expires_at > checked_at)
             )
         )
@@ -211,6 +213,11 @@ def revoke_device(
     link_update = update(UploadLink).where(UploadLink.device_id == device.id).where(UploadLink.revoked_at.is_(None))
     db.execute(token_update.values(revoked_at=now, grace_until=None))
     db.execute(link_update.values(revoked_at=now))
+    revoke_pairing_capabilities_for_device(
+        db,
+        device_id=device.id,
+        revoked_at=now,
+    )
     db.commit()
     db.refresh(device)
     return _device_summary(db, device)
@@ -331,6 +338,7 @@ def _revoked_device_candidate_ids(
         exists()
         .where(PairingCode.recovery_device_id == Device.id)
         .where(PairingCode.used_at.is_(None))
+        .where(PairingCode.revoked_at.is_(None))
         .where(PairingCode.expires_at > checked_at)
     )
     candidate_statement = (
@@ -374,6 +382,7 @@ def _delete_revoked_device_candidates(
         .where(PairingCode.recovery_device_id.in_(candidate_ids))
         .where(
             (PairingCode.used_at.is_not(None))
+            | (PairingCode.revoked_at.is_not(None))
             | (PairingCode.expires_at <= checked_at)
         )
         .values(recovery_device_id=None)
@@ -397,6 +406,7 @@ def _delete_revoked_device_candidates(
             ~exists()
             .where(PairingCode.recovery_device_id == Device.id)
             .where(PairingCode.used_at.is_(None))
+            .where(PairingCode.revoked_at.is_(None))
             .where(PairingCode.expires_at > checked_at)
         )
     )

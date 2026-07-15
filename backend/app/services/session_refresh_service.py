@@ -102,7 +102,6 @@ def _recover_committed_refresh(
         or replacement_expires_at <= checked_at
         or replacement.account_id != source.account_id
         or replacement.device_id != source.device_id
-        or replacement.ledger_id != source.ledger_id
         or not hmac.compare_digest(replacement.token_hash, hash_secret(replacement_value))
         or not _session_principal_is_active(db, replacement)
     ):

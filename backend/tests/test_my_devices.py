@@ -9,7 +9,6 @@ Device's intent merely because the Account matches.
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import (
@@ -248,47 +247,6 @@ def test_cannot_delete_an_active_device(client: TestClient, *, identity) -> None
     member_device = _seed_same_account_device(identity.app_token)
     response = client.post(f"/api/ledgers/owner/devices/{member_device}/delete", headers=identity.app_headers)
     assert response.status_code == 409, response.text
-
-
-def test_cannot_delete_device_while_recovery_code_is_active(
-    client: TestClient,
-    *,
-    identity,
-) -> None:
-    public_id = _seed_same_account_device(identity.app_token)
-    code = client.post(
-        "/api/ledgers/owner/devices/pairing-codes",
-        headers=identity.app_headers,
-        json={"recovery_device_public_id": public_id},
-    )
-    assert code.status_code == 201, code.text
-
-    revoked = client.post(
-        f"/api/ledgers/owner/devices/{public_id}/revoke",
-        headers=identity.app_headers,
-    )
-    assert revoked.status_code == 200, revoked.text
-    blocked = client.post(
-        f"/api/ledgers/owner/devices/{public_id}/delete",
-        headers=identity.app_headers,
-    )
-    assert blocked.status_code == 409, blocked.text
-
-    with SessionLocal() as db:
-        device_id = db.scalar(select(Device.id).where(Device.public_id == public_id))
-        assert device_id is not None
-        pairing = db.scalar(
-            select(PairingCode).where(PairingCode.recovery_device_id == device_id)
-        )
-        assert pairing is not None
-        pairing.expires_at = now_utc()
-        db.commit()
-
-    deleted = client.post(
-        f"/api/ledgers/owner/devices/{public_id}/delete",
-        headers=identity.app_headers,
-    )
-    assert deleted.status_code == 204, deleted.text
 
 
 def test_create_pairing_code_returns_a_code(client: TestClient, *, identity) -> None:

@@ -23,6 +23,8 @@ Two failure modes:
 
 Adding a route that legitimately needs no test (health, static
 mounts) → add its path to :data:`ALLOWLIST` with a one-line reason.
+Public capability routes still need behavior tests, but belong in
+:data:`BEARER_401_EXEMPTIONS` instead of pretending they require a Bearer token.
 Adding a route that needs a 401 test but doesn't have one yet → add
 to :data:`KNOWN_GAPS` with the ticket / commit that introduced it.
 """
@@ -53,6 +55,11 @@ ALLOWLIST: dict[str, str] = {
     "/owner/settings/about": "static-render — covered via /owner _index test",
     "/owner/devices/{public_id}/delete": "covered by owner_console_members test",
     "/owner/upload-links/{public_id}/rotate": "covered by admin_devices_and_upload_links",
+}
+
+BEARER_401_EXEMPTIONS: dict[str, str] = {
+    "/api/invitations/preview": "public read-only preview authenticated by the invitation capability",
+    "/api/invitations/accept": "first-device enrollment is authenticated by the one-shot invitation capability",
 }
 
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -176,7 +183,7 @@ def _collect_route_gaps(tests_root: pathlib.Path) -> tuple[list[str], list[str]]
             if path.startswith("/web/") or path.startswith("/owner/"):
                 seen.add(key)
                 continue
-            if not _grep_no_auth_check(path, tests_root):
+            if path not in BEARER_401_EXEMPTIONS and not _grep_no_auth_check(path, tests_root):
                 missing_401.append(f"{method} {path}")
         seen.add(key)
     return missing_any, missing_401

@@ -307,10 +307,11 @@ def test_graced_source_token_can_finish_ledger_switch_after_refresh_wins(
         )
         db.commit()
 
+    proof = session_refresh_payload()
     refreshed = client.post(
         "/api/auth/refresh",
         headers={"Authorization": f"Bearer {old_token}"},
-        json=session_refresh_payload(),
+        json=proof,
     )
     assert refreshed.status_code == 200, refreshed.text
 
@@ -330,6 +331,14 @@ def test_graced_source_token_can_finish_ledger_switch_after_refresh_wins(
     )
     assert selected.status_code == 200, selected.text
     assert selected.json()["ledger_id"] == target_ledger_id
+
+    replay = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {old_token}"},
+        json=proof,
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == refreshed.json()
 
 
 def test_refresh_retry_rejects_a_different_proof(

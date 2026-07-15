@@ -32,6 +32,7 @@ from app.services.session_credential_lock import (
     lock_and_revalidate_mutation_actor,
     lock_and_revalidate_session_principal,
 )
+from app.services.session_lifecycle_service import revoke_pairing_capabilities_for_device
 from app.services.time_service import now_utc, to_iso
 from app.tenants import AuthContext, SessionPrincipal
 
@@ -200,6 +201,11 @@ def revoke_my_device(
         .where(UploadLink.revoked_at.is_(None))
         .values(revoked_at=revoked_at)
     )
+    revoke_pairing_capabilities_for_device(
+        db,
+        device_id=device.id,
+        revoked_at=revoked_at,
+    )
     db.commit()
     db.refresh(device)
     return _as_my_device(_summary(principal, device), current)
@@ -230,6 +236,7 @@ def delete_my_device(
         select(PairingCode.id)
         .where(PairingCode.recovery_device_id == device.id)
         .where(PairingCode.used_at.is_(None))
+        .where(PairingCode.revoked_at.is_(None))
         .where(PairingCode.expires_at > now_utc())
         .limit(1)
     )

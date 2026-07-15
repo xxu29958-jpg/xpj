@@ -107,12 +107,14 @@ def _assert_credential_counts() -> None:
             pairing
             for pairing in pairings
             if pairing.used_at is None
+            and pairing.revoked_at is None
             and (ensure_utc(pairing.expires_at) or pairing.expires_at) > checked_at
         ]
         assert len(active_pairings) == 1
         assert all(
             pairing in active_pairings
             or pairing.used_at is not None
+            or pairing.revoked_at is not None
             or (ensure_utc(pairing.expires_at) or pairing.expires_at) <= checked_at
             for pairing in pairings
         )

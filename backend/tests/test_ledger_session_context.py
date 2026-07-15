@@ -67,8 +67,11 @@ def test_selected_ledger_header_cannot_bypass_membership(
         },
     )
 
-    assert response.status_code == 401
-    assert response.json()["error"] == "invalid_token"
+    assert response.status_code == 403
+    assert response.json()["error"] == "ledger_forbidden"
+
+    still_valid = client.get("/api/auth/check", headers=identity.app_headers)
+    assert still_valid.status_code == 200, still_valid.text
 
 
 def test_active_session_counts_follow_membership_not_token_default(

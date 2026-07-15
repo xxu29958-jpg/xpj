@@ -313,6 +313,46 @@ def test_preview_used_invitation_is_invalid(client: TestClient, *, identity) -> 
     assert preview.json()["error"] == "invitation_invalid"
 
 
+def test_legacy_invitation_accept_requires_upgrade_without_consuming_token(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
+    invite = _mint(client, family_id, family_app)
+
+    rejected = client.post(
+        "/api/invitations/accept",
+        json={
+            "invite_token": invite,
+            "account_name": "旧版客户端成员",
+            "device_name": "legacy-android",
+            "platform": "android",
+        },
+    )
+    assert rejected.status_code == 422
+    assert rejected.json()["error"] == "client_upgrade_required"
+
+    with SessionLocal() as db:
+        invitation = db.scalar(
+            select(Invitation).where(Invitation.token_hash == hash_secret(invite))
+        )
+        assert invitation is not None
+        assert invitation.used_at is None
+        assert invitation.used_by_account_id is None
+
+    retried = client.post(
+        "/api/invitations/accept",
+        json=invitation_accept_payload(
+            invite,
+            account_name="升级后成员",
+            device_name="upgraded-android",
+        ),
+    )
+    assert retried.status_code == 200, retried.text
+
+
 def test_accept_invitation_issues_app_token_and_membership(client: TestClient, *, identity) -> None:
     family_id = _create_family_ledger(client, identity=identity)
     family_app = _switch_to(client, family_id, identity.app_headers)
@@ -838,7 +878,8 @@ def test_disable_member_blocks_only_that_ledger(client: TestClient, *, identity)
     # The disabled ledger is closed by Membership, not by destroying a
     # DeviceSession that remains valid for the same Account's other ledger.
     fail = client.get("/api/auth/check", headers=_bearer(member_token))
-    assert fail.status_code == 401
+    assert fail.status_code == 403
+    assert fail.json()["error"] == "ledger_forbidden"
     private = client.get(
         "/api/auth/check",
         headers={

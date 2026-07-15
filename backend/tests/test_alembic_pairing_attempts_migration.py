@@ -102,9 +102,15 @@ def _seed_identity_credentials(
         text(
             "INSERT INTO pairing_codes "
             "(id, code_hash, ledger_id, account_id, expires_at, used_at, created_at) "
-            "VALUES (301, :code_hash, 'upgrade-ledger', 101, :expires_at, :created_at, :created_at)"
+            "VALUES "
+            "(301, :code_hash, 'upgrade-ledger', 101, :expires_at, :created_at, :created_at), "
+            "(302, :pending_code_hash, 'upgrade-ledger', 101, :expires_at, NULL, :created_at)"
         ),
-        {**values, "code_hash": "3" * 64},
+        {
+            **values,
+            "code_hash": "3" * 64,
+            "pending_code_hash": "6" * 64,
+        },
     )
     connection.execute(
         text(
@@ -160,10 +166,24 @@ def _assert_identity_schema() -> None:
     assert enrollment["session_expires_at"]["nullable"] is True
     assert enrollment["session_soft_refresh_after"]["nullable"] is True
 
+    pairing = {
+        column["name"]: column
+        for column in inspector.get_columns("pairing_codes")
+    }
+    assert {
+        "created_by_device_id",
+        "recovery_device_id",
+        "revoked_at",
+    } <= set(pairing)
+    assert pairing["created_by_device_id"]["nullable"] is True
+    assert pairing["recovery_device_id"]["nullable"] is True
+    assert pairing["revoked_at"]["nullable"] is True
+
     pairing_fks = {
         tuple(foreign_key["constrained_columns"]): foreign_key
         for foreign_key in inspector.get_foreign_keys("pairing_codes")
     }
+    assert pairing_fks[("created_by_device_id",)]["options"]["ondelete"] == "SET NULL"
     assert pairing_fks[("recovery_device_id",)]["options"]["ondelete"] == "RESTRICT"
 
     refresh = {
@@ -265,6 +285,16 @@ def test_identity_receipts_upgrade_real_previous_revision_and_reject_downgrade()
             assert connection.scalar(
                 text("SELECT recovery_device_id FROM pairing_codes WHERE id = 301")
             ) == 201
+            pairing_revocations = dict(
+                connection.execute(
+                    text(
+                        "SELECT id, revoked_at FROM pairing_codes "
+                        "WHERE id IN (301, 302) ORDER BY id"
+                    )
+                ).all()
+            )
+            assert pairing_revocations[301] is None
+            assert pairing_revocations[302] is not None
         _assert_identity_schema()
     finally:
         _reset_schema()

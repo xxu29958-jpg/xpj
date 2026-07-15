@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -267,6 +267,7 @@ def consume_pairing_code(
         .where(PairingCode.id == pairing_id)
         .where(PairingCode.code_hash == expected_code_hash)
         .where(PairingCode.used_at.is_(None))
+        .where(PairingCode.revoked_at.is_(None))
         .where(PairingCode.expires_at > used_at)
         .values(used_at=used_at)
         .execution_options(synchronize_session=False)
@@ -281,12 +282,41 @@ def consume_pairing_code(
     )
     if refreshed is None or refreshed.code_hash != expected_code_hash:
         return "expired"
+    if refreshed.revoked_at is not None:
+        return "expired"
     expires_at = ensure_utc(refreshed.expires_at) or refreshed.expires_at
     if expires_at <= used_at:
         return "expired"
     if refreshed.used_at is not None:
         return "used"
     return "expired"
+
+
+def revoke_pairing_capabilities_for_device(
+    db: Session,
+    *,
+    device_id: int,
+    revoked_at: datetime | None = None,
+) -> int:
+    """Revoke unused pairing authority issued by or targeting one Device."""
+
+    lock_bootstrap_owner_transaction(db)
+    revoked_at = revoked_at or now_utc()
+    result = db.execute(
+        update(PairingCode)
+        .where(PairingCode.revoked_at.is_(None))
+        .where(PairingCode.used_at.is_(None))
+        .where(PairingCode.expires_at > revoked_at)
+        .where(
+            or_(
+                PairingCode.created_by_device_id == device_id,
+                PairingCode.recovery_device_id == device_id,
+            )
+        )
+        .values(revoked_at=revoked_at)
+        .execution_options(synchronize_session=False)
+    )
+    return int(result.rowcount or 0)
 
 
 def revoke_web_session_token(db: Session, *, token_value: str, revoked_at: datetime | None = None) -> bool:
