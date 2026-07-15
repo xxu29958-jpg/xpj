@@ -278,7 +278,7 @@ def test_refresh_survives_disabled_default_ledger_when_account_has_another_ledge
     assert selected.json()["ledger_id"] == fallback_ledger_id
 
 
-def test_graced_source_token_can_finish_ledger_switch_after_refresh_wins(
+def test_graced_source_switch_updates_the_entire_refresh_receipt_chain(
     client: TestClient,
     *,
     identity,
@@ -322,15 +322,29 @@ def test_graced_source_token_can_finish_ledger_switch_after_refresh_wins(
     assert switched.status_code == 200, switched.text
     assert switched.json()["session_token"] == old_token
 
-    selected = client.get(
+    selected_replacement = client.get(
+        "/api/auth/check",
+        headers={"Authorization": f"Bearer {refreshed.json()['session_token']}"},
+    )
+    assert selected_replacement.status_code == 200, selected_replacement.text
+    assert selected_replacement.json()["ledger_id"] == target_ledger_id
+
+    selected_predecessor = client.get(
+        "/api/auth/check",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+    assert selected_predecessor.status_code == 200, selected_predecessor.text
+    assert selected_predecessor.json()["ledger_id"] == target_ledger_id
+
+    explicitly_selected = client.get(
         "/api/auth/check",
         headers={
             "Authorization": f"Bearer {refreshed.json()['session_token']}",
             "X-Ticketbox-Ledger-ID": target_ledger_id,
         },
     )
-    assert selected.status_code == 200, selected.text
-    assert selected.json()["ledger_id"] == target_ledger_id
+    assert explicitly_selected.status_code == 200, explicitly_selected.text
+    assert explicitly_selected.json()["ledger_id"] == target_ledger_id
 
     replay = client.post(
         "/api/auth/refresh",

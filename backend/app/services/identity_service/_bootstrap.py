@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -30,6 +30,7 @@ from app.services.identity_service._device import (
 from app.services.identity_service._models import (
     DEFAULT_ACCOUNT_NAME,
     DEFAULT_BOOTSTRAP_DEVICE_NAME,
+    PAIRING_CODE_TTL_MINUTES,
     BootstrapResult,
 )
 from app.services.identity_service._seed import (
@@ -191,8 +192,20 @@ def _bootstrap_recovery_principal_is_active(
 def _pairing_expiration_for_recovery(
     pairing: PairingCode,
     *,
+    issuer_device_id: int,
     recovered_at: datetime,
 ) -> str | None:
+
+    if pairing.revoked_at is not None:
+        # The schema migration revokes legacy unused codes because their issuer
+        # cannot be proven from old rows. The exact deterministic bootstrap
+        # credential triple supplies that missing proof on retry. Codes with a
+        # known issuer remain intentionally revoked and must not be resurrected.
+        if pairing.used_at is not None or pairing.created_by_device_id is not None:
+            return None
+        pairing.created_by_device_id = issuer_device_id
+        pairing.revoked_at = None
+        pairing.expires_at = recovered_at + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
 
     pairing_expiration = ensure_utc(pairing.expires_at)
     if pairing_expiration is None:
@@ -237,6 +250,7 @@ def _completed_bootstrap_result(
 
     pairing_expires_at = _pairing_expiration_for_recovery(
         pairing,
+        issuer_device_id=admin.device_id,
         recovered_at=recovered_at,
     )
     if pairing_expires_at is None:

@@ -1,10 +1,10 @@
 """v1.1 Batch 3: route test-matrix coverage gate.
 
 Every route registered under :data:`app.main.app` should have a test
-file that exercises it. Mutating routes (POST / PUT / PATCH / DELETE)
-should additionally have a no-auth rejection test (i.e. some test
-calls that exact path WITHOUT an ``Authorization`` header and expects
-401), so an auth regression can't ship silently. The test corpus must
+file that exercises it. Mutating Bearer routes (POST / PUT / PATCH /
+DELETE) should additionally have a 401 rejection test. Optional-Bearer
+routes must reject an invalid supplied credential even when omitting the
+header is legitimate, so an auth regression can't ship silently. The test corpus must
 also carry explicit security markers for cross-ledger, viewer-write,
 and existence-hiding coverage so those categories stay visible in CI.
 
@@ -23,8 +23,8 @@ Two failure modes:
 
 Adding a route that legitimately needs no test (health, static
 mounts) → add its path to :data:`ALLOWLIST` with a one-line reason.
-Public capability routes still need behavior tests, but belong in
-:data:`BEARER_401_EXEMPTIONS` instead of pretending they require a Bearer token.
+Public capability routes that never inspect Bearer credentials still need
+behavior tests, but belong in :data:`BEARER_401_EXEMPTIONS`.
 Adding a route that needs a 401 test but doesn't have one yet → add
 to :data:`KNOWN_GAPS` with the ticket / commit that introduced it.
 """
@@ -59,7 +59,6 @@ ALLOWLIST: dict[str, str] = {
 
 BEARER_401_EXEMPTIONS: dict[str, str] = {
     "/api/invitations/preview": "public read-only preview authenticated by the invitation capability",
-    "/api/invitations/accept": "first-device enrollment is authenticated by the one-shot invitation capability",
 }
 
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -120,7 +119,7 @@ def _grep_tests_for(pattern: str, tests_root: pathlib.Path) -> bool:
     return False
 
 
-def _grep_no_auth_check(path: str, tests_root: pathlib.Path) -> bool:
+def _grep_bearer_401_check(path: str, tests_root: pathlib.Path) -> bool:
     """Loose heuristic: a test file mentions this path AND ``401`` in
     the same file. Doesn't validate the actual assertion shape — that's
     what code review is for — but flags the cheap missing-401-gate case.
@@ -183,7 +182,7 @@ def _collect_route_gaps(tests_root: pathlib.Path) -> tuple[list[str], list[str]]
             if path.startswith("/web/") or path.startswith("/owner/"):
                 seen.add(key)
                 continue
-            if path not in BEARER_401_EXEMPTIONS and not _grep_no_auth_check(path, tests_root):
+            if path not in BEARER_401_EXEMPTIONS and not _grep_bearer_401_check(path, tests_root):
                 missing_401.append(f"{method} {path}")
         seen.add(key)
     return missing_any, missing_401

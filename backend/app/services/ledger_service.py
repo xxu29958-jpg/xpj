@@ -48,6 +48,7 @@ from app.services.session_lifecycle_service import (
     app_token_soft_refresh_after,
     hash_secret,
 )
+from app.services.session_refresh_service import set_session_family_ledger_default
 from app.services.time_service import ensure_utc, to_iso
 from app.tenants import DEFAULT_TENANT_ID, AuthContext, SessionPrincipal
 
@@ -322,7 +323,11 @@ def switch_ledger(
     from app.services.time_service import now_utc
 
     switched_at = now_utc()
-    token.ledger_id = ledger.ledger_id
+    set_session_family_ledger_default(
+        db,
+        token=token,
+        ledger_id=ledger.ledger_id,
+    )
     device.last_seen_at = switched_at
     db.commit()
 
