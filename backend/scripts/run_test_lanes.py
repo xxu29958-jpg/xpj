@@ -8,13 +8,6 @@ import subprocess
 import sys
 from collections.abc import Sequence
 
-if __package__:
-    from scripts.test_pg_contract import stateful_test_cluster_lock
-else:
-    from test_pg_contract import stateful_test_cluster_lock
-
-TEST_LANE_ENV = "XPJ_TEST_LANE"
-
 COMMON_PYTEST_ARGS = (
     "tests",
     "-q",
@@ -60,23 +53,8 @@ def worker_count(raw_value: str | None) -> int:
 def run_lanes(lanes: Sequence[str], *, workers: int) -> int:
     for lane in lanes:
         command = pytest_command(lane, workers=workers)
-        lane_environment = os.environ.copy()
-        lane_environment[TEST_LANE_ENV] = lane
         print(f"[test-lane:{lane}] {' '.join(command)}", flush=True)
-        if lane == "stateful":
-            print("[test-lane:stateful] acquiring PostgreSQL cluster lock", flush=True)
-            with stateful_test_cluster_lock(lane_environment):
-                completed = subprocess.run(
-                    command,
-                    check=False,
-                    env=lane_environment,
-                )
-        else:
-            completed = subprocess.run(
-                command,
-                check=False,
-                env=lane_environment,
-            )
+        completed = subprocess.run(command, check=False)
         if completed.returncode != 0:
             return completed.returncode
     return 0

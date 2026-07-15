@@ -8,6 +8,7 @@ database, so schema resets and committed rows cannot cross worker boundaries.
 from __future__ import annotations
 
 import re
+import secrets
 from hashlib import sha256
 
 import psycopg
@@ -21,6 +22,15 @@ from scripts.test_pg_contract import (
 )
 
 _WORKER_ID = re.compile(r"gw[0-9]+")
+
+
+def new_worker_run_uid(worker_id: str | None) -> str | None:
+    """Return an execution-owned nonce that xdist CLI options cannot reuse."""
+
+    if worker_id is None:
+        return None
+    _validate_worker_id(worker_id)
+    return secrets.token_hex(16)
 
 
 def worker_database_url(base_url: str, worker_id: str, run_uid: str) -> str:

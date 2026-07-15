@@ -21,6 +21,7 @@ import pytest
 # Importing tests._infra.env sets os.environ before any app.* import.
 from fastapi.testclient import TestClient
 
+from scripts.test_pg_contract import test_cluster_lock
 from tests._infra import env
 from tests._infra.client import make_test_client
 from tests._infra.db import (
@@ -30,7 +31,7 @@ from tests._infra.db import (
 )
 from tests._infra.identity import TestIdentity, seed_identity
 from tests._infra.lane_policy import (
-    TEST_LANE_ENV,
+    parallel_lane_configuration_violation,
     postgres_test_markers,
     stateful_selection_violation,
 )
@@ -44,23 +45,27 @@ def _isolation_schema():
     Per-test ``_db_isolation`` then wraps each test in a rolled-back transaction
     (or a full reset for ``@pytest.mark.real_db`` tests).
     """
-    if env.TEST_WORKER_ID is not None:
-        recreate_worker_database(
-            env.TEST_DATABASE_URL,
-            worker_id=env.TEST_WORKER_ID,
-            run_uid=env.TEST_RUN_UID or "",
-        )
-    try:
-        reset_db_state()
-        yield
-    finally:
-        cleanup_runtime()
+    with test_cluster_lock(
+        os.environ,
+        exclusive=env.TEST_WORKER_ID is None,
+    ):
         if env.TEST_WORKER_ID is not None:
-            drop_worker_database(
+            recreate_worker_database(
                 env.TEST_DATABASE_URL,
                 worker_id=env.TEST_WORKER_ID,
                 run_uid=env.TEST_RUN_UID or "",
             )
+        try:
+            reset_db_state()
+            yield
+        finally:
+            cleanup_runtime()
+            if env.TEST_WORKER_ID is not None:
+                drop_worker_database(
+                    env.TEST_DATABASE_URL,
+                    worker_id=env.TEST_WORKER_ID,
+                    run_uid=env.TEST_RUN_UID or "",
+                )
 
 
 @pytest.fixture(autouse=True)
@@ -156,6 +161,12 @@ def pytest_configure(config: pytest.Config) -> None:
         "cluster_serial: PostgreSQL cluster-level test that must run in the "
         "exclusive stateful lane.",
     )
+    violation = parallel_lane_configuration_violation(
+        configured_workers=config.getoption("numprocesses", default=0),
+        mark_expression=config.getoption("markexpr", default=""),
+    )
+    if violation:
+        raise pytest.UsageError(violation)
 
 
 def pytest_collection_modifyitems(
@@ -181,7 +192,6 @@ def pytest_collection_finish(session: pytest.Session) -> None:
     ]
     violation = stateful_selection_violation(
         selected_stateful,
-        active_lane=os.environ.get(TEST_LANE_ENV),
         xdist_worker=os.environ.get("PYTEST_XDIST_WORKER"),
         configured_workers=session.config.getoption("numprocesses", default=0),
     )

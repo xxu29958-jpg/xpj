@@ -6,8 +6,10 @@ from sqlalchemy.engine import make_url
 from scripts import test_pg_contract
 from scripts.test_pg_contract import configured_test_database_url
 from tests._infra import db as db_infra
+from tests._infra import worker_db as worker_db_infra
 from tests._infra.worker_db import (
     drop_worker_database,
+    new_worker_run_uid,
     recreate_worker_database,
     worker_database_url,
 )
@@ -39,19 +41,26 @@ def test_database_url_override_requires_explicit_cluster_confirmation() -> None:
             }
         )
 
-    with pytest.raises(ValueError, match="must not override"):
-        configured_test_database_url(
-            {
-                "XPJ_TEST_DATABASE_URL": (
-                    "postgresql+psycopg://postgres@localhost:5432/"
-                    "xpj_test?dbname=ticketbox"
-                ),
-                "XPJ_TEST_CLUSTER_CONFIRMED": "1",
-            }
-        )
+    for query_database in ("ticketbox", "xpj_test"):
+        with pytest.raises(ValueError, match="dbname query"):
+            configured_test_database_url(
+                {
+                    "XPJ_TEST_DATABASE_URL": (
+                        "postgresql+psycopg://postgres@localhost:5432/"
+                        f"xpj_test?dbname={query_database}"
+                    ),
+                    "XPJ_TEST_CLUSTER_CONFIRMED": "1",
+                }
+            )
 
 
-def test_worker_database_url_preserves_connection_contract() -> None:
+def test_worker_database_url_preserves_connection_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(worker_db_infra.secrets, "token_hex", lambda _size: "owned")
+    assert new_worker_run_uid("gw0") == "owned"
+    assert new_worker_run_uid(None) is None
+
     result = worker_database_url(
         "postgresql+psycopg://tester:secret@localhost:5438/xpj_test?sslmode=disable",
         "gw3",
@@ -142,9 +151,17 @@ def test_schema_reset_refuses_non_test_database(
         db_infra.reset_db_state()
 
 
-def test_stateful_lane_lock_releases_cluster_wide_advisory_lock_on_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _lock_environment() -> dict[str, str]:
+    return {
+        "XPJ_TEST_DATABASE_URL": (
+            "postgresql+psycopg://tester:secret@authority.example:5432/"
+            "xpj_test?host=query.example&port=5544&sslmode=require"
+        ),
+        "XPJ_TEST_CLUSTER_CONFIRMED": "1",
+    }
+
+
+def _fake_lock_events(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object]]:
     events: list[tuple[str, object]] = []
 
     class FakeResult:
@@ -167,17 +184,19 @@ def test_stateful_lane_lock_releases_cluster_wide_advisory_lock_on_failure(
         return FakeConnection()
 
     monkeypatch.setattr(test_pg_contract.psycopg, "connect", fake_connect)
+    return events
+
+
+def test_exclusive_cluster_lock_releases_after_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = _fake_lock_events(monkeypatch)
 
     with (
         pytest.raises(ZeroDivisionError),
-        test_pg_contract.stateful_test_cluster_lock(
-            {
-                "XPJ_TEST_DATABASE_URL": (
-                    "postgresql+psycopg://tester:secret@authority.example:5432/"
-                    "xpj_test?host=query.example&port=5544&sslmode=require"
-                ),
-                "XPJ_TEST_CLUSTER_CONFIRMED": "1",
-            }
+        test_pg_contract.test_cluster_lock(
+            _lock_environment(),
+            exclusive=True,
         ),
     ):
         events.append(("body", None))
@@ -202,6 +221,26 @@ def test_stateful_lane_lock_releases_cluster_wide_advisory_lock_on_failure(
         "SELECT pg_advisory_lock(%s)",
         "body",
         "SELECT pg_advisory_unlock(%s)",
+        "closed",
+    ]
+
+
+def test_shared_cluster_lock_and_query_target_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = _fake_lock_events(monkeypatch)
+
+    with test_pg_contract.test_cluster_lock(
+        _lock_environment(),
+        exclusive=False,
+    ):
+        events.append(("body", None))
+    assert [event[0] for event in events] == [
+        "connect",
+        "SELECT set_config('statement_timeout', %s, false)",
+        "SELECT pg_advisory_lock_shared(%s)",
+        "body",
+        "SELECT pg_advisory_unlock_shared(%s)",
         "closed",
     ]
 

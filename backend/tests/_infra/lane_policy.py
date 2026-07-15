@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
-TEST_LANE_ENV = "XPJ_TEST_LANE"
-
 _STATEFUL_SERIAL_MODULE_PREFIXES = (
     "tests/test_alembic_",
     "tests/test_db_migration_",
@@ -98,22 +94,19 @@ def postgres_test_markers(nodeid: str) -> tuple[str, ...]:
 
 
 def stateful_selection_violation(
-    selected_nodeids: Sequence[str],
+    selected_nodeids: list[str],
     *,
-    active_lane: str | None,
     xdist_worker: str | None,
     configured_workers: object,
 ) -> str | None:
-    """Reject stateful tests unless the serialized runner owns this process."""
+    """Reject stateful tests whenever xdist could execute them concurrently."""
 
     if not selected_nodeids:
         return None
     instruction = (
-        "Stateful PostgreSQL tests must run through "
-        "`python scripts/run_test_lanes.py stateful`."
+        "Stateful PostgreSQL tests require single-process execution; use "
+        "`python scripts/run_test_lanes.py stateful` for the full lane."
     )
-    if active_lane != "stateful":
-        return f"{instruction} Selected: {selected_nodeids[0]}"
     if xdist_worker:
         return f"{instruction} xdist worker {xdist_worker} is not serialized."
     try:
@@ -123,3 +116,25 @@ def stateful_selection_violation(
     if worker_count != 0:
         return f"{instruction} Configured xdist worker count is {worker_count}."
     return None
+
+
+def parallel_lane_configuration_violation(
+    *,
+    configured_workers: object,
+    mark_expression: str,
+) -> str | None:
+    """Require the explicit stateful exclusion before xdist workers start."""
+
+    try:
+        worker_count = int(configured_workers or 0)
+    except (TypeError, ValueError):
+        worker_count = -1
+    if worker_count == 0:
+        return None
+    if mark_expression.strip() == "not stateful_serial":
+        return None
+    return (
+        "Parallel PostgreSQL tests must exclude the serialized lane with "
+        "`-m \"not stateful_serial\"`; use "
+        "`python scripts/run_test_lanes.py parallel`."
+    )

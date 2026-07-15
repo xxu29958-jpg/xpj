@@ -1,4 +1,4 @@
-"""Destructive PostgreSQL test-target and stateful-lane contracts."""
+"""Destructive PostgreSQL test-target and test-lane lock contracts."""
 
 from __future__ import annotations
 
@@ -51,6 +51,10 @@ def validate_test_database_url(database_url: str | URL) -> URL:
     parsed = make_url(database_url)
     if parsed.get_backend_name() != "postgresql":
         raise ValueError("Test database URL must use PostgreSQL")
+    if "dbname" in parsed.query:
+        raise ValueError(
+            "Test database URL must not define a dbname query parameter"
+        )
     path_database = validate_test_database_name(parsed.database or "")
     resolved_database = _dialect_connection_args(parsed).get("dbname")
     if resolved_database != path_database:
@@ -61,10 +65,24 @@ def validate_test_database_url(database_url: str | URL) -> URL:
 
 
 @contextlib.contextmanager
-def stateful_test_cluster_lock(environment: Mapping[str, str]) -> Iterator[None]:
-    """Serialize stateful lanes across processes sharing one PG cluster."""
+def test_cluster_lock(
+    environment: Mapping[str, str],
+    *,
+    exclusive: bool,
+) -> Iterator[None]:
+    """Coordinate isolated workers and destructive sessions on one PG cluster."""
 
     parsed = validate_test_database_url(configured_test_database_url(environment))
+    lock_statement = (
+        "SELECT pg_advisory_lock(%s)"
+        if exclusive
+        else "SELECT pg_advisory_lock_shared(%s)"
+    )
+    unlock_statement = (
+        "SELECT pg_advisory_unlock(%s)"
+        if exclusive
+        else "SELECT pg_advisory_unlock_shared(%s)"
+    )
     with psycopg.connect(
         autocommit=True,
         **admin_connection_args(parsed),
@@ -73,16 +91,19 @@ def stateful_test_cluster_lock(environment: Mapping[str, str]) -> Iterator[None]
             "SELECT set_config('statement_timeout', %s, false)",
             (str(_STATEFUL_LOCK_TIMEOUT_MS),),
         )
-        connection.execute("SELECT pg_advisory_lock(%s)", (_STATEFUL_LOCK_KEY,))
+        connection.execute(lock_statement, (_STATEFUL_LOCK_KEY,))
         try:
             yield
         finally:
             released = connection.execute(
-                "SELECT pg_advisory_unlock(%s)",
+                unlock_statement,
                 (_STATEFUL_LOCK_KEY,),
             ).fetchone()
             if released != (True,):
-                raise RuntimeError("Stateful PostgreSQL test-lane lock was not owned")
+                mode = "exclusive" if exclusive else "shared"
+                raise RuntimeError(
+                    f"PostgreSQL test-lane {mode} lock was not owned"
+                )
 
 
 def admin_connection_args(database_url: URL) -> dict[str, object]:

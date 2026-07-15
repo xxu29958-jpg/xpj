@@ -15,11 +15,11 @@ import os
 from pathlib import Path
 
 from scripts.test_pg_contract import configured_test_database_url
-from tests._infra.worker_db import worker_database_url
+from tests._infra.worker_db import new_worker_run_uid, worker_database_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 TEST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER")
-TEST_RUN_UID = os.environ.get("PYTEST_XDIST_TESTRUNUID")
+TEST_RUN_UID = new_worker_run_uid(TEST_WORKER_ID)
 TEST_RUN_ID = f"{TEST_WORKER_ID or 'main'}_pid_{os.getpid()}"
 TEST_UPLOAD_TOKEN = "pytest-upload-token"
 TEST_APP_TOKEN = "pytest-app-token"
