@@ -8,6 +8,10 @@ from pathlib import Path
 import pytest
 
 from scripts import run_test_lanes
+from tests._infra.lane_policy import (
+    managed_runner_configuration_violation,
+    stateful_selection_violation,
+)
 
 
 def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:
@@ -26,6 +30,8 @@ def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:
         "--tb=short",
         "-p",
         "no:cacheprovider",
+        "-o",
+        "addopts=",
     )
     assert command[-6:] == [
         "-m",
@@ -78,7 +84,12 @@ def test_worker_count_rejects_unsafe_values(raw: str) -> None:
 def test_full_lane_stops_after_first_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
 
-    def fake_run(command: list[str], *, check: bool) -> subprocess.CompletedProcess[str]:
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        env: dict[str, str],
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(command)
         return subprocess.CompletedProcess(command, 7)
 
@@ -89,24 +100,80 @@ def test_full_lane_stops_after_first_failure(monkeypatch: pytest.MonkeyPatch) ->
     assert "not stateful_serial" in calls[0]
 
 
-def test_full_lane_runs_parallel_then_stateful(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
+def test_full_lane_clears_filters_and_propagates_stateful_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], dict[str, str]]] = []
+    return_codes = iter((0, 7))
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k owner")
 
-    def fake_run(command: list[str], *, check: bool) -> subprocess.CompletedProcess[str]:
-        calls.append(command)
-        return subprocess.CompletedProcess(command, 0)
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        env: dict[str, str],
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((command, env))
+        return subprocess.CompletedProcess(command, next(return_codes))
 
     monkeypatch.setattr(run_test_lanes.subprocess, "run", fake_run)
 
-    assert run_test_lanes.run_lanes(("parallel", "stateful"), workers=2) == 0
-    assert "not stateful_serial" in calls[0]
-    assert calls[1][-4:] == ["-m", "stateful_serial", "-n", "0"]
+    assert run_test_lanes.run_lanes(("parallel", "stateful"), workers=2) == 7
+    assert "not stateful_serial" in calls[0][0]
+    assert calls[1][0][-4:] == ["-m", "stateful_serial", "-n", "0"]
+    assert [call[1][run_test_lanes.RUNNER_LANE_ENV] for call in calls] == [
+        "parallel",
+        "stateful",
+    ]
+    assert all("PYTEST_ADDOPTS" not in call[1] for call in calls)
+
+
+def test_managed_runner_rejects_partial_or_collection_only_execution() -> None:
+    common = {
+        "active_lane": "parallel",
+        "collection_roots": ["tests"],
+        "collect_only": False,
+        "keyword": "",
+        "mark_expression": "not stateful_serial",
+        "deselected": (),
+        "ignored": (),
+        "ignore_globs": (),
+        "last_failed": False,
+    }
+
+    assert managed_runner_configuration_violation(**common) is None
+    assert "execute" in (
+        managed_runner_configuration_violation(**(common | {"collect_only": True}))
+        or ""
+    )
+    assert "filter" in (
+        managed_runner_configuration_violation(**(common | {"keyword": "owner"}))
+        or ""
+    )
+    assert "complete tests root" in (
+        managed_runner_configuration_violation(
+            **(common | {"collection_roots": ["tests/test_owner_console.py"]})
+        )
+        or ""
+    )
+
+
+def test_worker_side_guard_rejects_a_retained_stateful_item() -> None:
+    violation = stateful_selection_violation(
+        ["tests/test_db_migration_contract.py::test_upgrade"],
+        xdist_worker="gw0",
+        configured_workers=0,
+    )
+
+    assert violation is not None
+    assert "xdist worker gw0" in violation
 
 
 def test_stateful_tests_reject_xdist_even_with_forged_lane() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     environment = os.environ.copy()
     environment["XPJ_TEST_LANE"] = "stateful"
+    environment.pop(run_test_lanes.RUNNER_LANE_ENV, None)
     for key in tuple(environment):
         if key.startswith("PYTEST_XDIST_"):
             environment.pop(key)

@@ -88,6 +88,10 @@ def test_cluster_lock(
         **admin_connection_args(parsed),
     ) as connection:
         connection.execute(
+            "SELECT set_config('idle_session_timeout', %s, false)",
+            ("0",),
+        )
+        connection.execute(
             "SELECT set_config('statement_timeout', %s, false)",
             (str(_STATEFUL_LOCK_TIMEOUT_MS),),
         )

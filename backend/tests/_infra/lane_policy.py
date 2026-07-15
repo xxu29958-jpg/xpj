@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 _STATEFUL_SERIAL_MODULE_PREFIXES = (
     "tests/test_alembic_",
     "tests/test_db_migration_",
@@ -28,6 +30,7 @@ _STATEFUL_SERIAL_NODE_SUBSTRINGS = (
 _CLUSTER_SERIAL_MODULE_PREFIXES = (
     # Creates/drops PostgreSQL roles and must not overlap ordinary workers.
     "tests/test_db_migration_owner_preflight.py::",
+    "tests/test_worker_database_lifecycle.py::",
 )
 
 _REAL_DB_NODE_SUBSTRINGS = (
@@ -138,3 +141,39 @@ def parallel_lane_configuration_violation(
         "`-m \"not stateful_serial\"`; use "
         "`python scripts/run_test_lanes.py parallel`."
     )
+
+
+def managed_runner_configuration_violation(
+    *,
+    active_lane: str | None,
+    collection_roots: Sequence[str],
+    collect_only: bool,
+    keyword: str,
+    mark_expression: str,
+    deselected: Sequence[str],
+    ignored: Sequence[str],
+    ignore_globs: Sequence[str],
+    last_failed: bool,
+) -> str | None:
+    """Reject filters that could turn the managed full runner falsely green."""
+
+    if active_lane is None:
+        return None
+    expected_mark = {
+        "parallel": "not stateful_serial",
+        "stateful": "stateful_serial",
+    }.get(active_lane)
+    if expected_mark is None:
+        return f"Unknown managed PostgreSQL test lane: {active_lane!r}."
+    if list(collection_roots) != ["tests"]:
+        return "Managed PostgreSQL test lanes must collect the complete tests root."
+    if collect_only:
+        return "Managed PostgreSQL test lanes must execute, not only collect, tests."
+    if keyword.strip() or deselected or ignored or ignore_globs or last_failed:
+        return "Managed PostgreSQL test lanes must not filter the committed test set."
+    if mark_expression.strip() != expected_mark:
+        return (
+            f"Managed PostgreSQL {active_lane} lane requires marker expression "
+            f"{expected_mark!r}."
+        )
+    return None

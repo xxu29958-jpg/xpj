@@ -8,9 +8,8 @@ from scripts.test_pg_contract import configured_test_database_url
 from tests._infra import db as db_infra
 from tests._infra import worker_db as worker_db_infra
 from tests._infra.worker_db import (
-    drop_worker_database,
     new_worker_run_uid,
-    recreate_worker_database,
+    worker_database_lifecycle,
     worker_database_url,
 )
 
@@ -108,31 +107,33 @@ def test_worker_database_url_refuses_non_postgresql_engine() -> None:
         worker_database_url("sqlite:///xpj_test", "gw0", "run-alpha")
 
 
-@pytest.mark.parametrize(
-    "operation",
-    [recreate_worker_database, drop_worker_database],
-)
-def test_worker_lifecycle_refuses_non_worker_database(operation) -> None:
+def test_worker_lifecycle_refuses_non_worker_database() -> None:
     current_run = "run-alpha"
     worker_id = "gw0"
-    with pytest.raises(ValueError, match="current xpj_test_<run>_gwN"):
-        operation(
+    with (
+        pytest.raises(ValueError, match="current xpj_test_<run>_gwN"),
+        worker_database_lifecycle(
             "postgresql+psycopg://postgres@localhost:5432/ticketbox",
             worker_id=worker_id,
             run_uid=current_run,
-        )
+        ),
+    ):
+        pass
 
     another_run_url = worker_database_url(
         "postgresql+psycopg://postgres@localhost:5438/xpj_test",
         worker_id,
         "run-beta",
     )
-    with pytest.raises(ValueError, match="current xpj_test_<run>_gwN"):
-        operation(
+    with (
+        pytest.raises(ValueError, match="current xpj_test_<run>_gwN"),
+        worker_database_lifecycle(
             another_run_url,
             worker_id=worker_id,
             run_uid=current_run,
-        )
+        ),
+    ):
+        pass
 
 
 @pytest.mark.parametrize("database_name", ["ticketbox", "xpj_testimony"])
@@ -217,6 +218,7 @@ def test_exclusive_cluster_lock_releases_after_failure(
     event_names = [event[0] for event in events]
     assert event_names == [
         "connect",
+        "SELECT set_config('idle_session_timeout', %s, false)",
         "SELECT set_config('statement_timeout', %s, false)",
         "SELECT pg_advisory_lock(%s)",
         "body",
@@ -237,6 +239,7 @@ def test_shared_cluster_lock_and_query_target_contract(
         events.append(("body", None))
     assert [event[0] for event in events] == [
         "connect",
+        "SELECT set_config('idle_session_timeout', %s, false)",
         "SELECT set_config('statement_timeout', %s, false)",
         "SELECT pg_advisory_lock_shared(%s)",
         "body",

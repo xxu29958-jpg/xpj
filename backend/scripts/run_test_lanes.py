@@ -8,6 +8,8 @@ import subprocess
 import sys
 from collections.abc import Sequence
 
+RUNNER_LANE_ENV = "XPJ_TEST_RUNNER_LANE"
+
 COMMON_PYTEST_ARGS = (
     "tests",
     "-q",
@@ -15,6 +17,8 @@ COMMON_PYTEST_ARGS = (
     "--tb=short",
     "-p",
     "no:cacheprovider",
+    "-o",
+    "addopts=",
 )
 AUTO_WORKER_CAP = 6
 
@@ -53,8 +57,11 @@ def worker_count(raw_value: str | None) -> int:
 def run_lanes(lanes: Sequence[str], *, workers: int) -> int:
     for lane in lanes:
         command = pytest_command(lane, workers=workers)
+        environment = os.environ.copy()
+        environment.pop("PYTEST_ADDOPTS", None)
+        environment[RUNNER_LANE_ENV] = lane
         print(f"[test-lane:{lane}] {' '.join(command)}", flush=True)
-        completed = subprocess.run(command, check=False)
+        completed = subprocess.run(command, check=False, env=environment)
         if completed.returncode != 0:
             return completed.returncode
     return 0

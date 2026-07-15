@@ -44,6 +44,7 @@ Run from ``backend/``::
 
 from __future__ import annotations
 
+import os
 import pathlib
 import re
 import subprocess
@@ -131,9 +132,21 @@ def _count_pytest_tests(target: str) -> int:
     An explicit positional target avoids relying on pyproject.toml's testpaths
     default, keeping business and installer contracts independently auditable.
     """
+    environment = os.environ.copy()
+    environment.pop("PYTEST_ADDOPTS", None)
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", target, "--collect-only", "-q"],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            target,
+            "--collect-only",
+            "-q",
+            "-o",
+            "addopts=",
+        ],
         cwd=_BACKEND_ROOT,
+        env=environment,
         capture_output=True,
         text=True,
         encoding="utf-8",  # Windows GBK default mangles Chinese in pytest warnings

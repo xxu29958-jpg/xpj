@@ -14,6 +14,7 @@ modules. This file only defines the fixtures and the session-end hook.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -21,6 +22,7 @@ import pytest
 # Importing tests._infra.env sets os.environ before any app.* import.
 from fastapi.testclient import TestClient
 
+from scripts.run_test_lanes import RUNNER_LANE_ENV
 from scripts.test_pg_contract import test_cluster_lock
 from tests._infra import env
 from tests._infra.client import make_test_client
@@ -31,11 +33,12 @@ from tests._infra.db import (
 )
 from tests._infra.identity import TestIdentity, seed_identity
 from tests._infra.lane_policy import (
+    managed_runner_configuration_violation,
     parallel_lane_configuration_violation,
     postgres_test_markers,
     stateful_selection_violation,
 )
-from tests._infra.worker_db import drop_worker_database, recreate_worker_database
+from tests._infra.worker_db import worker_database_lifecycle
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -45,27 +48,27 @@ def _isolation_schema():
     Per-test ``_db_isolation`` then wraps each test in a rolled-back transaction
     (or a full reset for ``@pytest.mark.real_db`` tests).
     """
-    with test_cluster_lock(
-        os.environ,
-        exclusive=env.TEST_WORKER_ID is None,
+    worker_lifecycle = (
+        worker_database_lifecycle(
+            env.TEST_DATABASE_URL,
+            worker_id=env.TEST_WORKER_ID,
+            run_uid=env.TEST_RUN_UID or "",
+        )
+        if env.TEST_WORKER_ID is not None
+        else contextlib.nullcontext()
+    )
+    with (
+        test_cluster_lock(
+            os.environ,
+            exclusive=env.TEST_WORKER_ID is None,
+        ),
+        worker_lifecycle,
     ):
-        if env.TEST_WORKER_ID is not None:
-            recreate_worker_database(
-                env.TEST_DATABASE_URL,
-                worker_id=env.TEST_WORKER_ID,
-                run_uid=env.TEST_RUN_UID or "",
-            )
+        reset_db_state()
         try:
-            reset_db_state()
             yield
         finally:
             cleanup_runtime()
-            if env.TEST_WORKER_ID is not None:
-                drop_worker_database(
-                    env.TEST_DATABASE_URL,
-                    worker_id=env.TEST_WORKER_ID,
-                    run_uid=env.TEST_RUN_UID or "",
-                )
 
 
 @pytest.fixture(autouse=True)
@@ -161,6 +164,19 @@ def pytest_configure(config: pytest.Config) -> None:
         "cluster_serial: PostgreSQL cluster-level test that must run in the "
         "exclusive stateful lane.",
     )
+    violation = managed_runner_configuration_violation(
+        active_lane=os.environ.get(RUNNER_LANE_ENV),
+        collection_roots=config.args,
+        collect_only=bool(config.getoption("collectonly", default=False)),
+        keyword=config.getoption("keyword", default="") or "",
+        mark_expression=config.getoption("markexpr", default="") or "",
+        deselected=config.getoption("deselect", default=()) or (),
+        ignored=config.getoption("ignore", default=()) or (),
+        ignore_globs=config.getoption("ignore_glob", default=()) or (),
+        last_failed=bool(config.getoption("lf", default=False)),
+    )
+    if violation:
+        raise pytest.UsageError(violation)
     violation = parallel_lane_configuration_violation(
         configured_workers=config.getoption("numprocesses", default=0),
         mark_expression=config.getoption("markexpr", default=""),
