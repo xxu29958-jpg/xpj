@@ -105,6 +105,12 @@ class PairingCode(Base):
     code_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     ledger_id: Mapped[str] = mapped_column(String(64), ForeignKey("ledgers.ledger_id"), nullable=False, index=True)
     account_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=True, index=True)
+    created_by_device_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     recovery_device_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("devices.id", ondelete="RESTRICT"),
@@ -114,6 +120,7 @@ class PairingCode(Base):
     device_name_hint: Mapped[str | None] = mapped_column(String(120), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 

@@ -345,6 +345,7 @@ def _replace_credentials(
             code_hash=hash_pairing_code(credentials.pairing_code),
             ledger_id=pairing.ledger_id,
             account_id=pairing.account_id,
+            created_by_device_id=admin.device_id,
             recovery_device_id=pairing.recovery_device_id,
             device_name_hint=pairing.device_name_hint,
             expires_at=rotated_at + timedelta(minutes=PAIRING_CODE_TTL_MINUTES),

@@ -79,7 +79,7 @@ def _load_new_pairing_identity(
     pairing: PairingCode,
     remote_id: str | None,
 ) -> tuple[Ledger, Account, Device | None, str]:
-    if pairing.used_at is not None:
+    if pairing.used_at is not None or pairing.revoked_at is not None:
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
     if (ensure_utc(pairing.expires_at) or pairing.expires_at) <= now_utc():
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)

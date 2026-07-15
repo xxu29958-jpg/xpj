@@ -26,28 +26,71 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-def _add_pairing_recovery_target() -> None:
+def _add_pairing_capability_columns() -> None:
     inspector = sa.inspect(op.get_bind())
     columns = {column["name"] for column in inspector.get_columns("pairing_codes")}
-    if "recovery_device_id" in columns:
-        return
-    op.add_column(
+    if "created_by_device_id" not in columns:
+        op.add_column(
+            "pairing_codes",
+            sa.Column("created_by_device_id", sa.Integer(), nullable=True),
+        )
+        op.create_foreign_key(
+            "fk_pairing_codes_created_by_device_id_devices",
+            "pairing_codes",
+            "devices",
+            ["created_by_device_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
+        op.create_index(
+            op.f("ix_pairing_codes_created_by_device_id"),
+            "pairing_codes",
+            ["created_by_device_id"],
+            unique=False,
+        )
+    if "recovery_device_id" not in columns:
+        op.add_column(
+            "pairing_codes",
+            sa.Column("recovery_device_id", sa.Integer(), nullable=True),
+        )
+        op.create_foreign_key(
+            "fk_pairing_codes_recovery_device_id_devices",
+            "pairing_codes",
+            "devices",
+            ["recovery_device_id"],
+            ["id"],
+            ondelete="RESTRICT",
+        )
+        op.create_index(
+            op.f("ix_pairing_codes_recovery_device_id"),
+            "pairing_codes",
+            ["recovery_device_id"],
+            unique=False,
+        )
+    if "revoked_at" not in columns:
+        op.add_column(
+            "pairing_codes",
+            sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        )
+        op.create_index(
+            op.f("ix_pairing_codes_revoked_at"),
+            "pairing_codes",
+            ["revoked_at"],
+            unique=False,
+        )
+
+
+def _revoke_legacy_pairing_capabilities() -> None:
+    pairing_codes = sa.table(
         "pairing_codes",
-        sa.Column("recovery_device_id", sa.Integer(), nullable=True),
+        sa.column("used_at", sa.DateTime(timezone=True)),
+        sa.column("revoked_at", sa.DateTime(timezone=True)),
     )
-    op.create_foreign_key(
-        "fk_pairing_codes_recovery_device_id_devices",
-        "pairing_codes",
-        "devices",
-        ["recovery_device_id"],
-        ["id"],
-        ondelete="RESTRICT",
-    )
-    op.create_index(
-        op.f("ix_pairing_codes_recovery_device_id"),
-        "pairing_codes",
-        ["recovery_device_id"],
-        unique=False,
+    op.get_bind().execute(
+        sa.update(pairing_codes)
+        .where(pairing_codes.c.used_at.is_(None))
+        .where(pairing_codes.c.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
     )
 
 
@@ -235,7 +278,10 @@ def _provision_server_data_identity() -> None:
 
 
 def upgrade() -> None:
-    _add_pairing_recovery_target()
+    _add_pairing_capability_columns()
+    # Pre-upgrade codes have no trustworthy issuer provenance. Invalidate the
+    # unused capabilities once; consumed enrollment receipts remain replayable.
+    _revoke_legacy_pairing_capabilities()
     _replace_rule_batch_device_fk(ondelete="SET NULL")
     if not sa.inspect(op.get_bind()).has_table("device_enrollment_attempts"):
         _create_device_enrollment_attempts()

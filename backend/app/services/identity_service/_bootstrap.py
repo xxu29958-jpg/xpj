@@ -356,6 +356,7 @@ def bootstrap_owner(
         db,
         ledger_id=default_ledger.ledger_id,
         account_id=owner.id,
+        created_by_device_id=bootstrap_device.id,
         device_name_hint="Android",
         pairing_code_value=credentials.pairing_code if credentials else None,
     )

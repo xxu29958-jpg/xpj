@@ -153,11 +153,20 @@ def _context_from_token(
     *,
     selected_ledger_id: str | None = None,
 ) -> AuthContext:
-    account, device, ledger, role = _context_parts_from_token(
-        db,
-        token,
-        selected_ledger_id=selected_ledger_id,
-    )
+    try:
+        account, device, ledger, role = _context_parts_from_token(
+            db,
+            token,
+            selected_ledger_id=selected_ledger_id,
+        )
+    except AppError as exc:
+        if exc.error != "invalid_token":
+            raise
+        # Keep the joined success path at one identity query. A miss gets one
+        # discriminating lookup: invalid Account/Device is a dead credential;
+        # an active principal without this ledger is an authorization failure.
+        _principal_from_token(db, token)
+        raise AppError("ledger_forbidden", status_code=403) from exc
     context = _auth_context_from_parts(token, account, device, ledger, role)
     now = now_utc()
     _refresh_token_activity(db, token, device, now=now)
@@ -237,7 +246,7 @@ def authenticate_session_token(
             selected_ledger_id=selected_ledger_id,
         )
     except AppError as exc:
-        if selected_ledger_id is not None and selected_ledger_error and exc.error == "invalid_token":
+        if selected_ledger_id is not None and selected_ledger_error and exc.error == "ledger_forbidden":
             raise AppError(selected_ledger_error, status_code=404) from exc
         raise
 
