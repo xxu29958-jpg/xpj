@@ -20,6 +20,7 @@ from collections.abc import Iterator
 from sqlalchemy import text
 
 from app.database import engine, init_db
+from scripts.test_pg_contract import validate_test_database_name
 from tests._infra.env import TEST_DATA_DIR, TEST_UPLOAD_DIR
 
 
@@ -33,10 +34,12 @@ def reset_db_state() -> None:
     """
 
     database_name = engine.url.database or ""
-    if not database_name.startswith("xpj_test"):
+    try:
+        validate_test_database_name(database_name)
+    except ValueError as exc:
         raise RuntimeError(
             f"Refusing to reset non-test PostgreSQL database: {database_name!r}"
-        )
+        ) from exc
     with engine.begin() as connection:
         connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         connection.execute(text("CREATE SCHEMA public"))

@@ -8,6 +8,11 @@ import subprocess
 import sys
 from collections.abc import Sequence
 
+if __package__:
+    from scripts.test_pg_contract import stateful_test_cluster_lock
+else:
+    from test_pg_contract import stateful_test_cluster_lock
+
 COMMON_PYTEST_ARGS = (
     "tests",
     "-q",
@@ -34,7 +39,7 @@ def pytest_command(lane: str, *, workers: int) -> list[str]:
         )
         return command
     if lane == "stateful":
-        command.extend(["-m", "stateful_serial"])
+        command.extend(["-m", "stateful_serial", "-n", "0"])
         return command
     raise ValueError(f"Unknown test lane: {lane}")
 
@@ -54,7 +59,12 @@ def run_lanes(lanes: Sequence[str], *, workers: int) -> int:
     for lane in lanes:
         command = pytest_command(lane, workers=workers)
         print(f"[test-lane:{lane}] {' '.join(command)}", flush=True)
-        completed = subprocess.run(command, check=False)
+        if lane == "stateful":
+            print("[test-lane:stateful] acquiring PostgreSQL cluster lock", flush=True)
+            with stateful_test_cluster_lock(os.environ):
+                completed = subprocess.run(command, check=False)
+        else:
+            completed = subprocess.run(command, check=False)
         if completed.returncode != 0:
             return completed.returncode
     return 0

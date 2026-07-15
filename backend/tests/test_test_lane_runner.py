@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import subprocess
 
 import pytest
@@ -43,8 +44,7 @@ def test_stateful_lane_is_single_process() -> None:
         "pytest",
         *run_test_lanes.COMMON_PYTEST_ARGS,
     ]
-    assert command[-2:] == ["-m", "stateful_serial"]
-    assert "-n" not in command
+    assert command[-4:] == ["-m", "stateful_serial", "-n", "0"]
 
 
 @pytest.mark.parametrize(
@@ -89,13 +89,29 @@ def test_full_lane_stops_after_first_failure(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_full_lane_runs_parallel_then_stateful(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
+    lock_events: list[str] = []
 
     def fake_run(command: list[str], *, check: bool) -> subprocess.CompletedProcess[str]:
         calls.append(command)
         return subprocess.CompletedProcess(command, 0)
 
+    @contextlib.contextmanager
+    def fake_cluster_lock(environment):
+        assert environment is run_test_lanes.os.environ
+        lock_events.append("acquired")
+        try:
+            yield
+        finally:
+            lock_events.append("released")
+
     monkeypatch.setattr(run_test_lanes.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        run_test_lanes,
+        "stateful_test_cluster_lock",
+        fake_cluster_lock,
+    )
 
     assert run_test_lanes.run_lanes(("parallel", "stateful"), workers=2) == 0
     assert "not stateful_serial" in calls[0]
-    assert calls[1][-2:] == ["-m", "stateful_serial"]
+    assert calls[1][-4:] == ["-m", "stateful_serial", "-n", "0"]
+    assert lock_events == ["acquired", "released"]

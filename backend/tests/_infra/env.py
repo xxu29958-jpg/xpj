@@ -14,7 +14,8 @@ import json
 import os
 from pathlib import Path
 
-from tests._infra.worker_db import configured_test_database_url, worker_database_url
+from scripts.test_pg_contract import configured_test_database_url
+from tests._infra.worker_db import worker_database_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 TEST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER")

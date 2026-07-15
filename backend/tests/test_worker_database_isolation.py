@@ -3,9 +3,10 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.engine import make_url
 
+from scripts import test_pg_contract
+from scripts.test_pg_contract import configured_test_database_url
 from tests._infra import db as db_infra
 from tests._infra.worker_db import (
-    configured_test_database_url,
     drop_worker_database,
     recreate_worker_database,
     worker_database_url,
@@ -27,6 +28,16 @@ def test_database_url_override_requires_explicit_cluster_confirmation() -> None:
             "XPJ_TEST_CLUSTER_CONFIRMED": "1",
         }
     ) == override
+
+    with pytest.raises(ValueError, match="xpj_test base"):
+        configured_test_database_url(
+            {
+                "XPJ_TEST_DATABASE_URL": (
+                    "postgresql+psycopg://postgres@localhost:5432/xpj_testimony"
+                ),
+                "XPJ_TEST_CLUSTER_CONFIRMED": "1",
+            }
+        )
 
 
 def test_worker_database_url_preserves_connection_contract() -> None:
@@ -63,12 +74,13 @@ def test_worker_database_url_rejects_invalid_worker_id(worker_id: str) -> None:
 
 
 def test_worker_database_url_refuses_non_test_database() -> None:
-    with pytest.raises(ValueError, match="xpj_test base"):
-        worker_database_url(
-            "postgresql+psycopg://postgres@localhost:5432/ticketbox",
-            "gw0",
-            "run-alpha",
-        )
+    for database_name in ("ticketbox", "xpj_testimony"):
+        with pytest.raises(ValueError, match="xpj_test base"):
+            worker_database_url(
+                f"postgresql+psycopg://postgres@localhost:5432/{database_name}",
+                "gw0",
+                "run-alpha",
+            )
 
 
 def test_worker_database_url_refuses_non_postgresql_engine() -> None:
@@ -103,13 +115,77 @@ def test_worker_lifecycle_refuses_non_worker_database(operation) -> None:
         )
 
 
+@pytest.mark.parametrize("database_name", ["ticketbox", "xpj_testimony"])
 def test_schema_reset_refuses_non_test_database(
     monkeypatch: pytest.MonkeyPatch,
+    database_name: str,
 ) -> None:
     class ProductionEngineStub:
-        url = make_url("postgresql+psycopg://postgres@localhost:5432/ticketbox")
+        url = make_url(
+            f"postgresql+psycopg://postgres@localhost:5432/{database_name}"
+        )
 
     monkeypatch.setattr(db_infra, "engine", ProductionEngineStub())
 
     with pytest.raises(RuntimeError, match="non-test PostgreSQL"):
         db_infra.reset_db_state()
+
+
+def test_stateful_lane_lock_releases_cluster_wide_advisory_lock_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, object]] = []
+
+    class FakeResult:
+        def fetchone(self) -> tuple[bool]:
+            return (True,)
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            events.append(("closed", None))
+
+        def execute(self, statement: str, parameters: tuple[str | int, ...]):
+            events.append((statement, parameters))
+            return FakeResult()
+
+    def fake_connect(**arguments):
+        events.append(("connect", arguments))
+        return FakeConnection()
+
+    monkeypatch.setattr(test_pg_contract.psycopg, "connect", fake_connect)
+
+    with pytest.raises(ZeroDivisionError):
+        with test_pg_contract.stateful_test_cluster_lock(
+            {
+                "XPJ_TEST_DATABASE_URL": (
+                    "postgresql+psycopg://tester:secret@db.example:5432/xpj_test"
+                ),
+                "XPJ_TEST_CLUSTER_CONFIRMED": "1",
+            }
+        ):
+            events.append(("body", None))
+            raise ZeroDivisionError
+
+    assert events[0] == (
+        "connect",
+        {
+            "autocommit": True,
+            "dbname": "postgres",
+            "host": "db.example",
+            "port": 5432,
+            "user": "tester",
+            "password": "secret",
+        },
+    )
+    event_names = [event[0] for event in events]
+    assert event_names == [
+        "connect",
+        "SELECT set_config('statement_timeout', %s, false)",
+        "SELECT pg_advisory_lock(%s)",
+        "body",
+        "SELECT pg_advisory_unlock(%s)",
+        "closed",
+    ]
