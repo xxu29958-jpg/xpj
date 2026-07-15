@@ -10,26 +10,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Account, Invitation, Ledger
+from app.models import Account, Invitation
 from app.services import permission_service
 from app.services.identity_service import (
-    _create_auth_token,
-    _create_device,
-    _ensure_membership,
     _ledger_by_id,
     hash_secret,
-    lock_bootstrap_owner_transaction,
 )
 from app.services.identity_service._bootstrap_exposure_guard import (
     assert_bootstrap_sensitive_mutation_allowed,
 )
+from app.services.invitation_acceptance import (
+    AcceptInvitationResult,
+    accept_invitation,
+)
 from app.services.invitation_audit import add_audit_log
 from app.services.invitation_common import (
-    AUDIT_INVITATION_ACCEPTED,
     AUDIT_INVITATION_CREATED,
     AUDIT_INVITATION_REVOKED,
     INVITATION_TTL_DAYS,
@@ -38,10 +37,6 @@ from app.services.invitation_common import (
     require_active_owner,
 )
 from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
-from app.services.session_lifecycle_service import (
-    app_token_expiry_window,
-    revoke_token_value,
-)
 from app.services.time_service import ensure_utc, now_utc, to_iso
 from app.tenants import AuthContext
 
@@ -68,18 +63,6 @@ class CreateInvitationResult:
 
 
 @dataclass(frozen=True)
-class AcceptInvitationResult:
-    session_token: str
-    expires_at: str | None
-    soft_refresh_after: str | None
-    account_name: str
-    ledger_id: str
-    ledger_name: str
-    device_name: str
-    role: str
-
-
-@dataclass(frozen=True)
 class InvitationPreviewResult:
     ledger_id: str
     ledger_name: str
@@ -88,10 +71,7 @@ class InvitationPreviewResult:
 
 
 def _new_unique_invite_token(db: Session) -> tuple[str, str]:
-    candidates = [
-        (token := new_invite_token(), hash_secret(token))
-        for _ in range(INVITATION_TOKEN_CANDIDATE_COUNT)
-    ]
+    candidates = [(token := new_invite_token(), hash_secret(token)) for _ in range(INVITATION_TOKEN_CANDIDATE_COUNT)]
     existing_hashes = set(
         db.scalars(select(Invitation.token_hash).where(Invitation.token_hash.in_({h for _, h in candidates})))
     )
@@ -234,10 +214,7 @@ def revoke_invitation(
 def resolve_active_invitation(db: Session, invite_token: str) -> Invitation:
     token_hash = hash_secret(invite_token.strip())
     invitation = db.scalar(
-        select(Invitation)
-        .where(Invitation.token_hash == token_hash)
-        .execution_options(populate_existing=True)
-        .limit(1)
+        select(Invitation).where(Invitation.token_hash == token_hash).execution_options(populate_existing=True).limit(1)
     )
     if invitation is None:
         raise AppError("invitation_invalid", status_code=400)
@@ -267,106 +244,6 @@ def preview_invitation(db: Session, *, invite_token: str) -> InvitationPreviewRe
         ledger_name=ledger.name,
         role=invitation.role,
         expires_at=to_iso(invitation.expires_at),
-    )
-
-
-def _load_invitation_acceptance(
-    db: Session,
-    *,
-    invite_token: str,
-) -> tuple[Invitation, Ledger]:
-    invitation = resolve_active_invitation(db, invite_token)
-    if not permission_service.is_invitable_role(invitation.role):
-        raise AppError("invitation_invalid", status_code=400)
-    ledger = db.scalar(
-        select(Ledger)
-        .where(Ledger.ledger_id == invitation.ledger_id)
-        .execution_options(populate_existing=True)
-        .limit(1)
-    )
-    if ledger is None or ledger.archived_at is not None:
-        raise AppError("invitation_invalid", status_code=400)
-    return invitation, ledger
-
-
-def accept_invitation(
-    db: Session,
-    *,
-    invite_token: str,
-    account_name: str,
-    device_name: str,
-    platform: str,
-    previous_session_token: str | None = None,
-) -> AcceptInvitationResult:
-    """Consume an invitation and issue a ledger-scoped app token."""
-
-    lock_bootstrap_owner_transaction(db)
-    invitation, ledger = _load_invitation_acceptance(
-        db,
-        invite_token=invite_token,
-    )
-
-    cleaned_account_name = (account_name or "").strip() or "家庭成员"
-    cleaned_device_name = (device_name or "").strip() or "未命名设备"
-    cleaned_platform = (platform or "unknown").strip() or "unknown"
-
-    # Atomic mark-used; if another request claimed it first, fail.
-    used_at = now_utc()
-    account = Account(display_name=cleaned_account_name[:120])
-    db.add(account)
-    db.flush()
-
-    result = db.execute(
-        update(Invitation)
-        .where(Invitation.id == invitation.id)
-        .where(Invitation.used_at.is_(None))
-        .where(Invitation.revoked_at.is_(None))
-        .where(Invitation.expires_at > used_at)
-        .values(used_at=used_at, used_by_account_id=account.id)
-        .execution_options(synchronize_session=False)
-    )
-    if result.rowcount != 1:
-        db.rollback()
-        raise AppError("invitation_invalid", status_code=400)
-
-    _ensure_membership(db, ledger.ledger_id, account.id, invitation.role)
-    device = _create_device(db, account.id, cleaned_device_name, cleaned_platform)
-    expiry = app_token_expiry_window(used_at)
-    token = _create_auth_token(
-        db,
-        account_id=account.id,
-        device_id=device.id,
-        ledger_id=ledger.ledger_id,
-        scope="app",
-        expires_at=expiry.expires_at,
-    )
-    if previous_session_token:
-        revoke_token_value(
-            db,
-            token_value=previous_session_token,
-            revoked_at=used_at,
-            scope="app",
-        )
-    add_audit_log(
-        db,
-        ledger_id=ledger.ledger_id,
-        action=AUDIT_INVITATION_ACCEPTED,
-        actor_account_id=account.id,
-        target_account_id=account.id,
-        invitation_public_id=invitation.public_id,
-        new_role=invitation.role,
-    )
-    db.commit()
-
-    return AcceptInvitationResult(
-        session_token=token,
-        expires_at=to_iso(expiry.expires_at),
-        soft_refresh_after=to_iso(expiry.soft_refresh_after),
-        account_name=account.display_name,
-        ledger_id=ledger.ledger_id,
-        ledger_name=ledger.name,
-        device_name=device.device_name,
-        role=invitation.role,
     )
 
 

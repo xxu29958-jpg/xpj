@@ -76,7 +76,6 @@ def _clear_pairing_failures(db: Session, remote_id: str | None) -> None:
             PairingAttemptFailure.remote_key == key
         )
     )
-    db.commit()
 
 
 def _reject_pairing(

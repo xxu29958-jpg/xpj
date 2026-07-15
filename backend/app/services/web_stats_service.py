@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import AuthToken, Device, Expense
+from app.models import AuthToken, Device, Expense, LedgerMember
 from app.services.expense_service import NOTIFICATION_DRAFT_SOURCE_PREFIX
 from app.services.spending_contract_service import (
     accounting_zone,
@@ -204,19 +204,24 @@ def recent_expense_count(db: Session, ledger_id: str, since: datetime) -> int:
 
 
 def active_device_count(db: Session, ledger_id: str) -> int:
-    """Number of distinct active devices bound to ``ledger_id``.
+    """Number of active account devices authorized for ``ledger_id``.
 
-    A device is active when at least one non-revoked AuthToken exists for the
-    ledger and the device itself has not been revoked.
+    CurrentLedger is client context, so an AuthToken's compatibility default
+    cannot define ledger reachability. Active Membership does.
     """
     return int(
         db.scalar(
             select(func.count(func.distinct(Device.id)))
             .select_from(Device)
             .join(AuthToken, AuthToken.device_id == Device.id)
-            .where(AuthToken.ledger_id == ledger_id)
+            .join(
+                LedgerMember,
+                (LedgerMember.account_id == Device.account_id)
+                & (LedgerMember.ledger_id == ledger_id),
+            )
             .where(AuthToken.revoked_at.is_(None))
             .where(Device.revoked_at.is_(None))
+            .where(LedgerMember.disabled_at.is_(None))
         )
         or 0
     )

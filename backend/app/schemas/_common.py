@@ -71,6 +71,10 @@ class InstallationHealthResponse(BaseModel):
 
 class AuthCheckResponse(BaseModel):
     status: str = "ok"
+    server_id: str
+    data_generation: str
+    account_public_id: str
+    device_public_id: str
     account_name: str
     ledger_id: str
     ledger_name: str

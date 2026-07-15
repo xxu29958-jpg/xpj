@@ -180,10 +180,60 @@ def test_owner_devices_page_links_to_pairing(local_client: TestClient) -> None:
     assert 'href="/owner/pairing"' in resp.text
 
 
-def test_owner_pairing_page_opens(local_client: TestClient) -> None:
-    resp = local_client.get("/owner/pairing")
+def test_owner_pairing_page_opens(
+    local_client: TestClient,
+    phone_mobile_endpoint,
+) -> None:
+    import re
+
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models import Account, Device
+
+    external_device_id = _insert_external_console_device()
+    with SessionLocal() as db:
+        owner_account_id = db.scalar(select(Account.id).order_by(Account.id.asc()).limit(1))
+        assert owner_account_id is not None
+        android_device_id = db.scalar(
+            select(Device.public_id)
+            .where(Device.account_id == owner_account_id)
+            .where(Device.platform == "android")
+            .order_by(Device.id.asc())
+            .limit(1)
+        )
+        windows_device_id = db.scalar(
+            select(Device.public_id)
+            .where(Device.account_id == owner_account_id)
+            .where(Device.platform == "windows")
+            .order_by(Device.id.asc())
+            .limit(1)
+        )
+    assert android_device_id is not None
+    assert windows_device_id is not None
+
+    resp = local_client.get(f"/owner/pairing?recovery_device={android_device_id}")
     assert resp.status_code == 200
     assert "绑定" in resp.text
+    assert re.search(
+        rf'<option value="{re.escape(android_device_id)}"\s+selected>',
+        resp.text,
+    )
+    assert external_device_id not in resp.text
+    assert windows_device_id not in resp.text
+
+    for blocked_device_id in (external_device_id, windows_device_id):
+        rejected = local_client.post(
+            "/owner/pairing",
+            data={
+                "ledger_id": "owner",
+                "ttl_minutes": "15",
+                "recovery_device_public_id": blocked_device_id,
+            },
+        )
+        assert rejected.status_code == 200
+        assert "要恢复的设备不存在，请重新选择" in rejected.text
+        assert "设备恢复码已生成" not in rejected.text
 
 
 def test_owner_upload_links_list_masked(local_client: TestClient) -> None:

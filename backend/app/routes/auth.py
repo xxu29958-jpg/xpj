@@ -12,12 +12,14 @@ from app.schemas import (
     AuthCheckResponse,
     PairRequest,
     PairResponse,
+    RefreshSessionRequest,
     RefreshSessionResponse,
 )
-from app.services.identity_service import pair_device
-from app.services.session_lifecycle_service import (
-    app_token_expiry_window,
-    rotate_app_token_for_ledger,
+from app.services.identity_service import authenticate_session_token, pair_device
+from app.services.server_identity_service import read_server_data_identity
+from app.services.session_refresh_service import (
+    refresh_legacy_app_session,
+    refresh_or_recover_app_session,
 )
 from app.services.time_service import to_iso
 from app.tenants import AuthContext
@@ -35,8 +37,16 @@ def _bearer_token_value(authorization: str | None) -> str:
 
 
 @router.get("/check", response_model=AuthCheckResponse)
-def check_auth(auth: AuthContext = Depends(get_current_app_context)) -> AuthCheckResponse:
+def check_auth(
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> AuthCheckResponse:
+    server = read_server_data_identity(db)
     return AuthCheckResponse(
+        server_id=server.server_id,
+        data_generation=server.data_generation,
+        account_public_id=auth.account_public_id,
+        device_public_id=auth.device_public_id,
         account_name=auth.account_name,
         ledger_id=auth.ledger_id,
         ledger_name=auth.ledger_name,
@@ -48,16 +58,30 @@ def check_auth(auth: AuthContext = Depends(get_current_app_context)) -> AuthChec
 
 @router.post("/pair", response_model=PairResponse)
 def pair(payload: PairRequest, request: Request, db: Session = Depends(get_db)) -> PairResponse:
+    if payload.pairing_attempt_id is None or payload.pairing_attempt_secret is None:
+        raise AppError(
+            "client_upgrade_required",
+            "当前 Android 客户端无法安全恢复中断的绑定，请升级后重试。",
+            status_code=409,
+        )
     remote_id = pairing_rate_limit_key(request)
     result = pair_device(
         db,
         pairing_code=payload.pairing_code,
+        pairing_attempt_id=str(payload.pairing_attempt_id),
+        pairing_attempt_secret=payload.pairing_attempt_secret,
         device_name=payload.device_name,
         platform=payload.platform,
         remote_id=remote_id,
     )
+    server = read_server_data_identity(db)
     return PairResponse(
         session_token=result.session_token,
+        pairing_attempt_id=result.pairing_attempt_id,
+        server_id=server.server_id,
+        data_generation=server.data_generation,
+        account_public_id=result.account_public_id,
+        device_public_id=result.device_public_id,
         account_name=result.account_name,
         ledger_id=result.ledger_id,
         ledger_name=result.ledger_name,
@@ -70,50 +94,44 @@ def pair(payload: PairRequest, request: Request, db: Session = Depends(get_db)) 
 
 @router.post("/refresh", response_model=RefreshSessionResponse)
 def refresh_session(
+    payload: RefreshSessionRequest | None = None,
     authorization: str | None = Header(default=None),
-    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> RefreshSessionResponse:
-    """v1.1 Batch 2: silently rotate the caller's app session token.
+    """Rotate an app token with a process-death-safe replay proof."""
 
-    Returns a fresh token (with a new ``expires_at``) and revokes the
-    previous one. Clients call this from the background once their
-    ``soft_refresh_after`` has passed, so the user never sees a forced
-    re-pair. Web cookie sessions keep their own short TTL contract; only
-    the ``app`` scope rotates here.
-    """
-
-    if auth.scope != "app":
-        raise AppError("invalid_token", status_code=401)
+    current_token = _bearer_token_value(authorization)
     if get_settings().app_token_ttl_days <= 0:
-        # When TTL is disabled, rotation is a no-op (still returns the
-        # current token shape so clients can rely on the contract).
+        authenticate_session_token(db, current_token, {"app"})
         return RefreshSessionResponse(
-            session_token=_bearer_token_value(authorization),
+            session_token=current_token,
             expires_at=None,
             soft_refresh_after=None,
             rotated=False,
         )
-    current_token = _bearer_token_value(authorization)
-    from app.services.time_service import now_utc as _now_utc
-
-    rotated_at = _now_utc()
-    expiry = app_token_expiry_window(rotated_at)
-    new_token, _ = rotate_app_token_for_ledger(
+    if payload is None:
+        legacy = refresh_legacy_app_session(
+            db,
+            source_token_value=current_token,
+        )
+        db.commit()
+        return RefreshSessionResponse(
+            session_token=legacy.session_token,
+            expires_at=to_iso(legacy.expires_at),
+            soft_refresh_after=to_iso(legacy.soft_refresh_after),
+            rotated=False,
+        )
+    result = refresh_or_recover_app_session(
         db,
-        auth=auth,
-        current_token_value=current_token,
-        account_id=auth.account_id,
-        device_id=auth.device_id,
-        target_ledger_id=auth.ledger_id,
-        rotated_at=rotated_at,
-        expires_at=expiry.expires_at,
-        allow_grace=True,
+        source_token_value=current_token,
+        refresh_attempt_id=str(payload.refresh_attempt_id),
+        refresh_attempt_secret=payload.refresh_attempt_secret,
     )
     db.commit()
     return RefreshSessionResponse(
-        session_token=new_token,
-        expires_at=to_iso(expiry.expires_at),
-        soft_refresh_after=to_iso(expiry.soft_refresh_after),
+        session_token=result.session_token,
+        refresh_attempt_id=result.refresh_attempt_id,
+        expires_at=to_iso(result.expires_at),
+        soft_refresh_after=to_iso(result.soft_refresh_after),
         rotated=True,
     )

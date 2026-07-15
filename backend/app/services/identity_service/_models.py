@@ -35,6 +35,9 @@ class BootstrapResult:
 @dataclass(frozen=True)
 class PairingResult:
     session_token: str
+    pairing_attempt_id: str
+    account_public_id: str
+    device_public_id: str
     account_name: str
     ledger_id: str
     ledger_name: str

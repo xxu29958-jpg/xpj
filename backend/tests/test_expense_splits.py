@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import LedgerMember
 from tests._infra.assets import PNG_BYTES
+from tests.pairing_test_support import invitation_accept_payload
 
 
 def _bearer(token: str) -> dict[str, str]:
@@ -52,12 +53,11 @@ def _accept_invitation(
 ) -> str:
     response = client.post(
         "/api/invitations/accept",
-        json={
-            "invite_token": invite_token,
-            "account_name": account_name,
-            "device_name": f"{account_name}-phone",
-            "platform": "android",
-        },
+        json=invitation_accept_payload(
+            invite_token,
+            account_name=account_name,
+            device_name=f"{account_name}-phone",
+        ),
     )
     assert response.status_code == 200, response.json()
     return str(response.json()["session_token"])

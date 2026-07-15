@@ -17,10 +17,15 @@ membership routes use ``get_current_ledger_app_context``.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_ledger_app_context, get_current_member_manager_context
+from app.auth import (
+    AuthenticatedAppSession,
+    get_current_ledger_app_context,
+    get_current_member_manager_context,
+    get_optional_current_app_session,
+)
 from app.database import get_db
 from app.schemas import (
     InvitationAcceptRequest,
@@ -53,16 +58,10 @@ from app.services.invitation_service import (
     transfer_ledger_owner,
     update_member_role,
 )
+from app.services.server_identity_service import read_server_data_identity
 from app.tenants import AuthContext
 
 router = APIRouter(tags=["family-ledger"])
-
-
-def _optional_bearer_token(authorization: str | None) -> str | None:
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-    token = authorization.removeprefix("Bearer ").strip()
-    return token or None
 
 
 def _to_invitation_response(summary: InvitationSummary) -> InvitationSummaryResponse:
@@ -193,7 +192,9 @@ def preview_invitation_endpoint(
 )
 def accept_invitation_endpoint(
     payload: InvitationAcceptRequest,
-    authorization: str | None = Header(default=None),
+    current_session: AuthenticatedAppSession | None = Depends(
+        get_optional_current_app_session
+    ),
     db: Session = Depends(get_db),
 ) -> InvitationAcceptResponse:
     result = accept_invitation(
@@ -202,10 +203,23 @@ def accept_invitation_endpoint(
         account_name=payload.account_name,
         device_name=payload.device_name,
         platform=payload.platform,
-        previous_session_token=_optional_bearer_token(authorization),
+        session_token=current_session.token if current_session is not None else None,
+        auth=current_session.auth if current_session is not None else None,
+        enrollment_attempt_id=(
+            str(payload.enrollment_attempt_id)
+            if payload.enrollment_attempt_id is not None
+            else None
+        ),
+        enrollment_attempt_secret=payload.enrollment_attempt_secret,
     )
+    server = read_server_data_identity(db)
     return InvitationAcceptResponse(
         session_token=result.session_token,
+        enrollment_attempt_id=result.enrollment_attempt_id,
+        server_id=server.server_id,
+        data_generation=server.data_generation,
+        account_public_id=result.account_public_id,
+        device_public_id=result.device_public_id,
         expires_at=result.expires_at,
         soft_refresh_after=result.soft_refresh_after,
         account_name=result.account_name,

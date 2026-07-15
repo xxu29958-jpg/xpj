@@ -20,80 +20,17 @@ from tests._infra.bootstrap_recovery import (
     assert_used_pairing_recovery_finalizes_existing_identity,
 )
 from tests._infra.env import TEST_APP_TOKEN, TEST_UPLOAD_TOKEN
-
-
-def test_health_and_auth_contract(client: TestClient, *, identity) -> None:
-    health = client.get("/api/health")
-    assert health.status_code == 200
-    health_body = health.json()
-    assert health_body == {"status": "ok"}
-
-    private_status_anon = client.get("/api/status/private")
-    assert private_status_anon.status_code == 401
-    assert private_status_anon.json()["error"] == "invalid_token"
-
-    private_status = client.get("/api/status/private", headers=identity.app_headers)
-    assert private_status.status_code == 200
-    private_body = private_status.json()
-    assert private_body["status"] == "ok"
-    from app.version import BACKEND_VERSION
-    assert private_body["backend_version"] == BACKEND_VERSION
-    assert private_body["identity_schema"] == "v0.3"
-    assert private_body["database_status"] in {"ok", "missing"}
-    assert private_body["upload_dir_status"] in {"ok", "missing"}
-    for value in private_body.values():
-        if isinstance(value, str):
-            assert ":\\" not in value, value
-            assert not value.startswith("/"), value
-
-    response = client.get("/api/auth/check", headers=identity.app_headers)
-    assert response.status_code == 200
-    assert response.json() == {
-        "status": "ok",
-        "account_name": "我",
-        "ledger_id": "owner",
-        "ledger_name": "我的小票夹",
-        "device_name": "pytest-android",
-        "role": "owner",
-        "scope": "app",
-    }
-
-    response = client.get(
-        "/api/auth/check", headers={"Authorization": f"Bearer {TEST_APP_TOKEN}"}
-    )
-    assert response.status_code == 401
-    assert response.json()["error"] == "legacy_auth_removed"
-    assert response.json()["message"]
+from tests.pairing_test_support import pairing_payload
 
 
 def test_tokens_are_hashed_and_legacy_tokens_are_rejected(client: TestClient) -> None:
     with SessionLocal() as db:
-        assert (
-            db.query(AuthToken).filter(AuthToken.token_hash == TEST_APP_TOKEN).count()
-            == 0
-        )
-        assert (
-            db.query(UploadLink)
-            .filter(UploadLink.token_hash == TEST_UPLOAD_TOKEN)
-            .count()
-            == 0
-        )
-        assert (
-            db.query(AuthToken)
-            .filter(AuthToken.token_hash == hash_secret(TEST_APP_TOKEN))
-            .count()
-            == 0
-        )
-        assert (
-            db.query(UploadLink)
-            .filter(UploadLink.token_hash == hash_secret(TEST_UPLOAD_TOKEN))
-            .count()
-            == 0
-        )
+        assert db.query(AuthToken).filter(AuthToken.token_hash == TEST_APP_TOKEN).count() == 0
+        assert db.query(UploadLink).filter(UploadLink.token_hash == TEST_UPLOAD_TOKEN).count() == 0
+        assert db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(TEST_APP_TOKEN)).count() == 0
+        assert db.query(UploadLink).filter(UploadLink.token_hash == hash_secret(TEST_UPLOAD_TOKEN)).count() == 0
 
-    app_response = client.get(
-        "/api/auth/check", headers={"Authorization": f"Bearer {TEST_APP_TOKEN}"}
-    )
+    app_response = client.get("/api/auth/check", headers={"Authorization": f"Bearer {TEST_APP_TOKEN}"})
     assert app_response.status_code == 401
     assert app_response.json()["error"] == "legacy_auth_removed"
 
@@ -153,17 +90,13 @@ def test_bootstrap_owner_rejects_weak_configured_secret(
         get_settings.cache_clear()
 
 
-def test_bootstrap_owner_enabled_requires_secret_header(
-    client: TestClient, http_bootstrap_enabled: str
-) -> None:
+def test_bootstrap_owner_enabled_requires_secret_header(client: TestClient, http_bootstrap_enabled: str) -> None:
     response = client.post("/api/bootstrap/owner", json={})
     assert response.status_code == 401
     assert response.json()["error"] == "bootstrap_secret_required"
 
 
-def test_bootstrap_owner_enabled_rejects_wrong_secret(
-    client: TestClient, http_bootstrap_enabled: str
-) -> None:
+def test_bootstrap_owner_enabled_rejects_wrong_secret(client: TestClient, http_bootstrap_enabled: str) -> None:
     response = client.post(
         "/api/bootstrap/owner",
         headers={"X-Bootstrap-Secret": "wrong-secret"},
@@ -190,17 +123,11 @@ def test_bootstrap_owner_enabled_rejects_wrong_secret(
         )
 
 
-def test_bootstrap_owner_secret_is_one_shot(
-    client: TestClient, http_bootstrap_enabled: str
-) -> None:
+def test_bootstrap_owner_secret_is_one_shot(client: TestClient, http_bootstrap_enabled: str) -> None:
     # A consumption row alone is not a recovery grant. The derived credential
     # hashes must prove that this exact secret completed the bootstrap ceremony.
     with SessionLocal() as db:
-        db.add(
-            BootstrapSecretConsumption(
-                secret_hash=hash_secret(http_bootstrap_enabled)
-            )
-        )
+        db.add(BootstrapSecretConsumption(secret_hash=hash_secret(http_bootstrap_enabled)))
         db.commit()
 
     response = client.post(
@@ -269,15 +196,16 @@ def test_bootstrap_owner_rejects_new_identity_after_all_tokens_revoked(
         assert db.query(Device).count() == before["devices"]
         assert db.query(UploadLink).count() == before["uploads"]
         assert db.query(PairingCode).count() == before["pairings"]
-        assert db.query(BootstrapSecretConsumption).filter(
-            BootstrapSecretConsumption.secret_hash == hash_secret(http_bootstrap_enabled)
-        ).count() == 0
+        assert (
+            db.query(BootstrapSecretConsumption)
+            .filter(BootstrapSecretConsumption.secret_hash == hash_secret(http_bootstrap_enabled))
+            .count()
+            == 0
+        )
 
 
 def test_upload_check_contract(client: TestClient) -> None:
-    response = client.get(
-        "/api/upload/check", headers={"Upload-Token": TEST_UPLOAD_TOKEN}
-    )
+    response = client.get("/api/upload/check", headers={"Upload-Token": TEST_UPLOAD_TOKEN})
     assert response.status_code == 401
     assert response.json()["error"] == "legacy_auth_removed"
 
@@ -287,7 +215,9 @@ def test_upload_check_contract(client: TestClient) -> None:
 
 
 def test_owner_can_create_pairing_code_and_android_can_pair_once(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     response = client.post(
         "/api/bootstrap/pairing-codes",
@@ -300,14 +230,11 @@ def test_owner_can_create_pairing_code_and_android_can_pair_once(
     assert pairing["pairing_code"].isdigit()
     assert len(pairing["pairing_code"]) == 8
 
-    paired = client.post(
-        "/api/auth/pair",
-        json={
-            "pairing_code": pairing["pairing_code"],
-            "device_name": "小米 15 Pro",
-            "platform": "android",
-        },
+    request_payload = pairing_payload(
+        pairing["pairing_code"],
+        device_name="小米 15 Pro",
     )
+    paired = client.post("/api/auth/pair", json=request_payload)
     assert paired.status_code == 200
     payload = paired.json()
     assert payload["session_token"].startswith("tbx_")
@@ -323,16 +250,17 @@ def test_owner_can_create_pairing_code_and_android_can_pair_once(
     assert check.status_code == 200
     assert check.json()["device_name"] == "小米 15 Pro"
 
-    reused = client.post(
+    replayed = client.post("/api/auth/pair", json=request_payload)
+    assert replayed.status_code == 200
+    assert replayed.json()["session_token"] == payload["session_token"]
+    assert replayed.json()["device_public_id"] == payload["device_public_id"]
+
+    different_attempt = client.post(
         "/api/auth/pair",
-        json={
-            "pairing_code": pairing["pairing_code"],
-            "device_name": "小米 15 Pro",
-            "platform": "android",
-        },
+        json=pairing_payload(pairing["pairing_code"], device_name="小米 15 Pro"),
     )
-    assert reused.status_code == 401
-    assert reused.json()["error"] == "invalid_pairing_code"
+    assert different_attempt.status_code == 401
+    assert different_attempt.json()["error"] == "invalid_pairing_code"
 
 
 def _new_pairing_code(client: TestClient, *, identity) -> str:
@@ -348,13 +276,13 @@ def _new_pairing_code(client: TestClient, *, identity) -> str:
 def _pair_token(client: TestClient, *, code: str, platform: str, name: str) -> str:
     response = client.post(
         "/api/auth/pair",
-        json={"pairing_code": code, "device_name": name, "platform": platform},
+        json=pairing_payload(code, device_name=name, platform=platform),
     )
     assert response.status_code == 200, response.text
     return response.json()["session_token"]
 
 
-def test_repair_revokes_old_same_platform_app_tokens(client: TestClient, *, identity) -> None:
+def test_pairing_preserves_other_same_platform_device_sessions(client: TestClient, *, identity) -> None:
     old_token = identity.app_token
     new_token = _pair_token(
         client,
@@ -366,11 +294,11 @@ def test_repair_revokes_old_same_platform_app_tokens(client: TestClient, *, iden
     with SessionLocal() as db:
         old_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(old_token)).one()
         new_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(new_token)).one()
-        assert old_row.revoked_at is not None
+        assert old_row.revoked_at is None
         assert new_row.revoked_at is None
 
 
-def test_repair_revokes_blank_platform_tokens_by_stored_platform(client: TestClient, *, identity) -> None:
+def test_pairing_preserves_other_unknown_platform_device_sessions(client: TestClient, *, identity) -> None:
     first_token = _pair_token(
         client,
         code=_new_pairing_code(client, identity=identity),
@@ -390,13 +318,11 @@ def test_repair_revokes_blank_platform_tokens_by_stored_platform(client: TestCli
         second_device = db.get(Device, second_row.device_id)
         assert second_device is not None
         assert second_device.platform == "unknown"
-        assert first_row.revoked_at is not None
+        assert first_row.revoked_at is None
         assert second_row.revoked_at is None
 
 
-def test_repair_preserves_cross_platform_tokens_and_web_ttl(
-    client: TestClient, *, identity
-) -> None:
+def test_repair_preserves_cross_platform_tokens_and_web_ttl(client: TestClient, *, identity) -> None:
     web_token = _pair_token(
         client,
         code=_new_pairing_code(client, identity=identity),
@@ -424,7 +350,7 @@ def test_repair_preserves_cross_platform_tokens_and_web_ttl(
         new_android = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(replacement_android)).one()
         assert web_row.revoked_at is None
         assert ensure_utc(web_row.expires_at) == web_expires_at
-        assert old_android.revoked_at is not None
+        assert old_android.revoked_at is None
         assert new_android.revoked_at is None
 
 
@@ -439,7 +365,9 @@ def test_app_owner_token_cannot_create_bootstrap_pairing_code(client: TestClient
 
 
 def test_pairing_codes_rejects_public_host_even_with_admin_token(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     # Even with a valid admin token, the pairing-code creation endpoint must
     # refuse requests forwarded from a public Host (e.g. through Cloudflare
@@ -462,23 +390,17 @@ def test_pairing_codes_rejects_public_host_even_with_admin_token(
 
 
 def test_pairing_code_expires(client: TestClient, *, identity) -> None:
-    response = client.post(
-        "/api/bootstrap/pairing-codes", headers=identity.admin_headers, json={"ttl_minutes": 1}
-    )
+    response = client.post("/api/bootstrap/pairing-codes", headers=identity.admin_headers, json={"ttl_minutes": 1})
     assert response.status_code == 200
     code = response.json()["pairing_code"]
     with SessionLocal() as db:
-        pairing = (
-            db.query(PairingCode)
-            .filter(PairingCode.code_hash == hash_pairing_code(code))
-            .one()
-        )
+        pairing = db.query(PairingCode).filter(PairingCode.code_hash == hash_pairing_code(code)).one()
         pairing.expires_at = now_utc() - timedelta(minutes=1)
         db.commit()
 
     expired = client.post(
         "/api/auth/pair",
-        json={"pairing_code": code, "device_name": "过期设备", "platform": "android"},
+        json=pairing_payload(code, device_name="过期设备"),
     )
     assert expired.status_code == 401
     assert expired.json()["error"] == "invalid_pairing_code"

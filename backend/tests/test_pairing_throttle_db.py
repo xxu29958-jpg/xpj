@@ -7,22 +7,24 @@ restart and applies across workers.
 
 from __future__ import annotations
 
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.errors import AppError
 from app.models import PairingAttemptFailure
+from app.services.identity_service import pair_device
 from app.services.identity_service._models import PAIRING_MAX_FAILED_ATTEMPTS
+from tests.pairing_test_support import pairing_payload
 
 
 def _pair(client: TestClient, *, code: str, device_name: str = "pytest-throttle"):
     return client.post(
         "/api/auth/pair",
-        json={
-            "pairing_code": code,
-            "device_name": device_name,
-            "platform": "android",
-        },
+        json=pairing_payload(code, device_name=device_name),
     )
 
 
@@ -66,3 +68,34 @@ def test_successful_pair_clears_throttle_rows(
         # Only failure rows for this remote_key should be cleared; we
         # had exactly one, so the table is now empty.
         assert remaining == []
+
+
+def test_concurrent_failures_cannot_overshoot_pairing_limit(identity) -> None:
+    remote_id = "pytest-concurrent-pairing-throttle"
+
+    def attempt(index: int) -> str:
+        payload = pairing_payload(
+            "DEFINITELY-WRONG-CODE",
+            device_name=f"parallel-{index}",
+        )
+        with SessionLocal() as db:
+            try:
+                pair_device(
+                    db,
+                    pairing_code=payload["pairing_code"],
+                    pairing_attempt_id=payload["pairing_attempt_id"],
+                    pairing_attempt_secret=payload["pairing_attempt_secret"],
+                    device_name=payload["device_name"],
+                    platform=payload["platform"],
+                    remote_id=remote_id,
+                )
+            except AppError as exc:
+                return exc.error
+        raise AssertionError("an invalid pairing code unexpectedly succeeded")
+
+    request_count = PAIRING_MAX_FAILED_ATTEMPTS + 5
+    with ThreadPoolExecutor(max_workers=request_count) as pool:
+        outcomes = Counter(pool.map(attempt, range(request_count)))
+
+    assert outcomes["invalid_pairing_code"] == PAIRING_MAX_FAILED_ATTEMPTS
+    assert outcomes["rate_limited"] == request_count - PAIRING_MAX_FAILED_ATTEMPTS

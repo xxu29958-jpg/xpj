@@ -8,6 +8,8 @@ flow.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
@@ -40,6 +42,7 @@ __all__ = [
     "PairResponse",
     "PairingCodeCreateRequest",
     "PairingCodeResponse",
+    "RefreshSessionRequest",
     "RefreshSessionResponse",
 ]
 
@@ -48,12 +51,24 @@ class PairRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pairing_code: str = Field(min_length=1, max_length=32)
+    pairing_attempt_id: UUID | None = None
+    pairing_attempt_secret: str | None = Field(
+        default=None,
+        min_length=43,
+        max_length=43,
+        pattern=r"^[A-Za-z0-9_-]{43}$",
+    )
     device_name: str = Field(min_length=1, max_length=120)
     platform: str = Field(min_length=1, max_length=32)
 
 
 class PairResponse(BaseModel):
     session_token: str
+    pairing_attempt_id: str
+    server_id: str
+    data_generation: str
+    account_public_id: str
+    device_public_id: str
     account_name: str
     ledger_id: str
     ledger_name: str
@@ -67,8 +82,20 @@ class PairResponse(BaseModel):
     soft_refresh_after: str | None = None
 
 
+class RefreshSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_attempt_id: UUID
+    refresh_attempt_secret: str = Field(
+        min_length=43,
+        max_length=43,
+        pattern=r"^[A-Za-z0-9_-]{43}$",
+    )
+
+
 class RefreshSessionResponse(BaseModel):
     session_token: str
+    refresh_attempt_id: str | None = None
     expires_at: str | None = None
     soft_refresh_after: str | None = None
     rotated: bool
@@ -95,6 +122,10 @@ class LedgerCreateRequest(BaseModel):
 
 class LedgerSwitchResponse(BaseModel):
     session_token: str
+    server_id: str
+    data_generation: str
+    account_public_id: str
+    device_public_id: str
     expires_at: str | None = None
     soft_refresh_after: str | None = None
     ledger: LedgerResponse
@@ -139,6 +170,13 @@ class InvitationAcceptRequest(BaseModel):
     account_name: str = Field(min_length=1, max_length=120)
     device_name: str = Field(min_length=1, max_length=120)
     platform: str = Field(min_length=1, max_length=32)
+    enrollment_attempt_id: UUID | None = None
+    enrollment_attempt_secret: str | None = Field(
+        default=None,
+        min_length=43,
+        max_length=43,
+        pattern=r"^[A-Za-z0-9_-]{43}$",
+    )
 
 
 class InvitationPreviewRequest(BaseModel):
@@ -156,6 +194,11 @@ class InvitationPreviewResponse(BaseModel):
 
 class InvitationAcceptResponse(BaseModel):
     session_token: str
+    enrollment_attempt_id: str | None = None
+    server_id: str
+    data_generation: str
+    account_public_id: str
+    device_public_id: str
     expires_at: str | None = None
     soft_refresh_after: str | None = None
     account_name: str
@@ -241,6 +284,7 @@ class PairingCodeCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     device_name_hint: str | None = None
+    recovery_device_public_id: str | None = Field(default=None, max_length=36)
     ttl_minutes: int = Field(default=15, ge=1, le=60)
 
 

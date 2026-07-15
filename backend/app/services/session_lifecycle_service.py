@@ -14,6 +14,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
+from uuid import UUID
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -24,13 +25,18 @@ from app.services.session_credential_lock import (
     lock_and_revalidate_credential_mint_context,
     lock_bootstrap_owner_transaction,
 )
-from app.services.time_service import now_utc
+from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
 
 PairingConsumeResult = Literal["consumed", "used", "expired"]
 PAIRING_CODE_DIGITS = 8
 PAIRING_CODE_HASH_ITERATIONS = 120_000
 PAIRING_CODE_HASH_SALT = b"ticketbox-pairing-code-v2"
+ENROLLMENT_ATTEMPT_SECRET_CONTEXT = b"ticketbox/device-enrollment/v1/attempt-secret\0"
+ENROLLMENT_SESSION_TOKEN_CONTEXT = b"ticketbox/device-enrollment/v1/session-token\0"
+SESSION_REFRESH_SECRET_CONTEXT = b"ticketbox/session-refresh/v1/attempt-secret\0"
+SESSION_REFRESH_TOKEN_CONTEXT = b"ticketbox/session-refresh/v1/session-token\0"
+ATTEMPT_SECRET_BYTES = 32
 # Cross-runtime protocol identifiers: never change a v1 context in place.
 BOOTSTRAP_ADMIN_TOKEN_CONTEXT = b"ticketbox/bootstrap-owner/v1/admin-token"
 BOOTSTRAP_UPLOAD_KEY_CONTEXT = b"ticketbox/bootstrap-owner/v1/upload-key"
@@ -55,6 +61,64 @@ def hash_pairing_code(code: str) -> str:
         PAIRING_CODE_HASH_SALT,
         PAIRING_CODE_HASH_ITERATIONS,
     ).hex()
+
+
+def _decode_attempt_secret(secret: str) -> bytes:
+    """Decode and verify the canonical 256-bit attempt proof."""
+
+    try:
+        raw = base64.urlsafe_b64decode(secret.encode("ascii") + b"=")
+    except (UnicodeEncodeError, ValueError) as exc:
+        raise ValueError("invalid attempt secret") from exc
+    canonical = _base64url_without_padding(raw)
+    if len(raw) != ATTEMPT_SECRET_BYTES or not hmac.compare_digest(canonical, secret):
+        raise ValueError("invalid attempt secret")
+    return raw
+
+
+def _hash_attempt_secret(secret: str, *, context: bytes) -> str:
+    return hashlib.sha256(context + _decode_attempt_secret(secret)).hexdigest()
+
+
+def _derive_attempt_token(secret: str, attempt_id: str, *, context: bytes) -> str:
+    raw = _decode_attempt_secret(secret)
+    try:
+        attempt_bytes = UUID(attempt_id).bytes
+    except (ValueError, AttributeError) as exc:
+        raise ValueError("invalid attempt id") from exc
+    digest = hmac.new(raw, context + attempt_bytes, hashlib.sha256).digest()
+    return f"tbx_{_base64url_without_padding(digest)}"
+
+
+def hash_enrollment_attempt_secret(secret: str) -> str:
+    """Hash a canonical high-entropy attempt proof for persistence."""
+
+    return _hash_attempt_secret(
+        secret,
+        context=ENROLLMENT_ATTEMPT_SECRET_CONTEXT,
+    )
+
+
+def derive_enrollment_session_token(secret: str, attempt_id: str) -> str:
+    """Derive the stable session result for one recoverable enrollment."""
+
+    return _derive_attempt_token(
+        secret,
+        attempt_id,
+        context=ENROLLMENT_SESSION_TOKEN_CONTEXT,
+    )
+
+
+def hash_session_refresh_attempt_secret(secret: str) -> str:
+    return _hash_attempt_secret(secret, context=SESSION_REFRESH_SECRET_CONTEXT)
+
+
+def derive_session_refresh_token(secret: str, attempt_id: str) -> str:
+    return _derive_attempt_token(
+        secret,
+        attempt_id,
+        context=SESSION_REFRESH_TOKEN_CONTEXT,
+    )
 
 
 def _derive_bootstrap_digest(secret: str, *, context: bytes) -> bytes:
@@ -114,15 +178,22 @@ def app_token_expiry_window(issued_at: datetime) -> AppTokenExpiryWindow:
     if cfg.app_token_ttl_days <= 0:
         return AppTokenExpiryWindow(expires_at=None, soft_refresh_after=None)
     expires_at = issued_at + timedelta(days=cfg.app_token_ttl_days)
-    soft_refresh_after = (
-        expires_at - timedelta(days=max(cfg.app_token_refresh_window_days, 0))
-        if cfg.app_token_refresh_window_days > 0
-        else None
-    )
+    soft_refresh_after = app_token_soft_refresh_after(expires_at)
     return AppTokenExpiryWindow(
         expires_at=expires_at,
         soft_refresh_after=soft_refresh_after,
     )
+
+
+def app_token_soft_refresh_after(expires_at: datetime | None) -> datetime | None:
+    """Reconstruct the refresh threshold for an unchanged app session."""
+
+    if expires_at is None:
+        return None
+    from app.config import get_settings
+
+    refresh_days = max(get_settings().app_token_refresh_window_days, 0)
+    return expires_at - timedelta(days=refresh_days) if refresh_days > 0 else None
 
 
 def upload_link_expires_at(issued_at: datetime) -> datetime:
@@ -202,8 +273,18 @@ def consume_pairing_code(
     )
     if result.rowcount == 1:
         return "consumed"
-    refreshed = db.get(PairingCode, pairing_id)
-    if refreshed is not None and refreshed.used_at is not None:
+    refreshed = db.scalar(
+        select(PairingCode)
+        .where(PairingCode.id == pairing_id)
+        .execution_options(populate_existing=True)
+        .limit(1)
+    )
+    if refreshed is None or refreshed.code_hash != expected_code_hash:
+        return "expired"
+    expires_at = ensure_utc(refreshed.expires_at) or refreshed.expires_at
+    if expires_at <= used_at:
+        return "expired"
+    if refreshed.used_at is not None:
         return "used"
     return "expired"
 
@@ -235,16 +316,12 @@ def revoke_active_tokens(
     if scope is not None:
         statement = statement.where(AuthToken.scope == scope)
     result = db.execute(
-        statement.values(revoked_at=revoked_at, grace_until=None).execution_options(
-            synchronize_session=False
-        )
+        statement.values(revoked_at=revoked_at, grace_until=None).execution_options(synchronize_session=False)
     )
     return int(result.rowcount or 0)
 
 
-def revoke_web_session_token(
-    db: Session, *, token_value: str, revoked_at: datetime | None = None
-) -> bool:
+def revoke_web_session_token(db: Session, *, token_value: str, revoked_at: datetime | None = None) -> bool:
     """Revoke a /web logout cookie if (and only if) it backs an active web session.
 
     The /web ``__Host-session`` cookie is the only place a scope=app
@@ -257,9 +334,7 @@ def revoke_web_session_token(
     nothing matched. Always commits.
     """
     lock_bootstrap_owner_transaction(db)
-    row = db.scalar(
-        select(AuthToken).where(AuthToken.token_hash == hash_secret(token_value)).limit(1)
-    )
+    row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token_value)).limit(1))
     if row is None or row.revoked_at is not None or row.scope != "app":
         return False
     device = db.get(Device, row.device_id)
@@ -286,9 +361,7 @@ def revoke_token_value(
     if scope is not None:
         statement = statement.where(AuthToken.scope == scope)
     result = db.execute(
-        statement.values(revoked_at=revoked_at, grace_until=None).execution_options(
-            synchronize_session=False
-        )
+        statement.values(revoked_at=revoked_at, grace_until=None).execution_options(synchronize_session=False)
     )
     return int(result.rowcount or 0)
 
@@ -323,11 +396,7 @@ def rotate_app_token_for_ledger(
     from app.config import get_settings
 
     grace_seconds = max(get_settings().app_token_rotation_grace_seconds, 0) if allow_grace else 0
-    grace_until = (
-        rotated_at + timedelta(seconds=grace_seconds)
-        if grace_seconds > 0
-        else None
-    )
+    grace_until = rotated_at + timedelta(seconds=grace_seconds) if grace_seconds > 0 else None
 
     result = db.execute(
         update(AuthToken)

@@ -43,6 +43,7 @@ from app.services.identity_service._device import (
     _create_pairing_code,
     create_pairing_code,
 )
+from app.services.identity_service._enrollment import ENROLLMENT_ATTEMPT_RECOVERY_SECONDS
 from app.services.identity_service._legacy_compat import (
     is_legacy_app_token,
     is_legacy_upload_token,
@@ -84,6 +85,7 @@ __all__ = [
     # constants
     "DEFAULT_ACCOUNT_NAME",
     "DEFAULT_BOOTSTRAP_DEVICE_NAME",
+    "ENROLLMENT_ATTEMPT_RECOVERY_SECONDS",
     "PAIRING_ATTEMPT_WINDOW",
     "PAIRING_CODE_TTL_MINUTES",
     "PAIRING_MAX_FAILED_ATTEMPTS",

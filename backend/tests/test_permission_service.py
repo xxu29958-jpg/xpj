@@ -10,10 +10,12 @@ from app.tenants import AuthContext
 def _ctx(*, scope: str, role: str) -> AuthContext:
     return AuthContext(
         account_id=1,
+        account_public_id="account-public-id",
         account_name="我",
         ledger_id="owner",
         ledger_name="我的小票夹",
         device_id=1,
+        device_public_id="device-public-id",
         device_name="pytest",
         role=role,
         scope=scope,

@@ -37,7 +37,7 @@ from app.services.identity_service import (
     rotate_exposed_bootstrap_credentials,
 )
 from app.services.session_lifecycle_service import revoke_token_value
-from app.services.time_service import now_utc
+from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
 from tests._infra.bootstrap_owner_transfer_concurrency import (
     assert_revocation_blocks_pre_authenticated_owner_transfer,
@@ -106,7 +106,21 @@ def _attempt_stale_credential_mint(
 
 def _assert_credential_counts() -> None:
     with SessionLocal() as db:
-        assert db.query(PairingCode).count() == 1
+        checked_at = now_utc()
+        pairings = db.query(PairingCode).all()
+        active_pairings = [
+            pairing
+            for pairing in pairings
+            if pairing.used_at is None
+            and (ensure_utc(pairing.expires_at) or pairing.expires_at) > checked_at
+        ]
+        assert len(active_pairings) == 1
+        assert all(
+            pairing in active_pairings
+            or pairing.used_at is not None
+            or (ensure_utc(pairing.expires_at) or pairing.expires_at) <= checked_at
+            for pairing in pairings
+        )
         assert db.query(UploadLink).count() == 1
         assert db.query(Invitation).count() == 0
 
@@ -448,7 +462,7 @@ def _assert_disabled_target_rolls_back_switch(
         )
 
 
-def assert_switch_revalidates_locked_target_before_source_revocation(
+def assert_switch_revalidates_locked_target_before_default_change(
     monkeypatch: pytest.MonkeyPatch,
     *,
     token_value: str,
@@ -466,6 +480,7 @@ def assert_switch_revalidates_locked_target_before_source_revocation(
     with SessionLocal() as db:
         source = db.get(AuthToken, source_token_id)
         assert source is not None and source.revoked_at is None
+        assert source.ledger_id == "owner"
         target_tokens = db.scalars(
             select(AuthToken)
             .where(AuthToken.device_id == source_device_id)

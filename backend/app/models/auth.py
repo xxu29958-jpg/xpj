@@ -36,9 +36,7 @@ class UploadLink(Base):
     # Per-link daily byte budget. NULL = follow server default.
     daily_byte_budget: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Per-remote min interval seconds between requests. 0 = no throttle.
-    per_remote_min_interval_seconds: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    per_remote_min_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
 class UploadLinkDailyUsage(Base):
@@ -50,25 +48,15 @@ class UploadLinkDailyUsage(Base):
     """
 
     __tablename__ = "upload_link_daily_usage"
-    __table_args__ = (
-        UniqueConstraint(
-            "upload_link_id", "ymd", name="uq_upload_link_daily_usage_link_ymd"
-        ),
-    )
+    __table_args__ = (UniqueConstraint("upload_link_id", "ymd", name="uq_upload_link_daily_usage_link_ymd"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    upload_link_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("upload_links.id"), nullable=False, index=True
-    )
+    upload_link_id: Mapped[int] = mapped_column(Integer, ForeignKey("upload_links.id"), nullable=False, index=True)
     ymd: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     bytes_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
 class UploadLinkRemoteAttempt(Base):
@@ -89,13 +77,9 @@ class UploadLinkRemoteAttempt(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    upload_link_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("upload_links.id"), nullable=False, index=True
-    )
+    upload_link_id: Mapped[int] = mapped_column(Integer, ForeignKey("upload_links.id"), nullable=False, index=True)
     remote_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
-    last_attempt_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
+    last_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
 class PairingAttemptFailure(Base):
@@ -111,9 +95,7 @@ class PairingAttemptFailure(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     remote_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
-    failed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False, index=True
-    )
+    failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False, index=True)
 
 
 class PairingCode(Base):
@@ -123,9 +105,91 @@ class PairingCode(Base):
     code_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     ledger_id: Mapped[str] = mapped_column(String(64), ForeignKey("ledgers.ledger_id"), nullable=False, index=True)
     account_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=True, index=True)
+    recovery_device_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     device_name_hint: Mapped[str | None] = mapped_column(String(120), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+class DeviceEnrollmentAttempt(Base):
+    """Recoverable authorization transaction for one device enrollment.
+
+    Pairing an existing Account and accepting an invitation for a new Account
+    share one response-loss contract: the client persists ``public_id`` and a
+    high-entropy proof before sending the one-shot credential. Exactly one
+    source FK identifies the enrollment command; a proven retry returns the
+    originally committed Device/session instead of creating another identity.
+    """
+
+    __tablename__ = "device_enrollment_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "(pairing_code_id IS NOT NULL) <> (invitation_id IS NOT NULL)",
+            name="ck_device_enrollment_attempts_one_source",
+        ),
+        UniqueConstraint(
+            "pairing_code_id",
+            name="uq_device_enrollment_attempts_pairing_code_id",
+        ),
+        UniqueConstraint(
+            "invitation_id",
+            name="uq_device_enrollment_attempts_invitation_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True)
+    pairing_code_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("pairing_codes.id", ondelete="CASCADE"), nullable=True
+    )
+    invitation_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("invitations.id", ondelete="CASCADE"), nullable=True
+    )
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=False, index=True)
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ledger_id: Mapped[str] = mapped_column(String(64), ForeignKey("ledgers.ledger_id"), nullable=False, index=True)
+    secret_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    session_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    session_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    session_soft_refresh_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+class SessionRefreshAttempt(Base):
+    """Recoverable transaction linking one old app token to its replacement."""
+
+    __tablename__ = "session_refresh_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True)
+    source_token_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("auth_tokens.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    replacement_token_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("auth_tokens.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    secret_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
@@ -140,27 +204,19 @@ class Invitation(Base):
     """
 
     __tablename__ = "invitations"
-    __table_args__ = (
-        CheckConstraint("role IN ('member', 'viewer')", name="ck_invitations_role_invitable"),
-    )
+    __table_args__ = (CheckConstraint("role IN ('member', 'viewer')", name="ck_invitations_role_invitable"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(
         String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
     )
-    ledger_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("ledgers.ledger_id"), nullable=False, index=True
-    )
+    ledger_id: Mapped[str] = mapped_column(String(64), ForeignKey("ledgers.ledger_id"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
-    created_by_account_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("accounts.id"), nullable=False, index=True
-    )
+    created_by_account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=False, index=True)
     note: Mapped[str | None] = mapped_column(String(80), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     used_by_account_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("accounts.id"), nullable=True, index=True

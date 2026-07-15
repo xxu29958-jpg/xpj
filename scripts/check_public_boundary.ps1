@@ -271,11 +271,22 @@ Test-Probe -Name 'public /static/web/icon.svg' -Url "$BaseUrl/static/web/icon.sv
 # Pydantic schema (422 invalid_request) depending on payload shape;
 # both confirm the endpoint is reachable and refuses bad input. The
 # probe sends a deliberately short code so it can hit either path.
+$pairingAttemptBytes = New-Object byte[] 32
+$pairingAttemptRng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $pairingAttemptRng.GetBytes($pairingAttemptBytes)
+}
+finally {
+    $pairingAttemptRng.Dispose()
+}
+$pairingAttemptSecret = [Convert]::ToBase64String($pairingAttemptBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 Test-Probe -Name 'public /api/auth/pair (bad code)' -Url "$BaseUrl/api/auth/pair" -Method 'POST' `
     -ExpectedStatus @(401, 422) -ExpectedErrors @('invalid_pairing_code', 'invalid_request', '') -Body @{
-    pairing_code = 'AAAAAA'
-    device_name  = 'public-boundary-probe'
-    platform     = 'android'
+    pairing_code           = 'AAAAAA'
+    pairing_attempt_id     = [guid]::NewGuid().ToString()
+    pairing_attempt_secret = $pairingAttemptSecret
+    device_name            = 'public-boundary-probe'
+    platform               = 'android'
 } | Out-Null
 
 # /u/{nonexistent-key} should be reachable but reject. PS 5.1's

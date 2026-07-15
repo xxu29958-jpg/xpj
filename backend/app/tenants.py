@@ -34,10 +34,12 @@ class AdminContext:
 @dataclass(frozen=True)
 class AuthContext:
     account_id: int
+    account_public_id: str
     account_name: str
     ledger_id: str
     ledger_name: str
     device_id: int
+    device_public_id: str
     device_name: str
     role: str
     scope: str

@@ -53,6 +53,7 @@
               </div>
             </form>
             {% else %}
+            <a class="btn btn-secondary" href="/owner/pairing?recovery_device={{ d.public_id }}">恢复/替换</a>
             <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/delete"
                   data-confirm="确认从列表移除设备「{{ d.device_name }}」？将永久移除该设备及其历史 token / 上传链接记录，账单数据保留。">
               <button type="submit" class="btn btn-danger">移除记录</button>

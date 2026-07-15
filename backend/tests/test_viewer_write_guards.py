@@ -15,6 +15,7 @@ from app.routes.web_app import _require_local as _web_require_local
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+from tests.pairing_test_support import invitation_accept_payload
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -58,12 +59,11 @@ def _make_role_token(client: TestClient, role: str, *, identity) -> tuple[str, s
     invite = _mint_invite(client, ledger_id, owner_token, role)
     response = client.post(
         "/api/invitations/accept",
-        json={
-            "invite_token": invite,
-            "account_name": f"user-{role}",
-            "device_name": f"device-{role}",
-            "platform": "android",
-        },
+        json=invitation_accept_payload(
+            invite,
+            account_name=f"user-{role}",
+            device_name=f"device-{role}",
+        ),
     )
     assert response.status_code == 200, response.json()
     return ledger_id, owner_token, response.json()["session_token"]

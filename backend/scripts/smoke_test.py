@@ -306,6 +306,8 @@ def _pair_android(base_url: str, bootstrap: dict) -> None:
     pair_body = json.dumps(
         {
             "pairing_code": bootstrap["pairing_code"],
+            "pairing_attempt_id": str(uuid.uuid4()),
+            "pairing_attempt_secret": secrets.token_urlsafe(32),
             "device_name": "smoke-android",
             "platform": "android",
         },

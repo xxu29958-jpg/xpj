@@ -1,34 +1,33 @@
-"""Owner-facing device management (issue #65 slice 6a).
+"""Account-scoped device management for the Android owner flow.
 
-The shared ``admin_service._devices`` functions back the loopback ``/owner``
-console and the loopback ``/api/admin/*`` routes. This module wraps them for the
-account owner's app-token ``/api/ledgers/{ledger_id}/devices`` routes (Slice 6):
-
-* every operation is scoped to the owner's active ledger (``ledger_ids`` filter)
-  so a device is only visible / mutable if it has a token or upload-link in THAT
-  ledger. This is ledger-admin authority, not account-ownership: an owner can
-  revoke ANOTHER member's device's access to their ledger (correct — a ledger
-  owner controls who reaches their ledger), but the revoke is contained to this
-  ledger and never reaches a device's tokens in ledgers the caller doesn't own;
-* it marks which row is the caller's OWN device (``is_current``) so the client
-  can hide the self-revoke affordance;
-* it gives owner-appropriate copy for the self-revoke guard (the shared admin
-  copy mentions admin-only local scripts, §10 jargon for a normal owner).
-
-Permission is enforced by the route's ``get_current_member_manager_context``
-guard (app token, path-ledger-bound, owner role) — viewers/members get 403.
+A Device authenticates one Account; it does not belong to whichever ledger the
+session most recently selected. Ledger owners remove another person's access by
+changing Membership, never by revoking that person's device globally. The local
+Owner Console keeps its separate installation-admin surface.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.services import admin_service
+from app.models import (
+    AuthToken,
+    Device,
+    UploadLink,
+    UploadLinkDailyUsage,
+    UploadLinkRemoteAttempt,
+)
 from app.services.admin_service._dtos import DeviceSummary
 from app.services.identity_service import PairingCodeResult, create_pairing_code
+from app.services.identity_service._bootstrap_exposure_guard import (
+    assert_bootstrap_sensitive_mutation_allowed,
+)
+from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
+from app.services.time_service import now_utc, to_iso
 from app.tenants import AuthContext
 
 
@@ -38,12 +37,52 @@ class MyDevice:
     is_current: bool
 
 
-def _ledger_scope(auth: AuthContext) -> set[str]:
-    return {auth.ledger_id}
-
-
 def _current_public_id(db: Session, auth: AuthContext) -> str:
-    return admin_service.device_public_id(db, auth.device_id)
+    device = db.get(Device, auth.device_id)
+    return device.public_id if device is not None else ""
+
+
+def _account_device(db: Session, auth: AuthContext, public_id: str) -> Device:
+    device = db.scalar(
+        select(Device).where(Device.public_id == public_id).where(Device.account_id == auth.account_id).limit(1)
+    )
+    if device is None:
+        raise AppError("invalid_request", "设备不存在。", status_code=404)
+    return device
+
+
+def _summary(db: Session, auth: AuthContext, device: Device) -> DeviceSummary:
+    return DeviceSummary(
+        public_id=device.public_id,
+        device_name=device.device_name,
+        platform=device.platform,
+        account_name=auth.account_name,
+        ledger_id=auth.ledger_id,
+        ledger_name=auth.ledger_name,
+        created_at=to_iso(device.created_at),
+        last_seen_at=to_iso(device.last_seen_at),
+        revoked_at=to_iso(device.revoked_at),
+    )
+
+
+def _lock_account_device_mutation(
+    db: Session,
+    auth: AuthContext,
+    public_id: str,
+) -> Device:
+    lock_and_revalidate_mutation_actor(
+        db,
+        auth,
+        actor_account_id=auth.account_id,
+        ledger_id=auth.ledger_id,
+    )
+    device = _account_device(db, auth, public_id)
+    assert_bootstrap_sensitive_mutation_allowed(
+        db,
+        actor_account_id=auth.account_id,
+        target_device_id=device.id,
+    )
+    return device
 
 
 def _as_my_device(summary: DeviceSummary, current_public_id: str) -> MyDevice:
@@ -52,20 +91,23 @@ def _as_my_device(summary: DeviceSummary, current_public_id: str) -> MyDevice:
 
 def list_my_devices(db: Session, auth: AuthContext) -> list[MyDevice]:
     current = _current_public_id(db, auth)
-    summaries = admin_service.list_devices(db, ledger_ids=_ledger_scope(auth))
-    return [_as_my_device(s, current) for s in summaries]
+    devices = list(db.scalars(select(Device).where(Device.account_id == auth.account_id).order_by(Device.id.asc())))
+    return [_as_my_device(_summary(db, auth, device), current) for device in devices]
 
 
 def rename_my_device(db: Session, auth: AuthContext, *, public_id: str, new_name: str) -> MyDevice:
-    summary = admin_service.rename_device(
-        db,
-        public_id=public_id,
-        new_name=new_name,
-        auth=auth,
-        actor_account_id=auth.account_id,
-        ledger_ids=_ledger_scope(auth),
-    )
-    return _as_my_device(summary, _current_public_id(db, auth))
+    name = (new_name or "").strip()
+    if not name or len(name) > 120:
+        raise AppError(
+            "invalid_request",
+            "设备名称需在 1-120 字符之间。",
+            status_code=422,
+        )
+    device = _lock_account_device_mutation(db, auth, public_id)
+    device.device_name = name
+    db.commit()
+    db.refresh(device)
+    return _as_my_device(_summary(db, auth, device), _current_public_id(db, auth))
 
 
 def revoke_my_device(db: Session, auth: AuthContext, *, public_id: str) -> MyDevice:
@@ -79,26 +121,29 @@ def revoke_my_device(db: Session, auth: AuthContext, *, public_id: str) -> MyDev
             "不能停用当前正在使用的设备。请在另一台设备上操作，或直接退出登录。",
             status_code=409,
         )
-    summary = admin_service.revoke_device(
-        db,
-        public_id=public_id,
-        current_device_public_id=current,
-        auth=auth,
-        actor_account_id=auth.account_id,
-        ledger_ids=_ledger_scope(auth),
+    device = _lock_account_device_mutation(db, auth, public_id)
+    revoked_at = now_utc()
+    if device.revoked_at is None:
+        device.revoked_at = revoked_at
+    db.execute(
+        update(AuthToken)
+        .where(AuthToken.device_id == device.id)
+        .where(AuthToken.revoked_at.is_(None))
+        .values(revoked_at=revoked_at, grace_until=None)
     )
-    return _as_my_device(summary, current)
+    db.execute(
+        update(UploadLink)
+        .where(UploadLink.device_id == device.id)
+        .where(UploadLink.revoked_at.is_(None))
+        .values(revoked_at=revoked_at)
+    )
+    db.commit()
+    db.refresh(device)
+    return _as_my_device(_summary(db, auth, device), current)
 
 
 def delete_my_device(db: Session, auth: AuthContext, *, public_id: str) -> None:
-    """Permanently remove a (already-revoked) device from the owner's ledger.
-
-    Mirrors :func:`revoke_my_device`: an owner-appropriate self-delete guard
-    (the shared admin copy mentions admin-only devices, §10 jargon for a normal
-    owner) then delegates to the ledger-scoped :func:`admin_service.delete_device`,
-    which itself re-asserts the precondition — a device may only be deleted once
-    it has no ACTIVE in-scope binding (i.e. revoke it first), 409 otherwise.
-    """
+    """Permanently remove one of the Account's already-revoked devices."""
     current = _current_public_id(db, auth)
     if public_id == current:
         raise AppError(
@@ -106,24 +151,61 @@ def delete_my_device(db: Session, auth: AuthContext, *, public_id: str) -> None:
             "不能删除当前正在使用的设备。请在另一台设备上操作。",
             status_code=409,
         )
-    admin_service.delete_device(
-        db,
-        public_id=public_id,
-        current_device_public_id=current,
-        auth=auth,
-        actor_account_id=auth.account_id,
-        ledger_ids=_ledger_scope(auth),
+    device = _lock_account_device_mutation(db, auth, public_id)
+    if device.revoked_at is None:
+        raise AppError(
+            "invalid_request",
+            "请先停用该设备再删除，避免误删活跃绑定。",
+            status_code=409,
+        )
+    upload_link_ids = select(UploadLink.id).where(UploadLink.device_id == device.id)
+    db.execute(
+        delete(UploadLinkDailyUsage).where(
+            UploadLinkDailyUsage.upload_link_id.in_(upload_link_ids)
+        )
     )
+    db.execute(
+        delete(UploadLinkRemoteAttempt).where(
+            UploadLinkRemoteAttempt.upload_link_id.in_(upload_link_ids)
+        )
+    )
+    db.execute(delete(AuthToken).where(AuthToken.device_id == device.id))
+    db.execute(delete(UploadLink).where(UploadLink.device_id == device.id))
+    db.delete(device)
+    db.commit()
 
 
 def create_my_pairing_code(
-    db: Session, auth: AuthContext, *, device_name_hint: str | None, ttl_minutes: int
+    db: Session,
+    auth: AuthContext,
+    *,
+    device_name_hint: str | None,
+    ttl_minutes: int,
+    recovery_device_public_id: str | None = None,
 ) -> PairingCodeResult:
+    recovery_device_id: int | None = None
+    if recovery_device_public_id is not None:
+        device = _lock_account_device_mutation(
+            db,
+            auth,
+            recovery_device_public_id,
+        )
+        if device.id == auth.device_id:
+            raise AppError(
+                "invalid_request",
+                "当前设备仍在使用，无需恢复。",
+                status_code=409,
+            )
+        current_device = db.get(Device, auth.device_id)
+        if current_device is None or device.platform != current_device.platform:
+            raise AppError("device_recovery_platform_mismatch", status_code=409)
+        recovery_device_id = device.id
     return create_pairing_code(
         db,
         ledger_id=auth.ledger_id,
         account_id=auth.account_id,
         device_name_hint=device_name_hint,
+        recovery_device_id=recovery_device_id,
         ttl_minutes=ttl_minutes,
         auth=auth,
     )

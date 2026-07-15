@@ -66,7 +66,9 @@ from app.services.owner_console_service._ledger_console import (
 )
 from app.services.owner_console_service._pairing import (
     PairingCodeResult,
+    RecoveryDeviceChoice,
     do_create_pairing_code,
+    list_recovery_device_choices,
 )
 from app.services.owner_console_service._recurring_ops import (
     RecurringOpsVM,
@@ -106,6 +108,7 @@ __all__ = [
     "LedgerHealthVM",
     "OWNER_CONSOLE_TIMEZONE",
     "PairingCodeResult",
+    "RecoveryDeviceChoice",
     "RecurringOpsVM",
     "RecycleBinItemVM",
     "RecycleBinVM",
@@ -141,5 +144,6 @@ __all__ = [
     "list_console_ledgers",
     "list_ledger_health",
     "list_manageable_console_ledgers",
+    "list_recovery_device_choices",
     "restore_recycle_bin_item",
 ]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,12 @@ from app.services.identity_service import (
     is_legacy_app_token,
 )
 from app.tenants import AuthContext
+
+
+@dataclass(frozen=True)
+class AuthenticatedAppSession:
+    token: str
+    auth: AuthContext
 
 
 def _bearer_token(authorization: str | None) -> str:
@@ -28,11 +36,48 @@ def _raise_legacy_app_removed() -> None:
 def get_current_app_context(
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
+    x_ticketbox_ledger_id: str | None = Header(
+        default=None,
+        alias="X-Ticketbox-Ledger-ID",
+    ),
 ) -> AuthContext:
     token = _bearer_token(authorization)
     if is_legacy_app_token(token):
         _raise_legacy_app_removed()
-    return authenticate_session_token(db, token, {"app"})
+    return authenticate_session_token(
+        db,
+        token,
+        {"app"},
+        selected_ledger_id=(x_ticketbox_ledger_id or "").strip() or None,
+    )
+
+
+def get_optional_current_app_session(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    x_ticketbox_ledger_id: str | None = Header(
+        default=None,
+        alias="X-Ticketbox-Ledger-ID",
+    ),
+) -> AuthenticatedAppSession | None:
+    """Authenticate an optional bearer without downgrading malformed auth.
+
+    Public enrollment endpoints may be called by an unbound installation, but
+    once a bearer is present it must prove the exact existing Account/Device.
+    """
+
+    if authorization is None:
+        return None
+    token = _bearer_token(authorization)
+    if is_legacy_app_token(token):
+        _raise_legacy_app_removed()
+    auth = authenticate_session_token(
+        db,
+        token,
+        {"app"},
+        selected_ledger_id=(x_ticketbox_ledger_id or "").strip() or None,
+    )
+    return AuthenticatedAppSession(token=token, auth=auth)
 
 
 def get_current_admin_context(
@@ -52,29 +97,46 @@ def get_current_admin_context(
 def get_current_owner_or_admin_context(
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
+    x_ticketbox_ledger_id: str | None = Header(
+        default=None,
+        alias="X-Ticketbox-Ledger-ID",
+    ),
 ) -> AuthContext:
     from app.services import permission_service
 
     token = _bearer_token(authorization)
     if is_legacy_app_token(token):
         _raise_legacy_app_removed()
-    auth = authenticate_session_token(db, token, {"app", "admin"})
+    auth = authenticate_session_token(
+        db,
+        token,
+        {"app", "admin"},
+        selected_ledger_id=(x_ticketbox_ledger_id or "").strip() or None,
+    )
     permission_service.require_create_top_level_ledger(auth)
     return auth
 
 
 def get_current_ledger_app_context(
     ledger_id: str,
-    auth: AuthContext = Depends(get_current_app_context),
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
 ) -> AuthContext:
     """App token for the ledger named in the route path.
 
     Use this for ``/api/ledgers/{ledger_id}/...`` routes so the path ledger
     check is a reusable auth guard instead of repeated route-body logic.
     """
-    if auth.ledger_id != ledger_id:
-        raise AppError("ledger_not_found", status_code=404)
-    return auth
+    token = _bearer_token(authorization)
+    if is_legacy_app_token(token):
+        _raise_legacy_app_removed()
+    return authenticate_session_token(
+        db,
+        token,
+        {"app"},
+        selected_ledger_id=ledger_id,
+        selected_ledger_error="ledger_not_found",
+    )
 
 
 def get_current_member_manager_context(

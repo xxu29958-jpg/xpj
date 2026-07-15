@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routes.owner_console import _require_local as _require_local_console
 from app.routes.owner_ledgers import _require_local as _require_local_ledgers
+from tests.pairing_test_support import invitation_accept_payload
 
 
 @pytest.fixture()
@@ -37,12 +38,11 @@ def _mint_and_accept_member(local_client: TestClient, ledger_id: str, account_na
 
     accept = local_client.post(
         "/api/invitations/accept",
-        json={
-            "invite_token": invite,
-            "account_name": account_name,
-            "device_name": f"{account_name}-Phone",
-            "platform": "android",
-        },
+        json=invitation_accept_payload(
+            invite,
+            account_name=account_name,
+            device_name=f"{account_name}-Phone",
+        ),
     )
     assert accept.status_code == 200
 

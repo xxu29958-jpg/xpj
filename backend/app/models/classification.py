@@ -42,23 +42,17 @@ class CategoryRule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     # ADR-0041: monotonic row_version OCC token (updated_at kept for display/sort).
-    row_version: Mapped[int] = mapped_column(
-        Integer, default=1, server_default="1", nullable=False
-    )
+    row_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     # ADR-0038 undo: soft-delete tombstone. Hidden from every read while set;
     # restorable via the undo endpoint until cleanup purges it past retention.
     # Indexed via the module-level composite below (not column-level, to keep
     # create_all and the startup migrator declaring the same index set).
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RuleApplicationBatch(Base):
     __tablename__ = "rule_application_batches"
-    __table_args__ = (
-        UniqueConstraint("id", "tenant_id", name="uq_rule_application_batches_id_tenant_id"),
-    )
+    __table_args__ = (UniqueConstraint("id", "tenant_id", name="uq_rule_application_batches_id_tenant_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(
@@ -75,7 +69,12 @@ class RuleApplicationBatch(Base):
     pending_scanned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     changed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     actor_account_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=True, index=True)
-    actor_device_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("devices.id"), nullable=True, index=True)
+    actor_device_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -100,7 +99,9 @@ class RuleApplicationChange(Base):
         String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
     )
     tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
-    batch_id: Mapped[int] = mapped_column(Integer, ForeignKey("rule_application_batches.id"), nullable=False, index=True)
+    batch_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("rule_application_batches.id"), nullable=False, index=True
+    )
     expense_id: Mapped[int] = mapped_column(Integer, ForeignKey("expenses.id"), nullable=False, index=True)
     rule_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     matched_keyword: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -112,7 +113,13 @@ class RuleApplicationChange(Base):
 
 
 Index("ix_category_rules_tenant_priority_id", CategoryRule.tenant_id, CategoryRule.priority, CategoryRule.id)
-Index("ix_category_rules_tenant_enabled_priority", CategoryRule.tenant_id, CategoryRule.enabled, CategoryRule.priority, CategoryRule.id)
+Index(
+    "ix_category_rules_tenant_enabled_priority",
+    CategoryRule.tenant_id,
+    CategoryRule.enabled,
+    CategoryRule.priority,
+    CategoryRule.id,
+)
 Index("ix_category_rules_tenant_deleted", CategoryRule.tenant_id, CategoryRule.deleted_at)
 Index("ix_rule_application_batches_tenant_created_at", RuleApplicationBatch.tenant_id, RuleApplicationBatch.created_at)
 Index("ix_rule_application_batches_tenant_status", RuleApplicationBatch.tenant_id, RuleApplicationBatch.status)

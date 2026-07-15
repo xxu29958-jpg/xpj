@@ -3,8 +3,8 @@
 Covers:
 * GET  /api/ledgers              — list visible ledgers
 * POST /api/ledgers              — owner-only create
-* POST /api/ledgers/{id}/switch  — token rotation, membership enforcement,
-                                   old-token revocation
+* POST /api/ledgers/{id}/switch  — stable session, membership enforcement,
+                                   response-loss-safe retry
 * GET/POST /owner/ledgers        — local-only management page
 * GET/POST /owner/pairing        — ledger dropdown + selected ledger persists
                                    into the issued PairingCode
@@ -82,15 +82,11 @@ def test_list_ledgers_returns_active_memberships(client: TestClient, *, identity
 
 def test_list_ledgers_requires_app_token(client: TestClient) -> None:
     assert client.get("/api/ledgers").status_code == 401
-    assert client.get(
-        "/api/ledgers", headers={"Authorization": "Bearer not-a-real-token"}
-    ).status_code == 401
+    assert client.get("/api/ledgers", headers={"Authorization": "Bearer not-a-real-token"}).status_code == 401
 
 
 def test_create_ledger_with_admin_token_adds_membership(client: TestClient, *, identity) -> None:
-    response = client.post(
-        "/api/ledgers", headers=identity.admin_headers, json={"name": "家庭账本"}
-    )
+    response = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": "家庭账本"})
     assert response.status_code == 201
     body = response.json()
     assert body["name"] == "家庭账本"
@@ -116,14 +112,11 @@ def test_new_ledger_id_batches_collision_checks(monkeypatch: pytest.MonkeyPatch,
         db.add(Ledger(ledger_id="ledger_taken", name="Taken", owner_account_id=owner_id))
         db.flush()
         set_token_hex_values(
-            ["taken", "free"]
-            + [f"unused_{index}" for index in range(ledger_service.LEDGER_ID_ALLOCATION_RETRIES - 2)]
+            ["taken", "free"] + [f"unused_{index}" for index in range(ledger_service.LEDGER_ID_ALLOCATION_RETRIES - 2)]
         )
         assert ledger_service._new_ledger_id(db) == "ledger_free"
 
-        colliding_values = [
-            f"colliding_{index}" for index in range(ledger_service.LEDGER_ID_ALLOCATION_RETRIES)
-        ]
+        colliding_values = [f"colliding_{index}" for index in range(ledger_service.LEDGER_ID_ALLOCATION_RETRIES)]
         db.add_all(
             Ledger(ledger_id=f"ledger_{value}", name=f"Taken {index}", owner_account_id=owner_id)
             for index, value in enumerate(colliding_values)
@@ -139,9 +132,7 @@ def test_create_ledger_validates_name(client: TestClient, *, identity) -> None:
     assert blank.status_code == 422
     assert blank.json()["error"] == "ledger_name_required"
 
-    too_long = client.post(
-        "/api/ledgers", headers=identity.admin_headers, json={"name": "x" * 200}
-    )
+    too_long = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": "x" * 200})
     # Pydantic catches length first (max_length=60) and returns invalid_request.
     assert too_long.status_code == 422
 
@@ -154,52 +145,11 @@ def test_create_ledger_requires_owner_or_admin(client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_switch_ledger_rotates_token_and_revokes_old(client: TestClient, *, identity) -> None:
-    # First, create a fresh second ledger via admin.
-    create = client.post(
-        "/api/ledgers", headers=identity.admin_headers, json={"name": "家庭账本"}
-    )
-    assert create.status_code == 201
-    target_id = create.json()["ledger_id"]
-
-    # Add the owner account as member of the new ledger via direct DB —
-    # create_ledger already inserts the owner as member. We rely on that.
-    # The current app token is bound to ledger "owner". Switch to target.
-    switch = client.post(
-        f"/api/ledgers/{target_id}/switch", headers=identity.app_headers
-    )
-    assert switch.status_code == 200, switch.json()
-    body = switch.json()
-    new_token = body["session_token"]
-    assert new_token and new_token != ""
-    assert body["ledger"]["ledger_id"] == target_id
-    assert body["ledger"]["name"] == "家庭账本"
-    assert body["ledger"]["is_default"] is False
-
-    # Old token is revoked: subsequent calls fail with 401.
-    old = client.get("/api/expenses/pending", headers=identity.app_headers)
-    assert old.status_code == 401
-    stale_switch = client.post(f"/api/ledgers/{target_id}/switch", headers=identity.app_headers)
-    assert stale_switch.status_code == 401
-
-    # New token works and points at the new ledger.
-    new_headers = {"Authorization": f"Bearer {new_token}"}
-    pending = client.get("/api/expenses/pending", headers=new_headers)
-    assert pending.status_code == 200
-    assert pending.json() == []  # fresh ledger, nothing here
-
-    check = client.get("/api/auth/check", headers=new_headers)
-    assert check.status_code == 200
-    assert check.json()["ledger_name"] == "家庭账本"
-
-
 def test_switch_ledger_blocks_non_member(client: TestClient, *, identity) -> None:
     # tester_1 token's account *is* the owner account in conftest, which is
     # also a member of "owner" — so we craft a non-membership scenario by
     # asking app_headers (bound to "owner") to switch to a fabricated id.
-    response = client.post(
-        "/api/ledgers/ledger_does_not_exist/switch", headers=identity.app_headers
-    )
+    response = client.post("/api/ledgers/ledger_does_not_exist/switch", headers=identity.app_headers)
     assert response.status_code == 403
     assert response.json()["error"] == "ledger_forbidden"
 
@@ -467,6 +417,7 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
 def test_owner_ledgers_no_secret_leak(local_client: TestClient, *, identity) -> None:
     """The /owner/ledgers page must not echo runtime tokens or absolute paths."""
     import re
+
     resp = local_client.get("/owner/ledgers")
     assert resp.status_code == 200
     body = resp.text

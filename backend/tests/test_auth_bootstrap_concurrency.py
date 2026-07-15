@@ -47,8 +47,9 @@ from tests._infra.bootstrap_recovery_concurrency import (
 from tests._infra.bootstrap_recovery_credential_concurrency import (
     assert_ordinary_revocations_serialize_credential_mints,
     assert_pre_authenticated_credential_mints_fail_after_rotation,
-    assert_switch_revalidates_locked_target_before_source_revocation,
+    assert_switch_revalidates_locked_target_before_default_change,
 )
+from tests.pairing_test_support import pairing_payload
 
 if TYPE_CHECKING:
     from tests._infra.identity import TestIdentity
@@ -72,11 +73,11 @@ def test_two_sessions_ordinary_revocations_serialize_credential_mints(
     )
 
 
-def test_two_sessions_switch_revalidates_target_before_revoking_source(
+def test_two_sessions_switch_revalidates_target_before_default_change(
     monkeypatch: pytest.MonkeyPatch,
     identity: TestIdentity,
 ) -> None:
-    assert_switch_revalidates_locked_target_before_source_revocation(
+    assert_switch_revalidates_locked_target_before_default_change(
         monkeypatch,
         token_value=identity.app_token,
     )
@@ -129,11 +130,10 @@ def test_exposed_bootstrap_principal_blocks_sensitive_identity_mutations(
             assert bootstrapped.status_code == 200, bootstrapped.text
             paired = client.post(
                 "/api/auth/pair",
-                json={
-                    "pairing_code": _VECTOR_PAIRING_CODE,
-                    "device_name": "Guarded Device",
-                    "platform": "android",
-                },
+                json=pairing_payload(
+                    _VECTOR_PAIRING_CODE,
+                    device_name="Guarded Device",
+                ),
             )
             assert paired.status_code == 200, paired.text
             with SessionLocal() as db:

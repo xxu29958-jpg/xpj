@@ -1,18 +1,16 @@
-"""Owner-facing "My Devices" HTTP routes (issue #65 slice 6a).
+"""Account-scoped "My Devices" HTTP routes.
 
-* ``GET  /api/ledgers/{ledger_id}/devices`` — owner lists the ledger's devices
-* ``POST /api/ledgers/{ledger_id}/devices/{public_id}/rename`` — owner renames
-* ``POST /api/ledgers/{ledger_id}/devices/{public_id}/revoke`` — owner revokes
-* ``POST /api/ledgers/{ledger_id}/devices/{public_id}/delete`` — owner removes a
+* ``GET  /api/ledgers/{ledger_id}/devices`` — member lists their Account devices
+* ``POST /api/ledgers/{ledger_id}/devices/{public_id}/rename`` — member renames
+* ``POST /api/ledgers/{ledger_id}/devices/{public_id}/revoke`` — member revokes
+* ``POST /api/ledgers/{ledger_id}/devices/{public_id}/delete`` — member removes a
   revoked device permanently (204; must be revoked first)
-* ``POST /api/ledgers/{ledger_id}/devices/pairing-codes`` — owner mints a code
-  for "add a device" (the new device then pairs via the existing join flow)
+* ``POST /api/ledgers/{ledger_id}/devices/pairing-codes`` — member mints an add
+  code or explicitly recovers one of their existing Devices
 
-These are the app-token equivalents of the loopback-only ``/api/admin/devices``
-and ``/owner`` routes — a normal owner could not manage their devices from the
-app before. The ``get_current_member_manager_context`` guard (app token,
-path-ledger-bound, owner role) gives 401 (no token) / 403 (viewer/member) / 404
-(wrong ledger); the service scopes every op to the path ledger.
+Device authority belongs to the authenticated Account, not to the Account's
+role in one ledger. Any active member can manage only their own devices; ledger
+owners remove another member's access through Membership instead.
 """
 
 from __future__ import annotations
@@ -20,7 +18,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_member_manager_context
+from app.auth import get_current_ledger_app_context
 from app.database import get_db
 from app.schemas import (
     AdminDeviceRenameRequest,
@@ -52,7 +50,7 @@ def _to_response(device: MyDevice) -> MyDeviceResponse:
 @router.get("/api/ledgers/{ledger_id}/devices", response_model=MyDeviceListResponse)
 def list_my_devices_endpoint(
     ledger_id: str,
-    auth: AuthContext = Depends(get_current_member_manager_context),
+    auth: AuthContext = Depends(get_current_ledger_app_context),
     db: Session = Depends(get_db),
 ) -> MyDeviceListResponse:
     devices = owner_device_service.list_my_devices(db, auth)
@@ -67,7 +65,7 @@ def rename_my_device_endpoint(
     ledger_id: str,
     public_id: str,
     payload: AdminDeviceRenameRequest,
-    auth: AuthContext = Depends(get_current_member_manager_context),
+    auth: AuthContext = Depends(get_current_ledger_app_context),
     db: Session = Depends(get_db),
 ) -> MyDeviceResponse:
     device = owner_device_service.rename_my_device(
@@ -83,7 +81,7 @@ def rename_my_device_endpoint(
 def revoke_my_device_endpoint(
     ledger_id: str,
     public_id: str,
-    auth: AuthContext = Depends(get_current_member_manager_context),
+    auth: AuthContext = Depends(get_current_ledger_app_context),
     db: Session = Depends(get_db),
 ) -> MyDeviceResponse:
     device = owner_device_service.revoke_my_device(db, auth, public_id=public_id)
@@ -97,7 +95,7 @@ def revoke_my_device_endpoint(
 def delete_my_device_endpoint(
     ledger_id: str,
     public_id: str,
-    auth: AuthContext = Depends(get_current_member_manager_context),
+    auth: AuthContext = Depends(get_current_ledger_app_context),
     db: Session = Depends(get_db),
 ) -> Response:
     owner_device_service.delete_my_device(db, auth, public_id=public_id)
@@ -112,11 +110,15 @@ def delete_my_device_endpoint(
 def create_my_pairing_code_endpoint(
     ledger_id: str,
     payload: PairingCodeCreateRequest,
-    auth: AuthContext = Depends(get_current_member_manager_context),
+    auth: AuthContext = Depends(get_current_ledger_app_context),
     db: Session = Depends(get_db),
 ) -> PairingCodeResponse:
     result = owner_device_service.create_my_pairing_code(
-        db, auth, device_name_hint=payload.device_name_hint, ttl_minutes=payload.ttl_minutes
+        db,
+        auth,
+        device_name_hint=payload.device_name_hint,
+        recovery_device_public_id=payload.recovery_device_public_id,
+        ttl_minutes=payload.ttl_minutes,
     )
     return PairingCodeResponse(
         pairing_code=result.pairing_code,

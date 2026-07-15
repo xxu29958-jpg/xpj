@@ -146,8 +146,8 @@ _PG_REAL_DB_NODES = (
     "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",
     "tests/test_db_migration_owner_preflight.py::",  # P1: CREATE/DROP ROLE + separate-engine role switching to exercise the migration owner-trap pre-flight guard
     "tests/test_alembic_runtime_schema_reconcile.py::",  # v1.2 baseline/reconcile CHECK round-trip via engine.begin DDL
+    "tests/test_alembic_pairing_attempts_migration.py::",  # pairing transaction + stable server/data identity round-trip
     "tests/test_db_migration_backup_gate.py::",  # P1: stamp alembic_version below head via separate engine.begin connection to exercise the pre-migration backup gate
-
     # True concurrency: need real independent connections (2-session races, FOR
     # UPDATE lock contention) that one shared savepoint connection cannot model.
     # Every race test follows the ``test_two_sessions_*`` naming convention, so a
@@ -157,6 +157,7 @@ _PG_REAL_DB_NODES = (
     "tests/test_bill_split_debt_linkage.py::test_debt_failure_rolls_back_whole_accept",  # real rollback across the accept transaction
     "tests/test_background_task_claim.py::",  # claim atomicity across sessions
     "tests/test_background_tasks.py::",  # real background-task handler execution
+    "tests/test_pairing_throttle_db.py::test_concurrent_failures_cannot_overshoot_pairing_limit",
     # Stale-OCC-token tests stage the conflict with a second concurrent session
     # (bumping row_version), which the shared savepoint connection can't model
     # (psycopg "savepoint does not exist").
@@ -191,9 +192,7 @@ _PG_REAL_DB_NODES = (
 )
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     real_db = pytest.mark.real_db
     for item in items:
         # PostgreSQL isolation opt-outs (see _PG_REAL_DB_NODES). The nodeid uses
