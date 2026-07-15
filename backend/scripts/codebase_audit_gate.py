@@ -137,6 +137,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
     "backend_pytest_count": 2656,
+    "backend_pytest_parallel_count": 2596,
+    "backend_pytest_stateful_count": 60,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 
@@ -148,9 +150,13 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 # Android count is NOT listed here.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. Both backend and release-critical installer
-# behavior suites are monotonic floors.
+# behavior suites are monotonic floors. The stateful floor prevents a serial
+# risk proof from being silently demoted into the parallel lane; the parallel
+# count remains strict-equality but may decrease when a reviewed test moves to
+# the safer stateful partition.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
     "backend_pytest_count",
+    "backend_pytest_stateful_count",
     "installer_pytest_count",
     "mutate_token_carriers",
 })

@@ -26,9 +26,9 @@ What this lane counts
   ALLOWLIST. Catches PR-D's ``terminal_flag_flip`` split mechanically:
   the per-code distribution must match baseline; a missed
   reclassification shows up as a mismatch on the specific counter.
-- **backend_pytest_count** — exact count from ``pytest --collect-only``
-  (NOT regex; regex has built-in error tolerance that would defeat the
-  precise-reconciliation purpose).
+- **backend_pytest_count** — exact count from ``pytest --collect-only``.
+- **backend_pytest_parallel_count** / **backend_pytest_stateful_count** —
+  exact selected counts for the explicit ``stateful_serial`` partition.
 - **installer_pytest_count** — exact count from the isolated Windows installer
   contract lane under ``packaging/tests``.
 
@@ -119,7 +119,11 @@ def _count_mutate_token_metrics() -> dict[str, int]:
     return out
 
 
-def _count_pytest_tests(target: str) -> int:
+def _count_pytest_tests(
+    target: str,
+    *,
+    mark_expression: str | None = None,
+) -> int:
     """Exact pytest test count for one explicit collection root.
 
     NOT regex on ``def test_*``. Per ADR-0038 prep design: regex has
@@ -134,18 +138,22 @@ def _count_pytest_tests(target: str) -> int:
     """
     environment = os.environ.copy()
     environment.pop("PYTEST_ADDOPTS", None)
+    environment.pop("PYTEST_PLUGINS", None)
+    environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        target,
+        "--collect-only",
+        "-q",
+        "--strict-markers",
+    ]
+    if mark_expression is not None:
+        command.extend(["-m", mark_expression])
+    command.extend(["-o", "addopts="])
     result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            target,
-            "--collect-only",
-            "-q",
-            "--strict-markers",
-            "-o",
-            "addopts=",
-        ],
+        command,
         cwd=_BACKEND_ROOT,
         env=environment,
         capture_output=True,
@@ -161,12 +169,12 @@ def _count_pytest_tests(target: str) -> int:
             f"stdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
         )
-    # pytest -q summary line at the end: "N tests collected in M.MMs"
-    # or "N tests collected, K errors in ..." on partial collection.
+    # With -m, pytest reports "selected/total tests collected". Count the
+    # selected side; without -m the optional numerator is absent.
     for line in reversed(result.stdout.splitlines()):
-        match = re.search(r"(\d+)\s+tests?\s+collected", line)
+        match = re.search(r"(?:(\d+)/)?(\d+)\s+tests?\s+collected", line)
         if match:
-            return int(match.group(1))
+            return int(match.group(1) or match.group(2))
     raise RuntimeError(
         f"could not parse `pytest {target} --collect-only` output.\n"
         f"stdout:\n{result.stdout}\n"
@@ -188,6 +196,14 @@ def main() -> int:
     counts: dict[str, int] = {}
     counts.update(_count_mutate_token_metrics())
     counts["backend_pytest_count"] = _count_pytest_tests("tests")
+    counts["backend_pytest_parallel_count"] = _count_pytest_tests(
+        "tests",
+        mark_expression="not stateful_serial",
+    )
+    counts["backend_pytest_stateful_count"] = _count_pytest_tests(
+        "tests",
+        mark_expression="stateful_serial",
+    )
     counts["installer_pytest_count"] = _count_pytest_tests("packaging/tests")
 
     print("Actuals:")

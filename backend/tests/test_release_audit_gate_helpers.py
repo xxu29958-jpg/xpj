@@ -149,41 +149,61 @@ def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -
 
 def test_backend_pytest_count_cannot_drop_with_actuals_and_baseline(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
-    baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["backend_pytest_count"] = 2653
-    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
+    for counter, base_value, current_value in (
+        ("backend_pytest_count", 3000, 2653),
+        ("backend_pytest_stateful_count", 61, 60),
+    ):
+        baseline = dict(mod.STRICT_EQUALITY_BASELINE)
+        baseline[counter] = current_value
+        monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
-    _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"backend_pytest_count": 3000}
-    )
+        _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
+            {counter: base_value}
+        )
 
-    assert len(violations) == 1
-    assert "backend_pytest_count (UP-only)" in violations[0]
-    assert "base=3000, current=2653" in violations[0]
+        assert len(violations) == 1
+        assert f"{counter} (UP-only)" in violations[0]
+        assert f"base={base_value}, current={current_value}" in violations[0]
 
 
 def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("_audit_pr_delta_metrics"))
-    captured: dict[str, object] = {}
+    captured: list[tuple[list[str], dict[str, str]]] = []
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k owner")
+    monkeypatch.setenv("PYTEST_PLUGINS", "untrusted_plugin")
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        captured["command"] = command
-        captured["environment"] = kwargs["env"]
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        captured.append((command, environment))
+        stdout = (
+            "60/2653 tests collected (2593 deselected) in 1.00s\n"
+            if "stateful_serial" in command
+            else "2653 tests collected in 1.00s\n"
+        )
         return subprocess.CompletedProcess(
             command,
             0,
-            stdout="2653 tests collected in 1.00s\n",
+            stdout=stdout,
             stderr="",
         )
 
     monkeypatch.setattr(mod.subprocess, "run", fake_run)
 
     assert mod._count_pytest_tests("tests") == 2653
-    assert captured["command"][-2:] == ["-o", "addopts="]
-    environment = captured["environment"]
-    assert isinstance(environment, dict)
-    assert "PYTEST_ADDOPTS" not in environment
+    assert mod._count_pytest_tests(
+        "tests", mark_expression="stateful_serial"
+    ) == 60
+    assert captured[1][0][-4:] == [
+        "-m",
+        "stateful_serial",
+        "-o",
+        "addopts=",
+    ]
+    for _command, environment in captured:
+        assert "PYTEST_ADDOPTS" not in environment
+        assert "PYTEST_PLUGINS" not in environment
+        assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
 
 
 def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(

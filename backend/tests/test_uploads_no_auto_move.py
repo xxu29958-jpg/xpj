@@ -20,6 +20,9 @@ from app.database import BACKEND_ROOT, SessionLocal, init_db
 from app.models import Expense
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_DIR
+from tests._infra.lane_policy import STATEFUL_POSTGRES_MARKS
+
+pytestmark = STATEFUL_POSTGRES_MARKS
 
 
 def test_init_db_does_not_move_legacy_uploads(client: TestClient) -> None:

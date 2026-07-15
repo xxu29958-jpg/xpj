@@ -14,6 +14,9 @@ import psycopg
 from sqlalchemy.engine import URL, make_url
 
 _SAFE_TEST_DATABASE = re.compile(r"xpj_test(?:_[a-z0-9]+)*")
+_WORKER_TEST_DATABASE = re.compile(
+    r"xpj_test(?:_[a-z0-9]+)*_[0-9a-f]{16}_gw[0-9]+"
+)
 _DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_test"
 _STATEFUL_LOCK_KEY = int.from_bytes(
     sha256(b"ticketbox:postgres-stateful-test-lane:v1").digest()[:8],
@@ -39,7 +42,7 @@ def configured_test_database_url(environment: Mapping[str, str]) -> str:
                 "XPJ_TEST_CLUSTER_CONFIRMED=1"
             )
         database_url = explicit
-    validate_test_database_url(database_url)
+    validate_test_base_database_url(database_url)
     return database_url
 
 
@@ -48,6 +51,15 @@ def validate_test_database_name(database_name: str) -> str:
 
     if _SAFE_TEST_DATABASE.fullmatch(database_name) is None:
         raise ValueError("Test database must match the xpj_test base contract")
+    return database_name
+
+
+def validate_test_base_database_name(database_name: str) -> str:
+    """Reserve worker-shaped names for process-owned disposable databases."""
+
+    validate_test_database_name(database_name)
+    if _WORKER_TEST_DATABASE.fullmatch(database_name) is not None:
+        raise ValueError("Test base database uses the reserved worker namespace")
     return database_name
 
 
@@ -67,6 +79,14 @@ def validate_test_database_url(database_url: str | URL) -> URL:
         raise ValueError(
             "Test database URL must not override its xpj_test path database"
         )
+    return parsed
+
+
+def validate_test_base_database_url(database_url: str | URL) -> URL:
+    """Validate a configured base URL, excluding disposable worker names."""
+
+    parsed = validate_test_database_url(database_url)
+    validate_test_base_database_name(parsed.database or "")
     return parsed
 
 
@@ -127,7 +147,9 @@ def test_cluster_lock(
 ) -> Iterator[None]:
     """Coordinate isolated workers and destructive sessions on one PG cluster."""
 
-    parsed = validate_test_database_url(configured_test_database_url(environment))
+    parsed = validate_test_base_database_url(
+        configured_test_database_url(environment)
+    )
     lock_statement = (
         "SELECT pg_advisory_lock(%s)"
         if exclusive

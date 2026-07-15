@@ -4,6 +4,9 @@ from alembic import command
 from sqlalchemy import inspect, text
 
 from app.database import engine, load_alembic_context
+from tests._infra.lane_policy import STATEFUL_POSTGRES_MARKS
+
+pytestmark = STATEFUL_POSTGRES_MARKS
 
 _CONSTRAINT = "ck_auth_tokens_scope_valid"
 _PREVIOUS_REVISION = "20260630_0002"

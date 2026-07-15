@@ -11,6 +11,7 @@ from scripts import run_test_lanes
 from tests._infra.lane_policy import (
     managed_runner_configuration_violation,
     managed_runner_outcome_violation,
+    managed_runner_selection_violation,
     stateful_selection_violation,
 )
 
@@ -32,16 +33,19 @@ def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:
         "--strict-markers",
         "-p",
         "no:cacheprovider",
+        "-p",
+        "xdist.plugin",
         "-o",
         "addopts=",
     )
-    assert command[-6:] == [
+    assert command[-7:] == [
         "-m",
         "not stateful_serial",
         "-n",
         "4",
         "--dist",
         "worksteal",
+        "--max-worker-restart=0",
     ]
 
 
@@ -108,6 +112,7 @@ def test_full_lane_clears_filters_and_propagates_stateful_failure(
     calls: list[tuple[list[str], dict[str, str]]] = []
     return_codes = iter((0, 7))
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k owner")
+    monkeypatch.setenv("PYTEST_PLUGINS", "untrusted_plugin")
 
     def fake_run(
         command: list[str],
@@ -128,6 +133,10 @@ def test_full_lane_clears_filters_and_propagates_stateful_failure(
         "stateful",
     ]
     assert all("PYTEST_ADDOPTS" not in call[1] for call in calls)
+    assert all("PYTEST_PLUGINS" not in call[1] for call in calls)
+    assert all(
+        call[1]["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1" for call in calls
+    )
 
 
 def test_managed_runner_rejects_partial_or_collection_only_execution() -> None:
@@ -155,6 +164,21 @@ def test_managed_runner_rejects_partial_or_collection_only_execution() -> None:
     assert "complete tests root" in (
         managed_runner_configuration_violation(
             **(common | {"collection_roots": ["tests/test_owner_console.py"]})
+        )
+        or ""
+    )
+    assert managed_runner_selection_violation(
+        active_lane="parallel",
+        collected_nodeids=("parallel-a", "stateful-a", "parallel-b"),
+        stateful_nodeids=("stateful-a",),
+        selected_nodeids=("parallel-b", "parallel-a"),
+    ) is None
+    assert "changed the committed test identity set" in (
+        managed_runner_selection_violation(
+            active_lane="stateful",
+            collected_nodeids=("parallel-a", "stateful-a", "stateful-b"),
+            stateful_nodeids=("stateful-a", "stateful-b"),
+            selected_nodeids=("stateful-a", "parallel-a"),
         )
         or ""
     )
@@ -202,6 +226,8 @@ def test_stateful_tests_reject_xdist_even_with_forged_lane() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     environment = os.environ.copy()
     environment["XPJ_TEST_LANE"] = "stateful"
+    environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    environment.pop("PYTEST_PLUGINS", None)
     environment.pop(run_test_lanes.RUNNER_LANE_ENV, None)
     for key in tuple(environment):
         if key.startswith("PYTEST_XDIST_"):
@@ -214,6 +240,8 @@ def test_stateful_tests_reject_xdist_even_with_forged_lane() -> None:
             "pytest",
             "tests/test_alembic_income_frequency_migration.py",
             "-q",
+            "-p",
+            "xdist.plugin",
             "-n",
             "2",
         ],

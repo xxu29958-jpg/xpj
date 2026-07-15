@@ -63,12 +63,10 @@ ratchet）、Room schema 漂移门、R8 release 编译、apksigner 指纹钉。
 
 `type ∈ { feat, fix, docs, refactor, test, chore, build, ci, perf, style }`。BREAKING 加 `!` 或 footer `BREAKING CHANGE: ...`。
 
-## main 合并纪律（工作流执行，非平台 Branch Protection）
+## main 合并纪律
 
-main 合并不依赖平台 Branch Protection 作为唯一强制（历史上的自托管 gitea main 也有意不配
-branch protection，API 实查零条目）：单管理员项目里，平台级强制审批与
-[ENGINEERING_RULES §13](ENGINEERING_RULES.md)「强制多人 code review = 当前阶段不做」冲突。
-纪律由工作流执行：
+GitHub `main` 已启用 strict branch protection、required checks 和管理员强制执行。
+平台门禁与项目级发布证据共同生效；平台绿灯不能替代团队审计、条件 lane 或 RC 资格验证：
 
 - 代码 / 配置一律走 `codex/**` 或 `fix/** feat/** perf/** refactor/**` 工作分支 + PR；
   GitHub PR 云端主路径全绿（Android 源变更再加 connected lane）才有资格合并，local-Gitea

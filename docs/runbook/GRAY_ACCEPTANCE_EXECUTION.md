@@ -72,7 +72,7 @@ cd /d E:\projects\xiaopiaojia\backend
 
 - `compileall` 无 SyntaxError。
 - `ruff check` 无错误。
-- `pytest` 全部通过或仅有已知跳过项。
+- 托管 `pytest` 两条 lane 全部正常通过；任何 skip、xfail 或 xpass 都阻断。
 - `smoke_test.py` 连续输出 `OK ...` 检查项，进程退出码为 0。
 
 **失败处理**：

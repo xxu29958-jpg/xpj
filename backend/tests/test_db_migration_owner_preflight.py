@@ -24,6 +24,9 @@ from sqlalchemy.engine import make_url
 
 from app.database import DatabaseMigrationPreflightError, _assert_role_can_alter_existing_schema
 from app.database._core import settings
+from tests._infra.lane_policy import CLUSTER_POSTGRES_MARKS
+
+pytestmark = CLUSTER_POSTGRES_MARKS
 
 _GUARD_ROLE = "xpj_owner_preflight_role"
 # CI's PostgreSQL (the postgres:17 service container) uses PASSWORD auth, while

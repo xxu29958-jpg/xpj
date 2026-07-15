@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+from collections.abc import Generator
 
 import pytest
 
@@ -33,10 +34,12 @@ from tests._infra.db import (
 )
 from tests._infra.identity import TestIdentity, seed_identity
 from tests._infra.lane_policy import (
+    legacy_real_db_marker_required,
     managed_runner_configuration_violation,
     managed_runner_outcome_violation,
+    managed_runner_selection_violation,
     parallel_lane_configuration_violation,
-    postgres_test_markers,
+    postgres_marker_contract_violation,
     stateful_selection_violation,
 )
 from tests._infra.worker_db import worker_database_lifecycle
@@ -186,17 +189,36 @@ def pytest_configure(config: pytest.Config) -> None:
         raise pytest.UsageError(violation)
 
 
+@pytest.hookimpl(wrapper=True, tryfirst=True)
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
-) -> None:
-    markers = {
-        "real_db": pytest.mark.real_db,
-        "stateful_serial": pytest.mark.stateful_serial,
-        "cluster_serial": pytest.mark.cluster_serial,
-    }
+) -> Generator[None, None, None]:
+    """Apply legacy DB isolation and verify the final managed partition."""
+
     for item in items:
-        for marker_name in postgres_test_markers(item.nodeid):
-            item.add_marker(markers[marker_name])
+        if legacy_real_db_marker_required(item.nodeid):
+            item.add_marker(pytest.mark.real_db)
+        marker_names = {marker.name for marker in item.iter_markers()}
+        violation = postgres_marker_contract_violation(item.nodeid, marker_names)
+        if violation:
+            raise pytest.UsageError(violation)
+
+    collected_nodeids = tuple(item.nodeid for item in items)
+    stateful_nodeids = tuple(
+        item.nodeid
+        for item in items
+        if item.get_closest_marker("stateful_serial") is not None
+    )
+    yield
+
+    violation = managed_runner_selection_violation(
+        active_lane=os.environ.get(RUNNER_LANE_ENV),
+        collected_nodeids=collected_nodeids,
+        stateful_nodeids=stateful_nodeids,
+        selected_nodeids=tuple(item.nodeid for item in items),
+    )
+    if violation:
+        raise pytest.UsageError(violation)
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:

@@ -8,6 +8,9 @@ import pytest
 from sqlalchemy import inspect, text
 
 from app.database._lifecycle import DatabaseLifecycleKind
+from tests._infra.lane_policy import STATEFUL_POSTGRES_MARKS
+
+pytestmark = STATEFUL_POSTGRES_MARKS
 
 _PREVIOUS_HEAD = "20260630_0002"
 

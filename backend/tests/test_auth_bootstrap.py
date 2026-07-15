@@ -212,33 +212,33 @@ def test_bootstrap_owner_secret_is_one_shot(
     assert response.json()["error"] == "invalid_bootstrap_secret"
 
 
-def test_bootstrap_owner_accepts_valid_secret(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@pytest.mark.real_db
+@pytest.mark.stateful_serial
+def test_bootstrap_owner_accepts_valid_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     assert_response_loss_recovery(monkeypatch)
 
 
-def test_bootstrap_owner_rolls_back_if_pairing_creation_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@pytest.mark.real_db
+@pytest.mark.stateful_serial
+def test_bootstrap_owner_rolls_back_if_pairing_creation_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     assert_failure_rolls_back_and_retries(monkeypatch)
 
 
-def test_bootstrap_owner_delayed_recovery_rejects_expired_pairing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@pytest.mark.real_db
+@pytest.mark.stateful_serial
+def test_bootstrap_owner_delayed_recovery_rejects_expired_pairing(monkeypatch: pytest.MonkeyPatch) -> None:
     assert_expired_pairing_recovery_fails_closed(monkeypatch)
 
 
-def test_bootstrap_owner_recovery_finalizes_after_pairing_is_used(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@pytest.mark.real_db
+@pytest.mark.stateful_serial
+def test_bootstrap_owner_recovery_finalizes_after_pairing_is_used(monkeypatch: pytest.MonkeyPatch) -> None:
     assert_used_pairing_recovery_finalizes_existing_identity(monkeypatch)
 
 
-def test_bootstrap_owner_recovery_rejects_revoked_admin(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@pytest.mark.real_db
+@pytest.mark.stateful_serial
+def test_bootstrap_owner_recovery_rejects_revoked_admin(monkeypatch: pytest.MonkeyPatch) -> None:
     assert_revoked_admin_recovery_fails_closed(monkeypatch)
 
 

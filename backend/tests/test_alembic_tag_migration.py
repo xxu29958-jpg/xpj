@@ -21,6 +21,9 @@ from uuid import UUID
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine, seed_identity_data
+from tests._infra.lane_policy import STATEFUL_POSTGRES_MARKS
+
+pytestmark = STATEFUL_POSTGRES_MARKS
 
 
 def _table_names() -> set[str]:

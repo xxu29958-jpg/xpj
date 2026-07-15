@@ -20,8 +20,8 @@ from sqlalchemy.engine import URL, make_url
 from scripts.test_pg_contract import (
     admin_connection_args,
     authority_connection_watchdog,
-    validate_test_database_name,
-    validate_test_database_url,
+    validate_test_base_database_name,
+    validate_test_base_database_url,
 )
 
 _WORKER_ID = re.compile(r"gw[0-9]+")
@@ -51,7 +51,7 @@ def worker_database_url(base_url: str, worker_id: str, run_uid: str) -> str:
     """
 
     _validate_worker_id(worker_id)
-    parsed = validate_test_database_url(base_url)
+    parsed = validate_test_base_database_url(base_url)
     base_name = parsed.database
     assert base_name is not None
     run_key = _run_key(run_uid)
@@ -279,7 +279,7 @@ def _validated_worker_url(
             "xpj_test_<run>_gwN database"
         )
     try:
-        validate_test_database_name(base_name)
+        validate_test_base_database_name(base_name)
     except ValueError as exc:
         raise ValueError(
             "Refusing lifecycle operation outside the current "

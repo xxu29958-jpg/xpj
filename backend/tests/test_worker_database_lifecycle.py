@@ -5,6 +5,9 @@ from psycopg import sql
 from sqlalchemy.engine import URL, make_url
 
 from tests._infra import env, worker_db
+from tests._infra.lane_policy import CLUSTER_POSTGRES_MARKS
+
+pytestmark = CLUSTER_POSTGRES_MARKS
 
 
 def _database_exists(

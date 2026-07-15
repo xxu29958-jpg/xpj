@@ -58,7 +58,7 @@ body: { "ref": "<分支名>" }
 
 **症状**：`gh pr checks N` 里看到旧提交的 Android job 显示 `fail`，常是跑一段时间后报 `##[error]The operation was canceled.`，误判真红。
 
-**根因**：GitHub 工作分支 push 不再触发重型 CI，正常 PR head 只有 pull_request 这一套；但同一 PR 连续 push 时，workflow 的 `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` 仍会**取消旧 head run**。被取消的旧 job 在 `gh pr checks` 显示 `fail` = **良性，非真红**。authoritative run = 最新 / 未被取消 / 跑完 pass 的那个。本仓**无强制 branch protection**，所以 `mergeStateStatus=UNSTABLE` + `mergeable=MERGEABLE` 即可合。
+**根因**：GitHub 工作分支 push 不再触发重型 CI，正常 PR head 只有 pull_request 这一套；但同一 PR 连续 push 时，workflow 的 `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` 仍会**取消旧 head run**。被取消的旧 job 在 `gh pr checks` 显示 `fail` = **良性，非真红**。authoritative run = 最新 / 未被取消 / 跑完 pass 的那个。`main` 已启用 strict branch protection 与管理员强制执行；只有精确 head 的 required checks 全绿且 `mergeStateStatus=CLEAN` 才有合并资格。
 
 **正确做法**：
 - 盯 CI 用**后台轮询脚本**（bash `run_in_background`，`gh pr checks N` 轮到 pending==0 再数 fail），别死等、别信 `gh pr checks --watch`。
@@ -69,23 +69,22 @@ body: { "ref": "<分支名>" }
 
 ---
 
-## 坑 4：`gh pr merge N --auto` 在本仓 = 立即合，不等绿
+## 坑 4：required checks 全绿不等于全部发布证据已齐
 
-**症状**：想「等 CI 绿了自动合」用了 `--auto`，结果 checks 全 pending 时 PR **当即被 merge**（2026-06-20 实测）。
+**症状**：只看到平台允许 merge 或 required checks 全绿，就忽略了该改动适用但尚未设为 required 的条件 lane、团队审计或候选证据。
 
-**根因**：`--auto` 依赖 **required status checks** 来「等」；本仓**无强制 branch protection / 无 required check**，没有可等的对象 → PR 一 `MERGEABLE` 就立刻合。
+**根因**：Branch protection 只认识已登记的 required contexts，不理解本项目的改动范围、团队审计和候选资格。`--auto` 可以等待 required checks，但不能替代项目级发布判断。
 
 **正确做法**：
-- 要「等绿再合」**别用 `--auto`**：后台 `gh pr checks N --watch` settle 后，亲自核实实质门（坑 3 那串）真绿，再手动：
+- 后台等待精确 head 的 checks settle，核实 required contexts、该改动适用的条件 lane 和团队审计，再手动合并：
 
 ```
 gh pr merge N --merge --delete-branch
 ```
 
-- `--auto` 只在「确信代码已验过、只差形式跑完」时当快捷方式用（如干净 rebase replay）。
 - merge 需用户显式「合并」授权。
 
-**铁律**：本仓 `--auto` ≠ 等绿；想等绿就 watch settle 后手动 `gh pr merge`。
+**铁律**：平台可合并只是必要条件；精确 head 的适用证据齐全后再合并。
 
 ---
 

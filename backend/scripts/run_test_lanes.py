@@ -18,6 +18,8 @@ COMMON_PYTEST_ARGS = (
     "--strict-markers",
     "-p",
     "no:cacheprovider",
+    "-p",
+    "xdist.plugin",
     "-o",
     "addopts=",
 )
@@ -35,6 +37,7 @@ def pytest_command(lane: str, *, workers: int) -> list[str]:
                 str(workers),
                 "--dist",
                 "worksteal",
+                "--max-worker-restart=0",
             ]
         )
         return command
@@ -60,6 +63,8 @@ def run_lanes(lanes: Sequence[str], *, workers: int) -> int:
         command = pytest_command(lane, workers=workers)
         environment = os.environ.copy()
         environment.pop("PYTEST_ADDOPTS", None)
+        environment.pop("PYTEST_PLUGINS", None)
+        environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
         environment[RUNNER_LANE_ENV] = lane
         print(f"[test-lane:{lane}] {' '.join(command)}", flush=True)
         completed = subprocess.run(command, check=False, env=environment)

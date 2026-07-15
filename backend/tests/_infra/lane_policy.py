@@ -1,47 +1,22 @@
-"""Single source of truth for PostgreSQL pytest lane classification."""
+"""Fail-closed contracts for the PostgreSQL pytest lanes."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections import Counter
+from collections.abc import Collection, Mapping, Sequence
 
-_STATEFUL_SERIAL_MODULE_PREFIXES = (
-    "tests/test_alembic_",
-    "tests/test_db_migration_",
-    "tests/test_app_meta_service.py::",
-    "tests/test_seed_identity_data.py::",
-    "tests/test_ocr_facts_backfill_step3.py::",
-    "tests/test_uploads_no_auto_move.py::",
-)
+import pytest
 
-_STATEFUL_SERIAL_NODE_SUBSTRINGS = (
-    # These bootstrap recovery cases intentionally drop/rebuild the schema.
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_delayed_recovery_rejects_expired_pairing",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_finalizes_after_pairing_is_used",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_rejects_revoked_admin",
-    "tests/test_auth_bootstrap_concurrency.py::test_two_sessions_bootstrap_recovery_avoids_device_token_deadlock",
-    "tests/test_auth_bootstrap_concurrency.py::test_bootstrap_owner_rotates_credentials_after_listener_exposure",
-    "tests/test_auth_bootstrap_concurrency.py::test_two_sessions_distinct_bootstrap_secrets_create_one_identity",
-    "tests/test_auth_bootstrap_concurrency.py::test_exposed_bootstrap_principal_blocks_sensitive_identity_mutations",
-    "tests/test_auth_bootstrap_concurrency.py::test_replacement_pairing_collision_is_reported_before_rotation",
-)
-
-_CLUSTER_SERIAL_MODULE_PREFIXES = (
-    # Creates/drops PostgreSQL roles and must not overlap ordinary workers.
-    "tests/test_db_migration_owner_preflight.py::",
-    "tests/test_worker_database_lifecycle.py::",
-)
+STATEFUL_POSTGRES_MARKS = [
+    pytest.mark.real_db,
+    pytest.mark.stateful_serial,
+]
+CLUSTER_POSTGRES_MARKS = [
+    *STATEFUL_POSTGRES_MARKS,
+    pytest.mark.cluster_serial,
+]
 
 _REAL_DB_NODE_SUBSTRINGS = (
-    # Bootstrap recovery helpers use committed schema/engine operations.
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_delayed_recovery_rejects_expired_pairing",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_finalizes_after_pairing_is_used",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_rejects_revoked_admin",
-    "tests/test_auth_bootstrap_concurrency.py::test_bootstrap_owner_rotates_credentials_after_listener_exposure",
-    "tests/test_auth_bootstrap_concurrency.py::test_replacement_pairing_collision_is_reported_before_rotation",
     # Cross-session races and background work require independent connections.
     "::test_two_sessions",
     "tests/test_bill_split_hardening.py::test_create_invitation_row_locks_parent_expense",
@@ -70,30 +45,69 @@ _REAL_DB_NODE_SUBSTRINGS = (
 )
 
 
-def postgres_test_markers(nodeid: str) -> tuple[str, ...]:
-    """Return the committed-state markers required by one collected test."""
+def legacy_real_db_marker_required(nodeid: str) -> bool:
+    """Retain transaction-isolation exceptions that predate explicit markers.
+
+    Stateful and cluster ownership are deliberately absent here. Tests declare
+    those resource contracts at their module or function definition, so file
+    names and node ids cannot silently move work between execution lanes.
+    """
 
     normalized = nodeid.replace("\\", "/").partition("[")[0]
-    stateful = any(
-        normalized.startswith(prefix) for prefix in _STATEFUL_SERIAL_MODULE_PREFIXES
-    ) or any(
-        substring in normalized for substring in _STATEFUL_SERIAL_NODE_SUBSTRINGS
-    )
-    cluster = any(
-        normalized.startswith(prefix) for prefix in _CLUSTER_SERIAL_MODULE_PREFIXES
-    )
-    real_db = stateful or cluster or any(
+    return any(
         substring in normalized for substring in _REAL_DB_NODE_SUBSTRINGS
     )
 
-    markers: list[str] = []
-    if real_db:
-        markers.append("real_db")
-    if stateful or cluster:
-        markers.append("stateful_serial")
-    if cluster:
-        markers.append("cluster_serial")
-    return tuple(markers)
+
+def postgres_marker_contract_violation(
+    nodeid: str,
+    marker_names: Collection[str],
+) -> str | None:
+    """Require stronger PostgreSQL resource markers to include their bases."""
+
+    markers = set(marker_names)
+    if "cluster_serial" in markers and "stateful_serial" not in markers:
+        return f"{nodeid}: cluster_serial also requires stateful_serial."
+    if "stateful_serial" in markers and "real_db" not in markers:
+        return f"{nodeid}: stateful_serial also requires real_db."
+    return None
+
+
+def managed_runner_selection_violation(
+    *,
+    active_lane: str | None,
+    collected_nodeids: Collection[str],
+    stateful_nodeids: Collection[str],
+    selected_nodeids: Collection[str],
+) -> str | None:
+    """Reject any post-collection drift from the explicit lane partition."""
+
+    if active_lane is None:
+        return None
+    collected = tuple(collected_nodeids)
+    stateful = set(stateful_nodeids)
+    expected = {
+        "parallel": (nodeid for nodeid in collected if nodeid not in stateful),
+        "stateful": iter(stateful_nodeids),
+    }.get(active_lane)
+    if expected is None:
+        return f"Unknown managed PostgreSQL test lane: {active_lane!r}."
+    expected_counts = Counter(expected)
+    selected_counts = Counter(selected_nodeids)
+    if selected_counts == expected_counts:
+        return None
+    missing = list((expected_counts - selected_counts).elements())
+    unexpected = list((selected_counts - expected_counts).elements())
+
+    def sample(nodeids: list[str]) -> str:
+        return ", ".join(nodeids[:3]) or "none"
+
+    return (
+        f"Managed PostgreSQL {active_lane} lane drifted from the explicit marker "
+        f"partition: missing={len(missing)} [{sample(missing)}]; "
+        f"unexpected={len(unexpected)} [{sample(unexpected)}]. A plugin or "
+        "collection hook changed the committed test identity set."
+    )
 
 
 def stateful_selection_violation(

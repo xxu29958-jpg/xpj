@@ -43,6 +43,17 @@ def test_database_url_override_requires_explicit_cluster_confirmation() -> None:
             }
         )
 
+    with pytest.raises(ValueError, match="reserved worker namespace"):
+        configured_test_database_url(
+            {
+                "XPJ_TEST_DATABASE_URL": (
+                    "postgresql+psycopg://postgres@localhost:5432/"
+                    "xpj_test_0123456789abcdef_gw0"
+                ),
+                "XPJ_TEST_CLUSTER_CONFIRMED": "1",
+            }
+        )
+
     for query_database in ("ticketbox", "xpj_test"):
         with pytest.raises(ValueError, match="dbname query"):
             configured_test_database_url(
@@ -103,6 +114,14 @@ def test_worker_database_url_refuses_non_test_database() -> None:
                 "gw0",
                 "run-alpha",
             )
+
+    with pytest.raises(ValueError, match="reserved worker namespace"):
+        worker_database_url(
+            "postgresql+psycopg://postgres@localhost:5432/"
+            "xpj_test_0123456789abcdef_gw0",
+            "gw0",
+            "run-alpha",
+        )
 
 
 def test_worker_database_url_refuses_non_postgresql_engine() -> None:

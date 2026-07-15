@@ -27,6 +27,9 @@ from migrations.versions.bb00c453bf29_backfill_expense_raw_text_to_ocr_facts imp
     LEGACY_PROVIDER,
     _backfill_legacy_raw_text,
 )
+from tests._infra.lane_policy import STATEFUL_POSTGRES_MARKS
+
+pytestmark = STATEFUL_POSTGRES_MARKS
 
 
 def _seed_expense(

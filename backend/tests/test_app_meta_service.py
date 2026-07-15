@@ -18,6 +18,9 @@ from app.services import app_meta_service
 from app.services.app_meta_service import _version_tuple
 from app.version import BACKEND_VERSION
 from tests._infra.db import reset_db_state
+from tests._infra.lane_policy import STATEFUL_POSTGRES_MARKS
+
+pytestmark = STATEFUL_POSTGRES_MARKS
 
 
 @pytest.fixture(autouse=True)
