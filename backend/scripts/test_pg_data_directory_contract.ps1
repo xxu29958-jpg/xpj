@@ -69,7 +69,14 @@ function Resolve-XpjTestPostgresBin {
         $postgresBin = $pgctl.DirectoryName
     }
 
-    foreach ($executable in @('initdb.exe', 'pg_ctl.exe', 'pg_controldata.exe', 'postgres.exe', 'psql.exe')) {
+    foreach ($executable in @(
+        'initdb.exe',
+        'pg_ctl.exe',
+        'pg_controldata.exe',
+        'postgres.exe',
+        'psql.exe',
+        'pg_isready.exe'
+    )) {
         if (-not (Test-Path -LiteralPath (Join-Path $postgresBin $executable) -PathType Leaf)) {
             throw "PostgreSQL runtime is incomplete: missing $executable in $postgresBin"
         }

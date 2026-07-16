@@ -132,6 +132,8 @@ def test_packaging_runner_clears_filters_and_requires_handshake(
     assert environment[run_packaging_tests.STRICT_WINDOWS_RUNTIME_ENV] == "1"
     assert observed["cwd"] == run_packaging_tests.BACKEND_ROOT
     assert "-o" in observed["command"]
+    assert "--durations=20" in observed["command"]
+    assert "--durations-min=0.5" in observed["command"]
 
 
 def test_packaging_runner_rejects_success_without_handshake(

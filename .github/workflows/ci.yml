@@ -93,7 +93,7 @@ jobs:
         run: ruff check app scripts tests packaging/tests
 
       - name: Windows installer safety behavior
-        timeout-minutes: 12
+        timeout-minutes: 20
         env:
           XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME: "1"
         run: python scripts/run_packaging_tests.py

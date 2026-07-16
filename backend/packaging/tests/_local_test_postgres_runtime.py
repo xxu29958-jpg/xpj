@@ -34,6 +34,7 @@ def _postgres_bin() -> Path:
                     "pg_controldata.exe",
                     "postgres.exe",
                     "psql.exe",
+                    "pg_isready.exe",
                 )
             ):
                 candidates.append(candidate.resolve())
@@ -90,6 +91,7 @@ def _run_lifecycle(
     postgres_bin: Path,
     reset_databases: bool = False,
     lifecycle_timeout_seconds: int | None = None,
+    injected_readiness_failures: int = 0,
     environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [
@@ -112,6 +114,8 @@ def _run_lifecycle(
         command.append("-ResetDatabases")
     if lifecycle_timeout_seconds is not None:
         command.extend(["-LifecycleMutexTimeoutSeconds", str(lifecycle_timeout_seconds)])
+    if injected_readiness_failures:
+        command.extend(["-InjectedReadinessFailures", str(injected_readiness_failures)])
     return subprocess.run(
         command,
         check=False,

@@ -29,6 +29,10 @@
   Recreate the required test databases after online cluster identity is proven.
   CI and repeatable full-project verification use this; normal local starts keep
   databases for a faster edit/test loop.
+
+.PARAMETER InjectedReadinessFailures
+  Test-only fault injection. Fail this many initial authenticated readiness
+  probes so lifecycle tests can prove startup retry behavior deterministically.
 #>
 [CmdletBinding()]
 param(
@@ -39,7 +43,8 @@ param(
     [switch]$ResetDatabases,
     [switch]$AcquireConsumerLease,
     [ValidateRange(1, 7200)][int]$LifecycleMutexTimeoutSeconds = 300,
-    [ValidateRange(5, 600)][int]$ProcessTimeoutSeconds = 60
+    [ValidateRange(5, 600)][int]$ProcessTimeoutSeconds = 60,
+    [ValidateRange(0, 10)][int]$InjectedReadinessFailures = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -180,13 +185,40 @@ try {
             -RestrictWindowsAdminAuthority `
             -TimeoutSeconds $ProcessTimeoutSeconds
         $readyDeadline = [DateTime]::UtcNow.AddSeconds($ProcessTimeoutSeconds)
-        while (@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue).Count -eq 0) {
+        $lastReadinessFailure = 'authenticated readiness probe has not completed'
+        $readinessAttempt = 0
+        while ($true) {
             if (-not $uncommittedStart.Job.IsStartedProcessRunning()) {
                 $startupOutput = Get-XpjTestPostgresUncommittedOutput $uncommittedStart
                 throw "PostgreSQL exited before becoming ready: $startupOutput"
             }
+            $readinessAttempt += 1
+            $readiness = if ($readinessAttempt -le $InjectedReadinessFailures) {
+                [pscustomobject]@{
+                    ExitCode = 1
+                    TimedOut = $false
+                    Output = 'injected transient PostgreSQL readiness failure'
+                }
+            }
+            else {
+                Invoke-XpjTestPostgresReadinessProbe `
+                    -PostgresBin $PostgresBin `
+                    -Port $Port
+            }
+            if (-not $readiness.TimedOut -and $readiness.ExitCode -eq 0) {
+                break
+            }
+            $lastReadinessFailure = (
+                "exit=$($readiness.ExitCode), timed_out=$($readiness.TimedOut), " +
+                "output=$(([string]$readiness.Output).Trim())"
+            )
             if ([DateTime]::UtcNow -ge $readyDeadline) {
-                throw "PostgreSQL did not listen within its $ProcessTimeoutSeconds second start budget."
+                $startupOutput = Get-XpjTestPostgresUncommittedOutput $uncommittedStart
+                throw (
+                    'PostgreSQL did not reach authenticated SCRAM readiness within its ' +
+                    "$ProcessTimeoutSeconds second start budget. " +
+                    "Last probe: $lastReadinessFailure Startup output: $startupOutput"
+                )
             }
             Start-Sleep -Milliseconds 100
         }

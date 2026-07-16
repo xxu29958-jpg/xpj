@@ -57,6 +57,7 @@ def test_local_test_postgres_rejects_a_different_cluster_before_provisioning(
             port=port,
             data_dir=expected_dir,
             postgres_bin=postgres_bin,
+            injected_readiness_failures=2,
         )
         assert reused_pid_restart.returncode == 0, reused_pid_restart.stdout + reused_pid_restart.stderr
         _stop_preserving_data(postgres_bin, expected_dir)

@@ -124,6 +124,7 @@ function Assert-XpjTestPostgresRequiredAuthClient {
     foreach ($executable in @(
         'postgres.exe',
         'psql.exe',
+        'pg_isready.exe',
         'pg_ctl.exe',
         'initdb.exe',
         'pg_controldata.exe'
@@ -152,6 +153,30 @@ function Assert-XpjTestPostgresRequiredAuthClient {
             )
         }
     }
+}
+
+function Invoke-XpjTestPostgresReadinessProbe {
+    param(
+        [Parameter(Mandatory = $true)][string]$PostgresBin,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port
+    )
+
+    return Invoke-XpjTestPostgresIsolatedLibpqEnvironment `
+        -Variables @{
+            PGCONNECT_TIMEOUT = '1'
+        } `
+        -Operation {
+            Invoke-XpjTestPostgresBoundedProcess `
+                -FilePath (Join-Path $PostgresBin 'pg_isready.exe') `
+                -ArgumentList @(
+                    '--quiet',
+                    '--host', '127.0.0.1',
+                    '--port', [string]$Port,
+                    '--dbname', 'postgres',
+                    '--timeout', '1'
+                ) `
+                -TimeoutSeconds 5
+        }
 }
 
 function Assert-XpjTestPostgresLegacyOnlineIdentity {
@@ -289,12 +314,25 @@ function Assert-XpjTestPostgresScramCredential {
         -DataDirectory $DataDirectory `
         -Port $Port `
         -ArgumentList $arguments
+    $acceptedOutput = [string]$accepted.Output
     if (
         $accepted.TimedOut -or
         $accepted.ExitCode -ne 0 -or
-        ([string]$accepted.Output).Contains($credential)
+        $acceptedOutput.Contains($credential)
     ) {
-        throw 'Test PostgreSQL rejected its protected SCRAM credential.'
+        $detail = if ($acceptedOutput.Contains($credential)) {
+            'native diagnostics contained secret material and were suppressed'
+        }
+        elseif ([string]::IsNullOrWhiteSpace($acceptedOutput)) {
+            'no native diagnostics'
+        }
+        else {
+            $acceptedOutput.Trim()
+        }
+        throw (
+            'Test PostgreSQL rejected its protected SCRAM credential ' +
+            "(exit=$($accepted.ExitCode), timed_out=$($accepted.TimedOut)): $detail"
+        )
     }
 
     $wrongCredential = New-XpjTestPostgresCredential

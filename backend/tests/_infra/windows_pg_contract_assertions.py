@@ -117,6 +117,9 @@ def _assert_authentication_contract(contracts: dict[str, str]) -> None:
     assert "Assert-XpjTestPostgresRequiredAuthClient" in authentication
     assert "ProductMajorPart" in authentication
     assert "postgres.exe" in authentication
+    assert "pg_isready.exe" in authentication
+    assert "Invoke-XpjTestPostgresReadinessProbe" in authentication
+    assert "PGCONNECT_TIMEOUT = '1'" in authentication
     assert "'--single'" in authentication
     assert "Assert-XpjTestPostgresLegacyOnlineIdentity" in authentication
     assert "-RequiredAuthentication 'none'" in authentication
@@ -127,6 +130,15 @@ def _assert_authentication_contract(contracts: dict[str, str]) -> None:
     assert "Assert-XpjTestPostgresRequiredAuthClient" in stop
     assert "XPJ_TEST_POSTGRES_PASSWORD" not in start
     assert "postgres:$databasePassword@" not in start
+    assert "native diagnostics contained secret material and were suppressed" in authentication
+    assert "timed_out=$($accepted.TimedOut)" in authentication
+    assert start.count("Get-NetTCPConnection -State Listen -LocalPort $Port") == 1
+    assert start.count("Assert-XpjTestPostgresScramAuthenticationOnline") == 1
+    assert "Invoke-XpjTestPostgresReadinessProbe" in start
+    assert "$lastReadinessFailure" in start
+    assert "did not reach authenticated SCRAM readiness" in start
+    assert "[ValidateRange(0, 10)][int]$InjectedReadinessFailures = 0" in start
+    assert "injected transient PostgreSQL readiness failure" in start
 
 
 def _assert_protected_file_contract(contracts: dict[str, str]) -> None:
@@ -236,7 +248,7 @@ def _assert_packaging_runtime_budget(
     job = workflow.split(f"  {job_name}:", 1)[1].split(f"\n  {next_job_name}:", 1)[0]
     assert f"    timeout-minutes: {job_minutes}" in job
     step = job.split("      - name: Windows installer safety behavior\n", 1)[1].split("\n      - name:", 1)[0]
-    assert "        timeout-minutes: 12" in step
+    assert "        timeout-minutes: 20" in step
     assert '          XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME: "1"' in step
     assert "scripts/run_packaging_tests.py" in step.replace("\\", "/")
 

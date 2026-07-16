@@ -100,7 +100,7 @@ jobs:
         run: .\.ci-venv\Scripts\ruff.exe check app scripts tests packaging/tests
 
       - name: Windows installer safety behavior
-        timeout-minutes: 12
+        timeout-minutes: 20
         working-directory: backend
         env:
           XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME: "1"

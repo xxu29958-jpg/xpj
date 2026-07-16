@@ -35,6 +35,8 @@ def packaging_pytest_command() -> list[str]:
         "pytest",
         str(PACKAGING_TESTS_ROOT),
         "-q",
+        "--durations=20",
+        "--durations-min=0.5",
         "--strict-markers",
         "-p",
         "no:cacheprovider",
