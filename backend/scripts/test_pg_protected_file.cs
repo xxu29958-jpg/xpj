@@ -190,8 +190,10 @@ public static class XpjTestProtectedFile
         string label)
     {
         string sid = new SecurityIdentifier(currentUserSid).Value;
+        string ownerSid = WindowsIdentity.GetCurrent().Owner.Value;
         string sddl = string.Format(
-            "O:{0}G:{0}D:P(A;;FA;;;{0})(A;;FA;;;SY)(A;;FA;;;BA)",
+            "O:{0}G:{0}D:P(A;;FA;;;{1})(A;;FA;;;SY)(A;;FA;;;BA)",
+            ownerSid,
             sid
         );
         IntPtr descriptor;

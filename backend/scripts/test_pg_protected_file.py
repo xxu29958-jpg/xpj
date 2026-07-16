@@ -22,6 +22,7 @@ _FILE_ATTRIBUTE_NORMAL = 0x00000080
 _FILE_FLAG_WRITE_THROUGH = 0x80000000
 _TOKEN_QUERY = 0x0008
 _TOKEN_USER = 1
+_TOKEN_OWNER = 4
 
 
 class _SecurityAttributes(ctypes.Structure):
@@ -38,6 +39,10 @@ class _SidAndAttributes(ctypes.Structure):
 
 class _TokenUser(ctypes.Structure):
     _fields_ = (("user", _SidAndAttributes),)
+
+
+class _TokenOwner(ctypes.Structure):
+    _fields_ = (("owner", wintypes.LPVOID),)
 
 
 @cache
@@ -117,7 +122,8 @@ def _raise_windows_error(message: str, error: int | None = None) -> None:
     raise OSError(error or ctypes.get_last_error(), message)
 
 
-def _current_windows_user_sid() -> str:
+@cache
+def _current_windows_token_sid(information_class: int) -> str:
     advapi32, kernel32 = _windows_libraries()
     token = wintypes.HANDLE()
     if not advapi32.OpenProcessToken(
@@ -128,22 +134,27 @@ def _current_windows_user_sid() -> str:
         _raise_windows_error("Could not open the PostgreSQL test identity token.")
     try:
         size = wintypes.DWORD()
-        advapi32.GetTokenInformation(token, _TOKEN_USER, None, 0, ctypes.byref(size))
+        advapi32.GetTokenInformation(token, information_class, None, 0, ctypes.byref(size))
         if not size.value:
             _raise_windows_error("Could not size the PostgreSQL test identity token.")
         buffer = ctypes.create_string_buffer(size.value)
         if not advapi32.GetTokenInformation(
             token,
-            _TOKEN_USER,
+            information_class,
             buffer,
             size,
             ctypes.byref(size),
         ):
             _raise_windows_error("Could not read the PostgreSQL test identity token.")
-        token_user = ctypes.cast(buffer, ctypes.POINTER(_TokenUser)).contents
+        if information_class == _TOKEN_USER:
+            sid = ctypes.cast(buffer, ctypes.POINTER(_TokenUser)).contents.user.sid
+        elif information_class == _TOKEN_OWNER:
+            sid = ctypes.cast(buffer, ctypes.POINTER(_TokenOwner)).contents.owner
+        else:
+            raise ValueError(f"Unsupported Windows token SID class: {information_class}")
         sid_pointer = wintypes.LPWSTR()
         if not advapi32.ConvertSidToStringSidW(
-            token_user.user.sid,
+            sid,
             ctypes.byref(sid_pointer),
         ):
             _raise_windows_error("Could not render the PostgreSQL test identity SID.")
@@ -155,11 +166,20 @@ def _current_windows_user_sid() -> str:
         kernel32.CloseHandle(token)
 
 
+def _current_windows_user_sid() -> str:
+    return _current_windows_token_sid(_TOKEN_USER)
+
+
+def _current_windows_owner_sid() -> str:
+    return _current_windows_token_sid(_TOKEN_OWNER)
+
+
 def _protected_sddl(*, directory: bool = False) -> str:
     sid = _current_windows_user_sid()
+    owner_sid = _current_windows_owner_sid()
     inheritance = "OICI" if directory else ""
     return (
-        f"O:{sid}G:{sid}D:P"
+        f"O:{owner_sid}G:{owner_sid}D:P"
         f"(A;{inheritance};FA;;;{sid})"
         f"(A;{inheritance};FA;;;SY)"
         f"(A;{inheritance};FA;;;BA)"
@@ -270,14 +290,15 @@ def create_protected_shared_lock_file(path: Path, *, label: str) -> int:
             path.unlink(missing_ok=True)
 
 
-def _windows_security_sddl(path: Path) -> str:
+def _windows_security_parts(path: Path) -> tuple[str, str]:
     advapi32, kernel32 = _windows_libraries()
     descriptor = wintypes.LPVOID()
+    owner = wintypes.LPVOID()
     result = advapi32.GetNamedSecurityInfoW(
         str(path),
         _SE_FILE_OBJECT,
         _OWNER_SECURITY_INFORMATION | _DACL_SECURITY_INFORMATION,
-        None,
+        ctypes.byref(owner),
         None,
         None,
         None,
@@ -286,17 +307,22 @@ def _windows_security_sddl(path: Path) -> str:
     if result:
         _raise_windows_error("Could not read a protected PostgreSQL test file ACL.", result)
     rendered = wintypes.LPWSTR()
+    rendered_owner = wintypes.LPWSTR()
     try:
+        if not advapi32.ConvertSidToStringSidW(owner, ctypes.byref(rendered_owner)):
+            _raise_windows_error("Could not render a protected PostgreSQL test file owner.")
         if not advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW(
             descriptor,
             _SDDL_REVISION_1,
-            _OWNER_SECURITY_INFORMATION | _DACL_SECURITY_INFORMATION,
+            _DACL_SECURITY_INFORMATION,
             ctypes.byref(rendered),
             None,
         ):
             _raise_windows_error("Could not render a protected PostgreSQL test file ACL.")
-        return rendered.value
+        return rendered_owner.value, rendered.value
     finally:
+        if rendered_owner:
+            kernel32.LocalFree(ctypes.cast(rendered_owner, wintypes.LPVOID))
         if rendered:
             kernel32.LocalFree(ctypes.cast(rendered, wintypes.LPVOID))
         kernel32.LocalFree(descriptor)
@@ -304,11 +330,16 @@ def _windows_security_sddl(path: Path) -> str:
 
 def _assert_windows_acl(path: Path, *, label: str) -> None:
     sid = _current_windows_user_sid()
-    sddl = _windows_security_sddl(path)
-    owner_prefix = f"O:{sid}D:P"
-    if not sddl.startswith(owner_prefix):
+    expected_owner_sid = _current_windows_owner_sid()
+    actual_owner_sid, sddl = _windows_security_parts(path)
+    if actual_owner_sid != expected_owner_sid or not sddl.startswith("D:"):
         raise RuntimeError(f"{label} owner or protected-DACL contract is invalid: {path}")
-    rules = sddl.removeprefix(owner_prefix)
+    rules_start = sddl.find("(")
+    flags = sddl[2:rules_start] if rules_start >= 0 else sddl[2:]
+    unsupported_flags = flags.replace("AR", "").replace("AI", "").replace("P", "")
+    if "P" not in flags or unsupported_flags:
+        raise RuntimeError(f"{label} owner or protected-DACL contract is invalid: {path}")
+    rules = sddl[rules_start:] if rules_start >= 0 else ""
     inheritance = "OICI" if path.is_dir() else ""
     expected = {
         f"(A;{inheritance};FA;;;{sid})",

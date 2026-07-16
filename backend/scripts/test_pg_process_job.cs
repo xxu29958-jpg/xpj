@@ -133,7 +133,13 @@ public sealed partial class XpjTestProcessJob : IDisposable
         FileStream stdoutStream,
         FileStream stderrStream)
     {
-        return StartProcess(filePath, arguments, stdoutStream, stderrStream, null);
+        return StartProcessCore(
+            filePath,
+            arguments,
+            stdoutStream,
+            stderrStream,
+            null,
+            false);
     }
 
     public int StartProcess(
@@ -142,6 +148,23 @@ public sealed partial class XpjTestProcessJob : IDisposable
         FileStream stdoutStream,
         FileStream stderrStream,
         string standardInput)
+    {
+        return StartProcessCore(
+            filePath,
+            arguments,
+            stdoutStream,
+            stderrStream,
+            standardInput,
+            false);
+    }
+
+    private int StartProcessCore(
+        string filePath,
+        string[] arguments,
+        FileStream stdoutStream,
+        FileStream stderrStream,
+        string standardInput,
+        bool restrictWindowsAdminAuthority)
     {
         EnsureOpen();
         string fullFilePath = Path.GetFullPath(filePath);
@@ -265,23 +288,13 @@ public sealed partial class XpjTestProcessJob : IDisposable
                 commandLine.Append(' ');
                 commandLine.Append(QuoteWindowsArgument(argument));
             }
-            ProcessInformation process;
-            if (!CreateProcess(
+            ProcessInformation process = CreateAssignedProcess(
+                restrictWindowsAdminAuthority,
                 fullFilePath,
                 commandLine,
-                IntPtr.Zero,
-                IntPtr.Zero,
                 true,
                 ExtendedStartupInfoPresent | CreateNoWindow,
-                IntPtr.Zero,
-                null,
-                ref startup,
-                out process))
-            {
-                throw new Win32Exception(
-                    Marshal.GetLastWin32Error(),
-                    "Cannot start PostgreSQL inside its lifecycle job.");
-            }
+                ref startup);
             bool retainedProcessHandle = false;
             try
             {

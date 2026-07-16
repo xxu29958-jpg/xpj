@@ -9,6 +9,7 @@ if ($null -eq ('XpjTestProcessJob' -as [type])) {
         (Join-Path $PSScriptRoot 'test_pg_process_job.cs')
         (Join-Path $PSScriptRoot 'test_pg_process_command_line.cs')
         (Join-Path $PSScriptRoot 'test_pg_process_native.cs')
+        (Join-Path $PSScriptRoot 'test_pg_process_security.cs')
     )
 }
 
@@ -19,7 +20,8 @@ function Start-XpjTestPostgresProtectedProcess {
         [Parameter(Mandatory = $true)][string[]]$ArgumentList,
         [Parameter(Mandatory = $true)][string]$StdoutPath,
         [Parameter(Mandatory = $true)][string]$StderrPath,
-        [AllowNull()][string]$StandardInput = $null
+        [AllowNull()][string]$StandardInput = $null,
+        [switch]$RestrictWindowsAdminAuthority
     )
 
     $stdoutStream = $null
@@ -36,22 +38,43 @@ function Start-XpjTestPostgresProtectedProcess {
             [System.IO.Path]::GetFullPath($StderrPath)
         )
         $stderrCreated = $true
-        $processId = if ($null -eq $StandardInput) {
-            $Job.StartProcess(
-                $FilePath,
-                $ArgumentList,
-                $stdoutStream,
-                $stderrStream
-            )
+        $processId = if ($RestrictWindowsAdminAuthority) {
+            if ($null -eq $StandardInput) {
+                $Job.StartRestrictedProcess(
+                    $FilePath,
+                    $ArgumentList,
+                    $stdoutStream,
+                    $stderrStream
+                )
+            }
+            else {
+                $Job.StartRestrictedProcess(
+                    $FilePath,
+                    $ArgumentList,
+                    $stdoutStream,
+                    $stderrStream,
+                    $StandardInput
+                )
+            }
         }
         else {
-            $Job.StartProcess(
-                $FilePath,
-                $ArgumentList,
-                $stdoutStream,
-                $stderrStream,
-                $StandardInput
-            )
+            if ($null -eq $StandardInput) {
+                $Job.StartProcess(
+                    $FilePath,
+                    $ArgumentList,
+                    $stdoutStream,
+                    $stderrStream
+                )
+            }
+            else {
+                $Job.StartProcess(
+                    $FilePath,
+                    $ArgumentList,
+                    $stdoutStream,
+                    $stderrStream,
+                    $StandardInput
+                )
+            }
         }
         $started = $true
         return $processId
@@ -129,6 +152,7 @@ function Invoke-XpjTestPostgresBoundedProcess {
         [Parameter(Mandatory = $true)][string]$FilePath,
         [Parameter(Mandatory = $true)][string[]]$ArgumentList,
         [AllowNull()][string]$StandardInput = $null,
+        [switch]$RestrictWindowsAdminAuthority,
         [ValidateRange(1, 600)][int]$TimeoutSeconds = 60
     )
 
@@ -144,7 +168,8 @@ function Invoke-XpjTestPostgresBoundedProcess {
             -ArgumentList $ArgumentList `
             -StdoutPath $stdoutPath `
             -StderrPath $stderrPath `
-            -StandardInput $StandardInput)
+            -StandardInput $StandardInput `
+            -RestrictWindowsAdminAuthority:$RestrictWindowsAdminAuthority)
         $timedOut = -not $job.WaitForStartedProcess($TimeoutSeconds * 1000)
         if ($timedOut) {
             $job.Terminate(1)
@@ -184,6 +209,7 @@ function Start-XpjTestPostgresUncommittedProcess {
         [Parameter(Mandatory = $true)][string]$TargetPidSourcePath,
         [Parameter(Mandatory = $true)][string]$TargetStdoutPath,
         [Parameter(Mandatory = $true)][string]$TargetStderrPath,
+        [switch]$RestrictWindowsAdminAuthority,
         [ValidateRange(1, 600)][int]$TimeoutSeconds = 60
     )
 
@@ -195,7 +221,8 @@ function Start-XpjTestPostgresUncommittedProcess {
             -FilePath $FilePath `
             -ArgumentList $ArgumentList `
             -StdoutPath $TargetStdoutPath `
-            -StderrPath $TargetStderrPath
+            -StderrPath $TargetStderrPath `
+            -RestrictWindowsAdminAuthority:$RestrictWindowsAdminAuthority
         $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
         $recordedPid = 0
         while ($true) {

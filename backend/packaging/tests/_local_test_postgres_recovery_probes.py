@@ -81,6 +81,24 @@ def write_post_initdb_fault_probe(path: Path) -> None:
             """\
             param($Contract, $PostgresBin, $FinalDir, $Port)
             . $Contract
+            $originalProtect = (Get-Command Protect-XpjTestPostgresDirectoryTree).ScriptBlock
+            $earlyFinal = "$FinalDir-early"
+            try {
+              function Protect-XpjTestPostgresDirectoryTree { param($Path) throw 'injected-before-protect' }
+              try {
+                New-XpjTestPostgresDataDirectory -PostgresBin $PostgresBin -DataDirectory $earlyFinal -Purpose local -Port $Port
+                throw 'expected early injected failure'
+              }
+              catch {
+                if ($_.Exception.Message -notmatch 'injected-before-protect' -or $_.Exception.Message -match 'ExpectedDirectoryIdentity') { throw }
+              }
+            }
+            finally {
+              Set-Item -LiteralPath Function:\\Protect-XpjTestPostgresDirectoryTree -Value $originalProtect
+            }
+            $earlyLeaf = Split-Path -Leaf $earlyFinal
+            $earlyLeftovers = @(Get-ChildItem -LiteralPath (Split-Path -Parent $earlyFinal) -Filter ".$earlyLeaf.xpj-init-*" -Force)
+            if ($earlyLeftovers.Count -ne 0 -or (Test-Path -LiteralPath $earlyFinal)) { throw 'pre-protection staging was stranded' }
             function Get-XpjTestPostgresControlSystemIdentifier { throw 'injected-after-initdb' }
             try {
               New-XpjTestPostgresDataDirectory -PostgresBin $PostgresBin -DataDirectory $FinalDir -Purpose local -Port $Port

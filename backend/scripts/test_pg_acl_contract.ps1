@@ -12,6 +12,10 @@ function Get-XpjTestPostgresCurrentUserSid {
     return [System.Security.Principal.WindowsIdentity]::GetCurrent().User
 }
 
+function Get-XpjTestPostgresCurrentOwnerSid {
+    return [System.Security.Principal.WindowsIdentity]::GetCurrent().Owner
+}
+
 function Get-XpjTestPostgresAcl {
     param([Parameter(Mandatory = $true)][System.IO.FileSystemInfo]$Item)
 
@@ -44,8 +48,9 @@ function New-XpjTestPostgresTrustedAcl {
         New-Object System.Security.AccessControl.FileSecurity
     }
     $currentSid = Get-XpjTestPostgresCurrentUserSid
+    $ownerSid = Get-XpjTestPostgresCurrentOwnerSid
     $acl.SetAccessRuleProtection($true, $false)
-    $acl.SetOwner($currentSid)
+    $acl.SetOwner($ownerSid)
     $inheritance = if ($IsDirectory) {
         [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
             [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
@@ -157,10 +162,11 @@ function Test-XpjTestPostgresTrustedAcl {
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     $acl = Get-XpjTestPostgresAcl $item
     $currentSid = Get-XpjTestPostgresCurrentUserSid
+    $ownerSid = Get-XpjTestPostgresCurrentOwnerSid
     if (
         ($RequireProtected -and -not $acl.AreAccessRulesProtected) -or
         $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -cne
-            $currentSid.Value
+            $ownerSid.Value
     ) {
         return $false
     }
@@ -243,12 +249,12 @@ function Protect-XpjTestPostgresDirectoryTree {
     ) {
         throw "Test PostgreSQL ACL target must be a real directory: $Path"
     }
-    $currentSid = Get-XpjTestPostgresCurrentUserSid
-    $ownerSid = (Get-XpjTestPostgresAcl $item).GetOwner(
+    $expectedOwnerSid = Get-XpjTestPostgresCurrentOwnerSid
+    $actualOwnerSid = (Get-XpjTestPostgresAcl $item).GetOwner(
         [System.Security.Principal.SecurityIdentifier]
     )
-    if ($ownerSid.Value -cne $currentSid.Value) {
-        throw "Test PostgreSQL data directory must be owned by the current runner identity: $Path"
+    if ($actualOwnerSid.Value -cne $expectedOwnerSid.Value) {
+        throw "Test PostgreSQL data directory must be owned by the current runner token: $Path"
     }
     if (-not (Test-XpjTestPostgresTrustedAcl -Path $Path -RequireProtected)) {
         Set-XpjTestPostgresAcl `

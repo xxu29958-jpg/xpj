@@ -13,6 +13,7 @@ from _powershell_contract import powershell_contract_engines
 from scripts.test_pg_contract import (
     test_postgres_consumer_lease as consumer_lease,
 )
+from scripts.test_pg_protected_file import ensure_protected_directory
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PROCESS_CONTRACT = PROJECT_ROOT / "backend" / "scripts" / "test_pg_process_contract.ps1"
@@ -309,6 +310,12 @@ def test_test_cluster_acl_removes_untrusted_write_authority(tmp_path: Path) -> N
         "Protect-XpjTestPostgresDirectoryTree $DataDirectory\n"
         "if (-not (Test-XpjTestPostgresTrustedAcl $DataDirectory)) { "
         "throw 'root ACL was not normalized' }\n"
+        "$expectedOwner = [Security.Principal.WindowsIdentity]::GetCurrent().Owner.Value\n"
+        "$actualOwner = (Get-XpjTestPostgresAcl "
+        "(Get-Item -LiteralPath $DataDirectory)).GetOwner("
+        "[Security.Principal.SecurityIdentifier]).Value\n"
+        "if ($actualOwner -cne $expectedOwner) { "
+        "throw 'root owner does not match the current token owner' }\n"
         "$world = 'S-1-1-0'\n"
         "foreach ($item in @(Get-ChildItem -LiteralPath $DataDirectory -Force)) {\n"
         "  $acl = Get-XpjTestPostgresAcl $item\n"
@@ -345,6 +352,10 @@ def test_test_cluster_acl_removes_untrusted_write_authority(tmp_path: Path) -> N
             timeout=15,
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
+        ensure_protected_directory(
+            data_dir.resolve(),
+            label="PowerShell-normalized PostgreSQL test directory",
+        )
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL authority")

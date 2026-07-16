@@ -255,6 +255,7 @@ ALTER ROLE postgres PASSWORD '$credential';
             'postgres'
         ) `
         -StandardInput $standardInput `
+        -RestrictWindowsAdminAuthority `
         -TimeoutSeconds (Get-XpjTestPostgresProcessTimeoutSeconds)
     if (
         $result.TimedOut -or

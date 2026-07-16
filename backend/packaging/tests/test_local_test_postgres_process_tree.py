@@ -18,6 +18,92 @@ from _powershell_contract import powershell_contract_engines
 from scripts.test_pg_protected_file import assert_protected_authority_file
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows restricted token")
+def test_restricted_process_preserves_user_and_drops_admin_groups(
+    tmp_path: Path,
+) -> None:
+    child = tmp_path / "restricted-child.ps1"
+    child.write_text(
+        "param($ResultPath)\n"
+        "$identity = [Security.Principal.WindowsIdentity]::GetCurrent()\n"
+        "$principal = [Security.Principal.WindowsPrincipal]::new($identity)\n"
+        "$isAdmin = $principal.IsInRole("
+        "[Security.Principal.WindowsBuiltInRole]::Administrator)\n"
+        "[IO.File]::WriteAllText($ResultPath, "
+        "($identity.User.Value + '|' + $identity.Owner.Value + '|' + $isAdmin))\n",
+        encoding="ascii",
+    )
+    probe = tmp_path / "restricted-process.ps1"
+    probe.write_text(
+        "param($Contract,$Engine,$Child,$ResultPath,$StdoutPath,$StderrPath)\n"
+        ". $Contract\n"
+        "$expectedUser = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value\n"
+        "$job = [XpjTestProcessJob]::new()\n"
+        "try {\n"
+        "  [void](Start-XpjTestPostgresProtectedProcess -Job $job "
+        "-FilePath $Engine -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive',"
+        "'-ExecutionPolicy','Bypass','-File',$Child,'-ResultPath',$ResultPath) "
+        "-StdoutPath $StdoutPath -StderrPath $StderrPath "
+        "-RestrictWindowsAdminAuthority)\n"
+        "  if (-not $job.WaitForStartedProcess(5000)) { "
+        "throw 'restricted child did not exit' }\n"
+        "  if ($job.GetStartedProcessExitCode() -ne 0) { "
+        "throw 'restricted child failed' }\n"
+        "}\n"
+        "finally { $job.Dispose() }\n"
+        "$parts = ([IO.File]::ReadAllText($ResultPath)).Split('|')\n"
+        "if ($parts.Count -ne 3 -or $parts[0] -cne $expectedUser -or "
+        "$parts[2] -cne 'False') { throw 'restricted token contract mismatch' }\n",
+        encoding="ascii",
+    )
+
+    for index, engine in enumerate(powershell_contract_engines()):
+        result_path = tmp_path / f"restricted-{index}.txt"
+        stdout_path = tmp_path / f"restricted-{index}.stdout"
+        stderr_path = tmp_path / f"restricted-{index}.stderr"
+        completed = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(probe),
+                "-Contract",
+                str(TEST_POSTGRES_CONTRACT),
+                "-Engine",
+                engine,
+                "-Child",
+                str(child),
+                "-ResultPath",
+                str(result_path),
+                "-StdoutPath",
+                str(stdout_path),
+                "-StderrPath",
+                str(stderr_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        parts = result_path.read_text(encoding="utf-8").split("|")
+        assert len(parts) == 3
+        assert parts[0]
+        assert parts[1]
+        assert parts[2] == "False"
+        for output_path in (stdout_path, stderr_path):
+            assert_protected_authority_file(
+                output_path.resolve(),
+                label="Restricted PostgreSQL process output",
+            )
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) -> None:
     child = tmp_path / "bounded-child.ps1"

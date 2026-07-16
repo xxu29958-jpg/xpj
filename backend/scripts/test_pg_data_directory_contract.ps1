@@ -319,9 +319,9 @@ function New-XpjTestPostgresDataDirectory {
         }
         [void][System.IO.Directory]::CreateDirectory($staging)
         $stagingCreated = $true
-        Protect-XpjTestPostgresDirectoryTree $staging
         $stagingHandle = [XpjTestDirectoryMoveHandle]::OpenIdentity($staging)
         $directoryIdentity = $stagingHandle.Identity
+        Protect-XpjTestPostgresDirectoryTree $staging
         New-XpjTestPostgresStagingReceipt `
             -ReceiptPath $receiptPath `
             -StagingDirectory $staging `
@@ -435,6 +435,12 @@ function New-XpjTestPostgresDataDirectory {
             }
         }
         elseif ($stagingCreated -and (Test-Path -LiteralPath $staging -PathType Container)) {
+            if ([string]::IsNullOrWhiteSpace([string]$directoryIdentity)) {
+                throw (
+                    'Test PostgreSQL publication failed before its directory identity ' +
+                    "was captured; cleanup refused. Original failure: $($failure.Exception.Message)"
+                )
+            }
             try {
                 Remove-XpjTestPostgresDirectoryBounded `
                     -Directory $staging `

@@ -149,7 +149,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "backend_pytest_cluster_count": 7,
     "backend_pytest_cluster_membership_digest":
         20_986_048_875_972_673_385_075_257_154_712_410_674_609_335_780_934_224_221_339_523_405_367_512_423_631,
-    "installer_pytest_count": 125,  # Includes lifecycle authority, protected-file ACL, and maintenance contracts.
+    "installer_pytest_count": 126,  # Includes lifecycle authority, protected-file ACL, and maintenance contracts.
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane

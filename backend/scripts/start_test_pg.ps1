@@ -177,6 +177,7 @@ try {
             -TargetPidSourcePath (Join-Path $DataDir 'postmaster.pid') `
             -TargetStdoutPath $serverLog `
             -TargetStderrPath $serverErrorLog `
+            -RestrictWindowsAdminAuthority `
             -TimeoutSeconds $ProcessTimeoutSeconds
         $readyDeadline = [DateTime]::UtcNow.AddSeconds($ProcessTimeoutSeconds)
         while (@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue).Count -eq 0) {
