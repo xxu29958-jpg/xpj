@@ -13,9 +13,8 @@ from scripts.test_pg_protected_file import (
     _FILE_SHARE_WRITE,
     _GENERIC_READ,
     _assert_windows_acl,
-    _raise_windows_error,
-    _windows_libraries,
 )
+from scripts.test_pg_windows_acl import raise_windows_error, windows_libraries
 
 _OPEN_EXISTING = 3
 _FILE_ATTRIBUTE_DIRECTORY = 0x00000010
@@ -41,7 +40,7 @@ class _ByHandleFileInformation(ctypes.Structure):
 def _open_windows_protected_read_descriptor(path: Path, *, label: str) -> int:
     import msvcrt
 
-    _, kernel32 = _windows_libraries()
+    _, kernel32 = windows_libraries()
     kernel32.GetFileInformationByHandle.argtypes = (
         wintypes.HANDLE,
         ctypes.POINTER(_ByHandleFileInformation),
@@ -58,14 +57,14 @@ def _open_windows_protected_read_descriptor(path: Path, *, label: str) -> int:
         None,
     )
     if handle == invalid_handle:
-        _raise_windows_error(f"Could not open {label}.")
+        raise_windows_error(f"Could not open {label}.")
     try:
         information = _ByHandleFileInformation()
         if not kernel32.GetFileInformationByHandle(
             handle,
             ctypes.byref(information),
         ):
-            _raise_windows_error(f"Could not identify {label}.")
+            raise_windows_error(f"Could not identify {label}.")
         if information.file_attributes & (
             _FILE_ATTRIBUTE_DIRECTORY | _FILE_ATTRIBUTE_REPARSE_POINT
         ):

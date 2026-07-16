@@ -48,9 +48,8 @@ function New-XpjTestPostgresTrustedAcl {
         New-Object System.Security.AccessControl.FileSecurity
     }
     $currentSid = Get-XpjTestPostgresCurrentUserSid
-    $ownerSid = Get-XpjTestPostgresCurrentOwnerSid
     $acl.SetAccessRuleProtection($true, $false)
-    $acl.SetOwner($ownerSid)
+    $acl.SetOwner($currentSid)
     $inheritance = if ($IsDirectory) {
         [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
             [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
@@ -162,11 +161,10 @@ function Test-XpjTestPostgresTrustedAcl {
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     $acl = Get-XpjTestPostgresAcl $item
     $currentSid = Get-XpjTestPostgresCurrentUserSid
-    $ownerSid = Get-XpjTestPostgresCurrentOwnerSid
     if (
         ($RequireProtected -and -not $acl.AreAccessRulesProtected) -or
         $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -cne
-            $ownerSid.Value
+            $currentSid.Value
     ) {
         return $false
     }
@@ -249,12 +247,20 @@ function Protect-XpjTestPostgresDirectoryTree {
     ) {
         throw "Test PostgreSQL ACL target must be a real directory: $Path"
     }
-    $expectedOwnerSid = Get-XpjTestPostgresCurrentOwnerSid
+    $currentSid = Get-XpjTestPostgresCurrentUserSid
+    $tokenOwnerSid = Get-XpjTestPostgresCurrentOwnerSid
     $actualOwnerSid = (Get-XpjTestPostgresAcl $item).GetOwner(
         [System.Security.Principal.SecurityIdentifier]
     )
-    if ($actualOwnerSid.Value -cne $expectedOwnerSid.Value) {
-        throw "Test PostgreSQL data directory must be owned by the current runner token: $Path"
+    $trustedOwnerSidValues = @(
+        $currentSid.Value
+        $tokenOwnerSid.Value
+    ) | Sort-Object -Unique
+    if ($actualOwnerSid.Value -cnotin $trustedOwnerSidValues) {
+        throw (
+            'Test PostgreSQL data directory must be owned by the current runner ' +
+            "user or token owner: $Path"
+        )
     }
     if (-not (Test-XpjTestPostgresTrustedAcl -Path $Path -RequireProtected)) {
         Set-XpjTestPostgresAcl `
