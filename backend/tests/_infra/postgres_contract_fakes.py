@@ -45,7 +45,10 @@ def owned_environment(
         "XPJ_TEST_DATABASE_URL": database_url,
         test_pg_contract.TEST_CLUSTER_AUTHORITY_ENV:
             test_pg_contract.OWNED_MARKER_AUTHORITY,
+        test_pg_contract.TEST_CLUSTER_INSTANCE_ID_ENV: "a" * 32,
         test_pg_contract.TEST_CLUSTER_MARKER_PATH_ENV: str(marker_path),
+        test_pg_contract.TEST_CLUSTER_SYSTEM_IDENTIFIER_ENV:
+            "1234567890123456789",
         test_pg_contract.TEST_POSTGRES_CREDENTIAL_FILE_ENV: str(credential_path),
     }
 

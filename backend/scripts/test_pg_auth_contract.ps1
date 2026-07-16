@@ -1,165 +1,6 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
-$script:XpjTestPostgresCredentialName = '.xpj-test-postgres-password'
-$script:XpjTestPostgresPgPassPrefix = '.xpj-pgpass-'
-
-function Get-XpjTestPostgresCredentialPath {
-    param([Parameter(Mandatory = $true)][string]$DataDirectory)
-
-    return Join-Path $DataDirectory $script:XpjTestPostgresCredentialName
-}
-
-function New-XpjTestPostgresCredential {
-    $bytes = New-Object byte[] 32
-    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-    try {
-        $rng.GetBytes($bytes)
-    }
-    finally {
-        $rng.Dispose()
-    }
-    return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
-}
-
-function Read-XpjTestPostgresCredential {
-    param([Parameter(Mandatory = $true)][string]$DataDirectory)
-
-    $path = Get-XpjTestPostgresCredentialPath $DataDirectory
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        throw "Test PostgreSQL SCRAM credential is missing: $path"
-    }
-    Assert-XpjTestPostgresProtectedAuthorityFile `
-        -Path $path `
-        -Label 'Test PostgreSQL SCRAM credential'
-    $content = [System.IO.File]::ReadAllText(
-        $path,
-        (New-Object System.Text.UTF8Encoding($false, $true))
-    )
-    $match = [regex]::Match(
-        $content,
-        '\A(?<credential>[A-Za-z0-9_-]{43})(?:\r\n|\n)?\z',
-        [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
-    )
-    if (-not $match.Success) {
-        throw "Test PostgreSQL SCRAM credential has an invalid contract: $path"
-    }
-    return $match.Groups['credential'].Value
-}
-
-function Invoke-XpjTestPostgresIsolatedLibpqEnvironment {
-    param(
-        [hashtable]$Variables = @{},
-        [Parameter(Mandatory = $true)][scriptblock]$Operation
-    )
-
-    $previous = @{}
-    foreach ($item in @(Get-ChildItem Env: -ErrorAction SilentlyContinue)) {
-        if ($item.Name -match '^PG') {
-            $previous[$item.Name] = [string]$item.Value
-        }
-    }
-    try {
-        foreach ($name in @($previous.Keys)) {
-            Remove-Item "Env:$name" -ErrorAction SilentlyContinue
-        }
-        foreach ($entry in $Variables.GetEnumerator()) {
-            [Environment]::SetEnvironmentVariable(
-                [string]$entry.Key,
-                [string]$entry.Value
-            )
-        }
-        & $Operation
-    }
-    finally {
-        foreach ($item in @(Get-ChildItem Env: -ErrorAction SilentlyContinue)) {
-            if ($item.Name -match '^PG') {
-                Remove-Item "Env:$($item.Name)" -ErrorAction SilentlyContinue
-            }
-        }
-        foreach ($entry in $previous.GetEnumerator()) {
-            [Environment]::SetEnvironmentVariable(
-                [string]$entry.Key,
-                [string]$entry.Value
-            )
-        }
-    }
-}
-
-function New-XpjTestPostgresPgPassFile {
-    param(
-        [Parameter(Mandatory = $true)][string]$DataDirectory,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
-        [AllowNull()][string]$Credential = $null
-    )
-
-    $resolvedCredential = if ([string]::IsNullOrEmpty($Credential)) {
-        Read-XpjTestPostgresCredential $DataDirectory
-    }
-    else {
-        $Credential
-    }
-    if ($resolvedCredential -notmatch '^[A-Za-z0-9_-]{43}$') {
-        throw 'Test PostgreSQL passfile credential has an invalid contract.'
-    }
-    $path = Join-Path $DataDirectory (
-        "$($script:XpjTestPostgresPgPassPrefix)$PID-$([Guid]::NewGuid().ToString('N'))"
-    )
-    Write-XpjTestPostgresProtectedUtf8File `
-        -Path $path `
-        -Content (
-            "127.0.0.1:$Port" + ':*:postgres:' + $resolvedCredential +
-            [Environment]::NewLine
-        )
-    return $path
-}
-
-function Remove-XpjTestPostgresPgPassFile {
-    param(
-        [Parameter(Mandatory = $true)][string]$DataDirectory,
-        [Parameter(Mandatory = $true)][string]$Path
-    )
-
-    $fullDataDirectory = [System.IO.Path]::GetFullPath($DataDirectory)
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
-    if (
-        -not [string]::Equals(
-            [System.IO.Path]::GetDirectoryName($fullPath),
-            $fullDataDirectory,
-            [System.StringComparison]::OrdinalIgnoreCase
-        ) -or
-        -not [System.IO.Path]::GetFileName($fullPath).StartsWith(
-            $script:XpjTestPostgresPgPassPrefix,
-            [System.StringComparison]::Ordinal
-        )
-    ) {
-        throw 'Refusing to remove a PostgreSQL passfile outside its protected data directory.'
-    }
-    Remove-Item -LiteralPath $fullPath -Force -ErrorAction SilentlyContinue
-}
-
-function Remove-XpjTestPostgresAbandonedPgPassFiles {
-    param([Parameter(Mandatory = $true)][string]$DataDirectory)
-
-    foreach ($item in @(
-        Get-ChildItem `
-            -LiteralPath $DataDirectory `
-            -Filter "$($script:XpjTestPostgresPgPassPrefix)*" `
-            -Force `
-            -ErrorAction Stop
-    )) {
-        if (
-            $item.PSIsContainer -or
-            ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
-            -not (Test-XpjTestPostgresTrustedAcl -Path $item.FullName -RequireProtected)
-        ) {
-            throw "Abandoned PostgreSQL passfile is not a protected regular file: $($item.FullName)"
-        }
-        Remove-XpjTestPostgresPgPassFile `
-            -DataDirectory $DataDirectory `
-            -Path $item.FullName
-    }
-}
-
+. (Join-Path $PSScriptRoot 'test_pg_credential_contract.ps1')
 . (Join-Path $PSScriptRoot 'test_pg_psql_command_contract.ps1')
 
 function Set-XpjTestPostgresScramMarker {
@@ -278,47 +119,143 @@ function Get-XpjTestPostgresPsqlProbeArguments {
 function Assert-XpjTestPostgresRequiredAuthClient {
     param([Parameter(Mandatory = $true)][string]$PostgresBin)
 
-    $psqlPath = Join-Path $PostgresBin 'psql.exe'
-    $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($psqlPath)
-    if ($version.ProductMajorPart -lt 17) {
+    $requiredMajor = 17
+    $expectedVersion = $null
+    foreach ($executable in @(
+        'postgres.exe',
+        'psql.exe',
+        'pg_ctl.exe',
+        'initdb.exe',
+        'pg_controldata.exe'
+    )) {
+        $path = Join-Path $PostgresBin $executable
+        $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($path)
+        $versionIdentity = @(
+            $version.ProductMajorPart,
+            $version.ProductMinorPart,
+            $version.ProductBuildPart,
+            $version.ProductPrivatePart
+        ) -join '.'
+        if ($version.ProductMajorPart -ne $requiredMajor) {
+            throw (
+                "Test PostgreSQL toolset must use major $requiredMajor " +
+                "for the RC1 runtime contract ($executable=$($version.ProductVersion))."
+            )
+        }
+        if ($null -eq $expectedVersion) {
+            $expectedVersion = $versionIdentity
+        }
+        elseif ($versionIdentity -cne $expectedVersion) {
+            throw (
+                'Test PostgreSQL executables must come from one exact toolset ' +
+                "($executable=$versionIdentity, expected=$expectedVersion)."
+            )
+        }
+    }
+}
+
+function Assert-XpjTestPostgresLegacyOnlineIdentity {
+    param(
+        [Parameter(Mandatory = $true)][string]$PostgresBin,
+        [Parameter(Mandatory = $true)][string]$DataDirectory,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$SystemIdentifier
+    )
+
+    [void](Assert-XpjTestPostgresListenerOwnership `
+        -ExpectedPort $Port `
+        -ExpectedDataDirectory $DataDirectory)
+    $query = @"
+SELECT CASE WHEN
+    lower(replace(current_setting('data_directory'), '/', E'\\')) =
+        lower(replace(:'expected_data_directory', '/', E'\\'))
+    AND (SELECT system_identifier::text FROM pg_control_system()) =
+        :'expected_system_identifier'
+    AND current_setting('port') = :'expected_port'
+    AND current_setting('listen_addresses') = '127.0.0.1'
+    AND (
+        SELECT count(*) = 0
+        FROM pg_stat_activity
+        WHERE pid <> pg_backend_pid()
+          AND backend_type = 'client backend'
+    )
+THEN 'XPJ_TEST_POSTGRES_LEGACY_IDENTITY_OK'
+ELSE 'XPJ_TEST_POSTGRES_LEGACY_IDENTITY_MISMATCH'
+END
+"@
+    $arguments = @(
+        '--no-psqlrc',
+        '--no-password',
+        '--quiet',
+        '--tuples-only',
+        '--no-align',
+        '--host', '127.0.0.1',
+        '--port', [string]$Port,
+        '--username', 'postgres',
+        '--dbname', 'postgres',
+        '--set', "expected_data_directory=$DataDirectory",
+        '--set', "expected_system_identifier=$SystemIdentifier",
+        '--set', "expected_port=$Port",
+        '--command', $query
+    )
+    $hbaMode = Get-XpjTestPostgresHbaAuthenticationMode $DataDirectory
+    $result = if ($hbaMode -ceq 'legacy-trust') {
+        Invoke-XpjTestPostgresPasswordlessCommand `
+            -PostgresBin $PostgresBin `
+            -DataDirectory $DataDirectory `
+            -ArgumentList $arguments `
+            -RequiredAuthentication 'none'
+    }
+    else {
+        [void](Read-XpjTestPostgresCredential $DataDirectory)
+        Invoke-XpjTestPostgresCredentialCommand `
+            -PostgresBin $PostgresBin `
+            -DataDirectory $DataDirectory `
+            -Port $Port `
+            -ArgumentList $arguments
+    }
+    if (
+        $result.TimedOut -or
+        $result.ExitCode -ne 0 -or
+        [string]$result.Output -notmatch
+            '(?m)^XPJ_TEST_POSTGRES_LEGACY_IDENTITY_OK\s*$'
+    ) {
         throw (
-            'Test PostgreSQL requires psql/libpq 17 or newer for require_auth ' +
-            "(actual=$($version.ProductVersion))."
+            'Legacy test PostgreSQL online identity proof failed before ' +
+            "offline SCRAM conversion (exit=$($result.ExitCode))."
         )
     }
 }
 
-function Initialize-XpjTestPostgresScramCredentialFromNoChallengeBootstrap {
+function Initialize-XpjTestPostgresScramCredentialOffline {
     param(
         [Parameter(Mandatory = $true)][string]$PostgresBin,
         [Parameter(Mandatory = $true)][string]$DataDirectory,
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port
     )
 
-    $credential = Read-XpjTestPostgresCredential $DataDirectory
-    $standardInput = @"
-\set ON_ERROR_STOP on
-ALTER SYSTEM SET password_encryption = 'scram-sha-256';
-SET password_encryption = 'scram-sha-256';
-\set xpj_scram_credential '$credential'
-ALTER ROLE postgres PASSWORD :'xpj_scram_credential';
-\unset xpj_scram_credential
-\q
-"@
-    $result = Invoke-XpjTestPostgresPasswordlessCommand `
+    [void](Assert-XpjTestPostgresQuiescent `
         -PostgresBin $PostgresBin `
         -DataDirectory $DataDirectory `
+        -Port $Port)
+    $credential = Read-XpjTestPostgresCredential $DataDirectory
+    $standardInput = @"
+ALTER SYSTEM SET password_encryption = 'scram-sha-256';
+SET password_encryption = 'scram-sha-256';
+ALTER ROLE postgres PASSWORD '$credential';
+"@
+    $result = Invoke-XpjTestPostgresBoundedProcess `
+        -FilePath (Join-Path $PostgresBin 'postgres.exe') `
         -ArgumentList @(
-            '--no-psqlrc',
-            '--no-password',
-            '--quiet',
-            '--host', '127.0.0.1',
-            '--port', [string]$Port,
-            '--username', 'postgres',
-            '--dbname', 'postgres'
+            '--single',
+            '-D', $DataDirectory,
+            '-c', 'password_encryption=scram-sha-256',
+            '-c', 'log_statement=none',
+            '-c', 'log_min_error_statement=panic',
+            'postgres'
         ) `
         -StandardInput $standardInput `
-        -RequiredAuthentication 'none'
+        -TimeoutSeconds (Get-XpjTestPostgresProcessTimeoutSeconds)
     if (
         $result.TimedOut -or
         $result.ExitCode -ne 0 -or
@@ -331,7 +268,7 @@ ALTER ROLE postgres PASSWORD :'xpj_scram_credential';
             ([string]$result.Output).Trim()
         }
         throw (
-            'Could not establish the protected test PostgreSQL SCRAM credential ' +
+            'Could not establish the protected test PostgreSQL SCRAM credential offline ' +
             "(exit=$($result.ExitCode), timed_out=$($result.TimedOut)): $detail"
         )
     }
@@ -391,11 +328,9 @@ function Assert-XpjTestPostgresScramCredential {
     }
 }
 
-function Ensure-XpjTestPostgresScramAuthentication {
+function Get-XpjTestPostgresScramAuthority {
     param(
-        [Parameter(Mandatory = $true)][string]$PostgresBin,
         [Parameter(Mandatory = $true)][string]$DataDirectory,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
         [Parameter(Mandatory = $true)]$Marker
     )
 
@@ -411,54 +346,81 @@ function Ensure-XpjTestPostgresScramAuthentication {
     }
     [void](Read-XpjTestPostgresCredential $DataDirectory)
     $hbaMode = Get-XpjTestPostgresHbaAuthenticationMode $DataDirectory
-    if ($Marker.Authentication -ceq 'legacy-trust') {
-        if ($hbaMode -ceq 'legacy-trust') {
-            Initialize-XpjTestPostgresScramCredentialFromNoChallengeBootstrap `
-                -PostgresBin $PostgresBin `
-                -DataDirectory $DataDirectory `
-                -Port $Port
-            if ($env:XPJ_TEST_POSTGRES_AUTH_FAULT_PHASE -ceq 'after-password') {
-                throw 'Injected test PostgreSQL authentication fault after password rotation.'
-            }
-        }
-        elseif ($hbaMode -cne 'scram-sha-256') {
-            throw 'Legacy test PostgreSQL has an unsupported authentication state.'
-        }
-    }
-    elseif ($hbaMode -cne 'scram-sha-256') {
+    if (
+        $Marker.Authentication -ceq 'scram-sha-256' -and
+        $hbaMode -cne 'scram-sha-256'
+    ) {
         throw 'SCRAM-marked test PostgreSQL no longer has a SCRAM HBA contract.'
     }
-
-    Set-XpjTestPostgresScramHba $DataDirectory
-    $reload = Invoke-XpjTestPostgresBoundedProcess `
-        -FilePath (Join-Path $PostgresBin 'pg_ctl.exe') `
-        -ArgumentList @('-D', $DataDirectory, 'reload') `
-        -TimeoutSeconds (Get-XpjTestPostgresProcessTimeoutSeconds)
-    if ($reload.TimedOut -or $reload.ExitCode -ne 0) {
-        throw 'Could not reload the test PostgreSQL SCRAM authentication contract.'
+    return [pscustomobject]@{
+        CredentialPath = $credentialPath
+        HbaMode = $hbaMode
     }
-    if (
-        $Marker.Authentication -ceq 'legacy-trust' -and
-        $env:XPJ_TEST_POSTGRES_AUTH_FAULT_PHASE -ceq 'after-hba-reload'
-    ) {
-        throw 'Injected test PostgreSQL authentication fault after HBA reload.'
-    }
+}
 
-    Assert-XpjTestPostgresScramCredential `
+function Prepare-XpjTestPostgresScramAuthenticationOffline {
+    param(
+        [Parameter(Mandatory = $true)][string]$PostgresBin,
+        [Parameter(Mandatory = $true)][string]$DataDirectory,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)]$Marker
+    )
+
+    [void](Assert-XpjTestPostgresQuiescent `
         -PostgresBin $PostgresBin `
         -DataDirectory $DataDirectory `
-        -Port $Port
-    $updatedMarker = if ($Marker.Authentication -ceq 'legacy-trust') {
-        Set-XpjTestPostgresScramMarker `
+        -Port $Port)
+    $authority = Get-XpjTestPostgresScramAuthority `
+        -DataDirectory $DataDirectory `
+        -Marker $Marker
+    $updatedMarker = $Marker
+    if ($Marker.Authentication -ceq 'legacy-trust') {
+        Initialize-XpjTestPostgresScramCredentialOffline `
+            -PostgresBin $PostgresBin `
+            -DataDirectory $DataDirectory `
+            -Port $Port
+        if ($env:XPJ_TEST_POSTGRES_AUTH_FAULT_PHASE -ceq 'after-password') {
+            throw 'Injected test PostgreSQL authentication fault after password rotation.'
+        }
+        Set-XpjTestPostgresScramHba $DataDirectory
+        if ($env:XPJ_TEST_POSTGRES_AUTH_FAULT_PHASE -ceq 'after-hba') {
+            throw 'Injected test PostgreSQL authentication fault after HBA publication.'
+        }
+        $updatedMarker = Set-XpjTestPostgresScramMarker `
             -Marker $Marker `
             -DataDirectory $DataDirectory
     }
-    else {
-        $Marker
+    elseif ($authority.HbaMode -cne 'scram-sha-256') {
+        throw 'SCRAM-marked test PostgreSQL no longer has a SCRAM HBA contract.'
     }
     Protect-XpjTestPostgresDirectoryTree $DataDirectory
     return [pscustomobject]@{
         Marker = $updatedMarker
-        CredentialPath = $credentialPath
+        CredentialPath = [string]$authority.CredentialPath
+    }
+}
+
+function Assert-XpjTestPostgresScramAuthenticationOnline {
+    param(
+        [Parameter(Mandatory = $true)][string]$PostgresBin,
+        [Parameter(Mandatory = $true)][string]$DataDirectory,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)]$Marker
+    )
+
+    $authority = Get-XpjTestPostgresScramAuthority `
+        -DataDirectory $DataDirectory `
+        -Marker $Marker
+    if ($Marker.Authentication -cne 'scram-sha-256') {
+        throw 'Legacy test PostgreSQL reached the online SCRAM assertion before conversion.'
+    }
+    Assert-XpjTestPostgresScramCredential `
+        -PostgresBin $PostgresBin `
+        -DataDirectory $DataDirectory `
+        -Port $Port
+    Protect-XpjTestPostgresDirectoryTree $DataDirectory
+    return [pscustomobject]@{
+        Marker = $Marker
+        CredentialPath = [string]$authority.CredentialPath
     }
 }

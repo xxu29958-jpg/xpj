@@ -63,6 +63,7 @@ from tests._infra.lane_policy import (
 )
 from tests._infra.postgres_resource_contract import (
     postgres_source_marker_contract_violation,
+    postgres_worker_isolation_boundary,
 )
 from tests._infra.worker_db import worker_database_lifecycle
 
@@ -78,6 +79,7 @@ def _xdist_worker_id(node: object) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
+@postgres_worker_isolation_boundary
 def _isolation_schema():
     """Build schema + base seed ONCE for the session (PostgreSQL isolation lane).
 
@@ -120,6 +122,7 @@ def _settings_cache_isolation():
 
 
 @pytest.fixture(autouse=True)
+@postgres_worker_isolation_boundary
 def _db_isolation(
     request: pytest.FixtureRequest,
     _settings_cache_isolation,
@@ -251,6 +254,12 @@ def _validate_managed_runner_configuration(config: pytest.Config) -> None:
 
 def _enter_postgres_runtime_contract(config: pytest.Config) -> None:
     if not config.getoption("collectonly", default=False):
+        lease = test_postgres_consumer_lease(env.TEST_DATABASE_URL)
+        try:
+            lease.__enter__()
+        except RuntimeError as exc:
+            raise pytest.UsageError(str(exc)) from exc
+        config._xpj_consumer_lease = lease  # type: ignore[attr-defined]
         credential_environment = test_postgres_credential_environment(
             env.TEST_DATABASE_URL,
             os.environ,
@@ -258,6 +267,8 @@ def _enter_postgres_runtime_contract(config: pytest.Config) -> None:
         try:
             credential_environment.__enter__()
         except RuntimeError as exc:
+            lease.__exit__(None, None, None)
+            config._xpj_consumer_lease = None  # type: ignore[attr-defined]
             raise pytest.UsageError(str(exc)) from exc
         config._xpj_postgres_credential_environment = credential_environment  # type: ignore[attr-defined]
     active_lane = os.environ.get(RUNNER_LANE_ENV)
@@ -270,9 +281,6 @@ def _enter_postgres_runtime_contract(config: pytest.Config) -> None:
                 raise pytest.UsageError("Managed PostgreSQL test lane is missing its runner handshake contract.")
             if Path(handshake_path).exists():
                 raise pytest.UsageError("Managed PostgreSQL test lane handshake path already exists.")
-        lease = test_postgres_consumer_lease(env.TEST_DATABASE_URL)
-        lease.__enter__()
-        config._xpj_consumer_lease = lease  # type: ignore[attr-defined]
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -283,9 +291,6 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
-    lease = getattr(config, "_xpj_consumer_lease", None)
-    if lease is not None:
-        lease.__exit__(None, None, None)
     credential_environment = getattr(
         config,
         "_xpj_postgres_credential_environment",
@@ -293,6 +298,9 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     )
     if credential_environment is not None:
         credential_environment.__exit__(None, None, None)
+    lease = getattr(config, "_xpj_consumer_lease", None)
+    if lease is not None:
+        lease.__exit__(None, None, None)
 
 
 @pytest.hookimpl(optionalhook=True)

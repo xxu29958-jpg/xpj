@@ -9,7 +9,10 @@ from sqlalchemy.engine import make_url
 
 from scripts import test_pg_contract
 from scripts.test_pg_contract import configured_test_database_url
-from scripts.test_pg_protected_file import assert_protected_authority_file
+from scripts.test_pg_protected_file import (
+    assert_protected_authority_file,
+    write_protected_utf8_file,
+)
 from tests._infra import db as db_infra
 from tests._infra import worker_db as worker_db_infra
 from tests._infra.postgres_contract_fakes import (
@@ -20,13 +23,11 @@ from tests._infra.postgres_contract_fakes import (
 )
 from tests._infra.worker_db import (
     new_worker_run_uid,
-    worker_database_lifecycle,
     worker_database_url,
 )
 
-pytestmark = pytest.mark.parallel_safe
 
-
+@pytest.mark.parallel_safe
 def test_database_url_override_requires_explicit_cluster_authority() -> None:
     override = "postgresql+psycopg://postgres@localhost:5432/xpj_test"
 
@@ -87,6 +88,7 @@ def test_database_url_override_requires_explicit_cluster_authority() -> None:
         )
 
 
+@pytest.mark.parallel_safe
 def test_worker_database_url_preserves_connection_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -117,6 +119,7 @@ def test_worker_database_url_preserves_connection_contract(
 
 
 @pytest.mark.parametrize("worker_id", ["master", "gw", "gw-1", "gw1_extra"])
+@pytest.mark.parallel_safe
 def test_worker_database_url_rejects_invalid_worker_id(worker_id: str) -> None:
     with pytest.raises(ValueError, match="worker id"):
         worker_database_url(
@@ -126,6 +129,7 @@ def test_worker_database_url_rejects_invalid_worker_id(worker_id: str) -> None:
         )
 
 
+@pytest.mark.parallel_safe
 def test_worker_database_url_refuses_non_test_database() -> None:
     for database_name in ("ticketbox", "xpj_testimony"):
         with pytest.raises(ValueError, match="xpj_test base"):
@@ -143,17 +147,19 @@ def test_worker_database_url_refuses_non_test_database() -> None:
         )
 
 
+@pytest.mark.parallel_safe
 def test_worker_database_url_refuses_non_postgresql_engine() -> None:
     with pytest.raises(ValueError, match="PostgreSQL"):
         worker_database_url("sqlite:///xpj_test", "gw0", "run-alpha")
 
 
+@pytest.mark.parallel_safe
 def test_worker_lifecycle_refuses_non_worker_database() -> None:
     current_run = "run-alpha"
     worker_id = "gw0"
     with (
         pytest.raises(ValueError, match="current xpj_test_<run>_gwN"),
-        worker_database_lifecycle(
+        worker_db_infra._validated_worker_url(
             "postgresql+psycopg://postgres@localhost:5432/ticketbox",
             worker_id=worker_id,
             run_uid=current_run,
@@ -168,7 +174,7 @@ def test_worker_lifecycle_refuses_non_worker_database() -> None:
     )
     with (
         pytest.raises(ValueError, match="current xpj_test_<run>_gwN"),
-        worker_database_lifecycle(
+        worker_db_infra._validated_worker_url(
             another_run_url,
             worker_id=worker_id,
             run_uid=current_run,
@@ -177,6 +183,9 @@ def test_worker_lifecycle_refuses_non_worker_database() -> None:
         pass
 
 
+@pytest.mark.real_db
+@pytest.mark.stateful_serial
+@pytest.mark.cluster_serial
 def test_orphan_quarantine_restores_connections_for_a_late_lease() -> None:
     events: list[str] = []
 
@@ -208,6 +217,7 @@ def test_orphan_quarantine_restores_connections_for_a_late_lease() -> None:
 
 
 @pytest.mark.parametrize("database_name", ["ticketbox", "xpj_testimony"])
+@pytest.mark.parallel_safe
 def test_schema_reset_refuses_non_test_database(
     monkeypatch: pytest.MonkeyPatch,
     database_name: str,
@@ -221,6 +231,7 @@ def test_schema_reset_refuses_non_test_database(
         db_infra.reset_db_state()
 
 
+@pytest.mark.parallel_safe
 def test_test_database_url_rejects_libpq_target_overrides() -> None:
     for query in (
         "hostaddr=203.0.113.7",
@@ -242,6 +253,7 @@ def test_test_database_url_rejects_libpq_target_overrides() -> None:
         )
 
 
+@pytest.mark.parallel_safe
 def test_managed_smoke_and_restore_urls_share_one_fixed_authority() -> None:
     base_url = "postgresql+psycopg://postgres@127.0.0.1:5544/xpj_test"
     smoke_url = test_pg_contract.managed_test_database_url(base_url, "xpj_smoke")
@@ -266,6 +278,7 @@ def test_managed_smoke_and_restore_urls_share_one_fixed_authority() -> None:
         )
 
 
+@pytest.mark.parallel_safe
 def test_owned_cluster_authority_matches_marker_to_live_server(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
@@ -309,6 +322,7 @@ def test_owned_cluster_authority_matches_marker_to_live_server(
             test_pg_contract.assert_test_cluster_authority(database_url, environment)
 
 
+@pytest.mark.parallel_safe
 def test_credential_environment_scrubs_pollution_and_destroys_passfile(
     tmp_path: Path,
 ) -> None:
@@ -354,6 +368,22 @@ def test_credential_environment_scrubs_pollution_and_destroys_passfile(
     assert environment["PGREQUIREAUTH"] == "none"
 
 
+@pytest.mark.parallel_safe
+def test_protected_writer_preserves_preexisting_collision(tmp_path: Path) -> None:
+    target = (tmp_path / "preexisting-authority").resolve()
+    target.write_text("original\n", encoding="utf-8")
+
+    with pytest.raises(OSError):
+        write_protected_utf8_file(
+            target,
+            "replacement\n",
+            label="Collision test authority",
+        )
+
+    assert target.read_text(encoding="utf-8") == "original\n"
+
+
+@pytest.mark.parallel_safe
 def test_ephemeral_cluster_authority_requires_ci_identity() -> None:
     database_url = "postgresql+psycopg://postgres@localhost:5432/xpj_test"
     with pytest.raises(RuntimeError, match="only inside CI"):
@@ -366,6 +396,7 @@ def test_ephemeral_cluster_authority_requires_ci_identity() -> None:
         )
 
 
+@pytest.mark.parallel_safe
 def test_exclusive_cluster_lock_releases_after_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -409,6 +440,7 @@ def test_exclusive_cluster_lock_releases_after_failure(
     ]
 
 
+@pytest.mark.parallel_safe
 def test_shared_cluster_lock_and_query_target_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -440,6 +472,7 @@ def test_shared_cluster_lock_and_query_target_contract(
         )
 
 
+@pytest.mark.parallel_safe
 def test_authority_watchdog_fails_closed_when_connection_disappears() -> None:
     aborted = Event()
     messages: list[str] = []

@@ -15,6 +15,8 @@ from _local_test_postgres_runtime import (
 )
 from _powershell_contract import powershell_contract_engines
 
+from scripts.test_pg_protected_file import assert_protected_authority_file
+
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) -> None:
@@ -52,8 +54,9 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
         "$StderrPath,$ReadyPath)\n"
         ". $Contract\n"
         "$job = [XpjTestProcessJob]::new()\n"
-        "$targetPid = $job.StartProcess($Python,@($Child,$PidPath,$HeartbeatPath),"
-        "$StdoutPath,$StderrPath)\n"
+        "$targetPid = Start-XpjTestPostgresProtectedProcess -Job $job "
+        "-FilePath $Python -ArgumentList @($Child,$PidPath,$HeartbeatPath) "
+        "-StdoutPath $StdoutPath -StderrPath $StderrPath\n"
         "[IO.File]::WriteAllText($ReadyPath,[string]$targetPid)\n"
         "while ($true) { Start-Sleep -Seconds 1 }\n",
         encoding="ascii",
@@ -64,7 +67,8 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
         "$Python, $SuccessfulChild, $CommitPid, $CommitHeartbeat, $AtomicStdout, "
         "$AtomicStderr)\n"
         ". $Contract\n"
-        "Invoke-XpjTestPostgresLifecycleLocked -Port $Port -TimeoutSeconds 2 -Operation {\n"
+        "Invoke-XpjTestPostgresLifecycleLocked -Port $Port "
+        "-DataDirectory ($PidPath + '.cluster') -TimeoutSeconds 2 -Operation {\n"
         "  $result = Invoke-XpjTestPostgresBoundedProcess -FilePath $Target "
         "-ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy',"
         "'Bypass','-File',$Parent,'-Engine',$Target,'-Child',$Child,'-PidPath',$PidPath,"
@@ -80,8 +84,10 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
         "if ((Get-Content -LiteralPath $HeartbeatPath -Raw) -cne $heartbeat) { "
         "throw 'timed-out grandchild is still writing' }\n"
         "$atomicJob = [XpjTestProcessJob]::new()\n"
-        "[void]$atomicJob.StartProcess($Python, "
-        "@($SuccessfulChild,$CommitPid,$CommitHeartbeat),$AtomicStdout,$AtomicStderr)\n"
+        "[void](Start-XpjTestPostgresProtectedProcess -Job $atomicJob "
+        "-FilePath $Python "
+        "-ArgumentList @($SuccessfulChild,$CommitPid,$CommitHeartbeat) "
+        "-StdoutPath $AtomicStdout -StderrPath $AtomicStderr)\n"
         "$pidDeadline = [DateTime]::UtcNow.AddSeconds(5)\n"
         "while (-not (Test-Path -LiteralPath $CommitPid) -and "
         "[DateTime]::UtcNow -lt $pidDeadline) { Start-Sleep -Milliseconds 50 }\n"
@@ -96,9 +102,13 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
         "if (Get-Process -Id $deferredPid -ErrorAction SilentlyContinue) { "
         "throw 'uncommitted successful descendant survived job close' }\n"
         "Remove-Item -LiteralPath $CommitPid,$CommitHeartbeat -Force\n"
+        "Remove-XpjTestPostgresProcessOutput "
+        "-Path @($AtomicStdout,$AtomicStderr)\n"
         "$committedJob = [XpjTestProcessJob]::new()\n"
-        "[void]$committedJob.StartProcess($Python, "
-        "@($SuccessfulChild,$CommitPid,$CommitHeartbeat),$AtomicStdout,$AtomicStderr)\n"
+        "[void](Start-XpjTestPostgresProtectedProcess -Job $committedJob "
+        "-FilePath $Python "
+        "-ArgumentList @($SuccessfulChild,$CommitPid,$CommitHeartbeat) "
+        "-StdoutPath $AtomicStdout -StderrPath $AtomicStderr)\n"
         "$pidDeadline = [DateTime]::UtcNow.AddSeconds(5)\n"
         "while (-not (Test-Path -LiteralPath $CommitPid) -and "
         "[DateTime]::UtcNow -lt $pidDeadline) { Start-Sleep -Milliseconds 50 }\n"
@@ -110,8 +120,17 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
         "  if (-not (Get-Process -Id $committedPid -ErrorAction SilentlyContinue)) { "
         "throw 'explicitly committed descendant was killed' }\n"
         "}\n"
-        "finally { Stop-Process -Id $committedPid -Force -ErrorAction SilentlyContinue }\n"
-        "Invoke-XpjTestPostgresLifecycleLocked -Port $Port -TimeoutSeconds 2 -Operation {}\n",
+        "finally {\n"
+        "  $committedProcess = Get-Process -Id $committedPid -ErrorAction SilentlyContinue\n"
+        "  if ($null -ne $committedProcess) {\n"
+        "    Stop-Process -InputObject $committedProcess -Force -ErrorAction Stop\n"
+        "    if (-not $committedProcess.WaitForExit(2000)) { "
+        "throw 'committed descendant did not stop' }\n"
+        "    $committedProcess.Dispose()\n"
+        "  }\n"
+        "}\n"
+        "Invoke-XpjTestPostgresLifecycleLocked -Port $Port "
+        "-DataDirectory ($PidPath + '.cluster') -TimeoutSeconds 2 -Operation {}\n",
         encoding="ascii",
     )
     for index, engine in enumerate(powershell_contract_engines()):
@@ -168,6 +187,11 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
         assert time.monotonic() - started < 10
+        for output_path in (atomic_stdout_path, atomic_stderr_path):
+            assert_protected_authority_file(
+                output_path.resolve(),
+                label="Atomic PostgreSQL process output",
+            )
 
         hard_pid_path = tmp_path / f"hard-death-child-{index}.pid"
         hard_heartbeat_path = tmp_path / f"hard-death-child-{index}.heartbeat"
@@ -222,6 +246,11 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
             while _windows_process_is_running(hard_child_pid) and time.monotonic() < deadline:
                 time.sleep(0.05)
             assert not _windows_process_is_running(hard_child_pid)
+            for output_path in (hard_stdout_path, hard_stderr_path):
+                assert_protected_authority_file(
+                    output_path.resolve(),
+                    label="Hard-death PostgreSQL process output",
+                )
             hard_child_pid = None
         finally:
             if launcher.poll() is None:

@@ -137,7 +137,7 @@ def test_uncommitted_process_uses_handle_identity_and_complete_pid_publication(
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows lease authority")
-def test_python_and_powershell_share_the_windows_temp_lease_root(
+def test_python_and_powershell_share_the_cluster_generation_lease_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -149,18 +149,73 @@ def test_python_and_powershell_share_the_windows_temp_lease_root(
     monkeypatch.setenv("TMP", str(tmp_root))
     monkeypatch.setenv("TEMP", str(temp_root))
     monkeypatch.setenv("TMPDIR", str(tmpdir_root))
+    setup = tmp_path / "setup-lease-authority.ps1"
+    setup.write_text(
+        "param($Contract,$DataDirectory,$Port,$SystemIdentifier)\n"
+        ". $Contract\n"
+        "[void][IO.Directory]::CreateDirectory($DataDirectory)\n"
+        "Protect-XpjTestPostgresDirectoryTree $DataDirectory\n"
+        "$payload = [ordered]@{\n"
+        "  schema_version = 3; kind = 'xiaopiaojia-test-postgres';\n"
+        "  purpose = 'local'; port = [int]$Port; instance_id = ('a' * 32);\n"
+        "  system_identifier = $SystemIdentifier; authentication = 'scram-sha-256'\n"
+        "} | ConvertTo-Json -Compress\n"
+        "Write-XpjTestPostgresProtectedUtf8File "
+        "-Path (Join-Path $DataDirectory '.xpj-test-cluster.json') "
+        "-Content ($payload + [Environment]::NewLine)\n"
+        "Protect-XpjTestPostgresDirectoryTree $DataDirectory\n",
+        encoding="ascii",
+    )
     contender = tmp_path / "contend-lifecycle.ps1"
     contender.write_text(
-        "param($Contract,$Port)\n"
+        "param($Contract,$Port,$DataDirectory)\n"
         ". $Contract\n"
         "Invoke-XpjTestPostgresLifecycleLocked "
-        "-Port $Port -TimeoutSeconds 1 -Operation {}\n",
+        "-Port $Port -DataDirectory $DataDirectory "
+        "-TimeoutSeconds 1 -Operation {}\n",
         encoding="ascii",
     )
     port = _free_local_port()
-    environment = os.environ.copy()
+    instance_id = "a" * 32
+    system_identifier = "1234567890123456789"
 
-    for engine in powershell_contract_engines():
+    for index, engine in enumerate(powershell_contract_engines()):
+        data_directory = tmp_path / f"cluster-{index}"
+        prepared = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(setup),
+                "-Contract",
+                str(CLUSTER_CONTRACT),
+                "-DataDirectory",
+                str(data_directory),
+                "-Port",
+                str(port),
+                "-SystemIdentifier",
+                system_identifier,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert prepared.returncode == 0, prepared.stdout + prepared.stderr
+        environment = os.environ.copy() | {
+            "XPJ_TEST_CLUSTER_AUTHORITY": "owned-marker",
+            "XPJ_TEST_CLUSTER_INSTANCE_ID": instance_id,
+            "XPJ_TEST_CLUSTER_MARKER_PATH": str(
+                data_directory / ".xpj-test-cluster.json"
+            ),
+            "XPJ_TEST_CLUSTER_SYSTEM_IDENTIFIER": system_identifier,
+        }
         command = [
             engine,
             "-NoLogo",
@@ -174,23 +229,41 @@ def test_python_and_powershell_share_the_windows_temp_lease_root(
             str(CLUSTER_CONTRACT),
             "-Port",
             str(port),
+            "-DataDirectory",
+            str(data_directory),
         ]
-        with consumer_lease(
-            f"postgresql+psycopg://postgres@127.0.0.1:{port}/xpj_test",
-            timeout_ms=5000,
-        ):
-            blocked = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                env=environment,
-                timeout=10,
+        with monkeypatch.context() as wrong_generation:
+            for name, value in environment.items():
+                wrong_generation.setenv(name, value)
+            wrong_generation.setenv("XPJ_TEST_CLUSTER_INSTANCE_ID", "f" * 32)
+            with (
+                pytest.raises(RuntimeError, match="generation"),
+                consumer_lease(
+                    f"postgresql+psycopg://postgres@127.0.0.1:{port}/xpj_test",
+                    timeout_ms=5000,
+                ),
+            ):
+                pass
+        with monkeypatch.context() as lease_environment:
+            for name, value in environment.items():
+                lease_environment.setenv(name, value)
+            lease = consumer_lease(
+                f"postgresql+psycopg://postgres@127.0.0.1:{port}/xpj_test",
+                timeout_ms=5000,
             )
-            assert blocked.returncode != 0
-            assert "consumer lease" in (blocked.stdout + blocked.stderr)
+            with lease:
+                blocked = subprocess.run(
+                    command,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=environment,
+                    timeout=10,
+                )
+                assert blocked.returncode != 0
+                assert "consumer lease" in (blocked.stdout + blocked.stderr)
         unblocked = subprocess.run(
             command,
             check=False,
@@ -202,6 +275,9 @@ def test_python_and_powershell_share_the_windows_temp_lease_root(
             timeout=10,
         )
         assert unblocked.returncode == 0, unblocked.stdout + unblocked.stderr
+        assert not (
+            data_directory / ".xpj-test-postgres-consumers"
+        ).exists()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL authority")
@@ -290,6 +366,16 @@ def test_test_cluster_authority_files_require_protected_acl_and_exact_credential
         "  if (-not $refused) { throw \"$Label accepted an untrusted ACL\" }\n"
         "}\n"
         "[void][IO.Directory]::CreateDirectory($Root)\n"
+        "$collision = Join-Path $Root 'preexisting-authority.txt'\n"
+        "[IO.File]::WriteAllText($collision, 'original')\n"
+        "$collisionRefused = $false\n"
+        "try { Write-XpjTestPostgresProtectedUtf8File "
+        "-Path $collision -Content 'replacement' } catch { $collisionRefused = $true }\n"
+        "if (-not $collisionRefused) { throw 'protected writer accepted collision' }\n"
+        "if (-not (Test-Path -LiteralPath $collision -PathType Leaf)) { "
+        "throw 'protected writer deleted pre-existing collision' }\n"
+        "if ([IO.File]::ReadAllText($collision) -cne 'original') { "
+        "throw 'protected writer changed pre-existing collision' }\n"
         "$staging = Join-Path $Root '.final.xpj-init-authority'\n"
         "[void][IO.Directory]::CreateDirectory($staging)\n"
         "$handle = [XpjTestDirectoryMoveHandle]::OpenIdentity($staging)\n"

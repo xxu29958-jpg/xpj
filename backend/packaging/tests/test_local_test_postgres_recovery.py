@@ -310,6 +310,126 @@ def test_interrupted_deletion_receipt_resumes_exact_target(tmp_path: Path) -> No
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
+def test_deletion_started_recovery_does_not_require_deleted_control_files(
+    tmp_path: Path,
+) -> None:
+    postgres_bin = _postgres_bin()
+    prepare = tmp_path / "prepare-partial-delete.ps1"
+    prepare.write_text(
+        "param($Contract,$PostgresBin,$DataDir,$Port,$TombstonePath)\n"
+        ". $Contract\n"
+        "$marker = Assert-XpjTestPostgresDataOwnership -PostgresBin $PostgresBin "
+        "-DataDirectory $DataDir -Purpose local -Port $Port\n"
+        "New-XpjTestPostgresDeletionReceipt -PostgresBin $PostgresBin "
+        "-DataDirectory $DataDir -Purpose local -Port $Port "
+        "-SystemIdentifier $marker.SystemIdentifier | Out-Null\n"
+        "$receiptPath = Get-XpjTestPostgresDeletionReceiptPath $DataDir\n"
+        "$receipt = Read-XpjTestPostgresDeletionReceipt -ReceiptPath $receiptPath "
+        "-DataDirectory $DataDir -Purpose local -Port $Port\n"
+        "$tombstone = [string]$receipt.TombstoneDirectory\n"
+        "$move = [XpjTestDirectoryMoveHandle]::Open($DataDir)\n"
+        "try { $move.RenameTo($tombstone) } finally { $move.Dispose() }\n"
+        "$identity = [XpjTestDirectoryMoveHandle]::OpenIdentity($tombstone)\n"
+        "try {\n"
+        "  Assert-XpjTestPostgresDeletionDirectoryInstance "
+        "-PostgresBin $PostgresBin -Directory $tombstone -Receipt $receipt "
+        "-Purpose local -Port $Port -DirectoryHandle $identity\n"
+        "  Set-XpjTestPostgresDeletionReceiptPhase -Receipt $receipt "
+        "-ReceiptPath $receiptPath -Phase deletion_started\n"
+        "} finally { $identity.Dispose() }\n"
+        "Remove-Item -LiteralPath (Join-Path $tombstone 'global\\pg_control') "
+        "-Force -ErrorAction Stop\n"
+        "[IO.File]::WriteAllText($TombstonePath,$tombstone)\n",
+        encoding="ascii",
+    )
+    resume = tmp_path / "resume-partial-delete.ps1"
+    resume.write_text(
+        "param($Contract,$PostgresBin,$DataDir,$Port)\n"
+        ". $Contract\n"
+        "Complete-XpjTestPostgresPendingDeletion -PostgresBin $PostgresBin "
+        "-DataDirectory $DataDir -Purpose local -Port $Port | Out-Null\n",
+        encoding="ascii",
+    )
+
+    for index, engine in enumerate(powershell_contract_engines()):
+        port = _free_local_port()
+        data_dir = tmp_path / f"partial-control-delete-{index}"
+        tombstone_path = tmp_path / f"partial-control-tombstone-{index}.txt"
+        started = _run_lifecycle(
+            engine,
+            START_TEST_POSTGRES,
+            port=port,
+            data_dir=data_dir,
+            postgres_bin=postgres_bin,
+        )
+        assert started.returncode == 0, started.stdout + started.stderr
+        _stop_preserving_data(postgres_bin, data_dir)
+        prepared = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(prepare),
+                "-Contract",
+                str(TEST_POSTGRES_CONTRACT),
+                "-PostgresBin",
+                str(postgres_bin),
+                "-DataDir",
+                str(data_dir),
+                "-Port",
+                str(port),
+                "-TombstonePath",
+                str(tombstone_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert prepared.returncode == 0, prepared.stdout + prepared.stderr
+        tombstone = Path(tombstone_path.read_text(encoding="utf-8"))
+        assert tombstone.is_dir()
+        assert not (tombstone / "global" / "pg_control").exists()
+
+        completed = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(resume),
+                "-Contract",
+                str(TEST_POSTGRES_CONTRACT),
+                "-PostgresBin",
+                str(postgres_bin),
+                "-DataDir",
+                str(data_dir),
+                "-Port",
+                str(port),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        receipt = data_dir.parent / f".{data_dir.name}.xpj-delete.receipt.json"
+        assert not tombstone.exists()
+        assert not receipt.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_tombstone_restored_to_source_resumes_the_same_deletion(tmp_path: Path) -> None:
     postgres_bin = _postgres_bin()
     probe = tmp_path / "resume-restored-source.ps1"

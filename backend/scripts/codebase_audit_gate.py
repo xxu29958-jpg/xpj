@@ -137,19 +137,19 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2677,
-    "backend_pytest_parallel_count": 2616,
-    "backend_pytest_parallel_safe_count": 80,
-    "backend_pytest_real_db_count": 149,
+    "backend_pytest_count": 2679,
+    "backend_pytest_parallel_count": 2617,
+    "backend_pytest_parallel_safe_count": 81,
+    "backend_pytest_real_db_count": 150,
     "backend_pytest_real_db_membership_digest":
-        30_443_814_952_586_961_673_018_106_016_016_514_120_051_340_060_180_025_995_800_727_579_014_847_243_717,
-    "backend_pytest_stateful_count": 61,
+        47_554_044_499_875_252_747_688_535_530_001_338_751_707_817_381_612_743_212_365_202_433_320_420_233_908,
+    "backend_pytest_stateful_count": 62,
     "backend_pytest_stateful_membership_digest":
-        65_776_130_159_071_431_433_573_523_798_527_895_777_323_177_780_116_608_253_556_245_664_900_854_421_151,
-    "backend_pytest_cluster_count": 6,
+        2_226_304_664_685_623_122_141_236_903_997_730_648_405_805_352_223_944_179_097_500_419_195_772_145_940,
+    "backend_pytest_cluster_count": 7,
     "backend_pytest_cluster_membership_digest":
-        49_357_323_802_858_721_439_251_231_324_754_673_567_760_775_244_132_371_423_112_156_997_353_540_055_088,
-    "installer_pytest_count": 124,  # Includes lifecycle authority, protected-file ACL, and maintenance contracts.
+        20_986_048_875_972_673_385_075_257_154_712_410_674_609_335_780_934_224_221_339_523_405_367_512_423_631,
+    "installer_pytest_count": 125,  # Includes lifecycle authority, protected-file ACL, and maintenance contracts.
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane

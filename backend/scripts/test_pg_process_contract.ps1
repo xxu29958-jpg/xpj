@@ -1,10 +1,127 @@
 ﻿#Requires -Version 5.1
 
+if ($null -eq ('XpjTestProtectedFile' -as [type])) {
+    Add-Type -Path (Join-Path $PSScriptRoot 'test_pg_protected_file.cs')
+}
+
 if ($null -eq ('XpjTestProcessJob' -as [type])) {
     Add-Type -Path @(
         (Join-Path $PSScriptRoot 'test_pg_process_job.cs')
+        (Join-Path $PSScriptRoot 'test_pg_process_command_line.cs')
         (Join-Path $PSScriptRoot 'test_pg_process_native.cs')
     )
+}
+
+function Start-XpjTestPostgresProtectedProcess {
+    param(
+        [Parameter(Mandatory = $true)]$Job,
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [Parameter(Mandatory = $true)][string]$StdoutPath,
+        [Parameter(Mandatory = $true)][string]$StderrPath,
+        [AllowNull()][string]$StandardInput = $null
+    )
+
+    $stdoutStream = $null
+    $stderrStream = $null
+    $stdoutCreated = $false
+    $stderrCreated = $false
+    $started = $false
+    try {
+        $stdoutStream = [XpjTestProtectedFile]::CreateNewInheritableProcessOutput(
+            [System.IO.Path]::GetFullPath($StdoutPath)
+        )
+        $stdoutCreated = $true
+        $stderrStream = [XpjTestProtectedFile]::CreateNewInheritableProcessOutput(
+            [System.IO.Path]::GetFullPath($StderrPath)
+        )
+        $stderrCreated = $true
+        $processId = if ($null -eq $StandardInput) {
+            $Job.StartProcess(
+                $FilePath,
+                $ArgumentList,
+                $stdoutStream,
+                $stderrStream
+            )
+        }
+        else {
+            $Job.StartProcess(
+                $FilePath,
+                $ArgumentList,
+                $stdoutStream,
+                $stderrStream,
+                $StandardInput
+            )
+        }
+        $started = $true
+        return $processId
+    }
+    finally {
+        if ($null -ne $stderrStream) {
+            $stderrStream.Dispose()
+        }
+        if ($null -ne $stdoutStream) {
+            $stdoutStream.Dispose()
+        }
+        if (-not $started) {
+            if ($stderrCreated) {
+                Remove-Item -LiteralPath $StderrPath -Force -ErrorAction SilentlyContinue
+            }
+            if ($stdoutCreated) {
+                Remove-Item -LiteralPath $StdoutPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
+function Remove-XpjTestPostgresProcessOutput {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Path,
+        [ValidateRange(1, 30000)][int]$TimeoutMilliseconds = 5000
+    )
+
+    foreach ($candidate in $Path) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            continue
+        }
+        $fullPath = [System.IO.Path]::GetFullPath($candidate)
+        $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+        while ($true) {
+            $probe = $null
+            try {
+                $probe = [System.IO.File]::Open(
+                    $fullPath,
+                    [System.IO.FileMode]::Open,
+                    [System.IO.FileAccess]::ReadWrite,
+                    [System.IO.FileShare]::None
+                )
+                break
+            }
+            catch [System.IO.FileNotFoundException] {
+                break
+            }
+            catch [System.IO.IOException] {
+                if ([DateTime]::UtcNow -ge $deadline) {
+                    throw (
+                        'PostgreSQL process output handle did not close within ' +
+                        "$TimeoutMilliseconds ms: $fullPath"
+                    )
+                }
+                Start-Sleep -Milliseconds 10
+            }
+            finally {
+                if ($null -ne $probe) {
+                    $probe.Dispose()
+                }
+            }
+        }
+        if (Test-Path -LiteralPath $fullPath -PathType Leaf) {
+            Assert-XpjTestPostgresProtectedAuthorityFile `
+                -Path $fullPath `
+                -Label 'PostgreSQL process output'
+            Remove-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+        }
+    }
 }
 
 function Invoke-XpjTestPostgresBoundedProcess {
@@ -15,27 +132,19 @@ function Invoke-XpjTestPostgresBoundedProcess {
         [ValidateRange(1, 600)][int]$TimeoutSeconds = 60
     )
 
-    $stdoutPath = [System.IO.Path]::GetTempFileName()
-    $stderrPath = [System.IO.Path]::GetTempFileName()
+    $temporaryRoot = [System.IO.Path]::GetTempPath()
+    $processId = [Guid]::NewGuid().ToString('N')
+    $stdoutPath = Join-Path $temporaryRoot ".xpj-pg-process-$processId.stdout"
+    $stderrPath = Join-Path $temporaryRoot ".xpj-pg-process-$processId.stderr"
     $job = [XpjTestProcessJob]::new()
     try {
-        if ($null -eq $StandardInput) {
-            [void]$job.StartProcess(
-                $FilePath,
-                $ArgumentList,
-                $stdoutPath,
-                $stderrPath
-            )
-        }
-        else {
-            [void]$job.StartProcess(
-                $FilePath,
-                $ArgumentList,
-                $stdoutPath,
-                $stderrPath,
-                $StandardInput
-            )
-        }
+        [void](Start-XpjTestPostgresProtectedProcess `
+            -Job $job `
+            -FilePath $FilePath `
+            -ArgumentList $ArgumentList `
+            -StdoutPath $stdoutPath `
+            -StderrPath $stderrPath `
+            -StandardInput $StandardInput)
         $timedOut = -not $job.WaitForStartedProcess($TimeoutSeconds * 1000)
         if ($timedOut) {
             $job.Terminate(1)
@@ -54,10 +163,8 @@ function Invoke-XpjTestPostgresBoundedProcess {
     }
     finally {
         $job.Dispose()
-        Remove-Item `
-            -LiteralPath $stdoutPath, $stderrPath `
-            -Force `
-            -ErrorAction SilentlyContinue
+        Remove-XpjTestPostgresProcessOutput `
+            -Path @($stdoutPath, $stderrPath)
     }
 }
 
@@ -83,12 +190,12 @@ function Start-XpjTestPostgresUncommittedProcess {
     $job = [XpjTestProcessJob]::new()
     $transferred = $false
     try {
-        $targetProcessId = $job.StartProcess(
-            $FilePath,
-            $ArgumentList,
-            $TargetStdoutPath,
-            $TargetStderrPath
-        )
+        $targetProcessId = Start-XpjTestPostgresProtectedProcess `
+            -Job $job `
+            -FilePath $FilePath `
+            -ArgumentList $ArgumentList `
+            -StdoutPath $TargetStdoutPath `
+            -StderrPath $TargetStderrPath
         $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
         $recordedPid = 0
         while ($true) {

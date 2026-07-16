@@ -89,12 +89,14 @@ function Write-XpjTestPostgresProtectedUtf8File {
     }
 
     $stream = $null
+    $created = $false
     $completed = $false
     try {
         $stream = [XpjTestProtectedFile]::CreateNew(
             $fullPath,
             (Get-XpjTestPostgresCurrentUserSid).Value
         )
+        $created = $true
         $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($Content)
         $stream.Write($bytes, 0, $bytes.Length)
         $stream.Flush($true)
@@ -104,13 +106,46 @@ function Write-XpjTestPostgresProtectedUtf8File {
         if ($null -ne $stream) {
             $stream.Dispose()
         }
-        if (-not $completed) {
+        if ($created -and -not $completed) {
             Remove-Item -LiteralPath $fullPath -Force -ErrorAction SilentlyContinue
         }
     }
     Assert-XpjTestPostgresProtectedAuthorityFile `
         -Path $fullPath `
         -Label 'Protected PostgreSQL authority file'
+}
+
+function Read-XpjTestPostgresProtectedUtf8File {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $stream = [XpjTestProtectedFile]::OpenReadShared($fullPath)
+    try {
+        # The retained handle denies delete sharing, so ACL validation and
+        # content reading refer to one immutable file object.
+        Assert-XpjTestPostgresProtectedAuthorityFile `
+            -Path $fullPath `
+            -Label $Label
+        $reader = New-Object System.IO.StreamReader(
+            $stream,
+            (New-Object System.Text.UTF8Encoding($false, $true)),
+            $false,
+            4096,
+            $true
+        )
+        try {
+            return $reader.ReadToEnd()
+        }
+        finally {
+            $reader.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
 }
 
 function Test-XpjTestPostgresTrustedAcl {

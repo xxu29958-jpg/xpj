@@ -41,6 +41,19 @@ public sealed partial class XpjTestProcessJob
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct JobObjectBasicAccountingInformation
+    {
+        public long TotalUserTime;
+        public long TotalKernelTime;
+        public long ThisPeriodTotalUserTime;
+        public long ThisPeriodTotalKernelTime;
+        public uint TotalPageFaultCount;
+        public uint TotalProcesses;
+        public uint ActiveProcesses;
+        public uint TotalTerminatedProcesses;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct SecurityAttributes
     {
         public int Length;
@@ -162,6 +175,14 @@ public sealed partial class XpjTestProcessJob
         int informationClass,
         ref JobObjectExtendedLimitInformation information,
         int informationLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool QueryInformationJobObject(
+        IntPtr job,
+        int informationClass,
+        out JobObjectBasicAccountingInformation information,
+        int informationLength,
+        IntPtr returnLength);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool TerminateJobObject(IntPtr job, uint exitCode);

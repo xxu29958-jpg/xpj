@@ -1146,12 +1146,12 @@ def run_server_child(arguments: list[str]) -> int:
         if set(options) != {"--parent-watch-fd"}:
             raise SystemExit("Smoke child requires one parent watch pipe")
         start_smoke_parent_watchdog(parent_watch_fd=int(options["--parent-watch-fd"]))
-    assert_managed_test_cluster_authority(
-        os.environ["DATABASE_URL"],
-        os.environ,
-        expected_database="xpj_smoke",
-    )
     with test_postgres_consumer_lease(os.environ["DATABASE_URL"]):
+        assert_managed_test_cluster_authority(
+            os.environ["DATABASE_URL"],
+            os.environ,
+            expected_database="xpj_smoke",
+        )
         return run_server(port)
 
 
@@ -1192,7 +1192,7 @@ if __name__ == "__main__":
             "xpj_smoke",
         )
         os.environ["SMOKE_DATABASE_URL"] = smoke_database_url
-    with test_postgres_credential_environment(
+    with test_postgres_consumer_lease(smoke_database_url), test_postgres_credential_environment(
         smoke_database_url,
         os.environ,
     ):
@@ -1201,5 +1201,4 @@ if __name__ == "__main__":
             os.environ,
             expected_database="xpj_smoke",
         )
-        with test_postgres_consumer_lease(smoke_database_url):
-            raise SystemExit(main())
+        raise SystemExit(main())

@@ -2,6 +2,7 @@
 
 function Assert-XpjTestPostgresQuiescent {
     param(
+        [Parameter(Mandatory = $true)][string]$PostgresBin,
         [Parameter(Mandatory = $true)][string]$DataDirectory,
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port
     )
@@ -20,6 +21,28 @@ function Assert-XpjTestPostgresQuiescent {
                 Sort-Object -Unique
         )
         throw "Test PostgreSQL is not quiescent: port $Port still has listener PID(s) $($listenerPids -join ', ')."
+    }
+    return Get-XpjTestPostgresControlState `
+        -PostgresBin $PostgresBin `
+        -DataDirectory $DataDirectory
+}
+
+function Assert-XpjTestPostgresCleanShutdown {
+    param(
+        [Parameter(Mandatory = $true)][string]$PostgresBin,
+        [Parameter(Mandatory = $true)][string]$DataDirectory,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port
+    )
+
+    $controlState = Assert-XpjTestPostgresQuiescent `
+        -PostgresBin $PostgresBin `
+        -DataDirectory $DataDirectory `
+        -Port $Port
+    if ($controlState -cne 'shut down') {
+        throw (
+            'Test PostgreSQL did not complete a clean shutdown according to pg_controldata ' +
+            "(state=$controlState)."
+        )
     }
 }
 
@@ -81,6 +104,54 @@ function Get-XpjTestPostgresProcessGeneration {
         return [pscustomobject]@{ State = 'reused'; Process = $process }
     }
     return [pscustomobject]@{ State = 'matching'; Process = $process }
+}
+
+function Stop-XpjTestPostgresVerifiedPostmaster {
+    param(
+        [Parameter(Mandatory = $true)][string]$PostgresBin,
+        [Parameter(Mandatory = $true)][string]$DataDirectory,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)][int]$ProcessId,
+        [Parameter(Mandatory = $true)][System.Diagnostics.Process]$Process
+    )
+
+    if ($Process.Id -ne $ProcessId) {
+        throw 'Verified PostgreSQL process handle does not match its recorded PID.'
+    }
+    # Windows cannot reuse this PID while the retained process object handle is
+    # open, so pg_ctl's named-pipe signal stays bound to the verified generation.
+    [void]$Process.Handle
+    $Process.Refresh()
+    if ($Process.HasExited) {
+        throw 'Verified PostgreSQL process exited before the shutdown signal.'
+    }
+    $signal = Invoke-XpjTestPostgresBoundedProcess `
+        -FilePath (Join-Path $PostgresBin 'pg_ctl.exe') `
+        -ArgumentList @('kill', 'INT', [string]$ProcessId) `
+        -TimeoutSeconds (Get-XpjTestPostgresProcessTimeoutSeconds)
+    if ($signal.TimedOut -or $signal.ExitCode -ne 0) {
+        throw (
+            'pg_ctl could not signal the exact verified PostgreSQL process; ' +
+            "data was preserved (exit=$($signal.ExitCode), timed_out=$($signal.TimedOut))."
+        )
+    }
+    $waitMilliseconds = (Get-XpjTestPostgresProcessTimeoutSeconds) * 1000
+    if (-not $Process.WaitForExit($waitMilliseconds)) {
+        throw 'The exact verified PostgreSQL process did not complete fast shutdown.'
+    }
+    if (Test-Path -LiteralPath (Join-Path $DataDirectory 'postmaster.pid') -PathType Leaf) {
+        throw 'PostgreSQL exited without removing postmaster.pid; data was preserved.'
+    }
+    $remainingListeners = @(
+        Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+    )
+    if ($remainingListeners.Count -gt 0) {
+        throw "A listener remains on test PostgreSQL port $Port after exact-process stop."
+    }
+    [void](Assert-XpjTestPostgresCleanShutdown `
+        -PostgresBin $PostgresBin `
+        -DataDirectory $DataDirectory `
+        -Port $Port)
 }
 
 function Assert-XpjTestPostgresListenerOwnership {

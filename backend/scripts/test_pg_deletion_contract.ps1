@@ -40,7 +40,10 @@ function New-XpjTestPostgresDeletionReceipt {
     if ($marker.SystemIdentifier -cne $SystemIdentifier) {
         throw 'Cannot authorize deletion for a different PostgreSQL system identifier.'
     }
-    [void](Assert-XpjTestPostgresQuiescent -DataDirectory $DataDirectory -Port $Port)
+    [void](Assert-XpjTestPostgresQuiescent `
+        -PostgresBin $PostgresBin `
+        -DataDirectory $DataDirectory `
+        -Port $Port)
     $receiptPath = Get-XpjTestPostgresDeletionReceiptPath $DataDirectory
     if (Test-Path -LiteralPath $receiptPath) {
         throw "Test PostgreSQL deletion receipt already exists: $receiptPath"
@@ -116,7 +119,7 @@ function Read-XpjTestPostgresDeletionReceipt {
         [string]$receipt.InstanceId -notmatch '^[0-9a-f]{32}$' -or
         [string]$receipt.SystemIdentifier -notmatch '^\d{10,20}$' -or
         [string]$receipt.DirectoryIdentity -notmatch '^[0-9a-f]{8}:[0-9a-f]{8}:[0-9a-f]{8}$' -or
-        [string]$receipt.Phase -notin @('source', 'tombstone') -or
+        [string]$receipt.Phase -notin @('source', 'tombstone', 'deletion_started') -or
         -not [string]::Equals($tombstoneParent, $expectedParent, [System.StringComparison]::OrdinalIgnoreCase) -or
         (Split-Path -Leaf $actualTombstone) -notmatch "^\.$expectedLeaf\.xpj-delete-[0-9a-f]{32}$"
     ) {
@@ -149,14 +152,19 @@ function Assert-XpjTestPostgresDeletionDirectoryInstance {
     ) {
         throw 'Deletion receipt does not match this PostgreSQL directory instance.'
     }
-    [void](Assert-XpjTestPostgresQuiescent -DataDirectory $Directory -Port $Port)
+    [void](Assert-XpjTestPostgresQuiescent `
+        -PostgresBin $PostgresBin `
+        -DataDirectory $Directory `
+        -Port $Port)
 }
 
 function Set-XpjTestPostgresDeletionReceiptPhase {
     param(
         [Parameter(Mandatory = $true)]$Receipt,
         [Parameter(Mandatory = $true)][string]$ReceiptPath,
-        [Parameter(Mandatory = $true)][ValidateSet('source', 'tombstone')][string]$Phase
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('source', 'tombstone', 'deletion_started')]
+        [string]$Phase
     )
 
     $Receipt.Phase = $Phase
@@ -181,6 +189,31 @@ function Set-XpjTestPostgresDeletionReceiptPhase {
         if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
             Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue
         }
+    }
+}
+
+function Assert-XpjTestPostgresDeletionStartedSafety {
+    param(
+        [Parameter(Mandatory = $true)][string]$Directory,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)]$Receipt,
+        [Parameter(Mandatory = $true)]$DirectoryHandle
+    )
+
+    if (
+        -not $DirectoryHandle.IsDirectory -or
+        $DirectoryHandle.Identity -cne [string]$Receipt.DirectoryIdentity
+    ) {
+        throw 'Deletion-started receipt no longer matches its directory instance.'
+    }
+    if (Test-Path -LiteralPath (Join-Path $Directory 'postmaster.pid') -PathType Leaf) {
+        throw 'Deletion-started PostgreSQL tombstone acquired a postmaster.pid.'
+    }
+    $listeners = @(
+        Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+    )
+    if ($listeners.Count -gt 0) {
+        throw "Deletion-started PostgreSQL tombstone cannot be removed while port $Port has a listener."
     }
 }
 
@@ -241,7 +274,8 @@ function Complete-XpjTestPostgresPendingDeletion {
     if (Test-Path -LiteralPath $tombstone) {
         $tombstoneHandle = [XpjTestDirectoryMoveHandle]::OpenIdentity($tombstone)
         try {
-            if ([string]$receipt.Phase -ne 'tombstone') {
+            $completeProof = $false
+            if ([string]$receipt.Phase -eq 'source') {
                 Assert-XpjTestPostgresDeletionDirectoryInstance `
                     -PostgresBin $PostgresBin `
                     -Directory $tombstone `
@@ -254,10 +288,32 @@ function Complete-XpjTestPostgresPendingDeletion {
                     -ReceiptPath $receiptPath `
                     -Phase tombstone
                 $receipt.Phase = 'tombstone'
+                $completeProof = $true
             }
             elseif ($tombstoneHandle.Identity -cne [string]$receipt.DirectoryIdentity) {
                 throw 'Deletion tombstone was replaced after partial cleanup.'
             }
+            if ([string]$receipt.Phase -eq 'tombstone') {
+                if (-not $completeProof) {
+                    Assert-XpjTestPostgresDeletionDirectoryInstance `
+                        -PostgresBin $PostgresBin `
+                        -Directory $tombstone `
+                        -Receipt $receipt `
+                        -Purpose $Purpose `
+                        -Port $Port `
+                        -DirectoryHandle $tombstoneHandle
+                }
+                Set-XpjTestPostgresDeletionReceiptPhase `
+                    -Receipt $receipt `
+                    -ReceiptPath $receiptPath `
+                    -Phase deletion_started
+                $receipt.Phase = 'deletion_started'
+            }
+            Assert-XpjTestPostgresDeletionStartedSafety `
+                -Directory $tombstone `
+                -Port $Port `
+                -Receipt $receipt `
+                -DirectoryHandle $tombstoneHandle
         }
         finally {
             $tombstoneHandle.Dispose()
@@ -269,11 +325,9 @@ function Complete-XpjTestPostgresPendingDeletion {
         if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
             throw "Test PostgreSQL deletion tombstone must not be a reparse point: $tombstone"
         }
-        # A receipt authorizes one directory generation, not deletion while that
-        # generation is live. Recovery must re-prove quiescence on every retry.
-        [void](Assert-XpjTestPostgresQuiescent `
-            -DataDirectory $tombstone `
-            -Port $Port)
+        # Complete ownership/quiescence is proven before deletion_started is
+        # published. A retry cannot depend on cluster files already removed by
+        # the bounded recursive worker.
         # The source name is no longer a deletion target. A later install/test
         # run may safely reuse it while this unique tombstone is being retried.
         Remove-XpjTestPostgresDirectoryBounded `
@@ -285,25 +339,53 @@ function Complete-XpjTestPostgresPendingDeletion {
     }
     elseif (Test-Path -LiteralPath $DataDirectory -PathType Container) {
         $resumeRestoredSource = $false
+        $resumeDeletionStarted = $false
         $restoredHandle = [XpjTestDirectoryMoveHandle]::OpenIdentity($DataDirectory)
         try {
             if ($restoredHandle.Identity -ceq [string]$receipt.DirectoryIdentity) {
-                Assert-XpjTestPostgresDeletionDirectoryInstance `
-                    -PostgresBin $PostgresBin `
-                    -Directory $DataDirectory `
-                    -Receipt $receipt `
-                    -Purpose $Purpose `
-                    -Port $Port `
-                    -DirectoryHandle $restoredHandle
-                Set-XpjTestPostgresDeletionReceiptPhase `
-                    -Receipt $receipt `
-                    -ReceiptPath $receiptPath `
-                    -Phase source
-                $resumeRestoredSource = $true
+                if ([string]$receipt.Phase -eq 'deletion_started') {
+                    Assert-XpjTestPostgresDeletionStartedSafety `
+                        -Directory $DataDirectory `
+                        -Port $Port `
+                        -Receipt $receipt `
+                        -DirectoryHandle $restoredHandle
+                    $resumeDeletionStarted = $true
+                }
+                else {
+                    Assert-XpjTestPostgresDeletionDirectoryInstance `
+                        -PostgresBin $PostgresBin `
+                        -Directory $DataDirectory `
+                        -Receipt $receipt `
+                        -Purpose $Purpose `
+                        -Port $Port `
+                        -DirectoryHandle $restoredHandle
+                    Set-XpjTestPostgresDeletionReceiptPhase `
+                        -Receipt $receipt `
+                        -ReceiptPath $receiptPath `
+                        -Phase source
+                    $resumeRestoredSource = $true
+                }
             }
         }
         finally {
             $restoredHandle.Dispose()
+        }
+        if ($resumeDeletionStarted) {
+            $directoryMove = [XpjTestDirectoryMoveHandle]::Open($DataDirectory)
+            try {
+                if ($directoryMove.Identity -cne [string]$receipt.DirectoryIdentity) {
+                    throw 'Deletion-started source was replaced before tombstone restoration.'
+                }
+                $directoryMove.RenameTo($tombstone)
+            }
+            finally {
+                $directoryMove.Dispose()
+            }
+            return Complete-XpjTestPostgresPendingDeletion `
+                -PostgresBin $PostgresBin `
+                -DataDirectory $DataDirectory `
+                -Purpose $Purpose `
+                -Port $Port
         }
         if ($resumeRestoredSource) {
             return Complete-XpjTestPostgresPendingDeletion `

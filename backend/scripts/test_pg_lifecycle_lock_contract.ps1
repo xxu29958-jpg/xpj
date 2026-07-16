@@ -42,6 +42,7 @@ function Exit-XpjTestPostgresLifecycleMutex {
 function Invoke-XpjTestPostgresLifecycleLocked {
     param(
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$DataDirectory,
         [Parameter(Mandatory = $true)][scriptblock]$Operation,
         [ValidateRange(1, 7200)][int]$TimeoutSeconds = 300
     )
@@ -53,6 +54,7 @@ function Invoke-XpjTestPostgresLifecycleLocked {
         # Registration also takes the lifecycle mutex, so while this writer is
         # inside the gate no new reader can become a database consumer.
         Wait-XpjTestPostgresConsumersDrained `
+            -DataDirectory $DataDirectory `
             -Port $Port `
             -TimeoutSeconds $TimeoutSeconds
         & $Operation

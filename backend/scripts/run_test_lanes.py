@@ -153,20 +153,19 @@ def run_lanes(lanes: Sequence[str], *, workers: int) -> int:
     start_windows_parent_watchdog(label="PostgreSQL test-lane runner")
     parent_environment = os.environ.copy()
     database_url = configured_test_database_url(parent_environment)
-    with test_postgres_credential_environment(
+    with test_postgres_consumer_lease(database_url), test_postgres_credential_environment(
         database_url,
         parent_environment,
     ):
         assert_test_cluster_authority(database_url, parent_environment)
-        with test_postgres_consumer_lease(database_url):
-            for lane in lanes:
-                return_code = _run_lane(
-                    lane,
-                    workers=workers,
-                    parent_environment=parent_environment,
-                )
-                if return_code:
-                    return return_code
+        for lane in lanes:
+            return_code = _run_lane(
+                lane,
+                workers=workers,
+                parent_environment=parent_environment,
+            )
+            if return_code:
+                return return_code
     return 0
 
 

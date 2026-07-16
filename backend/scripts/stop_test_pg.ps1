@@ -24,12 +24,13 @@ $ErrorActionPreference = 'Stop'
 $script:XpjTestPostgresProcessTimeoutSeconds = $ProcessTimeoutSeconds
 
 Assert-XpjTestPostgresLifecycleRequest -Purpose $Purpose -Port $Port
+$DataDir = Resolve-XpjTestPostgresDataDirectory $DataDir
 
 Invoke-XpjTestPostgresLifecycleLocked `
     -Port $Port `
+    -DataDirectory $DataDir `
     -TimeoutSeconds $LifecycleMutexTimeoutSeconds `
     -Operation {
-$DataDir = Resolve-XpjTestPostgresDataDirectory $DataDir
 $PostgresBin = Resolve-XpjTestPostgresBin $PostgresBin
 Assert-XpjTestPostgresRequiredAuthClient $PostgresBin
 $parentPathLease = [XpjTestDirectoryPathLease]::OpenParent($DataDir)
@@ -65,36 +66,27 @@ if (Test-Path -LiteralPath $pidPath -PathType Leaf) {
         $verifiedProcess = $generation.Process
         [void]$verifiedProcess.Handle
         try {
-        Invoke-XpjTestPostgresIdentitySession `
+        if ($marker.Authentication -ceq 'legacy-trust') {
+            Assert-XpjTestPostgresLegacyOnlineIdentity `
+                -PostgresBin $PostgresBin `
+                -DataDirectory $DataDir `
+                -Port $Port `
+                -SystemIdentifier $marker.SystemIdentifier
+        }
+        else {
+            Invoke-XpjTestPostgresIdentitySession `
+                -PostgresBin $PostgresBin `
+                -DataDirectory $DataDir `
+                -Port $Port `
+                -SystemIdentifier $marker.SystemIdentifier `
+                -RequireNoOtherSessions
+        }
+        Stop-XpjTestPostgresVerifiedPostmaster `
             -PostgresBin $PostgresBin `
             -DataDirectory $DataDir `
             -Port $Port `
-            -SystemIdentifier $marker.SystemIdentifier `
-            -RequireNoOtherSessions
-        $stopTimeout = [Math]::Min(30, $ProcessTimeoutSeconds)
-        $stopResult = Invoke-XpjTestPostgresBoundedProcess `
-            -FilePath (Join-Path $PostgresBin 'pg_ctl.exe') `
-            -ArgumentList @(
-                '-D', $DataDir,
-                '-m', 'immediate',
-                '-w',
-                '-t', [string]$stopTimeout,
-                'stop'
-            ) `
-            -TimeoutSeconds ([Math]::Min(600, $stopTimeout + 5))
-        if ($stopResult.TimedOut -or $stopResult.ExitCode -ne 0) {
-            throw "pg_ctl could not stop the verified test PostgreSQL process; data was preserved (exit=$($stopResult.ExitCode), timed_out=$($stopResult.TimedOut))."
-        }
-        $verifiedProcess.Refresh()
-        if (-not $verifiedProcess.HasExited) {
-            throw 'Verified test PostgreSQL process is still alive after pg_ctl; data was preserved.'
-        }
-        $remainingListeners = @(
-            Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
-        )
-        if ($remainingListeners.Count -gt 0) {
-            throw "A listener remains on test PostgreSQL port $Port after stop; data was preserved."
-        }
+            -ProcessId $record.ProcessId `
+            -Process $verifiedProcess
         Write-Host "Stopped owned PostgreSQL postmaster PID $($record.ProcessId)"
         }
         finally {
@@ -108,6 +100,7 @@ if (Test-Path -LiteralPath $pidPath -PathType Leaf) {
 }
 
 [void](Assert-XpjTestPostgresQuiescent `
+    -PostgresBin $PostgresBin `
     -DataDirectory $DataDir `
     -Port $Port)
 [void](Assert-XpjTestPostgresDataOwnership `

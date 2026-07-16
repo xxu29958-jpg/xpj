@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import re
 import threading
@@ -15,6 +14,11 @@ from uuid import uuid4
 import psycopg
 from sqlalchemy.engine import URL
 
+from scripts.test_pg_authority_contract import (
+    _expected_cluster_generation,
+    _owned_marker_candidate,
+    _read_owned_cluster_marker,
+)
 from scripts.test_pg_client_contract import (
     assert_python_libpq_supports_required_auth,
 )
@@ -22,11 +26,13 @@ from scripts.test_pg_protected_file import (
     assert_protected_authority_file,
     write_protected_utf8_file,
 )
+from scripts.test_pg_protected_reader import read_protected_utf8_file
 from scripts.test_pg_url_contract import (
     _LIBPQ_CONNECTION_ENVIRONMENT,
     EPHEMERAL_SERVICE_AUTHORITY,
     OWNED_MARKER_AUTHORITY,
     TEST_CLUSTER_AUTHORITY_ENV,
+    TEST_CLUSTER_INSTANCE_ID_ENV,
     TEST_CLUSTER_MARKER_PATH_ENV,
     TEST_CLUSTER_SYSTEM_IDENTIFIER_ENV,
     TEST_POSTGRES_CREDENTIAL_FILE_ENV,
@@ -45,17 +51,18 @@ from scripts.test_pg_url_contract import (
 )
 from scripts.test_pg_windows_contract import (
     _abort_disposable_test_process,
-    _assert_no_reparse_ancestors,
     _database_port,
     _windows_temp_directory,
     start_windows_parent_watchdog,
-    test_postgres_consumer_lease,
+    windows_test_postgres_consumer_lease,
 )
+from scripts.test_pg_windows_path_contract import _assert_no_reparse_ancestors
 
 __all__ = (
     "EPHEMERAL_SERVICE_AUTHORITY",
     "OWNED_MARKER_AUTHORITY",
     "TEST_CLUSTER_AUTHORITY_ENV",
+    "TEST_CLUSTER_INSTANCE_ID_ENV",
     "TEST_CLUSTER_MARKER_PATH_ENV",
     "TEST_CLUSTER_SYSTEM_IDENTIFIER_ENV",
     "TEST_POSTGRES_CREDENTIAL_FILE_ENV",
@@ -88,13 +95,10 @@ _STATEFUL_LOCK_KEY = int.from_bytes(
 _STATEFUL_LOCK_TIMEOUT_MS = 15 * 60 * 1000
 _AUTHORITY_HEARTBEAT_SECONDS = 1.0
 _AUTHORITY_WATCHDOG_JOIN_SECONDS = 5.0
-_OWNERSHIP_MARKER_NAME = ".xpj-test-cluster.json"
-_OWNERSHIP_MARKER_KIND = "xiaopiaojia-test-postgres"
 _CREDENTIAL_FILE_NAME = ".xpj-test-postgres-password"
 _PGPASS_FILE_PREFIX = ".xpj-pgpass-"
 _REQUIRED_AUTHENTICATION = "scram-sha-256"
 _OWNED_CREDENTIAL = re.compile(r"[A-Za-z0-9_-]{43}")
-_SYSTEM_IDENTIFIER = re.compile(r"\d{10,20}")
 
 
 def _pgpass_escape(value: str) -> str:
@@ -110,7 +114,10 @@ def _assert_regular_authority_file(path: Path, *, label: str) -> Path:
 
 def _read_test_postgres_credential(path: Path, *, owned: bool) -> str:
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        lines = read_protected_utf8_file(
+            path,
+            label="Test PostgreSQL credential authority",
+        ).splitlines()
     except (OSError, UnicodeError) as exc:
         raise RuntimeError(f"Test PostgreSQL credential authority is unreadable: {path}") from exc
     if len(lines) != 1:
@@ -134,8 +141,8 @@ def _test_postgres_credential_path(
         authority = OWNED_MARKER_AUTHORITY
     configured = environment.get(TEST_POSTGRES_CREDENTIAL_FILE_ENV, "").strip()
     if authority == OWNED_MARKER_AUTHORITY:
-        data_directory, _ = _read_owned_cluster_marker(database_url, environment)
-        expected = (data_directory / _CREDENTIAL_FILE_NAME).resolve()
+        data_directory, _, _ = _read_owned_cluster_marker(database_url, environment)
+        expected = data_directory / _CREDENTIAL_FILE_NAME
         if configured and Path(configured).resolve() != expected:
             raise RuntimeError("Owned test PostgreSQL credential path does not match its marker")
         path = expected
@@ -196,7 +203,10 @@ def _active_test_pgpassfile(
     ):
         raise RuntimeError("Derived test PostgreSQL passfile is outside its credential authority")
     try:
-        actual_content = passfile.read_text(encoding="utf-8")
+        actual_content = read_protected_utf8_file(
+            passfile,
+            label="Derived test PostgreSQL passfile",
+        )
     except (OSError, UnicodeError) as exc:
         raise RuntimeError("Derived test PostgreSQL passfile is unreadable") from exc
     if actual_content != expected_content:
@@ -237,50 +247,41 @@ def test_postgres_credential_environment(
         passfile.unlink(missing_ok=True)
 
 
-def _owned_marker_path(
-    database_url: URL,
-    environment: Mapping[str, str],
-) -> Path:
-    configured = environment.get(TEST_CLUSTER_MARKER_PATH_ENV, "").strip()
-    if configured:
-        marker_path = Path(configured)
-    else:
-        if os.name != "nt" or environment.get("XPJ_TEST_DATABASE_URL", "").strip():
-            raise RuntimeError("Owned test-cluster authority requires its marker path")
-        marker_path = (
-            _windows_temp_directory()
-            / f"xpj_pg_test{_database_port(database_url)}"
-            / _OWNERSHIP_MARKER_NAME
-        )
-    return _assert_regular_authority_file(
-        marker_path,
-        label="Owned test-cluster marker",
-    )
+@contextlib.contextmanager
+def test_postgres_consumer_lease(
+    database_url: str | URL,
+    *,
+    timeout_ms: int = 300_000,
+) -> Iterator[Path | None]:
+    """Bind one Windows consumer to the verified cluster generation."""
 
+    parsed = _validate_test_consumer_database_url(database_url)
+    authority = os.environ.get(TEST_CLUSTER_AUTHORITY_ENV, "").strip()
+    if authority == EPHEMERAL_SERVICE_AUTHORITY:
+        _expected_cluster_generation(os.environ)
+        yield None
+        return
+    if not authority and not os.environ.get("XPJ_TEST_DATABASE_URL", "").strip():
+        authority = OWNED_MARKER_AUTHORITY
+    if authority != OWNED_MARKER_AUTHORITY:
+        raise RuntimeError("Test PostgreSQL cluster authority is missing or unsupported")
 
-def _read_owned_cluster_marker(
-    database_url: URL,
-    environment: Mapping[str, str],
-) -> tuple[Path, str]:
-    marker_path = _owned_marker_path(database_url, environment)
-    try:
-        payload = json.loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Owned test-cluster marker is unreadable: {marker_path}") from exc
-    marker_port = payload.get("port")
-    schema_version = payload.get("schema_version")
-    system_identifier = str(payload.get("system_identifier", ""))
-    if (
-        schema_version != 3
-        or payload.get("kind") != _OWNERSHIP_MARKER_KIND
-        or payload.get("purpose") not in {"local", "ci"}
-        or not isinstance(marker_port, int)
-        or marker_port != _database_port(database_url)
-        or _SYSTEM_IDENTIFIER.fullmatch(system_identifier) is None
-        or payload.get("authentication") != "scram-sha-256"
-    ):
-        raise RuntimeError(f"Owned test-cluster marker is invalid: {marker_path}")
-    return marker_path.parent, system_identifier
+    marker_path = _owned_marker_candidate(parsed, os.environ)
+    if os.name != "nt":
+        _read_owned_cluster_marker(parsed, os.environ)
+        yield None
+        return
+
+    def resolve_authority() -> tuple[Path, str, str]:
+        return _read_owned_cluster_marker(parsed, os.environ)
+
+    with windows_test_postgres_consumer_lease(
+        parsed,
+        data_directory=marker_path.parent,
+        authority_resolver=resolve_authority,
+        timeout_ms=timeout_ms,
+    ) as lease:
+        yield lease
 
 
 def _assert_parsed_test_cluster_authority(
@@ -292,19 +293,15 @@ def _assert_parsed_test_cluster_authority(
     if not authority and not environment.get("XPJ_TEST_DATABASE_URL", "").strip():
         authority = OWNED_MARKER_AUTHORITY
     if authority == OWNED_MARKER_AUTHORITY:
-        expected_data_directory, expected_system_identifier = _read_owned_cluster_marker(
-            parsed,
-            environment,
-        )
+        (
+            expected_data_directory,
+            expected_system_identifier,
+            _,
+        ) = _read_owned_cluster_marker(parsed, environment)
     elif authority == EPHEMERAL_SERVICE_AUTHORITY:
         if str(environment.get("CI", "")).lower() != "true":
             raise RuntimeError("Ephemeral test-cluster authority is valid only inside CI")
-        expected_system_identifier = environment.get(
-            TEST_CLUSTER_SYSTEM_IDENTIFIER_ENV,
-            "",
-        ).strip()
-        if _SYSTEM_IDENTIFIER.fullmatch(expected_system_identifier) is None:
-            raise RuntimeError("Ephemeral test-cluster authority is missing its system identifier")
+        expected_system_identifier, _ = _expected_cluster_generation(environment)
     else:
         raise RuntimeError("Test PostgreSQL cluster authority is missing or unsupported")
 

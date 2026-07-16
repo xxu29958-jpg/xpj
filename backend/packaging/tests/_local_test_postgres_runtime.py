@@ -172,6 +172,7 @@ def _run_lifecycle_contender(
     engine: str,
     contender_script: Path,
     port: int,
+    data_directory: Path,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
@@ -187,6 +188,8 @@ def _run_lifecycle_contender(
             str(TEST_POSTGRES_CONTRACT),
             "-Port",
             str(port),
+            "-DataDirectory",
+            str(data_directory),
         ],
         check=False,
         capture_output=True,

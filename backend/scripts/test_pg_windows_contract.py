@@ -6,6 +6,7 @@ import contextlib
 import ctypes
 import json
 import os
+import re
 import sys
 import threading
 from collections.abc import Callable, Iterator
@@ -15,7 +16,15 @@ from uuid import uuid4
 
 from sqlalchemy.engine import URL, make_url
 
+from scripts.test_pg_protected_file import (
+    create_protected_shared_lock_file,
+    ensure_protected_directory,
+)
 from scripts.test_pg_url_contract import _dialect_connection_args
+from scripts.test_pg_windows_path_contract import (
+    _lexical_absolute_path,
+    _windows_directory_path_lease,
+)
 
 _AUTHORITY_LOST_EXIT_CODE = 3
 _CONSUMER_LEASE_KIND = "xiaopiaojia-test-postgres-consumer"
@@ -278,27 +287,76 @@ def _windows_temp_directory() -> Path:
     return Path(buffer.value)
 
 
-def _windows_reparse_point(path: Path) -> bool:
-    attributes = getattr(path.lstat(), "st_file_attributes", 0)
-    return bool(attributes & 0x400)
+def _validated_consumer_generation(
+    data_directory: Path,
+    authority_resolver: Callable[[], tuple[Path, str, str]],
+) -> tuple[str, str]:
+    resolved_directory, system_identifier, instance_id = authority_resolver()
+    resolved_directory = _lexical_absolute_path(
+        resolved_directory,
+        label="Owned test PostgreSQL marker directory",
+    )
+    if resolved_directory != data_directory:
+        raise RuntimeError("Owned test PostgreSQL marker moved outside its leased directory")
+    if re.fullmatch(r"\d{10,20}", system_identifier) is None:
+        raise RuntimeError("Test PostgreSQL consumer lease system identifier is invalid")
+    if re.fullmatch(r"[0-9a-f]{32}", instance_id) is None:
+        raise RuntimeError("Test PostgreSQL consumer lease instance identifier is invalid")
+    return system_identifier, instance_id
 
 
-def _assert_no_reparse_ancestors(path: Path) -> None:
-    if os.name != "nt":
-        return
-    current = path
-    while True:
-        if _windows_reparse_point(current):
-            raise RuntimeError(f"Test PostgreSQL authority path must not be a reparse point: {current}")
-        if current.parent == current:
-            return
-        current = current.parent
+def _create_consumer_lease_file(
+    lease_directory: Path,
+    *,
+    data_directory: Path,
+    port: int,
+    system_identifier: str,
+    instance_id: str,
+) -> tuple[int, Path]:
+    import msvcrt
+
+    lease_path = lease_directory / f"{os.getpid()}-{uuid4().hex}.lease"
+    payload = json.dumps(
+        {
+            "Kind": _CONSUMER_LEASE_KIND,
+            "Port": port,
+            "DataDirectory": str(data_directory),
+            "SystemIdentifier": system_identifier,
+            "InstanceId": instance_id,
+            "ProcessId": os.getpid(),
+            "ProcessStartedAtUtc": datetime.now(UTC).isoformat(),
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    descriptor = create_protected_shared_lock_file(
+        lease_path,
+        label="Test PostgreSQL consumer lease",
+    )
+    completed = False
+    try:
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(descriptor, remaining)
+            if written <= 0:
+                raise OSError("Could not write the test PostgreSQL consumer lease.")
+            remaining = remaining[written:]
+        os.fsync(descriptor)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+        completed = True
+        return descriptor, lease_path
+    finally:
+        if not completed:
+            os.close(descriptor)
+            lease_path.unlink(missing_ok=True)
 
 
 @contextlib.contextmanager
-def test_postgres_consumer_lease(
+def windows_test_postgres_consumer_lease(
     database_url: str | URL,
     *,
+    data_directory: Path,
+    authority_resolver: Callable[[], tuple[Path, str, str]],
     timeout_ms: int = _CONSUMER_LEASE_TIMEOUT_MS,
 ) -> Iterator[Path | None]:
     """Register this process as a reader before it can touch the test cluster."""
@@ -307,50 +365,52 @@ def test_postgres_consumer_lease(
         yield None
         return
 
-    import msvcrt
-
     port = _database_port(database_url)
     kernel32, lifecycle_handle = _acquire_windows_lifecycle_mutex(port, timeout_ms)
     descriptor: int | None = None
     lease_path: Path | None = None
+    path_leases = contextlib.ExitStack()
+    registered = False
     try:
-        lease_directory = _windows_temp_directory() / (f"xpj-test-postgres-consumers-{port}")
-        lease_directory.mkdir(parents=True, exist_ok=True)
-        if lease_directory.is_symlink():
-            raise RuntimeError("Test PostgreSQL consumer lease directory must not be a symlink")
-        lease_path = lease_directory / f"{os.getpid()}-{uuid4().hex}.lease.json"
-        descriptor = os.open(lease_path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
-        payload = json.dumps(
-            {
-                "Kind": _CONSUMER_LEASE_KIND,
-                "Port": port,
-                "ProcessId": os.getpid(),
-                "ProcessStartedAtUtc": datetime.now(UTC).isoformat(),
-            },
-            separators=(",", ":"),
-        ).encode("utf-8")
-        os.write(descriptor, payload)
-        os.fsync(descriptor)
-        os.lseek(descriptor, 0, os.SEEK_SET)
-        msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
-    except OSError:
-        if descriptor is not None:
-            os.close(descriptor)
-        if lease_path is not None:
-            lease_path.unlink(missing_ok=True)
-        raise
+        data_directory = _lexical_absolute_path(
+            data_directory,
+            label="Test PostgreSQL data directory",
+        )
+        path_leases.enter_context(_windows_directory_path_lease(data_directory))
+        system_identifier, instance_id = _validated_consumer_generation(
+            data_directory,
+            authority_resolver,
+        )
+        lease_directory = data_directory / ".xpj-test-postgres-consumers"
+        ensure_protected_directory(
+            lease_directory,
+            label="Test PostgreSQL consumer lease directory",
+        )
+        path_leases.enter_context(_windows_directory_path_lease(lease_directory))
+        descriptor, lease_path = _create_consumer_lease_file(
+            lease_directory,
+            data_directory=data_directory,
+            port=port,
+            system_identifier=system_identifier,
+            instance_id=instance_id,
+        )
+        registered = True
     finally:
         kernel32.ReleaseMutex(lifecycle_handle)
         kernel32.CloseHandle(lifecycle_handle)
+        if not registered:
+            path_leases.close()
 
     try:
         yield lease_path
     finally:
+        import msvcrt
+
         assert descriptor is not None
         try:
-            os.lseek(descriptor, 0, os.SEEK_SET)
             msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
         finally:
             os.close(descriptor)
             assert lease_path is not None
             lease_path.unlink(missing_ok=True)
+            path_leases.close()

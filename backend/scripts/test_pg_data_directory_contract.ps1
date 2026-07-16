@@ -90,12 +90,12 @@ function Read-XpjTestPostgresOwnershipMarker {
     if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
         throw "Refusing unowned PostgreSQL data directory: ownership marker is missing ($markerPath)."
     }
-    $markerItem = Get-Item -LiteralPath $markerPath -Force -ErrorAction Stop
-    if (($markerItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Test PostgreSQL ownership marker must not be a reparse point: $markerPath"
-    }
     try {
-        $marker = Get-Content -LiteralPath $markerPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $marker = (
+            Read-XpjTestPostgresProtectedUtf8File `
+                -Path $markerPath `
+                -Label 'Test PostgreSQL ownership marker'
+        ) | ConvertFrom-Json
     }
     catch {
         throw "Test PostgreSQL ownership marker is invalid JSON: $markerPath"
@@ -176,6 +176,41 @@ function Get-XpjTestPostgresControlSystemIdentifier {
         throw 'pg_controldata did not return a parseable database system identifier.'
     }
     return $match.Groups[1].Value
+}
+
+function Get-XpjTestPostgresControlState {
+    param(
+        [Parameter(Mandatory = $true)][string]$PostgresBin,
+        [Parameter(Mandatory = $true)][string]$DataDirectory
+    )
+
+    $hadLcAll = Test-Path Env:LC_ALL
+    $previousLcAll = $env:LC_ALL
+    $hadPgColor = Test-Path Env:PG_COLOR
+    $previousPgColor = $env:PG_COLOR
+    try {
+        $env:LC_ALL = 'C'
+        $env:PG_COLOR = 'never'
+        $result = Invoke-XpjTestPostgresBoundedProcess `
+            -FilePath (Join-Path $PostgresBin 'pg_controldata.exe') `
+            -ArgumentList @('-D', $DataDirectory) `
+            -TimeoutSeconds (Get-XpjTestPostgresProcessTimeoutSeconds)
+    }
+    finally {
+        if ($hadLcAll) { $env:LC_ALL = $previousLcAll } else { Remove-Item Env:LC_ALL -ErrorAction SilentlyContinue }
+        if ($hadPgColor) { $env:PG_COLOR = $previousPgColor } else { Remove-Item Env:PG_COLOR -ErrorAction SilentlyContinue }
+    }
+    if ($result.TimedOut -or $result.ExitCode -ne 0) {
+        throw 'pg_controldata could not prove the PostgreSQL cluster state.'
+    }
+    $match = [regex]::Match(
+        [string]$result.Output,
+        '(?mi)^\s*Database cluster state\s*:\s*(?<state>[^\r\n]+?)\s*$'
+    )
+    if (-not $match.Success) {
+        throw 'pg_controldata did not return a parseable database cluster state.'
+    }
+    return $match.Groups['state'].Value.Trim().ToLowerInvariant()
 }
 
 function New-XpjTestPostgresOwnershipMarker {

@@ -40,6 +40,9 @@ def _assert_postgres_process_contract(contracts: dict[str, str]) -> None:
     assert "Enter-XpjTestPostgresLifecycleMutex" in cluster
     assert "Enter-XpjTestPostgresConsumerLease" in cluster
     assert "Wait-XpjTestPostgresConsumersDrained" in cluster
+    assert "-InstanceId $marker.InstanceId" in start
+    assert "InstanceId = $InstanceId" in cluster
+    assert "[string]$payload.InstanceId -cne $InstanceId" in cluster
     assert "Protect-XpjTestPostgresDirectoryTree" in cluster
     assert "Get-XpjTestPostgresCurrentUserSid" in cluster
     assert "[XpjTestDirectoryPathLease]::OpenPath($DataDir)" in start
@@ -71,6 +74,9 @@ def _assert_postgres_process_contract(contracts: dict[str, str]) -> None:
     assert "TerminateJobObject" in job
     assert "JobObjectLimitKillOnJobClose" in job
     assert "Start-XpjTestPostgresUncommittedProcess" in process
+    assert "Remove-XpjTestPostgresProcessOutput" in process
+    assert "[System.IO.FileShare]::None" in process
+    assert "process output handle did not close" in process
     assert "PreserveProcessesOnClose" in process
     assert "ProcThreadAttributeJobList" in job
     assert "ProcThreadAttributeHandleList" in job
@@ -82,11 +88,15 @@ def _assert_postgres_process_contract(contracts: dict[str, str]) -> None:
     assert "Get-CimInstance -ClassName Win32_Process" not in staging
     assert "statement_timeout=$statementTimeoutMs" in cluster
     assert "XPJ_TEST_POSTGRES_ACTIVE_CONSUMERS" in cluster
-    assert "[System.IO.FileShare]::Delete" in cluster
+    assert "FileShareDelete" not in job
+    assert "WaitForAllProcesses" in job
+    assert "ActiveProcesses" in job
     assert "Assert-XpjTestPostgresQuiescent" in stop
+    assert "Assert-XpjTestPostgresCleanShutdown" in cluster
     assert "[void]$verifiedProcess.Handle" in stop
-    assert "$verifiedProcess.HasExited" in stop
-    assert "pg_ctl.exe" in stop
+    assert "Stop-XpjTestPostgresVerifiedPostmaster" in stop
+    assert "@('kill', 'INT', [string]$ProcessId)" in cluster
+    assert "pg_ctl.exe" in cluster
     assert "taskkill" not in (start + stop + cluster).lower()
 
 
@@ -98,14 +108,17 @@ def _assert_authentication_contract(contracts: dict[str, str]) -> None:
     assert "--auth-host=scram-sha-256" in cluster
     assert "--auth-local=scram-sha-256" in cluster
     assert "--auth=trust" not in cluster
-    assert "Ensure-XpjTestPostgresScramAuthentication" in authentication
+    assert "Prepare-XpjTestPostgresScramAuthenticationOffline" in authentication
+    assert "Assert-XpjTestPostgresScramAuthenticationOnline" in authentication
     assert "scram-sha-256" in authentication
     assert "PGPASSWORD" not in authentication
     assert "PGPASSFILE" in authentication
     assert "PGREQUIREAUTH" in authentication
     assert "Assert-XpjTestPostgresRequiredAuthClient" in authentication
     assert "ProductMajorPart" in authentication
-    assert "NoChallengeBootstrap" in authentication
+    assert "postgres.exe" in authentication
+    assert "'--single'" in authentication
+    assert "Assert-XpjTestPostgresLegacyOnlineIdentity" in authentication
     assert "-RequiredAuthentication 'none'" in authentication
     assert "Invoke-XpjTestPostgresIsolatedLibpqEnvironment" in authentication
     assert "StandardInput" in authentication
@@ -124,17 +137,26 @@ def _assert_protected_file_contract(contracts: dict[str, str]) -> None:
     assert "test_pg_protected_file.cs" in cluster
     assert "CreateFileW" in protected_file
     assert "FileShare.None" in protected_file
+    assert "FileShare.Read" in protected_file
+    assert "FileShare.ReadWrite" in protected_file
     assert "D:P(A;;FA;;;" in protected_file
     assert "CreateNewDisposition" in protected_file
     assert "FileFlagWriteThrough" in protected_file
-    assert "InheritHandle = 0" in protected_file
+    assert "InheritHandle = inheritHandle ? 1 : 0" in protected_file
+    assert "CreateNewInheritableProcessOutput" in protected_file
+    assert "CreateNewSharedLock" in protected_file
     assert "CreateFileW" in protected_python
+    assert "_FILE_FLAG_OPEN_REPARSE_POINT" in protected_python
     assert "_CREATE_NEW = 1" in protected_python
     assert "_FILE_FLAG_WRITE_THROUGH" in protected_python
     assert "GetNamedSecurityInfoW" in protected_python
-    assert "D:P(A;;FA;;;" in protected_python
+    assert "_protected_sddl" in protected_python
+    assert 'f"(A;{inheritance};FA;;;{sid})"' in protected_python
     assert "_assert_no_reparse_ancestors(path.parent)" in protected_python
     assert "assert_protected_authority_file" in protected_python
+    assert "read_protected_utf8_file" in protected_python
+    assert "TEST_CLUSTER_INSTANCE_ID_ENV" in python_consumer
+    assert "instance_id != expected_instance_id" in python_consumer
     assert "write_protected_utf8_file" in python_consumer
     assert "os.open(" not in python_consumer
 
@@ -163,16 +185,28 @@ def _assert_script_contract(project_root: Path) -> None:
         "process": (scripts / "test_pg_process_contract.ps1").read_text(encoding="utf-8-sig"),
         "job": "\n".join(
             (scripts / name).read_text(encoding="utf-8")
-            for name in ("test_pg_process_job.cs", "test_pg_process_native.cs")
+            for name in (
+                "test_pg_process_job.cs",
+                "test_pg_process_command_line.cs",
+                "test_pg_process_native.cs",
+            )
         ),
         "protected_file": (scripts / "test_pg_protected_file.cs").read_text(
             encoding="utf-8"
         ),
-        "protected_python": (scripts / "test_pg_protected_file.py").read_text(
-            encoding="utf-8"
+        "protected_python": "\n".join(
+            (scripts / name).read_text(encoding="utf-8")
+            for name in (
+                "test_pg_protected_file.py",
+                "test_pg_protected_reader.py",
+            )
         ),
-        "python_consumer": (scripts / "test_pg_contract.py").read_text(
-            encoding="utf-8"
+        "python_consumer": "\n".join(
+            (scripts / name).read_text(encoding="utf-8")
+            for name in (
+                "test_pg_authority_contract.py",
+                "test_pg_contract.py",
+            )
         ),
         "authentication": "\n".join(
             (scripts / name).read_text(encoding="utf-8-sig")
@@ -286,6 +320,7 @@ def _assert_workflow_contract(project_root: Path) -> None:
     assert "taskkill" not in gitea_ci.lower()
     assert "createdb.exe" not in gitea_ci
     assert "Remove-Item -Recurse -Force $datadir" not in gitea_ci
+    assert "XPJ_TEST_CLUSTER_INSTANCE_ID" in github_ci
     _assert_gitea_postgres_job_budget(gitea_ci)
     connected_ci = (project_root / ".gitea/workflows/android-connected.yml").read_text(encoding="utf-8")
     assert connected_ci.count("assert_gitea_runner_contract.ps1") == 1

@@ -319,7 +319,7 @@ def test_local_test_postgres_rejects_a_different_cluster_before_provisioning(
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 @pytest.mark.parametrize(
     "fault_phase",
-    ["after-password", "after-hba-reload"],
+    ["after-password", "after-hba"],
 )
 def test_legacy_trust_cluster_scram_migration_is_reentrant(
     tmp_path: Path,

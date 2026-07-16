@@ -13,7 +13,10 @@ _SDDL_REVISION_1 = 1
 _SE_FILE_OBJECT = 1
 _OWNER_SECURITY_INFORMATION = 0x00000001
 _DACL_SECURITY_INFORMATION = 0x00000004
+_GENERIC_READ = 0x80000000
 _GENERIC_WRITE = 0x40000000
+_FILE_SHARE_READ = 0x00000001
+_FILE_SHARE_WRITE = 0x00000002
 _CREATE_NEW = 1
 _FILE_ATTRIBUTE_NORMAL = 0x00000080
 _FILE_FLAG_WRITE_THROUGH = 0x80000000
@@ -57,7 +60,11 @@ def _windows_libraries() -> tuple[ctypes.WinDLL, ctypes.WinDLL]:
         wintypes.HANDLE,
     )
     kernel32.CreateFileW.restype = wintypes.HANDLE
-
+    kernel32.CreateDirectoryW.argtypes = (
+        wintypes.LPCWSTR,
+        ctypes.POINTER(_SecurityAttributes),
+    )
+    kernel32.CreateDirectoryW.restype = wintypes.BOOL
     advapi32.OpenProcessToken.argtypes = (
         wintypes.HANDLE,
         wintypes.DWORD,
@@ -148,9 +155,15 @@ def _current_windows_user_sid() -> str:
         kernel32.CloseHandle(token)
 
 
-def _protected_sddl() -> str:
+def _protected_sddl(*, directory: bool = False) -> str:
     sid = _current_windows_user_sid()
-    return f"O:{sid}G:{sid}D:P(A;;FA;;;{sid})(A;;FA;;;SY)(A;;FA;;;BA)"
+    inheritance = "OICI" if directory else ""
+    return (
+        f"O:{sid}G:{sid}D:P"
+        f"(A;{inheritance};FA;;;{sid})"
+        f"(A;{inheritance};FA;;;SY)"
+        f"(A;{inheritance};FA;;;BA)"
+    )
 
 
 def _security_descriptor_from_sddl(sddl: str) -> tuple[ctypes.WinDLL, wintypes.LPVOID]:
@@ -166,7 +179,14 @@ def _security_descriptor_from_sddl(sddl: str) -> tuple[ctypes.WinDLL, wintypes.L
     return kernel32, descriptor
 
 
-def _write_windows_protected_file(path: Path, content: str) -> None:
+def _create_windows_protected_file_descriptor(
+    path: Path,
+    *,
+    desired_access: int,
+    share_mode: int,
+    os_flags: int,
+    label: str,
+) -> int:
     import msvcrt
 
     _, kernel32 = _windows_libraries()
@@ -180,29 +200,74 @@ def _write_windows_protected_file(path: Path, content: str) -> None:
     try:
         handle = kernel32.CreateFileW(
             str(path),
-            _GENERIC_WRITE,
-            0,
+            desired_access,
+            share_mode,
             ctypes.byref(attributes),
             _CREATE_NEW,
             _FILE_ATTRIBUTE_NORMAL | _FILE_FLAG_WRITE_THROUGH,
             None,
         )
         if handle == invalid_handle:
-            _raise_windows_error("Could not create a protected PostgreSQL test file.")
+            _raise_windows_error(f"Could not create {label}.")
         try:
-            descriptor_number = msvcrt.open_osfhandle(
+            return msvcrt.open_osfhandle(
                 int(handle),
-                os.O_WRONLY | os.O_BINARY,
+                os_flags,
             )
         except OSError:
             kernel32.CloseHandle(handle)
             raise
+    finally:
+        descriptor_owner.LocalFree(descriptor)
+
+
+def _write_windows_protected_file(path: Path, content: str) -> None:
+    descriptor_number = _create_windows_protected_file_descriptor(
+        path,
+        desired_access=_GENERIC_WRITE,
+        share_mode=0,
+        os_flags=os.O_WRONLY | os.O_BINARY,
+        label="a protected PostgreSQL test file",
+    )
+    completed = False
+    try:
         with os.fdopen(descriptor_number, "w", encoding="utf-8", newline="\n") as stream:
             stream.write(content)
             stream.flush()
             os.fsync(stream.fileno())
+        completed = True
     finally:
-        descriptor_owner.LocalFree(descriptor)
+        if not completed:
+            path.unlink(missing_ok=True)
+
+
+def create_protected_shared_lock_file(path: Path, *, label: str) -> int:
+    """Create one empty protected shared lock file and return its descriptor."""
+
+    if not path.is_absolute() or not path.parent.is_dir():
+        raise RuntimeError(f"{label} parent directory is invalid: {path}")
+    from scripts.test_pg_windows_path_contract import _assert_no_reparse_ancestors
+
+    _assert_no_reparse_ancestors(path.parent)
+    if os.name == "nt":
+        descriptor = _create_windows_protected_file_descriptor(
+            path,
+            desired_access=_GENERIC_READ | _GENERIC_WRITE,
+            share_mode=_FILE_SHARE_READ | _FILE_SHARE_WRITE,
+            os_flags=os.O_RDWR | os.O_BINARY,
+            label=label,
+        )
+    else:
+        descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+    completed = False
+    try:
+        assert_protected_authority_file(path, label=label)
+        completed = True
+        return descriptor
+    finally:
+        if not completed:
+            os.close(descriptor)
+            path.unlink(missing_ok=True)
 
 
 def _windows_security_sddl(path: Path) -> str:
@@ -244,14 +309,64 @@ def _assert_windows_acl(path: Path, *, label: str) -> None:
     if not sddl.startswith(owner_prefix):
         raise RuntimeError(f"{label} owner or protected-DACL contract is invalid: {path}")
     rules = sddl.removeprefix(owner_prefix)
+    inheritance = "OICI" if path.is_dir() else ""
     expected = {
-        f"(A;;FA;;;{sid})",
-        "(A;;FA;;;SY)",
-        "(A;;FA;;;BA)",
+        f"(A;{inheritance};FA;;;{sid})",
+        f"(A;{inheritance};FA;;;SY)",
+        f"(A;{inheritance};FA;;;BA)",
     }
     actual = {rule + ")" for rule in rules.split(")") if rule}
     if actual != expected or rules.count("(") != len(expected):
         raise RuntimeError(f"{label} ACL entries are invalid: {path}")
+
+
+def ensure_protected_directory(path: Path, *, label: str) -> Path:
+    """Create or validate one protected directory with trusted inheritable ACLs."""
+
+    if not path.is_absolute() or not path.parent.is_dir():
+        raise RuntimeError(f"{label} parent directory is invalid: {path}")
+    from scripts.test_pg_windows_path_contract import _assert_no_reparse_ancestors
+
+    _assert_no_reparse_ancestors(path.parent)
+    created = False
+    if os.name == "nt":
+        _, kernel32 = _windows_libraries()
+        descriptor_owner, descriptor = _security_descriptor_from_sddl(
+            _protected_sddl(directory=True)
+        )
+        attributes = _SecurityAttributes(
+            length=ctypes.sizeof(_SecurityAttributes),
+            security_descriptor=descriptor,
+            inherit_handle=False,
+        )
+        try:
+            if kernel32.CreateDirectoryW(str(path), ctypes.byref(attributes)):
+                created = True
+            else:
+                error = ctypes.get_last_error()
+                if error != 183:
+                    _raise_windows_error(f"Could not create {label}.", error)
+        finally:
+            descriptor_owner.LocalFree(descriptor)
+    else:
+        try:
+            path.mkdir(mode=0o700)
+            created = True
+        except FileExistsError:
+            pass
+    try:
+        if not path.is_dir() or path.is_symlink():
+            raise RuntimeError(f"{label} is not a regular directory: {path}")
+        _assert_no_reparse_ancestors(path)
+        if os.name == "nt":
+            _assert_windows_acl(path, label=label)
+        elif stat.S_IMODE(path.stat().st_mode) & 0o077:
+            raise RuntimeError(f"{label} permissions are too broad: {path}")
+        return path.resolve()
+    except (OSError, RuntimeError):
+        if created:
+            path.rmdir()
+        raise
 
 
 def assert_protected_authority_file(path: Path, *, label: str) -> Path:
@@ -259,7 +374,7 @@ def assert_protected_authority_file(path: Path, *, label: str) -> Path:
 
     if not path.is_absolute() or not path.is_file() or path.is_symlink():
         raise RuntimeError(f"{label} is missing or not a regular absolute file: {path}")
-    from scripts.test_pg_windows_contract import _assert_no_reparse_ancestors
+    from scripts.test_pg_windows_path_contract import _assert_no_reparse_ancestors
 
     _assert_no_reparse_ancestors(path)
     if os.name == "nt":
@@ -279,21 +394,24 @@ def write_protected_utf8_file(path: Path, content: str, *, label: str) -> Path:
 
     if not path.is_absolute() or not path.parent.is_dir():
         raise RuntimeError(f"{label} parent directory is invalid: {path}")
-    from scripts.test_pg_windows_contract import _assert_no_reparse_ancestors
+    from scripts.test_pg_windows_path_contract import _assert_no_reparse_ancestors
 
     _assert_no_reparse_ancestors(path.parent)
+    created = False
     completed = False
     try:
         if os.name == "nt":
             _write_windows_protected_file(path, content)
+            created = True
         else:
             descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            created = True
             with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
                 stream.write(content)
                 stream.flush()
                 os.fsync(stream.fileno())
         completed = True
     finally:
-        if not completed:
+        if created and not completed:
             path.unlink(missing_ok=True)
     return assert_protected_authority_file(path, label=label)

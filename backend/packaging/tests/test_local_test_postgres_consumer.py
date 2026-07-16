@@ -17,11 +17,38 @@ from _local_test_postgres_runtime import (
 )
 from _powershell_contract import powershell_contract_engines
 
-from scripts.test_pg_contract import _windows_temp_directory
+from scripts.test_pg_protected_file import ensure_protected_directory
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) -> None:
+    setup_authority_script = tmp_path / "setup-consumer-authority.ps1"
+    setup_authority_script.write_text(
+        "param($Contract,$DataDirectory,$Port,$SystemIdentifier)\n"
+        ". $Contract\n"
+        "[void][IO.Directory]::CreateDirectory($DataDirectory)\n"
+        "Protect-XpjTestPostgresDirectoryTree $DataDirectory\n"
+        "$payload = [ordered]@{\n"
+        "  schema_version = 3; kind = 'xiaopiaojia-test-postgres';\n"
+        "  purpose = 'local'; port = [int]$Port; instance_id = ('b' * 32);\n"
+        "  system_identifier = $SystemIdentifier; authentication = 'scram-sha-256'\n"
+        "} | ConvertTo-Json -Compress\n"
+        "Write-XpjTestPostgresProtectedUtf8File "
+        "-Path (Join-Path $DataDirectory '.xpj-test-cluster.json') "
+        "-Content ($payload + [Environment]::NewLine)\n"
+        "Protect-XpjTestPostgresDirectoryTree $DataDirectory\n",
+        encoding="ascii",
+    )
+    prepare_stale_script = tmp_path / "prepare-stale-consumer.ps1"
+    prepare_stale_script.write_text(
+        "param($Contract,$DataDirectory,$LeasePath)\n"
+        ". $Contract\n"
+        "$leaseDirectory = Get-XpjTestPostgresConsumerLeaseDirectory $DataDirectory\n"
+        "[void][IO.Directory]::CreateDirectory($leaseDirectory)\n"
+        "Protect-XpjTestPostgresDirectoryTree $leaseDirectory\n"
+        "Write-XpjTestPostgresProtectedUtf8File -Path $LeasePath -Content '{'\n",
+        encoding="ascii",
+    )
     launcher_script = tmp_path / "launch-consumer.ps1"
     launcher_script.write_text(
         "param($Python, $ConsumerScript, $ChildPid)\n"
@@ -48,18 +75,24 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
     )
     contender_script = tmp_path / "contend-lifecycle.ps1"
     contender_script.write_text(
-        "param($Contract, $Port)\n"
+        "param($Contract, $Port, $DataDirectory)\n"
         ". $Contract\n"
-        "Invoke-XpjTestPostgresLifecycleLocked -Port $Port -TimeoutSeconds 1 -Operation {}\n",
+        "Invoke-XpjTestPostgresLifecycleLocked -Port $Port "
+        "-DataDirectory $DataDirectory -TimeoutSeconds 1 -Operation {}\n",
         encoding="ascii",
     )
     atomic_handoff_script = tmp_path / "hold-atomic-handoff.ps1"
     atomic_handoff_script.write_text(
-        "param($Contract, $Port, $Ready, $Release)\n"
+        "param($Contract, $Port, $DataDirectory, $InstanceId, "
+        "$SystemIdentifier, $Ready, $Release)\n"
         ". $Contract\n"
         "$lease = Invoke-XpjTestPostgresLifecycleLocked -Port $Port "
+        "-DataDirectory $DataDirectory "
         "-TimeoutSeconds 5 -Operation {\n"
-        "  Enter-XpjTestPostgresConsumerLease -Port $Port -TimeoutSeconds 5\n"
+        "  Enter-XpjTestPostgresConsumerLease -Port $Port "
+        "-DataDirectory $DataDirectory -InstanceId $InstanceId "
+        "-SystemIdentifier $SystemIdentifier "
+        "-TimeoutSeconds 5\n"
         "}\n"
         "if ($null -eq $lease -or $null -eq $lease.Stream) { "
         "throw 'atomic handoff did not return one live lease' }\n"
@@ -74,6 +107,36 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
 
     for index, engine in enumerate(powershell_contract_engines()):
         port = _free_local_port()
+        data_directory = tmp_path / f"consumer-cluster-{index}"
+        instance_id = "b" * 32
+        system_identifier = f"12345678901234567{index + 10}"
+        prepared = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(setup_authority_script),
+                "-Contract",
+                str(TEST_POSTGRES_CONTRACT),
+                "-DataDirectory",
+                str(data_directory),
+                "-Port",
+                str(port),
+                "-SystemIdentifier",
+                system_identifier,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert prepared.returncode == 0, prepared.stdout + prepared.stderr
         child_pid_path = tmp_path / f"child-{index}.pid"
         consumer_ready = tmp_path / f"consumer-{index}.ready"
         consumer_release = tmp_path / f"consumer-{index}.release"
@@ -83,6 +146,12 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
             "XPJ_CONSUMER_READY": str(consumer_ready),
             "XPJ_CONSUMER_RELEASE": str(consumer_release),
             "XPJ_CONSUMER_DONE": str(consumer_done),
+            "XPJ_TEST_CLUSTER_AUTHORITY": "owned-marker",
+            "XPJ_TEST_CLUSTER_INSTANCE_ID": instance_id,
+            "XPJ_TEST_CLUSTER_MARKER_PATH": str(
+                data_directory / ".xpj-test-cluster.json"
+            ),
+            "XPJ_TEST_CLUSTER_SYSTEM_IDENTIFIER": system_identifier,
         }
         existing_pythonpath = environment.get("PYTHONPATH", "")
         environment["PYTHONPATH"] = os.pathsep.join(
@@ -120,10 +189,19 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
                 time.sleep(0.05)
             assert consumer_ready.exists()
             child_pid = int(child_pid_path.read_text(encoding="ascii"))
+            lease_directory = data_directory / ".xpj-test-postgres-consumers"
+            assert len(list(lease_directory.glob("*.lease"))) == 1
+            assert not list(lease_directory.glob("*.lease.json"))
+            assert not list(lease_directory.glob("*.lease.lock"))
 
             launcher.kill()
             launcher.communicate(timeout=10)
-            blocked = _run_lifecycle_contender(engine, contender_script, port)
+            blocked = _run_lifecycle_contender(
+                engine,
+                contender_script,
+                port,
+                data_directory,
+            )
             assert blocked.returncode != 0
             assert "consumer lease" in (blocked.stdout + blocked.stderr)
 
@@ -133,14 +211,70 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
                 time.sleep(0.05)
             assert consumer_done.exists()
             child_pid = None
-            unblocked = _run_lifecycle_contender(engine, contender_script, port)
+            unblocked = _run_lifecycle_contender(
+                engine,
+                contender_script,
+                port,
+                data_directory,
+            )
             assert unblocked.returncode == 0, unblocked.stdout + unblocked.stderr
 
-            lease_directory = _windows_temp_directory() / f"xpj-test-postgres-consumers-{port}"
-            lease_directory.mkdir(parents=True, exist_ok=True)
-            stale_lease = lease_directory / ("1-00000000000000000000000000000000.lease.json")
-            stale_lease.write_text("{", encoding="utf-8")
-            stale_cleanup = _run_lifecycle_contender(engine, contender_script, port)
+            untrusted_stale = lease_directory / (
+                "1-00000000000000000000000000000000.lease"
+            )
+            ensure_protected_directory(
+                lease_directory,
+                label="Test PostgreSQL consumer lease directory",
+            )
+            untrusted_stale.write_text("{", encoding="utf-8")
+            untrusted_cleanup = _run_lifecycle_contender(
+                engine,
+                contender_script,
+                port,
+                data_directory,
+            )
+            assert untrusted_cleanup.returncode != 0
+            assert "lease ACL is invalid" in (
+                untrusted_cleanup.stdout + untrusted_cleanup.stderr
+            )
+            untrusted_stale.unlink()
+
+            stale_lease = lease_directory / (
+                "1-00000000000000000000000000000000.lease"
+            )
+            prepared_stale = subprocess.run(
+                [
+                    engine,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(prepare_stale_script),
+                    "-Contract",
+                    str(TEST_POSTGRES_CONTRACT),
+                    "-DataDirectory",
+                    str(data_directory),
+                    "-LeasePath",
+                    str(stale_lease),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+            )
+            assert (
+                prepared_stale.returncode == 0
+            ), prepared_stale.stdout + prepared_stale.stderr
+            stale_cleanup = _run_lifecycle_contender(
+                engine,
+                contender_script,
+                port,
+                data_directory,
+            )
             assert stale_cleanup.returncode == 0, stale_cleanup.stdout + stale_cleanup.stderr
             assert not stale_lease.exists()
             assert not lease_directory.exists()
@@ -161,6 +295,12 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
                     str(TEST_POSTGRES_CONTRACT),
                     "-Port",
                     str(port),
+                    "-DataDirectory",
+                    str(data_directory),
+                    "-InstanceId",
+                    instance_id,
+                    "-SystemIdentifier",
+                    system_identifier,
                     "-Ready",
                     str(handoff_ready),
                     "-Release",
@@ -178,14 +318,24 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
                     assert handoff.poll() is None, handoff.communicate(timeout=2)[0]
                     time.sleep(0.05)
                 assert handoff_ready.exists()
-                handoff_blocked = _run_lifecycle_contender(engine, contender_script, port)
+                handoff_blocked = _run_lifecycle_contender(
+                    engine,
+                    contender_script,
+                    port,
+                    data_directory,
+                )
                 assert handoff_blocked.returncode != 0
                 assert "consumer lease" in (handoff_blocked.stdout + handoff_blocked.stderr)
             finally:
                 handoff_release.write_text("release", encoding="ascii")
                 handoff_output, _ = handoff.communicate(timeout=10)
             assert handoff.returncode == 0, handoff_output
-            handoff_unblocked = _run_lifecycle_contender(engine, contender_script, port)
+            handoff_unblocked = _run_lifecycle_contender(
+                engine,
+                contender_script,
+                port,
+                data_directory,
+            )
             assert handoff_unblocked.returncode == 0, handoff_unblocked.stdout + handoff_unblocked.stderr
         finally:
             if launcher.poll() is None:

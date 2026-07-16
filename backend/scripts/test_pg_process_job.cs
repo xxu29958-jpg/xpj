@@ -1,18 +1,17 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 public sealed partial class XpjTestProcessJob : IDisposable
 {
     private const uint JobObjectLimitKillOnJobClose = 0x00002000;
     private const uint GenericRead = 0x80000000;
-    private const uint GenericWrite = 0x40000000;
     private const uint FileShareRead = 0x00000001;
     private const uint FileShareWrite = 0x00000002;
-    private const uint FileShareDelete = 0x00000004;
-    private const uint CreateAlways = 2;
     private const uint OpenExisting = 3;
     private const uint FileAttributeNormal = 0x00000080;
     private const uint ExtendedStartupInfoPresent = 0x00080000;
@@ -26,6 +25,7 @@ public sealed partial class XpjTestProcessJob : IDisposable
     private IntPtr handle;
     private IntPtr startedProcessHandle;
     private int startedProcessId;
+    private bool killProcessesOnClose = true;
 
     public XpjTestProcessJob()
     {
@@ -60,6 +60,38 @@ public sealed partial class XpjTestProcessJob : IDisposable
         if (!TerminateJobObject(handle, exitCode))
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+    }
+
+    public bool WaitForAllProcesses(int milliseconds)
+    {
+        EnsureOpen();
+        if (milliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException("milliseconds");
+        }
+        Stopwatch wait = Stopwatch.StartNew();
+        while (true)
+        {
+            var accounting = new JobObjectBasicAccountingInformation();
+            if (!QueryInformationJobObject(
+                handle,
+                1,
+                out accounting,
+                Marshal.SizeOf(typeof(JobObjectBasicAccountingInformation)),
+                IntPtr.Zero))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            if (accounting.ActiveProcesses == 0)
+            {
+                return true;
+            }
+            if (wait.ElapsedMilliseconds >= milliseconds)
+            {
+                return false;
+            }
+            Thread.Sleep(10);
         }
     }
 
@@ -98,41 +130,40 @@ public sealed partial class XpjTestProcessJob : IDisposable
     public int StartProcess(
         string filePath,
         string[] arguments,
-        string stdoutPath,
-        string stderrPath)
+        FileStream stdoutStream,
+        FileStream stderrStream)
     {
-        return StartProcess(filePath, arguments, stdoutPath, stderrPath, null);
+        return StartProcess(filePath, arguments, stdoutStream, stderrStream, null);
     }
 
     public int StartProcess(
         string filePath,
         string[] arguments,
-        string stdoutPath,
-        string stderrPath,
+        FileStream stdoutStream,
+        FileStream stderrStream,
         string standardInput)
     {
         EnsureOpen();
         string fullFilePath = Path.GetFullPath(filePath);
-        string fullStdoutPath = Path.GetFullPath(stdoutPath);
-        string fullStderrPath = Path.GetFullPath(stderrPath);
         if (startedProcessHandle != IntPtr.Zero)
         {
             throw new InvalidOperationException(
                 "This lifecycle job already owns a started process.");
         }
+        if (
+            stdoutStream == null ||
+            stderrStream == null ||
+            !stdoutStream.CanWrite ||
+            !stderrStream.CanWrite)
+        {
+            throw new ArgumentException(
+                "PostgreSQL process output streams must be open and writable.");
+        }
         var inheritable = new SecurityAttributes();
         inheritable.Length = Marshal.SizeOf(typeof(SecurityAttributes));
         inheritable.InheritHandle = true;
-        IntPtr stdoutHandle = CreateFile(
-            fullStdoutPath,
-            GenericWrite,
-            FileShareRead | FileShareWrite | FileShareDelete,
-            ref inheritable,
-            CreateAlways,
-            FileAttributeNormal,
-            IntPtr.Zero);
-        ThrowIfInvalidHandle(stdoutHandle, "Cannot open PostgreSQL stdout log");
-        IntPtr stderrHandle = IntPtr.Zero;
+        IntPtr stdoutHandle = stdoutStream.SafeFileHandle.DangerousGetHandle();
+        IntPtr stderrHandle = stderrStream.SafeFileHandle.DangerousGetHandle();
         IntPtr stdinHandle = IntPtr.Zero;
         IntPtr stdinWriteHandle = IntPtr.Zero;
         IntPtr attributeList = IntPtr.Zero;
@@ -141,15 +172,6 @@ public sealed partial class XpjTestProcessJob : IDisposable
         bool attributeListInitialized = false;
         try
         {
-            stderrHandle = CreateFile(
-                fullStderrPath,
-                GenericWrite,
-                FileShareRead | FileShareWrite | FileShareDelete,
-                ref inheritable,
-                CreateAlways,
-                FileAttributeNormal,
-                IntPtr.Zero);
-            ThrowIfInvalidHandle(stderrHandle, "Cannot open PostgreSQL stderr log");
             if (standardInput == null)
             {
                 stdinHandle = CreateFile(
@@ -310,8 +332,6 @@ public sealed partial class XpjTestProcessJob : IDisposable
             }
             CloseIfValid(stdinHandle);
             CloseIfValid(stdinWriteHandle);
-            CloseIfValid(stderrHandle);
-            CloseIfValid(stdoutHandle);
         }
     }
 
@@ -353,6 +373,7 @@ public sealed partial class XpjTestProcessJob : IDisposable
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
+        killProcessesOnClose = false;
     }
 
     public void Dispose()
@@ -363,8 +384,25 @@ public sealed partial class XpjTestProcessJob : IDisposable
 
     private void Dispose(bool disposing)
     {
+        Exception disposalError = null;
         if (handle != IntPtr.Zero)
         {
+            if (disposing && killProcessesOnClose)
+            {
+                try
+                {
+                    Terminate(1);
+                    if (!WaitForAllProcesses(5000))
+                    {
+                        throw new TimeoutException(
+                            "PostgreSQL lifecycle job processes did not terminate.");
+                    }
+                }
+                catch (Exception error)
+                {
+                    disposalError = error;
+                }
+            }
             CloseHandle(handle);
             handle = IntPtr.Zero;
         }
@@ -373,6 +411,10 @@ public sealed partial class XpjTestProcessJob : IDisposable
             CloseHandle(startedProcessHandle);
             startedProcessHandle = IntPtr.Zero;
             startedProcessId = 0;
+        }
+        if (disposalError != null)
+        {
+            throw disposalError;
         }
     }
 
@@ -429,37 +471,6 @@ public sealed partial class XpjTestProcessJob : IDisposable
         {
             throw new IOException("PostgreSQL standard input was only partially written.");
         }
-    }
-
-    private static string QuoteWindowsArgument(string argument)
-    {
-        if (argument.Length > 0 && argument.IndexOfAny(new[] { ' ', '\t', '"' }) < 0)
-        {
-            return argument;
-        }
-        var result = new StringBuilder("\"");
-        int backslashes = 0;
-        foreach (char character in argument)
-        {
-            if (character == '\\')
-            {
-                backslashes++;
-                continue;
-            }
-            if (character == '"')
-            {
-                result.Append('\\', (backslashes * 2) + 1);
-            }
-            else
-            {
-                result.Append('\\', backslashes);
-            }
-            result.Append(character);
-            backslashes = 0;
-        }
-        result.Append('\\', backslashes * 2);
-        result.Append('"');
-        return result.ToString();
     }
 
 }

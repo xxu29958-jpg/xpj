@@ -173,7 +173,7 @@ if __name__ == "__main__":
         "xpj_restore",
     )
     validate_backup_drill_database_urls(source_url, restore_url)
-    with test_postgres_credential_environment(
+    with test_postgres_consumer_lease(source_url), test_postgres_credential_environment(
         source_url,
         os.environ,
     ):
@@ -189,5 +189,4 @@ if __name__ == "__main__":
         )
         os.environ["DRILL_SOURCE_URL"] = source_url
         os.environ["DRILL_RESTORE_URL"] = restore_url
-        with test_postgres_consumer_lease(source_url):
-            raise SystemExit(main())
+        raise SystemExit(main())

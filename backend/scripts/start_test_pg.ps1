@@ -47,12 +47,13 @@ $ErrorActionPreference = 'Stop'
 $script:XpjTestPostgresProcessTimeoutSeconds = $ProcessTimeoutSeconds
 
 Assert-XpjTestPostgresLifecycleRequest -Purpose $Purpose -Port $Port
+$DataDir = Resolve-XpjTestPostgresDataDirectory $DataDir
 
 Invoke-XpjTestPostgresLifecycleLocked `
     -Port $Port `
+    -DataDirectory $DataDir `
     -TimeoutSeconds $LifecycleMutexTimeoutSeconds `
     -Operation {
-$DataDir = Resolve-XpjTestPostgresDataDirectory $DataDir
 $PostgresBin = Resolve-XpjTestPostgresBin $PostgresBin
 Assert-XpjTestPostgresRequiredAuthClient $PostgresBin
 $parentPathLease = [XpjTestDirectoryPathLease]::OpenParent($DataDir)
@@ -94,12 +95,38 @@ try {
         Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
     )
     if ($listeners.Count -gt 0) {
-        [void](Assert-XpjTestPostgresListenerOwnership `
+        $liveRecord = Assert-XpjTestPostgresListenerOwnership `
             -ExpectedPort $Port `
-            -ExpectedDataDirectory $DataDir)
-        $alreadyUp = $true
+            -ExpectedDataDirectory $DataDir
+        if ($marker.Authentication -ceq 'legacy-trust') {
+            $generation = Get-XpjTestPostgresProcessGeneration $liveRecord
+            if ($generation.State -cne 'matching') {
+                throw 'Legacy test PostgreSQL process generation changed before conversion.'
+            }
+            $verifiedProcess = $generation.Process
+            [void]$verifiedProcess.Handle
+            try {
+                Assert-XpjTestPostgresLegacyOnlineIdentity `
+                    -PostgresBin $PostgresBin `
+                    -DataDirectory $DataDir `
+                    -Port $Port `
+                    -SystemIdentifier $marker.SystemIdentifier
+                Stop-XpjTestPostgresVerifiedPostmaster `
+                    -PostgresBin $PostgresBin `
+                    -DataDirectory $DataDir `
+                    -Port $Port `
+                    -ProcessId $liveRecord.ProcessId `
+                    -Process $verifiedProcess
+            }
+            finally {
+                $verifiedProcess.Dispose()
+            }
+        }
+        else {
+            $alreadyUp = $true
+        }
     }
-    else {
+    if (-not $alreadyUp) {
         $pidPath = Join-Path $DataDir 'postmaster.pid'
         if (Test-Path -LiteralPath $pidPath -PathType Leaf) {
             $record = Read-XpjTestPostgresPostmasterRecord $DataDir
@@ -109,8 +136,31 @@ try {
             }
             Remove-Item -LiteralPath $pidPath -Force -ErrorAction Stop
         }
+        $authentication = Prepare-XpjTestPostgresScramAuthenticationOffline `
+            -PostgresBin $PostgresBin `
+            -DataDirectory $DataDir `
+            -Port $Port `
+            -Marker $marker
+        $marker = $authentication.Marker
+        $credentialPath = [string]$authentication.CredentialPath
         $serverLog = Join-Path $DataDir 'server.log'
         $serverErrorLog = Join-Path $DataDir 'server-error.log'
+        foreach ($processOutput in @($serverLog, $serverErrorLog)) {
+            if (Test-Path -LiteralPath $processOutput) {
+                $processOutputItem = Get-Item `
+                    -LiteralPath $processOutput `
+                    -Force `
+                    -ErrorAction Stop
+                if (
+                    $processOutputItem.PSIsContainer -or
+                    ($processOutputItem.Attributes -band
+                        [System.IO.FileAttributes]::ReparsePoint) -ne 0
+                ) {
+                    throw "PostgreSQL process output target must be a regular file: $processOutput"
+                }
+                Remove-Item -LiteralPath $processOutput -Force -ErrorAction Stop
+            }
+        }
         $uncommittedStart = Start-XpjTestPostgresUncommittedProcess `
             -FilePath (Join-Path $PostgresBin 'postgres.exe') `
             -ArgumentList @(
@@ -140,6 +190,12 @@ try {
             Start-Sleep -Milliseconds 100
         }
     }
+    else {
+        $authority = Get-XpjTestPostgresScramAuthority `
+            -DataDirectory $DataDir `
+            -Marker $marker
+        $credentialPath = [string]$authority.CredentialPath
+    }
 
     $requiredDatabases = if ($Purpose -eq 'ci') {
         @('xpj_test', 'xpj_smoke', 'xpj_restore')
@@ -148,11 +204,11 @@ try {
         @('xpj_test', 'xpj_smoke')
     }
     try {
-        $authentication = Ensure-XpjTestPostgresScramAuthentication `
+        [void](Assert-XpjTestPostgresScramAuthenticationOnline `
             -PostgresBin $PostgresBin `
             -DataDirectory $DataDir `
             -Port $Port `
-            -Marker $marker
+            -Marker $marker)
     }
     catch {
         if ($alreadyUp) {
@@ -163,8 +219,6 @@ try {
         }
         throw
     }
-    $marker = $authentication.Marker
-    $credentialPath = [string]$authentication.CredentialPath
     Invoke-XpjTestPostgresIdentitySession `
         -PostgresBin $PostgresBin `
         -DataDirectory $DataDir `
@@ -174,6 +228,7 @@ try {
         -ResetDatabases:$ResetDatabases `
         -RequireNoOtherSessions:$ResetDatabases
     $env:XPJ_TEST_CLUSTER_AUTHORITY = 'owned-marker'
+    $env:XPJ_TEST_CLUSTER_INSTANCE_ID = [string]$marker.InstanceId
     $env:XPJ_TEST_CLUSTER_MARKER_PATH = [string]$marker.Path
     $env:XPJ_TEST_CLUSTER_SYSTEM_IDENTIFIER = [string]$marker.SystemIdentifier
     $env:XPJ_TEST_POSTGRES_CREDENTIAL_FILE = $credentialPath
@@ -198,6 +253,9 @@ Write-Host '  .\.venv\Scripts\python.exe scripts\run_test_lanes.py full'
 $global:LASTEXITCODE = 0
 if ($AcquireConsumerLease) {
     Enter-XpjTestPostgresConsumerLease `
+        -DataDirectory $DataDir `
+        -InstanceId $marker.InstanceId `
+        -SystemIdentifier $marker.SystemIdentifier `
         -Port $Port `
         -TimeoutSeconds $LifecycleMutexTimeoutSeconds
 }
