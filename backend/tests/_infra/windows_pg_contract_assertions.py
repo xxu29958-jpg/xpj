@@ -199,6 +199,7 @@ def _assert_script_contract(project_root: Path) -> None:
             for name in (
                 "test_pg_protected_file.py",
                 "test_pg_protected_reader.py",
+                "test_pg_windows_acl.py",
             )
         ),
         "python_consumer": "\n".join(
@@ -235,7 +236,7 @@ def _assert_packaging_runtime_budget(
     job = workflow.split(f"  {job_name}:", 1)[1].split(f"\n  {next_job_name}:", 1)[0]
     assert f"    timeout-minutes: {job_minutes}" in job
     step = job.split("      - name: Windows installer safety behavior\n", 1)[1].split("\n      - name:", 1)[0]
-    assert "        timeout-minutes: 10" in step
+    assert "        timeout-minutes: 12" in step
     assert '          XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME: "1"' in step
     assert "scripts/run_packaging_tests.py" in step.replace("\\", "/")
 

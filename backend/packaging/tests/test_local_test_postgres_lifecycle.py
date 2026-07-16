@@ -23,6 +23,8 @@ from _local_test_postgres_runtime import (
 )
 from _powershell_contract import powershell_contract_engines
 
+from scripts.test_pg_protected_file import write_protected_utf8_file
+
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_local_test_postgres_rejects_a_different_cluster_before_provisioning(
@@ -44,9 +46,10 @@ def test_local_test_postgres_rejects_a_different_cluster_before_provisioning(
         )
         assert expected_start.returncode == 0, expected_start.stdout + expected_start.stderr
         _stop_preserving_data(postgres_bin, expected_dir)
-        (expected_dir / "postmaster.pid").write_text(
+        write_protected_utf8_file(
+            (expected_dir / "postmaster.pid").resolve(),
             f"{os.getpid()}\n{expected_dir.resolve()}\n1\n{port}\n",
-            encoding="ascii",
+            label="synthetic stale PostgreSQL process identity",
         )
         reused_pid_restart = _run_lifecycle(
             powershell_7,
@@ -248,9 +251,14 @@ def test_local_test_postgres_rejects_a_different_cluster_before_provisioning(
         assert refused_stop.returncode != 0, refused_output
         assert "is not quiescent" in refused_output, refused_output
         assert actual_dir.exists()
-        actual_pid_path.write_text(actual_pid_text, encoding="utf-8")
+        write_protected_utf8_file(
+            actual_pid_path.resolve(),
+            actual_pid_text,
+            label="restored PostgreSQL process identity",
+        )
 
-        (expected_dir / "postmaster.pid").write_text(
+        write_protected_utf8_file(
+            (expected_dir / "postmaster.pid").resolve(),
             "\n".join(
                 (
                     actual_pid_lines[0],
@@ -260,7 +268,7 @@ def test_local_test_postgres_rejects_a_different_cluster_before_provisioning(
                 )
             )
             + "\n",
-            encoding="ascii",
+            label="synthetic cross-cluster PostgreSQL process identity",
         )
 
         drop = _run_pg(
