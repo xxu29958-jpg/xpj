@@ -61,7 +61,7 @@ jobs:
     steps:
       - run: .\\.ci-venv\\Scripts\\python.exe -m compileall app scripts tests packaging/tests
       - run: .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests packaging/tests
-      - run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests -p no:cacheprovider
+      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\run_packaging_tests.py
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\\build_backend_exe.ps1 -Clean
@@ -113,15 +113,11 @@ jobs:
 def _assert_pytest_lane_scope(mod, commands) -> None:
     """The business and installer suites must not satisfy each other's gate."""
 
-    installer_only = [command for command in commands if "packaging/tests" in command.text]
+    installer_only = [command for command in commands if "run_packaging_tests.py" in command.text]
     assert "pytest PostgreSQL parallel lane" in mod._missing_ci_invocations(installer_only)
     assert "pytest stateful serial lane" in mod._missing_ci_invocations(installer_only)
     assert "pytest installer safety lane" not in mod._missing_ci_invocations(installer_only)
-    business_only = [
-        command
-        for command in commands
-        if "run_test_lanes.py" in command.text and "packaging/tests" not in command.text
-    ]
+    business_only = [command for command in commands if "run_test_lanes.py" in command.text]
     assert "pytest installer safety lane" in mod._missing_ci_invocations(business_only)
     assert "pytest PostgreSQL parallel lane" not in mod._missing_ci_invocations(business_only)
     assert "pytest stateful serial lane" not in mod._missing_ci_invocations(business_only)
@@ -229,9 +225,7 @@ jobs:
 
     commands = mod._iter_workflow_run_commands(workflows)
     executable_segments = mod._iter_executable_command_segments(commands)
-    compile_matcher, verify_matcher = mod.REQUIRED_CI_INVOCATIONS_BY_PLATFORM[
-        "GitHub"
-    ]
+    compile_matcher, verify_matcher = mod.REQUIRED_CI_INVOCATIONS_BY_PLATFORM["GitHub"]
 
     assert not any(compile_matcher.matches(item) for item in executable_segments)
     assert not any(verify_matcher.matches(item) for item in executable_segments)
@@ -277,8 +271,7 @@ jobs:
     commands.append(
         mod.WorkflowCommand(
             Path("ci.yml"),
-            "powershell -NoProfile -File packaging\\build_inno_installer.ps1 "
-            "-CheckSourceInputsOnly",
+            "powershell -NoProfile -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly",
         )
     )
     assert "installer source preflight (Windows PowerShell 5.1)" not in mod._missing_ci_invocations(commands)
@@ -286,8 +279,7 @@ jobs:
     commands.append(
         mod.WorkflowCommand(
             Path("ci.yml"),
-            "pwsh -NoProfile -File packaging\\build_inno_installer.ps1 "
-            "-CheckSourceInputsOnly",
+            "pwsh -NoProfile -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly",
         )
     )
     assert "installer source preflight (PowerShell 7)" not in mod._missing_ci_invocations(commands)

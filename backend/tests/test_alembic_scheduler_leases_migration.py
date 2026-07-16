@@ -12,7 +12,7 @@ columns / nullability / primary key — not just that the table name exists.
 It also pins the one-way ``app_meta`` cleanup: a pre-table ``scheduler_lease:*`` row
 is removed by the upgrade while an unrelated key (``schema_version``) survives.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its
+Explicitly marked ``real_db`` + ``stateful_serial`` because it issues DDL via its
 own ``engine.begin()`` connections outside the per-test transaction.
 """
 

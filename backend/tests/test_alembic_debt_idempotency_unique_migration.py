@@ -9,7 +9,7 @@ them directly on PostgreSQL (the prod dialect): stamp head → downgrade past 00
 Pins that the forward migration removes exactly the slice-1 fact-table uniques
 and round-trips, and that ``create_all`` no longer carries them.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via
+Explicitly marked ``real_db`` + ``stateful_serial`` because it issues DDL via
 its own ``engine.begin()`` connections outside the per-test transaction.
 """
 

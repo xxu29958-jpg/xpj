@@ -72,7 +72,7 @@ def transactional_isolation() -> Iterator[None]:
     Work that opens a session on ANOTHER thread — a FastAPI ``BackgroundTask``
     such as ``enrich_pending_expense`` — cannot safely share this single
     connection, so tests asserting on that output opt out via
-    ``@pytest.mark.real_db`` (see conftest ``_PG_REAL_DB_NODES``).
+    an explicit ``@pytest.mark.real_db`` declaration.
 
     SessionLocal is restored to its engine binding BEFORE the rollback so a
     rollback hiccup can't leave a later test bound to a closed connection.

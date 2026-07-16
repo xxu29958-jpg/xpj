@@ -63,6 +63,7 @@ def test_two_sessions_bootstrap_recovery_avoids_device_token_deadlock(
     assert_pre_authenticated_credential_mints_fail_after_rotation(monkeypatch)
 
 
+@pytest.mark.real_db
 def test_two_sessions_ordinary_revocations_serialize_credential_mints(
     monkeypatch: pytest.MonkeyPatch,
     identity: TestIdentity,
@@ -74,6 +75,7 @@ def test_two_sessions_ordinary_revocations_serialize_credential_mints(
     )
 
 
+@pytest.mark.real_db
 def test_two_sessions_switch_revalidates_target_before_revoking_source(
     monkeypatch: pytest.MonkeyPatch,
     identity: TestIdentity,

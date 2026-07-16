@@ -80,6 +80,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
           git -C $ws log --oneline -1
 
+      - name: Verify Gitea runner lifecycle contract
+        run: ..\backend\scripts\assert_gitea_runner_contract.ps1
+
       - name: Point Gradle at local Android SDK
         run: |
           if (-not (Test-Path $env:ANDROID_HOME)) {

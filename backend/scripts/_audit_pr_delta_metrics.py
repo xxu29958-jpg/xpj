@@ -27,12 +27,12 @@ What this lane counts
   the per-code distribution must match baseline; a missed
   reclassification shows up as a mismatch on the specific counter.
 - **backend_pytest_count** — exact count from ``pytest --collect-only``.
-- **backend_pytest_parallel_count** / **backend_pytest_stateful_count** —
-  exact selected counts for the explicit ``stateful_serial`` partition.
-- **backend_pytest_stateful_membership_digest** records a SHA-256 fingerprint
-  of the sorted stateful node ids. Markers remain the execution authority; the
-  fingerprint only prevents equal-count marker swaps from silently demoting a
-  known serialized risk proof.
+- **backend_pytest_parallel_count**, **backend_pytest_real_db_count**, and
+  **backend_pytest_stateful_count** record the explicit marker partition.
+- **backend_pytest_*_membership_digest** records sorted SHA-256 fingerprints for
+  ``real_db`` and ``stateful_serial``. The gate also protects exact-base backend,
+  parallel, marker, and packaging memberships. A parallel test may leave that
+  lane only by promotion into ``stateful_serial``.
 - **installer_pytest_count** — exact count from the isolated Windows installer
   contract lane under ``packaging/tests``.
 
@@ -48,13 +48,15 @@ Run from ``backend/``::
 
 from __future__ import annotations
 
+import io
 import os
 import pathlib
-import re
 import subprocess
 import sys
+import tarfile
 from collections import Counter
-from hashlib import sha256
+from collections.abc import Mapping
+from tempfile import TemporaryDirectory
 
 # sys.path bootstrap so sibling scripts + ``app.*`` imports both resolve
 # whether the script is run directly, via release_audit subprocess, or
@@ -78,7 +80,19 @@ from _audit_mutate_token_coverage import (  # noqa: E402 — sys.path bootstrap 
     _operation_carries_token,
 )
 from _mutate_token_ledger import ALLOWLIST, REASON_CODES  # noqa: E402
+from adr_contract_git import (  # noqa: E402
+    has_auditable_ci_context,
+    select_ratchet_base,
+)
 from codebase_audit_gate import evaluate_pr_delta_metrics  # noqa: E402
+from pytest_execution_contract import (  # noqa: E402
+    collect_pytest_snapshot,
+    parse_pytest_collection,
+    pytest_collection_command,
+    pytest_execution_environment,
+    pytest_nodeid_digest,
+)
+from pytest_membership_gate import evaluate_protected_pytest_memberships  # noqa: E402
 
 
 def _count_mutate_token_metrics() -> dict[str, int]:
@@ -124,83 +138,43 @@ def _count_mutate_token_metrics() -> dict[str, int]:
     return out
 
 
+def _pytest_collection_environment() -> dict[str, str]:
+    return pytest_execution_environment()
+
+
+def _pytest_collection_command(
+    target: str,
+    mark_expression: str | None,
+) -> list[str]:
+    return pytest_collection_command(target, mark_expression)
+
+
+def _parse_pytest_collection(
+    target: str,
+    result: subprocess.CompletedProcess[str],
+    *,
+    allow_empty: bool,
+) -> tuple[int, tuple[str, ...]]:
+    snapshot = parse_pytest_collection(target, result, allow_empty=allow_empty)
+    return snapshot.count, snapshot.nodeids
+
+
 def _collect_pytest_tests(
     target: str,
     *,
     mark_expression: str | None = None,
+    backend_root: pathlib.Path = _BACKEND_ROOT,
+    allow_empty: bool = False,
 ) -> tuple[int, tuple[str, ...]]:
-    """Exact pytest count and node ids for one explicit collection root.
+    """Collect exact pytest node ids from one explicit root and marker filter."""
 
-    NOT regex on ``def test_*``. Per ADR-0038 prep design: regex has
-    built-in tolerance for parametrize / commented-out tests / multiline
-    decorators that directly contradicts the precise-Δ-reconciliation
-    purpose. ``--collect-only`` reports the actual collected test count
-    (parametrized expansions included), which is what cut-over PRs
-    declare deltas against.
-
-    An explicit positional target avoids relying on pyproject.toml's testpaths
-    default, keeping business and installer contracts independently auditable.
-    """
-    environment = os.environ.copy()
-    environment.pop("PYTEST_ADDOPTS", None)
-    environment.pop("PYTEST_PLUGINS", None)
-    environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-    command = [
-        sys.executable,
-        "-m",
-        "pytest",
+    snapshot = collect_pytest_snapshot(
         target,
-        "--collect-only",
-        "-q",
-        "--strict-markers",
-    ]
-    if mark_expression is not None:
-        command.extend(["-m", mark_expression])
-    command.extend(["-o", "addopts="])
-    result = subprocess.run(
-        command,
-        cwd=_BACKEND_ROOT,
-        env=environment,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",  # Windows GBK default mangles Chinese in pytest warnings
-        errors="replace",
-        check=False,
-        timeout=300,
+        mark_expression=mark_expression,
+        backend_root=backend_root,
+        allow_empty=allow_empty,
     )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"`pytest {target} --collect-only` failed (exit={result.returncode}).\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
-        )
-    # With -m, pytest reports "selected/total tests collected". Count the
-    # selected side; without -m the optional numerator is absent. Quiet
-    # collection also emits one canonical node id per selected test.
-    count: int | None = None
-    for line in reversed(result.stdout.splitlines()):
-        match = re.search(r"(?:(\d+)/)?(\d+)\s+tests?\s+collected", line)
-        if match:
-            count = int(match.group(1) or match.group(2))
-            break
-    if count is None:
-        raise RuntimeError(
-            f"could not parse `pytest {target} --collect-only` output.\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
-        )
-    nodeid_prefix = f"{target.rstrip('/')}/"
-    nodeids = tuple(
-        line.strip()
-        for line in result.stdout.splitlines()
-        if line.startswith(nodeid_prefix) and "::" in line
-    )
-    if len(nodeids) != count:
-        raise RuntimeError(
-            f"pytest reported {count} selected tests for {target!r}, but the "
-            f"collector emitted {len(nodeids)} node ids."
-        )
-    return count, nodeids
+    return snapshot.count, snapshot.nodeids
 
 
 def _count_pytest_tests(
@@ -215,8 +189,100 @@ def _count_pytest_tests(
 
 
 def _pytest_membership_digest(nodeids: tuple[str, ...]) -> int:
-    canonical = "".join(f"{nodeid}\n" for nodeid in sorted(nodeids))
-    return int.from_bytes(sha256(canonical.encode("utf-8")).digest(), "big")
+    return int(pytest_nodeid_digest(nodeids), 16)
+
+
+def _extract_trusted_backend_snapshot(ref: str, destination: pathlib.Path) -> None:
+    result = subprocess.run(
+        ["git", "archive", "--format=tar", ref, "backend"],
+        cwd=_BACKEND_ROOT.parent,
+        capture_output=True,
+        check=False,
+        timeout=60,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.decode("utf-8", errors="replace")
+        raise RuntimeError(f"git archive failed for {ref}: {stderr}")
+    destination_root = destination.resolve()
+    with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:") as archive:
+        members = archive.getmembers()
+        for member in members:
+            member_path = (destination / member.name).resolve()
+            if (
+                not member_path.is_relative_to(destination_root)
+                or not (member.name == "backend" or member.name.startswith("backend/"))
+                or not (member.isfile() or member.isdir())
+            ):
+                raise RuntimeError(f"base backend archive contains an unsafe member: {member.name!r}")
+        archive.extractall(destination, members=members, filter="data")
+
+
+def _collect_base_pytest_memberships(
+    environment: Mapping[str, str],
+) -> tuple[bool, dict[str, tuple[str, ...]], bool, str | None]:
+    environ = dict(environment)
+    base_required = bool(environ.get("XPJ_AUDIT_BASE_REF", "").strip()) or (has_auditable_ci_context(environ))
+    selected, selection_error = select_ratchet_base(_BACKEND_ROOT.parent, environ)
+    if selected is None:
+        return False, {}, base_required, selection_error
+    try:
+        with TemporaryDirectory(prefix="xpj-pytest-base-") as temporary:
+            snapshot_root = pathlib.Path(temporary)
+            _extract_trusted_backend_snapshot(selected.commit, snapshot_root)
+            backend_root = snapshot_root / "backend"
+            conftest_text = (backend_root / "tests" / "conftest.py").read_text(
+                encoding="utf-8"
+            )
+            memberships = {
+                "backend_all": _collect_pytest_tests(
+                    "tests",
+                    backend_root=backend_root,
+                )[1],
+                "backend_parallel": _collect_pytest_tests(
+                    "tests",
+                    mark_expression="not stateful_serial",
+                    backend_root=backend_root,
+                )[1],
+                "parallel_safe": (
+                    _collect_pytest_tests(
+                        "tests",
+                        mark_expression="parallel_safe",
+                        backend_root=backend_root,
+                        allow_empty=True,
+                    )[1]
+                    if "parallel_safe:" in conftest_text
+                    else ()
+                ),
+                "real_db": _collect_pytest_tests(
+                    "tests",
+                    mark_expression="real_db",
+                    backend_root=backend_root,
+                    allow_empty=True,
+                )[1],
+                "stateful_serial": _collect_pytest_tests(
+                    "tests",
+                    mark_expression="stateful_serial",
+                    backend_root=backend_root,
+                    allow_empty=True,
+                )[1],
+                "cluster_serial": (
+                    _collect_pytest_tests(
+                        "tests",
+                        mark_expression="cluster_serial",
+                        backend_root=backend_root,
+                        allow_empty=True,
+                    )[1]
+                    if "cluster_serial:" in conftest_text
+                    else ()
+                ),
+                "packaging_all": _collect_pytest_tests(
+                    "packaging/tests",
+                    backend_root=backend_root,
+                )[1],
+            }
+    except (OSError, RuntimeError, subprocess.SubprocessError, tarfile.TarError) as exc:
+        return False, {}, base_required, f"{selected.ref}: {exc}"
+    return True, memberships, base_required, None
 
 
 def main() -> int:
@@ -232,27 +298,63 @@ def main() -> int:
 
     counts: dict[str, int] = {}
     counts.update(_count_mutate_token_metrics())
-    counts["backend_pytest_count"] = _count_pytest_tests("tests")
-    counts["backend_pytest_parallel_count"] = _count_pytest_tests(
+    backend_count, backend_nodeids = _collect_pytest_tests("tests")
+    counts["backend_pytest_count"] = backend_count
+    parallel_count, parallel_nodeids = _collect_pytest_tests(
         "tests",
         mark_expression="not stateful_serial",
     )
+    counts["backend_pytest_parallel_count"] = parallel_count
+    parallel_safe_count, parallel_safe_nodeids = _collect_pytest_tests(
+        "tests",
+        mark_expression="parallel_safe",
+    )
+    counts["backend_pytest_parallel_safe_count"] = parallel_safe_count
+    real_db_count, real_db_nodeids = _collect_pytest_tests(
+        "tests",
+        mark_expression="real_db",
+    )
+    counts["backend_pytest_real_db_count"] = real_db_count
+    counts["backend_pytest_real_db_membership_digest"] = _pytest_membership_digest(real_db_nodeids)
     stateful_count, stateful_nodeids = _collect_pytest_tests(
         "tests",
         mark_expression="stateful_serial",
     )
     counts["backend_pytest_stateful_count"] = stateful_count
-    counts["backend_pytest_stateful_membership_digest"] = (
-        _pytest_membership_digest(stateful_nodeids)
+    counts["backend_pytest_stateful_membership_digest"] = _pytest_membership_digest(stateful_nodeids)
+    cluster_count, cluster_nodeids = _collect_pytest_tests(
+        "tests",
+        mark_expression="cluster_serial",
     )
-    counts["installer_pytest_count"] = _count_pytest_tests("packaging/tests")
+    counts["backend_pytest_cluster_count"] = cluster_count
+    counts["backend_pytest_cluster_membership_digest"] = _pytest_membership_digest(cluster_nodeids)
+    installer_count, installer_nodeids = _collect_pytest_tests("packaging/tests")
+    counts["installer_pytest_count"] = installer_count
 
     print("Actuals:")
     for key, value in sorted(counts.items()):
         print(f"  {key:50} {value:6d}")
     print()
 
-    return evaluate_pr_delta_metrics(counts)
+    current_memberships = {
+        "backend_all": backend_nodeids,
+        "backend_parallel": parallel_nodeids,
+        "parallel_safe": parallel_safe_nodeids,
+        "real_db": real_db_nodeids,
+        "stateful_serial": stateful_nodeids,
+        "cluster_serial": cluster_nodeids,
+        "packaging_all": installer_nodeids,
+    }
+    base_readable, base_memberships, base_required, base_error = _collect_base_pytest_memberships(os.environ)
+    metrics_exit = evaluate_pr_delta_metrics(counts)
+    membership_exit = evaluate_protected_pytest_memberships(
+        current_memberships,
+        base_memberships,
+        base_readable=base_readable,
+        base_required=base_required,
+        base_error=base_error,
+    )
+    return 1 if metrics_exit or membership_exit else 0
 
 
 if __name__ == "__main__":

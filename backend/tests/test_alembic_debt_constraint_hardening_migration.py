@@ -17,7 +17,7 @@ The ``create_all`` step is ALSO the only automated proof that the nullable circu
 fresh DB — without ``use_alter=True`` on the committed_repayment_id side it would raise
 CircularDependencyError at table-sort time.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``): it issues DDL via its own
+Explicitly marked ``real_db`` + ``stateful_serial``: it issues DDL via its own
 ``engine.begin()`` connections outside the per-test transaction.
 """
 

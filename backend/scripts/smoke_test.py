@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -17,10 +18,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 HOST = "127.0.0.1"
 SESSION_TOKEN = ""
 BOOTSTRAP_ADMIN_TOKEN = ""
 UPLOAD_PATH = ""
+_PARENT_WATCH_EXIT_CODE = 3
 
 
 PNG_BYTES = base64.b64decode(
@@ -71,6 +75,114 @@ def free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind((HOST, 0))
         return int(sock.getsockname()[1])
+
+
+def windows_process_creation_identity(process_id: int) -> int:
+    """Return the immutable Windows creation FILETIME for one process."""
+
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetProcessTimes.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME),
+    ]
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    handle = kernel32.OpenProcess(0x00100000 | 0x00001000, False, process_id)
+    if not handle:
+        raise OSError(ctypes.get_last_error(), "Cannot open smoke parent process")
+    try:
+        created = wintypes.FILETIME()
+        exited = wintypes.FILETIME()
+        kernel = wintypes.FILETIME()
+        user = wintypes.FILETIME()
+        if not kernel32.GetProcessTimes(
+            handle,
+            ctypes.byref(created),
+            ctypes.byref(exited),
+            ctypes.byref(kernel),
+            ctypes.byref(user),
+        ):
+            raise OSError(ctypes.get_last_error(), "Cannot identify smoke parent process")
+        return (created.dwHighDateTime << 32) | created.dwLowDateTime
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def start_smoke_parent_watchdog(
+    *,
+    parent_process_id: int | None = None,
+    parent_created: int | None = None,
+    parent_watch_fd: int | None = None,
+) -> None:
+    """Exit the disposable smoke child when its exact parent generation dies."""
+
+    def abort_child() -> None:
+        os._exit(_PARENT_WATCH_EXIT_CODE)
+
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        if parent_process_id is None or parent_created is None:
+            raise RuntimeError("Windows smoke child requires its parent process identity")
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        handle = kernel32.OpenProcess(
+            0x00100000 | 0x00001000,
+            False,
+            parent_process_id,
+        )
+        if not handle:
+            abort_child()
+        try:
+            if windows_process_creation_identity(parent_process_id) != parent_created:
+                kernel32.CloseHandle(handle)
+                abort_child()
+        except OSError:
+            kernel32.CloseHandle(handle)
+            abort_child()
+
+        def watch_windows_parent() -> None:
+            result = kernel32.WaitForSingleObject(handle, 0xFFFFFFFF)
+            kernel32.CloseHandle(handle)
+            if result != 0:
+                abort_child()
+            abort_child()
+
+        target = watch_windows_parent
+    else:
+        if parent_watch_fd is None:
+            raise RuntimeError("Smoke child requires its parent watch pipe")
+
+        def watch_posix_parent() -> None:
+            try:
+                while os.read(parent_watch_fd, 1):
+                    pass
+            finally:
+                os.close(parent_watch_fd)
+            abort_child()
+
+        target = watch_posix_parent
+
+    threading.Thread(
+        target=target,
+        name="smoke-parent-watchdog",
+        daemon=True,
+    ).start()
 
 
 def app_headers() -> dict[str, str]:
@@ -163,9 +275,7 @@ def start_server(port: int) -> subprocess.Popen:
             # lane sets SMOKE_DATABASE_URL to its ephemeral cluster; a local run
             # falls back to the throwaway test PG on :5438 (start_test_pg.ps1
             # brings it up and creates xpj_smoke).
-            "DATABASE_URL": os.environ.get(
-                "SMOKE_DATABASE_URL", "postgresql+psycopg://postgres@localhost:5438/xpj_smoke"
-            ),
+            "DATABASE_URL": os.environ["SMOKE_DATABASE_URL"],
             "UPLOAD_DIR": "uploads/smoke_test",
             "MAX_UPLOAD_SIZE_MB": "10",
             "DELETE_IMAGE_AFTER_CONFIRM": "false",
@@ -178,24 +288,47 @@ def start_server(port: int) -> subprocess.Popen:
     )
     SERVER_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     server_log = SERVER_LOG_PATH.open("w", encoding="utf-8", errors="replace")
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "app.main:app",
-            "--host",
-            HOST,
-            "--port",
-            str(port),
-            "--no-access-log",
-        ],
-        cwd=BACKEND_ROOT,
-        env=env,
-        stdout=server_log,
-        stderr=subprocess.STDOUT,
-    )
+    parent_watch_writer: int | None = None
+    inherited_watch_reader: int | None = None
+    child_arguments = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--serve",
+        str(port),
+    ]
+    popen_options: dict = {}
+    if os.name == "nt":
+        child_arguments.extend(
+            [
+                "--parent-process-id",
+                str(os.getpid()),
+                "--parent-created",
+                str(windows_process_creation_identity(os.getpid())),
+            ]
+        )
+    else:
+        inherited_watch_reader, parent_watch_writer = os.pipe()
+        child_arguments.extend(["--parent-watch-fd", str(inherited_watch_reader)])
+        popen_options["pass_fds"] = (inherited_watch_reader,)
+    try:
+        process = subprocess.Popen(
+            child_arguments,
+            cwd=BACKEND_ROOT,
+            env=env,
+            stdout=server_log,
+            stderr=subprocess.STDOUT,
+            **popen_options,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError):
+        server_log.close()
+        if parent_watch_writer is not None:
+            os.close(parent_watch_writer)
+        raise
+    finally:
+        if inherited_watch_reader is not None:
+            os.close(inherited_watch_reader)
     process.smoke_server_log = server_log  # type: ignore[attr-defined]
+    process.smoke_parent_watch_writer = parent_watch_writer  # type: ignore[attr-defined]
     return process
 
 
@@ -979,9 +1112,94 @@ def main() -> int:
         server_log = getattr(process, "smoke_server_log", None)
         if server_log:
             server_log.close()
+        parent_watch_writer = getattr(process, "smoke_parent_watch_writer", None)
+        if parent_watch_writer is not None:
+            os.close(parent_watch_writer)
         cleanup_server_log()
         clean_smoke_runtime()
 
 
+def run_server(port: int) -> int:
+    import uvicorn
+
+    uvicorn.run("app.main:app", host=HOST, port=port, access_log=False)
+    return 0
+
+
+def run_server_child(arguments: list[str]) -> int:
+    if len(arguments) < 2 or arguments[0] != "--serve":
+        raise SystemExit(
+            "usage: smoke_test.py --serve PORT "
+            "[--parent-process-id PID --parent-created FILETIME | --parent-watch-fd FD]"
+        )
+    port = int(arguments[1])
+    options = dict(zip(arguments[2::2], arguments[3::2], strict=True))
+    if os.name == "nt":
+        expected = {"--parent-process-id", "--parent-created"}
+        if set(options) != expected:
+            raise SystemExit("Windows smoke child requires one exact parent process identity")
+        start_smoke_parent_watchdog(
+            parent_process_id=int(options["--parent-process-id"]),
+            parent_created=int(options["--parent-created"]),
+        )
+    else:
+        if set(options) != {"--parent-watch-fd"}:
+            raise SystemExit("Smoke child requires one parent watch pipe")
+        start_smoke_parent_watchdog(parent_watch_fd=int(options["--parent-watch-fd"]))
+    assert_managed_test_cluster_authority(
+        os.environ["DATABASE_URL"],
+        os.environ,
+        expected_database="xpj_smoke",
+    )
+    with test_postgres_consumer_lease(os.environ["DATABASE_URL"]):
+        return run_server(port)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    if __package__:
+        from scripts.test_pg_contract import (
+            assert_managed_test_cluster_authority,
+            configured_test_database_url,
+            managed_test_database_url,
+            start_windows_parent_watchdog,
+            test_postgres_consumer_lease,
+            test_postgres_credential_environment,
+            validate_managed_test_database_url,
+        )
+    else:
+        from test_pg_contract import (
+            assert_managed_test_cluster_authority,
+            configured_test_database_url,
+            managed_test_database_url,
+            start_windows_parent_watchdog,
+            test_postgres_consumer_lease,
+            test_postgres_credential_environment,
+            validate_managed_test_database_url,
+        )
+
+    if len(sys.argv) > 1:
+        raise SystemExit(run_server_child(sys.argv[1:]))
+    start_windows_parent_watchdog(label="smoke test runner")
+    smoke_database_url = os.environ.get("SMOKE_DATABASE_URL", "").strip()
+    if smoke_database_url:
+        validate_managed_test_database_url(
+            smoke_database_url,
+            expected_database="xpj_smoke",
+        )
+    else:
+        smoke_database_url = managed_test_database_url(
+            configured_test_database_url(os.environ),
+            "xpj_smoke",
+        )
+        os.environ["SMOKE_DATABASE_URL"] = smoke_database_url
+    with test_postgres_credential_environment(
+        smoke_database_url,
+        os.environ,
+    ):
+        assert_managed_test_cluster_authority(
+            smoke_database_url,
+            os.environ,
+            expected_database="xpj_smoke",
+        )
+        with test_postgres_consumer_lease(smoke_database_url):
+            raise SystemExit(main())

@@ -11,8 +11,8 @@ one (not just the constraint NAME) — so a same-name migration↔ORM divergence
 predicate, the exact failure mode the single-source design guards and which no machine diff
 otherwise enforces) fails HERE.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``): it issues DDL via its own ``engine.begin()``
-connections outside the per-test transaction.
+Explicitly marked ``real_db`` + ``stateful_serial``: it issues DDL via its own
+``engine.begin()`` connections outside the per-test transaction.
 """
 
 from __future__ import annotations

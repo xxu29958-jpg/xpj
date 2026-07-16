@@ -2,8 +2,8 @@
 over-remaining fold check.
 
 These ``test_two_sessions_*`` tests need real independent connections (one shared
-savepoint connection cannot model FOR UPDATE lock contention), so conftest
-auto-marks them ``real_db`` via the ``::test_two_sessions`` nodeid pattern.
+savepoint connection cannot model FOR UPDATE lock contention), so each test
+declares ``real_db`` explicitly and collection rejects future omissions.
 
 The §2.1 serialization武器 is ``lock_and_fold``'s ``SELECT Debt ... FOR UPDATE``:
 a second writer physically blocks until the first COMMITs, then recomputes
@@ -59,6 +59,7 @@ def _repayment_payload(amount_cents: int, expected_row_version: int) -> Repaymen
     )
 
 
+@pytest.mark.real_db
 @pytest.mark.skipif(
     engine.dialect.name != "postgresql",
     reason="row-lock contention is only observable on the PostgreSQL lane; "
@@ -97,6 +98,7 @@ def test_two_sessions_repayment_cannot_both_pass_over_remaining(*, identity) -> 
         holder.close()
 
 
+@pytest.mark.real_db
 @pytest.mark.skipif(
     engine.dialect.name != "postgresql",
     reason="serialized recheck is only observable on the PostgreSQL lane",

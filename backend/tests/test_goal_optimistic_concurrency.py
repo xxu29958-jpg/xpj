@@ -90,6 +90,7 @@ def test_goal_patch_unknown_returns_404(client: TestClient, *, identity) -> None
     assert response.status_code == 404, response.text
 
 
+@pytest.mark.real_db
 def test_two_sessions_goal_patch_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:

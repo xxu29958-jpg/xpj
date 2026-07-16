@@ -114,6 +114,7 @@ def test_recognize_text_against_rejected_returns_404(
     assert response.json()["error"] == "expense_not_found"
 
 
+@pytest.mark.real_db
 def test_two_sessions_recognize_text_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:

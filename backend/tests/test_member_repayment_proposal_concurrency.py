@@ -2,8 +2,8 @@
 
 Two §11 invariants need real independent connections (one shared savepoint
 connection cannot model the partial-index wait or the parent-Debt FOR UPDATE
-lock contention), so conftest auto-marks these ``test_two_sessions_*`` tests
-``real_db`` via the ``::test_two_sessions`` nodeid pattern.
+lock contention), so these ``test_two_sessions_*`` tests declare ``real_db``
+explicitly and collection rejects future omissions.
 
 1. The ``uq_mrp_one_pending_per_debt`` partial UNIQUE index is the §3.2
    one-pending-per-Debt backstop: two concurrent creates that both read "no
@@ -102,6 +102,7 @@ def _create_proposal_via_service(public_id: str, *, debtor_id: int) -> None:
         )
 
 
+@pytest.mark.real_db
 @pytest.mark.skipif(
     engine.dialect.name != "postgresql",
     reason="partial-index insert contention is only observable on the "
@@ -177,6 +178,7 @@ def test_two_sessions_concurrent_proposal_creates_map_to_already_pending(*, iden
         assert pending[0].proposed_amount_cents == 20000
 
 
+@pytest.mark.real_db
 @pytest.mark.skipif(
     engine.dialect.name != "postgresql",
     reason="parent-Debt FOR UPDATE serialization is only observable on the "
@@ -272,6 +274,7 @@ def _seed_pending_proposal(public_id: str, *, debtor_id: int) -> str:
         return proposal.public_id
 
 
+@pytest.mark.real_db
 @pytest.mark.skipif(
     engine.dialect.name != "postgresql",
     reason="parent-Debt FOR UPDATE lock contention is only observable on the "

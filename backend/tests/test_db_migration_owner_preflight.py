@@ -9,8 +9,8 @@ error before Alembic ``upgrade``.
 
 These tests switch PostgreSQL roles to exercise the block, the membership/owner
 exemptions, AND the call-site wiring, so they need real cross-connection commits
-(``real_db``; registered centrally in conftest ``_PG_REAL_DB_NODES``). The
-``real_db`` reset recreates every public table owned by the connecting
+(``real_db`` + ``stateful_serial``; declared on this module). The ``real_db``
+reset recreates every public table owned by the connecting
 (superuser) role, which is the substrate for the block case. Note CI's
 PostgreSQL service uses password auth while the local throwaway cluster uses
 trust — the role is created with a password (ignored under trust) for both.
@@ -29,12 +29,8 @@ from tests._infra.lane_policy import CLUSTER_POSTGRES_MARKS
 pytestmark = CLUSTER_POSTGRES_MARKS
 
 _GUARD_ROLE = "xpj_owner_preflight_role"
-# CI's PostgreSQL (the postgres:17 service container) uses PASSWORD auth, while
-# the local throwaway cluster (start_test_pg.ps1) uses ``--auth=trust``. So the
-# role must be created WITH a password and connected WITH it: a password is
-# simply ignored under trust auth, making this portable to both environments.
-# (An earlier trust-only version passed locally but failed CI with
-# "password authentication failed".)
+# Both CI's PostgreSQL service and the local disposable cluster use password
+# authentication, so the throwaway role must carry an explicit credential.
 _GUARD_PW = "xpj_preflight_test_pw"  # throwaway test-role secret, not real
 
 

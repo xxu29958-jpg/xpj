@@ -1,102 +1,211 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-  Start an isolated, throwaway PostgreSQL instance for the backend test suite.
+  Start an owned, disposable PostgreSQL instance for backend tests.
 
 .DESCRIPTION
-  PG-only test-lane ergonomics (debt #4 / PG-only slimming). Spins an ephemeral
-  PostgreSQL cluster on a dedicated port (default 5438) using the locally
-  installed initdb, isolated from the production cluster on 5432 and the CI
-  cluster on 5433. Non-durable settings (fsync / synchronous_commit /
-  full_page_writes off) because the data is disposable test data.
-
-  Idempotent: if our cluster is already up on the port it is reused; the
-  xpj_test / xpj_smoke databases are created only when missing.
+  Creates a loopback-only PostgreSQL cluster and binds its lifecycle to a
+  script-owned marker containing purpose, port, and PostgreSQL system identifier.
+  Existing unmarked data directories are rejected. Local mode uses port 5438;
+  CI mode is an explicit exception for the reserved port 5433.
 
   After it prints OK, run the suite with:
     .\.venv\Scripts\python.exe scripts\run_test_lanes.py full
-
-  NEVER touches 5432 (prod) or 5433 (CI). Teardown: stop_test_pg.ps1.
 
 .PARAMETER Port
   TCP port for the throwaway cluster. Default 5438.
 
 .PARAMETER DataDir
   Cluster data directory. Default: $env:TEMP\xpj_pg_test<Port>.
+
+.PARAMETER Purpose
+  local (default) or ci. CI purpose is accepted only on port 5433.
+
+.PARAMETER PostgresBin
+  Optional explicit PostgreSQL bin directory. Otherwise discovered from the OS
+  Program Files root.
+
+.PARAMETER ResetDatabases
+  Recreate the required test databases after online cluster identity is proven.
+  CI and repeatable full-project verification use this; normal local starts keep
+  databases for a faster edit/test loop.
 #>
 [CmdletBinding()]
 param(
-    [int]$Port = 5438,
-    [string]$DataDir = (Join-Path $env:TEMP "xpj_pg_test$Port")
+    [ValidateRange(1, 65535)][int]$Port = 5438,
+    [string]$DataDir = (Join-Path $env:TEMP "xpj_pg_test$Port"),
+    [ValidateSet('local', 'ci')][string]$Purpose = 'local',
+    [string]$PostgresBin = '',
+    [switch]$ResetDatabases,
+    [switch]$AcquireConsumerLease,
+    [ValidateRange(1, 7200)][int]$LifecycleMutexTimeoutSeconds = 300,
+    [ValidateRange(5, 600)][int]$ProcessTimeoutSeconds = 60
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'test_pg_cluster_contract.ps1')
+$script:XpjTestPostgresProcessTimeoutSeconds = $ProcessTimeoutSeconds
 
-if ($Port -eq 5432 -or $Port -eq 5433) {
-    throw "Refusing port ${Port}: 5432 is prod, 5433 is CI. Use a dedicated test port (default 5438)."
-}
+Assert-XpjTestPostgresLifecycleRequest -Purpose $Purpose -Port $Port
 
-# Numeric version sort: a lingering 9.x client must not beat 17 by string order ("9" > "1").
-$programFiles = [Environment]::GetFolderPath(
-    [Environment+SpecialFolder]::ProgramFiles
-)
-$pgctl = if ([string]::IsNullOrWhiteSpace($programFiles)) {
-    $null
+Invoke-XpjTestPostgresLifecycleLocked `
+    -Port $Port `
+    -TimeoutSeconds $LifecycleMutexTimeoutSeconds `
+    -Operation {
+$DataDir = Resolve-XpjTestPostgresDataDirectory $DataDir
+$PostgresBin = Resolve-XpjTestPostgresBin $PostgresBin
+Assert-XpjTestPostgresRequiredAuthClient $PostgresBin
+$parentPathLease = [XpjTestDirectoryPathLease]::OpenParent($DataDir)
+$dataPathLease = $null
+try {
+[void](Complete-XpjTestPostgresPendingDeletion `
+    -PostgresBin $PostgresBin `
+    -DataDirectory $DataDir `
+    -Purpose $Purpose `
+    -Port $Port)
+Remove-XpjTestPostgresAbandonedStaging `
+    -PostgresBin $PostgresBin `
+    -DataDirectory $DataDir `
+    -Purpose $Purpose `
+    -Port $Port
+$marker = $null
+
+if (Test-Path -LiteralPath $DataDir) {
+    $dataPathLease = [XpjTestDirectoryPathLease]::OpenPath($DataDir)
+    $marker = Assert-XpjTestPostgresDataOwnership `
+        -PostgresBin $PostgresBin `
+        -DataDirectory $DataDir `
+        -Purpose $Purpose `
+        -Port $Port
 }
 else {
-    Get-ChildItem (Join-Path $programFiles 'PostgreSQL\*\bin\pg_ctl.exe') -ErrorAction SilentlyContinue |
-        Sort-Object {
-            $v = 0.0
-            if ([double]::TryParse($_.Directory.Parent.Name, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$v)) { $v } else { -1.0 }
-        } -Descending |
-        Select-Object -First 1
+    $marker = New-XpjTestPostgresDataDirectory `
+        -PostgresBin $PostgresBin `
+        -DataDirectory $DataDir `
+        -Purpose $Purpose `
+        -Port $Port
+    $dataPathLease = [XpjTestDirectoryPathLease]::OpenPath($DataDir)
 }
-if (-not $pgctl) {
-    throw "PostgreSQL not installed (checked the OS Program Files root)."
-}
-$pgbin = $pgctl.DirectoryName
 
 $alreadyUp = $false
-$listening = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
-if ($listening) {
-    # Confirm it is OUR throwaway cluster (its data dir exists), not some other
-    # process squatting on the port — never assume a foreign listener is ours.
-    if (Test-Path (Join-Path $DataDir "postmaster.pid")) {
+$uncommittedStart = $null
+try {
+    $listeners = @(
+        Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+    )
+    if ($listeners.Count -gt 0) {
+        [void](Assert-XpjTestPostgresListenerOwnership `
+            -ExpectedPort $Port `
+            -ExpectedDataDirectory $DataDir)
         $alreadyUp = $true
-        Write-Host "Reusing PostgreSQL already up on 127.0.0.1:$Port (datadir=$DataDir)"
     }
     else {
-        throw "Port $Port is in use but $DataDir\postmaster.pid is missing — not our cluster. Pick another -Port."
-    }
-}
-
-if (-not $alreadyUp) {
-    if (-not (Test-Path -LiteralPath $DataDir)) {
-        & "$pgbin\initdb.exe" -D $DataDir -U postgres --auth=trust -E UTF8 --locale=C | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "initdb failed" }
-    }
-    $opts = "-p $Port -c listen_addresses=localhost -c fsync=off -c synchronous_commit=off -c full_page_writes=off"
-    & "$pgbin\pg_ctl.exe" -D $DataDir -o $opts -l "$DataDir\server.log" -w start
-    if ($LASTEXITCODE -ne 0) {
-        $serverLog = Join-Path $DataDir "server.log"
-        if (Test-Path -LiteralPath $serverLog) {
-            Get-Content -Encoding UTF8 -LiteralPath $serverLog
+        $pidPath = Join-Path $DataDir 'postmaster.pid'
+        if (Test-Path -LiteralPath $pidPath -PathType Leaf) {
+            $record = Read-XpjTestPostgresPostmasterRecord $DataDir
+            $generation = Get-XpjTestPostgresProcessGeneration $record
+            if ($generation.State -eq 'matching') {
+                throw "Marker-owned PostgreSQL is running but not on its recorded port $Port; refusing to start another postmaster."
+            }
+            Remove-Item -LiteralPath $pidPath -Force -ErrorAction Stop
         }
-        throw "pg_ctl start failed"
+        $serverLog = Join-Path $DataDir 'server.log'
+        $serverErrorLog = Join-Path $DataDir 'server-error.log'
+        $uncommittedStart = Start-XpjTestPostgresUncommittedProcess `
+            -FilePath (Join-Path $PostgresBin 'postgres.exe') `
+            -ArgumentList @(
+                '-D', $DataDir,
+                '-p', [string]$Port,
+                '-c', 'listen_addresses=127.0.0.1',
+                '-c', 'fsync=off',
+                '-c', 'synchronous_commit=off',
+                '-c', 'full_page_writes=off',
+                '-c', 'password_encryption=scram-sha-256',
+                '-c', 'log_statement=none',
+                '-c', 'log_min_error_statement=panic'
+            ) `
+            -TargetPidSourcePath (Join-Path $DataDir 'postmaster.pid') `
+            -TargetStdoutPath $serverLog `
+            -TargetStderrPath $serverErrorLog `
+            -TimeoutSeconds $ProcessTimeoutSeconds
+        $readyDeadline = [DateTime]::UtcNow.AddSeconds($ProcessTimeoutSeconds)
+        while (@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue).Count -eq 0) {
+            if (-not $uncommittedStart.Job.IsStartedProcessRunning()) {
+                $startupOutput = Get-XpjTestPostgresUncommittedOutput $uncommittedStart
+                throw "PostgreSQL exited before becoming ready: $startupOutput"
+            }
+            if ([DateTime]::UtcNow -ge $readyDeadline) {
+                throw "PostgreSQL did not listen within its $ProcessTimeoutSeconds second start budget."
+            }
+            Start-Sleep -Milliseconds 100
+        }
     }
-    Write-Host "Started PostgreSQL on 127.0.0.1:$Port (datadir=$DataDir)"
+
+    $requiredDatabases = if ($Purpose -eq 'ci') {
+        @('xpj_test', 'xpj_smoke', 'xpj_restore')
+    }
+    else {
+        @('xpj_test', 'xpj_smoke')
+    }
+    try {
+        $authentication = Ensure-XpjTestPostgresScramAuthentication `
+            -PostgresBin $PostgresBin `
+            -DataDirectory $DataDir `
+            -Port $Port `
+            -Marker $marker
+    }
+    catch {
+        if ($alreadyUp) {
+            throw (
+                'XPJ_TEST_POSTGRES_IDENTITY_MISMATCH: the live listener did not ' +
+                'accept the marker-owned credential authority.'
+            )
+        }
+        throw
+    }
+    $marker = $authentication.Marker
+    $credentialPath = [string]$authentication.CredentialPath
+    Invoke-XpjTestPostgresIdentitySession `
+        -PostgresBin $PostgresBin `
+        -DataDirectory $DataDir `
+        -Port $Port `
+        -SystemIdentifier $marker.SystemIdentifier `
+        -RequiredDatabases $requiredDatabases `
+        -ResetDatabases:$ResetDatabases `
+        -RequireNoOtherSessions:$ResetDatabases
+    $env:XPJ_TEST_CLUSTER_AUTHORITY = 'owned-marker'
+    $env:XPJ_TEST_CLUSTER_MARKER_PATH = [string]$marker.Path
+    $env:XPJ_TEST_CLUSTER_SYSTEM_IDENTIFIER = [string]$marker.SystemIdentifier
+    $env:XPJ_TEST_POSTGRES_CREDENTIAL_FILE = $credentialPath
+    $env:XPJ_TEST_DATABASE_URL = "postgresql+psycopg://postgres@127.0.0.1:$Port/xpj_test"
+    if ($null -ne $uncommittedStart) {
+        Complete-XpjTestPostgresUncommittedProcess $uncommittedStart
+        $uncommittedStart = $null
+    }
+}
+finally {
+    if ($null -ne $uncommittedStart) {
+        Stop-XpjTestPostgresUncommittedProcess $uncommittedStart
+    }
 }
 
-foreach ($db in @("xpj_test", "xpj_smoke")) {
-    $exists = & "$pgbin\psql.exe" -h localhost -p $Port -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'"
-    if (-not ($exists -match "1")) {
-        & "$pgbin\createdb.exe" -h localhost -p $Port -U postgres $db
-        if ($LASTEXITCODE -ne 0) { throw "createdb $db failed" }
-        Write-Host "Created database $db"
-    }
+$verb = if ($alreadyUp) { 'Reusing' } else { 'Started' }
+Write-Host "$verb owned PostgreSQL on 127.0.0.1:$Port (datadir=$DataDir)"
+Write-Host ''
+Write-Host "OK: test PostgreSQL ready ($($requiredDatabases -join ' + '))."
+Write-Host 'Run the suite from backend\:'
+Write-Host '  .\.venv\Scripts\python.exe scripts\run_test_lanes.py full'
+$global:LASTEXITCODE = 0
+if ($AcquireConsumerLease) {
+    Enter-XpjTestPostgresConsumerLease `
+        -Port $Port `
+        -TimeoutSeconds $LifecycleMutexTimeoutSeconds
 }
-
-Write-Host ""
-Write-Host "OK: test PostgreSQL ready on 127.0.0.1:$Port (xpj_test + xpj_smoke)."
-Write-Host "Run the suite from backend\:"
-Write-Host "  .\.venv\Scripts\python.exe scripts\run_test_lanes.py full"
+}
+finally {
+    if ($null -ne $dataPathLease) {
+        $dataPathLease.Dispose()
+    }
+    $parentPathLease.Dispose()
+}
+}

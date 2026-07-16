@@ -133,25 +133,58 @@ if (-not $SkipBackend) {
     ) -WorkingDirectory $ProjectRoot.Path
 
     $tools = Ensure-BackendTools
-    Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "compileall", "app", "scripts", "tests") -WorkingDirectory $BackendRoot
-    if (-not $SkipLint) {
-        Invoke-Checked -FilePath $tools.Ruff -Arguments @("check", "app", "scripts", "tests") -WorkingDirectory $BackendRoot
-    }
-    # PG-only test lane (debt #4): the default pytest lane targets the throwaway
-    # PostgreSQL on :5438. Bring it up (idempotent); left running for fast repeat
-    # runs — tear down with backend\scripts\stop_test_pg.ps1 when done.
-    Invoke-Checked -FilePath "powershell.exe" -Arguments @(
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        (Join-Path $BackendRoot "scripts\start_test_pg.ps1")
+    Invoke-Checked -FilePath $tools.Python -Arguments @(
+        "-m",
+        "compileall",
+        "app",
+        "scripts",
+        "tests",
+        "packaging/tests"
     ) -WorkingDirectory $BackendRoot
-    Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\run_test_lanes.py", "full") -WorkingDirectory $BackendRoot
-    Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\check_api_contract.py") -WorkingDirectory $BackendRoot
-    Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot
-    if (-not $SkipSmoke) {
-        Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\smoke_test.py") -WorkingDirectory $BackendRoot
+    if (-not $SkipLint) {
+        Invoke-Checked -FilePath $tools.Ruff -Arguments @(
+            "check",
+            "app",
+            "scripts",
+            "tests",
+            "packaging/tests"
+        ) -WorkingDirectory $BackendRoot
+    }
+    Invoke-Checked -FilePath $tools.Python -Arguments @(
+        "scripts/run_packaging_tests.py"
+    ) -WorkingDirectory $BackendRoot
+    # The orchestration lease covers gaps between child consumers. Managed
+    # pytest processes also hold their own leases, so a dead wrapper cannot
+    # authorize reset/stop while an orphaned child still uses PostgreSQL.
+    . (Join-Path $BackendRoot "scripts\test_pg_cluster_contract.ps1")
+    $consumerLease = $null
+    try {
+        Push-Location $BackendRoot
+        try {
+            $consumerLease = & (Join-Path $BackendRoot "scripts\start_test_pg.ps1") `
+                -ResetDatabases `
+                -AcquireConsumerLease
+            if ($LASTEXITCODE -ne 0) {
+                throw "测试 PostgreSQL 启动失败。"
+            }
+            if ($null -eq $consumerLease) {
+                throw "测试 PostgreSQL 启动后没有返回 consumer lease。"
+            }
+        }
+        finally {
+            Pop-Location
+        }
+        Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\run_test_lanes.py", "full") -WorkingDirectory $BackendRoot
+        Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\check_api_contract.py") -WorkingDirectory $BackendRoot
+        Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot
+        if (-not $SkipSmoke) {
+            Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\smoke_test.py") -WorkingDirectory $BackendRoot
+        }
+    }
+    finally {
+        if ($null -ne $consumerLease) {
+            Exit-XpjTestPostgresConsumerLease $consumerLease
+        }
     }
 }
 else {

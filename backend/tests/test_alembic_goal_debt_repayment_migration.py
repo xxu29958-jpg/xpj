@@ -8,7 +8,7 @@ on PostgreSQL (the prod dialect): create_all → stamp head → downgrade past
 ``debt_goal_links``) → upgrade to head (re-widens). Pins that the migration is a
 faithful, round-tripping transform of the legacy shape into the slice-6 shape.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its
+Explicitly marked ``real_db`` + ``stateful_serial`` because it issues DDL via its
 own ``engine.begin()`` connections outside the per-test transaction.
 """
 

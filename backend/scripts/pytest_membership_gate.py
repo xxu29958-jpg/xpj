@@ -1,0 +1,187 @@
+"""Fail-closed policy for protected backend and packaging pytest memberships."""
+
+from __future__ import annotations
+
+from collections import Counter
+from collections.abc import Mapping, Sequence
+
+PROTECTED_PYTEST_MEMBERSHIPS = (
+    "backend_all",
+    "backend_parallel",
+    "parallel_safe",
+    "real_db",
+    "stateful_serial",
+    "cluster_serial",
+    "packaging_all",
+)
+
+
+def _membership_duplicates(nodeids: Sequence[str]) -> list[str]:
+    return sorted(nodeid for nodeid, count in Counter(nodeids).items() if count > 1)
+
+
+def _snapshot_shape_violations(
+    snapshot: Mapping[str, Sequence[str]],
+    *,
+    label: str,
+) -> list[str]:
+    expected = set(PROTECTED_PYTEST_MEMBERSHIPS)
+    violations: list[str] = []
+    missing = sorted(expected - set(snapshot))
+    unexpected = sorted(set(snapshot) - expected)
+    if missing:
+        violations.append(f"{label} snapshot is missing membership(s): " + ", ".join(missing))
+    if unexpected:
+        violations.append(f"{label} snapshot has unexpected membership(s): " + ", ".join(unexpected))
+    for marker in sorted(expected & set(snapshot)):
+        duplicates = _membership_duplicates(snapshot[marker])
+        if duplicates:
+            violations.append(f"{label} {marker} membership contains duplicate nodeid(s): " + ", ".join(duplicates[:3]))
+    return violations
+
+
+def _partition_violation(
+    snapshot: Mapping[str, Sequence[str]],
+    *,
+    label: str,
+) -> str | None:
+    required = {"backend_all", "backend_parallel", "stateful_serial"}
+    if not required <= set(snapshot):
+        return None
+    partition = Counter(snapshot["backend_parallel"]) + Counter(snapshot["stateful_serial"])
+    if partition == Counter(snapshot["backend_all"]):
+        return None
+    return f"{label}backend_parallel plus stateful_serial is not the exact backend_all partition"
+
+
+def _current_invariant_violations(
+    current: Mapping[str, Sequence[str]],
+) -> list[str]:
+    violations: list[str] = []
+    if {"real_db", "stateful_serial"} <= set(current):
+        missing = sorted(set(current["stateful_serial"]) - set(current["real_db"]))
+        if missing:
+            violations.append(
+                "stateful_serial membership is not a subset of real_db: "
+                + ", ".join(missing[:3])
+            )
+    if {"stateful_serial", "cluster_serial"} <= set(current):
+        missing = sorted(set(current["cluster_serial"]) - set(current["stateful_serial"]))
+        if missing:
+            violations.append(
+                "cluster_serial membership is not a subset of stateful_serial: "
+                + ", ".join(missing[:3])
+            )
+    if {"parallel_safe", "real_db"} <= set(current):
+        conflicting = sorted(set(current["parallel_safe"]) & set(current["real_db"]))
+        if conflicting:
+            violations.append(
+                "parallel_safe and real_db memberships overlap: "
+                + ", ".join(conflicting[:3])
+            )
+    partition = _partition_violation(current, label="")
+    if partition:
+        violations.append(partition)
+    return violations
+
+
+def _new_test_classification_violations(
+    current: Mapping[str, Sequence[str]],
+    base: Mapping[str, Sequence[str]],
+) -> list[str]:
+    required = {"backend_all", "parallel_safe", "real_db"}
+    if not required <= set(current) or "backend_all" not in base:
+        return []
+    new_nodeids = set(current["backend_all"]) - set(base["backend_all"])
+    classified = set(current["parallel_safe"]) | set(current["real_db"])
+    unclassified = sorted(new_nodeids - classified)
+    if not unclassified:
+        return []
+    return [
+        "new backend test nodeid(s) lack an explicit PostgreSQL resource class: "
+        + ", ".join(unclassified[:3])
+    ]
+
+
+def _removed_membership_violations(
+    current: Mapping[str, Sequence[str]],
+    base: Mapping[str, Sequence[str]],
+) -> list[str]:
+    violations: list[str] = []
+    for membership in sorted(set(PROTECTED_PYTEST_MEMBERSHIPS) & set(base) & set(current)):
+        removed = set(base[membership]) - set(current[membership])
+        if membership == "backend_parallel":
+            removed -= set(current["stateful_serial"])
+        if membership == "parallel_safe":
+            removed -= set(current["real_db"])
+        ordered = sorted(removed)
+        if ordered:
+            violations.append(
+                f"{membership} removed {len(ordered)} protected test nodeid(s): "
+                + ", ".join(ordered[:3])
+            )
+    return violations
+
+
+def protected_pytest_membership_violations(
+    current: Mapping[str, Sequence[str]],
+    base: Mapping[str, Sequence[str]],
+    *,
+    base_readable: bool,
+    base_required: bool,
+) -> list[str]:
+    """Protect committed risk proofs from removal, swapping, or lane demotion."""
+
+    violations = _snapshot_shape_violations(current, label="current")
+    violations.extend(_current_invariant_violations(current))
+    if not base_readable:
+        if base_required:
+            violations.append("required base pytest membership snapshot is unreadable")
+        return violations
+    violations.extend(_snapshot_shape_violations(base, label="base"))
+    base_partition = _partition_violation(base, label="base ")
+    if base_partition:
+        violations.append(base_partition)
+    violations.extend(_new_test_classification_violations(current, base))
+    violations.extend(_removed_membership_violations(current, base))
+    return violations
+
+
+def evaluate_protected_pytest_memberships(
+    current: Mapping[str, Sequence[str]],
+    base: Mapping[str, Sequence[str]],
+    *,
+    base_readable: bool,
+    base_required: bool,
+    base_error: str | None,
+) -> int:
+    """Fail closed when a committed pytest risk proof disappears or is demoted."""
+
+    print("== Gate. Protected pytest membership ==")
+    violations = protected_pytest_membership_violations(
+        current,
+        base,
+        base_readable=base_readable,
+        base_required=base_required,
+    )
+    if violations:
+        print(
+            "FAIL: protected pytest risk membership drifted. Adding tests is allowed; "
+            "removal, rename, or lane demotion requires a dedicated risk migration:"
+        )
+        for violation in violations:
+            print(f"  - {violation}")
+        if base_error:
+            print(f"  - base_error={base_error}")
+        print()
+        return 1
+    if not base_readable:
+        print(
+            "INFO: base pytest membership is unavailable in local development; "
+            "exact CI context fails closed instead of skipping."
+        )
+    else:
+        protected_count = sum(len(base[membership]) for membership in PROTECTED_PYTEST_MEMBERSHIPS)
+        print(f"OK: {protected_count} committed pytest memberships remain protected.")
+    print()
+    return 0

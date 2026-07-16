@@ -20,6 +20,7 @@ jobs:
   backend-full:
     name: Backend full checks
     runs-on: windows-latest
+    timeout-minutes: 70
 
     defaults:
       run:
@@ -50,6 +51,10 @@ jobs:
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
           git -C $ws log --oneline -1
+
+      - name: Verify Gitea runner lifecycle contract
+        timeout-minutes: 2
+        run: .\backend\scripts\assert_gitea_runner_contract.ps1
 
       - name: Tool versions
         run: |
@@ -95,8 +100,11 @@ jobs:
         run: .\.ci-venv\Scripts\ruff.exe check app scripts tests packaging/tests
 
       - name: Windows installer safety behavior
+        timeout-minutes: 10
         working-directory: backend
-        run: .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests -p no:cacheprovider
+        env:
+          XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME: "1"
+        run: .\.ci-venv\Scripts\python.exe scripts\run_packaging_tests.py
 
       - name: Installer source preflight (Windows PowerShell 5.1)
         working-directory: backend
@@ -245,12 +253,13 @@ jobs:
     # static checks only (no DB server). The original lane was
     # .github/workflows/ci.yml on a Linux runner with a
     # postgres service container — dead since the GitHub→Gitea move. The gitea
-    # runner is Windows + no Docker, so we spin an ephemeral PostgreSQL via the
-    # locally-installed initdb (PG 17 on the home-server runner) on port 5433, so
-    # it never touches the prod cluster on 5432. The cluster is started, used and
-    # stopped inside a single step's try/finally (see the WaitDelay note below).
+    # runner is Windows + no Docker, so the shared test-cluster lifecycle starts
+    # a marker-owned PostgreSQL on port 5433. Local and CI callers use the same
+    # ownership, identity, provisioning, and teardown contract.
     runs-on: windows-latest
-    timeout-minutes: 40
+    # Step ceilings reserve a separate cleanup window. A lane timeout must not
+    # consume the entire job budget and prevent the always() backstop running.
+    timeout-minutes: 50
 
     defaults:
       run:
@@ -259,6 +268,7 @@ jobs:
 
     steps:
       - name: Checkout (offline — local Gitea, no github.com)
+        timeout-minutes: 5
         working-directory: ${{ github.workspace }}
         env:
           REPO_TOKEN: ${{ github.token }}
@@ -283,7 +293,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
           git -C $ws log --oneline -1
 
+      - name: Verify Gitea runner lifecycle contract
+        timeout-minutes: 2
+        run: .\scripts\assert_gitea_runner_contract.ps1
+
       - name: Install backend dependencies
+        timeout-minutes: 10
         run: |
           if (Test-Path .ci-venv) { Remove-Item -Recurse -Force .ci-venv }
           python -m venv .ci-venv
@@ -291,103 +306,86 @@ jobs:
           .\.ci-venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 
       - name: PostgreSQL lane — ephemeral cluster + smoke + suite
-        # initdb spins a throwaway PG (PG 17 on the runner) on :5433, isolated
-        # from the prod cluster on :5432. start + smoke + suite + stop run in ONE
-        # step with the stop in a finally on purpose: the postmaster is a
-        # long-lived child that inherits this step's stdio, and the gitea runner
-        # post-step I/O drain waits for that handle to close — if the postmaster
-        # is still alive at step exit the drain fails with "WaitDelay expired
-        # before I/O complete" (the first red run). Stopping it inside the
-        # finally guarantees it is gone before the PowerShell exits. xpj_test
-        # (suite) is separate from xpj_smoke so the smoke's rows never collide.
+        timeout-minutes: 25
+        # The shared lifecycle spins a throwaway PG on :5433, isolated from the
+        # prod cluster on :5432. start + smoke + suite + stop run in ONE
+        # step with the stop in a finally so the disposable postmaster cannot
+        # outlive its owning test transaction. The atomic launcher restricts
+        # inherited handles to its explicit log/stdin set. xpj_test (suite) is
+        # separate from xpj_smoke so the smoke's rows never collide.
         run: |
-          # Numeric version sort: a lingering 9.x client must not beat 17 by string order ("9" > "1").
-          $pgctl = Get-ChildItem 'C:\Program Files\PostgreSQL\*\bin\pg_ctl.exe' -ErrorAction SilentlyContinue | Sort-Object { $v = 0.0; if ([double]::TryParse($_.Directory.Parent.Name, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$v)) { $v } else { -1.0 } } -Descending | Select-Object -First 1
-          if (-not $pgctl) { throw "PostgreSQL not installed on runner (expected C:\Program Files\PostgreSQL\<ver>\bin)" }
-          $pgbin = $pgctl.DirectoryName
-          $runid = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { 'local' }
-          $datadir = Join-Path $env:TEMP "xpj_pg_ci_$runid"
-          if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir }
-          $pmpid = $null
+          $pgport = 5433
+          $datadir = Join-Path $env:TEMP "xpj_pg_ci_$pgport"
+          $lifecycleWaitSeconds = 120
+          . .\scripts\test_pg_cluster_contract.ps1
+          $consumerLease = $null
           try {
-            & "$pgbin\initdb.exe" -D $datadir -U postgres --auth=trust -E UTF8 --locale=C | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "initdb failed" }
-            & "$pgbin\pg_ctl.exe" -D $datadir -o "-p 5433 -c listen_addresses=localhost" -l "$datadir\server.log" -w start
-            if ($LASTEXITCODE -ne 0) { if (Test-Path "$datadir\server.log") { Get-Content "$datadir\server.log" }; throw "pg_ctl start failed" }
-            $pmpid = (Get-Content (Join-Path $datadir "postmaster.pid") -TotalCount 1 -ErrorAction SilentlyContinue)
-            & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_smoke
-            if ($LASTEXITCODE -ne 0) { throw "createdb xpj_smoke failed" }
-            & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_test
-            if ($LASTEXITCODE -ne 0) { throw "createdb xpj_test failed" }
-            & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_restore
-            if ($LASTEXITCODE -ne 0) { throw "createdb xpj_restore failed" }
-            Write-Host "ephemeral PostgreSQL up on 127.0.0.1:5433 (xpj_smoke + xpj_test + xpj_restore)"
+            $consumerLease = .\scripts\start_test_pg.ps1 -Purpose ci -Port $pgport -DataDir $datadir -ResetDatabases -AcquireConsumerLease -LifecycleMutexTimeoutSeconds $lifecycleWaitSeconds
+            if ($null -eq $consumerLease) { throw "PostgreSQL start did not return its consumer lease" }
+            try {
+              if ($env:XPJ_TEST_DATABASE_URL -notmatch '/xpj_test$') {
+                throw "PostgreSQL start did not publish its exact database URL"
+              }
+              # smoke_test.py begins with the credential + live cluster authority proof.
+              $env:SMOKE_DATABASE_URL = $env:XPJ_TEST_DATABASE_URL -replace '/xpj_test$', '/xpj_smoke'
 
-            # Reachability guard: fail loud if the URL ever silently falls back to SQLite.
-            $env:SMOKE_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_smoke"
-            .\.ci-venv\Scripts\python.exe -c "import os, psycopg; u = os.environ['SMOKE_DATABASE_URL']; assert u.startswith('postgresql'), u; psycopg.connect(u.replace('+psycopg','')).close(); print('PG reachable:', u.rsplit('@',1)[-1])"
-            if ($LASTEXITCODE -ne 0) { throw "PG reachability guard failed" }
+              # End-to-end smoke: bootstrap -> upload -> OCC-token confirm against real
+              # PG. Proves create_all + Alembic replay (incl. 20260606_0001) works on
+              # the PostgreSQL engine.
+              Write-Host "--- PostgreSQL end-to-end smoke ---"
+              .\.ci-venv\Scripts\python.exe scripts\smoke_test.py
+              if ($LASTEXITCODE -ne 0) { throw "PostgreSQL smoke failed" }
 
-            # End-to-end smoke: bootstrap -> upload -> OCC-token confirm against real
-            # PG. Proves create_all + Alembic replay (incl. 20260606_0001) works on
-            # the PostgreSQL engine.
-            Write-Host "--- PostgreSQL end-to-end smoke ---"
-            .\.ci-venv\Scripts\python.exe scripts\smoke_test.py
-            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL smoke failed" }
+              # Backup/restore recovery drill (ENGINEERING_RULES section 6: a backup
+              # without a restore drill is no backup). Dumps the smoke-populated DB
+              # through the real backend backup code (pg_dump -Fc via find_pg_binary),
+              # validates the archive, restores into the fresh xpj_restore DB and
+              # asserts identical row counts.
+              Write-Host "--- PostgreSQL backup/restore drill ---"
+              $env:DRILL_SOURCE_URL = $env:XPJ_TEST_DATABASE_URL -replace '/xpj_test$', '/xpj_smoke'
+              $env:DRILL_RESTORE_URL = $env:XPJ_TEST_DATABASE_URL -replace '/xpj_test$', '/xpj_restore'
+              .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py
+              if ($LASTEXITCODE -ne 0) { throw "PostgreSQL backup/restore drill failed" }
 
-            # Backup/restore recovery drill (ENGINEERING_RULES section 6: a backup
-            # without a restore drill is no backup). Dumps the smoke-populated DB
-            # through the real backend backup code (pg_dump -Fc via find_pg_binary),
-            # validates the archive, restores into the fresh xpj_restore DB and
-            # asserts identical row counts. Lived on the GitHub-era PG lane, lost
-            # in the Gitea move, revived here. Runs before the pytest suite
-            # mutates anything; pg_restore resolves via the same Program Files
-            # glob as pg_dump (not on the runner's PATH).
-            Write-Host "--- PostgreSQL backup/restore drill ---"
-            $env:DRILL_SOURCE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_smoke"
-            $env:DRILL_RESTORE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_restore"
-            .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py
-            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL backup/restore drill failed" }
-
-            # Ordinary tests run through worker-owned xpj_test_gwN databases.
-            # Committed-state/schema/process tests stay in one explicit serial lane.
-            $env:XPJ_TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_test"
-            $env:XPJ_TEST_CLUSTER_CONFIRMED = "1"
-            Write-Host "--- PostgreSQL parallel pytest lane ---"
-            .\.ci-venv\Scripts\python.exe scripts\run_test_lanes.py parallel
-            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL parallel pytest lane failed" }
-            Write-Host "--- PostgreSQL stateful serial pytest lane ---"
-            .\.ci-venv\Scripts\python.exe scripts\run_test_lanes.py stateful
-            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL stateful serial pytest lane failed" }
+              # Ordinary tests run through worker-owned xpj_test_gwN databases.
+              # Committed-state/schema/process tests stay in one explicit serial lane.
+              Write-Host "--- PostgreSQL parallel pytest lane ---"
+              .\.ci-venv\Scripts\python.exe scripts\run_test_lanes.py parallel
+              if ($LASTEXITCODE -ne 0) { throw "PostgreSQL parallel pytest lane failed" }
+              Write-Host "--- PostgreSQL stateful serial pytest lane ---"
+              .\.ci-venv\Scripts\python.exe scripts\run_test_lanes.py stateful
+              if ($LASTEXITCODE -ne 0) { throw "PostgreSQL stateful serial pytest lane failed" }
+            }
+            finally {
+              if ($null -ne $consumerLease) {
+                Exit-XpjTestPostgresConsumerLease $consumerLease
+                $consumerLease = $null
+              }
+            }
           }
           finally {
-            # Teardown MUST leave no live postgres (else the runner's post-step I/O
-            # drain hits "WaitDelay expired") and MUST NOT fail the step on its own
-            # hiccups. pg_ctl stop -m fast hung 60s on Windows (run 28), so force-kill
-            # the ephemeral cluster's OWN process tree by its postmaster PID. NEVER
-            # kill by binary path — the prod PG on :5432 shares these binaries.
-            if ($pmpid) { & taskkill /F /T /PID $pmpid | Out-Null }
-            if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir -ErrorAction SilentlyContinue }
+            if ($null -ne $consumerLease) {
+              Exit-XpjTestPostgresConsumerLease $consumerLease
+            }
+            if (Test-Path -LiteralPath $datadir) {
+              .\scripts\stop_test_pg.ps1 -Purpose ci -Port $pgport -DataDir $datadir -LifecycleMutexTimeoutSeconds $lifecycleWaitSeconds
+            }
             $global:LASTEXITCODE = 0
             Write-Host "ephemeral PostgreSQL torn down"
           }
 
       - name: Stop ephemeral PostgreSQL (backstop)
+        timeout-minutes: 4
         if: always()
         # The lane step's finally already stops PG on the normal + failure paths
         # (required so the postmaster is gone before that step's I/O drain). This
-        # only cleans up after an abnormal kill (e.g. job timeout) that skipped
-        # the finally — it never runs the WaitDelay-prevention path.
+        # only recovers after an abnormal kill (e.g. job timeout) that skipped
+        # the finally. The same fail-closed ownership contract still applies.
         run: |
-          $runid = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { 'local' }
-          $datadir = Join-Path $env:TEMP "xpj_pg_ci_$runid"
-          $pidfile = Join-Path $datadir "postmaster.pid"
-          if (Test-Path $pidfile) {
-            $pmpid = (Get-Content $pidfile -TotalCount 1 -ErrorAction SilentlyContinue)
-            if ($pmpid) { & taskkill /F /T /PID $pmpid | Out-Null }
-          }
-          if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir -ErrorAction SilentlyContinue }
-          $global:LASTEXITCODE = 0
+          $datadir = Join-Path $env:TEMP "xpj_pg_ci_5433"
+          $cleanupWaitSeconds = 30
+          $cleanupProcessSeconds = 15
+          .\scripts\stop_test_pg.ps1 -Purpose ci -Port 5433 -DataDir $datadir -LifecycleMutexTimeoutSeconds $cleanupWaitSeconds -ProcessTimeoutSeconds $cleanupProcessSeconds
 
   desktop-manager:
     name: Desktop manager
@@ -484,6 +482,9 @@ jobs:
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
           git -C $ws log --oneline -1
+
+      - name: Verify Gitea runner lifecycle contract
+        run: ..\backend\scripts\assert_gitea_runner_contract.ps1
 
       - name: Point Gradle at local Android SDK
         run: |

@@ -11,8 +11,8 @@ constraints / unique constraint / indexes — not just that the table name exist
 dropped CHECK / unique / index / column in the migration fails HERE (mirrors the four
 sibling alembic round-trip tests).
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its own
-``engine.begin()`` connections outside the per-test transaction.
+Explicitly marked ``real_db`` + ``stateful_serial`` because it issues DDL via its
+own ``engine.begin()`` connections outside the per-test transaction.
 """
 
 from __future__ import annotations

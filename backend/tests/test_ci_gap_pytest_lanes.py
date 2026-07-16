@@ -7,6 +7,8 @@ import pytest
 
 from tests._infra.ci_gap import load_ci_gap_audit
 
+pytestmark = pytest.mark.parallel_safe
+
 
 @pytest.mark.parametrize("platform", ["GitHub", "Gitea"])
 def test_postgres_lanes_must_share_one_ordered_job(platform: str) -> None:

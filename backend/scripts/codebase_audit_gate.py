@@ -40,6 +40,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     # Keep active ceilings here. Older ratchet provenance belongs in git history,
     # not in executable override chains.
     "files_over_500": 14,
+    "automation_files_over_500": 2,
     "long_functions": 5,  # 2026-07-09: bill-split invitation accept flow split.
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
@@ -136,12 +137,19 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2656,
-    "backend_pytest_parallel_count": 2596,
-    "backend_pytest_stateful_count": 60,
+    "backend_pytest_count": 2677,
+    "backend_pytest_parallel_count": 2616,
+    "backend_pytest_parallel_safe_count": 80,
+    "backend_pytest_real_db_count": 149,
+    "backend_pytest_real_db_membership_digest":
+        30_443_814_952_586_961_673_018_106_016_016_514_120_051_340_060_180_025_995_800_727_579_014_847_243_717,
+    "backend_pytest_stateful_count": 61,
     "backend_pytest_stateful_membership_digest":
-        84_921_623_996_850_322_135_801_642_845_622_950_572_520_630_286_615_424_765_212_085_377_005_744_928_858,
-    "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
+        65_776_130_159_071_431_433_573_523_798_527_895_777_323_177_780_116_608_253_556_245_664_900_854_421_151,
+    "backend_pytest_cluster_count": 6,
+    "backend_pytest_cluster_membership_digest":
+        49_357_323_802_858_721_439_251_231_324_754_673_567_760_775_244_132_371_423_112_156_997_353_540_055_088,
+    "installer_pytest_count": 124,  # Includes lifecycle authority, protected-file ACL, and maintenance contracts.
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane
@@ -158,6 +166,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 # the safer stateful partition.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
     "backend_pytest_count",
+    "backend_pytest_cluster_count",
+    "backend_pytest_real_db_count",
     "backend_pytest_stateful_count",
     "installer_pytest_count",
     "mutate_token_carriers",
@@ -395,36 +405,10 @@ def _print_ok_line(base_readable: bool, bootstrapped: list[str]) -> None:
 
 
 def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
-    """ADR-0038 PR-Δ gate. Three-layer policy + 5-class output.
+    """Reconcile exact counters and directional ratchets.
 
-    Layers (all stacked, each can FAIL independently):
-
-    1. **Strict equality** — every key in STRICT_EQUALITY_BASELINE
-       must appear in ``counts`` and equal its baseline value. Drift
-       in EITHER direction FAILs. Counters in ``counts`` without a
-       baseline entry FAIL ("unprotected new counter").
-
-    2. **Baseline movement ratchet** — for ``BASELINE_RATCHET_UP`` keys,
-       current baseline must be ``>=`` base baseline; for
-       ``BASELINE_RATCHET_DOWN`` keys, ``<=``. Catches the
-       "baseline silently dropped to match silently-removed actual"
-       collusion that strict equality alone misses.
-
-    3. **Removed-key防绕** — keys present in base baseline must remain
-       in current baseline. Prevents renaming a key
-       (``backend_pytest_count`` → ``backend_pytest_count_v2``) to
-       claim bootstrap exemption.
-
-    Bootstrap exception: a key not present in base baseline skips ONLY
-    the ratchet check (layer 2). Strict equality (layer 1) still
-    applies. This is purely data-driven — the moment a key lands in
-    main's baseline, bootstrap自动失效 for that key. No flags, no
-    overrides.
-
-    Composed of helper functions to stay under the C901 complexity gate;
-    each helper owns one concern (compute strict layer / compute ratchet
-    layer / print strict failures / print ratchet failures / print info /
-    print final OK line).
+    Base values must remain reachable in CI. New counters may bootstrap once;
+    existing counters cannot be renamed away or move against their ratchet.
     """
     missing, mismatches, extras = _compute_strict_equality_findings(counts)
 

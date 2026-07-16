@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from app import config
 from app.services import backup_service
 from tests._infra.env import TEST_DATA_DIR, TEST_UPLOAD_DIR
+
+pytestmark = pytest.mark.parallel_safe
 
 
 def test_writable_runtime_paths_are_process_isolated() -> None:

@@ -16,6 +16,9 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routes.owner_console import _require_local
 from app.services import windows_task_status_service as wts
+from tests._infra.windows_pg_contract_assertions import (
+    assert_windows_test_postgres_contract,
+)
 
 
 def _run_backup_script_contract(engine: str, script_path: Path, tmp_path: Path) -> None:
@@ -257,17 +260,7 @@ def test_db_maintenance_scripts_resolve_configured_database_url(tmp_path: Path) 
 
 def test_windows_postgres_discovery_uses_os_program_files_contract() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    script_paths = (
-        project_root / "backend" / "scripts" / "start_test_pg.ps1",
-        project_root / "backend" / "scripts" / "backup_database.ps1",
-        project_root / "backend" / "packaging" / "install_ticketbox.ps1",
-    )
-
-    for script_path in script_paths:
-        script = script_path.read_text(encoding="utf-8-sig")
-        assert "SpecialFolder]::ProgramFiles" in script
-        assert 'GetEnvironmentVariable("ProgramFiles", "Machine")' not in script
-        assert r"C:\Program Files\PostgreSQL" not in script
+    assert_windows_test_postgres_contract(project_root)
 
 
 def test_cloudflare_endpoint_script_does_not_accept_token_params() -> None:

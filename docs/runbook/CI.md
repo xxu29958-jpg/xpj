@@ -35,16 +35,26 @@ GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 
 scripts\check_text_encoding.ps1 + check_dependency_versions.ps1 + 全部 .ps1 的 BOM/语法检查
 python -m compileall app scripts tests
 ruff check app scripts tests
+python scripts\run_packaging_tests.py  # Windows 安装/生命周期合同，独立 collection 对账
 python scripts\check_api_contract.py
 python scripts\release_audit.py        # 自动发现全部 _audit_*.py lane
 pip-audit --strict（OSV 库）
 ```
 
-PG-only 之后该 job 没有数据库，不跑 pytest / smoke——全量测试都在 backend-postgres。
+该 job 没有业务测试数据库；后端业务 pytest / smoke 在 backend-postgres，
+Windows packaging 合同则在这里使用宿主 PostgreSQL 运行时完成限时验证。
 
 ### backend-postgres（全量测试）
 
-GitHub 主路径跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径跑在 Windows runner，用本机 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离）。两条路径都完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest。普通测试按 runner 可用 CPU 动态选择 xdist worker（封顶 6），分别使用带本次 run uid 的 `xpj_test_<run>_gwN`；migration、恢复、集群角色、schema 重建等测试必须显式声明 `stateful_serial`，随后独占 `xpj_test` 串行执行。marker 是执行权威，成员指纹只防止已登记风险测试被等量降级；两条 lane 不重叠。任何 `XPJ_TEST_DATABASE_URL` 覆盖都必须同时声明 `XPJ_TEST_CLUSTER_CONFIRMED=1`，防止把测试 DDL 静默指向未确认集群。Gitea 的 teardown 必须按 postmaster PID 定向拆库，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
+GitHub 主路径使用 PG17 service container。local-Gitea 要求 Gitea Runner `>=2.0.0`，使用宿主临时目录和专用 `:5433`，执行顺序均为：起库 → smoke → 备份恢复 → parallel → stateful。
+
+- Windows 启停由 lifecycle mutex 串行化；runner、pytest controller/worker、smoke、备份恢复各持 consumer lease。
+- `postgres.exe` 由 Job Object 原子创建；只继承显式 stdin/stdout/stderr 句柄，并持有创建时返回的真实进程句柄到 commit。在线身份和数据库准备完成后才提交生命周期，父进程死亡或超时会终止未提交进程树。
+- 数据目录先收紧为当前 runner / SYSTEM / Administrators 权威 ACL，并以目录句柄绑定到启动完成；路径替换、宽松继承 ACL 和 reparse tree 均 fail closed。
+- parallel lane 的每个 xdist worker 使用独立数据库；migration、恢复、角色、schema 与集群状态测试显式进入串行 lane。
+- marker 是分类真源。每条 managed lane 先在无 lane 环境中独立 collection，再把节点数与 SHA-256 摘要交给真实执行对账；collection 前少收、`--collect-only`、`-k/-m` 过滤或 handshake 伪绿都会失败。
+- 审计从精确 base 保护 backend 全集、parallel、`real_db`、`stateful_serial` 和 packaging 节点集合；旧 parallel 测试只允许因提升到 `stateful_serial` 离开该 lane。
+- local-Gitea lane 为 25 分钟，job 为 50 分钟，并保留 4 分钟 `always()` 清理。覆盖 `XPJ_TEST_DATABASE_URL` 时必须带 `owned-marker` 或 `ephemeral-service` 集群权威，并用实时 `system_identifier` 对账。
 
 ### desktop-manager
 
@@ -77,7 +87,7 @@ GitHub 云端 Android job 使用 hosted runner 的 Android SDK，并按需安装
 
 ## 安全边界
 
-CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`、`backend/backups/`、`android/app/build/` 由 `.gitignore` 排除，不进仓库。临时 PG 实例 trust 认证但只 listen localhost，每 run 用完即弃。
+CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`、`backend/backups/`、`android/app/build/` 由 `.gitignore` 排除，不进仓库。临时 PostgreSQL 使用 SCRAM-SHA-256；受保护的凭据文件是唯一耐久真源，`initdb` bootstrap 文件和 libpq passfile 只作为短命派生物，用后销毁。
 
 ## 常见失败点
 
@@ -85,7 +95,7 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 - pip-audit SSL EOF：网络 flake，rerun 整个 run 即绿。
 - OWASP dependency-check NVD 超时：`ci.yml` 先跑 `dependencyCheckUpdate`，只有这个独立 NVD 更新阶段超时才降级为 warning，并删除半成品缓存；`dependencyCheckAnalyze -PdependencyCheckAutoUpdate=false` 离线扫描阶段超时或失败仍按真实 CVE、腐坏缓存或未知 scanner fatal 处理。
 - `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android 测试而没同步 bump `android/audit/test_count_baseline.txt`。
-- `WaitDelay expired before I/O complete`：临时 PG 没拆干净，teardown 必须按 postmaster PID 杀进程树（绝不按二进制路径杀——生产 PG 同机共享二进制），详见 workflow 内注释。
+- 临时 PG 未清理：确认 lane 的 `finally` 与 `always()` backstop 均执行；只允许共享 stop 脚本在完整身份验证后调用 `pg_ctl`，绝不 `taskkill` 或按二进制路径杀进程。
 - `.ps1` 检查失败：确认仍是 UTF-8 with BOM、无 PS 5.1 语法错误。
 
 ## CI 是合并底线

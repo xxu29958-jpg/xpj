@@ -60,6 +60,7 @@ def test_confirmed_batch_update_token_map_must_cover_every_requested_id(
     assert response.json()["error"] == "invalid_request"
 
 
+@pytest.mark.real_db
 def test_two_sessions_confirmed_batch_update_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:

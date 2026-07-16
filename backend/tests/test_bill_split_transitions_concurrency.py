@@ -9,8 +9,9 @@ A stale-read transition racing a committed accept could clobber the
 These tests pin the guarded-flip behaviour for every non-accept transition,
 plus the previously untested expiry path (TTL 410 / sweeper).
 
-The ``test_two_sessions_*`` names opt into ``real_db`` via the conftest
-naming convention — the races need real cross-connection commits.
+Each ``test_two_sessions_*`` proof declares ``real_db`` explicitly because the
+races need real cross-connection commits. Collection fails closed if a future
+multi-session proof omits the marker.
 """
 
 from __future__ import annotations
@@ -60,6 +61,7 @@ def _create_invitation_for_race(
         return inv.public_id
 
 
+@pytest.mark.real_db
 def test_two_sessions_reject_vs_accept_race_does_not_clobber_accepted(*, identity) -> None:
     """session_b holds a stale 'invited' read of an invitation; session_a
     accepts and commits; session_b's reject must lose to the guarded flip
@@ -108,6 +110,7 @@ def test_two_sessions_reject_vs_accept_race_does_not_clobber_accepted(*, identit
         assert received is not None and received.status == "confirmed"
 
 
+@pytest.mark.real_db
 def test_two_sessions_cancel_vs_accept_race_does_not_clobber_accepted(*, identity) -> None:
     """The audited defect: sender cancel racing receiver accept. Once the
     accept claim lands, the receiver holds a confirmed expense whose money
@@ -153,6 +156,7 @@ def test_two_sessions_cancel_vs_accept_race_does_not_clobber_accepted(*, identit
         assert inv.cancelled_at is None
 
 
+@pytest.mark.real_db
 def test_two_sessions_mark_expired_loses_to_settled_invitation(*, identity) -> None:
     """``_mark_expired`` only flips rows still 'invited': against a stale
     snapshot of a row that has since been accepted it reports ``False`` and

@@ -172,7 +172,7 @@ def _reclaim_orphan_databases(
     for database_name, database_marker in rows:
         if (
             _is_owned_worker_database(base_name, database_name)
-            and database_marker in (None, marker)
+            and database_marker == marker
         ):
             _quarantine_and_drop_orphan(connection, database_name)
 

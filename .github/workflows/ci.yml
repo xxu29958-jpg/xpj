@@ -35,6 +35,7 @@ jobs:
   backend:
     name: Backend
     runs-on: windows-latest
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: backend
@@ -92,7 +93,10 @@ jobs:
         run: ruff check app scripts tests packaging/tests
 
       - name: Windows installer safety behavior
-        run: python -m pytest -q packaging/tests -p no:cacheprovider
+        timeout-minutes: 10
+        env:
+          XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME: "1"
+        run: python scripts/run_packaging_tests.py
 
       - name: Installer source preflight (Windows PowerShell 5.1)
         shell: powershell
@@ -244,7 +248,8 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_PASSWORD: ${{ format('xpj-ci-{0}-{1}-{2}', github.run_id, github.run_attempt, github.sha) }}
+          POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256 --set=password_encryption=scram-sha-256
         ports:
           - 5432:5432
         # CI speed-up: data dir on tmpfs (RAM). The PG suite is I/O-bound
@@ -292,23 +297,35 @@ jobs:
 
       - name: Create test databases
         env:
-          PGPASSWORD: postgres
+          XPJ_BOOTSTRAP_TEST_PASSWORD: ${{ format('xpj-ci-{0}-{1}-{2}', github.run_id, github.run_attempt, github.sha) }}
         run: |
+          umask 077
+          credential_file="$RUNNER_TEMP/xpj-test-postgres-credential-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          passfile="$RUNNER_TEMP/xpj-test-postgres-bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.pgpass"
+          printf '%s\n' "$XPJ_BOOTSTRAP_TEST_PASSWORD" > "$credential_file"
+          printf 'localhost:5432:*:postgres:%s\n' "$XPJ_BOOTSTRAP_TEST_PASSWORD" > "$passfile"
+          chmod 600 "$credential_file" "$passfile"
+          export PGPASSFILE="$passfile"
+          export PGREQUIREAUTH=scram-sha-256
+          trap 'rm -f "$passfile"' EXIT
           createdb -h localhost -p 5432 -U postgres xpj_smoke
           createdb -h localhost -p 5432 -U postgres xpj_test
           createdb -h localhost -p 5432 -U postgres xpj_restore
-
-      - name: Verify PostgreSQL is reachable
-        # Guard against a vacuous green: assert SMOKE_DATABASE_URL is Postgres
-        # and connect, so a dropped/renamed var fails loud here instead of the
-        # smoke silently falling back to a non-PG default.
-        env:
-          SMOKE_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
-        run: ./.ci-venv/bin/python -c "import os, psycopg; u = os.environ['SMOKE_DATABASE_URL']; assert u.startswith('postgresql'), u; psycopg.connect(u.replace('+psycopg','')).close(); print('PG reachable:', u.rsplit('@', 1)[-1])"
+          system_identifier="$(psql -h localhost -p 5432 -U postgres -Atc 'SELECT system_identifier FROM pg_control_system()')"
+          trust_rules="$(psql -h localhost -p 5432 -U postgres -Atc "SELECT count(*) FROM pg_hba_file_rules WHERE auth_method = 'trust'")"
+          password_encryption="$(psql -h localhost -p 5432 -U postgres -Atc 'SHOW password_encryption')"
+          test "$trust_rules" = "0"
+          test "$password_encryption" = "scram-sha-256"
+          rm -f "$passfile"
+          trap - EXIT
+          echo "XPJ_TEST_CLUSTER_AUTHORITY=ephemeral-service" >> "$GITHUB_ENV"
+          echo "XPJ_TEST_CLUSTER_SYSTEM_IDENTIFIER=$system_identifier" >> "$GITHUB_ENV"
+          echo "XPJ_TEST_POSTGRES_CREDENTIAL_FILE=$credential_file" >> "$GITHUB_ENV"
+          echo "XPJ_TEST_DATABASE_URL=postgresql+psycopg://postgres@localhost:5432/xpj_test" >> "$GITHUB_ENV"
 
       - name: PostgreSQL end-to-end smoke (ADR-0041)
         env:
-          SMOKE_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
+          SMOKE_DATABASE_URL: postgresql+psycopg://postgres@localhost:5432/xpj_smoke
         run: ./.ci-venv/bin/python scripts/smoke_test.py
 
       - name: PostgreSQL backup/restore recovery drill (ADR-0041 phase-2)
@@ -317,23 +334,17 @@ jobs:
         # restore into a fresh DB, assert key tables round-tripped. Runs before
         # the pytest suite mutates xpj_smoke; uses its own xpj_restore.
         env:
-          DRILL_SOURCE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
-          DRILL_RESTORE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_restore
+          DRILL_SOURCE_URL: postgresql+psycopg://postgres@localhost:5432/xpj_smoke
+          DRILL_RESTORE_URL: postgresql+psycopg://postgres@localhost:5432/xpj_restore
         run: ./.ci-venv/bin/python scripts/postgres_backup_drill.py
 
       - name: PostgreSQL parallel pytest lane
         # Each xdist worker creates and removes its own xpj_test_gwN database.
         # Tests requiring committed cross-process or schema state are excluded
         # here and run once in the following explicit serial lane.
-        env:
-          XPJ_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_test
-          XPJ_TEST_CLUSTER_CONFIRMED: "1"
         run: ./.ci-venv/bin/python scripts/run_test_lanes.py parallel
 
       - name: PostgreSQL stateful serial pytest lane
-        env:
-          XPJ_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_test
-          XPJ_TEST_CLUSTER_CONFIRMED: "1"
         run: ./.ci-venv/bin/python scripts/run_test_lanes.py stateful
 
   desktop-manager:

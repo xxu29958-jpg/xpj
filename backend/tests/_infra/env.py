@@ -35,7 +35,7 @@ TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
 # Lane (PG-only — debt #4, building on ADR-0041). PostgreSQL is the only lane:
 # prod / dev / test share the engine so dialect drift can't hide.
 # - XPJ_TEST_DATABASE_URL set  -> that engine verbatim only when paired with
-#   XPJ_TEST_CLUSTER_CONFIRMED=1 (CI's ephemeral PG or an explicit override).
+#   an owned-marker or ephemeral-service cluster authority.
 # - default                    -> local throwaway PostgreSQL on :5438, brought up
 #   by backend/scripts/start_test_pg.ps1.
 _base_database_url = configured_test_database_url(os.environ)

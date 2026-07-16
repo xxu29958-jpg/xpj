@@ -347,6 +347,7 @@ def _seed_committed_draft(*, amount_cents: int) -> str:
         return draft.public_id
 
 
+@pytest.mark.real_db
 @pytest.mark.skipif(
     engine.dialect.name != "postgresql",
     reason="row-lock contention is only observable on the PostgreSQL lane; "
@@ -392,6 +393,7 @@ def test_two_sessions_confirm_serializes_on_draft_row(*, identity) -> None:
         assert repayments == []
 
 
+@pytest.mark.real_db
 @pytest.mark.skipif(
     engine.dialect.name != "postgresql",
     reason="cross-session committed-state visibility needs the real PostgreSQL lane",

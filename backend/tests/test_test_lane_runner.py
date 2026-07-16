@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -8,12 +9,53 @@ from pathlib import Path
 import pytest
 
 from scripts import run_test_lanes
+from scripts.pytest_execution_contract import PytestCollectionSnapshot
 from tests._infra.lane_policy import (
+    managed_runner_completion_violation,
     managed_runner_configuration_violation,
     managed_runner_outcome_violation,
     managed_runner_selection_violation,
-    stateful_selection_violation,
+    managed_runner_worker_violation,
 )
+
+pytestmark = pytest.mark.parallel_safe
+
+
+def _write_runner_handshake(environment: dict[str, str]) -> None:
+    lane = environment[run_test_lanes.RUNNER_LANE_ENV]
+    token = environment[run_test_lanes.RUNNER_HANDSHAKE_TOKEN_ENV]
+    count = int(environment[run_test_lanes.RUNNER_EXPECTED_COUNT_ENV])
+    digest = environment[run_test_lanes.RUNNER_EXPECTED_DIGEST_ENV]
+    Path(environment[run_test_lanes.RUNNER_HANDSHAKE_PATH_ENV]).write_text(
+        run_test_lanes.runner_handshake_payload(lane, token, count, digest),
+        encoding="utf-8",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stable_collection_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    def collect(
+        target: str,
+        *,
+        mark_expression: str | None,
+        backend_root: Path,
+    ) -> PytestCollectionSnapshot:
+        assert target == "tests"
+        assert backend_root == run_test_lanes.BACKEND_ROOT
+        lane = "parallel" if mark_expression == "not stateful_serial" else "stateful"
+        return PytestCollectionSnapshot((f"tests/test_{lane}.py::test_contract",))
+
+    monkeypatch.setattr(run_test_lanes, "collect_pytest_snapshot", collect)
+    monkeypatch.setattr(
+        run_test_lanes,
+        "assert_test_cluster_authority",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        run_test_lanes,
+        "test_postgres_credential_environment",
+        lambda *_args, **_kwargs: contextlib.nullcontext(),
+    )
 
 
 def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:
@@ -25,8 +67,8 @@ def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:
         "pytest",
         *run_test_lanes.COMMON_PYTEST_ARGS,
     ]
-    assert run_test_lanes.COMMON_PYTEST_ARGS == (
-        "tests",
+    assert (
+        str(run_test_lanes.TESTS_ROOT),
         "-q",
         "-ra",
         "--tb=short",
@@ -37,7 +79,7 @@ def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:
         "xdist.plugin",
         "-o",
         "addopts=",
-    )
+    ) == run_test_lanes.COMMON_PYTEST_ARGS
     assert command[-7:] == [
         "-m",
         "not stateful_serial",
@@ -95,7 +137,9 @@ def test_full_lane_stops_after_first_failure(monkeypatch: pytest.MonkeyPatch) ->
         *,
         check: bool,
         env: dict[str, str],
+        cwd: Path,
     ) -> subprocess.CompletedProcess[str]:
+        assert cwd == run_test_lanes.BACKEND_ROOT
         calls.append(command)
         return subprocess.CompletedProcess(command, 7)
 
@@ -109,19 +153,26 @@ def test_full_lane_stops_after_first_failure(monkeypatch: pytest.MonkeyPatch) ->
 def test_full_lane_clears_filters_and_propagates_stateful_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[tuple[list[str], dict[str, str]]] = []
+    calls: list[tuple[list[str], dict[str, str], Path]] = []
     return_codes = iter((0, 7))
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k owner")
     monkeypatch.setenv("PYTEST_PLUGINS", "untrusted_plugin")
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw7")
+    monkeypatch.setenv("PYTEST_XDIST_WORKER_COUNT", "8")
+    monkeypatch.setenv("PYTHONOPTIMIZE", "2")
 
     def fake_run(
         command: list[str],
         *,
         check: bool,
         env: dict[str, str],
+        cwd: Path,
     ) -> subprocess.CompletedProcess[str]:
-        calls.append((command, env))
-        return subprocess.CompletedProcess(command, next(return_codes))
+        calls.append((command, env, cwd))
+        return_code = next(return_codes)
+        if return_code == 0:
+            _write_runner_handshake(env)
+        return subprocess.CompletedProcess(command, return_code)
 
     monkeypatch.setattr(run_test_lanes.subprocess, "run", fake_run)
 
@@ -134,15 +185,77 @@ def test_full_lane_clears_filters_and_propagates_stateful_failure(
     ]
     assert all("PYTEST_ADDOPTS" not in call[1] for call in calls)
     assert all("PYTEST_PLUGINS" not in call[1] for call in calls)
-    assert all(
-        call[1]["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1" for call in calls
+    assert all("PYTHONOPTIMIZE" not in call[1] for call in calls)
+    assert all(call[1]["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1" for call in calls)
+    assert all(not any(key.startswith("PYTEST_XDIST_") for key in call[1]) for call in calls)
+    assert all(call[2] == run_test_lanes.BACKEND_ROOT for call in calls)
+
+
+def test_runner_anchors_backend_root_when_invoked_elsewhere(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    expected_backend_root = Path(run_test_lanes.__file__).resolve().parents[1]
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            ("from scripts import run_test_lanes as runner; print(runner.BACKEND_ROOT); print(runner.TESTS_ROOT)"),
+        ],
+        cwd=tmp_path,
+        env=os.environ | {"PYTHONPATH": str(expected_backend_root)},
+        capture_output=True,
+        text=True,
+        check=False,
     )
+    assert probe.returncode == 0, probe.stderr
+    assert probe.stdout.splitlines() == [
+        str(expected_backend_root),
+        str(expected_backend_root / "tests"),
+    ]
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        env: dict[str, str],
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        observed.update(command=command, cwd=cwd)
+        _write_runner_handshake(env)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_test_lanes.subprocess, "run", fake_run)
+
+    assert run_test_lanes.run_lanes(("stateful",), workers=2) == 0
+    assert observed["cwd"] == expected_backend_root
+    assert str(expected_backend_root / "tests") in observed["command"]
+
+
+def test_runner_rejects_success_without_backend_conftest_handshake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        env: dict[str, str],
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(run_test_lanes.subprocess, "run", fake_run)
+
+    assert run_test_lanes.run_lanes(("parallel",), workers=2) == run_test_lanes.RUNNER_HANDSHAKE_FAILURE_EXIT_CODE
+    assert 1 <= run_test_lanes.RUNNER_HANDSHAKE_FAILURE_EXIT_CODE <= 255
 
 
 def test_managed_runner_rejects_partial_or_collection_only_execution() -> None:
     common = {
         "active_lane": "parallel",
-        "collection_roots": ["tests"],
+        "collection_roots": [str(run_test_lanes.TESTS_ROOT)],
         "collect_only": False,
         "keyword": "",
         "mark_expression": "not stateful_serial",
@@ -150,29 +263,25 @@ def test_managed_runner_rejects_partial_or_collection_only_execution() -> None:
         "ignored": (),
         "ignore_globs": (),
         "last_failed": False,
+        "optimized": False,
     }
 
     assert managed_runner_configuration_violation(**common) is None
-    assert "execute" in (
-        managed_runner_configuration_violation(**(common | {"collect_only": True}))
-        or ""
-    )
-    assert "filter" in (
-        managed_runner_configuration_violation(**(common | {"keyword": "owner"}))
-        or ""
-    )
+    assert "execute" in (managed_runner_configuration_violation(**(common | {"collect_only": True})) or "")
+    assert "optimized Python" in (managed_runner_configuration_violation(**(common | {"optimized": True})) or "")
+    assert "filter" in (managed_runner_configuration_violation(**(common | {"keyword": "owner"})) or "")
     assert "complete tests root" in (
-        managed_runner_configuration_violation(
-            **(common | {"collection_roots": ["tests/test_owner_console.py"]})
-        )
-        or ""
+        managed_runner_configuration_violation(**(common | {"collection_roots": ["tests/test_owner_console.py"]})) or ""
     )
-    assert managed_runner_selection_violation(
-        active_lane="parallel",
-        collected_nodeids=("parallel-a", "stateful-a", "parallel-b"),
-        stateful_nodeids=("stateful-a",),
-        selected_nodeids=("parallel-b", "parallel-a"),
-    ) is None
+    assert (
+        managed_runner_selection_violation(
+            active_lane="parallel",
+            collected_nodeids=("parallel-a", "stateful-a", "parallel-b"),
+            stateful_nodeids=("stateful-a",),
+            selected_nodeids=("parallel-b", "parallel-a"),
+        )
+        is None
+    )
     assert "changed the committed test identity set" in (
         managed_runner_selection_violation(
             active_lane="stateful",
@@ -185,14 +294,20 @@ def test_managed_runner_rejects_partial_or_collection_only_execution() -> None:
 
 
 def test_managed_runner_rejects_skipped_or_expected_failure_outcomes() -> None:
-    assert managed_runner_outcome_violation(
-        active_lane=None,
-        outcome_counts=None,
-    ) is None
-    assert managed_runner_outcome_violation(
-        active_lane="parallel",
-        outcome_counts={"skipped": 0, "xfailed": 0, "xpassed": 0},
-    ) is None
+    assert (
+        managed_runner_outcome_violation(
+            active_lane=None,
+            outcome_counts=None,
+        )
+        is None
+    )
+    assert (
+        managed_runner_outcome_violation(
+            active_lane="parallel",
+            outcome_counts={"skipped": 0, "xfailed": 0, "xpassed": 0},
+        )
+        is None
+    )
 
     for outcome in ("skipped", "xfailed", "xpassed"):
         violation = managed_runner_outcome_violation(
@@ -209,71 +324,51 @@ def test_managed_runner_rejects_skipped_or_expected_failure_outcomes() -> None:
         )
         or ""
     )
-
-
-def test_worker_side_guard_rejects_a_retained_stateful_item() -> None:
-    violation = stateful_selection_violation(
-        ["tests/test_db_migration_contract.py::test_upgrade"],
-        xdist_worker="gw0",
-        configured_workers=0,
+    assert (
+        managed_runner_completion_violation(
+            active_lane="parallel",
+            exit_status=pytest.ExitCode.OK,
+            tests_collected=2,
+            passed_count=2,
+        )
+        is None
     )
-
-    assert violation is not None
-    assert "xdist worker gw0" in violation
-
-
-def test_managed_runner_rejects_collection_hook_identity_drift(
-    tmp_path: Path,
-) -> None:
-    backend_root = Path(__file__).resolve().parents[1]
-    plugin = tmp_path / "drop_selected_item.py"
-    plugin.write_text(
-        "def pytest_collection_modifyitems(items):\n"
-        "    for index, item in enumerate(items):\n"
-        "        if item.get_closest_marker('stateful_serial') is None:\n"
-        "            items.pop(index)\n"
-        "            break\n",
-        encoding="utf-8",
+    assert "did not complete" in (
+        managed_runner_completion_violation(
+            active_lane="parallel",
+            exit_status=pytest.ExitCode.OK,
+            tests_collected=2,
+            passed_count=0,
+        )
+        or ""
     )
-    environment = os.environ.copy()
-    environment[run_test_lanes.RUNNER_LANE_ENV] = "parallel"
-    environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-    environment.pop("PYTEST_PLUGINS", None)
-    environment.pop("PYTEST_ADDOPTS", None)
-    environment["PYTHONPATH"] = os.pathsep.join(
-        part
-        for part in (str(tmp_path), environment.get("PYTHONPATH"))
-        if part
+    assert (
+        managed_runner_worker_violation(
+            active_lane="parallel",
+            configured_workers=2,
+            ready_workers={"gw0", "gw1"},
+            down_workers={"gw0", "gw1"},
+            worker_errors={},
+        )
+        is None
     )
-    for key in tuple(environment):
-        if key.startswith("PYTEST_XDIST_"):
-            environment.pop(key)
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "tests",
-            "-q",
-            "-p",
-            "xdist.plugin",
-            "-p",
-            "drop_selected_item",
-            "-o",
-            "addopts=",
-            "-m",
-            "not stateful_serial",
-            "-n",
-            "0",
-        ],
-        cwd=backend_root,
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
+    assert "lost xdist worker" in (
+        managed_runner_worker_violation(
+            active_lane="parallel",
+            configured_workers=2,
+            ready_workers={"gw0", "gw1"},
+            down_workers={"gw0", "gw1"},
+            worker_errors={"gw1": "channel closed"},
+        )
+        or ""
     )
-
-    output = completed.stdout + completed.stderr
-    assert completed.returncode == pytest.ExitCode.USAGE_ERROR, output
-    assert "changed the committed test identity set" in output
+    assert "clean completion" in (
+        managed_runner_worker_violation(
+            active_lane="parallel",
+            configured_workers=2,
+            ready_workers={"gw0", "gw1"},
+            down_workers={"gw0"},
+            worker_errors={},
+        )
+        or ""
+    )

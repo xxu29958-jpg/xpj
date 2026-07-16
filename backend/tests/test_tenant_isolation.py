@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from api_contract_helpers import (
     confirm_expense_api,
     mark_not_duplicate_api,
@@ -109,6 +110,7 @@ def test_protected_image_and_thumbnail_reject_database_path_escape(
     assert thumb_body["message"] == "图片不存在或已被清理。"
 
 
+@pytest.mark.real_db
 def test_legacy_upload_paths_migrate_into_current_tenant_dir(
     client: TestClient, *, identity,
 ) -> None:
@@ -166,6 +168,7 @@ def test_legacy_upload_paths_migrate_into_current_tenant_dir(
     )
 
 
+@pytest.mark.real_db
 def test_legacy_upload_migration_leaves_database_only_reference_untouched(identity) -> None:
     """A legacy ``image_path`` with no on-disk file (a database-only reference)
     is left as-is by ``migrate_upload_paths_to_tenant_dirs`` — the helper only
@@ -194,6 +197,7 @@ def test_legacy_upload_migration_leaves_database_only_reference_untouched(identi
         assert unchanged.image_path == missing_path
 
 
+@pytest.mark.real_db
 def test_legacy_upload_migration_rename_failure_keeps_original_file_and_path(
     identity, monkeypatch,
 ) -> None:

@@ -205,7 +205,7 @@ https://api.我的域名.com/u/<upload_key>?tz=Asia/Shanghai
 ```bat
 cd /d E:\projects\xiaopiaojia\backend
 setup.bat -Dev
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_test_pg.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_test_pg.ps1 -ResetDatabases
 .venv\Scripts\python.exe -m compileall app scripts tests
 .venv\Scripts\ruff.exe check app scripts tests
 .venv\Scripts\python.exe scripts\run_test_lanes.py full

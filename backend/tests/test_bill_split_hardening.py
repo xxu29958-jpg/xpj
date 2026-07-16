@@ -45,6 +45,7 @@ def test_active_split_invitation_total_cannot_exceed_parent_expense(
     assert second.json()["error"] == "split_total_exceeds_parent"
 
 
+@pytest.mark.real_db
 @pytest.mark.skipif(
     engine.dialect.name != "postgresql",
     reason="row-lock contention is only observable on the PostgreSQL lane; "
@@ -216,6 +217,7 @@ def test_foreign_currency_split_lands_received_expense_in_home_currency() -> Non
         assert received.exchange_rate_date is not None
 
 
+@pytest.mark.real_db
 def test_two_sessions_accept_race_creates_single_received_expense(*, identity) -> None:
     """ADR-0038 PR-C: two sessions hold the same pre-accept ('invited') read
     of one invitation. session_a accepts (creates the received expense +

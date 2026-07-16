@@ -9,7 +9,7 @@ legacy ``tags`` rows → upgrade to head, forcing the add-nullable → backfill-
 
 Ported (PG-only) from the retired ``test_database_migration_tags.py``; the
 legacy-SQLite-migrator half of that file went with ``migrate_sqlite_schema``.
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its
+Explicitly marked ``real_db`` + ``stateful_serial`` because it issues DDL via its
 own ``engine.begin()`` connections outside the per-test transaction.
 """
 

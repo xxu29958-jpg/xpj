@@ -339,6 +339,8 @@ def test_installer_runtime_guard_fails_closed_when_status_cannot_be_read():
     assert launch._installer_runtime_recovery_is_pending(UnreadableGuard()) is True
 
 
+@pytest.mark.real_db
+@pytest.mark.stateful_serial
 def test_alembic_env_skips_fileconfig_when_logging_already_configured():
     """ADR-0047 §8 guard (migrations/env.py): when a host has already configured
     logging (root has handlers — the launcher's dictConfig, or pytest), Alembic

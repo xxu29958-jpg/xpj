@@ -33,6 +33,13 @@ def _assert_pg_restore_password_isolated(
     observed: dict[str, object] = {}
 
     def fake_restore(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if arguments[1:] == ["--version"]:
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                stdout="pg_restore (PostgreSQL) 17.10\n",
+                stderr="",
+            )
         observed["arguments"] = arguments
         observed["environment"] = kwargs["env"]
         return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
@@ -47,6 +54,7 @@ def _assert_pg_restore_password_isolated(
     assert decoded_password not in arguments
     assert encoded_password not in " ".join(arguments)
     assert environment["PGPASSWORD"] == decoded_password
+    assert environment["PGREQUIREAUTH"] == "scram-sha-256"
 
     monkeypatch.setattr(
         postgres_backup_drill.subprocess,
@@ -105,6 +113,7 @@ def test_pg_tools_keep_password_out_of_process_arguments(tmp_path, monkeypatch, 
     assert decoded_password not in arguments
     assert encoded_password not in " ".join(arguments)
     assert environment["PGPASSWORD"] == decoded_password
+    assert environment["PGREQUIREAUTH"] == "scram-sha-256"
     assert os.environ["PGPASSWORD"] == "parent-password"
     assert "PGPASSWORD" not in backup_service._pg_tool_environment(None)  # noqa: SLF001
     assert os.environ["PGPASSWORD"] == "parent-password"

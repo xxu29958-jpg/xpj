@@ -521,6 +521,7 @@ Invoke-RestMethod `
 
 ```bat
 cd /d E:\projects\xiaopiaojia\backend
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_test_pg.ps1 -ResetDatabases
 .venv\Scripts\python.exe -m compileall app scripts
 .venv\Scripts\ruff.exe check app scripts
 .venv\Scripts\python.exe scripts\run_test_lanes.py full

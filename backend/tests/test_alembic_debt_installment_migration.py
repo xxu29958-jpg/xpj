@@ -9,8 +9,8 @@ directly on PostgreSQL (the prod dialect): create_all → stamp head → downgra
 NULLABLE and the CHECK is back — not just that the names exist, so a flipped nullability / a
 typo'd CHECK in the migration fails HERE.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its own
-``engine.begin()`` connections outside the per-test transaction.
+Explicitly marked ``real_db`` + ``stateful_serial`` because it issues DDL via its
+own ``engine.begin()`` connections outside the per-test transaction.
 """
 
 from __future__ import annotations

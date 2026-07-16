@@ -77,7 +77,7 @@ def test_worker_lifecycle_reclaims_orphans_without_touching_live_leases() -> Non
             worker_db._worker_lifecycle_guard(first_parsed) as connection,
         ):
             assert not _database_exists(connection, stale_name)
-            assert not _database_exists(connection, unmarked_name)
+            assert _database_exists(connection, unmarked_name)
             assert _database_exists(connection, first_name)
             assert _database_exists(connection, second_name)
     finally:

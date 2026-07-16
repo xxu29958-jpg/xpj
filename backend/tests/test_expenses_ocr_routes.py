@@ -255,6 +255,7 @@ def test_retry_ocr_replay_same_key_returns_canonical_not_409(
     assert replay.json()["row_version"] == v1
 
 
+@pytest.mark.real_db
 def test_retry_ocr_rejects_stale_pending_snapshot(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch, *, identity,
@@ -302,6 +303,7 @@ def test_retry_ocr_rejects_stale_pending_snapshot(
         assert row.amount_cents == 1234
 
 
+@pytest.mark.real_db
 def test_two_sessions_retry_ocr_race_returns_state_conflict(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch, *, identity,

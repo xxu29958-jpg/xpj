@@ -41,27 +41,17 @@ $env:DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_smoke"
 三个 PG 共享同一套二进制：生产服务（`:5432`）、CI 临时 `initdb` 实例（`:5433`）、本地 throwaway 实例（`:5438`）。按「二进制路径」筛 postgres 进程无法区分实例。
 
 ### 正确做法
-- **杀 PG 进程只按 ephemeral 自己的 PID 定向**，PID 从该实例 datadir 的 `postmaster.pid` 第一行读，不按路径筛。`stop_test_pg.ps1` 就是这么做的：
-
-  ```powershell
-  $pidfile = Join-Path $DataDir "postmaster.pid"
-  $pmpid = (Get-Content $pidfile -TotalCount 1)
-  & taskkill /F /T /PID $pmpid          # 只杀这个实例的进程树
-  ```
-
-- **建 / 删测试库只在 throwaway 实例上**。本机跑套件 / 验迁移用 `backend\scripts\start_test_pg.ps1`（默认 `:5438`，幂等；`teardown` 走 `stop_test_pg.ps1`）。`:5433` 留给 CI 的 `initdb` 临时实例，本机别手搓。
-- 两个脚本都在入口硬拒危险端口，是这条铁律的编译期化身：
-
-  ```powershell
-  if ($Port -eq 5432 -or $Port -eq 5433) {
-      throw "Refusing port ${Port}: 5432 is prod, 5433 is CI. Use a dedicated test port (default 5438)."
-  }
-  ```
-
-- `start_test_pg.ps1` 还会校验「端口上的监听者确实是我们的实例」（datadir 下有 `postmaster.pid`），不把别的进程占的端口误当自己的。
+- 本地和 CI 只调用同一组 `start_test_pg.ps1` / `stop_test_pg.ps1` 生命周期入口；`:5438` 属于 `local`，`:5433` 只有显式 `ci` 用途可以使用，`:5432` 永久拒绝。
+- 新集群先写同父目录 staging receipt，再在唯一 staging 中完成 `initdb`、marker 与 system identifier 验证，最后原子发布；后续只回收 receipt、进程代际和路径边界均可证明的中断残留。
+- 数据目录只有同时满足脚本创建的 ownership marker、marker 内 PostgreSQL system identifier 与 `pg_controldata` 一致，才被视为可处置测试集群。已有但无 marker 的目录一律保留并拒绝。
+- 数据目录必须由当前 runner 身份持有，ACL 只保留当前身份、SYSTEM、Administrators；启动期间持有目录身份句柄，路径替换、reparse 或宽松写权限均不能越过验证。
+- credential、marker 和 lifecycle receipt 创建时即带受保护 ACL；libpq 只读取由 credential 真源派生的短命 passfile，并为每次正常连接强制 `require_auth=scram-sha-256`。旧 `trust` 集群仅在生命周期锁内使用一次显式 `no-challenge bootstrap` 会话完成迁移；`require_auth=none` 只证明服务端未发起认证 challenge，不单独充当 HBA 条目证明。
+- 运行态还必须证明 `postmaster.pid` 的目录、端口、PID、进程启动代际和 loopback listener 一致；随后在同一个 `psql` 会话核对 `data_directory`、`pg_control_system().system_identifier`、端口和监听地址，验证完成后才允许建测试库。
+- 新 postmaster 在 Job Object 中原子出生，只继承明确的三个标准句柄；创建时返回的进程句柄才是 commit 前身份权威，PID 文件允许短暂为空且不用于杀进程。
+- 停机只对上述已验证集群调用 `pg_ctl stop`。离线身份再次吻合后，先持久化包含随机 `instance_id` 的删除 receipt，再以不共享 DELETE 的目录句柄锁住该实例、复核身份并按句柄改名为唯一 tombstone；路径在复核与改名之间无法被替换。后续只删除再次验明身份的 tombstone，receipt 最后删除，进程死在任一阶段都可重入。`pg_controldata`、`initdb`、`pg_ctl` 和递归清理均有显式超时；超时进程由 Job Object 整树终止。禁止 `taskkill`、按二进制路径杀进程或直接删除未知目录。
 
 ### 铁律
-**杀 PG 进程只按 ephemeral PID（读 `postmaster.pid`），绝不按二进制路径；建 / 删 / DDL 只对 `:5438` throwaway 实例，永不碰 `:5432` 生产、`:5433` CI。**
+**进程、目录和数据库操作都必须先证明 marker + system identifier + postmaster 代际 + 在线身份；本地只动 `:5438`，CI 只动 `:5433`，永不触碰 `:5432`。**
 
 ---
 
@@ -82,7 +72,9 @@ $env:DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_smoke"
   .\.venv\Scripts\python.exe scripts\run_test_lanes.py full  # 并行普通测试，再串行状态生命周期
   ```
 
-- 第二个顶层 runner 可以并行执行普通 worker；进入 stateful lane 时会等待同一 PG 集群上的锁，等待超过 15 分钟则失败，不会静默并发。
+- 需要可重复的 smoke / 全项目验证时用 `start_test_pg.ps1 -ResetDatabases`；普通本地启动默认保留测试库，避免每次编辑循环都付重建成本。重置只在在线身份验证通过后的同一 `psql` 会话执行。
+
+- start、stop、完整 verify 和 Gitea lane 使用同一个 Windows lifecycle mutex；每个真实数据库消费者分别持有自己创建并锁定的进程级 lease，不继承父进程锁。start 在同一 writer 临界区内完成“服务就绪 → 首个 lease”交接，因此不存在已启动但尚未登记消费者的窗口。即使外层 PowerShell 意外死亡，重置和停机仍须等待存活的 runner、pytest worker、smoke 或恢复进程退出，并确认没有其他活动数据库会话。同一计划内部的普通 worker 使用独立数据库并行，stateful lane 再通过 PostgreSQL 锁串行。
 
 ### 铁律
 **runner 内部 xdist worker 按 run 隔离数据库；stateful lane 必须持有 PG 集群锁并以 `-n 0` 独占执行。**
@@ -143,12 +135,8 @@ PG-only 瘦身后 SQLite 方言分支已全删。若再写 `if dialect == "sqlit
 
 ---
 
-## 记忆勘误
+## 当前目录合同
 
-逐站点核验后，与真实文件不符 / 需澄清的记忆陈述：
-
-- `project_gitea_runner_pg_isolation` 称本地 throwaway datadir 在 `$env:TEMP\xpj_pg_ci_<run_id>`——那是 **CI** 临时实例（`:5433`）的命名。本地 `start_test_pg.ps1`（`:5438`）的 datadir 实际是 `$env:TEMP\xpj_pg_test<Port>`（如 `xpj_pg_test5438`）。两者是不同实例、不同命名，本文按真实脚本写。
-- 同条记忆称「`start_test_pg.ps1` 脚本自身拒 5432/5433」——已核实属实：两个脚本入口均有 `if ($Port -eq 5432 -or $Port -eq 5433) { throw ... }`。
-- `feedback_backend_start_runs_migrations_on_user_db` 称起后端 = `init_db` 跑 alembic 到 head——属当时启动行为描述，本文按「documented 启动行为」呈现；操作面以「先覆盖 `DATABASE_URL` 到 `:5438`」这条可执行护栏为准，未逐行复核 lifespan 当前实现。
-
-文件落点确认：`docs/runbook/POSTGRES_MIGRATION.md` 已有 §3「表属主（owner）排查」节，本 runbook 的坑 4 与其互为印证、不冲突，可交叉引用。
+- 本地：`$env:TEMP\xpj_pg_test5438`，`-Purpose local`，默认保留数据库以加速重复开发。
+- local-Gitea：`$env:TEMP\xpj_pg_ci_5433`，`-Purpose ci -ResetDatabases`，固定宿主目录用于异常中断后的可验证接管；目录 ACL 在任何 PostgreSQL 代码执行前收紧，每次 run 重建数据库。
+- `docs/runbook/POSTGRES_MIGRATION.md` §3 继续负责生产对象属主排查；本脚本只管理 marker-owned 测试集群。

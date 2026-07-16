@@ -6,9 +6,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from tests._infra.pytest_membership_examples import (
+    assert_protected_pytest_membership_gate as _assert_protected_pytest_membership_gate,
+)
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
+
+pytestmark = pytest.mark.parallel_safe
 
 
 def test_atomic_promise_commit_counter_ignores_nested_functions() -> None:
@@ -48,14 +56,20 @@ def test_allowlist_reason_scope_claims_are_machine_checked() -> None:
         "POST /web/budgets/save",
         "single-writer monthly budget",
     )
-    assert mod._scope_claim_failure(
-        "POST /api/admin/devices/{public_id}/rename",
-        "owner-only - device rename under admin API",
-    ) is None
-    assert mod._scope_claim_failure(
-        "POST /owner/upload-links/{public_id}/limits",
-        "owner-console-only - single-writer rate-limit edit",
-    ) is None
+    assert (
+        mod._scope_claim_failure(
+            "POST /api/admin/devices/{public_id}/rename",
+            "owner-only - device rename under admin API",
+        )
+        is None
+    )
+    assert (
+        mod._scope_claim_failure(
+            "POST /owner/upload-links/{public_id}/limits",
+            "owner-console-only - single-writer rate-limit edit",
+        )
+        is None
+    )
 
 
 def test_release_audit_compact_mode_suppresses_success_noise(monkeypatch, capsys) -> None:
@@ -122,9 +136,7 @@ def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> 
     baseline["mutate_token_exempted"] = 122
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
-    _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 121}
-    )
+    _bootstrapped, violations, _removed = mod._compute_ratchet_findings({"mutate_token_exempted": 121})
 
     assert violations == []
 
@@ -138,9 +150,7 @@ def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -
         baseline = dict(mod.STRICT_EQUALITY_BASELINE)
         baseline["mutate_token_exempted"] = current_count
         monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
-        _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-            {"mutate_token_exempted": base_count}
-        )
+        _bootstrapped, violations, _removed = mod._compute_ratchet_findings({"mutate_token_exempted": base_count})
 
         assert len(violations) == 1
         assert str(base_count) in violations[0]
@@ -157,9 +167,7 @@ def test_backend_pytest_count_cannot_drop_with_actuals_and_baseline(monkeypatch)
         baseline[counter] = current_value
         monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
-        _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-            {counter: base_value}
-        )
+        _bootstrapped, violations, _removed = mod._compute_ratchet_findings({counter: base_value})
 
         assert len(violations) == 1
         assert f"{counter} (UP-only)" in violations[0]
@@ -171,20 +179,17 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
     captured: list[tuple[list[str], dict[str, str]]] = []
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k owner")
     monkeypatch.setenv("PYTEST_PLUGINS", "untrusted_plugin")
+    monkeypatch.setenv("PYTHONOPTIMIZE", "2")
+    monkeypatch.setenv("PYTHONPATH", "untrusted-import-root")
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         environment = kwargs["env"]
         assert isinstance(environment, dict)
         captured.append((command, environment))
         stdout = (
-            "tests/test_stateful.py::test_one\n"
-            "1/2 tests collected (1 deselected) in 1.00s\n"
+            "tests/test_stateful.py::test_one\n1/2 tests collected (1 deselected) in 1.00s\n"
             if "stateful_serial" in command
-            else (
-                "tests/test_parallel.py::test_one\n"
-                "tests/test_stateful.py::test_one\n"
-                "2 tests collected in 1.00s\n"
-            )
+            else ("tests/test_parallel.py::test_one\ntests/test_stateful.py::test_one\n2 tests collected in 1.00s\n")
         )
         return subprocess.CompletedProcess(
             command,
@@ -196,19 +201,13 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
     monkeypatch.setattr(mod.subprocess, "run", fake_run)
 
     assert mod._count_pytest_tests("tests") == 2
-    assert mod._count_pytest_tests(
-        "tests", mark_expression="stateful_serial"
-    ) == 1
-    assert mod._pytest_membership_digest(
-        ("tests/test_stateful.py::test_one",)
-    ) != mod._pytest_membership_digest(
+    assert mod._count_pytest_tests("tests", mark_expression="stateful_serial") == 1
+    assert mod._pytest_membership_digest(("tests/test_stateful.py::test_one",)) != mod._pytest_membership_digest(
         ("tests/test_parallel.py::test_one",)
     )
     assert mod._pytest_membership_digest(
         ("tests/test_b.py::test_two", "tests/test_a.py::test_one")
-    ) == mod._pytest_membership_digest(
-        ("tests/test_a.py::test_one", "tests/test_b.py::test_two")
-    )
+    ) == mod._pytest_membership_digest(("tests/test_a.py::test_one", "tests/test_b.py::test_two"))
     assert captured[1][0][-4:] == [
         "-m",
         "stateful_serial",
@@ -218,7 +217,16 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
     for _command, environment in captured:
         assert "PYTEST_ADDOPTS" not in environment
         assert "PYTEST_PLUGINS" not in environment
+        assert "PYTHONOPTIMIZE" not in environment
+        assert "PYTHONPATH" not in environment
         assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+    _assert_protected_pytest_membership_gate()
+
+
+def test_codebase_marker_audit_ignores_strings_and_reads_comments() -> None:
+    mod = importlib.reload(importlib.import_module("_audit_codebase"))
+
+    assert mod._marker_comments("path = '$env:TEMP'\n# TODO: follow up\n") == [(2, "# TODO: follow up")]
 
 
 def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
@@ -240,9 +248,7 @@ def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
     monkeypatch.delenv("XPJ_AUDIT_BASE_REF")
     monkeypatch.setenv("GITHUB_BASE_REF", "main")
     assert mod._strict_baseline_git_ref() is None
-    assert mod._strict_baseline_selection_error == (
-        "CI requires XPJ_AUDIT_BASE_REF with the exact pre-change commit"
-    )
+    assert mod._strict_baseline_selection_error == ("CI requires XPJ_AUDIT_BASE_REF with the exact pre-change commit")
 
     assert mod.evaluate_pr_delta_metrics({"unexpected_counter": 1}) == 1
 
@@ -262,10 +268,15 @@ def test_pr_delta_flags_extra_and_unreadable_base_independently(
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
     monkeypatch.setattr(mod, "_read_base_strict_baseline", lambda: (True, baseline))
 
-    assert mod.evaluate_pr_delta_metrics({
-        "backend_pytest_count": 2403,
-        "unexpected_counter": 1,
-    }) == 1
+    assert (
+        mod.evaluate_pr_delta_metrics(
+            {
+                "backend_pytest_count": 2403,
+                "unexpected_counter": 1,
+            }
+        )
+        == 1
+    )
 
     extra_only = capsys.readouterr()
     assert "audit reported counters with no baseline entry" in extra_only.out

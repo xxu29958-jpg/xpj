@@ -53,10 +53,14 @@ def _counts(url: str) -> dict[str, int]:
 def _pg_restore(dump_path: Path, restore_url: str) -> None:
     from app.services.backup_service import _pg_tool_connection, _pg_tool_environment
     from app.services.postgres_backup_validation_service import find_pg_binary
+    from scripts.test_pg_client_contract import (
+        assert_postgres_client_supports_required_auth,
+    )
 
     binary = find_pg_binary("pg_restore", "PG_RESTORE_PATH")
     if not binary:
         raise SystemExit("FAIL drill: pg_restore not found")
+    assert_postgres_client_supports_required_auth(binary, label="pg_restore")
     connection = _pg_tool_connection(restore_url)
     # --exit-on-error: stop at the FIRST failed item instead of pg_restore's
     # default keep-going mode. The drill restores as the ephemeral cluster's
@@ -91,36 +95,99 @@ def main() -> int:
 
     from app.services import backup_service
     from app.services.postgres_backup_validation_service import validate_postgres_backup_file
+    from scripts.test_pg_client_contract import (
+        assert_postgres_client_supports_required_auth,
+    )
 
     source_counts = _counts(source_url)
     if source_counts["expenses"] == 0:
         raise SystemExit("FAIL drill: source has no expenses — did the smoke test run first?")
 
+    assert_postgres_client_supports_required_auth(
+        backup_service._pg_dump_binary(),  # noqa: SLF001
+        label="pg_dump",
+    )
     entry = backup_service.create_manual_backup()
     dump_path = backup_service._backup_dir() / entry.file_name  # noqa: SLF001
-    print(f"OK backup via backend: {entry.file_name} ({entry.size_bytes} bytes)")
+    try:
+        print(f"OK backup via backend: {entry.file_name} ({entry.size_bytes} bytes)")
 
-    validate_postgres_backup_file(dump_path)
-    print("OK archive validation (pg_restore --list)")
+        validate_postgres_backup_file(dump_path)
+        print("OK archive validation (pg_restore --list)")
 
-    _pg_restore(dump_path, restore_url)
-    restore_counts = _counts(restore_url)
-    if restore_counts != source_counts:
-        missing = sorted(set(source_counts) - set(restore_counts))
-        diffs = {
-            table: (source_counts.get(table), restore_counts.get(table))
-            for table in sorted(set(source_counts) | set(restore_counts))
-            if source_counts.get(table) != restore_counts.get(table)
-        }
-        raise SystemExit(f"FAIL drill: counts differ missing_tables={missing} (source, restore)={diffs}")
-    print(
-        f"OK restored data matches source: {len(restore_counts)} tables, "
-        f"{sum(restore_counts.values())} rows (incl. expenses={restore_counts.get('expenses', 0)})"
-    )
+        _pg_restore(dump_path, restore_url)
+        restore_counts = _counts(restore_url)
+        if restore_counts != source_counts:
+            missing = sorted(set(source_counts) - set(restore_counts))
+            diffs = {
+                table: (source_counts.get(table), restore_counts.get(table))
+                for table in sorted(set(source_counts) | set(restore_counts))
+                if source_counts.get(table) != restore_counts.get(table)
+            }
+            raise SystemExit(
+                "FAIL drill: counts differ "
+                f"missing_tables={missing} (source, restore)={diffs}"
+            )
+        print(
+            f"OK restored data matches source: {len(restore_counts)} tables, "
+            f"{sum(restore_counts.values())} rows "
+            f"(incl. expenses={restore_counts.get('expenses', 0)})"
+        )
+    finally:
+        dump_path.unlink(missing_ok=True)
 
     print("\nPASS postgres backup/restore drill")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    if __package__:
+        from scripts.test_pg_contract import (
+            assert_managed_test_cluster_authority,
+            configured_test_database_url,
+            managed_test_database_url,
+            start_windows_parent_watchdog,
+            test_postgres_consumer_lease,
+            test_postgres_credential_environment,
+            validate_backup_drill_database_urls,
+        )
+    else:
+        from test_pg_contract import (
+            assert_managed_test_cluster_authority,
+            configured_test_database_url,
+            managed_test_database_url,
+            start_windows_parent_watchdog,
+            test_postgres_consumer_lease,
+            test_postgres_credential_environment,
+            validate_backup_drill_database_urls,
+        )
+
+    start_windows_parent_watchdog(label="PostgreSQL backup drill")
+    base_url = configured_test_database_url(os.environ)
+    source_url = os.environ.get("DRILL_SOURCE_URL", "").strip() or managed_test_database_url(
+        base_url,
+        "xpj_smoke",
+    )
+    restore_url = os.environ.get("DRILL_RESTORE_URL", "").strip() or managed_test_database_url(
+        base_url,
+        "xpj_restore",
+    )
+    validate_backup_drill_database_urls(source_url, restore_url)
+    with test_postgres_credential_environment(
+        source_url,
+        os.environ,
+    ):
+        assert_managed_test_cluster_authority(
+            source_url,
+            os.environ,
+            expected_database="xpj_smoke",
+        )
+        assert_managed_test_cluster_authority(
+            restore_url,
+            os.environ,
+            expected_database="xpj_restore",
+        )
+        os.environ["DRILL_SOURCE_URL"] = source_url
+        os.environ["DRILL_RESTORE_URL"] = restore_url
+        with test_postgres_consumer_lease(source_url):
+            raise SystemExit(main())

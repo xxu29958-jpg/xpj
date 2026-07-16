@@ -8,8 +8,8 @@ dialect): create_all → stamp head → downgrade past 20260620_0002 (drops the 
 upgrade to head (re-adds them), then asserts the column is NOT NULL and the CHECK is back — not
 just that the name exists, so a dropped NOT NULL / CHECK in the migration fails HERE.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its own
-``engine.begin()`` connections outside the per-test transaction.
+Explicitly marked ``real_db`` + ``stateful_serial`` because it issues DDL via its
+own ``engine.begin()`` connections outside the per-test transaction.
 """
 
 from __future__ import annotations

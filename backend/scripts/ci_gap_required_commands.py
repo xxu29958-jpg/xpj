@@ -29,15 +29,12 @@ class RequiredAction:
 
     def matches(self, uses: str, inputs: tuple[tuple[str, str], ...]) -> bool:
         supplied = dict(inputs)
-        return uses == self.uses and all(
-            supplied.get(key) == value for key, value in self.inputs
-        )
+        return uses == self.uses and all(supplied.get(key) == value for key, value in self.inputs)
 
 
 _PYTHON_COMMAND = r"(?:python(?:\.exe)?|[^\s]+[\\/]python(?:\.exe)?)"
 _PYTHON_PREFIX = rf"(?i)^\s*(?:&\s+)?{_PYTHON_COMMAND}\s+"
 _RUFF_PREFIX = r"(?i)^\s*(?:&\s+)?(?:ruff(?:\.exe)?|[^\s]+[\\/]ruff(?:\.exe)?)\s+"
-_PYTEST_LINE = rf"(?m)^\s*{_PYTHON_COMMAND}\s+-m\s+pytest\s+"
 _BACKEND_TARGETS = r"app\s+scripts\s+tests\s+packaging[\\/]+tests"
 
 
@@ -63,8 +60,7 @@ def _powershell_file_invocation(
     except ValueError:
         return None
     if file_index + 1 >= len(tokens) or any(
-        mode in {"-command", "-c", "-encodedcommand", "-enc", "-e"}
-        for mode in lowered[1:file_index]
+        mode in {"-command", "-c", "-encodedcommand", "-enc", "-e"} for mode in lowered[1:file_index]
     ):
         return None
     script = tokens[file_index + 1].replace("\\", "/").lower().removeprefix("./")
@@ -76,9 +72,7 @@ def _matches_installer_source_preflight(command: str, *, executables: set[str]) 
     if invocation is None:
         return False
     script, arguments = invocation
-    return script == "packaging/build_inno_installer.ps1" and (
-        "-checksourceinputsonly" in arguments
-    )
+    return script == "packaging/build_inno_installer.ps1" and ("-checksourceinputsonly" in arguments)
 
 
 def _matches_windows_powershell_installer_source_preflight(command: str) -> bool:
@@ -159,24 +153,15 @@ REQUIRED_CI_INVOCATIONS = (
     ),
     RequiredCommand(
         "pytest PostgreSQL parallel lane",
-        re.compile(
-            _PYTHON_PREFIX
-            + r"scripts[\\/]+run_test_lanes\.py\s+parallel\s*$"
-        ),
+        re.compile(_PYTHON_PREFIX + r"scripts[\\/]+run_test_lanes\.py\s+parallel\s*$"),
     ),
     RequiredCommand(
         "pytest stateful serial lane",
-        re.compile(
-            _PYTHON_PREFIX
-            + r"scripts[\\/]+run_test_lanes\.py\s+stateful\s*$"
-        ),
+        re.compile(_PYTHON_PREFIX + r"scripts[\\/]+run_test_lanes\.py\s+stateful\s*$"),
     ),
     RequiredCommand(
         "pytest installer safety lane",
-        re.compile(
-            _PYTEST_LINE
-            + r"-q\s+packaging[\\/]+tests\s+-p\s+no:cacheprovider\s*$"
-        ),
+        re.compile(_PYTHON_PREFIX + r"scripts[\\/]+run_packaging_tests\.py\s*$"),
     ),
     RequiredCommand(
         "installer source preflight (Windows PowerShell 5.1)",

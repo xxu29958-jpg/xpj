@@ -25,6 +25,8 @@ from app.models import Account, BackgroundTask
 from app.services import background_task_service as bgtasks
 from app.services.time_service import now_utc
 
+pytestmark = pytest.mark.real_db
+
 
 def _owner_account_id() -> int:
     with SessionLocal() as db:

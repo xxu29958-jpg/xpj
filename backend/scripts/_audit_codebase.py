@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import io
 import os
 import pathlib
 import re
 import sys
+import tokenize
 from collections import Counter, defaultdict
 
 from codebase_audit_gate import DebtCounts, evaluate_debt
@@ -16,6 +18,8 @@ from codebase_audit_gate import DebtCounts, evaluate_debt
 APP = pathlib.Path("app")
 TESTS = pathlib.Path("tests")
 SCRIPTS = pathlib.Path("scripts")
+_MARKER_WORDS = ("TO" "DO", "FIX" "ME", "XX" "X", "HA" "CK", "TE" "MP")
+_MARKER_RX = re.compile(r"\b(" + "|".join(_MARKER_WORDS) + r")\b", re.IGNORECASE)
 
 
 def walk(*roots: pathlib.Path):
@@ -24,6 +28,13 @@ def walk(*roots: pathlib.Path):
             if "__pycache__" in p.parts:
                 continue
             yield p
+
+
+def walk_automation(*roots: pathlib.Path):
+    for root in roots:
+        for path in root.rglob("*"):
+            if path.is_file() and path.suffix.lower() in {".ps1", ".cs"}:
+                yield path
 
 
 def line_count(p: pathlib.Path) -> int:
@@ -96,6 +107,9 @@ def audit_file_loc() -> DebtCounts:
     rows = [(p, line_count(p)) for p in walk(APP, SCRIPTS, TESTS)]
     rows.sort(key=lambda r: -r[1])
     large_files = [(p, n) for p, n in rows if n > 500]
+    automation_rows = [(p, line_count(p)) for p in walk_automation(SCRIPTS)]
+    automation_rows.sort(key=lambda row: -row[1])
+    large_automation_files = [(p, n) for p, n in automation_rows if n > 500]
     print("== A1. File LOC (top 30) ==")
     for p, n in rows[:30]:
         print(f"  {n:5d}  {p}")
@@ -104,7 +118,14 @@ def audit_file_loc() -> DebtCounts:
     for p, n in large_files:
         print(f"  {n:5d}  {p}")
     print()
-    return {"files_over_500": len(large_files)}
+    print("== A3. PowerShell/C# files > 500 LOC ==")
+    for p, n in large_automation_files:
+        print(f"  {n:5d}  {p}")
+    print()
+    return {
+        "files_over_500": len(large_files),
+        "automation_files_over_500": len(large_automation_files),
+    }
 
 
 def audit_surface_area() -> DebtCounts:
@@ -774,21 +795,30 @@ def audit_raise_generic() -> DebtCounts:
 # G. MAINTAINABILITY & RISK
 # -----------------------------------------------------------------------------
 
+def _marker_comments(text: str) -> list[tuple[int, str]]:
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(text).readline)
+        return [
+            (token.start[0], token.string.strip())
+            for token in tokens
+            if token.type == tokenize.COMMENT and _MARKER_RX.search(token.string)
+        ]
+    except (IndentationError, tokenize.TokenError):
+        return []
+
+
 def audit_todos() -> DebtCounts:
-    marker_words = ("TO" "DO", "FIX" "ME", "XX" "X", "HA" "CK", "TE" "MP")
-    rx = re.compile(r"\b(" + "|".join(marker_words) + r")\b", re.IGNORECASE)
     items = []
     for p in walk(APP, SCRIPTS, TESTS):
         text = _read_text_or_none(p)
         if text is None:
             continue
-        for i, line in enumerate(text.splitlines(), 1):
-            if rx.search(line):
-                items.append((p, i, line.strip()[:100]))
+        for line_number, comment in _marker_comments(text):
+            items.append((p, line_number, comment[:100]))
     print(f"== G1. marker comments ({len(items)}) ==")
     counts: dict[str, int] = Counter()
     for _path, _, line in items:
-        m = rx.search(line)
+        m = _MARKER_RX.search(line)
         if m:
             counts[m.group(1).upper()] += 1
     for k, v in counts.most_common():

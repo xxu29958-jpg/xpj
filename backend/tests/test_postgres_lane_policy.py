@@ -3,42 +3,16 @@ from __future__ import annotations
 import pytest
 
 from tests._infra.lane_policy import (
-    legacy_real_db_marker_required,
     postgres_marker_contract_violation,
+    xdist_worker_identity_violation,
 )
+from tests._infra.postgres_resource_contract import required_postgres_marker_for_source
+
+pytestmark = pytest.mark.parallel_safe
 
 
-@pytest.mark.parametrize(
-    ("nodeid", "expected_real_db"),
-    [
-        ("tests/test_reports.py::test_monthly_totals", False),
-        (
-            "tests/test_expense_optimistic_concurrency.py::test_two_sessions_update",
-            True,
-        ),
-        (
-            "tests/test_alembic_tag_migration.py::test_round_trip",
-            False,
-        ),
-        (
-            "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
-            False,
-        ),
-        (
-            "tests\\test_db_migration_owner_preflight.py::test_owner_preflight",
-            False,
-        ),
-        (
-            "tests/test_reports.py::test_export[tests/test_alembic_fake.py::case]",
-            False,
-        ),
-    ],
-)
-def test_nodeid_policy_only_retains_legacy_real_db_exceptions(
-    nodeid: str,
-    expected_real_db: bool,
-) -> None:
-    assert legacy_real_db_marker_required(nodeid) is expected_real_db
+def test_postgres_resource_markers_require_explicit_nesting() -> None:
+    nodeid = "tests/test_example.py::test_resource_contract"
     assert (
         postgres_marker_contract_violation(
             nodeid,
@@ -56,3 +30,67 @@ def test_nodeid_policy_only_retains_legacy_real_db_exceptions(
         )
         or ""
     )
+
+
+def test_postgres_resource_classification_uses_executable_source() -> None:
+    assert (
+        required_postgres_marker_for_source(
+            """
+def test_role_change(connection):
+    connection.execute(text("DROP ROLE IF EXISTS xpj_test_role"))
+""",
+            root_names=("test_role_change",),
+        )
+        == "cluster_serial"
+    )
+    assert (
+        required_postgres_marker_for_source(
+            """
+from alembic import command
+
+def _migrate():
+    command.upgrade(config, "head")
+
+def test_upgrade():
+    _migrate()
+""",
+            root_names=("test_upgrade",),
+        )
+        == "stateful_serial"
+    )
+    assert (
+        required_postgres_marker_for_source(
+            """
+def test_diagnostic(events):
+    assert not any("DROP DATABASE" in event for event in events)
+""",
+            root_names=("test_diagnostic",),
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("ambient", "runtime", "expected"),
+    [
+        (None, None, None),
+        ("gw0", "gw0", None),
+        ("gw0", None, "clear inherited"),
+        (None, "gw0", "missing PYTEST_XDIST_WORKER"),
+        ("gw0", "gw1", "does not match"),
+    ],
+)
+def test_xdist_worker_identity_must_have_one_runtime_authority(
+    ambient: str | None,
+    runtime: str | None,
+    expected: str | None,
+) -> None:
+    violation = xdist_worker_identity_violation(
+        ambient_worker=ambient,
+        runtime_worker=runtime,
+    )
+
+    if expected is None:
+        assert violation is None
+    else:
+        assert expected in (violation or "")
