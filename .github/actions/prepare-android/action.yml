@@ -1,0 +1,50 @@
+name: Prepare Android build
+description: Install the pinned Android SDK surface and configure the project for a cloud runner.
+
+inputs:
+  server-url:
+    description: Dynamically supplied Ticketbox server URL.
+    required: true
+  worker-count:
+    description: Maximum Gradle workers for this runner.
+    required: false
+    default: "4"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Android SDK packages
+      shell: bash
+      run: |
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+          "platform-tools" \
+          "platforms;android-36" \
+          "build-tools;36.0.0"
+
+    - name: Point Gradle at cloud Android SDK
+      shell: bash
+      working-directory: android
+      env:
+        TICKETBOX_SERVER_URL: ${{ inputs.server-url }}
+      run: |
+        sdk_dir="${ANDROID_HOME//\\/\\\\}"
+        echo "sdk.dir=$sdk_dir" > local.properties
+        echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
+
+    - name: Tune Gradle for cloud runner
+      shell: bash
+      working-directory: android
+      env:
+        GRADLE_WORKER_COUNT: ${{ inputs.worker-count }}
+      run: |
+        if ! [[ "$GRADLE_WORKER_COUNT" =~ ^[1-4]$ ]]; then
+          echo "::error::Gradle worker count must be between 1 and 4."
+          exit 1
+        fi
+        {
+          echo ""
+          echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
+          echo "org.gradle.workers.max=$GRADLE_WORKER_COUNT"
+          echo "kotlin.daemon.jvmargs=-Xmx2560m"
+        } >> gradle.properties

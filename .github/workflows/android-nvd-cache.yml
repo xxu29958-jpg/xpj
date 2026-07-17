@@ -1,0 +1,72 @@
+name: Android NVD cache
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-nvd-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Refresh Android NVD cache
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: android
+        shell: bash
+    env:
+      TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Java
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Prepare Android build
+        uses: ./.github/actions/prepare-android
+        with:
+          server-url: ${{ env.TICKETBOX_SERVER_URL }}
+          worker-count: "2"
+
+      - name: NVD cache key (UTC date)
+        id: nvd-key
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore OWASP NVD database
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-${{ steps.nvd-key.outputs.date }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-${{ steps.nvd-key.outputs.date }}-
+            nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-
+            nvd-${{ runner.os }}-
+
+      - name: Refresh OWASP NVD database
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: timeout -k 1m 25m bash scripts/refresh_dependency_check_nvd.sh
+
+      - name: Save refreshed OWASP NVD database
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-${{ steps.nvd-key.outputs.date }}-${{ github.run_id }}-${{ github.run_attempt }}
