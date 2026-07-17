@@ -11,6 +11,9 @@ import pytest
 from _local_test_postgres_runtime import (
     TEST_POSTGRES_CONTRACT,
     _free_local_port,
+    _open_exact_windows_process,
+    _terminate_exact_windows_process,
+    _windows_process_handle_is_running,
 )
 from _powershell_contract import powershell_contract_engines
 
@@ -18,58 +21,195 @@ from scripts.test_pg_protected_file import (
     assert_protected_authority_file,
     write_protected_utf8_file,
 )
-from scripts.test_pg_windows_contract import (
-    _windows_process_created_filetime,
-    _windows_process_kernel32,
-)
 
 pytestmark = pytest.mark.packaging_resource("postgres_cluster")
 
 
-def _open_exact_windows_process(
-    process_id: int,
-    expected_created: int,
-) -> tuple[object, object]:
-    from ctypes import wintypes
-
-    kernel32 = _windows_process_kernel32()
-    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-    kernel32.WaitForSingleObject.restype = wintypes.DWORD
-    kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
-    kernel32.TerminateProcess.restype = wintypes.BOOL
-    kernel32.GetExitCodeProcess.argtypes = [
-        wintypes.HANDLE,
-        ctypes.POINTER(wintypes.DWORD),
-    ]
-    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
-    handle = kernel32.OpenProcess(
-        0x00100000 | 0x00001000 | 0x00000001,
-        False,
-        process_id,
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
+def test_postmaster_generation_retains_one_exact_process_handle(tmp_path: Path) -> None:
+    probe = tmp_path / "postmaster-generation.ps1"
+    probe.write_text(
+        "param($Contract)\n"
+        ". $Contract\n"
+        "$source = Get-Process -Id $PID -ErrorAction Stop\n"
+        "try {\n"
+        "  $epoch = ([DateTimeOffset]$source.StartTime).ToUnixTimeSeconds()\n"
+        "}\n"
+        "finally { $source.Dispose() }\n"
+        "$record = [pscustomobject]@{ ProcessId = $PID; StartEpoch = $epoch }\n"
+        "$matching = Get-XpjTestPostgresProcessGeneration $record\n"
+        "if ($matching.State -cne 'matching' -or $null -eq $matching.Process) {\n"
+        "  throw 'matching process generation did not retain exact authority'\n"
+        "}\n"
+        "try {\n"
+        "  [void]$matching.Process.Handle\n"
+        "  $matching.Process.Refresh()\n"
+        "  if ($matching.Process.HasExited -or $matching.Process.Id -ne $PID) {\n"
+        "    throw 'retained process authority changed generation'\n"
+        "  }\n"
+        "}\n"
+        "finally { $matching.Process.Dispose() }\n"
+        "$reusedRecord = [pscustomobject]@{ ProcessId = $PID; StartEpoch = 1 }\n"
+        "$reused = Get-XpjTestPostgresProcessGeneration $reusedRecord\n"
+        "if ($reused.State -cne 'reused' -or $null -ne $reused.Process) {\n"
+        "  throw 'reused process generation leaked a process handle'\n"
+        "}\n"
+        "$missingRecord = [pscustomobject]@{ ProcessId = 2147483647; StartEpoch = 1 }\n"
+        "$missing = Get-XpjTestPostgresProcessGeneration $missingRecord\n"
+        "if ($missing.State -cne 'missing' -or $null -ne $missing.Process) {\n"
+        "  throw 'missing process generation returned authority'\n"
+        "}\n",
+        encoding="ascii",
     )
-    if not handle:
-        raise ctypes.WinError(ctypes.get_last_error())
-    try:
-        actual_created = _windows_process_created_filetime(kernel32, handle)
-        if actual_created != expected_created:
-            raise RuntimeError("Disposable child process generation changed")
-    except (OSError, RuntimeError):
-        kernel32.CloseHandle(handle)
-        raise
-    return kernel32, handle
+
+    for engine in powershell_contract_engines():
+        completed = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(probe),
+                "-Contract",
+                str(TEST_POSTGRES_CONTRACT),
+            ],
+            cwd=tmp_path,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def _windows_process_handle_is_running(kernel32: object, handle: object) -> bool:
-    return kernel32.WaitForSingleObject(handle, 0) == 0x00000102
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
+def test_standard_input_failure_retains_child_in_job_until_cleanup(tmp_path: Path) -> None:
+    child = tmp_path / "close-stdin-child.py"
+    child.write_text(
+        "import json, os, sys, time\n"
+        "from pathlib import Path\n"
+        "sys.path.insert(0, sys.argv[2])\n"
+        "from scripts.test_pg_windows_contract import (\n"
+        "    _windows_process_created_filetime, _windows_process_kernel32,\n"
+        ")\n"
+        "identity = Path(sys.argv[1])\n"
+        "kernel32 = _windows_process_kernel32()\n"
+        "created = _windows_process_created_filetime(kernel32, kernel32.GetCurrentProcess())\n"
+        "payload = json.dumps({'pid': os.getpid(), 'created': created})\n"
+        "temporary = identity.with_name(f'.{identity.name}.{os.getpid()}.tmp')\n"
+        "temporary.write_text(payload, encoding='ascii')\n"
+        "temporary.replace(identity)\n"
+        "os.close(0)\n"
+        "while True:\n"
+        "    time.sleep(0.1)\n",
+        encoding="ascii",
+    )
+    probe = tmp_path / "fail-standard-input.ps1"
+    probe.write_text(
+        "param($Contract,$Python,$Child,$Identity,$BackendRoot,$FailureReady,"
+        "$Release,$StdoutPath,$StderrPath)\n"
+        ". $Contract\n"
+        "$job = [XpjTestProcessJob]::new()\n"
+        "$failed = $false\n"
+        "try {\n"
+        "  [void](Start-XpjTestPostgresProtectedProcess -Job $job "
+        "-FilePath $Python -ArgumentList @($Child,$Identity,$BackendRoot) "
+        "-StdoutPath $StdoutPath -StderrPath $StderrPath "
+        "-StandardInput ('x' * 16777216))\n"
+        "}\n"
+        "catch {\n"
+        "  if ($_.Exception.ToString() -notmatch 'standard input|pipe') { throw }\n"
+        "  $failed = $true\n"
+        "  [IO.File]::WriteAllText($FailureReady,'failed',[Text.Encoding]::ASCII)\n"
+        "  while (-not (Test-Path -LiteralPath $Release)) { "
+        "Start-Sleep -Milliseconds 25 }\n"
+        "}\n"
+        "finally {\n"
+        "  $job.Dispose()\n"
+        "  Remove-XpjTestPostgresProcessOutput -Path @($StdoutPath,$StderrPath)\n"
+        "}\n"
+        "if (-not $failed) { throw 'stdin write unexpectedly succeeded' }\n",
+        encoding="ascii",
+    )
 
-
-def _terminate_exact_windows_process(kernel32: object, handle: object) -> None:
-    if _windows_process_handle_is_running(kernel32, handle) and not kernel32.TerminateProcess(
-        handle,
-        15,
-    ):
-        raise ctypes.WinError(ctypes.get_last_error())
-    kernel32.WaitForSingleObject(handle, 10_000)
+    for index, engine in enumerate(powershell_contract_engines()):
+        identity_path = tmp_path / f"stdin-child-{index}.json"
+        failure_ready = tmp_path / f"stdin-failure-{index}.ready"
+        release_path = tmp_path / f"stdin-failure-{index}.release"
+        stdout_path = tmp_path / f"stdin-failure-{index}.stdout"
+        stderr_path = tmp_path / f"stdin-failure-{index}.stderr"
+        process = subprocess.Popen(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(probe),
+                "-Contract",
+                str(TEST_POSTGRES_CONTRACT),
+                "-Python",
+                sys.executable,
+                "-Child",
+                str(child),
+                "-Identity",
+                str(identity_path),
+                "-BackendRoot",
+                str(Path(__file__).resolve().parents[2]),
+                "-FailureReady",
+                str(failure_ready),
+                "-Release",
+                str(release_path),
+                "-StdoutPath",
+                str(stdout_path),
+                "-StderrPath",
+                str(stderr_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        kernel32: object | None = None
+        child_handle: object | None = None
+        try:
+            deadline = time.monotonic() + 10
+            while (
+                (not identity_path.exists() or not failure_ready.exists())
+                and time.monotonic() < deadline
+            ):
+                assert process.poll() is None, process.communicate(timeout=2)[0]
+                time.sleep(0.025)
+            assert identity_path.exists()
+            assert failure_ready.exists()
+            identity = json.loads(identity_path.read_text(encoding="ascii"))
+            kernel32, child_handle = _open_exact_windows_process(
+                int(identity["pid"]),
+                int(identity["created"]),
+            )
+            assert _windows_process_handle_is_running(kernel32, child_handle)
+            release_path.write_text("release", encoding="ascii")
+            output = process.communicate(timeout=15)[0]
+            assert process.returncode == 0, output
+            assert kernel32.WaitForSingleObject(child_handle, 10_000) == 0
+            assert not stdout_path.exists()
+            assert not stderr_path.exists()
+        finally:
+            release_path.write_text("release", encoding="ascii")
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=10)
+            if kernel32 is not None and child_handle is not None:
+                _terminate_exact_windows_process(kernel32, child_handle)
+                kernel32.CloseHandle(child_handle)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows restricted token")

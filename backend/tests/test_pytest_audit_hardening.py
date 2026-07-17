@@ -258,6 +258,24 @@ def test_backend_worker_completion_requires_runtime_cleanup_ack(
         )
     assert module._WORKER_RUNTIME_CLOSED_KEY not in failing_worker.workeroutput  # noqa: SLF001
 
+    def fail_filesystem_cleanup() -> None:
+        raise RuntimeError("filesystem cleanup failed")
+
+    monkeypatch.setattr(module, "cleanup_runtime", fail_filesystem_cleanup)
+    cleanup_failure_stack = _RuntimeStack()
+    cleanup_failure_worker = SimpleNamespace(
+        workerinput={"workerid": "gw2"},
+        workeroutput={},
+        _xpj_postgres_runtime_stack=cleanup_failure_stack,
+    )
+    with pytest.raises(RuntimeError, match="filesystem cleanup failed"):
+        module.pytest_sessionfinish(
+            SimpleNamespace(config=cleanup_failure_worker),
+            pytest.ExitCode.OK,
+        )
+    assert cleanup_failure_stack.closed
+    assert module._WORKER_RUNTIME_CLOSED_KEY not in cleanup_failure_worker.workeroutput  # noqa: SLF001
+
     controller = SimpleNamespace()
     module._initialize_runner_state(controller)  # noqa: SLF001
     node = SimpleNamespace(

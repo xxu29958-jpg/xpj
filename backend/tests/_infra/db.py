@@ -14,14 +14,46 @@ cross-connection commits.
 from __future__ import annotations
 
 import contextlib
-import shutil
 from collections.abc import Iterator
 
 from sqlalchemy import text
 
 from app.database import engine, init_db
 from scripts.test_pg_contract import validate_test_database_name
-from tests._infra.env import TEST_DATA_DIR, TEST_UPLOAD_DIR
+from tests._infra.env import (
+    BACKEND_ROOT,
+    TEST_DATA_DIR,
+    TEST_RUNTIME_ROOT,
+    TEST_UPLOAD_DIR,
+)
+from tests._infra.runtime_fs import remove_owned_runtime_tree
+
+
+def _cleanup_runtime_paths(*, include_data: bool) -> None:
+    targets = [
+        (
+            TEST_UPLOAD_DIR,
+            BACKEND_ROOT / "uploads",
+            "Test upload runtime directory",
+        )
+    ]
+    if include_data:
+        targets.insert(
+            0,
+            (
+                TEST_DATA_DIR,
+                TEST_RUNTIME_ROOT,
+                "Test application runtime directory",
+            ),
+        )
+    with contextlib.ExitStack() as cleanup:
+        for path, root, label in targets:
+            cleanup.callback(
+                remove_owned_runtime_tree,
+                path,
+                owned_root=root,
+                label=label,
+            )
 
 
 def reset_db_state() -> None:
@@ -43,16 +75,16 @@ def reset_db_state() -> None:
     with engine.begin() as connection:
         connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         connection.execute(text("CREATE SCHEMA public"))
-    shutil.rmtree(TEST_DATA_DIR, ignore_errors=True)
-    shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
+    _cleanup_runtime_paths(include_data=True)
     init_db()
 
 
 def cleanup_runtime() -> None:
     """Dispose the engine and clear this process's writable test data."""
-    engine.dispose()
-    shutil.rmtree(TEST_DATA_DIR, ignore_errors=True)
-    shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
+    try:
+        engine.dispose()
+    finally:
+        _cleanup_runtime_paths(include_data=True)
 
 
 @contextlib.contextmanager
@@ -83,7 +115,7 @@ def transactional_isolation() -> Iterator[None]:
     # disk outside any transaction. Clear the upload dir so one test's saved
     # images don't leak into the next (the rolled-back transaction can't reclaim
     # files written during the test).
-    shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
+    _cleanup_runtime_paths(include_data=False)
     connection = engine.connect()
     # Acquisition is inside the try so a raise from begin()/configure() can't
     # leak the checked-out connection (pool is small; a leak would cascade into

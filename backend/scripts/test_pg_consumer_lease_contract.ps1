@@ -113,14 +113,62 @@ function Enter-XpjTestPostgresConsumerLease {
 function Exit-XpjTestPostgresConsumerLease {
     param([Parameter(Mandatory = $true)]$Lease)
 
-    try {
-        $Lease.Stream.Unlock([int64]$Lease.LockOffset, 1)
+    # Transfer every owned resource before invoking fallible cleanup. A caller
+    # may safely retry this function after an exception without unlocking or
+    # disposing a reused handle twice.
+    $stream = $Lease.Stream
+    $lockOffset = [int64]$Lease.LockOffset
+    $leasePath = [string]$Lease.Path
+    $leaseDirectoryPathLease = $Lease.LeaseDirectoryPathLease
+    $dataPathLease = $Lease.DataPathLease
+    $Lease.Stream = $null
+    $Lease.Path = $null
+    $Lease.LeaseDirectoryPathLease = $null
+    $Lease.DataPathLease = $null
+
+    $cleanupErrors = [System.Collections.Generic.List[System.Exception]]::new()
+    if ($null -ne $stream) {
+        try {
+            $stream.Unlock($lockOffset, 1)
+        }
+        catch {
+            $cleanupErrors.Add($_.Exception)
+        }
+        try {
+            $stream.Dispose()
+        }
+        catch {
+            $cleanupErrors.Add($_.Exception)
+        }
     }
-    finally {
-        $Lease.Stream.Dispose()
-        Remove-Item -LiteralPath ([string]$Lease.Path) -Force -ErrorAction SilentlyContinue
-        $Lease.LeaseDirectoryPathLease.Dispose()
-        $Lease.DataPathLease.Dispose()
+    if (-not [string]::IsNullOrWhiteSpace($leasePath)) {
+        try {
+            if (Test-Path -LiteralPath $leasePath -PathType Leaf) {
+                Remove-Item -LiteralPath $leasePath -Force -ErrorAction Stop
+            }
+            if (Test-Path -LiteralPath $leasePath) {
+                throw "Test PostgreSQL consumer lease still exists after cleanup: $leasePath"
+            }
+        }
+        catch {
+            $cleanupErrors.Add($_.Exception)
+        }
+    }
+    foreach ($pathLease in @($leaseDirectoryPathLease, $dataPathLease)) {
+        if ($null -ne $pathLease) {
+            try {
+                $pathLease.Dispose()
+            }
+            catch {
+                $cleanupErrors.Add($_.Exception)
+            }
+        }
+    }
+    if ($cleanupErrors.Count -gt 0) {
+        throw [System.AggregateException]::new(
+            'Test PostgreSQL consumer lease cleanup failed.',
+            $cleanupErrors.ToArray()
+        )
     }
 }
 

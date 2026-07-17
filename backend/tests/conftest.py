@@ -305,6 +305,13 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     _exit_postgres_runtime_contract(config)
 
 
+def _close_session_runtime(config: pytest.Config) -> None:
+    try:
+        cleanup_runtime()
+    finally:
+        _exit_postgres_runtime_contract(config)
+
+
 @pytest.hookimpl(optionalhook=True)
 def pytest_testnodeready(node: object) -> None:
     node.config._xpj_xdist_ready_workers.add(_xdist_worker_id(node))  # type: ignore[attr-defined]
@@ -385,8 +392,7 @@ def pytest_collection_finish(session: pytest.Session) -> None:
 
 @pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    cleanup_runtime()
-    _exit_postgres_runtime_contract(session.config)
+    _close_session_runtime(session.config)
     if _is_xdist_worker(session.config):
         session.config.workeroutput[_WORKER_RUNTIME_CLOSED_KEY] = True
         return

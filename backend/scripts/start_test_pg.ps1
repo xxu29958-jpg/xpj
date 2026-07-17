@@ -137,7 +137,12 @@ try {
             $record = Read-XpjTestPostgresPostmasterRecord $DataDir
             $generation = Get-XpjTestPostgresProcessGeneration $record
             if ($generation.State -eq 'matching') {
-                throw "Marker-owned PostgreSQL is running but not on its recorded port $Port; refusing to start another postmaster."
+                try {
+                    throw "Marker-owned PostgreSQL is running but not on its recorded port $Port; refusing to start another postmaster."
+                }
+                finally {
+                    $generation.Process.Dispose()
+                }
             }
             Remove-Item -LiteralPath $pidPath -Force -ErrorAction Stop
         }

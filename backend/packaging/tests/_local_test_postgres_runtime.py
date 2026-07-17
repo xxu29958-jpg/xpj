@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import os
 import socket
 import subprocess
@@ -9,6 +10,10 @@ from uuid import uuid4
 import pytest
 
 from scripts.test_pg_protected_file import write_protected_utf8_file
+from scripts.test_pg_windows_contract import (
+    _windows_process_created_filetime,
+    _windows_process_kernel32,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 START_TEST_POSTGRES = PROJECT_ROOT / "backend" / "scripts" / "start_test_pg.ps1"
@@ -62,24 +67,50 @@ def _free_local_port() -> int:
             return port
 
 
-def _windows_process_is_running(process_id: int) -> bool:
-    import ctypes
+def _open_exact_windows_process(
+    process_id: int,
+    expected_created: int,
+) -> tuple[object, object]:
     from ctypes import wintypes
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32 = _windows_process_kernel32()
     kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     kernel32.WaitForSingleObject.restype = wintypes.DWORD
-    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-    kernel32.CloseHandle.restype = wintypes.BOOL
-    handle = kernel32.OpenProcess(0x00100000, False, process_id)
+    kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel32.TerminateProcess.restype = wintypes.BOOL
+    kernel32.GetExitCodeProcess.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    handle = kernel32.OpenProcess(
+        0x00100000 | 0x00001000 | 0x00000001,
+        False,
+        process_id,
+    )
     if not handle:
-        return False
+        raise ctypes.WinError(ctypes.get_last_error())
     try:
-        return kernel32.WaitForSingleObject(handle, 0) == 0x00000102
-    finally:
+        actual_created = _windows_process_created_filetime(kernel32, handle)
+        if actual_created != expected_created:
+            raise RuntimeError("Disposable child process generation changed")
+    except (OSError, RuntimeError):
         kernel32.CloseHandle(handle)
+        raise
+    return kernel32, handle
+
+
+def _windows_process_handle_is_running(kernel32: object, handle: object) -> bool:
+    return kernel32.WaitForSingleObject(handle, 0) == 0x00000102
+
+
+def _terminate_exact_windows_process(kernel32: object, handle: object) -> None:
+    if _windows_process_handle_is_running(kernel32, handle) and not kernel32.TerminateProcess(
+        handle,
+        15,
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    kernel32.WaitForSingleObject(handle, 10_000)
 
 
 def _run_lifecycle(

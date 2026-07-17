@@ -295,6 +295,8 @@ public sealed partial class XpjTestProcessJob : IDisposable
                 true,
                 ExtendedStartupInfoPresent | CreateNoWindow,
                 ref startup);
+            CloseIfValid(stdinHandle);
+            stdinHandle = IntPtr.Zero;
             bool retainedProcessHandle = false;
             try
             {

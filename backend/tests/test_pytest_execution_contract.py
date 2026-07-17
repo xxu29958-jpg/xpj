@@ -216,6 +216,28 @@ def test_packaging_runner_rejects_success_without_handshake(
     assert run_packaging_tests.run_packaging_tests() == run_packaging_tests.HANDSHAKE_FAILURE_EXIT_CODE
 
 
+def test_packaging_watchdog_covers_controller_and_each_xdist_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_packaging_conftest()
+    labels: list[str] = []
+    monkeypatch.setattr(
+        module,
+        "start_windows_parent_watchdog",
+        lambda *, label: labels.append(label),
+    )
+
+    module._start_strict_runtime_watchdog(SimpleNamespace())  # noqa: SLF001
+    module._start_strict_runtime_watchdog(  # noqa: SLF001
+        SimpleNamespace(workerinput={"workerid": "gw0"})
+    )
+
+    assert labels == [
+        "strict packaging pytest controller",
+        "strict packaging pytest xdist worker",
+    ]
+
+
 def test_packaging_strict_runtime_rejects_module_level_skip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

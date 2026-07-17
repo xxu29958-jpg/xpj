@@ -95,13 +95,24 @@ function Get-XpjTestPostgresProcessGeneration {
         return [pscustomobject]@{ State = 'missing'; Process = $null }
     }
     try {
+        # Retain the kernel object before reading its generation. PID reuse is
+        # impossible while this handle remains open, so StartTime and every
+        # later action refer to the same process.
+        [void]$process.Handle
+        $process.Refresh()
+        if ($process.HasExited) {
+            $process.Dispose()
+            return [pscustomobject]@{ State = 'missing'; Process = $null }
+        }
         $actualStartEpoch = ([DateTimeOffset]$process.StartTime).ToUnixTimeSeconds()
     }
     catch {
+        $process.Dispose()
         throw "Cannot verify process generation for postmaster PID $($PostmasterRecord.ProcessId)."
     }
     if ([Math]::Abs($actualStartEpoch - $PostmasterRecord.StartEpoch) -gt 2) {
-        return [pscustomobject]@{ State = 'reused'; Process = $process }
+        $process.Dispose()
+        return [pscustomobject]@{ State = 'reused'; Process = $null }
     }
     return [pscustomobject]@{ State = 'matching'; Process = $process }
 }
@@ -194,7 +205,12 @@ function Assert-XpjTestPostgresListenerOwnership {
     if ($generation.State -ne 'matching') {
         throw "The postmaster.pid process id was reused by a different process generation."
     }
-    return $record
+    try {
+        return $record
+    }
+    finally {
+        $generation.Process.Dispose()
+    }
 }
 
 function Invoke-XpjTestPostgresIdentitySession {

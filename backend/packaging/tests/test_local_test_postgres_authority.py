@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
+from _local_test_postgres_runtime import (
+    _open_exact_windows_process,
+    _terminate_exact_windows_process,
+    _windows_process_handle_is_running,
+)
 from _powershell_contract import powershell_contract_engines
 
 from scripts.test_pg_contract import (
@@ -29,27 +34,6 @@ def _free_local_port() -> int:
             port = listener.getsockname()[1]
         if port not in {5432, 5433}:
             return port
-
-
-def _windows_process_is_running(process_id: int) -> bool:
-    import ctypes
-    from ctypes import wintypes
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-    kernel32.OpenProcess.restype = wintypes.HANDLE
-    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-    kernel32.WaitForSingleObject.restype = wintypes.DWORD
-    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-    kernel32.CloseHandle.restype = wintypes.BOOL
-    handle = kernel32.OpenProcess(0x00100000, False, process_id)
-    if not handle:
-        return False
-    try:
-        return kernel32.WaitForSingleObject(handle, 0) == 0x00000102
-    finally:
-        kernel32.CloseHandle(handle)
-
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows process identity")
 def test_uncommitted_process_uses_handle_identity_and_complete_pid_publication(
@@ -78,7 +62,12 @@ def test_uncommitted_process_uses_handle_identity_and_complete_pid_publication(
         "-TargetPidSourcePath $PidPath -TargetStdoutPath $StdoutPath "
         "-TargetStderrPath $StderrPath -TimeoutSeconds 10\n"
         "Complete-XpjTestPostgresUncommittedProcess $transaction\n"
-        "[IO.File]::WriteAllText($ReadyPath,[string]$transaction.TargetProcessId)\n",
+        "$target = Get-Process -Id $transaction.TargetProcessId -ErrorAction Stop\n"
+        "try { $created = $target.StartTime.ToUniversalTime().ToFileTimeUtc() } "
+        "finally { $target.Dispose() }\n"
+        "$payload = @{ pid = $transaction.TargetProcessId; created = $created } "
+        "| ConvertTo-Json -Compress\n"
+        "[IO.File]::WriteAllText($ReadyPath,$payload,[Text.Encoding]::ASCII)\n",
         encoding="ascii",
     )
 
@@ -88,7 +77,8 @@ def test_uncommitted_process_uses_handle_identity_and_complete_pid_publication(
         ready_path = tmp_path / f"child-{index}.ready"
         stdout_path = tmp_path / f"child-{index}.stdout"
         stderr_path = tmp_path / f"child-{index}.stderr"
-        child_pid: int | None = None
+        child_kernel32: object | None = None
+        child_handle: object | None = None
         try:
             completed = subprocess.run(
                 [
@@ -126,17 +116,19 @@ def test_uncommitted_process_uses_handle_identity_and_complete_pid_publication(
             )
             output = completed.stdout + completed.stderr
             assert completed.returncode == 0, output
-            child_pid = int(ready_path.read_text(encoding="ascii"))
-            assert _windows_process_is_running(child_pid)
+            child_identity = json.loads(ready_path.read_text(encoding="ascii"))
+            child_kernel32, child_handle = _open_exact_windows_process(
+                int(child_identity["pid"]),
+                int(child_identity["created"]),
+            )
+            assert _windows_process_handle_is_running(child_kernel32, child_handle)
         finally:
             release_path.write_text("release", encoding="ascii")
-            if child_pid is not None:
-                deadline = time.monotonic() + 10
-                while _windows_process_is_running(child_pid) and time.monotonic() < deadline:
-                    time.sleep(0.05)
-                if _windows_process_is_running(child_pid):
-                    os.kill(child_pid, 15)
-            assert child_pid is None or not _windows_process_is_running(child_pid)
+            if child_kernel32 is not None and child_handle is not None:
+                child_kernel32.WaitForSingleObject(child_handle, 10_000)
+                _terminate_exact_windows_process(child_kernel32, child_handle)
+                assert not _windows_process_handle_is_running(child_kernel32, child_handle)
+                child_kernel32.CloseHandle(child_handle)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows lease authority")

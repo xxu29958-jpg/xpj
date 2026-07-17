@@ -153,9 +153,9 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2702,
-    "backend_pytest_parallel_count": 2640,
-    "backend_pytest_parallel_safe_count": 104,
+    "backend_pytest_count": 2709,
+    "backend_pytest_parallel_count": 2647,
+    "backend_pytest_parallel_safe_count": 111,
     "backend_pytest_real_db_count": 150,
     "backend_pytest_real_db_membership_digest":
         47_554_044_499_875_252_747_688_535_530_001_338_751_707_817_381_612_743_212_365_202_433_320_420_233_908,
@@ -166,7 +166,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "backend_pytest_cluster_membership_digest":
         20_986_048_875_972_673_385_075_257_154_712_410_674_609_335_780_934_224_221_339_523_405_367_512_423_631,
     # Lifecycle authority, credential cleanup, ACL, and maintenance contracts.
-    "installer_pytest_count": 127,
+    "installer_pytest_count": 130,
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane

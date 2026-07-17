@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import contextlib
+import json
 import os
 import subprocess
 import sys
@@ -12,8 +12,10 @@ from _local_test_postgres_runtime import (
     PROJECT_ROOT,
     TEST_POSTGRES_CONTRACT,
     _free_local_port,
+    _open_exact_windows_process,
     _run_lifecycle_contender,
-    _windows_process_is_running,
+    _terminate_exact_windows_process,
+    _windows_process_handle_is_running,
 )
 from _powershell_contract import powershell_contract_engines
 
@@ -87,7 +89,12 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
         "param($Python, $ConsumerScript, $ChildPid)\n"
         "$quotedScript = '\"' + $ConsumerScript + '\"'\n"
         "$child = Start-Process -FilePath $Python -ArgumentList $quotedScript -PassThru\n"
-        "[IO.File]::WriteAllText($ChildPid, [string]$child.Id)\n"
+        "$payload = @{ pid = $child.Id; "
+        "created = $child.StartTime.ToUniversalTime().ToFileTimeUtc() } "
+        "| ConvertTo-Json -Compress\n"
+        "$temporary = $ChildPid + '.' + $PID + '.tmp'\n"
+        "[IO.File]::WriteAllText($temporary, $payload, [Text.Encoding]::ASCII)\n"
+        "[IO.File]::Move($temporary, $ChildPid)\n"
         "while ($true) { Start-Sleep -Seconds 1 }\n",
         encoding="ascii",
     )
@@ -137,6 +144,41 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
         "finally { Exit-XpjTestPostgresConsumerLease $lease }\n",
         encoding="ascii",
     )
+    idempotent_close_script = tmp_path / "verify-idempotent-consumer-close.ps1"
+    idempotent_close_script.write_text(
+        "param($Contract, $LeasePath)\n"
+        ". $Contract\n"
+        "$events = [System.Collections.Generic.List[string]]::new()\n"
+        "$stream = [pscustomobject]@{ Events = $events }\n"
+        "$stream | Add-Member ScriptMethod Unlock { "
+        "param($Offset, $Length) [void]$this.Events.Add('unlock'); "
+        "throw 'synthetic unlock failure' }\n"
+        "$stream | Add-Member ScriptMethod Dispose { "
+        "[void]$this.Events.Add('stream-dispose') }\n"
+        "$directoryLease = [pscustomobject]@{ Events = $events; Name = 'directory-dispose' }\n"
+        "$directoryLease | Add-Member ScriptMethod Dispose { "
+        "[void]$this.Events.Add($this.Name) }\n"
+        "$dataLease = [pscustomobject]@{ Events = $events; Name = 'data-dispose' }\n"
+        "$dataLease | Add-Member ScriptMethod Dispose { "
+        "[void]$this.Events.Add($this.Name) }\n"
+        "[IO.File]::WriteAllText($LeasePath, 'lease')\n"
+        "$lease = [pscustomobject]@{ Path = $LeasePath; Stream = $stream; "
+        "LockOffset = [int64]1073741824; DataPathLease = $dataLease; "
+        "LeaseDirectoryPathLease = $directoryLease }\n"
+        "$firstFailed = $false\n"
+        "try { Exit-XpjTestPostgresConsumerLease $lease } "
+        "catch { $firstFailed = $_.Exception.ToString().Contains('synthetic unlock failure') }\n"
+        "if (-not $firstFailed) { throw 'first close did not preserve its cleanup failure' }\n"
+        "if (Test-Path -LiteralPath $LeasePath) { throw 'lease file survived failed close' }\n"
+        "if ($null -ne $lease.Stream -or $null -ne $lease.Path -or "
+        "$null -ne $lease.DataPathLease -or $null -ne $lease.LeaseDirectoryPathLease) { "
+        "throw 'close retained transferred ownership' }\n"
+        "Exit-XpjTestPostgresConsumerLease $lease\n"
+        "$expected = 'unlock,stream-dispose,directory-dispose,data-dispose'\n"
+        "if (($events -join ',') -cne $expected) { "
+        "throw ('cleanup was repeated or incomplete: ' + ($events -join ',')) }\n",
+        encoding="ascii",
+    )
 
     for index, engine in enumerate(powershell_contract_engines()):
         port = _free_local_port()
@@ -170,6 +212,29 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
             timeout=15,
         )
         assert prepared.returncode == 0, prepared.stdout + prepared.stderr
+        close_contract = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(idempotent_close_script),
+                "-Contract",
+                str(TEST_POSTGRES_CONTRACT),
+                "-LeasePath",
+                str(tmp_path / f"idempotent-close-{index}.lease"),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert close_contract.returncode == 0, close_contract.stdout + close_contract.stderr
         child_pid_path = tmp_path / f"child-{index}.pid"
         consumer_ready = tmp_path / f"consumer-{index}.ready"
         consumer_release = tmp_path / f"consumer-{index}.release"
@@ -212,14 +277,20 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
             encoding="utf-8",
             errors="replace",
         )
-        child_pid: int | None = None
+        child_kernel32: object | None = None
+        child_handle: object | None = None
         try:
             deadline = time.monotonic() + 10
             while not consumer_ready.exists() and time.monotonic() < deadline:
                 assert launcher.poll() is None, launcher.communicate(timeout=2)[0]
                 time.sleep(0.05)
             assert consumer_ready.exists()
-            child_pid = int(child_pid_path.read_text(encoding="ascii"))
+            child_identity = json.loads(child_pid_path.read_text(encoding="ascii"))
+            child_kernel32, child_handle = _open_exact_windows_process(
+                int(child_identity["pid"]),
+                int(child_identity["created"]),
+            )
+            assert _windows_process_handle_is_running(child_kernel32, child_handle)
             lease_directory = data_directory / ".xpj-test-postgres-consumers"
             assert len(list(lease_directory.glob("*.lease"))) == 1
             assert not list(lease_directory.glob("*.lease.json"))
@@ -251,7 +322,10 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
             while not consumer_done.exists() and time.monotonic() < deadline:
                 time.sleep(0.05)
             assert consumer_done.exists()
-            child_pid = None
+            assert child_kernel32.WaitForSingleObject(child_handle, 10_000) == 0
+            child_kernel32.CloseHandle(child_handle)
+            child_kernel32 = None
+            child_handle = None
 
             untrusted_stale = lease_directory / ("1-00000000000000000000000000000000.lease")
             ensure_protected_directory(
@@ -367,20 +441,29 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
             if launcher.poll() is None:
                 launcher.kill()
                 launcher.communicate(timeout=10)
-            if child_pid is not None:
+            if child_kernel32 is not None and child_handle is not None:
                 consumer_release.write_text("release", encoding="ascii")
-                with contextlib.suppress(OSError):
-                    os.kill(child_pid, 15)
+                _terminate_exact_windows_process(child_kernel32, child_handle)
+                child_kernel32.CloseHandle(child_handle)
 
     smoke_child = tmp_path / "smoke-watch-child.py"
     smoke_child.write_text(
-        "import sys, time\n"
+        "import json, os, sys, time\n"
         "from pathlib import Path\n"
         "from scripts.smoke_test import start_smoke_parent_watchdog\n"
+        "from scripts.test_pg_windows_contract import (\n"
+        "    _windows_process_created_filetime, _windows_process_kernel32,\n"
+        ")\n"
         "parent_pid, parent_created, ready = sys.argv[1:]\n"
         "start_smoke_parent_watchdog(parent_process_id=int(parent_pid), "
         "parent_created=int(parent_created))\n"
-        "Path(ready).write_text('ready', encoding='ascii')\n"
+        "kernel32 = _windows_process_kernel32()\n"
+        "created = _windows_process_created_filetime(kernel32, kernel32.GetCurrentProcess())\n"
+        "payload = json.dumps({'pid': os.getpid(), 'created': created})\n"
+        "ready_path = Path(ready)\n"
+        "temporary = ready_path.with_name(f'.{ready_path.name}.{os.getpid()}.tmp')\n"
+        "temporary.write_text(payload, encoding='ascii')\n"
+        "temporary.replace(ready_path)\n"
         "while True:\n"
         "    time.sleep(1)\n",
         encoding="ascii",
@@ -388,17 +471,14 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
     smoke_parent = tmp_path / "smoke-watch-parent.py"
     smoke_parent.write_text(
         "import os, subprocess, sys, time\n"
-        "from pathlib import Path\n"
         "from scripts.smoke_test import windows_process_creation_identity\n"
-        "child, child_pid_path, ready = sys.argv[1:]\n"
+        "child, ready = sys.argv[1:]\n"
         "process = subprocess.Popen([sys.executable, child, str(os.getpid()), "
         "str(windows_process_creation_identity(os.getpid())), ready])\n"
-        "Path(child_pid_path).write_text(str(process.pid), encoding='ascii')\n"
         "while True:\n"
         "    time.sleep(1)\n",
         encoding="ascii",
     )
-    smoke_child_pid = tmp_path / "smoke-watch-child.pid"
     smoke_ready = tmp_path / "smoke-watch.ready"
     environment = os.environ.copy()
     environment["PYTHONPATH"] = os.pathsep.join(
@@ -414,7 +494,6 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
             sys.executable,
             str(smoke_parent),
             str(smoke_child),
-            str(smoke_child_pid),
             str(smoke_ready),
         ],
         env=environment,
@@ -424,27 +503,27 @@ def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) ->
         encoding="utf-8",
         errors="replace",
     )
-    child_process_id: int | None = None
+    smoke_kernel32: object | None = None
+    smoke_child_handle: object | None = None
     try:
         deadline = time.monotonic() + 10
         while not smoke_ready.exists() and time.monotonic() < deadline:
             assert parent.poll() is None, parent.communicate(timeout=2)[0]
             time.sleep(0.05)
         assert smoke_ready.exists()
-        child_process_id = int(smoke_child_pid.read_text(encoding="ascii"))
+        smoke_identity = json.loads(smoke_ready.read_text(encoding="ascii"))
+        smoke_kernel32, smoke_child_handle = _open_exact_windows_process(
+            int(smoke_identity["pid"]),
+            int(smoke_identity["created"]),
+        )
+        assert _windows_process_handle_is_running(smoke_kernel32, smoke_child_handle)
         parent.kill()
         parent.communicate(timeout=10)
-
-        deadline = time.monotonic() + 10
-        while _windows_process_is_running(child_process_id) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        if not _windows_process_is_running(child_process_id):
-            child_process_id = None
-        assert child_process_id is None, "smoke child survived its exact parent generation"
+        assert smoke_kernel32.WaitForSingleObject(smoke_child_handle, 10_000) == 0
     finally:
         if parent.poll() is None:
             parent.kill()
             parent.communicate(timeout=10)
-        if child_process_id is not None:
-            with contextlib.suppress(OSError):
-                os.kill(child_process_id, 15)
+        if smoke_kernel32 is not None and smoke_child_handle is not None:
+            _terminate_exact_windows_process(smoke_kernel32, smoke_child_handle)
+            smoke_kernel32.CloseHandle(smoke_child_handle)

@@ -4,12 +4,18 @@ import pytest
 
 from app import config
 from app.services import backup_service
-from tests._infra.env import TEST_DATA_DIR, TEST_UPLOAD_DIR
+from tests._infra.env import (
+    TEST_DATA_DIR,
+    TEST_RUN_ID,
+    TEST_RUNTIME_UID,
+    TEST_UPLOAD_DIR,
+)
 
 pytestmark = pytest.mark.parallel_safe
 
 
 def test_writable_runtime_paths_are_process_isolated() -> None:
+    assert f"_run_{TEST_RUNTIME_UID}_pid_" in TEST_RUN_ID
     assert config.DATA_ROOT == TEST_DATA_DIR
     assert backup_service._BACKUP_DIR == TEST_DATA_DIR / "backups"  # noqa: SLF001
     assert config.get_settings().upload_dir == TEST_UPLOAD_DIR

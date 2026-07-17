@@ -19,6 +19,45 @@ def _assert_postgres_binary_discovery(project_root: Path) -> None:
         assert r"C:\Program Files\PostgreSQL" not in script
 
 
+def _assert_postgres_generation_contract(cluster: str) -> None:
+    assert "Get-XpjTestPostgresProcessGeneration" in cluster
+    generation_contract = cluster[
+        cluster.index("function Get-XpjTestPostgresProcessGeneration") :
+    ]
+    retained_handle = generation_contract.index("[void]$process.Handle")
+    generation_read = generation_contract.index("$process.StartTime")
+    assert retained_handle < generation_read
+    assert "State = 'reused'; Process = $null" in generation_contract
+    assert "$generation.Process.Dispose()" in cluster
+
+
+def _assert_process_job_contract(process: str, job: str) -> None:
+    assert "WaitForStartedProcess($TimeoutSeconds * 1000)" in process
+    assert "XpjTestProcessJob" in process
+    assert "TerminateJobObject" in job
+    assert "JobObjectLimitKillOnJobClose" in job
+    assert "Start-XpjTestPostgresUncommittedProcess" in process
+    assert "Remove-XpjTestPostgresProcessOutput" in process
+    assert "[System.IO.FileShare]::None" in process
+    assert "process output handle did not close" in process
+    assert "PreserveProcessesOnClose" in process
+    assert "ProcThreadAttributeJobList" in job
+    assert "ProcThreadAttributeHandleList" in job
+    assert "ContainsStartedProcess" in process
+    assert "IsStartedProcessRunning" in process
+    assert "Stop-Process -Id $targetProcessId" not in process
+    assert "Get-Process -Id ([int]$Transaction.TargetProcessId)" not in process
+    assert "CreateProcess" in job
+    process_created = job.index("ProcessInformation process = CreateAssignedProcess(")
+    parent_stdin_closed = job.index("CloseIfValid(stdinHandle);", process_created)
+    stdin_written = job.index("WriteStandardInput(stdinWriteHandle, standardInput);")
+    handle_transferred = job.index("startedProcessHandle = process.Process;")
+    assert process_created < parent_stdin_closed < stdin_written < handle_transferred
+    assert "FileShareDelete" not in job
+    assert "WaitForAllProcesses" in job
+    assert "ActiveProcesses" in job
+
+
 def _assert_postgres_process_contract(contracts: dict[str, str]) -> None:
     start = contracts["start"]
     stop = contracts["stop"]
@@ -36,7 +75,7 @@ def _assert_postgres_process_contract(contracts: dict[str, str]) -> None:
     assert "XPJ_TEST_POSTGRES_IDENTITY_MISMATCH" in cluster
     assert ".xpj-init-" in cluster
     assert "$stagingHandle.RenameTo($DataDirectory)" in cluster
-    assert "Get-XpjTestPostgresProcessGeneration" in cluster
+    _assert_postgres_generation_contract(cluster)
     assert "Enter-XpjTestPostgresLifecycleMutex" in cluster
     assert "Enter-XpjTestPostgresConsumerLease" in cluster
     assert "Wait-XpjTestPostgresConsumersDrained" in cluster
@@ -67,31 +106,10 @@ def _assert_postgres_process_contract(contracts: dict[str, str]) -> None:
     assert "ExpectedDirectoryIdentity" in deletion
     assert "Assert-XpjTestPostgresQuiescent" in deletion[deletion.index("if (Test-Path -LiteralPath $tombstone)") :]
     assert "Invoke-XpjTestPostgresBoundedProcess" in cluster
-    assert "WaitForStartedProcess($TimeoutSeconds * 1000)" in process
-    assert "XpjTestProcessJob" in process
-    assert "TerminateJobObject" in job
-    assert "JobObjectLimitKillOnJobClose" in job
-    assert "Start-XpjTestPostgresUncommittedProcess" in process
-    assert "Remove-XpjTestPostgresProcessOutput" in process
-    assert "[System.IO.FileShare]::None" in process
-    assert "process output handle did not close" in process
-    assert "PreserveProcessesOnClose" in process
-    assert "ProcThreadAttributeJobList" in job
-    assert "ProcThreadAttributeHandleList" in job
-    assert "ContainsStartedProcess" in process
-    assert "IsStartedProcessRunning" in process
-    assert "Stop-Process -Id $targetProcessId" not in process
-    assert "Get-Process -Id ([int]$Transaction.TargetProcessId)" not in process
-    assert "CreateProcess" in job
-    assert job.index("WriteStandardInput(stdinWriteHandle, standardInput);") < job.index(
-        "startedProcessHandle = process.Process;"
-    )
+    _assert_process_job_contract(process, job)
     assert "Get-CimInstance -ClassName Win32_Process" not in staging
     assert "statement_timeout=$statementTimeoutMs" in cluster
     assert "XPJ_TEST_POSTGRES_ACTIVE_CONSUMERS" in cluster
-    assert "FileShareDelete" not in job
-    assert "WaitForAllProcesses" in job
-    assert "ActiveProcesses" in job
     assert "Assert-XpjTestPostgresQuiescent" in stop
     assert "Assert-XpjTestPostgresCleanShutdown" in cluster
     assert "[void]$verifiedProcess.Handle" in stop
@@ -330,6 +348,21 @@ def _assert_workflow_contract(project_root: Path) -> None:
     assert gitea_ci.count("AcquireConsumerLease") == 1
     assert "Enter-XpjTestPostgresConsumerLease" not in gitea_ci
     assert gitea_ci.count("Exit-XpjTestPostgresConsumerLease") == 2
+    assert gitea_ci.count("$leaseToClose = $consumerLease") == 2
+    for close_call in re.finditer(
+        r"Exit-XpjTestPostgresConsumerLease \$leaseToClose",
+        gitea_ci,
+    ):
+        transfer = gitea_ci.rfind("$consumerLease = $null", 0, close_call.start())
+        assert transfer >= 0
+        assert close_call.start() - transfer < 250
+    first_cleanup = gitea_ci.index("$leaseToClose = $consumerLease")
+    outer_cleanup = gitea_ci.index(
+        "$leaseToClose = $consumerLease",
+        first_cleanup + 1,
+    )
+    independent_stop = gitea_ci.index(r".\scripts\stop_test_pg.ps1 -Purpose ci", outer_cleanup)
+    assert gitea_ci.index("finally {", outer_cleanup) < independent_stop
     assert gitea_ci.count("assert_gitea_runner_contract.ps1") == 3
     assert "XPJ_TEST_PG_LIFECYCLE_MUTEX_OWNER_PID" not in gitea_ci
     assert "concurrency:" not in gitea_ci
@@ -340,6 +373,21 @@ def _assert_workflow_contract(project_root: Path) -> None:
     _assert_gitea_postgres_job_budget(gitea_ci)
     connected_ci = (project_root / ".gitea/workflows/android-connected.yml").read_text(encoding="utf-8")
     assert connected_ci.count("assert_gitea_runner_contract.ps1") == 1
+    assert connected_ci.count(r".\scripts\stop_ci_emulator.ps1") == 3
+    assert "XPJ_CI_EMULATOR_START_FILETIME" in connected_ci
+    assert "taskkill" not in connected_ci.lower()
+    emulator_backstop = connected_ci.split(
+        "      - name: Stop owned emulator (backstop)",
+        1,
+    )[1]
+    assert "        if: always()" in emulator_backstop
+    assert "        timeout-minutes: 3" in emulator_backstop
+    for workflow, checkout_count in ((gitea_ci, 4), (connected_ci, 1)):
+        assert workflow.count("git -C $ws clean -ffdx") == checkout_count * 2
+        assert workflow.count("git -C $ws reset -q --hard $env:GITHUB_SHA") == checkout_count
+        assert workflow.count("status --porcelain=v1 --untracked-files=all") == checkout_count
+        assert workflow.count("checkout workspace is not clean") == checkout_count
+        assert "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" not in workflow
     verify_project = (project_root / "scripts/verify_project.ps1").read_text(encoding="utf-8-sig")
     packaging_tests = verify_project.index("scripts/run_packaging_tests.py")
     database_reset = verify_project.index("start_test_pg.ps1")

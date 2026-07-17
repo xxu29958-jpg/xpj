@@ -34,9 +34,10 @@ jobs:
         run: |
           $ws = $env:GITHUB_WORKSPACE
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
-          Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
           git init -q $ws
           if ($LASTEXITCODE -ne 0) { throw "git init failed" }
+          git -C $ws clean -ffdx
+          if ($LASTEXITCODE -ne 0) { throw "git clean of reused workspace failed" }
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
           $origin = "$server/$env:GITHUB_REPOSITORY.git"
           if (@(git -C $ws remote) -contains "origin") {
@@ -50,6 +51,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
+          git -C $ws reset -q --hard $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git reset $env:GITHUB_SHA failed" }
+          git -C $ws clean -ffdx
+          if ($LASTEXITCODE -ne 0) { throw "git post-checkout clean failed" }
+          $actualSha = [string](git -C $ws rev-parse HEAD)
+          if ($LASTEXITCODE -ne 0 -or -not [string]::Equals($actualSha.Trim(), $env:GITHUB_SHA, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "checkout resolved to $actualSha instead of $env:GITHUB_SHA"
+          }
+          $workspaceStatus = @(git -C $ws status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $workspaceStatus.Count -ne 0) {
+            throw "checkout workspace is not clean: $($workspaceStatus -join '; ')"
+          }
           git -C $ws log --oneline -1
 
       - name: Verify Gitea runner lifecycle contract
@@ -275,9 +288,10 @@ jobs:
         run: |
           $ws = $env:GITHUB_WORKSPACE
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
-          Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
           git init -q $ws
           if ($LASTEXITCODE -ne 0) { throw "git init failed" }
+          git -C $ws clean -ffdx
+          if ($LASTEXITCODE -ne 0) { throw "git clean of reused workspace failed" }
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
           $origin = "$server/$env:GITHUB_REPOSITORY.git"
           if (@(git -C $ws remote) -contains "origin") {
@@ -291,6 +305,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
+          git -C $ws reset -q --hard $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git reset $env:GITHUB_SHA failed" }
+          git -C $ws clean -ffdx
+          if ($LASTEXITCODE -ne 0) { throw "git post-checkout clean failed" }
+          $actualSha = [string](git -C $ws rev-parse HEAD)
+          if ($LASTEXITCODE -ne 0 -or -not [string]::Equals($actualSha.Trim(), $env:GITHUB_SHA, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "checkout resolved to $actualSha instead of $env:GITHUB_SHA"
+          }
+          $workspaceStatus = @(git -C $ws status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $workspaceStatus.Count -ne 0) {
+            throw "checkout workspace is not clean: $($workspaceStatus -join '; ')"
+          }
           git -C $ws log --oneline -1
 
       - name: Verify Gitea runner lifecycle contract
@@ -357,21 +383,28 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "PostgreSQL stateful serial pytest lane failed" }
             }
             finally {
-              if ($null -ne $consumerLease) {
-                Exit-XpjTestPostgresConsumerLease $consumerLease
-                $consumerLease = $null
+              $leaseToClose = $consumerLease
+              $consumerLease = $null
+              if ($null -ne $leaseToClose) {
+                Exit-XpjTestPostgresConsumerLease $leaseToClose
               }
             }
           }
           finally {
-            if ($null -ne $consumerLease) {
-              Exit-XpjTestPostgresConsumerLease $consumerLease
+            $leaseToClose = $consumerLease
+            $consumerLease = $null
+            try {
+              if ($null -ne $leaseToClose) {
+                Exit-XpjTestPostgresConsumerLease $leaseToClose
+              }
             }
-            if (Test-Path -LiteralPath $datadir) {
-              .\scripts\stop_test_pg.ps1 -Purpose ci -Port $pgport -DataDir $datadir -LifecycleMutexTimeoutSeconds $lifecycleWaitSeconds
+            finally {
+              if (Test-Path -LiteralPath $datadir) {
+                .\scripts\stop_test_pg.ps1 -Purpose ci -Port $pgport -DataDir $datadir -LifecycleMutexTimeoutSeconds $lifecycleWaitSeconds
+              }
+              $global:LASTEXITCODE = 0
+              Write-Host "ephemeral PostgreSQL torn down"
             }
-            $global:LASTEXITCODE = 0
-            Write-Host "ephemeral PostgreSQL torn down"
           }
 
       - name: Stop ephemeral PostgreSQL (backstop)
@@ -404,9 +437,10 @@ jobs:
         run: |
           $ws = $env:GITHUB_WORKSPACE
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
-          Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
           git init -q $ws
           if ($LASTEXITCODE -ne 0) { throw "git init failed" }
+          git -C $ws clean -ffdx
+          if ($LASTEXITCODE -ne 0) { throw "git clean of reused workspace failed" }
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
           $origin = "$server/$env:GITHUB_REPOSITORY.git"
           if (@(git -C $ws remote) -contains "origin") {
@@ -420,6 +454,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
+          git -C $ws reset -q --hard $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git reset $env:GITHUB_SHA failed" }
+          git -C $ws clean -ffdx
+          if ($LASTEXITCODE -ne 0) { throw "git post-checkout clean failed" }
+          $actualSha = [string](git -C $ws rev-parse HEAD)
+          if ($LASTEXITCODE -ne 0 -or -not [string]::Equals($actualSha.Trim(), $env:GITHUB_SHA, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "checkout resolved to $actualSha instead of $env:GITHUB_SHA"
+          }
+          $workspaceStatus = @(git -C $ws status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $workspaceStatus.Count -ne 0) {
+            throw "checkout workspace is not clean: $($workspaceStatus -join '; ')"
+          }
           git -C $ws log --oneline -1
 
       - name: Install desktop dependencies
@@ -465,9 +511,10 @@ jobs:
         run: |
           $ws = $env:GITHUB_WORKSPACE
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
-          Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
           git init -q $ws
           if ($LASTEXITCODE -ne 0) { throw "git init failed" }
+          git -C $ws clean -ffdx
+          if ($LASTEXITCODE -ne 0) { throw "git clean of reused workspace failed" }
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
           $origin = "$server/$env:GITHUB_REPOSITORY.git"
           if (@(git -C $ws remote) -contains "origin") {
@@ -481,6 +528,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
+          git -C $ws reset -q --hard $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git reset $env:GITHUB_SHA failed" }
+          git -C $ws clean -ffdx
+          if ($LASTEXITCODE -ne 0) { throw "git post-checkout clean failed" }
+          $actualSha = [string](git -C $ws rev-parse HEAD)
+          if ($LASTEXITCODE -ne 0 -or -not [string]::Equals($actualSha.Trim(), $env:GITHUB_SHA, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "checkout resolved to $actualSha instead of $env:GITHUB_SHA"
+          }
+          $workspaceStatus = @(git -C $ws status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $workspaceStatus.Count -ne 0) {
+            throw "checkout workspace is not clean: $($workspaceStatus -join '; ')"
+          }
           git -C $ws log --oneline -1
 
       - name: Verify Gitea runner lifecycle contract

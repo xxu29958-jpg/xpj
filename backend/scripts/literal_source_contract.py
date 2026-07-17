@@ -6,6 +6,19 @@ import ast
 from collections.abc import Iterable
 
 
+def _root_name(expression: ast.expr) -> str | None:
+    while isinstance(expression, (ast.Attribute, ast.Subscript)):
+        expression = expression.value
+    return expression.id if isinstance(expression, ast.Name) else None
+
+
+def _direct_alias_source(node: ast.AST) -> str | None:
+    value: ast.expr | None = None
+    if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+        value = node.value
+    return value.id if isinstance(value, ast.Name) else None
+
+
 def canonical_assignment_expressions(
     content: str,
     names: Iterable[str],
@@ -45,9 +58,27 @@ def canonical_assignment_expressions(
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Name)
-            and isinstance(node.ctx, ast.Store)
+            and isinstance(node.ctx, (ast.Store, ast.Del))
             and node.id in protected
             and id(node) not in canonical_targets
         ):
             raise ValueError(f"{label} has noncanonical protected assignment to {node.id}")
+        alias_source = _direct_alias_source(node)
+        if alias_source in protected:
+            raise ValueError(f"{label} creates a noncanonical alias for {alias_source}")
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and _root_name(node.func.value) in protected
+        ):
+            raise ValueError(
+                f"{label} has noncanonical protected mutation through "
+                f"{_root_name(node.func.value)}.{node.func.attr}()"
+            )
+        if (
+            isinstance(node, (ast.Attribute, ast.Subscript))
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and (root := _root_name(node)) in protected
+        ):
+            raise ValueError(f"{label} has noncanonical protected mutation through {root}")
     return expressions

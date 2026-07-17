@@ -93,10 +93,13 @@ def test_release_audit_compact_mode_suppresses_success_noise(monkeypatch, capsys
 def test_release_audit_discovers_adr_contract_lane() -> None:
     mod = importlib.reload(importlib.import_module("release_audit"))
 
-    lanes = set(mod._discover_lanes(SCRIPTS))
+    discovered = mod._discover_lanes(SCRIPTS)
+    lanes = set(discovered)
 
     assert ("adr-contracts", "_audit_adr_contracts.py") in lanes
+    assert ("pr-delta-metrics", "_audit_pr_delta_metrics.py") in lanes
     assert ("adr-registry", "_audit_adr_registry.py") not in lanes
+    assert mod._required_lane_contract_failures(SCRIPTS, discovered) == []
 
 
 def test_adr_contract_gate_is_present_in_a_clean_git_clone() -> None:
@@ -237,16 +240,14 @@ def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
     capsys,
 ) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
-    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", {"backend_pytest_count": 2403})
-    monkeypatch.setattr(mod, "BASELINE_RATCHET_UP", frozenset({"backend_pytest_count"}))
-    monkeypatch.setattr(mod, "BASELINE_RATCHET_DOWN", frozenset())
+    counts = dict(mod.STRICT_EQUALITY_BASELINE)
     monkeypatch.setenv("XPJ_AUDIT_BASE_REF", "0123456789abcdef")
     monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
     assert mod._strict_baseline_git_ref() is None
     assert "cannot resolve exact ADR ratchet base" in (mod._strict_baseline_selection_error or "")
     unreadable_policy = mod._StrictBaselinePolicy({}, frozenset(), frozenset(), False)
     monkeypatch.setattr(mod, "_read_base_strict_policy", lambda: (False, unreadable_policy))
-    assert mod.evaluate_pr_delta_metrics({"backend_pytest_count": 2403}) == 1
+    assert mod.evaluate_pr_delta_metrics(counts) == 1
     exact_ref_only = capsys.readouterr()
     assert "couldn't read the required base baseline" in exact_ref_only.out
     assert "XPJ_AUDIT_BASE_REF=0123456789abcdef" in exact_ref_only.out
@@ -256,7 +257,10 @@ def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
     assert mod._strict_baseline_git_ref() is None
     assert mod._strict_baseline_selection_error == ("CI requires XPJ_AUDIT_BASE_REF with the exact pre-change commit")
 
-    assert mod.evaluate_pr_delta_metrics({"unexpected_counter": 1}) == 1
+    missing_and_extra = dict(counts)
+    missing_and_extra.pop("backend_pytest_count")
+    missing_and_extra["unexpected_counter"] = 1
+    assert mod.evaluate_pr_delta_metrics(missing_and_extra) == 1
 
     captured = capsys.readouterr()
     assert "baseline entries that the audit lane didn't report" in captured.out
@@ -270,25 +274,19 @@ def test_pr_delta_flags_extra_and_unreadable_base_independently(
     capsys,
 ) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
-    baseline = {"backend_pytest_count": 2403}
-    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
-    monkeypatch.setattr(mod, "BASELINE_RATCHET_UP", frozenset({"backend_pytest_count"}))
-    monkeypatch.setattr(mod, "BASELINE_RATCHET_DOWN", frozenset())
+    baseline = dict(mod.STRICT_EQUALITY_BASELINE)
     readable_policy = mod._StrictBaselinePolicy(
         baseline,
-        frozenset({"backend_pytest_count"}),
-        frozenset(),
+        mod.BASELINE_RATCHET_UP,
+        mod.BASELINE_RATCHET_DOWN,
         True,
     )
     monkeypatch.setattr(mod, "_read_base_strict_policy", lambda: (True, readable_policy))
 
+    extra_counts = dict(baseline)
+    extra_counts["unexpected_counter"] = 1
     assert (
-        mod.evaluate_pr_delta_metrics(
-            {
-                "backend_pytest_count": 2403,
-                "unexpected_counter": 1,
-            }
-        )
+        mod.evaluate_pr_delta_metrics(extra_counts)
         == 1
     )
 
@@ -301,7 +299,7 @@ def test_pr_delta_flags_extra_and_unreadable_base_independently(
     monkeypatch.setattr(mod, "_read_base_strict_policy", lambda: (False, unreadable_policy))
     monkeypatch.setenv("GITHUB_BASE_REF", "main")
 
-    assert mod.evaluate_pr_delta_metrics({"backend_pytest_count": 2403}) == 1
+    assert mod.evaluate_pr_delta_metrics(baseline) == 1
 
     unreadable_only = capsys.readouterr()
     assert "couldn't read the required base baseline" in unreadable_only.out
@@ -316,25 +314,25 @@ def test_pr_delta_flags_extra_and_unreadable_base_independently(
         for candidate in ("CI", "GITHUB_ACTIONS", "GITEA_ACTIONS"):
             monkeypatch.delenv(candidate, raising=False)
         monkeypatch.setenv(marker, "true")
-        assert mod.evaluate_pr_delta_metrics({"backend_pytest_count": 2403}) == 1
+        assert mod.evaluate_pr_delta_metrics(baseline) == 1
         marker_output = capsys.readouterr()
         assert "couldn't read the required base baseline" in marker_output.out
 
     for marker in ("CI", "GITHUB_ACTIONS", "GITEA_ACTIONS"):
         monkeypatch.delenv(marker, raising=False)
     monkeypatch.setenv("CI", "false")
-    assert mod.evaluate_pr_delta_metrics({"backend_pytest_count": 2403}) == 1
+    assert mod.evaluate_pr_delta_metrics(baseline) == 1
     noncanonical_marker = capsys.readouterr()
     assert "couldn't read the required base baseline" in noncanonical_marker.out
     monkeypatch.delenv("CI")
 
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    assert mod.evaluate_pr_delta_metrics({"backend_pytest_count": 2403}) == 1
+    assert mod.evaluate_pr_delta_metrics(baseline) == 1
     event_only = capsys.readouterr()
     assert "couldn't read the required base baseline" in event_only.out
     monkeypatch.delenv("GITHUB_EVENT_NAME")
 
-    assert mod.evaluate_pr_delta_metrics({"backend_pytest_count": 2403}) == 0
+    assert mod.evaluate_pr_delta_metrics(baseline) == 0
     local_only = capsys.readouterr()
     assert "no CI/exact-base context" in local_only.out
 

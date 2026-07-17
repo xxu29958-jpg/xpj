@@ -51,6 +51,10 @@ def test_unreadable_base_returns_a_typed_fail_closed_policy(monkeypatch) -> None
     (
         "BASELINE_RATCHET_UP |= {'tests_extra'}",
         "if True:\n    BASELINE_RATCHET_UP = frozenset({'tests_extra'})",
+        "STRICT_EQUALITY_BASELINE.update({'tests': 4})",
+        "STRICT_EQUALITY_BASELINE['tests'] = 4",
+        "del STRICT_EQUALITY_BASELINE['tests']",
+        "alias = STRICT_EQUALITY_BASELINE\nalias.update({'tests': 4})",
     ),
 )
 def test_literal_policy_rejects_noncanonical_protected_writes(mutation: str) -> None:
@@ -63,7 +67,7 @@ def test_literal_policy_rejects_noncanonical_protected_writes(mutation: str) -> 
         )
     )
 
-    with pytest.raises(ValueError, match="protected assignment"):
+    with pytest.raises(ValueError, match="protected|alias"):
         parse_strict_baseline_policy(content)
 
 

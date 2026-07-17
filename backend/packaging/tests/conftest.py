@@ -83,6 +83,11 @@ def _initialize_runner_state(config: pytest.Config) -> None:
     config._xpj_xdist_worker_errors = {}  # type: ignore[attr-defined]
 
 
+def _start_strict_runtime_watchdog(config: pytest.Config) -> None:
+    role = "xdist worker" if _is_xdist_worker(config) else "controller"
+    start_windows_parent_watchdog(label=f"strict packaging pytest {role}")
+
+
 def _resource_for_item(item: pytest.Item) -> str:
     declarations = list(item.iter_markers_with_node(name=PACKAGING_RESOURCE_MARKER))
     if not declarations:
@@ -145,8 +150,7 @@ def pytest_configure(config: pytest.Config) -> None:
     _validate_managed_xdist(config)
     if not _strict_runtime_enabled():
         return
-    if not _is_xdist_worker(config):
-        start_windows_parent_watchdog(label="strict packaging pytest")
+    _start_strict_runtime_watchdog(config)
     violations: list[str] = []
     if config.getoption("collectonly", default=False):
         violations.append("strict packaging contracts must execute, not only collect")
