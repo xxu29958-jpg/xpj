@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -10,7 +11,7 @@ import pytest
 from scripts import run_packaging_tests
 from scripts.packaging_pytest_contract import PACKAGING_SERIAL_MARKER
 from scripts.pytest_execution_contract import (
-    collect_pytest_snapshot,
+    pytest_execution_environment,
     pytest_nodeid_digest,
 )
 
@@ -99,12 +100,7 @@ def test_packaging_collection_accepts_a_proven_empty_derived_lane(
 
 
 def test_real_loopback_consumers_stay_in_host_network_lane() -> None:
-    serial = collect_pytest_snapshot(
-        "packaging/tests",
-        mark_expression=PACKAGING_SERIAL_MARKER,
-        backend_root=run_packaging_tests.BACKEND_ROOT,
-    )
-    expected = {
+    expected = (
         "packaging/tests/test_backend_bootstrap_contract.py::"
         "test_maintenance_failure_writes_credential_free_durable_result",
         "packaging/tests/test_backend_bootstrap_contract.py::"
@@ -113,8 +109,39 @@ def test_real_loopback_consumers_stay_in_host_network_lane() -> None:
         "test_bootstrap_http_exception_revalidates_listener_and_fails_closed",
         "packaging/tests/test_legacy_installer_security.py::"
         "test_bootstrap_requires_owned_listener_and_sends_utf8_json_bytes",
-    }
-    assert expected.issubset(serial.nodeids)
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            *expected,
+            "--collect-only",
+            "-q",
+            "--strict-markers",
+            "-p",
+            "no:cacheprovider",
+            "-m",
+            PACKAGING_SERIAL_MARKER,
+            "-o",
+            "addopts=",
+        ],
+        cwd=run_packaging_tests.BACKEND_ROOT,
+        env=pytest_execution_environment(),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=60,
+    )
+    selected = tuple(
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.startswith("packaging/tests/") and "::" in line
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert set(selected) == set(expected)
 
 
 class _RuntimeStack:
