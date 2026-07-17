@@ -11,6 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.packaging_resource("hermetic")
+
 _RUNTIME_VOLUME_IDENTITY = "\\\\?\\Volume{11111111-2222-3333-4444-555555555555}\\"
 _OTHER_VOLUME_IDENTITY = "\\\\?\\Volume{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}\\"
 
@@ -210,6 +212,7 @@ def test_bootstrap_guard_must_share_runtime_projection_before_write(
     assert not (preset / "uploads").exists()
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(os.name != "nt", reason="Windows Volume GUID contract")
 def test_windows_volume_identity_follows_runtime_junction(monkeypatch, tmp_path):
     launch = _load_launch_module()

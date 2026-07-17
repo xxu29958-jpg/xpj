@@ -8,6 +8,11 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import run_packaging_tests
+from scripts.packaging_pytest_contract import (
+    PACKAGING_PARALLEL_MARKER,
+    PACKAGING_SERIAL_MARKER,
+    packaging_partition_violation,
+)
 from scripts.pytest_execution_contract import (
     PytestCollectionSnapshot,
     parse_pytest_collection,
@@ -24,6 +29,8 @@ def test_pytest_collection_digest_is_order_independent() -> None:
     second = tuple(reversed(first))
 
     assert pytest_nodeid_digest(first) == pytest_nodeid_digest(second)
+    assert packaging_partition_violation(first, first[:1], first[1:]) is None
+    assert packaging_partition_violation(first, first, first[1:]) is not None
 
 
 def test_pytest_execution_environment_removes_ambient_selectors() -> None:
@@ -90,16 +97,28 @@ def test_execution_membership_rejects_precollection_omission() -> None:
 def test_packaging_runner_clears_filters_and_requires_handshake(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    snapshot = PytestCollectionSnapshot(("packaging/tests/test_installer.py::test_upgrade",))
+    parallel_snapshot = PytestCollectionSnapshot(
+        ("packaging/tests/test_contract.py::test_manifest",)
+    )
+    serial_snapshot = PytestCollectionSnapshot(
+        ("packaging/tests/test_installer.py::test_upgrade",)
+    )
+    snapshot = PytestCollectionSnapshot(
+        (*parallel_snapshot.nodeids, *serial_snapshot.nodeids)
+    )
     observed: dict[str, object] = {}
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k version")
     monkeypatch.setenv("PYTEST_PLUGINS", "ambient_plugin")
     monkeypatch.setenv("PYTHONPATH", "ambient-import-root")
-    monkeypatch.setattr(
-        run_packaging_tests,
-        "collect_pytest_snapshot",
-        lambda *args, **kwargs: snapshot,
-    )
+
+    def collect(*_args, mark_expression: str | None = None, **_kwargs):
+        if mark_expression == PACKAGING_PARALLEL_MARKER:
+            return parallel_snapshot
+        if mark_expression == PACKAGING_SERIAL_MARKER:
+            return serial_snapshot
+        return snapshot
+
+    monkeypatch.setattr(run_packaging_tests, "collect_pytest_snapshot", collect)
 
     def execute(
         command: list[str],
@@ -134,16 +153,36 @@ def test_packaging_runner_clears_filters_and_requires_handshake(
     assert "-o" in observed["command"]
     assert "--durations=20" in observed["command"]
     assert "--durations-min=0.5" in observed["command"]
+    assert "xdist.plugin" in observed["command"]
+    assert observed["command"][observed["command"].index("-n") + 1] == "3"
+    assert "--dist=loadgroup" in observed["command"]
+    assert "--max-worker-restart=0" in observed["command"]
+    assert observed["command"].count("-m") == 1
+    assert environment[run_packaging_tests.PACKAGING_EXPECTED_PARALLEL_COUNT_ENV] == "1"
+    assert environment[run_packaging_tests.PACKAGING_EXPECTED_SERIAL_COUNT_ENV] == "1"
 
 
 def test_packaging_runner_rejects_success_without_handshake(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        run_packaging_tests,
-        "collect_pytest_snapshot",
-        lambda *args, **kwargs: PytestCollectionSnapshot(("packaging/tests/test_installer.py::test_upgrade",)),
+    parallel_snapshot = PytestCollectionSnapshot(
+        ("packaging/tests/test_contract.py::test_manifest",)
     )
+    serial_snapshot = PytestCollectionSnapshot(
+        ("packaging/tests/test_installer.py::test_upgrade",)
+    )
+    snapshot = PytestCollectionSnapshot(
+        (*parallel_snapshot.nodeids, *serial_snapshot.nodeids)
+    )
+
+    def collect(*_args, mark_expression: str | None = None, **_kwargs):
+        if mark_expression == PACKAGING_PARALLEL_MARKER:
+            return parallel_snapshot
+        if mark_expression == PACKAGING_SERIAL_MARKER:
+            return serial_snapshot
+        return snapshot
+
+    monkeypatch.setattr(run_packaging_tests, "collect_pytest_snapshot", collect)
     monkeypatch.setattr(
         run_packaging_tests.subprocess,
         "run",
@@ -175,10 +214,14 @@ def test_packaging_strict_runtime_rejects_module_level_skip(
             return None
 
     terminal = Terminal()
+    config = SimpleNamespace(
+        pluginmanager=SimpleNamespace(get_plugin=lambda _name: terminal),
+        _xpj_xdist_ready_workers={"gw0", "gw1", "gw2"},
+        _xpj_xdist_down_workers={"gw0", "gw1", "gw2"},
+        _xpj_xdist_worker_errors={},
+    )
     session = SimpleNamespace(
-        config=SimpleNamespace(
-            pluginmanager=SimpleNamespace(get_plugin=lambda _name: terminal)
-        ),
+        config=config,
         testscollected=1,
         exitstatus=pytest.ExitCode.OK,
     )

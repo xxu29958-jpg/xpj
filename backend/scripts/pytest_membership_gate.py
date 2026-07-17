@@ -13,6 +13,8 @@ PROTECTED_PYTEST_MEMBERSHIPS = (
     "stateful_serial",
     "cluster_serial",
     "packaging_all",
+    "packaging_parallel",
+    "packaging_serial",
 )
 
 
@@ -44,14 +46,20 @@ def _partition_violation(
     snapshot: Mapping[str, Sequence[str]],
     *,
     label: str,
+    all_membership: str = "backend_all",
+    parallel_membership: str = "backend_parallel",
+    serial_membership: str = "stateful_serial",
 ) -> str | None:
-    required = {"backend_all", "backend_parallel", "stateful_serial"}
+    required = {all_membership, parallel_membership, serial_membership}
     if not required <= set(snapshot):
         return None
-    partition = Counter(snapshot["backend_parallel"]) + Counter(snapshot["stateful_serial"])
-    if partition == Counter(snapshot["backend_all"]):
+    partition = Counter(snapshot[parallel_membership]) + Counter(snapshot[serial_membership])
+    if partition == Counter(snapshot[all_membership]):
         return None
-    return f"{label}backend_parallel plus stateful_serial is not the exact backend_all partition"
+    return (
+        f"{label}{parallel_membership} plus {serial_membership} is not the exact "
+        f"{all_membership} partition"
+    )
 
 
 def _current_invariant_violations(
@@ -82,6 +90,15 @@ def _current_invariant_violations(
     partition = _partition_violation(current, label="")
     if partition:
         violations.append(partition)
+    packaging_partition = _partition_violation(
+        current,
+        label="",
+        all_membership="packaging_all",
+        parallel_membership="packaging_parallel",
+        serial_membership="packaging_serial",
+    )
+    if packaging_partition:
+        violations.append(packaging_partition)
     return violations
 
 
@@ -89,18 +106,32 @@ def _new_test_classification_violations(
     current: Mapping[str, Sequence[str]],
     base: Mapping[str, Sequence[str]],
 ) -> list[str]:
-    required = {"backend_all", "parallel_safe", "real_db"}
-    if not required <= set(current) or "backend_all" not in base:
-        return []
-    new_nodeids = set(current["backend_all"]) - set(base["backend_all"])
-    classified = set(current["parallel_safe"]) | set(current["real_db"])
-    unclassified = sorted(new_nodeids - classified)
-    if not unclassified:
-        return []
-    return [
-        "new backend test nodeid(s) lack an explicit PostgreSQL resource class: "
-        + ", ".join(unclassified[:3])
-    ]
+    violations: list[str] = []
+    backend_required = {"backend_all", "parallel_safe", "real_db"}
+    if backend_required <= set(current) and "backend_all" in base:
+        new_nodeids = set(current["backend_all"]) - set(base["backend_all"])
+        classified = set(current["parallel_safe"]) | set(current["real_db"])
+        unclassified = sorted(new_nodeids - classified)
+        if unclassified:
+            violations.append(
+                "new backend test nodeid(s) lack an explicit PostgreSQL resource class: "
+                + ", ".join(unclassified[:3])
+            )
+    packaging_required = {
+        "packaging_all",
+        "packaging_parallel",
+        "packaging_serial",
+    }
+    if packaging_required <= set(current) and "packaging_all" in base:
+        new_nodeids = set(current["packaging_all"]) - set(base["packaging_all"])
+        classified = set(current["packaging_parallel"]) | set(current["packaging_serial"])
+        unclassified = sorted(new_nodeids - classified)
+        if unclassified:
+            violations.append(
+                "new packaging test nodeid(s) lack an explicit resource class: "
+                + ", ".join(unclassified[:3])
+            )
+    return violations
 
 
 def _removed_membership_violations(
@@ -114,6 +145,8 @@ def _removed_membership_violations(
             removed -= set(current["stateful_serial"])
         if membership == "parallel_safe":
             removed -= set(current["real_db"])
+        if membership == "packaging_parallel":
+            removed -= set(current["packaging_serial"])
         ordered = sorted(removed)
         if ordered:
             violations.append(
@@ -142,6 +175,16 @@ def protected_pytest_membership_violations(
     base_partition = _partition_violation(base, label="base ")
     if base_partition:
         violations.append(base_partition)
+    if base.get("packaging_parallel") or base.get("packaging_serial"):
+        base_packaging_partition = _partition_violation(
+            base,
+            label="base ",
+            all_membership="packaging_all",
+            parallel_membership="packaging_parallel",
+            serial_membership="packaging_serial",
+        )
+        if base_packaging_partition:
+            violations.append(base_packaging_partition)
     violations.extend(_new_test_classification_violations(current, base))
     violations.extend(_removed_membership_violations(current, base))
     return violations

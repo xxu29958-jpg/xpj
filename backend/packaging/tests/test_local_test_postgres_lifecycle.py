@@ -25,6 +25,8 @@ from _powershell_contract import powershell_contract_engines
 
 from scripts.test_pg_protected_file import write_protected_utf8_file
 
+pytestmark = pytest.mark.packaging_resource("postgres_cluster")
+
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_local_test_postgres_rejects_a_different_cluster_before_provisioning(

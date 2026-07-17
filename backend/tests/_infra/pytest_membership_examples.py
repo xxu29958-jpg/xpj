@@ -25,6 +25,8 @@ def assert_protected_pytest_membership_gate() -> None:
         "stateful_serial": ("tests/test_db.py::test_schema",),
         "cluster_serial": ("tests/test_db.py::test_schema",),
         "packaging_all": ("packaging/tests/test_installer.py::test_upgrade",),
+        "packaging_parallel": (),
+        "packaging_serial": ("packaging/tests/test_installer.py::test_upgrade",),
     }
     assert (
         gate.protected_pytest_membership_violations(
@@ -53,6 +55,8 @@ def assert_protected_pytest_membership_gate() -> None:
         "stateful_serial": ("tests/test_db.py::test_replacement",),
         "cluster_serial": ("tests/test_db.py::test_replacement",),
         "packaging_all": ("packaging/tests/test_installer.py::test_replacement",),
+        "packaging_parallel": (),
+        "packaging_serial": ("packaging/tests/test_installer.py::test_replacement",),
     }
     violations = gate.protected_pytest_membership_violations(
         swapped,
@@ -67,6 +71,7 @@ def assert_protected_pytest_membership_gate() -> None:
     assert any("stateful_serial removed 1" in violation for violation in violations)
     assert any("cluster_serial removed 1" in violation for violation in violations)
     assert any("packaging_all removed 1" in violation for violation in violations)
+    assert any("packaging_serial removed 1" in violation for violation in violations)
     assert gate.protected_pytest_membership_violations(
         base,
         {},

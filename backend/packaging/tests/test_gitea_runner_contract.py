@@ -11,6 +11,8 @@ from _local_test_postgres_runtime import (
 )
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.packaging_resource("hermetic")
+
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Gitea runner contract")
 def test_gitea_runner_minimum_version_is_executable_under_ps51_and_ps7(

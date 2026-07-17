@@ -15,6 +15,8 @@ import pytest
 from _pg_recovery_contract import assert_pg_recovery_toolset_behavior
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.packaging_resource("hermetic")
+
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGING = ROOT / "backend" / "packaging"
 
@@ -1315,6 +1317,7 @@ def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_m
         assert binding in uninstall
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows delete-data receipt contract")
 def test_delete_data_requires_completed_receipt_or_bound_retry_intent(tmp_path: Path) -> None:
     uninstall = _read("uninstall_bundled_services.ps1")
@@ -1970,6 +1973,7 @@ def test_installer_source_lease_stays_owned_until_setup_deinitializes() -> None:
     )
 
 
+@pytest.mark.packaging_resource("inno_toolchain")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Inno compiler contract")
 def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Path) -> None:
     candidates = (
@@ -2357,6 +2361,7 @@ def test_powershell7_selector_requires_core_v7_x64_and_is_deterministic() -> Non
     assert "exit;" not in selected_branch
 
 
+@pytest.mark.packaging_resource("inno_toolchain")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Inno argv contract")
 def test_inno_quote_roundtrips_command_line_to_argvw_and_rejects_unsafe_text(
     tmp_path: Path,
@@ -2466,6 +2471,7 @@ end;
             kernel32.LocalFree(argv)
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows lifecycle lock holder contract")
 def test_external_lifecycle_lock_holder_keeps_authority_until_release(
     tmp_path: Path,
@@ -2670,6 +2676,7 @@ Write-TicketboxLifecycleCoordinationArtifact `
             assert not release_path.exists()
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows DataRoot guard contract")
 def test_data_root_guard_authenticates_holder_and_cleans_ipc_after_owner_death(
     tmp_path: Path,
@@ -3311,6 +3318,7 @@ Assert-TicketboxDataRootMarker `
         assert retry_result.returncode == 0, retry_result.stdout + retry_result.stderr
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows holder entrypoint contract")
 def test_holder_entrypoint_independently_rejects_wrong_parent_and_non_authoritative_root(
     tmp_path: Path,
@@ -3388,6 +3396,7 @@ def test_holder_entrypoint_independently_rejects_wrong_parent_and_non_authoritat
         assert "Inno 与 PowerShell 解析出的机器生命周期根不一致" in result.stderr
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows exact deletion contract")
 def test_exact_deletion_defers_data_root_authority_marker_and_retries_only_empty_root(
     tmp_path: Path,
@@ -3491,6 +3500,7 @@ Remove-TicketboxDataRootExact -Path '{literal(markerless_nonempty)}'
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows DataRoot handle lease contract")
 def test_data_root_guard_lease_blocks_cross_process_root_and_ancestor_rename(
     tmp_path: Path,
@@ -3582,6 +3592,7 @@ Wait-TicketboxDirectoryMutationGuardLease `
                 process.communicate(timeout=5)
 
 
+@pytest.mark.packaging_resource("windows_host")
 def test_windows_safety_helpers_execute_in_available_powershells(tmp_path: Path) -> None:
     if sys.platform != "win32":
         pytest.skip("Windows PowerShell behavior contract")

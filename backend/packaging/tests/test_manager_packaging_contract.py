@@ -4,7 +4,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from _powershell_contract import powershell_contract_engines
+from _powershell_contract import (
+    powershell_contract_engine_paths,
+    powershell_contract_engines,
+)
+
+pytestmark = pytest.mark.packaging_resource("hermetic")
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_ROOT.parent
@@ -107,10 +112,11 @@ def test_windows_release_lanes_build_manager_before_inno() -> None:
         assert manager_step < manager_command < inno_step
 
 
-@pytest.mark.parametrize("executable", powershell_contract_engines())
+@pytest.mark.parametrize("executable", powershell_contract_engine_paths())
 def test_manager_source_contract_is_identical_across_powershell_engines(
     executable: str,
 ) -> None:
+    assert executable in powershell_contract_engines()
     command = (
         f". '{_ps_literal(BACKEND_ROOT / 'scripts' / 'windows_build_provenance.ps1')}'; "
         f". '{_ps_literal(BACKEND_ROOT / 'scripts' / 'windows_backend_build_provenance.ps1')}'; "
@@ -142,11 +148,12 @@ def test_manager_source_contract_is_identical_across_powershell_engines(
     assert len(fingerprint) == 64
 
 
-@pytest.mark.parametrize("executable", powershell_contract_engines())
+@pytest.mark.parametrize("executable", powershell_contract_engine_paths())
 def test_installer_provenance_binds_manager_evidence_and_rejects_tampering(
     executable: str,
     tmp_path: Path,
 ) -> None:
+    assert executable in powershell_contract_engines()
     build_path = PACKAGING / "build_inno_installer.ps1"
     manifest_path = tmp_path / "BUILD_PROVENANCE.json"
     command = (

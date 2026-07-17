@@ -174,7 +174,7 @@ def test_backend_pytest_count_cannot_drop_with_actuals_and_baseline(monkeypatch)
         assert f"base={base_value}, current={current_value}" in violations[0]
 
 
-def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
+def test_pytest_counter_strips_ambient_collection_filters(monkeypatch, tmp_path: Path) -> None:
     mod = importlib.reload(importlib.import_module("_audit_pr_delta_metrics"))
     captured: list[tuple[list[str], dict[str, str]]] = []
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k owner")
@@ -220,6 +220,19 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
         assert "PYTHONOPTIMIZE" not in environment
         assert "PYTHONPATH" not in environment
         assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+
+    legacy_root = tmp_path / "legacy-backend"
+    (legacy_root / "packaging" / "tests").mkdir(parents=True)
+    monkeypatch.setattr(
+        mod,
+        "_collect_pytest_tests",
+        lambda *_args, **_kwargs: (1, ("packaging/tests/test_old.py::test_old",)),
+    )
+    assert mod._collect_base_packaging_memberships(legacy_root) == {
+        "packaging_all": ("packaging/tests/test_old.py::test_old",),
+        "packaging_parallel": (),
+        "packaging_serial": (),
+    }
     _assert_protected_pytest_membership_gate()
 
 

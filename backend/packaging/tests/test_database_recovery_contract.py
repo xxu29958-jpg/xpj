@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.packaging_resource("hermetic")
+
 PACKAGING = Path(__file__).resolve().parents[1]
 DATABASE_SCRIPT = PACKAGING / "windows_bundled_database.ps1"
 INSTALL_SCRIPT = PACKAGING / "install_bundled_services.ps1"
@@ -319,6 +321,7 @@ if (-not $rejected) {{ throw 'sub-256-bit HTTP bootstrap secret was accepted' }}
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL and PowerShell contract")
 def test_fresh_init_crash_recovery_and_verified_cleanup(tmp_path: Path) -> None:
     native_stub = _build_native_stub(tmp_path)
@@ -523,6 +526,7 @@ if ($envBytes.Length -ge 3 -and
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL and PowerShell contract")
 def test_malformed_and_insecure_recovery_files_fail_closed(tmp_path: Path) -> None:
     for index, engine in enumerate(_powershell_engines()):

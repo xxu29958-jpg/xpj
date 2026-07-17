@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.packaging_resource("hermetic")
+
 PACKAGING = Path(__file__).resolve().parents[1]
 BOOTSTRAP_SCRIPT = PACKAGING / "windows_backend_bootstrap.ps1"
 SAFETY_SCRIPT = PACKAGING / "windows_installation_safety.ps1"
@@ -147,6 +149,7 @@ def test_installer_state_migration_is_ordered_and_resumable_before_service_start
     assert marker < mutation < stopped < acl_reset < migrated < adopted < service_acl < backend_start
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell durable file contract")
 def test_protected_writer_requires_explicit_atomic_replacement_in_powershell_5_and_7(
     tmp_path: Path,
@@ -217,6 +220,7 @@ if (@(Get-ChildItem -LiteralPath '{str(tmp_path).replace("'", "''")}' -Filter '.
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell installer-state ACL contract")
 def test_installer_state_migration_survives_recursive_app_acl_reset_in_powershell_5_and_7(
     tmp_path: Path,
@@ -1099,6 +1103,7 @@ if ((Test-Path $OwnerBootstrapPath) -or (Test-Path $OwnerHandoffPendingPath)) {{
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell owner handoff takeover contract")
 def test_owner_handoff_takeover_requires_dead_previous_installer(tmp_path: Path) -> None:
     harness = tmp_path / "owner-handoff-takeover.ps1"
@@ -1591,6 +1596,7 @@ finally {{
         thread.join(timeout=5)
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell listener revalidation contract")
 def test_bootstrap_request_exception_revalidates_listener_and_stops_on_failure(
     tmp_path: Path,

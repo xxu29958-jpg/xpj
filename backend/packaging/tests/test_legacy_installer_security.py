@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.packaging_resource("hermetic")
+
 PACKAGING = Path(__file__).resolve().parents[1]
 INSTALLER = PACKAGING / "install_ticketbox.ps1"
 VECTOR_SECRET = "ticketbox-bootstrap-vector-2026-07-10"
@@ -181,7 +183,8 @@ def test_removed_plaintext_switches_are_rejected_before_execution() -> None:
                 check=False, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
             )
             assert result.returncode != 0
-            assert removed_switch.removeprefix("-") in result.stdout + result.stderr
+            diagnostic = result.stdout + result.stderr
+            assert removed_switch.removeprefix("-") in re.sub(r"\s+", "", diagnostic)
     for engine in _powershell_engines():
         remote = subprocess.run(
             [
@@ -302,6 +305,7 @@ def test_password_file_native_psql_and_bootstrap_contracts_are_fail_closed() -> 
     )
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL behavior contract")
 def test_protected_password_file_is_consumed_and_inherited_acl_is_rejected(tmp_path: Path) -> None:
     secret = "test-only-password-value"
@@ -536,6 +540,7 @@ Remove-Item -LiteralPath $sqlFile -Force
     )
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows bootstrap recovery behavior contract")
 def test_successful_rerun_skips_bootstrap_from_persistent_identity(tmp_path: Path) -> None:
     body = _function_loader(

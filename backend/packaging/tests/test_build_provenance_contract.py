@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.packaging_resource("hermetic")
+
 ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parent
 PACKAGING = ROOT / "packaging"
@@ -719,6 +721,7 @@ def _assert_external_publish_directory_name_is_not_authority(build_script: str) 
     assert 'else {\n        ""\n    }' in external_branch
 
 
+@pytest.mark.packaging_resource("windows_host")
 def test_installer_publish_unit_validator_rejects_contract_mutations(
     tmp_path: Path,
 ) -> None:
@@ -1198,6 +1201,7 @@ def _assert_recoverable_directory_publication_handles_interrupted_swap_states(
     assert receipt.exists()
 
 
+@pytest.mark.packaging_resource("windows_host")
 def test_windows_build_lock_is_bound_to_current_requirement_inputs(tmp_path: Path) -> None:
     backend = tmp_path / "backend"
     _write_minimal_backend(backend)

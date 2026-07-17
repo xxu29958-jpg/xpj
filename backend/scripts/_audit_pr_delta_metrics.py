@@ -85,6 +85,10 @@ from adr_contract_git import (  # noqa: E402
     select_ratchet_base,
 )
 from codebase_audit_gate import evaluate_pr_delta_metrics  # noqa: E402
+from packaging_pytest_contract import (  # noqa: E402
+    PACKAGING_PARALLEL_MARKER,
+    PACKAGING_SERIAL_MARKER,
+)
 from pytest_execution_contract import (  # noqa: E402
     collect_pytest_snapshot,
     parse_pytest_collection,
@@ -217,6 +221,39 @@ def _extract_trusted_backend_snapshot(ref: str, destination: pathlib.Path) -> No
         archive.extractall(destination, members=members, filter="data")
 
 
+def _collect_base_packaging_memberships(
+    backend_root: pathlib.Path,
+) -> dict[str, tuple[str, ...]]:
+    complete = _collect_pytest_tests(
+        "packaging/tests",
+        backend_root=backend_root,
+    )[1]
+    conftest = backend_root / "packaging" / "tests" / "conftest.py"
+    if not conftest.is_file() or "packaging_resource" not in conftest.read_text(
+        encoding="utf-8"
+    ):
+        return {
+            "packaging_all": complete,
+            "packaging_parallel": (),
+            "packaging_serial": (),
+        }
+    return {
+        "packaging_all": complete,
+        "packaging_parallel": _collect_pytest_tests(
+            "packaging/tests",
+            mark_expression=PACKAGING_PARALLEL_MARKER,
+            backend_root=backend_root,
+            allow_empty=True,
+        )[1],
+        "packaging_serial": _collect_pytest_tests(
+            "packaging/tests",
+            mark_expression=PACKAGING_SERIAL_MARKER,
+            backend_root=backend_root,
+            allow_empty=True,
+        )[1],
+    }
+
+
 def _collect_base_pytest_memberships(
     environment: Mapping[str, str],
 ) -> tuple[bool, dict[str, tuple[str, ...]], bool, str | None]:
@@ -275,10 +312,7 @@ def _collect_base_pytest_memberships(
                     if "cluster_serial:" in conftest_text
                     else ()
                 ),
-                "packaging_all": _collect_pytest_tests(
-                    "packaging/tests",
-                    backend_root=backend_root,
-                )[1],
+                **_collect_base_packaging_memberships(backend_root),
             }
     except (OSError, RuntimeError, subprocess.SubprocessError, tarfile.TarError) as exc:
         return False, {}, base_required, f"{selected.ref}: {exc}"
@@ -330,6 +364,14 @@ def main() -> int:
     counts["backend_pytest_cluster_membership_digest"] = _pytest_membership_digest(cluster_nodeids)
     installer_count, installer_nodeids = _collect_pytest_tests("packaging/tests")
     counts["installer_pytest_count"] = installer_count
+    _, packaging_parallel_nodeids = _collect_pytest_tests(
+        "packaging/tests",
+        mark_expression=PACKAGING_PARALLEL_MARKER,
+    )
+    _, packaging_serial_nodeids = _collect_pytest_tests(
+        "packaging/tests",
+        mark_expression=PACKAGING_SERIAL_MARKER,
+    )
 
     print("Actuals:")
     for key, value in sorted(counts.items()):
@@ -344,6 +386,8 @@ def main() -> int:
         "stateful_serial": stateful_nodeids,
         "cluster_serial": cluster_nodeids,
         "packaging_all": installer_nodeids,
+        "packaging_parallel": packaging_parallel_nodeids,
+        "packaging_serial": packaging_serial_nodeids,
     }
     base_readable, base_memberships, base_required, base_error = _collect_base_pytest_memberships(os.environ)
     metrics_exit = evaluate_pr_delta_metrics(counts)

@@ -17,6 +17,8 @@ from _powershell_contract import powershell_contract_engines
 
 from scripts.test_pg_protected_file import assert_protected_authority_file
 
+pytestmark = pytest.mark.packaging_resource("postgres_cluster")
+
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows restricted token")
 def test_restricted_process_preserves_user_and_drops_admin_groups(

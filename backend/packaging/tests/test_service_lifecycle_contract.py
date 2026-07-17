@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.packaging_resource("hermetic")
+
 PACKAGING = Path(__file__).resolve().parents[1]
 
 
@@ -323,6 +325,7 @@ if ($actual -ne 'disabled,demand,auto,delayed-auto') {{ throw "policy mapping ch
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows TCP cmdlet contract")
 def test_tcp_listener_query_handles_native_empty_and_close_in_powershell_5_and_7(
     tmp_path: Path,
@@ -447,6 +450,7 @@ if (@($shawlParts | Where-Object {{ $_ -ceq 'TICKETBOX_OWNER_RECOVERY_CHANNEL=ma
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_fs")
 def test_deadline_secret_cleanup_and_lock_bitness_fail_closed(tmp_path: Path) -> None:
     if sys.platform != "win32":
         pytest.skip("Windows PowerShell security behavior contract")

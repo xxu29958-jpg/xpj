@@ -15,6 +15,8 @@ from scripts.test_pg_contract import (
 )
 from scripts.test_pg_protected_file import ensure_protected_directory
 
+pytestmark = pytest.mark.packaging_resource("postgres_cluster")
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PROCESS_CONTRACT = PROJECT_ROOT / "backend" / "scripts" / "test_pg_process_contract.ps1"
 CLUSTER_CONTRACT = PROJECT_ROOT / "backend" / "scripts" / "test_pg_cluster_contract.ps1"

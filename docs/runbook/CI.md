@@ -44,6 +44,13 @@ pip-audit --strict（OSV 库）
 该 job 没有业务测试数据库；后端业务 pytest / smoke 在 backend-postgres，
 Windows packaging 合同则在这里使用宿主 PostgreSQL 运行时完成限时验证。
 
+Packaging 测试以 `packaging_resource(...)` 为唯一调度真源：`hermetic` 项可由
+3 个 xdist worker 并行，`windows_fs`、`windows_host`、`postgres_cluster`、
+`inno_toolchain` 各自在自己的 `loadgroup` 内串行。runner 仍只执行一次完整
+`packaging/tests` 根；独立预收集必须证明 parallel + serial 恰好覆盖全集，
+worker 全部干净退出后仅 controller 可以写完成回执。测试名、文件名前缀和
+nodeid 子串不参与分类。
+
 ### backend-postgres（全量测试）
 
 GitHub 主路径使用 PG17 service container。local-Gitea 要求 Gitea Runner `>=2.0.0`，使用宿主临时目录和专用 `:5433`，执行顺序均为：起库 → smoke → 备份恢复 → parallel → stateful。
@@ -53,7 +60,7 @@ GitHub 主路径使用 PG17 service container。local-Gitea 要求 Gitea Runner 
 - 数据目录先收紧为当前 runner / SYSTEM / Administrators 权威 ACL，并以目录句柄绑定到启动完成；路径替换、宽松继承 ACL 和 reparse tree 均 fail closed。
 - parallel lane 的每个 xdist worker 使用独立数据库；migration、恢复、角色、schema 与集群状态测试显式进入串行 lane。
 - marker 是分类真源。每条 managed lane 先在无 lane 环境中独立 collection，再把节点数与 SHA-256 摘要交给真实执行对账；collection 前少收、`--collect-only`、`-k/-m` 过滤或 handshake 伪绿都会失败。
-- 审计从精确 base 保护 backend 全集、parallel、`real_db`、`stateful_serial` 和 packaging 节点集合；旧 parallel 测试只允许因提升到 `stateful_serial` 离开该 lane。
+- 审计从精确 base 保护 backend 全集、parallel、`real_db`、`stateful_serial`，以及 packaging 全集、parallel、serial 三份节点集合；旧 parallel 测试只允许提升到更保守的串行资源，已登记串行风险不得静默降级。
 - local-Gitea lane 为 25 分钟，job 为 50 分钟，并保留 4 分钟 `always()` 清理。覆盖 `XPJ_TEST_DATABASE_URL` 时必须带 `owned-marker` 或 `ephemeral-service` 集群权威，并用实时 `system_identifier` 对账。
 
 ### desktop-manager

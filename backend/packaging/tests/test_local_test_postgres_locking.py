@@ -16,6 +16,8 @@ from _local_test_postgres_runtime import (
 )
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.packaging_resource("postgres_cluster")
+
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_local_test_postgres_refuses_an_unowned_existing_directory(

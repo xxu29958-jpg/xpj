@@ -19,6 +19,8 @@ from _powershell_contract import powershell_contract_engines
 
 from scripts.test_pg_protected_file import ensure_protected_directory
 
+pytestmark = pytest.mark.packaging_resource("postgres_cluster")
+
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_consumer_lease_and_smoke_child_parent_death_contract(tmp_path: Path) -> None:

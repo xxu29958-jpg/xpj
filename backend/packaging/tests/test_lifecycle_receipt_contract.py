@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.packaging_resource("hermetic")
+
 PACKAGING = Path(__file__).resolve().parents[1]
 
 
@@ -406,6 +408,7 @@ if (($script:events -join ',') -cne 'init,move,write' -or
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows delete-data intent contract")
 def test_delete_data_intent_is_bound_to_a_completed_receipt_before_retirement(
     tmp_path: Path,
@@ -578,6 +581,7 @@ if (-not $danglingRuntimeStateRejected) {{
     shutil.rmtree(runtime_base, ignore_errors=True)
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL and PowerShell contract")
 def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
     tmp_path: Path,
@@ -759,6 +763,7 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         assert "-AllowRepairableAccount" not in recovery
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows recovery marker authority contract")
 def test_recovery_marker_refuses_to_create_installer_state_without_data_root_authority(
     tmp_path: Path,
@@ -1165,6 +1170,7 @@ if (-not $legacyNonFileRejected) {{
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_fs")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL and PowerShell contract")
 def test_lifecycle_receipt_roundtrip_is_bound_to_install_inputs(tmp_path: Path) -> None:
     engines = powershell_contract_engines()

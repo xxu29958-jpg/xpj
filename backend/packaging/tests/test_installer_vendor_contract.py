@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.packaging_resource("windows_fs")
+
 PACKAGING = Path(__file__).resolve().parents[1]
 PG_BUNDLE_SCRIPT = PACKAGING / "build_pg_bundle.ps1"
 VENDOR_ROOT = PACKAGING / "vendor"

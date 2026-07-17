@@ -259,9 +259,16 @@ def _assert_required_windows_runtime(project_root: Path) -> None:
         path.read_text(encoding="utf-8") for path in sorted(packaging_tests.glob("test_local_test_postgres_*.py"))
     )
     lifecycle_conftest = (project_root / "backend/packaging/tests/conftest.py").read_text(encoding="utf-8")
+    packaging_runner = (project_root / "backend/scripts/run_packaging_tests.py").read_text(encoding="utf-8")
     assert '"postgres.exe"' in lifecycle_test
     assert "pytest.fail(message)" in lifecycle_test
     assert "strict packaging contracts skipped" in lifecycle_conftest
+    assert '"xdist.plugin"' in packaging_runner
+    assert '"--dist=loadgroup"' in packaging_runner
+    assert '"--max-worker-restart=0"' in packaging_runner
+    assert "PACKAGING_PYTEST_WORKERS = 3" in packaging_runner
+    assert "packaging_resource" in lifecycle_conftest
+    assert "packaging_xdist_group" in lifecycle_conftest
 
 
 def _step_timeout(job: str, name: str) -> int:
