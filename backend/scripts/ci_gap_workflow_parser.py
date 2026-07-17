@@ -21,6 +21,8 @@ from ci_gap_workflow_conditions import condition_allows_event as _condition_allo
 from ci_gap_workflow_conditions import (
     condition_guarantees_after_needs as _condition_guarantees_after_needs,
 )
+from yaml.constructor import ConstructorError
+from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,41 @@ _WorkflowLoader.add_implicit_resolver(
 )
 
 
+def _construct_unique_mapping(
+    loader: _WorkflowLoader,
+    node: MappingNode,
+    deep: bool = False,
+) -> dict[object, object]:
+    loader.flatten_mapping(node)
+    mapping: dict[object, object] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in mapping
+        except TypeError as exc:
+            raise ConstructorError(
+                "while constructing a workflow mapping",
+                node.start_mark,
+                "found an unhashable key",
+                key_node.start_mark,
+            ) from exc
+        if duplicate:
+            raise ConstructorError(
+                "while constructing a workflow mapping",
+                node.start_mark,
+                f"found duplicate key {key!r}",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_WorkflowLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
 def _load_workflow(path: pathlib.Path) -> dict[object, object]:
     try:
         value = yaml.load(path.read_text(encoding="utf-8"), Loader=_WorkflowLoader)
@@ -93,6 +130,48 @@ def _load_workflow(path: pathlib.Path) -> dict[object, object]:
     if not isinstance(value, dict):
         raise ValueError(f"workflow root must be a mapping: {path}")
     return value
+
+
+def yaml_scalar_key_values(
+    path: pathlib.Path,
+    *,
+    key: str,
+) -> list[tuple[int, str]]:
+    """Return decoded scalar values for a YAML key with source line numbers."""
+
+    text = path.read_text(encoding="utf-8")
+    _load_workflow(path)
+    try:
+        root = yaml.compose(text, Loader=_WorkflowLoader)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid workflow YAML: {path}: {exc}") from exc
+    if root is None:
+        return []
+
+    found: list[tuple[int, str]] = []
+    visited: set[int] = set()
+
+    def visit(node: yaml.Node) -> None:
+        identity = id(node)
+        if identity in visited:
+            return
+        visited.add(identity)
+        if isinstance(node, MappingNode):
+            for key_node, value_node in node.value:
+                if isinstance(key_node, ScalarNode) and key_node.value == key:
+                    value = (
+                        value_node.value
+                        if isinstance(value_node, ScalarNode)
+                        else "<non-scalar>"
+                    )
+                    found.append((key_node.start_mark.line + 1, value))
+                visit(value_node)
+        elif isinstance(node, SequenceNode):
+            for item in node.value:
+                visit(item)
+
+    visit(root)
+    return found
 
 
 def _required_protection_event(path: pathlib.Path) -> str:

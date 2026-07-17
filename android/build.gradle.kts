@@ -105,8 +105,14 @@ val verifyDependencyCheckContract =
             check(dependencyCheck.nvd.validForHours == dependencyCheckNvdValidForHours.get()) {
                 "dependency-check NVD freshness drifted from its runtime property"
             }
-            check(dependencyCheck.failBuildOnCVSS == dependencyCheckFailBuildOnCvss) {
-                "dependency-check CVSS policy drifted from its task-specific contract"
+            if (dependencyCheckDataValidationRequested) {
+                check(dependencyCheck.failBuildOnCVSS == 11.0f) {
+                    "dependency-check payload validation must not adjudicate CVE policy"
+                }
+            } else {
+                check(dependencyCheck.failBuildOnCVSS == 7.0f) {
+                    "dependency-check policy scans must fail at CVSS 7 or above"
+                }
             }
             check(dependencyCheck.data.directory == dependencyCheckDataDir) {
                 "dependency-check data directory drifted from the shared cache contract"

@@ -81,6 +81,7 @@ jobs:
     steps:
       - 'uses' : owner/quoted-action@v1.2.3
       - { uses : owner/flow-action@main, name: flow }
+      - "us\\u0065s": owner/escaped-key@release
 """,
         encoding="utf-8",
     )

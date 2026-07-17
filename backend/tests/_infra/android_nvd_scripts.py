@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
 import shlex
 import shutil
 import subprocess
@@ -243,6 +244,14 @@ def install_nvd_scripts(tmp_path: Path, *names: str) -> None:
         "verify_dependency_check_report.py",
     ):
         shutil.copyfile(_ROOT / "android" / "scripts" / name, scripts / name)
+    contract_namespace = runpy.run_path(
+        str(_ROOT / "android" / "scripts" / "dependency_check_contract.py")
+    )
+    for relative in contract_namespace["PRODUCER_CONTRACT_PATHS"]:
+        source = _ROOT / relative
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
 
 
 def _install_python3_shim(tmp_path: Path) -> Path:
@@ -272,6 +281,7 @@ def run_nvd_script(
         env={
             **os.environ,
             "DEPENDENCY_CHECK_DATA_DIR": ".dependency-check-data",
+            "REPOSITORY_ROOT": str(tmp_path),
             "PATH": f"{binary_dir}{os.pathsep}{os.environ.get('PATH', '')}",
             "PYTHON_BIN": "true",
             **environment,
@@ -308,7 +318,8 @@ def prepare_payload_manifest(tmp_path: Path, *, mode: str) -> None:
             key: value
             for key, value in os.environ.items()
             if key != "NVD_API_KEY"
-        },
+        }
+        | {"REPOSITORY_ROOT": str(tmp_path)},
         capture_output=True,
         check=False,
         text=True,

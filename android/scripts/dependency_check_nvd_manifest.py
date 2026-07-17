@@ -21,15 +21,17 @@ from dependency_check_contract import (
     assert_secret_absent,
     dependency_check_version,
     load_json,
+    producer_contract_sha256,
     require_integer,
     require_mapping,
     require_nonempty_string,
+    repository_root,
     version_catalog_path,
 )
 from verify_dependency_check_report import verify_report
 
 MANIFEST_NAME = "xpj-nvd-payload-manifest.json"
-_MANIFEST_SCHEMA = 1
+_MANIFEST_SCHEMA = 2
 _PAYLOAD_ALGORITHM = "sha256-tree-v1"
 _PRODUCER_REFRESH_SKEW_SECONDS = 5
 
@@ -39,6 +41,13 @@ class PayloadIdentity:
     file_count: int
     total_bytes: int
     sha256: str
+
+
+@dataclass(frozen=True)
+class VerifiedPayload:
+    refreshed_at_epoch: int
+    expires_at_epoch: int
+    payload: PayloadIdentity
 
 
 def _payload_files(data_dir: Path) -> list[tuple[str, Path]]:
@@ -118,12 +127,14 @@ def payload_identity(data_dir: Path) -> PayloadIdentity:
 def _manifest_document(
     *,
     version: str,
+    contract_digest: str,
     refreshed_at_epoch: int,
     payload: PayloadIdentity,
 ) -> dict[str, object]:
     return {
         "schema": _MANIFEST_SCHEMA,
         "dependency_check_version": version,
+        "producer_contract_sha256": contract_digest,
         "refreshed_at_epoch": refreshed_at_epoch,
         "expires_at_epoch": refreshed_at_epoch + PAYLOAD_TTL_SECONDS,
         "payload": {
@@ -187,6 +198,7 @@ def create_manifest(
     payload = payload_identity(data_dir)
     document = _manifest_document(
         version=dependency_check_version(catalog_path),
+        contract_digest=producer_contract_sha256(repository_root()),
         refreshed_at_epoch=report_identity.nvd_checked_epoch,
         payload=payload,
     )
@@ -232,7 +244,10 @@ def verify_manifest(
     *,
     catalog_path: Path,
     now_epoch: int | None = None,
-) -> PayloadIdentity:
+    allow_expired: bool = False,
+    minimum_refreshed_at_epoch: int = 0,
+    expected_payload_sha256: str | None = None,
+) -> VerifiedPayload:
     manifest_path = data_dir / MANIFEST_NAME
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise ValueError("OWASP NVD payload manifest is missing or unsafe")
@@ -243,6 +258,7 @@ def verify_manifest(
     expected_keys = {
         "schema",
         "dependency_check_version",
+        "producer_contract_sha256",
         "refreshed_at_epoch",
         "expires_at_epoch",
         "payload",
@@ -257,6 +273,14 @@ def verify_manifest(
         catalog_path
     ):
         raise ValueError("OWASP NVD payload version does not match this checkout")
+    contract_digest = manifest["producer_contract_sha256"]
+    expected_contract_digest = producer_contract_sha256(repository_root())
+    if (
+        not isinstance(contract_digest, str)
+        or SHA256_PATTERN.fullmatch(contract_digest) is None
+        or not hmac.compare_digest(contract_digest, expected_contract_digest)
+    ):
+        raise ValueError("OWASP NVD producer contract does not match this checkout")
 
     refreshed_at = require_integer(
         manifest["refreshed_at_epoch"],
@@ -271,8 +295,12 @@ def verify_manifest(
     current_time = int(time.time()) if now_epoch is None else now_epoch
     if refreshed_at > current_time + MAX_FUTURE_SKEW_SECONDS:
         raise ValueError("OWASP NVD payload refresh time is in the future")
-    if expires_at <= current_time:
+    if not allow_expired and expires_at <= current_time:
         raise ValueError("OWASP NVD payload has expired")
+    if minimum_refreshed_at_epoch < 0:
+        raise ValueError("minimum NVD refresh time cannot be negative")
+    if refreshed_at < minimum_refreshed_at_epoch:
+        raise ValueError("OWASP NVD payload would move certified freshness backward")
 
     expected_identity = _manifest_identity(manifest)
     actual_identity = payload_identity(data_dir)
@@ -285,7 +313,29 @@ def verify_manifest(
         )
     ):
         raise ValueError("OWASP NVD payload content does not match its manifest")
-    return actual_identity
+    if (
+        expected_payload_sha256 is not None
+        and (
+            SHA256_PATTERN.fullmatch(expected_payload_sha256) is None
+            or not hmac.compare_digest(
+                actual_identity.sha256,
+                expected_payload_sha256,
+            )
+        )
+    ):
+        raise ValueError("OWASP NVD payload differs from the certified candidate")
+    return VerifiedPayload(
+        refreshed_at_epoch=refreshed_at,
+        expires_at_epoch=expires_at,
+        payload=actual_identity,
+    )
+
+
+def _write_github_output(path: Path, verified: VerifiedPayload) -> None:
+    with path.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(f"refreshed-at-epoch={verified.refreshed_at_epoch}\n")
+        stream.write(f"expires-at-epoch={verified.expires_at_epoch}\n")
+        stream.write(f"payload-sha256={verified.payload.sha256}\n")
 
 
 def main() -> int:
@@ -295,14 +345,25 @@ def main() -> int:
     parser.add_argument("--version-catalog", type=Path)
     parser.add_argument("--report", type=Path)
     parser.add_argument("--nvd-checked-after-epoch", type=int)
+    parser.add_argument("--allow-expired", action="store_true")
+    parser.add_argument("--minimum-refreshed-at-epoch", type=int, default=0)
+    parser.add_argument("--expected-payload-sha256")
+    parser.add_argument("--github-output", type=Path)
     args = parser.parse_args()
 
     assert_secret_absent()
     catalog_path = args.version_catalog or version_catalog_path()
     if args.command == "create":
-        if args.report is None or args.nvd_checked_after_epoch is None:
+        if (
+            args.report is None
+            or args.nvd_checked_after_epoch is None
+            or args.allow_expired
+            or args.minimum_refreshed_at_epoch != 0
+            or args.expected_payload_sha256 is not None
+            or args.github_output is not None
+        ):
             raise ValueError(
-                "create requires --report and --nvd-checked-after-epoch"
+                "create accepts only --report and --nvd-checked-after-epoch"
             )
         identity = create_manifest(
             args.data_dir,
@@ -312,7 +373,18 @@ def main() -> int:
         )
         status = "NVD_PAYLOAD_MANIFEST_CREATED"
     else:
-        identity = verify_manifest(args.data_dir, catalog_path=catalog_path)
+        if args.report is not None or args.nvd_checked_after_epoch is not None:
+            raise ValueError("verify does not accept report creation arguments")
+        verified = verify_manifest(
+            args.data_dir,
+            catalog_path=catalog_path,
+            allow_expired=args.allow_expired,
+            minimum_refreshed_at_epoch=args.minimum_refreshed_at_epoch,
+            expected_payload_sha256=args.expected_payload_sha256,
+        )
+        if args.github_output is not None:
+            _write_github_output(args.github_output, verified)
+        identity = verified.payload
         status = "NVD_PAYLOAD_MANIFEST_VERIFIED"
     print(
         f"{status} files={identity.file_count} "

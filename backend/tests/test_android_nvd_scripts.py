@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -236,3 +237,105 @@ def test_report_contract_rejects_forged_or_wrong_scope_documents(
             encoding="utf-8",
         )
         assert rejected.returncode != 0, report_name
+
+
+def _run_manifest(
+    tmp_path: Path,
+    *arguments: str,
+) -> subprocess.CompletedProcess[str]:
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key != "NVD_API_KEY"
+    }
+    environment["REPOSITORY_ROOT"] = str(tmp_path)
+    return subprocess.run(
+        [
+            sys.executable,
+            str(tmp_path / "scripts" / "dependency_check_nvd_manifest.py"),
+            *arguments,
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+
+
+def test_manifest_enforces_monotonic_candidate_and_exact_payload_identity(
+    tmp_path: Path,
+) -> None:
+    write_fake_gradlew(tmp_path)
+    install_nvd_scripts(tmp_path)
+    prepare_payload_manifest(tmp_path, mode="valid")
+    data_dir = tmp_path / ".dependency-check-data"
+    manifest = json.loads(
+        (data_dir / "xpj-nvd-payload-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    refreshed_at = manifest["refreshed_at_epoch"]
+    payload_sha256 = manifest["payload"]["sha256"]
+    output = tmp_path / "github-output.txt"
+
+    accepted = _run_manifest(
+        tmp_path,
+        "verify",
+        str(data_dir),
+        "--minimum-refreshed-at-epoch",
+        str(refreshed_at),
+        "--expected-payload-sha256",
+        payload_sha256,
+        "--github-output",
+        str(output),
+    )
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    outputs = dict(
+        line.split("=", 1)
+        for line in output.read_text(encoding="utf-8").splitlines()
+    )
+    assert outputs["refreshed-at-epoch"] == str(refreshed_at)
+    assert outputs["payload-sha256"] == payload_sha256
+
+    rollback = _run_manifest(
+        tmp_path,
+        "verify",
+        str(data_dir),
+        "--minimum-refreshed-at-epoch",
+        str(refreshed_at + 1),
+    )
+    assert rollback.returncode != 0
+    wrong_payload = _run_manifest(
+        tmp_path,
+        "verify",
+        str(data_dir),
+        "--expected-payload-sha256",
+        "0" * 64,
+    )
+    assert wrong_payload.returncode != 0
+
+
+def test_manifest_rejects_stale_producer_contract(tmp_path: Path) -> None:
+    write_fake_gradlew(tmp_path)
+    install_nvd_scripts(tmp_path)
+    prepare_payload_manifest(tmp_path, mode="valid")
+    contract_file = (
+        tmp_path
+        / "android"
+        / "scripts"
+        / "certify_dependency_check_nvd_payload.sh"
+    )
+    contract_file.write_text(
+        contract_file.read_text(encoding="utf-8") + "\n# stale contract\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    rejected = _run_manifest(
+        tmp_path,
+        "verify",
+        str(tmp_path / ".dependency-check-data"),
+    )
+    assert rejected.returncode != 0
+    assert "producer contract" in rejected.stderr

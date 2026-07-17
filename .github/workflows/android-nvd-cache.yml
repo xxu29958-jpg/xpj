@@ -1,4 +1,4 @@
-name: Android NVD cache
+name: Android NVD artifact
 
 on:
   schedule:
@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -18,18 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
       - name: Reject non-default-branch dispatch
         env:
           REQUESTED_REF: ${{ github.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected_ref="refs/heads/${DEFAULT_BRANCH}"
-          if [ "$REQUESTED_REF" != "$expected_ref" ]; then
-            echo "::error::Android NVD publication is restricted to ${expected_ref}."
-            exit 1
-          fi
+        run: python3 scripts/verify_android_nvd_publication_ref.py
 
   refresh:
     name: Refresh staged Android NVD data
@@ -38,8 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     outputs:
-      cache-key: ${{ steps.nvd-cache.outputs.cache-key }}
-      staging-cache-key: ${{ steps.nvd-cache.outputs.staging-cache-key }}
+      artifact-name: ${{ steps.nvd-seed.outputs.publication-artifact-name }}
+      contract-sha256: ${{ steps.nvd-seed.outputs.contract-sha256 }}
+      staging-cache-key: ${{ steps.nvd-seed.outputs.staging-cache-key }}
     defaults:
       run:
         working-directory: android
@@ -68,9 +66,12 @@ jobs:
           server-url: ${{ env.TICKETBOX_SERVER_URL }}
           worker-count: "2"
 
-      - name: Restore trusted OWASP NVD database
-        id: nvd-cache
+      - name: Restore previous certified NVD artifact
+        id: nvd-seed
         uses: ./.github/actions/restore-android-nvd
+        with:
+          github-token: ${{ github.token }}
+          allow-expired: "true"
 
       - name: Refresh OWASP NVD database
         env:
@@ -81,7 +82,7 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.gradle/dependency-check-data
-          key: ${{ steps.nvd-cache.outputs.staging-cache-key }}
+          key: ${{ steps.nvd-seed.outputs.staging-cache-key }}
 
   certify:
     name: Certify staged Android NVD data
@@ -141,12 +142,16 @@ jobs:
         run: bash scripts/certify_dependency_check_nvd_payload.sh
 
   promote:
-    name: Promote certified Android NVD data
+    name: Publish certified Android NVD artifact
     needs:
       - refresh
       - certify
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    outputs:
+      artifact-digest: ${{ steps.publish.outputs.artifact-digest }}
+      payload-sha256: ${{ steps.candidate.outputs.payload-sha256 }}
+      refreshed-at-epoch: ${{ steps.candidate.outputs.refreshed-at-epoch }}
     defaults:
       run:
         working-directory: android
@@ -154,6 +159,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Restore previous certified NVD artifact
+        id: previous
+        uses: ./.github/actions/restore-android-nvd
+        with:
+          github-token: ${{ github.token }}
+          allow-expired: "true"
 
       - name: Clear pre-existing OWASP NVD data
         run: rm -rf "${HOME}/.gradle/dependency-check-data"
@@ -176,13 +188,51 @@ jobs:
             exit 1
           fi
 
-      - name: Verify publication payload identity
-        run: >-
-          python3 scripts/dependency_check_nvd_manifest.py
-          verify "${HOME}/.gradle/dependency-check-data"
+      - name: Verify monotonic publication payload
+        id: candidate
+        env:
+          PREVIOUS_REFRESHED_AT_EPOCH: ${{ steps.previous.outputs.refreshed-at-epoch }}
+        run: |
+          set -euo pipefail
+          minimum="${PREVIOUS_REFRESHED_AT_EPOCH:-0}"
+          python3 scripts/dependency_check_nvd_manifest.py \
+            verify "${HOME}/.gradle/dependency-check-data" \
+            --minimum-refreshed-at-epoch "$minimum" \
+            --github-output "$GITHUB_OUTPUT"
+          echo "NVD_ARTIFACT_PATH=${HOME}/.gradle/dependency-check-data" \
+            >> "$GITHUB_ENV"
 
-      - name: Publish trusted OWASP NVD database
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Publish immutable certified NVD artifact
+        id: publish
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          path: ~/.gradle/dependency-check-data
-          key: ${{ needs.refresh.outputs.cache-key }}
+          name: ${{ needs.refresh.outputs.artifact-name }}
+          path: ${{ env.NVD_ARTIFACT_PATH }}/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+
+  verify-publication:
+    name: Verify published Android NVD artifact
+    needs:
+      - refresh
+      - promote
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Download exact published NVD artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.refresh.outputs.artifact-name }}
+          path: ${{ runner.temp }}/android-nvd-published
+
+      - name: Verify exact published payload
+        env:
+          EXPECTED_PAYLOAD_SHA256: ${{ needs.promote.outputs.payload-sha256 }}
+        run: >-
+          python3 android/scripts/dependency_check_nvd_manifest.py
+          verify "${RUNNER_TEMP}/android-nvd-published"
+          --expected-payload-sha256 "$EXPECTED_PAYLOAD_SHA256"

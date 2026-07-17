@@ -388,9 +388,6 @@ jobs:
     name: Android
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    concurrency:
-      group: android-nvd-writer
-      queue: max
     defaults:
       run:
         working-directory: android

@@ -449,5 +449,9 @@ def test_installer_hash_output_dataflow_rejects_detached_mutations(
     }
     for mutation, workflow_text in mutations.items():
         workflow_path.write_text(workflow_text, encoding="utf-8")
-        missing = mod._missing_installer_hash_dataflow_by_platform(mod._iter_workflow_run_commands(workflows))
+        try:
+            commands = mod._iter_workflow_run_commands(workflows)
+        except ValueError:
+            continue
+        missing = mod._missing_installer_hash_dataflow_by_platform(commands)
         assert label in missing, mutation

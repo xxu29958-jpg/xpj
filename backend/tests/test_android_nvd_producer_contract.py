@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -17,6 +20,8 @@ pytestmark = pytest.mark.parallel_safe
 
 _ROOT = Path(__file__).resolve().parents[2]
 _CACHE_ACTION_SHA = "0057852bfaa89a56745cba8c7296529d2fc39830"
+_DOWNLOAD_ACTION_SHA = "d3f86a106a0bac45b974a628896c90dbdf5c8093"
+_UPLOAD_ACTION_SHA = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 
 
 def _load_workflow(path: Path) -> dict[object, object]:
@@ -25,23 +30,31 @@ def _load_workflow(path: Path) -> dict[object, object]:
     return parser._load_workflow(path)
 
 
-def test_nvd_producer_workflow_stages_certifies_and_proves_trusted_cache() -> None:
+def _load_script(path: Path, *, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_nvd_producer_workflow_stages_certifies_and_publishes_artifact() -> None:
     workflow = _load_workflow(
         _ROOT / ".github" / "workflows" / "android-nvd-cache.yml"
     )
     assert_nvd_producer_workflow(
         workflow,
         cache_action_sha=_CACHE_ACTION_SHA,
+        download_action_sha=_DOWNLOAD_ACTION_SHA,
+        upload_action_sha=_UPLOAD_ACTION_SHA,
     )
 
 
-def test_legacy_android_nvd_writer_is_serialized_and_keeps_secret_step_scoped() -> None:
+def test_legacy_android_nvd_writer_keeps_secret_step_scoped() -> None:
     ci = _load_workflow(_ROOT / ".github" / "workflows" / "ci.yml")
     android = ci["jobs"]["android"]
-    assert android["concurrency"] == {
-        "group": "android-nvd-writer",
-        "queue": "max",
-    }
+    assert "concurrency" not in android
     assert "NVD_API_KEY" not in android.get("env", {})
     steps = {step["name"]: step for step in android["steps"]}
     detect = steps["Detect NVD credential"]
@@ -49,223 +62,281 @@ def test_legacy_android_nvd_writer_is_serialized_and_keeps_secret_step_scoped() 
     assert detect["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
     scan = steps["Dependency vulnerability scan (OWASP dependency-check)"]
     assert scan["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
-    scan_command = scan["run"]
-    assert "dependencyCheckUpdate -PdependencyCheckNvdValidForHours=24" in (
-        " ".join(scan_command.split())
-    )
+    normalized = " ".join(scan["run"].split())
+    assert "dependencyCheckUpdate -PdependencyCheckNvdValidForHours=24" in normalized
     assert (
         "dependencyCheckAggregate -PdependencyCheckAutoUpdate=false "
         "-PdependencyCheckNvdValidForHours=24"
-    ) in " ".join(scan_command.split())
-    assert "dependencyCheckValidateNvd" not in scan_command
-    assert "-PnvdApiKey" not in scan_command
-    serialized = json.dumps(android, sort_keys=True)
-    assert serialized.count("secrets.NVD_API_KEY") == 2
-    for name in (
-        "NVD cache key (UTC date)",
-        "Cache OWASP NVD database",
-        "Dependency vulnerability scan (OWASP dependency-check)",
-        "Enforce OWASP CVE findings (tolerate only NVD-data outages)",
-    ):
-        assert steps[name]["if"] == (
-            "steps.nvd-credential.outputs.available == 'true'"
-        )
-    assert steps["Dependency vulnerability scan skipped"]["if"] == (
-        "steps.nvd-credential.outputs.available != 'true'"
-    )
-
-
-def test_shared_nvd_restore_action_exposes_isolated_staging_identity() -> None:
-    action = _load_workflow(
-        _ROOT / ".github" / "actions" / "restore-android-nvd" / "action.yml"
-    )
-    _assert_restore_action_interface(action)
-    _assert_restore_action_steps(action)
+    ) in normalized
+    assert "dependencyCheckValidateNvd" not in scan["run"]
+    assert "-PnvdApiKey" not in scan["run"]
+    assert json.dumps(android, sort_keys=True).count("secrets.NVD_API_KEY") == 2
 
 
 def _assert_restore_action_interface(action: dict[object, object]) -> None:
     assert action["inputs"] == {
+        "github-token": {
+            "description": (
+                "Token with read access to workflow runs and artifacts."
+            ),
+            "required": True,
+        },
         "required": {
-            "description": "Fail when no trusted cache entry exists.",
+            "description": "Fail when no certified producer artifact exists.",
             "required": False,
             "default": "false",
-        }
-    }
-    assert action["outputs"] == {
-        "cache-key": {
-            "description": (
-                "Unique key used when a trusted producer publishes refreshed data."
-            ),
-            "value": "${{ steps.cache-key.outputs.value }}",
         },
-        "cache-generation": {
+        "allow-expired": {
             "description": (
-                "Dependency-check data generation accepted by this action."
+                "Allow expired data only as a protected producer refresh seed."
             ),
-            "value": "${{ steps.cache-key.outputs.generation }}",
-        },
-        "staging-cache-key": {
-            "description": (
-                "Isolated key used before a refreshed payload is certified."
-            ),
-            "value": "${{ steps.cache-key.outputs.staging-value }}",
-        },
-        "matched-cache-key": {
-            "description": "Exact trusted cache key selected by the lookup.",
-            "value": "${{ steps.lookup.outputs.cache-matched-key }}",
-        },
-        "cache-hit": {
-            "description": (
-                "Whether the selected trusted cache was restored exactly."
-            ),
-            "value": "${{ steps.restore.outputs.cache-hit }}",
+            "required": False,
+            "default": "false",
         },
     }
+    outputs = action["outputs"]
+    assert outputs["artifact-name"]["value"] == (
+        "${{ steps.select.outputs.artifact-name }}"
+    )
+    assert outputs["publication-artifact-name"]["value"] == (
+        "${{ steps.identity.outputs.artifact-name }}"
+    )
+    assert outputs["producer-run-id"]["value"] == (
+        "${{ steps.select.outputs.run-id }}"
+    )
+    assert outputs["staging-cache-key"]["value"] == (
+        "${{ steps.identity.outputs.staging-value }}"
+    )
+    assert outputs["restored"]["value"] == "${{ steps.select.outputs.found }}"
+    assert outputs["payload-sha256"]["value"] == (
+        "${{ steps.verify.outputs.payload-sha256 }}"
+    )
 
 
-def _assert_restore_action_steps(action: dict[object, object]) -> None:
-    assert [step["name"] for step in action["runs"]["steps"]] == [
-        "Build NVD cache key",
-        "Find trusted OWASP NVD database",
-        "Require a trusted OWASP NVD database",
-        "Clear pre-existing OWASP NVD data",
-        "Restore exact trusted OWASP NVD database",
-        "Require the exact trusted cache entry",
-    ]
+def _assert_restore_action_trust_chain(action: dict[object, object]) -> None:
     steps = {step["name"]: step for step in action["runs"]["steps"]}
-    key = steps["Build NVD cache key"]
-    assert key["id"] == "cache-key"
-    assert key["shell"] == "bash"
-    assert key["env"] == {
-        "REPOSITORY_ROOT": "${{ github.workspace }}",
-        "CACHE_OS": "${{ runner.os }}",
-        "RUN_ID": "${{ github.run_id }}",
-        "RUN_ATTEMPT": "${{ github.run_attempt }}",
-    }
-    assert key["run"] == (
-        'python3 "$REPOSITORY_ROOT/scripts/build_android_nvd_cache_key.py"'
-    )
-    lookup = steps["Find trusted OWASP NVD database"]
-    assert lookup["id"] == "lookup"
-    assert lookup["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
-    assert lookup["with"]["path"] == "~/.gradle/dependency-check-data"
-    assert lookup["with"]["key"] == "${{ steps.cache-key.outputs.value }}"
-    assert lookup["with"]["lookup-only"] is True
-    restore_prefixes = lookup["with"]["restore-keys"].splitlines()
-    assert restore_prefixes == [
-        (
-            "nvd-${{ runner.os }}-${{ steps.cache-key.outputs.generation }}-"
-            "${{ steps.cache-key.outputs.date }}-"
-        ),
-        "nvd-${{ runner.os }}-${{ steps.cache-key.outputs.generation }}-",
+    assert list(steps) == [
+        "Build NVD publication identity",
+        "Select latest certified producer artifact",
+        "Clear artifact staging paths",
+        "Require certified producer artifact",
+        "Download certified producer artifact",
+        "Install certified producer artifact",
+        "Verify certified producer artifact",
     ]
-    assert all(not prefix.startswith("nvd-staging-") for prefix in restore_prefixes)
-    required = steps["Require a trusted OWASP NVD database"]
-    assert required["if"] == (
-        "inputs.required == 'true' && "
-        "steps.lookup.outputs.cache-matched-key == ''"
+    identity = steps["Build NVD publication identity"]
+    assert identity["run"] == (
+        "python3 "
+        '"$REPOSITORY_ROOT/scripts/build_android_nvd_identity.py"'
     )
-    assert "exit 1" in required["run"]
-    clear = steps["Clear pre-existing OWASP NVD data"]
-    assert clear["if"] == "steps.lookup.outputs.cache-matched-key != ''"
-    assert clear["run"] == 'rm -rf "${HOME}/.gradle/dependency-check-data"'
-    restore = steps["Restore exact trusted OWASP NVD database"]
-    assert restore["if"] == "steps.lookup.outputs.cache-matched-key != ''"
-    assert restore["id"] == "restore"
-    assert restore["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
-    assert restore["with"] == {
-        "path": "~/.gradle/dependency-check-data",
-        "key": "${{ steps.lookup.outputs.cache-matched-key }}",
-        "fail-on-cache-miss": True,
+    select = steps["Select latest certified producer artifact"]
+    assert select["env"] == {
+        "GITHUB_TOKEN": "${{ inputs.github-token }}",
+        "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+        "NVD_WORKFLOW": "android-nvd-cache.yml",
+        "NVD_ARTIFACT_PREFIX": (
+            "${{ steps.identity.outputs.artifact-prefix }}"
+        ),
     }
-    exact = steps["Require the exact trusted cache entry"]
-    assert exact["if"] == "steps.lookup.outputs.cache-matched-key != ''"
-    assert exact["env"] == {"CACHE_HIT": "${{ steps.restore.outputs.cache-hit }}"}
-    assert 'if [ "$CACHE_HIT" != "true" ]; then' in exact["run"]
-    assert "exit 1" in exact["run"]
+    assert "select_android_nvd_artifact.py" in select["run"]
+    clear = steps["Clear artifact staging paths"]
+    assert "if" not in clear
+    assert "${RUNNER_TEMP}/android-nvd-payload" in clear["run"]
+    assert "${HOME}/.gradle/dependency-check-data" in clear["run"]
+    required = steps["Require certified producer artifact"]
+    assert required["if"] == (
+        "inputs.required == 'true' && steps.select.outputs.found != 'true'"
+    )
+    download = steps["Download certified producer artifact"]
+    assert download["uses"] == (
+        f"actions/download-artifact@{_DOWNLOAD_ACTION_SHA}"
+    )
+    assert download["with"] == {
+        "name": "${{ steps.select.outputs.artifact-name }}",
+        "path": "${{ runner.temp }}/android-nvd-payload",
+        "github-token": "${{ inputs.github-token }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ steps.select.outputs.run-id }}",
+    }
+    verify = steps["Verify certified producer artifact"]
+    assert verify["id"] == "verify"
+    assert "--allow-expired" in verify["run"]
+    serialized = json.dumps(action, sort_keys=True)
+    assert "actions/cache" not in serialized
+    assert "restore-keys" not in serialized
     for step in steps.values():
         uses = step.get("uses")
         if uses is not None:
             assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", uses)
 
 
-def test_nvd_cache_key_builder_separates_staging_from_trusted_namespace(
-    tmp_path: Path,
-) -> None:
-    catalog = tmp_path / "android" / "gradle" / "libs.versions.toml"
-    catalog.parent.mkdir(parents=True)
-    catalog.write_text(
-        "[plugins]\n"
-        'owasp-dependency-check = { id = "org.owasp.dependencycheck", '
-        'version = "12.1.0" }\n',
-        encoding="utf-8",
-        newline="\n",
+def test_shared_nvd_restore_action_uses_only_successful_main_run_artifacts() -> None:
+    action = _load_workflow(
+        _ROOT / ".github" / "actions" / "restore-android-nvd" / "action.yml"
     )
-    output = tmp_path / "github-output.txt"
-    environment = {
-        **os.environ,
-        "REPOSITORY_ROOT": str(tmp_path),
-        "CACHE_OS": "Linux",
-        "RUN_ID": "123456",
-        "RUN_ATTEMPT": "2",
-        "GITHUB_OUTPUT": str(output),
-    }
+    _assert_restore_action_interface(action)
+    _assert_restore_action_trust_chain(action)
+
+
+def _copy_producer_contract(tmp_path: Path) -> ModuleType:
+    contract = _load_script(
+        _ROOT / "android" / "scripts" / "dependency_check_contract.py",
+        name="nvd_contract_fixture",
+    )
+    for relative in contract.PRODUCER_CONTRACT_PATHS:
+        source = _ROOT / relative
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+    return contract
+
+
+def _run_identity(tmp_path: Path, *, output_name: str = "output.txt") -> dict[str, str]:
+    output = tmp_path / output_name
     result = subprocess.run(
         [
             sys.executable,
-            str(_ROOT / "scripts" / "build_android_nvd_cache_key.py"),
+            str(_ROOT / "scripts" / "build_android_nvd_identity.py"),
         ],
-        env=environment,
+        env={
+            **os.environ,
+            "REPOSITORY_ROOT": str(tmp_path),
+            "CACHE_OS": "Linux",
+            "RUN_ID": "123456",
+            "RUN_ATTEMPT": "2",
+            "GITHUB_OUTPUT": str(output),
+        },
         capture_output=True,
         check=False,
         text=True,
         encoding="utf-8",
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    outputs = dict(
+    return dict(
         line.split("=", 1)
         for line in output.read_text(encoding="utf-8").splitlines()
     )
-    assert outputs["generation"] == "dc-12.1.0-schema1"
-    assert re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", outputs["date"])
-    suffix = (
-        f"Linux-dc-12.1.0-schema1-{outputs['date']}-123456-2"
-    )
-    assert outputs["value"] == f"nvd-{suffix}"
-    assert outputs["staging-value"] == f"nvd-staging-{suffix}"
-    assert not outputs["staging-value"].startswith("nvd-Linux-")
 
-    environment["CACHE_OS"] = "staging-Linux"
-    output.unlink()
-    ambiguous_os = subprocess.run(
-        [
-            sys.executable,
-            str(_ROOT / "scripts" / "build_android_nvd_cache_key.py"),
-        ],
-        env=environment,
+
+def test_publication_identity_binds_every_authority_contract_file(
+    tmp_path: Path,
+) -> None:
+    _copy_producer_contract(tmp_path)
+    first = _run_identity(tmp_path, output_name="first.txt")
+    assert re.fullmatch(r"[0-9a-f]{64}", first["contract-sha256"])
+    assert first["generation"] == (
+        "dc-12.1.0-schema2-" + first["contract-sha256"]
+    )
+    suffix = f"Linux-{first['generation']}-123456-2"
+    assert first["artifact-name"] == f"android-nvd-{suffix}"
+    assert first["artifact-prefix"] == f"android-nvd-Linux-{first['generation']}-"
+    assert first["staging-value"] == f"nvd-staging-{suffix}"
+
+    certifier = (
+        tmp_path / "android" / "scripts" / "certify_dependency_check_nvd_payload.sh"
+    )
+    certifier.write_text(
+        certifier.read_text(encoding="utf-8") + "\n# contract mutation\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    second = _run_identity(tmp_path, output_name="second.txt")
+    assert second["contract-sha256"] != first["contract-sha256"]
+    assert second["artifact-name"] != first["artifact-name"]
+    assert second["staging-value"] != first["staging-value"]
+
+
+def _trusted_run(*, run_id: int, attempt: int = 1) -> dict[str, object]:
+    return {
+        "id": run_id,
+        "run_attempt": attempt,
+        "status": "completed",
+        "conclusion": "success",
+        "head_branch": "main",
+        "event": "schedule",
+        "path": ".github/workflows/android-nvd-cache.yml",
+        "head_repository": {"full_name": "xxu29958-jpg/xpj"},
+    }
+
+
+def test_artifact_selector_rejects_pr_failed_and_wrong_contract_sources() -> None:
+    selector = _load_script(
+        _ROOT / "scripts" / "select_android_nvd_artifact.py",
+        name="nvd_artifact_selector",
+    )
+    prefix = "android-nvd-Linux-dc-12.1.0-schema2-current-"
+    pull_request = {
+        **_trusted_run(run_id=30),
+        "head_branch": "feature",
+        "event": "pull_request",
+    }
+    failed = {**_trusted_run(run_id=29), "conclusion": "failure"}
+    accepted = _trusted_run(run_id=28, attempt=3)
+    selected = selector.select_artifact(
+        runs=[pull_request, failed, accepted],
+        artifacts_by_run={
+            30: [
+                {
+                    "id": 300,
+                    "name": f"{prefix}30-1",
+                    "expired": False,
+                    "digest": f"sha256:{'a' * 64}",
+                }
+            ],
+            29: [
+                {
+                    "id": 290,
+                    "name": f"{prefix}29-1",
+                    "expired": False,
+                    "digest": f"sha256:{'b' * 64}",
+                }
+            ],
+            28: [
+                {
+                    "id": 281,
+                    "name": "android-nvd-Linux-dc-old-contract-28-3",
+                    "expired": False,
+                    "digest": f"sha256:{'c' * 64}",
+                },
+                {
+                    "id": 282,
+                    "name": f"{prefix}28-3",
+                    "expired": False,
+                    "digest": f"sha256:{'d' * 64}",
+                },
+            ],
+        },
+        repository="xxu29958-jpg/xpj",
+        default_branch="main",
+        artifact_prefix=prefix,
+    )
+    assert selected == (28, f"{prefix}28-3", 282, f"sha256:{'d' * 64}")
+
+
+def test_publication_ref_guard_is_behavioral(tmp_path: Path) -> None:
+    script = _ROOT / "scripts" / "verify_android_nvd_publication_ref.py"
+    base = {
+        **os.environ,
+        "DEFAULT_BRANCH": "main",
+    }
+    accepted = subprocess.run(
+        [sys.executable, str(script)],
+        env={**base, "REQUESTED_REF": "refs/heads/main"},
         capture_output=True,
         check=False,
         text=True,
         encoding="utf-8",
     )
-    assert ambiguous_os.returncode != 0
-    assert not output.exists()
-
-    environment["CACHE_OS"] = "Linux"
-    catalog.write_text("[plugins]\n", encoding="utf-8", newline="\n")
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
     rejected = subprocess.run(
-        [
-            sys.executable,
-            str(_ROOT / "scripts" / "build_android_nvd_cache_key.py"),
-        ],
-        env=environment,
+        [sys.executable, str(script)],
+        env={**base, "REQUESTED_REF": "refs/heads/feature"},
         capture_output=True,
         check=False,
         text=True,
         encoding="utf-8",
     )
     assert rejected.returncode != 0
-    assert not output.exists()
 
 
 def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> None:
@@ -279,8 +350,8 @@ def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> Non
         "nvd.validForHours = dependencyCheckNvdValidForHours.get()",
         "val dependencyCheckPolicyCvssThreshold = 7.0f",
         "val dependencyCheckPayloadValidationCvssThreshold = 11.0f",
-        "requestedDependencyCheckTasks == listOf("
-        '"dependencyCheckValidateNvd")',
+        'dependencyCheck.failBuildOnCVSS == 11.0f',
+        'dependencyCheck.failBuildOnCVSS == 7.0f',
         'tasks.register("verifyDependencyCheckContract")',
         'tasks.named("dependencyCheckUpdate")',
         'tasks.named("dependencyCheckAggregate")',

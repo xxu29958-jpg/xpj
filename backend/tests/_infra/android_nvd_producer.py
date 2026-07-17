@@ -15,17 +15,25 @@ def assert_nvd_producer_workflow(
     workflow: dict[str, Any],
     *,
     cache_action_sha: str,
+    download_action_sha: str,
+    upload_action_sha: str,
 ) -> None:
     assert workflow["on"] == {
         "schedule": [{"cron": "17 */12 * * *"}],
         "workflow_dispatch": None,
     }
-    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["permissions"] == {"actions": "read", "contents": "read"}
     assert workflow["concurrency"] == {
         "group": "android-nvd-writer",
         "queue": "max",
     }
-    assert list(workflow["jobs"]) == ["preflight", "refresh", "certify", "promote"]
+    assert list(workflow["jobs"]) == [
+        "preflight",
+        "refresh",
+        "certify",
+        "promote",
+        "verify-publication",
+    ]
     for job in workflow["jobs"].values():
         assert "continue-on-error" not in job
         for step in job["steps"]:
@@ -43,24 +51,28 @@ def assert_nvd_producer_workflow(
     _assert_promote_job(
         workflow["jobs"]["promote"],
         cache_action_sha=cache_action_sha,
+        upload_action_sha=upload_action_sha,
+    )
+    _assert_verify_publication_job(
+        workflow["jobs"]["verify-publication"],
+        download_action_sha=download_action_sha,
     )
 
 
 def _assert_preflight_job(preflight: dict[str, Any]) -> None:
     assert preflight["timeout-minutes"] == 5
-    assert len(preflight["steps"]) == 1
-    guard = preflight["steps"][0]
-    assert set(guard) == {"name", "env", "shell", "run"}
-    assert guard["name"] == "Reject non-default-branch dispatch"
+    assert [step["name"] for step in preflight["steps"]] == [
+        "Checkout",
+        "Reject non-default-branch dispatch",
+    ]
+    guard = preflight["steps"][1]
     assert guard["env"] == {
         "REQUESTED_REF": "${{ github.ref }}",
         "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
     }
-    assert guard["shell"] == "bash"
-    assert "set -euo pipefail" in guard["run"]
-    assert 'expected_ref="refs/heads/${DEFAULT_BRANCH}"' in guard["run"]
-    assert 'if [ "$REQUESTED_REF" != "$expected_ref" ]; then' in guard["run"]
-    assert "exit 1" in guard["run"]
+    assert guard["run"] == (
+        "python3 scripts/verify_android_nvd_publication_ref.py"
+    )
 
 
 def _assert_refresh_job(
@@ -73,20 +85,32 @@ def _assert_refresh_job(
     assert "if" not in refresh
     assert refresh["timeout-minutes"] == 35
     assert refresh["outputs"] == {
-        "cache-key": "${{ steps.nvd-cache.outputs.cache-key }}",
-        "staging-cache-key": "${{ steps.nvd-cache.outputs.staging-cache-key }}",
+        "artifact-name": (
+            "${{ steps.nvd-seed.outputs.publication-artifact-name }}"
+        ),
+        "contract-sha256": "${{ steps.nvd-seed.outputs.contract-sha256 }}",
+        "staging-cache-key": (
+            "${{ steps.nvd-seed.outputs.staging-cache-key }}"
+        ),
     }
     assert "NVD_API_KEY" not in refresh.get("env", {})
     assert [step["name"] for step in refresh["steps"]] == [
         *_SETUP_STEPS,
-        "Restore trusted OWASP NVD database",
+        "Restore previous certified NVD artifact",
         "Refresh OWASP NVD database",
         "Save staged OWASP NVD database",
     ]
     steps = {step["name"]: step for step in refresh["steps"]}
-    restore = steps["Restore trusted OWASP NVD database"]
-    assert restore["id"] == "nvd-cache"
-    assert restore["uses"] == "./.github/actions/restore-android-nvd"
+    restore = steps["Restore previous certified NVD artifact"]
+    assert restore == {
+        "name": "Restore previous certified NVD artifact",
+        "id": "nvd-seed",
+        "uses": "./.github/actions/restore-android-nvd",
+        "with": {
+            "github-token": "${{ github.token }}",
+            "allow-expired": "true",
+        },
+    }
     update = steps["Refresh OWASP NVD database"]
     assert update["env"] == {
         "NVD_API_KEY": "${{ secrets.ANDROID_NVD_API_KEY }}"
@@ -98,7 +122,7 @@ def _assert_refresh_job(
     assert save["uses"] == f"actions/cache/save@{cache_action_sha}"
     assert save["with"] == {
         "path": "~/.gradle/dependency-check-data",
-        "key": "${{ steps.nvd-cache.outputs.staging-cache-key }}",
+        "key": "${{ steps.nvd-seed.outputs.staging-cache-key }}",
     }
     serialized = json.dumps(refresh, sort_keys=True)
     assert serialized.count("secrets.ANDROID_NVD_API_KEY") == 1
@@ -143,21 +167,36 @@ def _assert_promote_job(
     promote: dict[str, Any],
     *,
     cache_action_sha: str,
+    upload_action_sha: str,
 ) -> None:
     assert promote["needs"] == ["refresh", "certify"]
     assert "environment" not in promote
-    assert "env" not in promote
-    assert promote["timeout-minutes"] == 10
+    assert promote["timeout-minutes"] == 15
+    assert promote["outputs"] == {
+        "artifact-digest": "${{ steps.publish.outputs.artifact-digest }}",
+        "payload-sha256": "${{ steps.candidate.outputs.payload-sha256 }}",
+        "refreshed-at-epoch": (
+            "${{ steps.candidate.outputs.refreshed-at-epoch }}"
+        ),
+    }
     assert "NVD_API_KEY" not in json.dumps(promote, sort_keys=True)
     assert [step["name"] for step in promote["steps"]] == [
         "Checkout",
+        "Restore previous certified NVD artifact",
         "Clear pre-existing OWASP NVD data",
         "Restore certified staged OWASP NVD database",
         "Require the certified staged cache entry",
-        "Verify publication payload identity",
-        "Publish trusted OWASP NVD database",
+        "Verify monotonic publication payload",
+        "Publish immutable certified NVD artifact",
     ]
     steps = {step["name"]: step for step in promote["steps"]}
+    previous = steps["Restore previous certified NVD artifact"]
+    assert previous["id"] == "previous"
+    assert previous["uses"] == "./.github/actions/restore-android-nvd"
+    assert previous["with"] == {
+        "github-token": "${{ github.token }}",
+        "allow-expired": "true",
+    }
     _assert_clean_step(steps["Clear pre-existing OWASP NVD data"])
     _assert_exact_restore(
         steps["Restore certified staged OWASP NVD database"],
@@ -170,16 +209,56 @@ def _assert_promote_job(
         variable="PUBLICATION_CACHE_HIT",
         expression="${{ steps.publication-cache.outputs.cache-hit }}",
     )
-    assert steps["Verify publication payload identity"]["run"] == (
-        "python3 scripts/dependency_check_nvd_manifest.py "
-        'verify "${HOME}/.gradle/dependency-check-data"'
-    )
-    publish = steps["Publish trusted OWASP NVD database"]
-    assert publish["uses"] == f"actions/cache/save@{cache_action_sha}"
-    assert publish["with"] == {
-        "path": "~/.gradle/dependency-check-data",
-        "key": "${{ needs.refresh.outputs.cache-key }}",
+    candidate = steps["Verify monotonic publication payload"]
+    assert candidate["id"] == "candidate"
+    assert candidate["env"] == {
+        "PREVIOUS_REFRESHED_AT_EPOCH": (
+            "${{ steps.previous.outputs.refreshed-at-epoch }}"
+        )
     }
+    normalized = " ".join(candidate["run"].split())
+    assert "--minimum-refreshed-at-epoch \"$minimum\"" in normalized
+    assert "--github-output \"$GITHUB_OUTPUT\"" in normalized
+    publish = steps["Publish immutable certified NVD artifact"]
+    assert publish["id"] == "publish"
+    assert publish["uses"] == f"actions/upload-artifact@{upload_action_sha}"
+    assert publish["with"] == {
+        "name": "${{ needs.refresh.outputs.artifact-name }}",
+        "path": "${{ env.NVD_ARTIFACT_PATH }}/",
+        "if-no-files-found": "error",
+        "include-hidden-files": True,
+        "retention-days": 3,
+    }
+
+
+def _assert_verify_publication_job(
+    verify: dict[str, Any],
+    *,
+    download_action_sha: str,
+) -> None:
+    assert verify["needs"] == ["refresh", "promote"]
+    assert verify["timeout-minutes"] == 10
+    assert [step["name"] for step in verify["steps"]] == [
+        "Checkout",
+        "Download exact published NVD artifact",
+        "Verify exact published payload",
+    ]
+    steps = {step["name"]: step for step in verify["steps"]}
+    download = steps["Download exact published NVD artifact"]
+    assert download["uses"] == (
+        f"actions/download-artifact@{download_action_sha}"
+    )
+    assert download["with"] == {
+        "name": "${{ needs.refresh.outputs.artifact-name }}",
+        "path": "${{ runner.temp }}/android-nvd-published",
+    }
+    proof = steps["Verify exact published payload"]
+    assert proof["env"] == {
+        "EXPECTED_PAYLOAD_SHA256": (
+            "${{ needs.promote.outputs.payload-sha256 }}"
+        )
+    }
+    assert "--expected-payload-sha256" in proof["run"]
 
 
 def _assert_clean_step(step: dict[str, Any]) -> None:

@@ -43,6 +43,7 @@ def test_github_actions_require_reviewed_identity_and_commit(
     shape_violations = mod._github_external_uses_pin_violations(workflows)
     assert any("owner/quoted-action@v1.2.3" in item for item in shape_violations)
     assert any("owner/flow-action@main" in item for item in shape_violations)
+    assert any("owner/escaped-key@release" in item for item in shape_violations)
 
     duplicate = workflows.parent / "actions" / "local-check" / "action.yaml"
     duplicate.write_text("name: duplicate\n", encoding="utf-8")
@@ -81,3 +82,21 @@ def test_local_actions_cannot_escape_the_recursively_audited_tree(
     )
     violations = mod._github_external_uses_pin_violations(workflows)
     assert any(message in item for item in violations)
+
+
+def test_decoded_duplicate_uses_keys_fail_closed(tmp_path: Path) -> None:
+    mod = _load()
+    workflows, _mutations = write_action_pin_workflows(tmp_path)
+    (workflows / "duplicate.yml").write_text(
+        """
+name: duplicate mutation
+jobs:
+  checks:
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        "us\\u0065s": owner/hidden-action@main
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate key 'uses'"):
+        mod._github_external_uses_pin_violations(workflows)
