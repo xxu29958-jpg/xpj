@@ -6,7 +6,7 @@ from pathlib import Path
 def write_action_pin_workflows(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
-    pinned = "a" * 40
+    pinned = "df4cb1c069e1874edd31b4311f1884172cec0e10"
     (workflows / "ci.yml").write_text(
         f"""
 name: CI
@@ -29,7 +29,7 @@ name: local check
 runs:
   using: composite
   steps:
-    - uses: owner/composite-dependency@{pinned}
+    - uses: actions/checkout@{pinned}
 """,
         encoding="utf-8",
     )
@@ -38,6 +38,9 @@ runs:
         "release.yml": "owner/action@release",
         "main.yml": "owner/action@main",
         "short-sha.yml": f"owner/action@{pinned[:-1]}",
+        "wrong-owner.yml": (
+            "attacker/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92"
+        ),
     }
     return workflows, mutations
 

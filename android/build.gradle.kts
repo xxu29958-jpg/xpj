@@ -15,8 +15,6 @@ plugins {
 // explicit triage instead of being silently ignored.
 val nvdApiKey: String? =
     providers.environmentVariable("NVD_API_KEY")
-        .orElse(providers.gradleProperty("nvdApiKey"))
-        .orElse(providers.environmentVariable("ORG_GRADLE_PROJECT_nvdApiKey"))
         .orNull
 
 val dependencyCheckAutoUpdate =
@@ -26,13 +24,34 @@ val dependencyCheckAutoUpdate =
 
 val dependencyCheckNvdValidForHours =
     providers.gradleProperty("dependencyCheckNvdValidForHours")
-        .map { it.toInt() }
+        .map {
+            val hours = it.toInt()
+            require(hours == 0 || hours == 24) {
+                "dependencyCheckNvdValidForHours must be 0 or 24"
+            }
+            hours
+        }
         .orElse(24)
 
+val requestedDependencyCheckTasks =
+    gradle.startParameter.taskNames
+        .map { it.substringAfterLast(':') }
+        .filter { it.startsWith("dependencyCheck") }
+val dependencyCheckDataValidationRequested =
+    "dependencyCheckValidateNvd" in requestedDependencyCheckTasks
+if (dependencyCheckDataValidationRequested) {
+    require(requestedDependencyCheckTasks == listOf("dependencyCheckValidateNvd")) {
+        "dependencyCheckValidateNvd cannot be combined with another dependency-check task"
+    }
+}
+val dependencyCheckPolicyCvssThreshold = 7.0f
+val dependencyCheckPayloadValidationCvssThreshold = 11.0f
 val dependencyCheckFailBuildOnCvss =
-    providers.gradleProperty("dependencyCheckFailBuildOnCvss")
-        .map { it.toFloat() }
-        .orElse(7.0f)
+    if (dependencyCheckDataValidationRequested) {
+        dependencyCheckPayloadValidationCvssThreshold
+    } else {
+        dependencyCheckPolicyCvssThreshold
+    }
 
 // Keep the NVD database under Gradle user home so trusted CI events can
 // refresh one cache while pull requests consume it read-only.
@@ -40,7 +59,7 @@ val dependencyCheckDataDir =
     gradle.gradleUserHomeDir.resolve("dependency-check-data").absolutePath
 
 dependencyCheck {
-    failBuildOnCVSS = dependencyCheckFailBuildOnCvss.get()
+    failBuildOnCVSS = dependencyCheckFailBuildOnCvss
     // Keep this explicit: corrupt/unreadable cache data must never become a
     // successful report-shaped no-op when an upstream default changes.
     failOnError = true
@@ -54,8 +73,9 @@ dependencyCheck {
     // task and this explicit scope prevents a green root-only no-op.
     scanProjects = listOf(":app")
     suppressionFile = file("config/dependency-check/suppressions.xml").takeIf { it.exists() }?.absolutePath
-    // OWASP recommends an NVD API key to avoid throttling; CI injects it and
-    // local runs can use either an environment variable or a Gradle property.
+    // OWASP recommends an NVD API key to avoid throttling. It enters Gradle
+    // only through the process environment so it never appears in command
+    // arguments or project properties.
     nvd.apiKey = nvdApiKey.orEmpty()
     // A trusted producer overrides both properties to force a real refresh.
     // Existing CI keeps the warm-cache default until the read-only consumer
@@ -85,8 +105,8 @@ val verifyDependencyCheckContract =
             check(dependencyCheck.nvd.validForHours == dependencyCheckNvdValidForHours.get()) {
                 "dependency-check NVD freshness drifted from its runtime property"
             }
-            check(dependencyCheck.failBuildOnCVSS == dependencyCheckFailBuildOnCvss.get()) {
-                "dependency-check CVSS policy drifted from its runtime property"
+            check(dependencyCheck.failBuildOnCVSS == dependencyCheckFailBuildOnCvss) {
+                "dependency-check CVSS policy drifted from its task-specific contract"
             }
             check(dependencyCheck.data.directory == dependencyCheckDataDir) {
                 "dependency-check data directory drifted from the shared cache contract"
@@ -100,4 +120,10 @@ tasks.named("dependencyCheckUpdate") {
 
 tasks.named("dependencyCheckAggregate") {
     dependsOn(verifyDependencyCheckContract)
+}
+
+tasks.register("dependencyCheckValidateNvd") {
+    group = "verification"
+    description = "Validates NVD data and report scope without adjudicating CVE policy."
+    dependsOn("dependencyCheckAggregate")
 }

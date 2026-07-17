@@ -388,6 +388,9 @@ jobs:
     name: Android
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      group: android-nvd-writer
+      queue: max
     defaults:
       run:
         working-directory: android
@@ -398,7 +401,6 @@ jobs:
       # Actions variable (defense-in-depth: keep the origin host out of the public
       # workflow file — set it via `gh variable set TICKETBOX_SERVER_URL`).
       TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
-      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -559,11 +561,22 @@ jobs:
             echo "OK signing certificate $apk"
           done
 
+      - name: Detect NVD credential
+        id: nvd-credential
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -n "$NVD_API_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: NVD cache key (UTC date)
         # Day-rotating key so the cached NVD DB refreshes ~daily; restore-keys
         # below falls back to the most recent prior cache on a key miss.
         id: nvd-key
-        if: ${{ env.NVD_API_KEY != '' }}
+        if: steps.nvd-credential.outputs.available == 'true'
         run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Cache OWASP NVD database
@@ -572,7 +585,7 @@ jobs:
         # warm cache (<24h) makes the plugin SKIP the NVD API call entirely — the
         # whole point: kills the recurring NVD 520/524 gateway-timeout flake on
         # reruns/same-day runs and turns the full ~7min download into a cache hit.
-        if: ${{ env.NVD_API_KEY != '' }}
+        if: steps.nvd-credential.outputs.available == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.gradle/dependency-check-data
@@ -581,8 +594,10 @@ jobs:
             nvd-${{ runner.os }}-
 
       - name: Dependency vulnerability scan (OWASP dependency-check)
-        if: ${{ env.NVD_API_KEY != '' }}
+        if: steps.nvd-credential.outputs.available == 'true'
         id: owasp
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         # Android dependency CVE gate via the OWASP plugin (android/build.gradle.kts).
         # Cloud-only (NVD download is too heavy for the single local-Gitea runner).
         # Requires the NVD_API_KEY repo secret.
@@ -614,7 +629,7 @@ jobs:
           : > owasp-output.log
 
           start=$(date +%s)
-          timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckUpdate -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee -a owasp-output.log
+          timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckUpdate -PdependencyCheckNvdValidForHours=24 2>&1 | tee -a owasp-output.log
           update_rc=${PIPESTATUS[0]}
           elapsed=$(( $(date +%s) - start ))
           if [ "$update_rc" -eq 124 ] || { [ "$update_rc" -eq 137 ] && [ "$elapsed" -ge 720 ]; }; then
@@ -625,7 +640,7 @@ jobs:
           fi
 
           start=$(date +%s)
-          timeout -k 1m 10m ./gradlew --no-daemon --max-workers=2 dependencyCheckAggregate -PdependencyCheckAutoUpdate=false -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee -a owasp-output.log
+          timeout -k 1m 10m ./gradlew --no-daemon --max-workers=2 dependencyCheckAggregate -PdependencyCheckAutoUpdate=false -PdependencyCheckNvdValidForHours=24 2>&1 | tee -a owasp-output.log
           analyze_rc=${PIPESTATUS[0]}
           elapsed=$(( $(date +%s) - start ))
           if [ "$analyze_rc" -eq 124 ] || { [ "$analyze_rc" -eq 137 ] && [ "$elapsed" -ge 600 ]; }; then
@@ -634,7 +649,7 @@ jobs:
           exit "$analyze_rc"
 
       - name: Enforce OWASP CVE findings (tolerate only NVD-data outages)
-        if: ${{ env.NVD_API_KEY != '' }}
+        if: steps.nvd-credential.outputs.available == 'true'
         # Re-asserts the dependency-check gate the previous step's continue-on-error
         # would otherwise drop. failOnError stays true, so outcome=success genuinely
         # means "analysis ran clean" (a corrupt-DB skip can't masquerade as success).
@@ -687,7 +702,7 @@ jobs:
           exit 1
 
       - name: Dependency vulnerability scan skipped
-        if: ${{ env.NVD_API_KEY == '' }}
+        if: steps.nvd-credential.outputs.available != 'true'
         run: echo "::warning::NVD_API_KEY is not configured in GitHub Actions secrets; skipping OWASP dependency-check until the secret is restored."
 
       - name: Upload gray debug APK

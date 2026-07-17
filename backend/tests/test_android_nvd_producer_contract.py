@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -25,217 +25,7 @@ def _load_workflow(path: Path) -> dict[object, object]:
     return parser._load_workflow(path)
 
 
-def _bash_executable() -> str:
-    candidates = [
-        shutil.which("bash"),
-        str(
-            Path(os.environ.get("PROGRAMFILES", "C:/Program Files"))
-            / "Git/bin/bash.exe"
-        ),
-    ]
-    match = next(
-        (
-            candidate
-            for candidate in candidates
-            if candidate and Path(candidate).is_file()
-        ),
-        None,
-    )
-    if match is None:
-        raise AssertionError("Bash is required to execute the NVD producer contract")
-    return match
-
-
-def _write_fake_gradlew(tmp_path: Path) -> None:
-    gradlew = tmp_path / "gradlew"
-    gradlew.write_text(
-        """#!/usr/bin/env bash
-set -u
-if [[ " $* " != *" dependencyCheckUpdate "* ]]; then
-  if [[ " $* " != *" dependencyCheckAggregate "* ]]; then
-    echo "unexpected fake Gradle invocation: $*" >&2
-    exit 97
-  fi
-  if [[ " $* " != *" -PdependencyCheckAutoUpdate=false "* ]]; then
-    echo "aggregate did not disable updates: $*" >&2
-    exit 98
-  fi
-  if [[ " $* " != *" -PdependencyCheckNvdValidForHours=0 "* ]]; then
-    echo "aggregate did not bind the forced freshness contract: $*" >&2
-    exit 95
-  fi
-  if [[ " $* " != *" -PdependencyCheckFailBuildOnCvss=11 "* ]]; then
-    echo "aggregate did not decouple cache publication from CVE policy: $*" >&2
-    exit 94
-  fi
-  if [ -n "${NVD_API_KEY:-}" ]; then
-    echo "aggregate inherited the NVD credential" >&2
-    exit 99
-  fi
-  echo aggregate >> calls.log
-  if [ "${FAKE_ANALYZE_RC:-0}" -ne 0 ]; then
-    exit "${FAKE_ANALYZE_RC}"
-  fi
-  if [ "${FAKE_REPORT_MODE:-valid}" != "missing" ]; then
-    mkdir -p build/reports
-    if [ "${FAKE_REPORT_MODE:-valid}" = "vulnerable" ]; then
-      printf '%s\n' \
-        '{"dependencies":[{"projectReferences":["app:grayDebugRuntimeClasspath"],"vulnerabilities":[{"cvssv3":{"baseScore":9.8}}]}]}' \
-        > build/reports/dependency-check-report.json
-    else
-      printf '%s\n' \
-        '{"dependencies":[{"projectReferences":["app:grayDebugRuntimeClasspath"]}]}' \
-        > build/reports/dependency-check-report.json
-    fi
-  fi
-  exit 0
-fi
-if [[ " $* " != *" -PdependencyCheckNvdValidForHours=0 "* ]]; then
-  echo "update did not force a fresh NVD check: $*" >&2
-  exit 96
-fi
-echo update >> calls.log
-update_rc="${FAKE_UPDATE_RC:-0}"
-if [ "$update_rc" -eq 0 ] && [ "${FAKE_PAYLOAD_MODE:-valid}" = "valid" ]; then
-  mkdir -p "${DEPENDENCY_CHECK_DATA_DIR:?}"
-  printf 'fake-nvd-data\n' > "${DEPENDENCY_CHECK_DATA_DIR}/odc.mv.db"
-fi
-exit "$update_rc"
-""",
-        encoding="utf-8",
-        newline="\n",
-    )
-    gradlew.chmod(0o755)
-
-
-@pytest.mark.parametrize(
-    (
-        "api_key",
-        "update_rc",
-        "analyze_rc",
-        "report_mode",
-        "payload_mode",
-        "existing_marker",
-        "expected_rc",
-        "expected_calls",
-    ),
-    [
-        ("", 0, 0, "valid", "valid", None, 78, []),
-        (
-            "configured",
-            0,
-            0,
-            "valid",
-            "valid",
-            None,
-            0,
-            ["update", "aggregate"],
-        ),
-        (
-            "configured",
-            0,
-            0,
-            "vulnerable",
-            "valid",
-            None,
-            0,
-            ["update", "aggregate"],
-        ),
-        (
-            "configured",
-            0,
-            0,
-            "valid",
-            "missing",
-            "12345\n",
-            1,
-            ["update", "aggregate"],
-        ),
-        ("configured", 1, 0, "valid", "valid", "12345\n", 1, ["update"]),
-        (
-            "configured",
-            0,
-            1,
-            "valid",
-            "valid",
-            "12345\n",
-            1,
-            ["update", "aggregate"],
-        ),
-        (
-            "configured",
-            0,
-            0,
-            "missing",
-            "valid",
-            "12345\n",
-            1,
-            ["update", "aggregate"],
-        ),
-    ],
-)
-def test_trusted_nvd_producer_publishes_marker_only_after_success(
-    tmp_path: Path,
-    api_key: str,
-    update_rc: int,
-    analyze_rc: int,
-    report_mode: str,
-    payload_mode: str,
-    existing_marker: str | None,
-    expected_rc: int,
-    expected_calls: list[str],
-) -> None:
-    _write_fake_gradlew(tmp_path)
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
-    refresh = scripts / "refresh_dependency_check_nvd.sh"
-    shutil.copyfile(
-        _ROOT / "android" / "scripts" / refresh.name,
-        refresh,
-    )
-    shutil.copyfile(
-        _ROOT / "android" / "scripts" / "verify_dependency_check_report.py",
-        scripts / "verify_dependency_check_report.py",
-    )
-    marker = tmp_path / ".dependency-check-data" / "xpj-nvd-refresh-epoch"
-    if existing_marker is not None:
-        marker.parent.mkdir(parents=True)
-        marker.write_text(existing_marker, encoding="utf-8", newline="\n")
-    result = subprocess.run(
-        [_bash_executable(), refresh.as_posix()],
-        cwd=tmp_path,
-        env={
-            **os.environ,
-            "DEPENDENCY_CHECK_DATA_DIR": ".dependency-check-data",
-            "NVD_API_KEY": api_key,
-            "FAKE_UPDATE_RC": str(update_rc),
-            "FAKE_ANALYZE_RC": str(analyze_rc),
-            "FAKE_REPORT_MODE": report_mode,
-            "FAKE_PAYLOAD_MODE": payload_mode,
-            "PYTHON_BIN": sys.executable,
-        },
-        capture_output=True,
-        check=False,
-        text=True,
-        encoding="utf-8",
-    )
-    assert result.returncode == expected_rc, result.stdout + result.stderr
-    calls_path = tmp_path / "calls.log"
-    actual_calls = (
-        calls_path.read_text(encoding="utf-8").splitlines()
-        if calls_path.is_file()
-        else []
-    )
-    assert actual_calls == expected_calls
-    if expected_rc == 0:
-        assert marker.read_text(encoding="utf-8").strip().isdigit()
-    elif existing_marker is not None:
-        assert marker.read_text(encoding="utf-8") == existing_marker
-    else:
-        assert not marker.exists()
-
-
-def test_nvd_producer_workflow_is_main_only_and_publishes_unique_cache() -> None:
+def test_nvd_producer_workflow_stages_certifies_and_proves_trusted_cache() -> None:
     workflow = _load_workflow(
         _ROOT / ".github" / "workflows" / "android-nvd-cache.yml"
     )
@@ -244,30 +34,103 @@ def test_nvd_producer_workflow_is_main_only_and_publishes_unique_cache() -> None
         cache_action_sha=_CACHE_ACTION_SHA,
     )
 
+
+def test_legacy_android_nvd_writer_is_serialized_and_keeps_secret_step_scoped() -> None:
     ci = _load_workflow(_ROOT / ".github" / "workflows" / "ci.yml")
-    android_steps = {
-        step["name"]: step for step in ci["jobs"]["android"]["steps"]
+    android = ci["jobs"]["android"]
+    assert android["concurrency"] == {
+        "group": "android-nvd-writer",
+        "queue": "max",
     }
-    legacy_scan = android_steps[
-        "Dependency vulnerability scan (OWASP dependency-check)"
-    ]["run"]
-    assert "dependencyCheckAggregate" in legacy_scan
-    assert "dependencyCheckAnalyze" not in legacy_scan
+    assert "NVD_API_KEY" not in android.get("env", {})
+    steps = {step["name"]: step for step in android["steps"]}
+    detect = steps["Detect NVD credential"]
+    assert detect["id"] == "nvd-credential"
+    assert detect["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
+    scan = steps["Dependency vulnerability scan (OWASP dependency-check)"]
+    assert scan["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
+    scan_command = scan["run"]
+    assert "dependencyCheckUpdate -PdependencyCheckNvdValidForHours=24" in (
+        " ".join(scan_command.split())
+    )
+    assert (
+        "dependencyCheckAggregate -PdependencyCheckAutoUpdate=false "
+        "-PdependencyCheckNvdValidForHours=24"
+    ) in " ".join(scan_command.split())
+    assert "dependencyCheckValidateNvd" not in scan_command
+    assert "-PnvdApiKey" not in scan_command
+    serialized = json.dumps(android, sort_keys=True)
+    assert serialized.count("secrets.NVD_API_KEY") == 2
+    for name in (
+        "NVD cache key (UTC date)",
+        "Cache OWASP NVD database",
+        "Dependency vulnerability scan (OWASP dependency-check)",
+        "Enforce OWASP CVE findings (tolerate only NVD-data outages)",
+    ):
+        assert steps[name]["if"] == (
+            "steps.nvd-credential.outputs.available == 'true'"
+        )
+    assert steps["Dependency vulnerability scan skipped"]["if"] == (
+        "steps.nvd-credential.outputs.available != 'true'"
+    )
 
 
-def test_shared_nvd_restore_action_owns_the_producer_cache_identity() -> None:
+def test_shared_nvd_restore_action_exposes_isolated_staging_identity() -> None:
     action = _load_workflow(
         _ROOT / ".github" / "actions" / "restore-android-nvd" / "action.yml"
     )
-    assert action["outputs"]["cache-key"]["value"] == (
-        "${{ steps.cache-key.outputs.value }}"
-    )
-    assert action["outputs"]["cache-generation"]["value"] == (
-        "${{ steps.cache-key.outputs.generation }}"
-    )
+    _assert_restore_action_interface(action)
+    _assert_restore_action_steps(action)
+
+
+def _assert_restore_action_interface(action: dict[object, object]) -> None:
+    assert action["inputs"] == {
+        "required": {
+            "description": "Fail when no trusted cache entry exists.",
+            "required": False,
+            "default": "false",
+        }
+    }
+    assert action["outputs"] == {
+        "cache-key": {
+            "description": (
+                "Unique key used when a trusted producer publishes refreshed data."
+            ),
+            "value": "${{ steps.cache-key.outputs.value }}",
+        },
+        "cache-generation": {
+            "description": (
+                "Dependency-check data generation accepted by this action."
+            ),
+            "value": "${{ steps.cache-key.outputs.generation }}",
+        },
+        "staging-cache-key": {
+            "description": (
+                "Isolated key used before a refreshed payload is certified."
+            ),
+            "value": "${{ steps.cache-key.outputs.staging-value }}",
+        },
+        "matched-cache-key": {
+            "description": "Exact trusted cache key selected by the lookup.",
+            "value": "${{ steps.lookup.outputs.cache-matched-key }}",
+        },
+        "cache-hit": {
+            "description": (
+                "Whether the selected trusted cache was restored exactly."
+            ),
+            "value": "${{ steps.restore.outputs.cache-hit }}",
+        },
+    }
+
+
+def _assert_restore_action_steps(action: dict[object, object]) -> None:
     assert [step["name"] for step in action["runs"]["steps"]] == [
         "Build NVD cache key",
-        "Restore OWASP NVD database",
+        "Find trusted OWASP NVD database",
+        "Require a trusted OWASP NVD database",
+        "Clear pre-existing OWASP NVD data",
+        "Restore exact trusted OWASP NVD database",
+        "Require the exact trusted cache entry",
     ]
     steps = {step["name"]: step for step in action["runs"]["steps"]}
     key = steps["Build NVD cache key"]
@@ -279,30 +142,54 @@ def test_shared_nvd_restore_action_owns_the_producer_cache_identity() -> None:
         "RUN_ID": "${{ github.run_id }}",
         "RUN_ATTEMPT": "${{ github.run_attempt }}",
     }
-    assert (
-        key["run"]
-        == 'python3 "$REPOSITORY_ROOT/scripts/build_android_nvd_cache_key.py"'
+    assert key["run"] == (
+        'python3 "$REPOSITORY_ROOT/scripts/build_android_nvd_cache_key.py"'
     )
-
-    restore = steps["Restore OWASP NVD database"]
-    assert restore["id"] == "restore"
-    assert restore["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
-    assert restore["with"]["path"] == "~/.gradle/dependency-check-data"
-    assert restore["with"]["key"] == "${{ steps.cache-key.outputs.value }}"
-    assert restore["with"]["restore-keys"].splitlines() == [
+    lookup = steps["Find trusted OWASP NVD database"]
+    assert lookup["id"] == "lookup"
+    assert lookup["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
+    assert lookup["with"]["path"] == "~/.gradle/dependency-check-data"
+    assert lookup["with"]["key"] == "${{ steps.cache-key.outputs.value }}"
+    assert lookup["with"]["lookup-only"] is True
+    restore_prefixes = lookup["with"]["restore-keys"].splitlines()
+    assert restore_prefixes == [
         (
             "nvd-${{ runner.os }}-${{ steps.cache-key.outputs.generation }}-"
             "${{ steps.cache-key.outputs.date }}-"
         ),
         "nvd-${{ runner.os }}-${{ steps.cache-key.outputs.generation }}-",
     ]
+    assert all(not prefix.startswith("nvd-staging-") for prefix in restore_prefixes)
+    required = steps["Require a trusted OWASP NVD database"]
+    assert required["if"] == (
+        "inputs.required == 'true' && "
+        "steps.lookup.outputs.cache-matched-key == ''"
+    )
+    assert "exit 1" in required["run"]
+    clear = steps["Clear pre-existing OWASP NVD data"]
+    assert clear["if"] == "steps.lookup.outputs.cache-matched-key != ''"
+    assert clear["run"] == 'rm -rf "${HOME}/.gradle/dependency-check-data"'
+    restore = steps["Restore exact trusted OWASP NVD database"]
+    assert restore["if"] == "steps.lookup.outputs.cache-matched-key != ''"
+    assert restore["id"] == "restore"
+    assert restore["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
+    assert restore["with"] == {
+        "path": "~/.gradle/dependency-check-data",
+        "key": "${{ steps.lookup.outputs.cache-matched-key }}",
+        "fail-on-cache-miss": True,
+    }
+    exact = steps["Require the exact trusted cache entry"]
+    assert exact["if"] == "steps.lookup.outputs.cache-matched-key != ''"
+    assert exact["env"] == {"CACHE_HIT": "${{ steps.restore.outputs.cache-hit }}"}
+    assert 'if [ "$CACHE_HIT" != "true" ]; then' in exact["run"]
+    assert "exit 1" in exact["run"]
     for step in steps.values():
         uses = step.get("uses")
         if uses is not None:
             assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", uses)
 
 
-def test_nvd_cache_key_builder_executes_generation_contract(
+def test_nvd_cache_key_builder_separates_staging_from_trusted_namespace(
     tmp_path: Path,
 ) -> None:
     catalog = tmp_path / "android" / "gradle" / "libs.versions.toml"
@@ -341,13 +228,31 @@ def test_nvd_cache_key_builder_executes_generation_contract(
     )
     assert outputs["generation"] == "dc-12.1.0-schema1"
     assert re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", outputs["date"])
-    assert outputs["value"] == (
-        "nvd-Linux-dc-12.1.0-schema1-"
-        f"{outputs['date']}-123456-2"
+    suffix = (
+        f"Linux-dc-12.1.0-schema1-{outputs['date']}-123456-2"
     )
+    assert outputs["value"] == f"nvd-{suffix}"
+    assert outputs["staging-value"] == f"nvd-staging-{suffix}"
+    assert not outputs["staging-value"].startswith("nvd-Linux-")
 
-    catalog.write_text("[plugins]\n", encoding="utf-8", newline="\n")
+    environment["CACHE_OS"] = "staging-Linux"
     output.unlink()
+    ambiguous_os = subprocess.run(
+        [
+            sys.executable,
+            str(_ROOT / "scripts" / "build_android_nvd_cache_key.py"),
+        ],
+        env=environment,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+    assert ambiguous_os.returncode != 0
+    assert not output.exists()
+
+    environment["CACHE_OS"] = "Linux"
+    catalog.write_text("[plugins]\n", encoding="utf-8", newline="\n")
     rejected = subprocess.run(
         [
             sys.executable,
@@ -363,18 +268,28 @@ def test_nvd_cache_key_builder_executes_generation_contract(
     assert not output.exists()
 
 
-def test_dependency_check_producer_contract_forces_real_refresh() -> None:
+def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> None:
     build = (_ROOT / "android" / "build.gradle.kts").read_text(encoding="utf-8")
     for fragment in (
         "failOnError = true",
         'scanProjects = listOf(":app")',
         "autoUpdate = dependencyCheckAutoUpdate.get()",
-        "providers.gradleProperty(\"dependencyCheckNvdValidForHours\")",
+        'providers.gradleProperty("dependencyCheckNvdValidForHours")',
+        "hours == 0 || hours == 24",
         "nvd.validForHours = dependencyCheckNvdValidForHours.get()",
-        "providers.gradleProperty(\"dependencyCheckFailBuildOnCvss\")",
-        "failBuildOnCVSS = dependencyCheckFailBuildOnCvss.get()",
+        "val dependencyCheckPolicyCvssThreshold = 7.0f",
+        "val dependencyCheckPayloadValidationCvssThreshold = 11.0f",
+        "requestedDependencyCheckTasks == listOf("
+        '"dependencyCheckValidateNvd")',
         'tasks.register("verifyDependencyCheckContract")',
         'tasks.named("dependencyCheckUpdate")',
         'tasks.named("dependencyCheckAggregate")',
+        'tasks.register("dependencyCheckValidateNvd")',
     ):
         assert fragment in build
+    for forbidden in (
+        'providers.gradleProperty("dependencyCheckFailBuildOnCvss")',
+        'providers.gradleProperty("nvdApiKey")',
+        'providers.environmentVariable("ORG_GRADLE_PROJECT_nvdApiKey")',
+    ):
+        assert forbidden not in build

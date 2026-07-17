@@ -2,48 +2,29 @@
 set -euo pipefail
 
 if [ -z "${NVD_API_KEY:-}" ]; then
-  echo "::error::Trusted NVD refresh requires the repository NVD_API_KEY secret."
+  echo "::error::Trusted NVD refresh requires its protected environment credential."
   exit 78
 fi
 
 dependency_data_dir="${DEPENDENCY_CHECK_DATA_DIR:-${GRADLE_USER_HOME:-$HOME/.gradle}/dependency-check-data}"
-refresh_marker="$dependency_data_dir/xpj-nvd-refresh-epoch"
+payload_manifest="$dependency_data_dir/xpj-nvd-payload-manifest.json"
+legacy_refresh_marker="$dependency_data_dir/xpj-nvd-refresh-epoch"
+manifest_script="scripts/dependency_check_nvd_manifest.py"
 report_path="build/reports/dependency-check-report.json"
+
+rm -f "$payload_manifest" "$legacy_refresh_marker" "$report_path"
+refresh_started_epoch="$(date -u +%s)"
 
 ./gradlew --no-daemon --max-workers=2 \
   dependencyCheckUpdate -PdependencyCheckNvdValidForHours=0
 
-rm -f "$report_path"
 (
   unset NVD_API_KEY
   ./gradlew --no-daemon --max-workers=2 \
-    dependencyCheckAggregate \
+    dependencyCheckValidateNvd \
     -PdependencyCheckAutoUpdate=false \
-    -PdependencyCheckNvdValidForHours=0 \
-    -PdependencyCheckFailBuildOnCvss=11
+    -PdependencyCheckNvdValidForHours=0
+  python3 "$manifest_script" create "$dependency_data_dir" \
+    --report "$report_path" \
+    --nvd-checked-after-epoch "$refresh_started_epoch"
 )
-"${PYTHON_BIN:-python3}" \
-  scripts/verify_dependency_check_report.py "$report_path"
-
-if [ ! -d "$dependency_data_dir" ]; then
-  echo "::error::OWASP refresh produced no dependency-check data directory."
-  exit 1
-fi
-nvd_payload="$(
-  find "$dependency_data_dir" \
-    -type f \
-    -size +0c \
-    ! -name 'xpj-nvd-refresh-epoch' \
-    ! -name 'xpj-nvd-refresh-epoch.tmp.*' \
-    -print -quit
-)"
-if [ -z "$nvd_payload" ]; then
-  echo "::error::OWASP refresh produced no non-empty NVD payload."
-  exit 1
-fi
-
-marker_temp="${refresh_marker}.tmp.$$"
-trap 'rm -f "$marker_temp"' EXIT
-date -u +%s > "$marker_temp"
-mv -f "$marker_temp" "$refresh_marker"
-trap - EXIT

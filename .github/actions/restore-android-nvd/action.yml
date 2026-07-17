@@ -1,6 +1,12 @@
 name: Restore Android NVD data
 description: Restore the latest trusted Android dependency-check data.
 
+inputs:
+  required:
+    description: Fail when no trusted cache entry exists.
+    required: false
+    default: "false"
+
 outputs:
   cache-key:
     description: Unique key used when a trusted producer publishes refreshed data.
@@ -8,6 +14,15 @@ outputs:
   cache-generation:
     description: Dependency-check data generation accepted by this action.
     value: ${{ steps.cache-key.outputs.generation }}
+  staging-cache-key:
+    description: Isolated key used before a refreshed payload is certified.
+    value: ${{ steps.cache-key.outputs.staging-value }}
+  matched-cache-key:
+    description: Exact trusted cache key selected by the lookup.
+    value: ${{ steps.lookup.outputs.cache-matched-key }}
+  cache-hit:
+    description: Whether the selected trusted cache was restored exactly.
+    value: ${{ steps.restore.outputs.cache-hit }}
 
 runs:
   using: composite
@@ -22,12 +37,45 @@ runs:
         RUN_ATTEMPT: ${{ github.run_attempt }}
       run: python3 "$REPOSITORY_ROOT/scripts/build_android_nvd_cache_key.py"
 
-    - name: Restore OWASP NVD database
-      id: restore
+    - name: Find trusted OWASP NVD database
+      id: lookup
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: ~/.gradle/dependency-check-data
         key: ${{ steps.cache-key.outputs.value }}
+        lookup-only: true
         restore-keys: |
           nvd-${{ runner.os }}-${{ steps.cache-key.outputs.generation }}-${{ steps.cache-key.outputs.date }}-
           nvd-${{ runner.os }}-${{ steps.cache-key.outputs.generation }}-
+
+    - name: Require a trusted OWASP NVD database
+      if: inputs.required == 'true' && steps.lookup.outputs.cache-matched-key == ''
+      shell: bash
+      run: |
+        echo "::error::No certified OWASP NVD cache is available."
+        exit 1
+
+    - name: Clear pre-existing OWASP NVD data
+      if: steps.lookup.outputs.cache-matched-key != ''
+      shell: bash
+      run: rm -rf "${HOME}/.gradle/dependency-check-data"
+
+    - name: Restore exact trusted OWASP NVD database
+      if: steps.lookup.outputs.cache-matched-key != ''
+      id: restore
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ~/.gradle/dependency-check-data
+        key: ${{ steps.lookup.outputs.cache-matched-key }}
+        fail-on-cache-miss: true
+
+    - name: Require the exact trusted cache entry
+      if: steps.lookup.outputs.cache-matched-key != ''
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: |
+        if [ "$CACHE_HIT" != "true" ]; then
+          echo "::error::The selected OWASP NVD cache was not restored exactly."
+          exit 1
+        fi

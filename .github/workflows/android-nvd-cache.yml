@@ -1,22 +1,24 @@
 name: Android NVD cache
 
 on:
+  schedule:
+    - cron: "17 */12 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: android-nvd-cache-${{ github.ref }}
-  cancel-in-progress: true
+  group: android-nvd-writer
+  queue: max
 
 jobs:
-  authorize:
-    name: Authorize Android NVD publication
+  preflight:
+    name: Check Android NVD publication ref
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require the default branch
+      - name: Reject non-default-branch dispatch
         env:
           REQUESTED_REF: ${{ github.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -30,12 +32,14 @@ jobs:
           fi
 
   refresh:
-    name: Refresh Android NVD cache
-    needs: authorize
+    name: Refresh staged Android NVD data
+    needs: preflight
+    environment: android-nvd-producer
     runs-on: ubuntu-latest
     timeout-minutes: 35
     outputs:
       cache-key: ${{ steps.nvd-cache.outputs.cache-key }}
+      staging-cache-key: ${{ steps.nvd-cache.outputs.staging-cache-key }}
     defaults:
       run:
         working-directory: android
@@ -64,24 +68,23 @@ jobs:
           server-url: ${{ env.TICKETBOX_SERVER_URL }}
           worker-count: "2"
 
-      - name: Restore OWASP NVD database
+      - name: Restore trusted OWASP NVD database
         id: nvd-cache
         uses: ./.github/actions/restore-android-nvd
 
       - name: Refresh OWASP NVD database
         env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          NVD_API_KEY: ${{ secrets.ANDROID_NVD_API_KEY }}
         run: timeout -k 1m 25m bash scripts/refresh_dependency_check_nvd.sh
 
-      - name: Save refreshed OWASP NVD database
-        if: ${{ success() }}
+      - name: Save staged OWASP NVD database
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.gradle/dependency-check-data
-          key: ${{ steps.nvd-cache.outputs.cache-key }}
+          key: ${{ steps.nvd-cache.outputs.staging-cache-key }}
 
-  verify:
-    name: Verify published Android NVD cache
+  certify:
+    name: Certify staged Android NVD data
     needs: refresh
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -116,37 +119,70 @@ jobs:
       - name: Clear pre-existing OWASP NVD data
         run: rm -rf "${HOME}/.gradle/dependency-check-data"
 
-      - name: Restore published OWASP NVD database
-        id: published-cache
+      - name: Restore staged OWASP NVD database
+        id: staged-cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.gradle/dependency-check-data
-          key: ${{ needs.refresh.outputs.cache-key }}
+          key: ${{ needs.refresh.outputs.staging-cache-key }}
           fail-on-cache-miss: true
 
-      - name: Require the published cache entry
+      - name: Require the staged cache entry
         env:
-          PUBLISHED_CACHE_HIT: ${{ steps.published-cache.outputs.cache-hit }}
+          STAGED_CACHE_HIT: ${{ steps.staged-cache.outputs.cache-hit }}
         run: |
           set -euo pipefail
-          if [ "$PUBLISHED_CACHE_HIT" != "true" ]; then
-            echo "::error::The refreshed OWASP NVD payload was not published to the cache service."
+          if [ "$STAGED_CACHE_HIT" != "true" ]; then
+            echo "::error::The refreshed OWASP NVD payload was not published to staging."
             exit 1
           fi
 
-      - name: Verify published OWASP NVD payload
+      - name: Certify staged OWASP NVD payload
+        run: bash scripts/certify_dependency_check_nvd_payload.sh
+
+  promote:
+    name: Promote certified Android NVD data
+    needs:
+      - refresh
+      - certify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: android
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Clear pre-existing OWASP NVD data
+        run: rm -rf "${HOME}/.gradle/dependency-check-data"
+
+      - name: Restore certified staged OWASP NVD database
+        id: publication-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: ${{ needs.refresh.outputs.staging-cache-key }}
+          fail-on-cache-miss: true
+
+      - name: Require the certified staged cache entry
+        env:
+          PUBLICATION_CACHE_HIT: ${{ steps.publication-cache.outputs.cache-hit }}
         run: |
           set -euo pipefail
-          marker="${HOME}/.gradle/dependency-check-data/xpj-nvd-refresh-epoch"
-          if [ ! -s "$marker" ] || ! grep -Eq '^[0-9]+$' "$marker"; then
-            echo "::error::Published OWASP NVD cache has no valid refresh marker."
+          if [ "$PUBLICATION_CACHE_HIT" != "true" ]; then
+            echo "::error::The certified OWASP NVD candidate could not be rehydrated."
             exit 1
           fi
-          rm -f build/reports/dependency-check-report.json
-          ./gradlew --no-daemon --max-workers=2 \
-            dependencyCheckAggregate \
-            -PdependencyCheckAutoUpdate=false \
-            -PdependencyCheckNvdValidForHours=0 \
-            -PdependencyCheckFailBuildOnCvss=11
-          python3 scripts/verify_dependency_check_report.py \
-            build/reports/dependency-check-report.json
+
+      - name: Verify publication payload identity
+        run: >-
+          python3 scripts/dependency_check_nvd_manifest.py
+          verify "${HOME}/.gradle/dependency-check-data"
+
+      - name: Publish trusted OWASP NVD database
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: ${{ needs.refresh.outputs.cache-key }}

@@ -3,12 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests._infra.ci_gap import load_ci_gap_audit as _load
-from tests._infra.ci_gap_action_pins import (
-    write_action_pin_mutations,
-    write_action_pin_workflows,
-    write_action_pin_yaml_shapes,
-    write_composite_action_dependency,
-)
 from tests._infra.ci_gap_powershell_ast import (
     assert_ci_gap_uses_complete_powershell_ast,
 )
@@ -18,32 +12,6 @@ def test_github_external_uses_require_exact_commit_sha_across_all_workflows(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    mod = _load()
-    workflows, mutations = write_action_pin_workflows(tmp_path)
-    assert mod._github_external_uses_pin_violations(workflows) == []
-
-    write_composite_action_dependency(workflows, "owner/composite-dependency@main")
-    composite_violations = mod._github_external_uses_pin_violations(workflows)
-    assert any(
-        ".github/actions/local-check/action.yml" in item
-        and "owner/composite-dependency@main" in item
-        for item in composite_violations
-    )
-    write_composite_action_dependency(
-        workflows,
-        f"owner/composite-dependency@{'b' * 40}",
-    )
-
-    write_action_pin_mutations(workflows, mutations)
-    violations = mod._github_external_uses_pin_violations(workflows)
-    assert len(violations) == len(mutations)
-    for uses in mutations.values():
-        assert any(uses in violation for violation in violations)
-
-    write_action_pin_yaml_shapes(workflows)
-    shape_violations = mod._github_external_uses_pin_violations(workflows)
-    assert any("owner/quoted-action@v1.2.3" in item for item in shape_violations)
-    assert any("owner/flow-action@main" in item for item in shape_violations)
     _assert_ci_gap_counts_commands_reachable_on_protected_pull_request(
         tmp_path / "protected-reachable"
     )
