@@ -23,12 +23,21 @@ PACKAGING_SERIAL_RESOURCES = frozenset(
 PACKAGING_RESOURCES = frozenset(
     {PACKAGING_HERMETIC_RESOURCE, *PACKAGING_SERIAL_RESOURCES}
 )
+_PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX = "packaging_resource_"
 _PACKAGING_XDIST_GROUP_BY_RESOURCE = {
     "inno_toolchain": "xpj-packaging-inno-toolchain",
     "postgres_cluster": "xpj-packaging-host-network",
     "windows_fs": "xpj-packaging-windows-fs",
     "windows_host": "xpj-packaging-host-network",
 }
+
+
+def packaging_resource_membership_marker(resource: str) -> str:
+    """Return the generated marker that exposes one exact resource membership."""
+
+    if resource not in PACKAGING_RESOURCES:
+        raise ValueError(f"unknown packaging resource: {resource!r}")
+    return f"{_PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX}{resource}"
 
 PACKAGING_EXPECTED_PARALLEL_COUNT_ENV = (
     "XPJ_PACKAGING_PYTEST_EXPECTED_PARALLEL_COUNT"

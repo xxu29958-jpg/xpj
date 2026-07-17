@@ -9,7 +9,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from scripts import run_packaging_tests
-from scripts.packaging_pytest_contract import PACKAGING_SERIAL_MARKER
+from scripts.packaging_pytest_contract import packaging_resource_membership_marker
 from scripts.pytest_execution_contract import (
     pytest_execution_environment,
     pytest_nodeid_digest,
@@ -99,17 +99,59 @@ def test_packaging_collection_accepts_a_proven_empty_derived_lane(
         next(hook)
 
 
-def test_real_loopback_consumers_stay_in_host_network_lane() -> None:
-    expected = (
-        "packaging/tests/test_backend_bootstrap_contract.py::"
-        "test_maintenance_failure_writes_credential_free_durable_result",
-        "packaging/tests/test_backend_bootstrap_contract.py::"
-        "test_bootstrap_request_bypasses_default_proxy",
-        "packaging/tests/test_legacy_installer_security.py::"
-        "test_bootstrap_http_exception_revalidates_listener_and_fails_closed",
-        "packaging/tests/test_legacy_installer_security.py::"
-        "test_bootstrap_requires_owned_listener_and_sends_utf8_json_bytes",
-    )
+_WINDOWS_HOST_CUTOVER_NODEIDS = (
+    "packaging/tests/test_backend_bootstrap_contract.py::"
+    "test_maintenance_failure_writes_credential_free_durable_result",
+    "packaging/tests/test_backend_bootstrap_contract.py::"
+    "test_owner_handoff_takeover_requires_dead_previous_installer",
+    "packaging/tests/test_backend_bootstrap_contract.py::"
+    "test_bootstrap_request_bypasses_default_proxy",
+    "packaging/tests/test_backend_bootstrap_contract.py::"
+    "test_bootstrap_request_exception_revalidates_listener_and_stops_on_failure",
+    "packaging/tests/test_build_provenance_contract.py::"
+    "test_installer_publish_unit_validator_rejects_contract_mutations",
+    "packaging/tests/test_build_provenance_contract.py::"
+    "test_windows_build_lock_is_bound_to_current_requirement_inputs",
+    "packaging/tests/test_installer_lifecycle_contract.py::"
+    "test_delete_data_requires_completed_receipt_or_bound_retry_intent",
+    "packaging/tests/test_installer_lifecycle_contract.py::"
+    "test_external_lifecycle_lock_holder_keeps_authority_until_release",
+    "packaging/tests/test_installer_lifecycle_contract.py::"
+    "test_data_root_guard_authenticates_holder_and_cleans_ipc_after_owner_death",
+    "packaging/tests/test_installer_lifecycle_contract.py::"
+    "test_holder_entrypoint_independently_rejects_wrong_parent_and_non_authoritative_root",
+    "packaging/tests/test_installer_lifecycle_contract.py::"
+    "test_exact_deletion_defers_data_root_authority_marker_and_retries_only_empty_root",
+    "packaging/tests/test_installer_lifecycle_contract.py::"
+    "test_data_root_guard_lease_blocks_cross_process_root_and_ancestor_rename",
+    "packaging/tests/test_installer_lifecycle_contract.py::"
+    "test_windows_safety_helpers_execute_in_available_powershells",
+    "packaging/tests/test_legacy_installer_security.py::"
+    "test_bootstrap_http_exception_revalidates_listener_and_fails_closed",
+    "packaging/tests/test_legacy_installer_security.py::"
+    "test_bootstrap_requires_owned_listener_and_sends_utf8_json_bytes",
+    "packaging/tests/test_service_lifecycle_contract.py::"
+    "test_tcp_listener_query_handles_native_empty_and_close_in_powershell_5_and_7",
+)
+_POSTGRES_CLUSTER_CUTOVER_NODEIDS = (
+    "packaging/tests/test_local_test_postgres_lifecycle.py::"
+    "test_local_test_postgres_rejects_a_different_cluster_before_provisioning",
+    "packaging/tests/test_local_test_postgres_lifecycle.py::"
+    "test_legacy_trust_cluster_scram_migration_is_reentrant",
+)
+
+
+@pytest.mark.parametrize(
+    ("resource", "expected"),
+    (
+        ("windows_host", _WINDOWS_HOST_CUTOVER_NODEIDS),
+        ("postgres_cluster", _POSTGRES_CLUSTER_CUTOVER_NODEIDS),
+    ),
+)
+def test_high_risk_packaging_cutover_resources_are_exact(
+    resource: str,
+    expected: tuple[str, ...],
+) -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -122,12 +164,14 @@ def test_real_loopback_consumers_stay_in_host_network_lane() -> None:
             "-p",
             "no:cacheprovider",
             "-m",
-            PACKAGING_SERIAL_MARKER,
+            packaging_resource_membership_marker(resource),
             "-o",
             "addopts=",
         ],
         cwd=run_packaging_tests.BACKEND_ROOT,
-        env=pytest_execution_environment(),
+        env=pytest_execution_environment(
+            remove_keys=(run_packaging_tests.STRICT_WINDOWS_RUNTIME_ENV,)
+        ),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -135,13 +179,13 @@ def test_real_loopback_consumers_stay_in_host_network_lane() -> None:
         check=False,
         timeout=60,
     )
-    selected = tuple(
-        line.strip()
+    selected = {
+        line.strip().split("[", 1)[0]
         for line in result.stdout.splitlines()
         if line.startswith("packaging/tests/") and "::" in line
-    )
+    }
     assert result.returncode == 0, result.stdout + result.stderr
-    assert set(selected) == set(expected)
+    assert selected == set(expected)
 
 
 class _RuntimeStack:
@@ -287,3 +331,42 @@ def test_base_marker_contract_drives_snapshot_filters(
         "base_packaging_parallel",
         "base_packaging_serial",
     }
+
+
+def test_pr_delta_main_propagates_membership_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    audit = _load_module(
+        "scripts/_audit_pr_delta_metrics.py",
+        "xpj_pr_delta_exit_probe",
+    )
+    memberships = {
+        "backend_all": (),
+        "backend_parallel": (),
+        "parallel_safe": (),
+        "real_db": (),
+        "stateful_serial": (),
+        "cluster_serial": (),
+        "packaging_all": (),
+        "packaging_parallel": (),
+        "packaging_serial": (),
+    }
+    monkeypatch.setattr(audit, "_count_mutate_token_metrics", dict)
+    monkeypatch.setattr(
+        audit,
+        "_collect_pytest_memberships",
+        lambda *_args, **_kwargs: memberships,
+    )
+    monkeypatch.setattr(
+        audit,
+        "_collect_base_pytest_memberships",
+        lambda _environment: (True, memberships, True, None),
+    )
+    monkeypatch.setattr(audit, "evaluate_pr_delta_metrics", lambda _counts: 0)
+    monkeypatch.setattr(
+        audit,
+        "evaluate_protected_pytest_memberships",
+        lambda *_args, **_kwargs: 1,
+    )
+
+    assert audit.main() == 1

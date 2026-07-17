@@ -140,6 +140,13 @@ def _source_function_facts(tree: ast.Module) -> dict[str, tuple[_FunctionFacts, 
     return {name: tuple(facts) for name, facts in collected.items()}
 
 
+@cache
+def _source_function_facts_for_source(
+    source: str,
+) -> dict[str, tuple[_FunctionFacts, ...]]:
+    return _source_function_facts(ast.parse(source))
+
+
 def required_postgres_marker_for_source(
     source: str,
     *,
@@ -147,8 +154,7 @@ def required_postgres_marker_for_source(
 ) -> str | None:
     """Return the strongest marker required by reachable source."""
 
-    tree = ast.parse(source)
-    functions = _source_function_facts(tree)
+    functions = _source_function_facts_for_source(source)
     pending = list(root_names)
     visited: set[str] = set()
     required: str | None = None

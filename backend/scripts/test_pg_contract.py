@@ -53,6 +53,7 @@ from scripts.test_pg_windows_contract import (
     _abort_disposable_test_process,
     _database_port,
     _windows_temp_directory,
+    disposable_test_file_cleanup,
     start_windows_parent_watchdog,
     windows_test_postgres_consumer_lease,
 )
@@ -231,20 +232,21 @@ def test_postgres_credential_environment(
     }
     scrub_libpq_test_environment(environment)
     passfile = credential_path.parent / f"{_PGPASS_FILE_PREFIX}{os.getpid()}-{uuid4().hex}"
-    try:
-        write_protected_utf8_file(
-            passfile,
-            content,
-            label="Derived test PostgreSQL passfile",
-        )
-        environment["PGPASSFILE"] = str(passfile)
-        environment["PGREQUIREAUTH"] = _REQUIRED_AUTHENTICATION
-        _active_test_pgpassfile(parsed, environment)
-        yield passfile
-    finally:
-        scrub_libpq_test_environment(environment)
-        environment.update(previous)
-        passfile.unlink(missing_ok=True)
+    with disposable_test_file_cleanup(passfile):
+        try:
+            write_protected_utf8_file(
+                passfile,
+                content,
+                label="Derived test PostgreSQL passfile",
+            )
+            environment["PGPASSFILE"] = str(passfile)
+            environment["PGREQUIREAUTH"] = _REQUIRED_AUTHENTICATION
+            _active_test_pgpassfile(parsed, environment)
+            yield passfile
+        finally:
+            scrub_libpq_test_environment(environment)
+            environment.update(previous)
+            passfile.unlink(missing_ok=True)
 
 
 @contextlib.contextmanager

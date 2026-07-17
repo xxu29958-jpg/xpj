@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests._infra import postgres_resource_contract
 from tests._infra.lane_policy import (
     postgres_marker_contract_violation,
     xdist_worker_identity_violation,
@@ -109,6 +110,46 @@ class TestResource:
         )
         == "cluster_serial"
     )
+
+
+def test_postgres_resource_source_facts_are_parsed_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = """
+def _xpj_cached_cluster_helper(connection):
+    connection.execute("DROP ROLE IF EXISTS xpj_cached_role")
+
+def _xpj_cached_benign_helper():
+    return None
+"""
+    original_parse = postgres_resource_contract.ast.parse
+    parse_calls = 0
+
+    def counting_parse(value: str) -> object:
+        nonlocal parse_calls
+        parse_calls += 1
+        return original_parse(value)
+
+    postgres_resource_contract._source_function_facts_for_source.cache_clear()  # noqa: SLF001
+    monkeypatch.setattr(postgres_resource_contract.ast, "parse", counting_parse)
+    try:
+        assert (
+            required_postgres_marker_for_source(
+                source,
+                root_names=("_xpj_cached_cluster_helper",),
+            )
+            == "cluster_serial"
+        )
+        assert (
+            required_postgres_marker_for_source(
+                source,
+                root_names=("_xpj_cached_benign_helper",),
+            )
+            is None
+        )
+        assert parse_calls == 1
+    finally:
+        postgres_resource_contract._source_function_facts_for_source.cache_clear()  # noqa: SLF001
 
 
 def _call_imported_helper(connection: object) -> None:

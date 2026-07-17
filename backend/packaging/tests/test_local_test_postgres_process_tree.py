@@ -356,24 +356,30 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
         "import os, sys, time\n"
         "from pathlib import Path\n"
         "sys.path.insert(0, sys.argv[1])\n"
+        "from scripts.test_pg_protected_file import write_protected_utf8_file\n"
         "from scripts.test_pg_contract import start_windows_parent_watchdog\n"
-        "start_windows_parent_watchdog(label='runtime contract child')\n"
-        "Path(sys.argv[2]).write_text(str(os.getpid()), encoding='ascii')\n"
-        "while True:\n"
-        "    time.sleep(0.1)\n",
+        "from scripts.test_pg_windows_contract import disposable_test_file_cleanup\n"
+        "passfile = Path(sys.argv[3])\n"
+        "with disposable_test_file_cleanup(passfile):\n"
+        "    write_protected_utf8_file(passfile, 'derived-secret\\n', label='Hard-exit passfile')\n"
+        "    start_windows_parent_watchdog(label='runtime contract child')\n"
+        "    Path(sys.argv[2]).write_text(str(os.getpid()), encoding='ascii')\n"
+        "    while True:\n"
+        "        time.sleep(0.1)\n",
         encoding="ascii",
     )
     parent = tmp_path / "watch-parent.py"
     parent.write_text(
         "import os, subprocess, sys, time\n"
         "from pathlib import Path\n"
-        "child = subprocess.Popen([sys.executable, sys.argv[1], sys.argv[2], sys.argv[3]])\n"
-        "Path(sys.argv[4]).write_text(str(os.getpid()), encoding='ascii')\n"
+        "child = subprocess.Popen([sys.executable, sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]])\n"
+        "Path(sys.argv[5]).write_text(str(os.getpid()), encoding='ascii')\n"
         "while True:\n"
         "    time.sleep(0.1)\n",
         encoding="ascii",
     )
     child_ready = tmp_path / "child.ready"
+    derived_passfile = tmp_path / ".xpj-pgpass-parent-death"
     parent_ready = tmp_path / "parent.ready"
     backend_root = Path(__file__).resolve().parents[2]
     launcher = subprocess.Popen(
@@ -383,6 +389,7 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
             str(child),
             str(backend_root),
             str(child_ready),
+            str(derived_passfile),
             str(parent_ready),
         ],
         cwd=backend_root,
@@ -397,6 +404,10 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
             assert launcher.poll() is None
             time.sleep(0.05)
         assert child_ready.exists()
+        assert_protected_authority_file(
+            derived_passfile.resolve(),
+            label="Hard-exit passfile",
+        )
         child_pid = int(child_ready.read_text(encoding="ascii"))
         assert _windows_process_is_running(child_pid)
         parent_pid = int(parent_ready.read_text(encoding="ascii"))
@@ -406,6 +417,7 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
         while _windows_process_is_running(child_pid) and time.monotonic() < deadline:
             time.sleep(0.05)
         assert not _windows_process_is_running(child_pid)
+        assert not derived_passfile.exists()
         child_pid = None
     finally:
         if launcher.poll() is None:

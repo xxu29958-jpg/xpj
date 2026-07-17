@@ -31,6 +31,32 @@ _CONSUMER_LEASE_KIND = "xiaopiaojia-test-postgres-consumer"
 _CONSUMER_LEASE_TIMEOUT_MS = 300_000
 _PARENT_WATCHDOG_LOCK = threading.Lock()
 _PARENT_WATCHDOG_STARTED = False
+_DISPOSABLE_TEST_FILE_LOCK = threading.Lock()
+_DISPOSABLE_TEST_FILES: dict[str, Path] = {}
+
+
+@contextlib.contextmanager
+def disposable_test_file_cleanup(path: Path) -> Iterator[None]:
+    """Register a sensitive file for cleanup before a disposable hard exit."""
+
+    if not path.is_absolute():
+        raise ValueError("Disposable test cleanup path must be absolute")
+    token = uuid4().hex
+    with _DISPOSABLE_TEST_FILE_LOCK:
+        _DISPOSABLE_TEST_FILES[token] = path
+    try:
+        yield
+    finally:
+        with _DISPOSABLE_TEST_FILE_LOCK:
+            _DISPOSABLE_TEST_FILES.pop(token, None)
+
+
+def _remove_disposable_test_files() -> None:
+    with _DISPOSABLE_TEST_FILE_LOCK:
+        paths = tuple(reversed(tuple(_DISPOSABLE_TEST_FILES.values())))
+    for path in paths:
+        with contextlib.suppress(OSError):
+            path.unlink(missing_ok=True)
 
 
 def _windows_kernel32() -> object:
@@ -183,6 +209,7 @@ def _windows_parent_process_handles(kernel32: object) -> list[object]:
 
 def _abort_disposable_test_process(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
+    _remove_disposable_test_files()
     os._exit(_AUTHORITY_LOST_EXIT_CODE)
 
 
