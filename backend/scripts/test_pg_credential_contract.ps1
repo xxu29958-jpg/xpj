@@ -130,7 +130,12 @@ function Remove-XpjTestPostgresPgPassFile {
     ) {
         throw 'Refusing to remove a PostgreSQL passfile outside its protected data directory.'
     }
-    Remove-Item -LiteralPath $fullPath -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $fullPath) {
+        Remove-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    }
+    if (Test-Path -LiteralPath $fullPath) {
+        throw "PostgreSQL passfile deletion did not complete: $fullPath"
+    }
 }
 
 function Remove-XpjTestPostgresAbandonedPgPassFiles {

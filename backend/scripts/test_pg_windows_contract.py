@@ -9,7 +9,6 @@ import os
 import re
 import sys
 import threading
-import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +16,7 @@ from uuid import uuid4
 
 from sqlalchemy.engine import URL, make_url
 
+from scripts.test_pg_disposable_file import _remove_disposable_test_files
 from scripts.test_pg_protected_file import (
     create_protected_shared_lock_file,
     ensure_protected_directory,
@@ -30,51 +30,9 @@ from scripts.test_pg_windows_path_contract import (
 _AUTHORITY_LOST_EXIT_CODE = 3
 _CONSUMER_LEASE_KIND = "xiaopiaojia-test-postgres-consumer"
 _CONSUMER_LEASE_TIMEOUT_MS = 300_000
+_CONSUMER_LEASE_LOCK_OFFSET = 1 << 30
 _PARENT_WATCHDOG_LOCK = threading.Lock()
 _PARENT_WATCHDOG_STARTED = False
-_DISPOSABLE_TEST_FILE_LOCK = threading.Lock()
-_DISPOSABLE_TEST_FILES: dict[str, Path] = {}
-_DISPOSABLE_TEST_FILE_CLEANUP_STARTED = False
-_DISPOSABLE_FILE_DELETE_RETRIES = 20
-_DISPOSABLE_FILE_DELETE_RETRY_SECONDS = 0.01
-
-
-@contextlib.contextmanager
-def disposable_test_file_cleanup(path: Path) -> Iterator[None]:
-    """Register a sensitive file for cleanup before a disposable hard exit."""
-
-    if not path.is_absolute():
-        raise ValueError("Disposable test cleanup path must be absolute")
-    token = uuid4().hex
-    with _DISPOSABLE_TEST_FILE_LOCK:
-        if _DISPOSABLE_TEST_FILE_CLEANUP_STARTED:
-            raise RuntimeError("Disposable test process cleanup has already started")
-        _DISPOSABLE_TEST_FILES[token] = path
-    try:
-        yield
-    finally:
-        with _DISPOSABLE_TEST_FILE_LOCK:
-            _DISPOSABLE_TEST_FILES.pop(token, None)
-
-
-def _remove_disposable_test_files() -> tuple[Path, ...]:
-    global _DISPOSABLE_TEST_FILE_CLEANUP_STARTED
-
-    with _DISPOSABLE_TEST_FILE_LOCK:
-        _DISPOSABLE_TEST_FILE_CLEANUP_STARTED = True
-        paths = tuple(reversed(tuple(_DISPOSABLE_TEST_FILES.values())))
-    failures: list[Path] = []
-    for path in paths:
-        for attempt in range(_DISPOSABLE_FILE_DELETE_RETRIES):
-            try:
-                path.unlink(missing_ok=True)
-                break
-            except OSError:
-                if attempt + 1 == _DISPOSABLE_FILE_DELETE_RETRIES:
-                    failures.append(path)
-                else:
-                    time.sleep(_DISPOSABLE_FILE_DELETE_RETRY_SECONDS)
-    return tuple(failures)
 
 
 def _windows_kernel32() -> object:
@@ -197,7 +155,7 @@ def _windows_process_created_filetime(kernel32: object, handle: object) -> int:
 
 
 def _windows_parent_process_handles(kernel32: object) -> list[object]:
-    current_created = _windows_process_created_filetime(
+    younger_created = _windows_process_created_filetime(
         kernel32,
         kernel32.GetCurrentProcess(),
     )
@@ -214,7 +172,7 @@ def _windows_parent_process_handles(kernel32: object) -> list[object]:
             break
         try:
             parent_created = _windows_process_created_filetime(kernel32, parent_handle)
-            if parent_created >= current_created:
+            if parent_created >= younger_created:
                 raise RuntimeError("Disposable test process parent generation was reused")
         except (OSError, RuntimeError):
             kernel32.CloseHandle(parent_handle)
@@ -222,6 +180,7 @@ def _windows_parent_process_handles(kernel32: object) -> list[object]:
                 kernel32.CloseHandle(opened_handle)
             raise
         parent_handles.append(parent_handle)
+        younger_created = parent_created
     return parent_handles
 
 
@@ -261,13 +220,9 @@ def _watch_windows_parent_handles(
     for parent_handle in parent_handles:
         kernel32.CloseHandle(parent_handle)
     if 0 <= result < len(parent_handles):
-        abort_process(
-            f"Lost {label} ancestor process; aborting this disposable test process."
-        )
+        abort_process(f"Lost {label} ancestor process; aborting this disposable test process.")
         return
-    abort_process(
-        f"Cannot monitor {label} ancestor process; aborting this disposable test process."
-    )
+    abort_process(f"Cannot monitor {label} ancestor process; aborting this disposable test process.")
 
 
 def start_windows_parent_watchdog(
@@ -368,7 +323,7 @@ def _create_consumer_lease_file(
     port: int,
     system_identifier: str,
     instance_id: str,
-) -> tuple[int, Path]:
+) -> tuple[int, Path, int]:
     import msvcrt
 
     lease_path = lease_directory / f"{os.getpid()}-{uuid4().hex}.lease"
@@ -397,10 +352,11 @@ def _create_consumer_lease_file(
                 raise OSError("Could not write the test PostgreSQL consumer lease.")
             remaining = remaining[written:]
         os.fsync(descriptor)
-        os.lseek(descriptor, 0, os.SEEK_SET)
+        lock_offset = _CONSUMER_LEASE_LOCK_OFFSET
+        os.lseek(descriptor, lock_offset, os.SEEK_SET)
         msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
         completed = True
-        return descriptor, lease_path
+        return descriptor, lease_path, lock_offset
     finally:
         if not completed:
             os.close(descriptor)
@@ -425,6 +381,7 @@ def windows_test_postgres_consumer_lease(
     kernel32, lifecycle_handle = _acquire_windows_lifecycle_mutex(port, timeout_ms)
     descriptor: int | None = None
     lease_path: Path | None = None
+    lock_offset: int | None = None
     path_leases = contextlib.ExitStack()
     registered = False
     try:
@@ -443,7 +400,7 @@ def windows_test_postgres_consumer_lease(
             label="Test PostgreSQL consumer lease directory",
         )
         path_leases.enter_context(_windows_directory_path_lease(lease_directory))
-        descriptor, lease_path = _create_consumer_lease_file(
+        descriptor, lease_path, lock_offset = _create_consumer_lease_file(
             lease_directory,
             data_directory=data_directory,
             port=port,
@@ -463,7 +420,9 @@ def windows_test_postgres_consumer_lease(
         import msvcrt
 
         assert descriptor is not None
+        assert lock_offset is not None
         try:
+            os.lseek(descriptor, lock_offset, os.SEEK_SET)
             msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
         finally:
             os.close(descriptor)

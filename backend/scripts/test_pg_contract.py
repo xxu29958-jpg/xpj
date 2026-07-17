@@ -22,6 +22,7 @@ from scripts.test_pg_authority_contract import (
 from scripts.test_pg_client_contract import (
     assert_python_libpq_supports_required_auth,
 )
+from scripts.test_pg_disposable_file import disposable_test_file_cleanup
 from scripts.test_pg_protected_file import (
     assert_protected_authority_file,
     write_protected_utf8_file,
@@ -53,7 +54,6 @@ from scripts.test_pg_windows_contract import (
     _abort_disposable_test_process,
     _database_port,
     _windows_temp_directory,
-    disposable_test_file_cleanup,
     start_windows_parent_watchdog,
     windows_test_postgres_consumer_lease,
 )
@@ -175,10 +175,7 @@ def _expected_pgpass_content(
     host = database_url.host or "localhost"
     port = database_url.port or 5432
     username = database_url.username or ""
-    content = (
-        f"{_pgpass_escape(host)}:{port}:*:{_pgpass_escape(username)}:"
-        f"{_pgpass_escape(credential)}\n"
-    )
+    content = f"{_pgpass_escape(host)}:{port}:*:{_pgpass_escape(username)}:{_pgpass_escape(credential)}\n"
     return credential_path, content
 
 
@@ -199,9 +196,7 @@ def _active_test_pgpassfile(
         database_url,
         environment,
     )
-    if passfile.parent != credential_path.parent or not passfile.name.startswith(
-        _PGPASS_FILE_PREFIX
-    ):
+    if passfile.parent != credential_path.parent or not passfile.name.startswith(_PGPASS_FILE_PREFIX):
         raise RuntimeError("Derived test PostgreSQL passfile is outside its credential authority")
     try:
         actual_content = read_protected_utf8_file(
@@ -226,19 +221,18 @@ def test_postgres_credential_environment(
     parsed = _validate_test_consumer_database_url(database_url)
     credential_path, content = _expected_pgpass_content(parsed, environment)
     previous = {
-        key: value
-        for key, value in environment.items()
-        if key in _LIBPQ_CONNECTION_ENVIRONMENT or key.startswith("PG")
+        key: value for key, value in environment.items() if key in _LIBPQ_CONNECTION_ENVIRONMENT or key.startswith("PG")
     }
     scrub_libpq_test_environment(environment)
     passfile = credential_path.parent / f"{_PGPASS_FILE_PREFIX}{os.getpid()}-{uuid4().hex}"
-    with disposable_test_file_cleanup(passfile):
+    with disposable_test_file_cleanup(passfile) as reservation:
         try:
-            write_protected_utf8_file(
-                passfile,
-                content,
-                label="Derived test PostgreSQL passfile",
-            )
+            with reservation.creation():
+                write_protected_utf8_file(
+                    passfile,
+                    content,
+                    label="Derived test PostgreSQL passfile",
+                )
             environment["PGPASSFILE"] = str(passfile)
             environment["PGREQUIREAUTH"] = _REQUIRED_AUTHENTICATION
             _active_test_pgpassfile(parsed, environment)
@@ -246,7 +240,6 @@ def test_postgres_credential_environment(
         finally:
             scrub_libpq_test_environment(environment)
             environment.update(previous)
-            passfile.unlink(missing_ok=True)
 
 
 @contextlib.contextmanager
@@ -323,9 +316,7 @@ def _assert_parsed_test_cluster_authority(
         ).fetchone()
     if row is None or len(row) != 4:
         raise RuntimeError("Test PostgreSQL cluster did not return an identity record")
-    actual_identifier, actual_data_directory, actual_port, listen_addresses = (
-        str(value) for value in row
-    )
+    actual_identifier, actual_data_directory, actual_port, listen_addresses = (str(value) for value in row)
     if actual_identifier != expected_system_identifier:
         raise RuntimeError("Test PostgreSQL system identifier does not match its authority")
     if int(actual_port) != _database_port(parsed):

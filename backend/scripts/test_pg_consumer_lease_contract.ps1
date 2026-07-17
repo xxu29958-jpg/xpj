@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 
 $script:XpjTestPostgresConsumerLeaseDirectoryName = '.xpj-test-postgres-consumers'
+$script:XpjTestPostgresConsumerLeaseLockOffset = [int64]1073741824
 
 function Get-XpjTestPostgresConsumerLeaseDirectory {
     param([Parameter(Mandatory = $true)][string]$DataDirectory)
@@ -75,14 +76,16 @@ function Enter-XpjTestPostgresConsumerLease {
         $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($payload)
         $stream.Write($bytes, 0, $bytes.Length)
         $stream.Flush($true)
-        $stream.Position = 0
-        $stream.Lock(0, 1)
+        $lockOffset = $script:XpjTestPostgresConsumerLeaseLockOffset
+        $stream.Position = $lockOffset
+        $stream.Lock($lockOffset, 1)
         Assert-XpjTestPostgresProtectedAuthorityFile `
             -Path $leasePath `
             -Label 'Test PostgreSQL consumer lease'
         return [pscustomobject]@{
             Path = $leasePath
             Stream = $stream
+            LockOffset = $lockOffset
             DataPathLease = $dataPathLease
             LeaseDirectoryPathLease = $leaseDirectoryPathLease
         }
@@ -111,7 +114,7 @@ function Exit-XpjTestPostgresConsumerLease {
     param([Parameter(Mandatory = $true)]$Lease)
 
     try {
-        $Lease.Stream.Unlock(0, 1)
+        $Lease.Stream.Unlock([int64]$Lease.LockOffset, 1)
     }
     finally {
         $Lease.Stream.Dispose()
@@ -229,7 +232,8 @@ function Wait-XpjTestPostgresConsumersDrained {
                         throw "Test PostgreSQL consumer lease ACL is invalid: $($leaseFile.FullName)"
                     }
                     try {
-                        $probe.Lock(0, 1)
+                        $probeLockOffset = $script:XpjTestPostgresConsumerLeaseLockOffset
+                        $probe.Lock($probeLockOffset, 1)
                         $probeOwnsLock = $true
                     }
                     catch [System.IO.IOException] {
@@ -252,7 +256,7 @@ function Wait-XpjTestPostgresConsumersDrained {
                 finally {
                     if ($null -ne $probe) {
                         if ($probeOwnsLock) {
-                            $probe.Unlock(0, 1)
+                            $probe.Unlock($probeLockOffset, 1)
                         }
                         $probe.Dispose()
                     }
@@ -269,7 +273,8 @@ function Wait-XpjTestPostgresConsumersDrained {
                 break
             }
             if ([datetime]::UtcNow -ge $deadline) {
-                throw "Timed out waiting for $liveLeases test PostgreSQL consumer lease(s)."
+                $leaseLabel = if ($liveLeases -eq 1) { 'lease' } else { 'leases' }
+                throw "Timed out waiting for $liveLeases test PostgreSQL consumer $leaseLabel."
             }
             Start-Sleep -Milliseconds 100
         }

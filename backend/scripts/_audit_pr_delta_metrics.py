@@ -48,7 +48,6 @@ Run from ``backend/``::
 
 from __future__ import annotations
 
-import importlib.util
 import io
 import os
 import pathlib
@@ -59,7 +58,6 @@ from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
 from tempfile import TemporaryDirectory
-from types import ModuleType
 
 # sys.path bootstrap so sibling scripts + ``app.*`` imports both resolve
 # whether the script is run directly, via release_audit subprocess, or
@@ -100,9 +98,8 @@ from pytest_marker_contract import (  # noqa: E402
     PACKAGING_PARALLEL_MARKER,
     PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
     PACKAGING_SERIAL_MARKER,
-    PYTEST_MARKER_CONTRACT_SCHEMA_VERSION,
-    validated_marker_memberships,
 )
+from pytest_marker_contract_policy import parse_pytest_marker_contract  # noqa: E402
 from pytest_membership_gate import evaluate_protected_pytest_memberships  # noqa: E402
 
 
@@ -245,52 +242,19 @@ def _extract_trusted_backend_snapshot(ref: str, destination: pathlib.Path) -> No
         archive.extractall(destination, members=members, filter="data")
 
 
-def _load_marker_contract_module(path: pathlib.Path) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        f"_xpj_base_{path.stem}",
-        path,
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load base pytest marker contract: {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _marker_contract_value(module: ModuleType, attribute: str) -> str:
-    value = getattr(module, attribute, None)
-    if (
-        not isinstance(value, str)
-        or not value
-        or not value.replace("_", "").isalnum()
-    ):
-        raise RuntimeError(f"base pytest marker contract has invalid {attribute}")
-    return value
-
-
 def _load_base_marker_contract(backend_root: pathlib.Path) -> _PytestMarkerContract:
     contract_path = backend_root / "scripts" / "pytest_marker_contract.py"
     if not contract_path.is_file():
         return _LEGACY_BASE_MARKER_CONTRACT
-    module = _load_marker_contract_module(contract_path)
-    schema_version = getattr(module, "PYTEST_MARKER_CONTRACT_SCHEMA_VERSION", None)
-    if schema_version not in {1, PYTEST_MARKER_CONTRACT_SCHEMA_VERSION}:
-        raise RuntimeError("base pytest marker contract schema is unsupported")
+    literal = parse_pytest_marker_contract(contract_path.read_text(encoding="utf-8-sig"))
     return _PytestMarkerContract(
-        parallel_safe=_marker_contract_value(module, "BACKEND_PARALLEL_SAFE_MARKER"),
-        real_db=_marker_contract_value(module, "BACKEND_REAL_DB_MARKER"),
-        stateful=_marker_contract_value(module, "BACKEND_STATEFUL_MARKER"),
-        cluster=_marker_contract_value(module, "BACKEND_CLUSTER_MARKER"),
-        packaging_parallel=_marker_contract_value(module, "PACKAGING_PARALLEL_MARKER"),
-        packaging_serial=_marker_contract_value(module, "PACKAGING_SERIAL_MARKER"),
-        packaging_resource_memberships=(
-            validated_marker_memberships(
-                getattr(module, "PACKAGING_RESOURCE_MEMBERSHIP_MARKERS", None),
-                attribute="PACKAGING_RESOURCE_MEMBERSHIP_MARKERS",
-            )
-            if schema_version >= 2
-            else None
-        ),
+        parallel_safe=literal.values["BACKEND_PARALLEL_SAFE_MARKER"],
+        real_db=literal.values["BACKEND_REAL_DB_MARKER"],
+        stateful=literal.values["BACKEND_STATEFUL_MARKER"],
+        cluster=literal.values["BACKEND_CLUSTER_MARKER"],
+        packaging_parallel=literal.values["PACKAGING_PARALLEL_MARKER"],
+        packaging_serial=literal.values["PACKAGING_SERIAL_MARKER"],
+        packaging_resource_memberships=literal.packaging_resource_memberships,
     )
 
 
@@ -398,7 +362,14 @@ def _collect_base_pytest_memberships(
             backend_root = snapshot_root / "backend"
             contract = _load_base_marker_contract(backend_root)
             memberships = _collect_pytest_memberships(backend_root, contract)
-    except (OSError, RuntimeError, subprocess.SubprocessError, tarfile.TarError) as exc:
+    except (
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        ValueError,
+        subprocess.SubprocessError,
+        tarfile.TarError,
+    ) as exc:
         return False, {}, base_required, False, f"{selected.ref}: {exc}"
     return (
         True,
@@ -427,25 +398,15 @@ def main() -> int:
         _CURRENT_MARKER_CONTRACT,
     )
     counts["backend_pytest_count"] = len(current_memberships["backend_all"])
-    counts["backend_pytest_parallel_count"] = len(
-        current_memberships["backend_parallel"]
-    )
-    counts["backend_pytest_parallel_safe_count"] = len(
-        current_memberships["parallel_safe"]
-    )
+    counts["backend_pytest_parallel_count"] = len(current_memberships["backend_parallel"])
+    counts["backend_pytest_parallel_safe_count"] = len(current_memberships["parallel_safe"])
     counts["backend_pytest_real_db_count"] = len(current_memberships["real_db"])
-    counts["backend_pytest_real_db_membership_digest"] = _pytest_membership_digest(
-        current_memberships["real_db"]
-    )
-    counts["backend_pytest_stateful_count"] = len(
-        current_memberships["stateful_serial"]
-    )
+    counts["backend_pytest_real_db_membership_digest"] = _pytest_membership_digest(current_memberships["real_db"])
+    counts["backend_pytest_stateful_count"] = len(current_memberships["stateful_serial"])
     counts["backend_pytest_stateful_membership_digest"] = _pytest_membership_digest(
         current_memberships["stateful_serial"]
     )
-    counts["backend_pytest_cluster_count"] = len(
-        current_memberships["cluster_serial"]
-    )
+    counts["backend_pytest_cluster_count"] = len(current_memberships["cluster_serial"])
     counts["backend_pytest_cluster_membership_digest"] = _pytest_membership_digest(
         current_memberships["cluster_serial"]
     )

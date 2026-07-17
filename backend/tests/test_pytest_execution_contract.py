@@ -27,9 +27,7 @@ pytestmark = pytest.mark.parallel_safe
 
 
 def _load_packaging_conftest() -> ModuleType:
-    conftest_path = (
-        run_packaging_tests.BACKEND_ROOT / "packaging" / "tests" / "conftest.py"
-    )
+    conftest_path = run_packaging_tests.BACKEND_ROOT / "packaging" / "tests" / "conftest.py"
     spec = importlib.util.spec_from_file_location(
         "xpj_packaging_conftest_probe",
         conftest_path,
@@ -134,12 +132,8 @@ def test_packaging_runner_clears_filters_and_requires_handshake(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     parallel_snapshot = PytestCollectionSnapshot(())
-    serial_snapshot = PytestCollectionSnapshot(
-        ("packaging/tests/test_installer.py::test_upgrade",)
-    )
-    snapshot = PytestCollectionSnapshot(
-        (*parallel_snapshot.nodeids, *serial_snapshot.nodeids)
-    )
+    serial_snapshot = PytestCollectionSnapshot(("packaging/tests/test_installer.py::test_upgrade",))
+    snapshot = PytestCollectionSnapshot((*parallel_snapshot.nodeids, *serial_snapshot.nodeids))
     observed: dict[str, object] = {}
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k version")
     monkeypatch.setenv("PYTEST_PLUGINS", "ambient_plugin")
@@ -201,15 +195,9 @@ def test_packaging_runner_clears_filters_and_requires_handshake(
 def test_packaging_runner_rejects_success_without_handshake(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    parallel_snapshot = PytestCollectionSnapshot(
-        ("packaging/tests/test_contract.py::test_manifest",)
-    )
-    serial_snapshot = PytestCollectionSnapshot(
-        ("packaging/tests/test_installer.py::test_upgrade",)
-    )
-    snapshot = PytestCollectionSnapshot(
-        (*parallel_snapshot.nodeids, *serial_snapshot.nodeids)
-    )
+    parallel_snapshot = PytestCollectionSnapshot(("packaging/tests/test_contract.py::test_manifest",))
+    serial_snapshot = PytestCollectionSnapshot(("packaging/tests/test_installer.py::test_upgrade",))
+    snapshot = PytestCollectionSnapshot((*parallel_snapshot.nodeids, *serial_snapshot.nodeids))
 
     def collect(*_args, mark_expression: str | None = None, **_kwargs):
         if mark_expression == PACKAGING_PARALLEL_MARKER:
@@ -321,8 +309,7 @@ def test_packaging_collection_rejects_authored_scheduler_markers(
             return self.marker if name == self.marker.name else None
 
     markers = tuple(
-        SimpleNamespace(name=name)
-        for name in (PACKAGING_PARALLEL_MARKER, PACKAGING_SERIAL_MARKER, "xdist_group")
+        SimpleNamespace(name=name) for name in (PACKAGING_PARALLEL_MARKER, PACKAGING_SERIAL_MARKER, "xdist_group")
     )
     for marker in markers:
         hook = module.pytest_collection_modifyitems([AuthoredItem(marker)])
@@ -331,9 +318,7 @@ def test_packaging_collection_rejects_authored_scheduler_markers(
 
 
 def _write_packaging_loadgroup_probe(probe_root: Path) -> Path:
-    production_conftest = (
-        run_packaging_tests.BACKEND_ROOT / "packaging" / "tests" / "conftest.py"
-    )
+    production_conftest = run_packaging_tests.BACKEND_ROOT / "packaging" / "tests" / "conftest.py"
     (probe_root / "conftest.py").write_text(
         f"""
 import importlib.util
@@ -382,9 +367,7 @@ def _run_packaging_loadgroup_probe(
     test_file: Path,
     probe_root: Path,
 ) -> subprocess.CompletedProcess[str]:
-    environment = pytest_execution_environment(
-        remove_keys=(run_packaging_tests.STRICT_WINDOWS_RUNTIME_ENV,)
-    )
+    environment = pytest_execution_environment(remove_keys=(run_packaging_tests.STRICT_WINDOWS_RUNTIME_ENV,))
     environment["XPJ_LOADGROUP_PROBE"] = str(probe_root)
     command = [
         sys.executable,
@@ -422,18 +405,18 @@ def _run_packaging_loadgroup_probe(
 def test_packaging_loadgroup_serializes_shared_network_resources(
     tmp_path: Path,
 ) -> None:
-    assert packaging_xdist_group("windows_host") == packaging_xdist_group(
-        "postgres_cluster"
-    )
+    assert packaging_xdist_group("windows_host") == packaging_xdist_group("postgres_cluster")
     probe_root = tmp_path / "loadgroup-probe"
     probe_root.mkdir()
     test_file = _write_packaging_loadgroup_probe(probe_root)
     completed = _run_packaging_loadgroup_probe(test_file, probe_root)
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
+    command = list(completed.args)
+    rootdir_index = command.index("--rootdir")
+    assert command[rootdir_index + 1] == str(probe_root)
     worker_ids = {
-        (probe_root / name).read_text(encoding="utf-8")
-        for name in ("windows-host.txt", "postgres-cluster.txt")
+        (probe_root / name).read_text(encoding="utf-8") for name in ("windows-host.txt", "postgres-cluster.txt")
     }
     assert len(worker_ids) == 1
     assert next(iter(worker_ids)).startswith("gw")

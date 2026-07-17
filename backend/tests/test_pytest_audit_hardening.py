@@ -139,16 +139,13 @@ def test_packaging_collection_rejects_a_late_rogue_xdist_group() -> None:
 _WINDOWS_HOST_CUTOVER_NODEIDS = (
     "packaging/tests/test_backend_bootstrap_contract.py::"
     "test_maintenance_failure_writes_credential_free_durable_result",
-    "packaging/tests/test_backend_bootstrap_contract.py::"
-    "test_owner_handoff_takeover_requires_dead_previous_installer",
-    "packaging/tests/test_backend_bootstrap_contract.py::"
-    "test_bootstrap_request_bypasses_default_proxy",
+    "packaging/tests/test_backend_bootstrap_contract.py::test_owner_handoff_takeover_requires_dead_previous_installer",
+    "packaging/tests/test_backend_bootstrap_contract.py::test_bootstrap_request_bypasses_default_proxy",
     "packaging/tests/test_backend_bootstrap_contract.py::"
     "test_bootstrap_request_exception_revalidates_listener_and_stops_on_failure",
     "packaging/tests/test_build_provenance_contract.py::"
     "test_installer_publish_unit_validator_rejects_contract_mutations",
-    "packaging/tests/test_build_provenance_contract.py::"
-    "test_windows_build_lock_is_bound_to_current_requirement_inputs",
+    "packaging/tests/test_build_provenance_contract.py::test_windows_build_lock_is_bound_to_current_requirement_inputs",
     "packaging/tests/test_installer_lifecycle_contract.py::"
     "test_delete_data_requires_completed_receipt_or_bound_retry_intent",
     "packaging/tests/test_installer_lifecycle_contract.py::"
@@ -208,9 +205,7 @@ def test_high_risk_packaging_cutover_resources_are_exact(
             "addopts=",
         ],
         cwd=run_packaging_tests.BACKEND_ROOT,
-        env=pytest_execution_environment(
-            remove_keys=(run_packaging_tests.STRICT_WINDOWS_RUNTIME_ENV,)
-        ),
+        env=pytest_execution_environment(remove_keys=(run_packaging_tests.STRICT_WINDOWS_RUNTIME_ENV,)),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -219,9 +214,7 @@ def test_high_risk_packaging_cutover_resources_are_exact(
         timeout=60,
     )
     selected = {
-        line.strip()
-        for line in result.stdout.splitlines()
-        if line.startswith("packaging/tests/") and "::" in line
+        line.strip() for line in result.stdout.splitlines() if line.startswith("packaging/tests/") and "::" in line
     }
     assert result.returncode == 0, result.stdout + result.stderr
     assert selected == set(expected)
@@ -334,6 +327,43 @@ def _write_base_marker_contract(backend_root: Path) -> None:
     )
 
 
+def test_base_marker_contract_is_read_without_executing_source(tmp_path: Path) -> None:
+    backend_root = tmp_path / "backend"
+    scripts = backend_root / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "pytest_marker_contract.py").write_text(
+        "\n".join(
+            (
+                "PYTEST_MARKER_CONTRACT_SCHEMA_VERSION = 2",
+                'BACKEND_PARALLEL_SAFE_MARKER = "base_parallel_safe"',
+                'BACKEND_REAL_DB_MARKER = "base_real_db"',
+                'BACKEND_STATEFUL_MARKER = "base_stateful"',
+                'BACKEND_CLUSTER_MARKER = "base_cluster"',
+                'PACKAGING_PARALLEL_MARKER = "base_packaging_parallel"',
+                'PACKAGING_SERIAL_MARKER = "base_packaging_serial"',
+                "PACKAGING_RESOURCE_MEMBERSHIP_MARKERS = (",
+                "    'base_resource_hermetic',",
+                "    'base_resource_windows_host',",
+                ")",
+                "raise RuntimeError('historical marker contract executed')",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    audit = _load_module(
+        "scripts/_audit_pr_delta_metrics.py",
+        "xpj_literal_marker_contract_probe",
+    )
+    contract = audit._load_base_marker_contract(backend_root)
+
+    assert contract.parallel_safe == "base_parallel_safe"
+    assert contract.packaging_resource_memberships == (
+        "base_resource_hermetic",
+        "base_resource_windows_host",
+    )
+
+
 def test_base_marker_contract_drives_snapshot_filters(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -360,7 +390,8 @@ def test_base_marker_contract_drives_snapshot_filters(
         else:
             nodeids = (
                 (packaging_nodeid,)
-                if mark_expression in (
+                if mark_expression
+                in (
                     None,
                     "base_packaging_serial",
                     "packaging_resource_inno_toolchain",

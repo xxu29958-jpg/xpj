@@ -26,13 +26,22 @@ import os
 import subprocess
 from pathlib import Path
 
-from adr_contract_git import has_auditable_ci_context, select_ratchet_base
-from strict_baseline_policy import (
-    StrictBaselinePolicy as _StrictBaselinePolicy,
-)
-from strict_baseline_policy import (
-    parse_strict_baseline_policy as _parse_base_strict_policy,
-)
+if __package__:
+    from .adr_contract_git import has_auditable_ci_context, select_ratchet_base
+    from .strict_baseline_policy import (
+        StrictBaselinePolicy as _StrictBaselinePolicy,
+    )
+    from .strict_baseline_policy import (
+        parse_strict_baseline_policy as _parse_base_strict_policy,
+    )
+else:
+    from adr_contract_git import has_auditable_ci_context, select_ratchet_base
+    from strict_baseline_policy import (
+        StrictBaselinePolicy as _StrictBaselinePolicy,
+    )
+    from strict_baseline_policy import (
+        parse_strict_baseline_policy as _parse_base_strict_policy,
+    )
 
 DebtCounts = dict[str, int]
 
@@ -144,9 +153,9 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2695,
-    "backend_pytest_parallel_count": 2633,
-    "backend_pytest_parallel_safe_count": 97,
+    "backend_pytest_count": 2702,
+    "backend_pytest_parallel_count": 2640,
+    "backend_pytest_parallel_safe_count": 104,
     "backend_pytest_real_db_count": 150,
     "backend_pytest_real_db_membership_digest":
         47_554_044_499_875_252_747_688_535_530_001_338_751_707_817_381_612_743_212_365_202_433_320_420_233_908,
@@ -156,7 +165,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "backend_pytest_cluster_count": 7,
     "backend_pytest_cluster_membership_digest":
         20_986_048_875_972_673_385_075_257_154_712_410_674_609_335_780_934_224_221_339_523_405_367_512_423_631,
-    "installer_pytest_count": 126,  # Includes lifecycle authority, protected-file ACL, and maintenance contracts.
+    # Lifecycle authority, credential cleanup, ACL, and maintenance contracts.
+    "installer_pytest_count": 127,
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane
@@ -283,9 +293,7 @@ def _compute_ratchet_findings(
             bootstrapped.append(key)
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
-        adr_0049_exempt = key == "mutate_token_exempted" and (
-            base_val, current_val
-        ) == _ADR_0049_EXEMPTED_GRANDFATHER
+        adr_0049_exempt = key == "mutate_token_exempted" and (base_val, current_val) == _ADR_0049_EXEMPTED_GRANDFATHER
         if key in BASELINE_RATCHET_UP and current_val < base_val:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
@@ -307,6 +315,21 @@ def _compute_ratchet_policy_findings(
     base_policy: _StrictBaselinePolicy | None,
 ) -> list[str]:
     violations: list[str] = []
+    try:
+        source_policy = _parse_base_strict_policy(
+            Path(__file__).read_text(encoding="utf-8")
+        )
+    except (OSError, SyntaxError, ValueError) as exc:
+        violations.append(f"current gate source policy is malformed: {exc}")
+    else:
+        runtime_policy = _StrictBaselinePolicy(
+            dict(STRICT_EQUALITY_BASELINE),
+            BASELINE_RATCHET_UP,
+            BASELINE_RATCHET_DOWN,
+            True,
+        )
+        if source_policy != runtime_policy:
+            violations.append("current gate source policy differs from runtime authority")
     overlap = BASELINE_RATCHET_UP & BASELINE_RATCHET_DOWN
     if overlap:
         violations.append(
@@ -442,19 +465,13 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     missing, mismatches, extras = _compute_strict_equality_findings(counts)
 
     base_readable, base_policy = _read_base_strict_policy()
-    base_unreadable_but_required = (
-        not base_readable and _strict_baseline_base_is_required()
-    )
+    base_unreadable_but_required = not base_readable and _strict_baseline_base_is_required()
     bootstrapped: list[str] = []
     movement_violations: list[str] = []
     removed_keys: list[str] = []
     if base_readable:
-        bootstrapped, movement_violations, removed_keys = _compute_ratchet_findings(
-            base_policy.baseline
-        )
-    policy_violations = _compute_ratchet_policy_findings(
-        base_policy if base_readable else None
-    )
+        bootstrapped, movement_violations, removed_keys = _compute_ratchet_findings(base_policy.baseline)
+    policy_violations = _compute_ratchet_policy_findings(base_policy if base_readable else None)
 
     print("== Gate. ADR-0038 PR-Δ verification (strict-equality + ratchet) ==")
     _print_strict_equality_failures(counts, missing, mismatches, extras)
@@ -467,7 +484,9 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     _print_info_lines(base_readable, bootstrapped)
 
     fail = bool(
-        missing or mismatches or extras
+        missing
+        or mismatches
+        or extras
         or movement_violations
         or removed_keys
         or policy_violations

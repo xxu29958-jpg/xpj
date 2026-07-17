@@ -305,14 +305,15 @@ public sealed partial class XpjTestProcessJob : IDisposable
                     throw new IOException(
                         "PostgreSQL process was not atomically assigned to its lifecycle job.");
                 }
-                startedProcessHandle = process.Process;
-                startedProcessId = checked((int)process.ProcessId);
+                int processId = checked((int)process.ProcessId);
                 if (standardInput != null)
                 {
                     WriteStandardInput(stdinWriteHandle, standardInput);
                     CloseIfValid(stdinWriteHandle);
                     stdinWriteHandle = IntPtr.Zero;
                 }
+                startedProcessHandle = process.Process;
+                startedProcessId = processId;
                 retainedProcessHandle = true;
                 return startedProcessId;
             }

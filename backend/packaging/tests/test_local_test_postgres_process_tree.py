@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import contextlib
 import ctypes
 import json
-import os
 import subprocess
 import sys
 import time
@@ -13,7 +11,6 @@ import pytest
 from _local_test_postgres_runtime import (
     TEST_POSTGRES_CONTRACT,
     _free_local_port,
-    _windows_process_is_running,
 )
 from _powershell_contract import powershell_contract_engines
 
@@ -200,7 +197,14 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
         "$targetPid = Start-XpjTestPostgresProtectedProcess -Job $job "
         "-FilePath $Python -ArgumentList @($Child,$PidPath,$HeartbeatPath) "
         "-StdoutPath $StdoutPath -StderrPath $StderrPath\n"
-        "[IO.File]::WriteAllText($ReadyPath,[string]$targetPid)\n"
+        "$target = Get-Process -Id $targetPid -ErrorAction Stop\n"
+        "try { $created = $target.StartTime.ToUniversalTime().ToFileTimeUtc() } "
+        "finally { $target.Dispose() }\n"
+        "$readyTemp = $ReadyPath + '.' + $PID + '.tmp'\n"
+        "$readyPayload = @{ pid = $targetPid; created = $created } "
+        "| ConvertTo-Json -Compress\n"
+        "[IO.File]::WriteAllText($readyTemp,$readyPayload,[Text.Encoding]::ASCII)\n"
+        "[IO.File]::Move($readyTemp,$ReadyPath)\n"
         "while ($true) { Start-Sleep -Seconds 1 }\n",
         encoding="ascii",
     )
@@ -374,34 +378,35 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
             encoding="utf-8",
             errors="replace",
         )
-        hard_child_pid: int | None = None
+        hard_kernel32: object | None = None
+        hard_child_handle: object | None = None
         try:
             deadline = time.monotonic() + 10
             while not hard_ready_path.exists() and time.monotonic() < deadline:
                 assert launcher.poll() is None, launcher.communicate(timeout=2)[0]
                 time.sleep(0.05)
             assert hard_ready_path.exists()
-            hard_child_pid = int(hard_ready_path.read_text(encoding="ascii"))
-            assert _windows_process_is_running(hard_child_pid)
+            hard_ready = json.loads(hard_ready_path.read_text(encoding="ascii"))
+            hard_kernel32, hard_child_handle = _open_exact_windows_process(
+                int(hard_ready["pid"]),
+                int(hard_ready["created"]),
+            )
+            assert _windows_process_handle_is_running(hard_kernel32, hard_child_handle)
             launcher.kill()
             launcher.communicate(timeout=10)
-            deadline = time.monotonic() + 10
-            while _windows_process_is_running(hard_child_pid) and time.monotonic() < deadline:
-                time.sleep(0.05)
-            assert not _windows_process_is_running(hard_child_pid)
+            assert hard_kernel32.WaitForSingleObject(hard_child_handle, 10_000) == 0
             for output_path in (hard_stdout_path, hard_stderr_path):
                 assert_protected_authority_file(
                     output_path.resolve(),
                     label="Hard-death PostgreSQL process output",
                 )
-            hard_child_pid = None
         finally:
             if launcher.poll() is None:
                 launcher.kill()
                 launcher.communicate(timeout=10)
-            if hard_child_pid is not None:
-                with contextlib.suppress(OSError):
-                    os.kill(hard_child_pid, 15)
+            if hard_kernel32 is not None and hard_child_handle is not None:
+                _terminate_exact_windows_process(hard_kernel32, hard_child_handle)
+                hard_kernel32.CloseHandle(hard_child_handle)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows process identity")
@@ -437,10 +442,12 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
         "        )\n"
         "        start_windows_parent_watchdog(label='runtime contract child')\n"
         "        sys.stderr.close()\n"
-        "        ready.write_text(\n"
-        "            json.dumps({'pid': os.getpid(), 'created': created, 'passfile': str(passfile)}),\n"
-        "            encoding='utf-8',\n"
+        "        payload = json.dumps(\n"
+        "            {'pid': os.getpid(), 'created': created, 'passfile': str(passfile)}\n"
         "        )\n"
+        "        ready_temp = ready.with_name(f'.{ready.name}.{os.getpid()}.tmp')\n"
+        "        ready_temp.write_text(payload, encoding='utf-8')\n"
+        "        os.replace(ready_temp, ready)\n"
         "        while True:\n"
         "            time.sleep(0.1)\n"
         "    finally:\n"

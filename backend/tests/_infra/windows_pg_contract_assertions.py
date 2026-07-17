@@ -65,9 +65,7 @@ def _assert_postgres_process_contract(contracts: dict[str, str]) -> None:
     assert "[XpjTestDirectoryMoveHandle]::OpenIdentity($DataDirectory)" in deletion
     assert "$directoryMove.RenameTo($tombstone)" in deletion
     assert "ExpectedDirectoryIdentity" in deletion
-    assert "Assert-XpjTestPostgresQuiescent" in deletion[
-        deletion.index("if (Test-Path -LiteralPath $tombstone)") :
-    ]
+    assert "Assert-XpjTestPostgresQuiescent" in deletion[deletion.index("if (Test-Path -LiteralPath $tombstone)") :]
     assert "Invoke-XpjTestPostgresBoundedProcess" in cluster
     assert "WaitForStartedProcess($TimeoutSeconds * 1000)" in process
     assert "XpjTestProcessJob" in process
@@ -85,6 +83,9 @@ def _assert_postgres_process_contract(contracts: dict[str, str]) -> None:
     assert "Stop-Process -Id $targetProcessId" not in process
     assert "Get-Process -Id ([int]$Transaction.TargetProcessId)" not in process
     assert "CreateProcess" in job
+    assert job.index("WriteStandardInput(stdinWriteHandle, standardInput);") < job.index(
+        "startedProcessHandle = process.Process;"
+    )
     assert "Get-CimInstance -ClassName Win32_Process" not in staging
     assert "statement_timeout=$statementTimeoutMs" in cluster
     assert "XPJ_TEST_POSTGRES_ACTIVE_CONSUMERS" in cluster
@@ -203,9 +204,7 @@ def _assert_script_contract(project_root: Path) -> None:
                 "test_pg_process_native.cs",
             )
         ),
-        "protected_file": (scripts / "test_pg_protected_file.cs").read_text(
-            encoding="utf-8"
-        ),
+        "protected_file": (scripts / "test_pg_protected_file.cs").read_text(encoding="utf-8"),
         "protected_python": "\n".join(
             (scripts / name).read_text(encoding="utf-8")
             for name in (
@@ -222,16 +221,13 @@ def _assert_script_contract(project_root: Path) -> None:
             )
         ),
         "authentication": "\n".join(
-            (scripts / name).read_text(encoding="utf-8-sig")
-            for name in authentication_modules
+            (scripts / name).read_text(encoding="utf-8-sig") for name in authentication_modules
         ),
     }
     cluster_entrypoint = (scripts / "test_pg_cluster_contract.ps1").read_text(encoding="utf-8-sig")
     for name in cluster_modules[1:]:
         assert name in cluster_entrypoint
-    assert authentication_modules[1] in (scripts / authentication_modules[0]).read_text(
-        encoding="utf-8-sig"
-    )
+    assert authentication_modules[1] in (scripts / authentication_modules[0]).read_text(encoding="utf-8-sig")
     _assert_postgres_binary_discovery(project_root)
     _assert_postgres_process_contract(contracts)
     _assert_authentication_contract(contracts)
