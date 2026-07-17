@@ -174,7 +174,7 @@ def test_backend_pytest_count_cannot_drop_with_actuals_and_baseline(monkeypatch)
         assert f"base={base_value}, current={current_value}" in violations[0]
 
 
-def test_pytest_counter_strips_ambient_collection_filters(monkeypatch, tmp_path: Path) -> None:
+def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("_audit_pr_delta_metrics"))
     captured: list[tuple[list[str], dict[str, str]]] = []
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k owner")
@@ -221,38 +221,6 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch, tmp_path:
         assert "PYTHONPATH" not in environment
         assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
 
-    legacy_root = tmp_path / "legacy-backend"
-    (legacy_root / "packaging" / "tests").mkdir(parents=True)
-    packaging_nodeid = "packaging/tests/test_old.py::test_old"
-    contract_enabled = False
-
-    def collect_packaging(
-        *_args: object,
-        mark_expression: str | None = None,
-        **_kwargs: object,
-    ) -> tuple[int, tuple[str, ...]]:
-        if mark_expression is None:
-            return 1, (packaging_nodeid,)
-        if contract_enabled and mark_expression == mod.PACKAGING_SERIAL_MARKER:
-            return 1, (packaging_nodeid,)
-        return 0, ()
-
-    monkeypatch.setattr(mod, "_collect_pytest_tests", collect_packaging)
-    assert mod._collect_packaging_memberships(legacy_root) == {
-        "packaging_all": (packaging_nodeid,),
-        "packaging_parallel": (),
-        "packaging_serial": (),
-    }
-    contract_enabled = True
-    (legacy_root / "packaging" / "tests" / "conftest.py").write_text(
-        "from scripts.packaging_pytest_contract import PACKAGING_RESOURCE_MARKER\n",
-        encoding="utf-8",
-    )
-    assert mod._collect_packaging_memberships(legacy_root) == {
-        "packaging_all": (packaging_nodeid,),
-        "packaging_parallel": (),
-        "packaging_serial": (packaging_nodeid,),
-    }
     _assert_protected_pytest_membership_gate()
 
 

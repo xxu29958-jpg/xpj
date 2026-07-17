@@ -48,6 +48,7 @@ Run from ``backend/``::
 
 from __future__ import annotations
 
+import importlib.util
 import io
 import os
 import pathlib
@@ -56,7 +57,9 @@ import sys
 import tarfile
 from collections import Counter
 from collections.abc import Mapping
+from dataclasses import dataclass
 from tempfile import TemporaryDirectory
+from types import ModuleType
 
 # sys.path bootstrap so sibling scripts + ``app.*`` imports both resolve
 # whether the script is run directly, via release_audit subprocess, or
@@ -85,10 +88,6 @@ from adr_contract_git import (  # noqa: E402
     select_ratchet_base,
 )
 from codebase_audit_gate import evaluate_pr_delta_metrics  # noqa: E402
-from packaging_pytest_contract import (  # noqa: E402
-    PACKAGING_PARALLEL_MARKER,
-    PACKAGING_SERIAL_MARKER,
-)
 from pytest_execution_contract import (  # noqa: E402
     collect_pytest_snapshot,
     parse_pytest_collection,
@@ -96,7 +95,48 @@ from pytest_execution_contract import (  # noqa: E402
     pytest_execution_environment,
     pytest_nodeid_digest,
 )
+from pytest_marker_contract import (  # noqa: E402
+    BACKEND_CLUSTER_MARKER,
+    BACKEND_PARALLEL_SAFE_MARKER,
+    BACKEND_REAL_DB_MARKER,
+    BACKEND_STATEFUL_MARKER,
+    PACKAGING_PARALLEL_MARKER,
+    PACKAGING_SERIAL_MARKER,
+    PYTEST_MARKER_CONTRACT_SCHEMA_VERSION,
+)
 from pytest_membership_gate import evaluate_protected_pytest_memberships  # noqa: E402
+
+
+@dataclass(frozen=True)
+class _PytestMarkerContract:
+    parallel_safe: str
+    real_db: str
+    stateful: str
+    cluster: str
+    packaging_parallel: str | None
+    packaging_serial: str | None
+
+    @property
+    def backend_parallel_expression(self) -> str:
+        return f"not {self.stateful}"
+
+
+_CURRENT_MARKER_CONTRACT = _PytestMarkerContract(
+    parallel_safe=BACKEND_PARALLEL_SAFE_MARKER,
+    real_db=BACKEND_REAL_DB_MARKER,
+    stateful=BACKEND_STATEFUL_MARKER,
+    cluster=BACKEND_CLUSTER_MARKER,
+    packaging_parallel=PACKAGING_PARALLEL_MARKER,
+    packaging_serial=PACKAGING_SERIAL_MARKER,
+)
+_LEGACY_BASE_MARKER_CONTRACT = _PytestMarkerContract(
+    parallel_safe="parallel_safe",
+    real_db="real_db",
+    stateful="stateful_serial",
+    cluster="cluster_serial",
+    packaging_parallel=None,
+    packaging_serial=None,
+)
 
 
 def _count_mutate_token_metrics() -> dict[str, int]:
@@ -221,27 +261,128 @@ def _extract_trusted_backend_snapshot(ref: str, destination: pathlib.Path) -> No
         archive.extractall(destination, members=members, filter="data")
 
 
+def _load_marker_contract_module(path: pathlib.Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        f"_xpj_base_{path.stem}",
+        path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load base pytest marker contract: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _marker_contract_value(module: ModuleType, attribute: str) -> str:
+    value = getattr(module, attribute, None)
+    if (
+        not isinstance(value, str)
+        or not value
+        or not value.replace("_", "").isalnum()
+    ):
+        raise RuntimeError(f"base pytest marker contract has invalid {attribute}")
+    return value
+
+
+def _load_base_marker_contract(backend_root: pathlib.Path) -> _PytestMarkerContract:
+    contract_path = backend_root / "scripts" / "pytest_marker_contract.py"
+    if not contract_path.is_file():
+        return _LEGACY_BASE_MARKER_CONTRACT
+    module = _load_marker_contract_module(contract_path)
+    if (
+        getattr(module, "PYTEST_MARKER_CONTRACT_SCHEMA_VERSION", None)
+        != PYTEST_MARKER_CONTRACT_SCHEMA_VERSION
+    ):
+        raise RuntimeError("base pytest marker contract schema is unsupported")
+    return _PytestMarkerContract(
+        parallel_safe=_marker_contract_value(module, "BACKEND_PARALLEL_SAFE_MARKER"),
+        real_db=_marker_contract_value(module, "BACKEND_REAL_DB_MARKER"),
+        stateful=_marker_contract_value(module, "BACKEND_STATEFUL_MARKER"),
+        cluster=_marker_contract_value(module, "BACKEND_CLUSTER_MARKER"),
+        packaging_parallel=_marker_contract_value(module, "PACKAGING_PARALLEL_MARKER"),
+        packaging_serial=_marker_contract_value(module, "PACKAGING_SERIAL_MARKER"),
+    )
+
+
+def _collect_backend_memberships(
+    backend_root: pathlib.Path,
+    contract: _PytestMarkerContract,
+) -> dict[str, tuple[str, ...]]:
+    return {
+        "backend_all": _collect_pytest_tests(
+            "tests",
+            backend_root=backend_root,
+        )[1],
+        "backend_parallel": _collect_pytest_tests(
+            "tests",
+            mark_expression=contract.backend_parallel_expression,
+            backend_root=backend_root,
+        )[1],
+        "parallel_safe": _collect_pytest_tests(
+            "tests",
+            mark_expression=contract.parallel_safe,
+            backend_root=backend_root,
+            allow_empty=True,
+        )[1],
+        "real_db": _collect_pytest_tests(
+            "tests",
+            mark_expression=contract.real_db,
+            backend_root=backend_root,
+            allow_empty=True,
+        )[1],
+        "stateful_serial": _collect_pytest_tests(
+            "tests",
+            mark_expression=contract.stateful,
+            backend_root=backend_root,
+            allow_empty=True,
+        )[1],
+        "cluster_serial": _collect_pytest_tests(
+            "tests",
+            mark_expression=contract.cluster,
+            backend_root=backend_root,
+            allow_empty=True,
+        )[1],
+    }
+
+
 def _collect_packaging_memberships(
     backend_root: pathlib.Path,
+    contract: _PytestMarkerContract,
 ) -> dict[str, tuple[str, ...]]:
     complete = _collect_pytest_tests(
         "packaging/tests",
         backend_root=backend_root,
     )[1]
+    if contract.packaging_parallel is None or contract.packaging_serial is None:
+        return {
+            "packaging_all": complete,
+            "packaging_parallel": (),
+            "packaging_serial": (),
+        }
     return {
         "packaging_all": complete,
         "packaging_parallel": _collect_pytest_tests(
             "packaging/tests",
-            mark_expression=PACKAGING_PARALLEL_MARKER,
+            mark_expression=contract.packaging_parallel,
             backend_root=backend_root,
             allow_empty=True,
         )[1],
         "packaging_serial": _collect_pytest_tests(
             "packaging/tests",
-            mark_expression=PACKAGING_SERIAL_MARKER,
+            mark_expression=contract.packaging_serial,
             backend_root=backend_root,
             allow_empty=True,
         )[1],
+    }
+
+
+def _collect_pytest_memberships(
+    backend_root: pathlib.Path,
+    contract: _PytestMarkerContract,
+) -> dict[str, tuple[str, ...]]:
+    return {
+        **_collect_backend_memberships(backend_root, contract),
+        **_collect_packaging_memberships(backend_root, contract),
     }
 
 
@@ -258,42 +399,8 @@ def _collect_base_pytest_memberships(
             snapshot_root = pathlib.Path(temporary)
             _extract_trusted_backend_snapshot(selected.commit, snapshot_root)
             backend_root = snapshot_root / "backend"
-            memberships = {
-                "backend_all": _collect_pytest_tests(
-                    "tests",
-                    backend_root=backend_root,
-                )[1],
-                "backend_parallel": _collect_pytest_tests(
-                    "tests",
-                    mark_expression="not stateful_serial",
-                    backend_root=backend_root,
-                )[1],
-                "parallel_safe": _collect_pytest_tests(
-                    "tests",
-                    mark_expression="parallel_safe",
-                    backend_root=backend_root,
-                    allow_empty=True,
-                )[1],
-                "real_db": _collect_pytest_tests(
-                    "tests",
-                    mark_expression="real_db",
-                    backend_root=backend_root,
-                    allow_empty=True,
-                )[1],
-                "stateful_serial": _collect_pytest_tests(
-                    "tests",
-                    mark_expression="stateful_serial",
-                    backend_root=backend_root,
-                    allow_empty=True,
-                )[1],
-                "cluster_serial": _collect_pytest_tests(
-                    "tests",
-                    mark_expression="cluster_serial",
-                    backend_root=backend_root,
-                    allow_empty=True,
-                )[1],
-                **_collect_packaging_memberships(backend_root),
-            }
+            contract = _load_base_marker_contract(backend_root)
+            memberships = _collect_pytest_memberships(backend_root, contract)
     except (OSError, RuntimeError, subprocess.SubprocessError, tarfile.TarError) as exc:
         return False, {}, base_required, f"{selected.ref}: {exc}"
     return True, memberships, base_required, None
@@ -312,53 +419,40 @@ def main() -> int:
 
     counts: dict[str, int] = {}
     counts.update(_count_mutate_token_metrics())
-    backend_count, backend_nodeids = _collect_pytest_tests("tests")
-    counts["backend_pytest_count"] = backend_count
-    parallel_count, parallel_nodeids = _collect_pytest_tests(
-        "tests",
-        mark_expression="not stateful_serial",
+    current_memberships = _collect_pytest_memberships(
+        _BACKEND_ROOT,
+        _CURRENT_MARKER_CONTRACT,
     )
-    counts["backend_pytest_parallel_count"] = parallel_count
-    parallel_safe_count, parallel_safe_nodeids = _collect_pytest_tests(
-        "tests",
-        mark_expression="parallel_safe",
+    counts["backend_pytest_count"] = len(current_memberships["backend_all"])
+    counts["backend_pytest_parallel_count"] = len(
+        current_memberships["backend_parallel"]
     )
-    counts["backend_pytest_parallel_safe_count"] = parallel_safe_count
-    real_db_count, real_db_nodeids = _collect_pytest_tests(
-        "tests",
-        mark_expression="real_db",
+    counts["backend_pytest_parallel_safe_count"] = len(
+        current_memberships["parallel_safe"]
     )
-    counts["backend_pytest_real_db_count"] = real_db_count
-    counts["backend_pytest_real_db_membership_digest"] = _pytest_membership_digest(real_db_nodeids)
-    stateful_count, stateful_nodeids = _collect_pytest_tests(
-        "tests",
-        mark_expression="stateful_serial",
+    counts["backend_pytest_real_db_count"] = len(current_memberships["real_db"])
+    counts["backend_pytest_real_db_membership_digest"] = _pytest_membership_digest(
+        current_memberships["real_db"]
     )
-    counts["backend_pytest_stateful_count"] = stateful_count
-    counts["backend_pytest_stateful_membership_digest"] = _pytest_membership_digest(stateful_nodeids)
-    cluster_count, cluster_nodeids = _collect_pytest_tests(
-        "tests",
-        mark_expression="cluster_serial",
+    counts["backend_pytest_stateful_count"] = len(
+        current_memberships["stateful_serial"]
     )
-    counts["backend_pytest_cluster_count"] = cluster_count
-    counts["backend_pytest_cluster_membership_digest"] = _pytest_membership_digest(cluster_nodeids)
-    packaging_memberships = _collect_packaging_memberships(_BACKEND_ROOT)
-    counts["installer_pytest_count"] = len(packaging_memberships["packaging_all"])
+    counts["backend_pytest_stateful_membership_digest"] = _pytest_membership_digest(
+        current_memberships["stateful_serial"]
+    )
+    counts["backend_pytest_cluster_count"] = len(
+        current_memberships["cluster_serial"]
+    )
+    counts["backend_pytest_cluster_membership_digest"] = _pytest_membership_digest(
+        current_memberships["cluster_serial"]
+    )
+    counts["installer_pytest_count"] = len(current_memberships["packaging_all"])
 
     print("Actuals:")
     for key, value in sorted(counts.items()):
         print(f"  {key:50} {value:6d}")
     print()
 
-    current_memberships = {
-        "backend_all": backend_nodeids,
-        "backend_parallel": parallel_nodeids,
-        "parallel_safe": parallel_safe_nodeids,
-        "real_db": real_db_nodeids,
-        "stateful_serial": stateful_nodeids,
-        "cluster_serial": cluster_nodeids,
-        **packaging_memberships,
-    }
     base_readable, base_memberships, base_required, base_error = _collect_base_pytest_memberships(os.environ)
     metrics_exit = evaluate_pr_delta_metrics(counts)
     membership_exit = evaluate_protected_pytest_memberships(

@@ -24,6 +24,10 @@ from scripts.pytest_execution_contract import (  # noqa: E402
     pytest_execution_environment,
     pytest_execution_handshake_payload,
 )
+from scripts.pytest_marker_contract import (  # noqa: E402
+    BACKEND_PARALLEL_MARK_EXPRESSION,
+    BACKEND_STATEFUL_MARKER,
+)
 from scripts.test_pg_contract import (  # noqa: E402 - direct-script path bootstrap
     assert_test_cluster_authority,
     configured_test_database_url,
@@ -71,7 +75,7 @@ def pytest_command(lane: str, *, workers: int) -> list[str]:
         command.extend(
             [
                 "-m",
-                "not stateful_serial",
+                BACKEND_PARALLEL_MARK_EXPRESSION,
                 "-n",
                 str(workers),
                 "--dist",
@@ -81,7 +85,7 @@ def pytest_command(lane: str, *, workers: int) -> list[str]:
         )
         return command
     if lane == "stateful":
-        command.extend(["-m", "stateful_serial", "-n", "0"])
+        command.extend(["-m", BACKEND_STATEFUL_MARKER, "-n", "0"])
         return command
     raise ValueError(f"Unknown test lane: {lane}")
 
@@ -103,7 +107,7 @@ def _run_lane(
     workers: int,
     parent_environment: dict[str, str],
 ) -> int:
-    mark_expression = "not stateful_serial" if lane == "parallel" else "stateful_serial"
+    mark_expression = BACKEND_PARALLEL_MARK_EXPRESSION if lane == "parallel" else BACKEND_STATEFUL_MARKER
     snapshot = collect_pytest_snapshot(
         "tests",
         mark_expression=mark_expression,

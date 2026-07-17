@@ -28,6 +28,12 @@ from fastapi.testclient import TestClient
 from scripts.pytest_execution_contract import (
     pytest_execution_membership_violation as execution_membership_violation,
 )
+from scripts.pytest_marker_contract import (
+    BACKEND_CLUSTER_MARKER,
+    BACKEND_PARALLEL_SAFE_MARKER,
+    BACKEND_REAL_DB_MARKER,
+    BACKEND_STATEFUL_MARKER,
+)
 from scripts.run_test_lanes import (
     RUNNER_EXPECTED_COUNT_ENV,
     RUNNER_EXPECTED_DIGEST_ENV,
@@ -66,6 +72,8 @@ from tests._infra.postgres_resource_contract import (
     postgres_worker_isolation_boundary,
 )
 from tests._infra.worker_db import worker_database_lifecycle
+
+_WORKER_RUNTIME_CLOSED_KEY = "xpj_postgres_runtime_closed"
 
 
 def _is_xdist_worker(config: pytest.Config) -> bool:
@@ -137,7 +145,7 @@ def _db_isolation(
     they get a full reset + a teardown reset so their committed rows don't leak
     into the next transaction-isolated test's baseline.
     """
-    if "real_db" in request.keywords:
+    if BACKEND_REAL_DB_MARKER in request.keywords:
         reset_db_state()
         try:
             yield
@@ -189,30 +197,29 @@ def _initialize_runner_state(config: pytest.Config) -> None:
     config._xpj_xdist_ready_workers = set()  # type: ignore[attr-defined]
     config._xpj_xdist_down_workers = set()  # type: ignore[attr-defined]
     config._xpj_xdist_worker_errors = {}  # type: ignore[attr-defined]
-    config._xpj_consumer_lease = None  # type: ignore[attr-defined]
-    config._xpj_postgres_credential_environment = None  # type: ignore[attr-defined]
+    config._xpj_postgres_runtime_stack = None  # type: ignore[attr-defined]
 
 
 def _register_postgres_markers(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        "real_db: opt out of the PostgreSQL lane's per-test transaction-rollback "
+        f"{BACKEND_REAL_DB_MARKER}: opt out of the PostgreSQL lane's per-test transaction-rollback "
         "isolation and run against a real committed DB (full reset_db_state). For "
         "tests that need real cross-connection commits — concurrency, true "
         "background-thread work.",
     )
     config.addinivalue_line(
         "markers",
-        "stateful_serial: committed-state, schema, migration, recovery, or "
+        f"{BACKEND_STATEFUL_MARKER}: committed-state, schema, migration, recovery, or "
         "cross-process test that must run outside the xdist parallel lane.",
     )
     config.addinivalue_line(
         "markers",
-        "cluster_serial: PostgreSQL cluster-level test that must run in the exclusive stateful lane.",
+        f"{BACKEND_CLUSTER_MARKER}: PostgreSQL cluster-level test that must run in the exclusive stateful lane.",
     )
     config.addinivalue_line(
         "markers",
-        "parallel_safe: explicit resource class for a new test that stays inside "
+        f"{BACKEND_PARALLEL_SAFE_MARKER}: explicit resource class for a new test that stays inside "
         "the per-worker transaction/database boundary.",
     )
 
@@ -254,23 +261,19 @@ def _validate_managed_runner_configuration(config: pytest.Config) -> None:
 
 def _enter_postgres_runtime_contract(config: pytest.Config) -> None:
     if not config.getoption("collectonly", default=False):
-        lease = test_postgres_consumer_lease(env.TEST_DATABASE_URL)
+        runtime_stack = contextlib.ExitStack()
         try:
-            lease.__enter__()
+            runtime_stack.enter_context(test_postgres_consumer_lease(env.TEST_DATABASE_URL))
+            runtime_stack.enter_context(
+                test_postgres_credential_environment(
+                    env.TEST_DATABASE_URL,
+                    os.environ,
+                )
+            )
         except RuntimeError as exc:
+            runtime_stack.close()
             raise pytest.UsageError(str(exc)) from exc
-        config._xpj_consumer_lease = lease  # type: ignore[attr-defined]
-        credential_environment = test_postgres_credential_environment(
-            env.TEST_DATABASE_URL,
-            os.environ,
-        )
-        try:
-            credential_environment.__enter__()
-        except RuntimeError as exc:
-            lease.__exit__(None, None, None)
-            config._xpj_consumer_lease = None  # type: ignore[attr-defined]
-            raise pytest.UsageError(str(exc)) from exc
-        config._xpj_postgres_credential_environment = credential_environment  # type: ignore[attr-defined]
+        config._xpj_postgres_runtime_stack = runtime_stack  # type: ignore[attr-defined]
     active_lane = os.environ.get(RUNNER_LANE_ENV)
     if active_lane:
         start_windows_parent_watchdog(label=f"PostgreSQL {active_lane} pytest")
@@ -290,17 +293,16 @@ def pytest_configure(config: pytest.Config) -> None:
     _enter_postgres_runtime_contract(config)
 
 
+def _exit_postgres_runtime_contract(config: pytest.Config) -> None:
+    runtime_stack = getattr(config, "_xpj_postgres_runtime_stack", None)
+    if runtime_stack is None:
+        return
+    config._xpj_postgres_runtime_stack = None  # type: ignore[attr-defined]
+    runtime_stack.close()
+
+
 def pytest_unconfigure(config: pytest.Config) -> None:
-    credential_environment = getattr(
-        config,
-        "_xpj_postgres_credential_environment",
-        None,
-    )
-    if credential_environment is not None:
-        credential_environment.__exit__(None, None, None)
-    lease = getattr(config, "_xpj_consumer_lease", None)
-    if lease is not None:
-        lease.__exit__(None, None, None)
+    _exit_postgres_runtime_contract(config)
 
 
 @pytest.hookimpl(optionalhook=True)
@@ -314,6 +316,17 @@ def pytest_testnodedown(node: object, error: object | None) -> None:
     node.config._xpj_xdist_down_workers.add(worker_id)  # type: ignore[attr-defined]
     if error is not None:
         node.config._xpj_xdist_worker_errors[worker_id] = str(error)  # type: ignore[attr-defined]
+    else:
+        workeroutput = getattr(node, "workeroutput", None)
+        cleanup_acknowledged = (
+            workeroutput.get(_WORKER_RUNTIME_CLOSED_KEY)
+            if isinstance(workeroutput, dict)
+            else None
+        )
+        if cleanup_acknowledged is not True:
+            node.config._xpj_xdist_worker_errors[worker_id] = (  # type: ignore[attr-defined]
+                "worker did not acknowledge PostgreSQL runtime cleanup"
+            )
 
 
 @pytest.hookimpl(wrapper=True, tryfirst=True)
@@ -329,7 +342,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             raise pytest.UsageError(violation)
 
     collected_nodeids = tuple(item.nodeid for item in items)
-    stateful_nodeids = tuple(item.nodeid for item in items if item.get_closest_marker("stateful_serial") is not None)
+    stateful_nodeids = tuple(
+        item.nodeid
+        for item in items
+        if item.get_closest_marker(BACKEND_STATEFUL_MARKER) is not None
+    )
     yield
 
     violation = managed_runner_selection_violation(
@@ -353,7 +370,9 @@ def pytest_collection_finish(session: pytest.Session) -> None:
     if session.config.option.collectonly:
         return
     selected_stateful = [
-        item.nodeid for item in session.items if item.get_closest_marker("stateful_serial") is not None
+        item.nodeid
+        for item in session.items
+        if item.get_closest_marker(BACKEND_STATEFUL_MARKER) is not None
     ]
     violation = stateful_selection_violation(
         selected_stateful,
@@ -367,7 +386,9 @@ def pytest_collection_finish(session: pytest.Session) -> None:
 @pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     cleanup_runtime()
+    _exit_postgres_runtime_contract(session.config)
     if _is_xdist_worker(session.config):
+        session.config.workeroutput[_WORKER_RUNTIME_CLOSED_KEY] = True
         return
     active_lane = os.environ.get(RUNNER_LANE_ENV)
     terminal = session.config.pluginmanager.get_plugin("terminalreporter")

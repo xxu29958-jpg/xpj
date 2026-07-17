@@ -652,6 +652,7 @@ if (-not $fresh.Required -or $fresh.IsRecovery -or $script:generatedSecrets -ne 
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows listener revalidation contract")
+@pytest.mark.packaging_resource("windows_host")
 def test_bootstrap_http_exception_revalidates_listener_and_fails_closed(tmp_path: Path) -> None:
     body = _function_loader(("Invoke-OwnerBootstrapRequest",))
     body += r"""

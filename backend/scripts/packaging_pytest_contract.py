@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Sequence
 
-PACKAGING_RESOURCE_MARKER = "packaging_resource"
-PACKAGING_PARALLEL_MARKER = "packaging_parallel"
-PACKAGING_SERIAL_MARKER = "packaging_serial"
+from scripts import pytest_marker_contract
+
+PACKAGING_RESOURCE_MARKER = pytest_marker_contract.PACKAGING_RESOURCE_MARKER
+PACKAGING_PARALLEL_MARKER = pytest_marker_contract.PACKAGING_PARALLEL_MARKER
+PACKAGING_SERIAL_MARKER = pytest_marker_contract.PACKAGING_SERIAL_MARKER
 
 PACKAGING_HERMETIC_RESOURCE = "hermetic"
 PACKAGING_SERIAL_RESOURCES = frozenset(

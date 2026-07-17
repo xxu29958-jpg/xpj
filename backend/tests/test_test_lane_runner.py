@@ -56,6 +56,11 @@ def _stable_collection_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
         "test_postgres_credential_environment",
         lambda *_args, **_kwargs: contextlib.nullcontext(),
     )
+    monkeypatch.setattr(
+        run_test_lanes,
+        "test_postgres_consumer_lease",
+        lambda *_args, **_kwargs: contextlib.nullcontext(),
+    )
 
 
 def test_parallel_lane_uses_xdist_and_excludes_stateful_tests() -> None:

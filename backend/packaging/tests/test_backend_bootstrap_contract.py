@@ -753,6 +753,7 @@ Assert-TestRecordRejected '{generation}' '123' '2026-07-12T01:02:03.1234567+00:0
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_host")
 def test_maintenance_failure_writes_credential_free_durable_result(tmp_path: Path) -> None:
     exposed_secret = "exposed-bootstrap-secret-for-diagnostic-test"
     replacement_secret = "replacement-bootstrap-secret-for-diagnostic-test"
