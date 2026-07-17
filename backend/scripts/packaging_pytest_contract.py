@@ -10,6 +10,12 @@ from scripts import pytest_marker_contract
 PACKAGING_RESOURCE_MARKER = pytest_marker_contract.PACKAGING_RESOURCE_MARKER
 PACKAGING_PARALLEL_MARKER = pytest_marker_contract.PACKAGING_PARALLEL_MARKER
 PACKAGING_SERIAL_MARKER = pytest_marker_contract.PACKAGING_SERIAL_MARKER
+PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX = (
+    pytest_marker_contract.PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX
+)
+PACKAGING_RESOURCE_MEMBERSHIP_MARKERS = (
+    pytest_marker_contract.PACKAGING_RESOURCE_MEMBERSHIP_MARKERS
+)
 
 PACKAGING_HERMETIC_RESOURCE = "hermetic"
 PACKAGING_SERIAL_RESOURCES = frozenset(
@@ -21,9 +27,9 @@ PACKAGING_SERIAL_RESOURCES = frozenset(
     }
 )
 PACKAGING_RESOURCES = frozenset(
-    {PACKAGING_HERMETIC_RESOURCE, *PACKAGING_SERIAL_RESOURCES}
+    marker.removeprefix(PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX)
+    for marker in PACKAGING_RESOURCE_MEMBERSHIP_MARKERS
 )
-_PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX = "packaging_resource_"
 _PACKAGING_XDIST_GROUP_BY_RESOURCE = {
     "inno_toolchain": "xpj-packaging-inno-toolchain",
     "postgres_cluster": "xpj-packaging-host-network",
@@ -37,7 +43,7 @@ def packaging_resource_membership_marker(resource: str) -> str:
 
     if resource not in PACKAGING_RESOURCES:
         raise ValueError(f"unknown packaging resource: {resource!r}")
-    return f"{_PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX}{resource}"
+    return f"{PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX}{resource}"
 
 PACKAGING_EXPECTED_PARALLEL_COUNT_ENV = (
     "XPJ_PACKAGING_PYTEST_EXPECTED_PARALLEL_COUNT"

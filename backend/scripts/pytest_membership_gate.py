@@ -5,6 +5,11 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 
+from scripts.pytest_marker_contract import (
+    PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX,
+    PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
+)
+
 PROTECTED_PYTEST_MEMBERSHIPS = (
     "backend_all",
     "backend_parallel",
@@ -15,6 +20,16 @@ PROTECTED_PYTEST_MEMBERSHIPS = (
     "packaging_all",
     "packaging_parallel",
     "packaging_serial",
+    *PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
+)
+
+_PACKAGING_HERMETIC_MEMBERSHIP = (
+    f"{PACKAGING_RESOURCE_MEMBERSHIP_MARKER_PREFIX}hermetic"
+)
+_PACKAGING_SERIAL_RESOURCE_MEMBERSHIPS = tuple(
+    marker
+    for marker in PACKAGING_RESOURCE_MEMBERSHIP_MARKERS
+    if marker != _PACKAGING_HERMETIC_MEMBERSHIP
 )
 
 
@@ -99,6 +114,44 @@ def _current_invariant_violations(
     )
     if packaging_partition:
         violations.append(packaging_partition)
+    violations.extend(_exact_packaging_resource_violations(current, label=""))
+    return violations
+
+
+def _exact_packaging_resource_violations(
+    snapshot: Mapping[str, Sequence[str]],
+    *,
+    label: str,
+) -> list[str]:
+    required = {
+        "packaging_all",
+        "packaging_parallel",
+        "packaging_serial",
+        *PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
+    }
+    if not required <= set(snapshot):
+        return []
+    violations: list[str] = []
+    exact_partition = Counter()
+    for marker in PACKAGING_RESOURCE_MEMBERSHIP_MARKERS:
+        exact_partition += Counter(snapshot[marker])
+    if exact_partition != Counter(snapshot["packaging_all"]):
+        violations.append(
+            f"{label}exact packaging resource memberships do not partition packaging_all"
+        )
+    if Counter(snapshot[_PACKAGING_HERMETIC_MEMBERSHIP]) != Counter(
+        snapshot["packaging_parallel"]
+    ):
+        violations.append(
+            f"{label}{_PACKAGING_HERMETIC_MEMBERSHIP} is not packaging_parallel"
+        )
+    serial_partition = Counter()
+    for marker in _PACKAGING_SERIAL_RESOURCE_MEMBERSHIPS:
+        serial_partition += Counter(snapshot[marker])
+    if serial_partition != Counter(snapshot["packaging_serial"]):
+        violations.append(
+            f"{label}serial packaging resource memberships do not partition packaging_serial"
+        )
     return violations
 
 
@@ -137,9 +190,16 @@ def _new_test_classification_violations(
 def _removed_membership_violations(
     current: Mapping[str, Sequence[str]],
     base: Mapping[str, Sequence[str]],
+    *,
+    base_has_exact_packaging_resources: bool,
 ) -> list[str]:
     violations: list[str] = []
     for membership in sorted(set(PROTECTED_PYTEST_MEMBERSHIPS) & set(base) & set(current)):
+        if (
+            membership in PACKAGING_RESOURCE_MEMBERSHIP_MARKERS
+            and not base_has_exact_packaging_resources
+        ):
+            continue
         removed = set(base[membership]) - set(current[membership])
         if membership == "backend_parallel":
             removed -= set(current["stateful_serial"])
@@ -162,6 +222,7 @@ def protected_pytest_membership_violations(
     *,
     base_readable: bool,
     base_required: bool,
+    base_has_exact_packaging_resources: bool = False,
 ) -> list[str]:
     """Protect committed risk proofs from removal, swapping, or lane demotion."""
 
@@ -175,7 +236,7 @@ def protected_pytest_membership_violations(
     base_partition = _partition_violation(base, label="base ")
     if base_partition:
         violations.append(base_partition)
-    if base.get("packaging_parallel") or base.get("packaging_serial"):
+    if base_has_exact_packaging_resources:
         base_packaging_partition = _partition_violation(
             base,
             label="base ",
@@ -185,8 +246,15 @@ def protected_pytest_membership_violations(
         )
         if base_packaging_partition:
             violations.append(base_packaging_partition)
+        violations.extend(_exact_packaging_resource_violations(base, label="base "))
     violations.extend(_new_test_classification_violations(current, base))
-    violations.extend(_removed_membership_violations(current, base))
+    violations.extend(
+        _removed_membership_violations(
+            current,
+            base,
+            base_has_exact_packaging_resources=base_has_exact_packaging_resources,
+        )
+    )
     return violations
 
 
@@ -196,7 +264,8 @@ def evaluate_protected_pytest_memberships(
     *,
     base_readable: bool,
     base_required: bool,
-    base_error: str | None,
+    base_has_exact_packaging_resources: bool = False,
+    base_error: str | None = None,
 ) -> int:
     """Fail closed when a committed pytest risk proof disappears or is demoted."""
 
@@ -206,6 +275,7 @@ def evaluate_protected_pytest_memberships(
         base,
         base_readable=base_readable,
         base_required=base_required,
+        base_has_exact_packaging_resources=base_has_exact_packaging_resources,
     )
     if violations:
         print(

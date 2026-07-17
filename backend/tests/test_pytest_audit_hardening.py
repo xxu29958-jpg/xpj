@@ -9,7 +9,10 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from scripts import run_packaging_tests
-from scripts.packaging_pytest_contract import packaging_resource_membership_marker
+from scripts.packaging_pytest_contract import (
+    PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
+    packaging_resource_membership_marker,
+)
 from scripts.pytest_execution_contract import (
     pytest_execution_environment,
     pytest_nodeid_digest,
@@ -60,18 +63,30 @@ class _ResourceItem:
         self.nodeid = nodeid
         self._marker_name = marker_name
         self._resource_marker = SimpleNamespace(args=(resource,), kwargs={})
+        self._generated_markers: dict[str, list[SimpleNamespace]] = {}
 
     def iter_markers_with_node(
         self,
         name: str,
     ) -> tuple[tuple[_ResourceItem, SimpleNamespace], ...]:
-        return ((self, self._resource_marker),) if name == self._marker_name else ()
+        markers = []
+        if name == self._marker_name:
+            markers.append(self._resource_marker)
+        markers.extend(self._generated_markers.get(name, ()))
+        return tuple((self, marker) for marker in markers)
 
-    def get_closest_marker(self, _name: str) -> None:
-        return None
+    def get_closest_marker(self, name: str) -> SimpleNamespace | None:
+        markers = self._generated_markers.get(name, ())
+        return None if not markers else markers[-1]
 
-    def add_marker(self, _marker: object) -> None:
-        return None
+    def add_marker(self, marker: object) -> None:
+        if isinstance(marker, str):
+            name = marker
+            value = SimpleNamespace(args=(), kwargs={})
+        else:
+            value = marker.mark
+            name = value.name
+        self._generated_markers.setdefault(name, []).append(value)
 
 
 @pytest.mark.parametrize("resource", ("hermetic", "windows_host"))
@@ -96,6 +111,28 @@ def test_packaging_collection_accepts_a_proven_empty_derived_lane(
     hook = module.pytest_collection_modifyitems([item])
     next(hook)
     with pytest.raises(StopIteration):
+        next(hook)
+
+
+def test_packaging_collection_rejects_a_late_rogue_xdist_group() -> None:
+    module = _load_module(
+        "packaging/tests/conftest.py",
+        "xpj_packaging_late_group_probe",
+    )
+    nodeid = "packaging/tests/test_windows_host.py::test_contract"
+    item = _ResourceItem(nodeid, "windows_host", module.PACKAGING_RESOURCE_MARKER)
+    hook = module.pytest_collection_modifyitems([item])
+    next(hook)
+    item.add_marker(
+        SimpleNamespace(
+            mark=SimpleNamespace(
+                name="xdist_group",
+                args=("rogue-nested-group",),
+                kwargs={},
+            )
+        )
+    )
+    with pytest.raises(pytest.UsageError, match="exactly one generated"):
         next(hook)
 
 
@@ -137,7 +174,9 @@ _POSTGRES_CLUSTER_CUTOVER_NODEIDS = (
     "packaging/tests/test_local_test_postgres_lifecycle.py::"
     "test_local_test_postgres_rejects_a_different_cluster_before_provisioning",
     "packaging/tests/test_local_test_postgres_lifecycle.py::"
-    "test_legacy_trust_cluster_scram_migration_is_reentrant",
+    "test_legacy_trust_cluster_scram_migration_is_reentrant[after-password]",
+    "packaging/tests/test_local_test_postgres_lifecycle.py::"
+    "test_legacy_trust_cluster_scram_migration_is_reentrant[after-hba]",
 )
 
 
@@ -180,7 +219,7 @@ def test_high_risk_packaging_cutover_resources_are_exact(
         timeout=60,
     )
     selected = {
-        line.strip().split("[", 1)[0]
+        line.strip()
         for line in result.stdout.splitlines()
         if line.startswith("packaging/tests/") and "::" in line
     }
@@ -265,6 +304,7 @@ def test_pre_cutover_base_has_no_invented_packaging_partitions(
         "packaging_all": (packaging_nodeid,),
         "packaging_parallel": (),
         "packaging_serial": (),
+        **dict.fromkeys(PACKAGING_RESOURCE_MEMBERSHIP_MARKERS, ()),
     }
 
 
@@ -274,13 +314,20 @@ def _write_base_marker_contract(backend_root: Path) -> None:
     (scripts / "pytest_marker_contract.py").write_text(
         "\n".join(
             (
-                "PYTEST_MARKER_CONTRACT_SCHEMA_VERSION = 1",
+                "PYTEST_MARKER_CONTRACT_SCHEMA_VERSION = 2",
                 'BACKEND_PARALLEL_SAFE_MARKER = "base_parallel_safe"',
                 'BACKEND_REAL_DB_MARKER = "base_real_db"',
                 'BACKEND_STATEFUL_MARKER = "base_stateful"',
                 'BACKEND_CLUSTER_MARKER = "base_cluster"',
                 'PACKAGING_PARALLEL_MARKER = "base_packaging_parallel"',
                 'PACKAGING_SERIAL_MARKER = "base_packaging_serial"',
+                "PACKAGING_RESOURCE_MEMBERSHIP_MARKERS = (",
+                "    'packaging_resource_hermetic',",
+                "    'packaging_resource_inno_toolchain',",
+                "    'packaging_resource_postgres_cluster',",
+                "    'packaging_resource_windows_fs',",
+                "    'packaging_resource_windows_host',",
+                ")",
             )
         ),
         encoding="utf-8",
@@ -313,7 +360,11 @@ def test_base_marker_contract_drives_snapshot_filters(
         else:
             nodeids = (
                 (packaging_nodeid,)
-                if mark_expression in (None, "base_packaging_serial")
+                if mark_expression in (
+                    None,
+                    "base_packaging_serial",
+                    "packaging_resource_inno_toolchain",
+                )
                 else ()
             )
         return len(nodeids), nodeids
@@ -322,6 +373,7 @@ def test_base_marker_contract_drives_snapshot_filters(
     contract = audit._load_base_marker_contract(backend_root)
     memberships = audit._collect_pytest_memberships(backend_root, contract)
     assert memberships["packaging_serial"] == (packaging_nodeid,)
+    assert memberships["packaging_resource_inno_toolchain"] == (packaging_nodeid,)
     assert set(observed) == {
         "not base_stateful",
         "base_parallel_safe",
@@ -330,6 +382,7 @@ def test_base_marker_contract_drives_snapshot_filters(
         "base_cluster",
         "base_packaging_parallel",
         "base_packaging_serial",
+        *PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
     }
 
 
@@ -350,6 +403,7 @@ def test_pr_delta_main_propagates_membership_failure(
         "packaging_all": (),
         "packaging_parallel": (),
         "packaging_serial": (),
+        **dict.fromkeys(PACKAGING_RESOURCE_MEMBERSHIP_MARKERS, ()),
     }
     monkeypatch.setattr(audit, "_count_mutate_token_metrics", dict)
     monkeypatch.setattr(
@@ -360,7 +414,7 @@ def test_pr_delta_main_propagates_membership_failure(
     monkeypatch.setattr(
         audit,
         "_collect_base_pytest_memberships",
-        lambda _environment: (True, memberships, True, None),
+        lambda _environment: (True, memberships, True, True, None),
     )
     monkeypatch.setattr(audit, "evaluate_pr_delta_metrics", lambda _counts: 0)
     monkeypatch.setattr(

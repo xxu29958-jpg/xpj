@@ -391,6 +391,8 @@ def _run_packaging_loadgroup_probe(
         "-m",
         "pytest",
         str(test_file),
+        "--rootdir",
+        str(probe_root),
         "-q",
         "--strict-markers",
         "-p",

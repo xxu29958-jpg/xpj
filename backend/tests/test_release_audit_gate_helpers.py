@@ -181,6 +181,7 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
     monkeypatch.setenv("PYTEST_PLUGINS", "untrusted_plugin")
     monkeypatch.setenv("PYTHONOPTIMIZE", "2")
     monkeypatch.setenv("PYTHONPATH", "untrusted-import-root")
+    monkeypatch.setenv("XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME", "1")
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         environment = kwargs["env"]
@@ -219,6 +220,7 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
         assert "PYTEST_PLUGINS" not in environment
         assert "PYTHONOPTIMIZE" not in environment
         assert "PYTHONPATH" not in environment
+        assert "XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME" not in environment
         assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
 
     _assert_protected_pytest_membership_gate()
@@ -236,11 +238,14 @@ def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
 ) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", {"backend_pytest_count": 2403})
+    monkeypatch.setattr(mod, "BASELINE_RATCHET_UP", frozenset({"backend_pytest_count"}))
+    monkeypatch.setattr(mod, "BASELINE_RATCHET_DOWN", frozenset())
     monkeypatch.setenv("XPJ_AUDIT_BASE_REF", "0123456789abcdef")
     monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
     assert mod._strict_baseline_git_ref() is None
     assert "cannot resolve exact ADR ratchet base" in (mod._strict_baseline_selection_error or "")
-    monkeypatch.setattr(mod, "_read_base_strict_baseline", lambda: (False, {}))
+    unreadable_policy = mod._StrictBaselinePolicy({}, frozenset(), frozenset(), False)
+    monkeypatch.setattr(mod, "_read_base_strict_policy", lambda: (False, unreadable_policy))
     assert mod.evaluate_pr_delta_metrics({"backend_pytest_count": 2403}) == 1
     exact_ref_only = capsys.readouterr()
     assert "couldn't read the required base baseline" in exact_ref_only.out
@@ -267,7 +272,15 @@ def test_pr_delta_flags_extra_and_unreadable_base_independently(
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = {"backend_pytest_count": 2403}
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
-    monkeypatch.setattr(mod, "_read_base_strict_baseline", lambda: (True, baseline))
+    monkeypatch.setattr(mod, "BASELINE_RATCHET_UP", frozenset({"backend_pytest_count"}))
+    monkeypatch.setattr(mod, "BASELINE_RATCHET_DOWN", frozenset())
+    readable_policy = mod._StrictBaselinePolicy(
+        baseline,
+        frozenset({"backend_pytest_count"}),
+        frozenset(),
+        True,
+    )
+    monkeypatch.setattr(mod, "_read_base_strict_policy", lambda: (True, readable_policy))
 
     assert (
         mod.evaluate_pr_delta_metrics(
@@ -284,7 +297,8 @@ def test_pr_delta_flags_extra_and_unreadable_base_independently(
     assert "baseline entries that the audit lane didn't report" not in extra_only.out
     assert "couldn't read the required base baseline" not in extra_only.out
 
-    monkeypatch.setattr(mod, "_read_base_strict_baseline", lambda: (False, {}))
+    unreadable_policy = mod._StrictBaselinePolicy({}, frozenset(), frozenset(), False)
+    monkeypatch.setattr(mod, "_read_base_strict_policy", lambda: (False, unreadable_policy))
     monkeypatch.setenv("GITHUB_BASE_REF", "main")
 
     assert mod.evaluate_pr_delta_metrics({"backend_pytest_count": 2403}) == 1

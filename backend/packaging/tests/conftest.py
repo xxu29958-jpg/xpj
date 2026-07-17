@@ -201,6 +201,44 @@ def pytest_testnodedown(node: object, error: object | None) -> None:
         node.config._xpj_xdist_worker_errors[worker_id] = str(error)  # type: ignore[attr-defined]
 
 
+def _generated_scheduler_marker_violation(
+    item: pytest.Item,
+    resource: str,
+) -> str | None:
+    exact_resource = packaging_resource_membership_marker(resource)
+    expected_lane = (
+        PACKAGING_PARALLEL_MARKER
+        if resource == PACKAGING_HERMETIC_RESOURCE
+        else PACKAGING_SERIAL_MARKER
+    )
+    for marker_name in (
+        PACKAGING_PARALLEL_MARKER,
+        PACKAGING_SERIAL_MARKER,
+        *(packaging_resource_membership_marker(name) for name in sorted(PACKAGING_RESOURCES)),
+    ):
+        count = sum(1 for _node, _marker in item.iter_markers_with_node(marker_name))
+        expected_count = 1 if marker_name in {exact_resource, expected_lane} else 0
+        if count != expected_count:
+            return (
+                f"{item.nodeid} has invalid generated marker {marker_name}: "
+                f"expected={expected_count}, actual={count}"
+            )
+    groups = tuple(
+        marker
+        for _node, marker in item.iter_markers_with_node("xdist_group")
+    )
+    if resource == PACKAGING_HERMETIC_RESOURCE:
+        return None if not groups else f"{item.nodeid} must not have an xdist group"
+    expected_group = packaging_xdist_group(resource)
+    if (
+        len(groups) != 1
+        or groups[0].args != (expected_group,)
+        or groups[0].kwargs
+    ):
+        return f"{item.nodeid} does not have exactly one generated {expected_group} group"
+    return None
+
+
 @pytest.hookimpl(wrapper=True, tryfirst=True)
 def pytest_collection_modifyitems(
     items: list[pytest.Item],
@@ -209,6 +247,7 @@ def pytest_collection_modifyitems(
     original_nodeids = tuple(item.nodeid for item in original_items)
     parallel_nodeids: list[str] = []
     serial_nodeids: list[str] = []
+    resource_assignments: list[tuple[pytest.Item, str]] = []
     for item in items:
         authored_scheduler_markers = [
             name
@@ -229,6 +268,7 @@ def pytest_collection_modifyitems(
                 + ", ".join(authored_scheduler_markers)
             )
         resource = _resource_for_item(item)
+        resource_assignments.append((item, resource))
         item.add_marker(packaging_resource_membership_marker(resource))
         if resource == PACKAGING_HERMETIC_RESOURCE:
             parallel_nodeids.append(item.nodeid)
@@ -245,6 +285,10 @@ def pytest_collection_modifyitems(
     if partition_violation:
         raise pytest.UsageError(partition_violation)
     yield
+    for item, resource in resource_assignments:
+        marker_violation = _generated_scheduler_marker_violation(item, resource)
+        if marker_violation:
+            raise pytest.UsageError(marker_violation)
     if not _strict_runtime_enabled():
         return
     if tuple(id(item) for item in items) != tuple(id(item) for item in original_items):

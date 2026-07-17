@@ -9,6 +9,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 from scripts.test_pg_protected_file import (
+    _FILE_SHARE_DELETE,
     _FILE_SHARE_READ,
     _FILE_SHARE_WRITE,
     _GENERIC_READ,
@@ -50,7 +51,7 @@ def _open_windows_protected_read_descriptor(path: Path, *, label: str) -> int:
     handle = kernel32.CreateFileW(
         str(path),
         _GENERIC_READ,
-        _FILE_SHARE_READ | _FILE_SHARE_WRITE,
+        _FILE_SHARE_READ | _FILE_SHARE_WRITE | _FILE_SHARE_DELETE,
         None,
         _OPEN_EXISTING,
         _FILE_FLAG_OPEN_REPARSE_POINT,

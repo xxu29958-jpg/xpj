@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import threading
+import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,9 @@ _PARENT_WATCHDOG_LOCK = threading.Lock()
 _PARENT_WATCHDOG_STARTED = False
 _DISPOSABLE_TEST_FILE_LOCK = threading.Lock()
 _DISPOSABLE_TEST_FILES: dict[str, Path] = {}
+_DISPOSABLE_TEST_FILE_CLEANUP_STARTED = False
+_DISPOSABLE_FILE_DELETE_RETRIES = 20
+_DISPOSABLE_FILE_DELETE_RETRY_SECONDS = 0.01
 
 
 @contextlib.contextmanager
@@ -43,6 +47,8 @@ def disposable_test_file_cleanup(path: Path) -> Iterator[None]:
         raise ValueError("Disposable test cleanup path must be absolute")
     token = uuid4().hex
     with _DISPOSABLE_TEST_FILE_LOCK:
+        if _DISPOSABLE_TEST_FILE_CLEANUP_STARTED:
+            raise RuntimeError("Disposable test process cleanup has already started")
         _DISPOSABLE_TEST_FILES[token] = path
     try:
         yield
@@ -51,12 +57,24 @@ def disposable_test_file_cleanup(path: Path) -> Iterator[None]:
             _DISPOSABLE_TEST_FILES.pop(token, None)
 
 
-def _remove_disposable_test_files() -> None:
+def _remove_disposable_test_files() -> tuple[Path, ...]:
+    global _DISPOSABLE_TEST_FILE_CLEANUP_STARTED
+
     with _DISPOSABLE_TEST_FILE_LOCK:
+        _DISPOSABLE_TEST_FILE_CLEANUP_STARTED = True
         paths = tuple(reversed(tuple(_DISPOSABLE_TEST_FILES.values())))
+    failures: list[Path] = []
     for path in paths:
-        with contextlib.suppress(OSError):
-            path.unlink(missing_ok=True)
+        for attempt in range(_DISPOSABLE_FILE_DELETE_RETRIES):
+            try:
+                path.unlink(missing_ok=True)
+                break
+            except OSError:
+                if attempt + 1 == _DISPOSABLE_FILE_DELETE_RETRIES:
+                    failures.append(path)
+                else:
+                    time.sleep(_DISPOSABLE_FILE_DELETE_RETRY_SECONDS)
+    return tuple(failures)
 
 
 def _windows_kernel32() -> object:
@@ -208,9 +226,20 @@ def _windows_parent_process_handles(kernel32: object) -> list[object]:
 
 
 def _abort_disposable_test_process(message: str) -> None:
-    print(message, file=sys.stderr, flush=True)
-    _remove_disposable_test_files()
-    os._exit(_AUTHORITY_LOST_EXIT_CODE)
+    try:
+        cleanup_failures = _remove_disposable_test_files()
+        try:
+            print(message, file=sys.stderr, flush=True)
+            for path in cleanup_failures:
+                print(
+                    f"Could not remove disposable credential file before exit: {path}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        except (OSError, ValueError):
+            pass
+    finally:
+        os._exit(_AUTHORITY_LOST_EXIT_CODE)
 
 
 def _watch_windows_parent_handles(

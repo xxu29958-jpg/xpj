@@ -90,9 +90,6 @@ from adr_contract_git import (  # noqa: E402
 from codebase_audit_gate import evaluate_pr_delta_metrics  # noqa: E402
 from pytest_execution_contract import (  # noqa: E402
     collect_pytest_snapshot,
-    parse_pytest_collection,
-    pytest_collection_command,
-    pytest_execution_environment,
     pytest_nodeid_digest,
 )
 from pytest_marker_contract import (  # noqa: E402
@@ -101,8 +98,10 @@ from pytest_marker_contract import (  # noqa: E402
     BACKEND_REAL_DB_MARKER,
     BACKEND_STATEFUL_MARKER,
     PACKAGING_PARALLEL_MARKER,
+    PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
     PACKAGING_SERIAL_MARKER,
     PYTEST_MARKER_CONTRACT_SCHEMA_VERSION,
+    validated_marker_memberships,
 )
 from pytest_membership_gate import evaluate_protected_pytest_memberships  # noqa: E402
 
@@ -115,6 +114,7 @@ class _PytestMarkerContract:
     cluster: str
     packaging_parallel: str | None
     packaging_serial: str | None
+    packaging_resource_memberships: tuple[str, ...] | None
 
     @property
     def backend_parallel_expression(self) -> str:
@@ -128,6 +128,7 @@ _CURRENT_MARKER_CONTRACT = _PytestMarkerContract(
     cluster=BACKEND_CLUSTER_MARKER,
     packaging_parallel=PACKAGING_PARALLEL_MARKER,
     packaging_serial=PACKAGING_SERIAL_MARKER,
+    packaging_resource_memberships=PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
 )
 _LEGACY_BASE_MARKER_CONTRACT = _PytestMarkerContract(
     parallel_safe="parallel_safe",
@@ -136,7 +137,10 @@ _LEGACY_BASE_MARKER_CONTRACT = _PytestMarkerContract(
     cluster="cluster_serial",
     packaging_parallel=None,
     packaging_serial=None,
+    packaging_resource_memberships=None,
 )
+
+_STRICT_PACKAGING_RUNTIME_ENV = "XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME"
 
 
 def _count_mutate_token_metrics() -> dict[str, int]:
@@ -182,27 +186,6 @@ def _count_mutate_token_metrics() -> dict[str, int]:
     return out
 
 
-def _pytest_collection_environment() -> dict[str, str]:
-    return pytest_execution_environment()
-
-
-def _pytest_collection_command(
-    target: str,
-    mark_expression: str | None,
-) -> list[str]:
-    return pytest_collection_command(target, mark_expression)
-
-
-def _parse_pytest_collection(
-    target: str,
-    result: subprocess.CompletedProcess[str],
-    *,
-    allow_empty: bool,
-) -> tuple[int, tuple[str, ...]]:
-    snapshot = parse_pytest_collection(target, result, allow_empty=allow_empty)
-    return snapshot.count, snapshot.nodeids
-
-
 def _collect_pytest_tests(
     target: str,
     *,
@@ -217,6 +200,7 @@ def _collect_pytest_tests(
         mark_expression=mark_expression,
         backend_root=backend_root,
         allow_empty=allow_empty,
+        remove_environment=(_STRICT_PACKAGING_RUNTIME_ENV,),
     )
     return snapshot.count, snapshot.nodeids
 
@@ -289,10 +273,8 @@ def _load_base_marker_contract(backend_root: pathlib.Path) -> _PytestMarkerContr
     if not contract_path.is_file():
         return _LEGACY_BASE_MARKER_CONTRACT
     module = _load_marker_contract_module(contract_path)
-    if (
-        getattr(module, "PYTEST_MARKER_CONTRACT_SCHEMA_VERSION", None)
-        != PYTEST_MARKER_CONTRACT_SCHEMA_VERSION
-    ):
+    schema_version = getattr(module, "PYTEST_MARKER_CONTRACT_SCHEMA_VERSION", None)
+    if schema_version not in {1, PYTEST_MARKER_CONTRACT_SCHEMA_VERSION}:
         raise RuntimeError("base pytest marker contract schema is unsupported")
     return _PytestMarkerContract(
         parallel_safe=_marker_contract_value(module, "BACKEND_PARALLEL_SAFE_MARKER"),
@@ -301,6 +283,14 @@ def _load_base_marker_contract(backend_root: pathlib.Path) -> _PytestMarkerContr
         cluster=_marker_contract_value(module, "BACKEND_CLUSTER_MARKER"),
         packaging_parallel=_marker_contract_value(module, "PACKAGING_PARALLEL_MARKER"),
         packaging_serial=_marker_contract_value(module, "PACKAGING_SERIAL_MARKER"),
+        packaging_resource_memberships=(
+            validated_marker_memberships(
+                getattr(module, "PACKAGING_RESOURCE_MEMBERSHIP_MARKERS", None),
+                attribute="PACKAGING_RESOURCE_MEMBERSHIP_MARKERS",
+            )
+            if schema_version >= 2
+            else None
+        ),
     )
 
 
@@ -353,27 +343,34 @@ def _collect_packaging_memberships(
         "packaging/tests",
         backend_root=backend_root,
     )[1]
-    if contract.packaging_parallel is None or contract.packaging_serial is None:
-        return {
-            "packaging_all": complete,
-            "packaging_parallel": (),
-            "packaging_serial": (),
-        }
-    return {
+    memberships: dict[str, tuple[str, ...]] = {
         "packaging_all": complete,
-        "packaging_parallel": _collect_pytest_tests(
-            "packaging/tests",
-            mark_expression=contract.packaging_parallel,
-            backend_root=backend_root,
-            allow_empty=True,
-        )[1],
-        "packaging_serial": _collect_pytest_tests(
-            "packaging/tests",
-            mark_expression=contract.packaging_serial,
-            backend_root=backend_root,
-            allow_empty=True,
-        )[1],
+        "packaging_parallel": (),
+        "packaging_serial": (),
+        **dict.fromkeys(PACKAGING_RESOURCE_MEMBERSHIP_MARKERS, ()),
     }
+    if contract.packaging_parallel is None or contract.packaging_serial is None:
+        return memberships
+    memberships["packaging_parallel"] = _collect_pytest_tests(
+        "packaging/tests",
+        mark_expression=contract.packaging_parallel,
+        backend_root=backend_root,
+        allow_empty=True,
+    )[1]
+    memberships["packaging_serial"] = _collect_pytest_tests(
+        "packaging/tests",
+        mark_expression=contract.packaging_serial,
+        backend_root=backend_root,
+        allow_empty=True,
+    )[1]
+    for marker in contract.packaging_resource_memberships or ():
+        memberships[marker] = _collect_pytest_tests(
+            "packaging/tests",
+            mark_expression=marker,
+            backend_root=backend_root,
+            allow_empty=True,
+        )[1]
+    return memberships
 
 
 def _collect_pytest_memberships(
@@ -388,12 +385,12 @@ def _collect_pytest_memberships(
 
 def _collect_base_pytest_memberships(
     environment: Mapping[str, str],
-) -> tuple[bool, dict[str, tuple[str, ...]], bool, str | None]:
+) -> tuple[bool, dict[str, tuple[str, ...]], bool, bool, str | None]:
     environ = dict(environment)
     base_required = bool(environ.get("XPJ_AUDIT_BASE_REF", "").strip()) or (has_auditable_ci_context(environ))
     selected, selection_error = select_ratchet_base(_BACKEND_ROOT.parent, environ)
     if selected is None:
-        return False, {}, base_required, selection_error
+        return False, {}, base_required, False, selection_error
     try:
         with TemporaryDirectory(prefix="xpj-pytest-base-") as temporary:
             snapshot_root = pathlib.Path(temporary)
@@ -402,8 +399,14 @@ def _collect_base_pytest_memberships(
             contract = _load_base_marker_contract(backend_root)
             memberships = _collect_pytest_memberships(backend_root, contract)
     except (OSError, RuntimeError, subprocess.SubprocessError, tarfile.TarError) as exc:
-        return False, {}, base_required, f"{selected.ref}: {exc}"
-    return True, memberships, base_required, None
+        return False, {}, base_required, False, f"{selected.ref}: {exc}"
+    return (
+        True,
+        memberships,
+        base_required,
+        contract.packaging_resource_memberships is not None,
+        None,
+    )
 
 
 def main() -> int:
@@ -453,13 +456,20 @@ def main() -> int:
         print(f"  {key:50} {value:6d}")
     print()
 
-    base_readable, base_memberships, base_required, base_error = _collect_base_pytest_memberships(os.environ)
+    (
+        base_readable,
+        base_memberships,
+        base_required,
+        base_has_exact_packaging_resources,
+        base_error,
+    ) = _collect_base_pytest_memberships(os.environ)
     metrics_exit = evaluate_pr_delta_metrics(counts)
     membership_exit = evaluate_protected_pytest_memberships(
         current_memberships,
         base_memberships,
         base_readable=base_readable,
         base_required=base_required,
+        base_has_exact_packaging_resources=base_has_exact_packaging_resources,
         base_error=base_error,
     )
     return 1 if metrics_exit or membership_exit else 0

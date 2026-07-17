@@ -4,30 +4,64 @@ from __future__ import annotations
 
 import importlib
 
+from scripts.packaging_pytest_contract import (
+    PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
+    packaging_resource_membership_marker,
+)
+
+
+def _exact_packaging_memberships(
+    resource: str,
+    nodeid: str,
+) -> dict[str, tuple[str, ...]]:
+    selected = packaging_resource_membership_marker(resource)
+    return {
+        marker: (nodeid,) if marker == selected else ()
+        for marker in PACKAGING_RESOURCE_MEMBERSHIP_MARKERS
+    }
+
+
+def _membership_snapshot(*, replacement: bool) -> dict[str, tuple[str, ...]]:
+    auth = (
+        "tests/test_auth.py::test_replacement"
+        if replacement
+        else "tests/test_auth.py::test_authorized"
+    )
+    schema = (
+        "tests/test_db.py::test_replacement"
+        if replacement
+        else "tests/test_db.py::test_schema"
+    )
+    package = (
+        "packaging/tests/test_installer.py::test_replacement"
+        if replacement
+        else "packaging/tests/test_installer.py::test_upgrade"
+    )
+    commit = "tests/test_db.py::test_commit"
+    return {
+        "backend_all": (
+            auth,
+            commit,
+            schema,
+        ),
+        "backend_parallel": (
+            auth,
+            commit,
+        ),
+        "parallel_safe": (auth,),
+        "real_db": (commit, schema),
+        "stateful_serial": (schema,),
+        "cluster_serial": (schema,),
+        "packaging_all": (package,),
+        "packaging_parallel": (),
+        "packaging_serial": (package,),
+        **_exact_packaging_memberships("inno_toolchain", package),
+    }
+
 
 def assert_protected_pytest_membership_gate() -> None:
     gate = importlib.reload(importlib.import_module("pytest_membership_gate"))
-    base = {
-        "backend_all": (
-            "tests/test_auth.py::test_authorized",
-            "tests/test_db.py::test_commit",
-            "tests/test_db.py::test_schema",
-        ),
-        "backend_parallel": (
-            "tests/test_auth.py::test_authorized",
-            "tests/test_db.py::test_commit",
-        ),
-        "parallel_safe": ("tests/test_auth.py::test_authorized",),
-        "real_db": (
-            "tests/test_db.py::test_commit",
-            "tests/test_db.py::test_schema",
-        ),
-        "stateful_serial": ("tests/test_db.py::test_schema",),
-        "cluster_serial": ("tests/test_db.py::test_schema",),
-        "packaging_all": ("packaging/tests/test_installer.py::test_upgrade",),
-        "packaging_parallel": (),
-        "packaging_serial": ("packaging/tests/test_installer.py::test_upgrade",),
-    }
+    base = _membership_snapshot(replacement=False)
     assert (
         gate.protected_pytest_membership_violations(
             base,
@@ -37,27 +71,7 @@ def assert_protected_pytest_membership_gate() -> None:
         )
         == []
     )
-    swapped = {
-        "backend_all": (
-            "tests/test_auth.py::test_replacement",
-            "tests/test_db.py::test_commit",
-            "tests/test_db.py::test_replacement",
-        ),
-        "backend_parallel": (
-            "tests/test_auth.py::test_replacement",
-            "tests/test_db.py::test_commit",
-        ),
-        "parallel_safe": ("tests/test_auth.py::test_replacement",),
-        "real_db": (
-            "tests/test_db.py::test_commit",
-            "tests/test_db.py::test_replacement",
-        ),
-        "stateful_serial": ("tests/test_db.py::test_replacement",),
-        "cluster_serial": ("tests/test_db.py::test_replacement",),
-        "packaging_all": ("packaging/tests/test_installer.py::test_replacement",),
-        "packaging_parallel": (),
-        "packaging_serial": ("packaging/tests/test_installer.py::test_replacement",),
-    }
+    swapped = _membership_snapshot(replacement=True)
     violations = gate.protected_pytest_membership_violations(
         swapped,
         base,

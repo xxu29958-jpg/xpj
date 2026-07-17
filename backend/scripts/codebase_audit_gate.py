@@ -27,8 +27,15 @@ import subprocess
 from pathlib import Path
 
 from adr_contract_git import has_auditable_ci_context, select_ratchet_base
+from strict_baseline_policy import (
+    StrictBaselinePolicy as _StrictBaselinePolicy,
+)
+from strict_baseline_policy import (
+    parse_strict_baseline_policy as _parse_base_strict_policy,
+)
 
 DebtCounts = dict[str, int]
+
 
 _strict_baseline_selection_error: str | None = None
 _strict_baseline_selected_ref: str | None = None
@@ -137,9 +144,9 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2691,
-    "backend_pytest_parallel_count": 2629,
-    "backend_pytest_parallel_safe_count": 93,
+    "backend_pytest_count": 2695,
+    "backend_pytest_parallel_count": 2633,
+    "backend_pytest_parallel_safe_count": 97,
     "backend_pytest_real_db_count": 150,
     "backend_pytest_real_db_membership_digest":
         47_554_044_499_875_252_747_688_535_530_001_338_751_707_817_381_612_743_212_365_202_433_320_420_233_908,
@@ -187,21 +194,12 @@ _ADR_0049_EXEMPTED_GRANDFATHER = (121, 122)  # ADR-0053 web merchant catalog add
 # moving them without bumping baseline still FAILs.
 
 
-def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
-    """Return ``(base_readable, baseline_dict)``. Tuple distinguishes
-    three states that have different gate consequences:
+def _read_base_strict_policy() -> tuple[bool, _StrictBaselinePolicy]:
+    """Read base counters and directional policy without executing base code.
 
-      - ``(True, {key: value, ...})``: base readable AND
-        ``STRICT_EQUALITY_BASELINE`` was defined at base — apply ratchet
-        + removed-key checks normally.
-      - ``(True, {})``: base readable but the variable was NOT defined
-        at base (e.g. this prep PR — the dict is being introduced for
-        the first time). Every current key is integral-bootstrap; skip
-        ratchet (no base value to compare against) but still enforce
-        strict equality on each.
-      - ``(False, {})``: base truly unreadable (git show failed —
-        shallow checkout in PR CI is the common cause). In PR CI this
-        is a FAIL; locally it's INFO-skip.
+    A readable pre-policy base returns an empty bootstrap policy. An unreadable
+    or malformed required base fails closed in CI; local development may skip
+    only the cross-ref comparison.
 
     Base ref priority:
       1. ``XPJ_AUDIT_BASE_REF`` (the workflow supplies the exact PR target
@@ -226,21 +224,15 @@ def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
             timeout=30,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-        return (False, {})
-    namespace: dict = {}
+        return (
+            False,
+            _StrictBaselinePolicy({}, frozenset(), frozenset(), False),
+        )
     try:
-        # Trusted source (our own gate file at base). exec is safer than
-        # AST extraction here because the dict literal could change form
-        # across PRs and AST patterns would couple to syntax shape.
-        exec(content, namespace)  # noqa: S102 — trusted source
-    except Exception:  # noqa: BLE001 — base may have an import error; treat as unreadable
-        return (False, {})
-    baseline = namespace.get("STRICT_EQUALITY_BASELINE")
-    if not isinstance(baseline, dict):
-        # File readable but variable missing → integral-bootstrap state
-        # (this is exactly the prep PR's situation against main).
-        return (True, {})
-    return (True, baseline)
+        policy = _parse_base_strict_policy(content)
+    except (SyntaxError, TypeError, ValueError):
+        return (False, _StrictBaselinePolicy({}, frozenset(), frozenset(), False))
+    return (True, policy)
 
 
 def _strict_baseline_git_ref() -> str | None:
@@ -311,6 +303,38 @@ def _compute_ratchet_findings(
     return bootstrapped, movement_violations, removed_keys
 
 
+def _compute_ratchet_policy_findings(
+    base_policy: _StrictBaselinePolicy | None,
+) -> list[str]:
+    violations: list[str] = []
+    overlap = BASELINE_RATCHET_UP & BASELINE_RATCHET_DOWN
+    if overlap:
+        violations.append(
+            "current ratchet policies overlap: " + ", ".join(sorted(overlap))
+        )
+    unknown = (BASELINE_RATCHET_UP | BASELINE_RATCHET_DOWN) - set(
+        STRICT_EQUALITY_BASELINE
+    )
+    if unknown:
+        violations.append(
+            "current ratchet policy references unknown counter(s): "
+            + ", ".join(sorted(unknown))
+        )
+    if base_policy is None or not base_policy.ratchet_policy_present:
+        return violations
+    for label, base_membership, current_membership in (
+        ("UP-only", base_policy.ratchet_up, BASELINE_RATCHET_UP),
+        ("DOWN-only", base_policy.ratchet_down, BASELINE_RATCHET_DOWN),
+    ):
+        removed = sorted(base_membership - current_membership)
+        if removed:
+            violations.append(
+                f"{label} ratchet policy removed protected counter(s): "
+                + ", ".join(removed)
+            )
+    return violations
+
+
 def _print_strict_equality_failures(
     counts: DebtCounts,
     missing: list[str],
@@ -343,6 +367,7 @@ def _print_strict_equality_failures(
 def _print_ratchet_failures(
     movement_violations: list[str],
     removed_keys: list[str],
+    policy_violations: list[str],
     base_unreadable_but_required: bool,
 ) -> None:
     if movement_violations:
@@ -362,6 +387,10 @@ def _print_ratchet_failures(
         )
         for key in removed_keys:
             print(f"  - {key} (was in base, gone in current)")
+    if policy_violations:
+        print("FAIL: directional ratchet policy drifted or is malformed:")
+        for violation in policy_violations:
+            print(f"  - {violation}")
     if base_unreadable_but_required:
         print(
             "FAIL: CI/exact-base audit couldn't read the required base baseline. Possible causes: "
@@ -412,7 +441,7 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     """
     missing, mismatches, extras = _compute_strict_equality_findings(counts)
 
-    base_readable, base_baseline = _read_base_strict_baseline()
+    base_readable, base_policy = _read_base_strict_policy()
     base_unreadable_but_required = (
         not base_readable and _strict_baseline_base_is_required()
     )
@@ -420,16 +449,29 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     movement_violations: list[str] = []
     removed_keys: list[str] = []
     if base_readable:
-        bootstrapped, movement_violations, removed_keys = _compute_ratchet_findings(base_baseline)
+        bootstrapped, movement_violations, removed_keys = _compute_ratchet_findings(
+            base_policy.baseline
+        )
+    policy_violations = _compute_ratchet_policy_findings(
+        base_policy if base_readable else None
+    )
 
     print("== Gate. ADR-0038 PR-Δ verification (strict-equality + ratchet) ==")
     _print_strict_equality_failures(counts, missing, mismatches, extras)
-    _print_ratchet_failures(movement_violations, removed_keys, base_unreadable_but_required)
+    _print_ratchet_failures(
+        movement_violations,
+        removed_keys,
+        policy_violations,
+        base_unreadable_but_required,
+    )
     _print_info_lines(base_readable, bootstrapped)
 
     fail = bool(
         missing or mismatches or extras
-        or movement_violations or removed_keys or base_unreadable_but_required
+        or movement_violations
+        or removed_keys
+        or policy_violations
+        or base_unreadable_but_required
     )
     if not fail:
         _print_ok_line(base_readable, bootstrapped)

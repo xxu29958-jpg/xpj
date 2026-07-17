@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
+import json
 import os
 import subprocess
 import sys
@@ -15,9 +17,62 @@ from _local_test_postgres_runtime import (
 )
 from _powershell_contract import powershell_contract_engines
 
-from scripts.test_pg_protected_file import assert_protected_authority_file
+from scripts.test_pg_protected_file import (
+    assert_protected_authority_file,
+    write_protected_utf8_file,
+)
+from scripts.test_pg_windows_contract import (
+    _windows_process_created_filetime,
+    _windows_process_kernel32,
+)
 
 pytestmark = pytest.mark.packaging_resource("postgres_cluster")
+
+
+def _open_exact_windows_process(
+    process_id: int,
+    expected_created: int,
+) -> tuple[object, object]:
+    from ctypes import wintypes
+
+    kernel32 = _windows_process_kernel32()
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel32.TerminateProcess.restype = wintypes.BOOL
+    kernel32.GetExitCodeProcess.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    handle = kernel32.OpenProcess(
+        0x00100000 | 0x00001000 | 0x00000001,
+        False,
+        process_id,
+    )
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        actual_created = _windows_process_created_filetime(kernel32, handle)
+        if actual_created != expected_created:
+            raise RuntimeError("Disposable child process generation changed")
+    except (OSError, RuntimeError):
+        kernel32.CloseHandle(handle)
+        raise
+    return kernel32, handle
+
+
+def _windows_process_handle_is_running(kernel32: object, handle: object) -> bool:
+    return kernel32.WaitForSingleObject(handle, 0) == 0x00000102
+
+
+def _terminate_exact_windows_process(kernel32: object, handle: object) -> None:
+    if _windows_process_handle_is_running(kernel32, handle) and not kernel32.TerminateProcess(
+        handle,
+        15,
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    kernel32.WaitForSingleObject(handle, 10_000)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows restricted token")
@@ -353,34 +408,60 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
 def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> None:
     child = tmp_path / "watch-parent-child.py"
     child.write_text(
-        "import os, sys, time\n"
+        "import json, os, sys, time\n"
         "from pathlib import Path\n"
         "sys.path.insert(0, sys.argv[1])\n"
-        "from scripts.test_pg_protected_file import write_protected_utf8_file\n"
-        "from scripts.test_pg_contract import start_windows_parent_watchdog\n"
-        "from scripts.test_pg_windows_contract import disposable_test_file_cleanup\n"
-        "passfile = Path(sys.argv[3])\n"
-        "with disposable_test_file_cleanup(passfile):\n"
-        "    write_protected_utf8_file(passfile, 'derived-secret\\n', label='Hard-exit passfile')\n"
-        "    start_windows_parent_watchdog(label='runtime contract child')\n"
-        "    Path(sys.argv[2]).write_text(str(os.getpid()), encoding='ascii')\n"
-        "    while True:\n"
-        "        time.sleep(0.1)\n",
+        "from scripts.test_pg_contract import (\n"
+        "    EPHEMERAL_SERVICE_AUTHORITY, TEST_CLUSTER_AUTHORITY_ENV,\n"
+        "    TEST_POSTGRES_CREDENTIAL_FILE_ENV, start_windows_parent_watchdog,\n"
+        "    test_postgres_credential_environment,\n"
+        ")\n"
+        "from scripts.test_pg_protected_reader import _open_windows_protected_read_descriptor\n"
+        "from scripts.test_pg_windows_contract import (\n"
+        "    _windows_process_created_filetime, _windows_process_kernel32,\n"
+        ")\n"
+        "ready = Path(sys.argv[2])\n"
+        "credential = Path(sys.argv[3])\n"
+        "database_url = 'postgresql+psycopg://postgres@127.0.0.1:5432/xpj_test'\n"
+        "os.environ['CI'] = 'true'\n"
+        "os.environ[TEST_CLUSTER_AUTHORITY_ENV] = EPHEMERAL_SERVICE_AUTHORITY\n"
+        "os.environ[TEST_POSTGRES_CREDENTIAL_FILE_ENV] = str(credential)\n"
+        "with test_postgres_credential_environment(database_url, os.environ) as passfile:\n"
+        "    descriptor = _open_windows_protected_read_descriptor(\n"
+        "        passfile, label='Hard-exit passfile'\n"
+        "    )\n"
+        "    try:\n"
+        "        kernel32 = _windows_process_kernel32()\n"
+        "        created = _windows_process_created_filetime(\n"
+        "            kernel32, kernel32.GetCurrentProcess()\n"
+        "        )\n"
+        "        start_windows_parent_watchdog(label='runtime contract child')\n"
+        "        sys.stderr.close()\n"
+        "        ready.write_text(\n"
+        "            json.dumps({'pid': os.getpid(), 'created': created, 'passfile': str(passfile)}),\n"
+        "            encoding='utf-8',\n"
+        "        )\n"
+        "        while True:\n"
+        "            time.sleep(0.1)\n"
+        "    finally:\n"
+        "        os.close(descriptor)\n",
         encoding="ascii",
     )
     parent = tmp_path / "watch-parent.py"
     parent.write_text(
-        "import os, subprocess, sys, time\n"
-        "from pathlib import Path\n"
+        "import subprocess, sys, time\n"
         "child = subprocess.Popen([sys.executable, sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]])\n"
-        "Path(sys.argv[5]).write_text(str(os.getpid()), encoding='ascii')\n"
         "while True:\n"
         "    time.sleep(0.1)\n",
         encoding="ascii",
     )
     child_ready = tmp_path / "child.ready"
-    derived_passfile = tmp_path / ".xpj-pgpass-parent-death"
-    parent_ready = tmp_path / "parent.ready"
+    credential_authority = tmp_path / ".xpj-test-postgres-password"
+    write_protected_utf8_file(
+        credential_authority,
+        f"{'c' * 43}\n",
+        label="Parent-death PostgreSQL credential authority",
+    )
     backend_root = Path(__file__).resolve().parents[2]
     launcher = subprocess.Popen(
         [
@@ -389,40 +470,44 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
             str(child),
             str(backend_root),
             str(child_ready),
-            str(derived_passfile),
-            str(parent_ready),
+            str(credential_authority),
         ],
         cwd=backend_root,
     )
-    child_pid: int | None = None
+    child_kernel32: object | None = None
+    child_handle: object | None = None
+    derived_passfile: Path | None = None
     try:
         deadline = time.monotonic() + 10
-        while (
-            (not child_ready.exists() or not parent_ready.exists())
-            and time.monotonic() < deadline
-        ):
+        while not child_ready.exists() and time.monotonic() < deadline:
             assert launcher.poll() is None
             time.sleep(0.05)
         assert child_ready.exists()
+        ready = json.loads(child_ready.read_text(encoding="utf-8"))
+        derived_passfile = Path(ready["passfile"])
         assert_protected_authority_file(
             derived_passfile.resolve(),
             label="Hard-exit passfile",
         )
-        child_pid = int(child_ready.read_text(encoding="ascii"))
-        assert _windows_process_is_running(child_pid)
-        parent_pid = int(parent_ready.read_text(encoding="ascii"))
-        os.kill(parent_pid, 15)
+        child_kernel32, child_handle = _open_exact_windows_process(
+            int(ready["pid"]),
+            int(ready["created"]),
+        )
+        assert _windows_process_handle_is_running(child_kernel32, child_handle)
+        launcher.kill()
         launcher.wait(timeout=10)
-        deadline = time.monotonic() + 10
-        while _windows_process_is_running(child_pid) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert not _windows_process_is_running(child_pid)
+        assert child_kernel32.WaitForSingleObject(child_handle, 10_000) == 0
+        exit_code = ctypes.c_uint32()
+        assert child_kernel32.GetExitCodeProcess(
+            child_handle,
+            ctypes.byref(exit_code),
+        )
+        assert exit_code.value == 3
         assert not derived_passfile.exists()
-        child_pid = None
     finally:
         if launcher.poll() is None:
             launcher.kill()
             launcher.wait(timeout=10)
-        if child_pid is not None:
-            with contextlib.suppress(OSError):
-                os.kill(child_pid, 15)
+        if child_kernel32 is not None and child_handle is not None:
+            _terminate_exact_windows_process(child_kernel32, child_handle)
+            child_kernel32.CloseHandle(child_handle)
