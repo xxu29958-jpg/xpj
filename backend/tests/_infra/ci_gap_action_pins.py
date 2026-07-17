@@ -21,6 +21,18 @@ jobs:
 """,
         encoding="utf-8",
     )
+    composite = workflows.parent / "actions" / "local-check" / "action.yml"
+    composite.parent.mkdir(parents=True)
+    composite.write_text(
+        f"""
+name: local check
+runs:
+  using: composite
+  steps:
+    - uses: owner/composite-dependency@{pinned}
+""",
+        encoding="utf-8",
+    )
     mutations = {
         "semver.yaml": "actions/checkout@v6.0.3",
         "release.yml": "owner/action@release",
@@ -42,6 +54,19 @@ jobs:
 """,
             encoding="utf-8",
         )
+
+
+def write_composite_action_dependency(workflows: Path, uses: str) -> None:
+    (workflows.parent / "actions" / "local-check" / "action.yml").write_text(
+        f"""
+name: local check
+runs:
+  using: composite
+  steps:
+    - uses: {uses}
+""",
+        encoding="utf-8",
+    )
 
 
 def write_action_pin_yaml_shapes(workflows: Path) -> None:

@@ -20,12 +20,23 @@ def _workflow_dir_list(
 def _iter_workflow_paths(
     workflow_dirs: pathlib.Path | list[pathlib.Path],
 ) -> list[pathlib.Path]:
-    return sorted(
-        path
-        for workflow_dir in _workflow_dir_list(workflow_dirs)
-        for path in workflow_dir.iterdir()
-        if path.is_file() and path.suffix.lower() in _WORKFLOW_SUFFIXES
-    )
+    paths: set[pathlib.Path] = set()
+    for workflow_dir in _workflow_dir_list(workflow_dirs):
+        paths.update(
+            path
+            for path in workflow_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in _WORKFLOW_SUFFIXES
+        )
+        if workflow_dir.name != "workflows" or workflow_dir.parent.name != ".github":
+            continue
+        actions_dir = workflow_dir.parent / "actions"
+        if actions_dir.is_dir():
+            paths.update(
+                path
+                for path in actions_dir.rglob("*")
+                if path.is_file() and path.name.lower() in {"action.yml", "action.yaml"}
+            )
+    return sorted(paths)
 
 
 def _line_indent(line: str) -> int:
@@ -104,8 +115,19 @@ def _iter_yaml_uses(path: pathlib.Path) -> list[tuple[int, str]]:
     return uses
 
 
-def _is_github_workflow(path: pathlib.Path) -> bool:
-    return ".github" in path.parts and "workflows" in path.parts
+def _is_github_automation(path: pathlib.Path) -> bool:
+    if ".github" not in path.parts:
+        return False
+    github_index = path.parts.index(".github")
+    return (
+        github_index + 1 < len(path.parts)
+        and path.parts[github_index + 1] in {"workflows", "actions"}
+    )
+
+
+def _github_relative_path(path: pathlib.Path) -> str:
+    github_index = path.parts.index(".github")
+    return pathlib.PurePosixPath(*path.parts[github_index:]).as_posix()
 
 
 def github_external_uses_pin_violations(
@@ -113,14 +135,14 @@ def github_external_uses_pin_violations(
 ) -> list[str]:
     violations: list[str] = []
     for path in _iter_workflow_paths(workflow_dirs):
-        if not _is_github_workflow(path):
+        if not _is_github_automation(path):
             continue
         for line_number, value in _iter_yaml_uses(path):
             if value.startswith("./"):
                 continue
             if _EXTERNAL_USES_SHA.fullmatch(value) is None:
                 violations.append(
-                    f"{path.name}:{line_number}: external uses ref must be exactly a "
+                    f"{_github_relative_path(path)}:{line_number}: external uses ref must be exactly a "
                     f"40-hex commit SHA: {value}"
                 )
     return violations

@@ -11,9 +11,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  authorize:
+    name: Authorize Android NVD publication
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the default branch
+        env:
+          REQUESTED_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_ref="refs/heads/${DEFAULT_BRANCH}"
+          if [ "$REQUESTED_REF" != "$expected_ref" ]; then
+            echo "::error::Android NVD publication is restricted to ${expected_ref}."
+            exit 1
+          fi
+
   refresh:
     name: Refresh Android NVD cache
-    if: github.ref == 'refs/heads/main'
+    needs: authorize
     runs-on: ubuntu-latest
     timeout-minutes: 35
     outputs:
@@ -65,7 +83,6 @@ jobs:
   verify:
     name: Verify published Android NVD cache
     needs: refresh
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -96,12 +113,26 @@ jobs:
           server-url: ${{ env.TICKETBOX_SERVER_URL }}
           worker-count: "2"
 
+      - name: Clear pre-existing OWASP NVD data
+        run: rm -rf "${HOME}/.gradle/dependency-check-data"
+
       - name: Restore published OWASP NVD database
+        id: published-cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.gradle/dependency-check-data
           key: ${{ needs.refresh.outputs.cache-key }}
           fail-on-cache-miss: true
+
+      - name: Require the published cache entry
+        env:
+          PUBLISHED_CACHE_HIT: ${{ steps.published-cache.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          if [ "$PUBLISHED_CACHE_HIT" != "true" ]; then
+            echo "::error::The refreshed OWASP NVD payload was not published to the cache service."
+            exit 1
+          fi
 
       - name: Verify published OWASP NVD payload
         run: |
@@ -113,6 +144,9 @@ jobs:
           fi
           rm -f build/reports/dependency-check-report.json
           ./gradlew --no-daemon --max-workers=2 \
-            dependencyCheckAggregate -PdependencyCheckAutoUpdate=false
+            dependencyCheckAggregate \
+            -PdependencyCheckAutoUpdate=false \
+            -PdependencyCheckNvdValidForHours=0 \
+            -PdependencyCheckFailBuildOnCvss=11
           python3 scripts/verify_dependency_check_report.py \
             build/reports/dependency-check-report.json

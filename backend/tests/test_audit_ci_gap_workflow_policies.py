@@ -7,6 +7,7 @@ from tests._infra.ci_gap_action_pins import (
     write_action_pin_mutations,
     write_action_pin_workflows,
     write_action_pin_yaml_shapes,
+    write_composite_action_dependency,
 )
 from tests._infra.ci_gap_powershell_ast import (
     assert_ci_gap_uses_complete_powershell_ast,
@@ -20,6 +21,18 @@ def test_github_external_uses_require_exact_commit_sha_across_all_workflows(
     mod = _load()
     workflows, mutations = write_action_pin_workflows(tmp_path)
     assert mod._github_external_uses_pin_violations(workflows) == []
+
+    write_composite_action_dependency(workflows, "owner/composite-dependency@main")
+    composite_violations = mod._github_external_uses_pin_violations(workflows)
+    assert any(
+        ".github/actions/local-check/action.yml" in item
+        and "owner/composite-dependency@main" in item
+        for item in composite_violations
+    )
+    write_composite_action_dependency(
+        workflows,
+        f"owner/composite-dependency@{'b' * 40}",
+    )
 
     write_action_pin_mutations(workflows, mutations)
     violations = mod._github_external_uses_pin_violations(workflows)

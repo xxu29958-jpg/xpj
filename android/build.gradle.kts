@@ -29,13 +29,18 @@ val dependencyCheckNvdValidForHours =
         .map { it.toInt() }
         .orElse(24)
 
+val dependencyCheckFailBuildOnCvss =
+    providers.gradleProperty("dependencyCheckFailBuildOnCvss")
+        .map { it.toFloat() }
+        .orElse(7.0f)
+
 // Keep the NVD database under Gradle user home so trusted CI events can
 // refresh one cache while pull requests consume it read-only.
 val dependencyCheckDataDir =
     gradle.gradleUserHomeDir.resolve("dependency-check-data").absolutePath
 
 dependencyCheck {
-    failBuildOnCVSS = 7.0f
+    failBuildOnCVSS = dependencyCheckFailBuildOnCvss.get()
     // Keep this explicit: corrupt/unreadable cache data must never become a
     // successful report-shaped no-op when an upstream default changes.
     failOnError = true
@@ -58,4 +63,41 @@ dependencyCheck {
     autoUpdate = dependencyCheckAutoUpdate.get()
     nvd.validForHours = dependencyCheckNvdValidForHours.get()
     data.directory = dependencyCheckDataDir
+}
+
+val verifyDependencyCheckContract =
+    tasks.register("verifyDependencyCheckContract") {
+        group = "verification"
+        description = "Verifies the effective OWASP dependency-check runtime contract."
+        doLast {
+            check(dependencyCheck.failOnError == true) {
+                "dependency-check must fail when its data or analyzer fails"
+            }
+            check(dependencyCheck.scanProjects == listOf(":app")) {
+                "dependency-check must scan exactly :app"
+            }
+            check(dependencyCheck.formats == listOf("HTML", "JSON")) {
+                "dependency-check must produce HTML and JSON reports"
+            }
+            check(dependencyCheck.autoUpdate == dependencyCheckAutoUpdate.get()) {
+                "dependency-check autoUpdate drifted from its runtime property"
+            }
+            check(dependencyCheck.nvd.validForHours == dependencyCheckNvdValidForHours.get()) {
+                "dependency-check NVD freshness drifted from its runtime property"
+            }
+            check(dependencyCheck.failBuildOnCVSS == dependencyCheckFailBuildOnCvss.get()) {
+                "dependency-check CVSS policy drifted from its runtime property"
+            }
+            check(dependencyCheck.data.directory == dependencyCheckDataDir) {
+                "dependency-check data directory drifted from the shared cache contract"
+            }
+        }
+    }
+
+tasks.named("dependencyCheckUpdate") {
+    dependsOn(verifyDependencyCheckContract)
+}
+
+tasks.named("dependencyCheckAggregate") {
+    dependsOn(verifyDependencyCheckContract)
 }
