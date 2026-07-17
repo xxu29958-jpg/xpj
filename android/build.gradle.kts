@@ -24,6 +24,11 @@ val dependencyCheckAutoUpdate =
         .map { it.toBoolean() }
         .orElse(true)
 
+val dependencyCheckNvdValidForHours =
+    providers.gradleProperty("dependencyCheckNvdValidForHours")
+        .map { it.toInt() }
+        .orElse(24)
+
 // Keep the NVD database under Gradle user home so trusted CI events can
 // refresh one cache while pull requests consume it read-only.
 val dependencyCheckDataDir =
@@ -47,10 +52,10 @@ dependencyCheck {
     // OWASP recommends an NVD API key to avoid throttling; CI injects it and
     // local runs can use either an environment variable or a Gradle property.
     nvd.apiKey = nvdApiKey.orEmpty()
-    // A trusted refresh must actually contact/check NVD before it renews the
-    // seven-day marker. Pull-request scans override autoUpdate=false and never
-    // receive the NVD credential.
+    // A trusted producer overrides both properties to force a real refresh.
+    // Existing CI keeps the warm-cache default until the read-only consumer
+    // replaces it, so the staged rollout never creates two forced writers.
     autoUpdate = dependencyCheckAutoUpdate.get()
-    nvd.validForHours = 0
+    nvd.validForHours = dependencyCheckNvdValidForHours.get()
     data.directory = dependencyCheckDataDir
 }

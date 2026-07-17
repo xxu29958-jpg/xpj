@@ -153,9 +153,9 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2715,
-    "backend_pytest_parallel_count": 2653,
-    "backend_pytest_parallel_safe_count": 117,
+    "backend_pytest_count": 2718,
+    "backend_pytest_parallel_count": 2656,
+    "backend_pytest_parallel_safe_count": 120,
     "backend_pytest_real_db_count": 150,
     "backend_pytest_real_db_membership_digest":
         47_554_044_499_875_252_747_688_535_530_001_338_751_707_817_381_612_743_212_365_202_433_320_420_233_908,

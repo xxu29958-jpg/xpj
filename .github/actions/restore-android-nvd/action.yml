@@ -5,6 +5,9 @@ outputs:
   cache-key:
     description: Unique key used when a trusted producer publishes refreshed data.
     value: ${{ steps.cache-key.outputs.value }}
+  cache-generation:
+    description: Dependency-check data generation accepted by this action.
+    value: ${{ steps.cache-key.outputs.generation }}
 
 runs:
   using: composite
@@ -13,22 +16,18 @@ runs:
       id: cache-key
       shell: bash
       env:
+        REPOSITORY_ROOT: ${{ github.workspace }}
         CACHE_OS: ${{ runner.os }}
-        DEPENDENCY_DIGEST: ${{ hashFiles('android/gradle/libs.versions.toml') }}
         RUN_ID: ${{ github.run_id }}
         RUN_ATTEMPT: ${{ github.run_attempt }}
-      run: |
-        set -euo pipefail
-        date_utc="$(date -u +%Y-%m-%d)"
-        echo "date=$date_utc" >> "$GITHUB_OUTPUT"
-        echo "value=nvd-${CACHE_OS}-${DEPENDENCY_DIGEST}-${date_utc}-${RUN_ID}-${RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      run: python3 "$REPOSITORY_ROOT/scripts/build_android_nvd_cache_key.py"
 
     - name: Restore OWASP NVD database
+      id: restore
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: ~/.gradle/dependency-check-data
         key: ${{ steps.cache-key.outputs.value }}
         restore-keys: |
-          nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-${{ steps.cache-key.outputs.date }}-
-          nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-
-          nvd-${{ runner.os }}-
+          nvd-${{ runner.os }}-${{ steps.cache-key.outputs.generation }}-${{ steps.cache-key.outputs.date }}-
+          nvd-${{ runner.os }}-${{ steps.cache-key.outputs.generation }}-
