@@ -46,19 +46,9 @@ jobs:
           server-url: ${{ env.TICKETBOX_SERVER_URL }}
           worker-count: "2"
 
-      - name: NVD cache key (UTC date)
-        id: nvd-key
-        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-
       - name: Restore OWASP NVD database
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.gradle/dependency-check-data
-          key: nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-${{ steps.nvd-key.outputs.date }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-${{ steps.nvd-key.outputs.date }}-
-            nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-
-            nvd-${{ runner.os }}-
+        id: nvd-cache
+        uses: ./.github/actions/restore-android-nvd
 
       - name: Refresh OWASP NVD database
         env:
@@ -69,4 +59,4 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.gradle/dependency-check-data
-          key: nvd-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}-${{ steps.nvd-key.outputs.date }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ${{ steps.nvd-cache.outputs.cache-key }}

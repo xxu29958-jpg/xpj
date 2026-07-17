@@ -140,11 +140,51 @@ def test_nvd_producer_workflow_is_main_only_and_publishes_unique_cache() -> None
     )
     restore = steps["Restore OWASP NVD database"]
     save = steps["Save refreshed OWASP NVD database"]
-    assert restore["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
+    assert restore["id"] == "nvd-cache"
+    assert restore["uses"] == "./.github/actions/restore-android-nvd"
     assert save["uses"] == f"actions/cache/save@{_CACHE_ACTION_SHA}"
-    assert restore["with"]["path"] == save["with"]["path"]
-    assert restore["with"]["key"] == save["with"]["key"]
-    assert "${{ github.run_id }}-${{ github.run_attempt }}" in save["with"]["key"]
+    assert save["with"] == {
+        "path": "~/.gradle/dependency-check-data",
+        "key": "${{ steps.nvd-cache.outputs.cache-key }}",
+    }
+
+
+def test_shared_nvd_restore_action_owns_the_producer_cache_identity() -> None:
+    action = _load_workflow(
+        _ROOT / ".github" / "actions" / "restore-android-nvd" / "action.yml"
+    )
+    assert action["outputs"]["cache-key"]["value"] == (
+        "${{ steps.cache-key.outputs.value }}"
+    )
+    steps = {step["name"]: step for step in action["runs"]["steps"]}
+    key = steps["Build NVD cache key"]
+    assert key["id"] == "cache-key"
+    assert key["shell"] == "bash"
+    assert key["env"] == {
+        "CACHE_OS": "${{ runner.os }}",
+        "DEPENDENCY_DIGEST": (
+            "${{ hashFiles('android/gradle/libs.versions.toml') }}"
+        ),
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+    }
+    assert "set -euo pipefail" in key["run"]
+    assert "date -u +%Y-%m-%d" in key["run"]
+    assert (
+        "nvd-${CACHE_OS}-${DEPENDENCY_DIGEST}-${date_utc}-"
+        "${RUN_ID}-${RUN_ATTEMPT}"
+    ) in key["run"]
+
+    restore = steps["Restore OWASP NVD database"]
+    assert restore["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
+    assert restore["with"]["path"] == "~/.gradle/dependency-check-data"
+    assert restore["with"]["key"] == "${{ steps.cache-key.outputs.value }}"
+    restore_keys = restore["with"]["restore-keys"]
+    assert (
+        "nvd-${{ runner.os }}-"
+        "${{ hashFiles('android/gradle/libs.versions.toml') }}-"
+        "${{ steps.cache-key.outputs.date }}-"
+    ) in restore_keys
 
 
 def test_dependency_check_producer_contract_forces_real_refresh() -> None:
