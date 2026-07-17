@@ -16,6 +16,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    outputs:
+      cache-key: ${{ steps.nvd-cache.outputs.cache-key }}
     defaults:
       run:
         working-directory: android
@@ -60,11 +62,57 @@ jobs:
           path: ~/.gradle/dependency-check-data
           key: ${{ steps.nvd-cache.outputs.cache-key }}
 
-      - name: Verify published OWASP NVD database
-        if: ${{ success() }}
+  verify:
+    name: Verify published Android NVD cache
+    needs: refresh
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: android
+        shell: bash
+    env:
+      TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Java
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Prepare Android build
+        uses: ./.github/actions/prepare-android
+        with:
+          server-url: ${{ env.TICKETBOX_SERVER_URL }}
+          worker-count: "2"
+
+      - name: Restore published OWASP NVD database
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.gradle/dependency-check-data
-          key: ${{ steps.nvd-cache.outputs.cache-key }}
-          lookup-only: true
+          key: ${{ needs.refresh.outputs.cache-key }}
           fail-on-cache-miss: true
+
+      - name: Verify published OWASP NVD payload
+        run: |
+          set -euo pipefail
+          marker="${HOME}/.gradle/dependency-check-data/xpj-nvd-refresh-epoch"
+          if [ ! -s "$marker" ] || ! grep -Eq '^[0-9]+$' "$marker"; then
+            echo "::error::Published OWASP NVD cache has no valid refresh marker."
+            exit 1
+          fi
+          rm -f build/reports/dependency-check-report.json
+          ./gradlew --no-daemon --max-workers=2 \
+            dependencyCheckAggregate -PdependencyCheckAutoUpdate=false
+          python3 scripts/verify_dependency_check_report.py \
+            build/reports/dependency-check-report.json

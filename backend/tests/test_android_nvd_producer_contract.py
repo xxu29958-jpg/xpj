@@ -187,10 +187,13 @@ def test_nvd_producer_workflow_is_main_only_and_publishes_unique_cache() -> None
         _ROOT / ".github" / "workflows" / "android-nvd-cache.yml"
     )
     assert workflow["on"] == {"workflow_dispatch": None}
-    assert set(workflow["jobs"]) == {"refresh"}
+    assert set(workflow["jobs"]) == {"refresh", "verify"}
     refresh = workflow["jobs"]["refresh"]
     assert refresh["if"] == "github.ref == 'refs/heads/main'"
     assert refresh["timeout-minutes"] == 35
+    assert refresh["outputs"] == {
+        "cache-key": "${{ steps.nvd-cache.outputs.cache-key }}"
+    }
     assert "NVD_API_KEY" not in refresh.get("env", {})
     steps = {step["name"]: step for step in refresh["steps"]}
     assert set(steps) == {
@@ -201,7 +204,6 @@ def test_nvd_producer_workflow_is_main_only_and_publishes_unique_cache() -> None
         "Restore OWASP NVD database",
         "Refresh OWASP NVD database",
         "Save refreshed OWASP NVD database",
-        "Verify published OWASP NVD database",
     }
     update = steps["Refresh OWASP NVD database"]
     assert update["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
@@ -211,7 +213,6 @@ def test_nvd_producer_workflow_is_main_only_and_publishes_unique_cache() -> None
     )
     restore = steps["Restore OWASP NVD database"]
     save = steps["Save refreshed OWASP NVD database"]
-    verify = steps["Verify published OWASP NVD database"]
     assert restore["id"] == "nvd-cache"
     assert restore["uses"] == "./.github/actions/restore-android-nvd"
     assert save["uses"] == f"actions/cache/save@{_CACHE_ACTION_SHA}"
@@ -220,20 +221,42 @@ def test_nvd_producer_workflow_is_main_only_and_publishes_unique_cache() -> None
         "path": "~/.gradle/dependency-check-data",
         "key": "${{ steps.nvd-cache.outputs.cache-key }}",
     }
-    assert verify["if"] == "${{ success() }}"
-    assert verify["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
-    assert verify["with"] == {
-        "path": "~/.gradle/dependency-check-data",
-        "key": "${{ steps.nvd-cache.outputs.cache-key }}",
-        "lookup-only": True,
-        "fail-on-cache-miss": True,
-    }
     for name, step in steps.items():
         serialized = json.dumps(step, sort_keys=True)
         if name == "Refresh OWASP NVD database":
             assert serialized.count("secrets.NVD_API_KEY") == 1
         else:
             assert "NVD_API_KEY" not in serialized
+
+    verify = workflow["jobs"]["verify"]
+    assert verify["needs"] == "refresh"
+    assert verify["if"] == "github.ref == 'refs/heads/main'"
+    assert verify["timeout-minutes"] == 20
+    assert "NVD_API_KEY" not in json.dumps(verify, sort_keys=True)
+    verify_steps = {step["name"]: step for step in verify["steps"]}
+    assert set(verify_steps) == {
+        "Checkout",
+        "Set up Java",
+        "Set up Gradle",
+        "Prepare Android build",
+        "Restore published OWASP NVD database",
+        "Verify published OWASP NVD payload",
+    }
+    published_restore = verify_steps["Restore published OWASP NVD database"]
+    assert published_restore["uses"] == (
+        f"actions/cache/restore@{_CACHE_ACTION_SHA}"
+    )
+    assert published_restore["with"] == {
+        "path": "~/.gradle/dependency-check-data",
+        "key": "${{ needs.refresh.outputs.cache-key }}",
+        "fail-on-cache-miss": True,
+    }
+    payload = verify_steps["Verify published OWASP NVD payload"]["run"]
+    assert "xpj-nvd-refresh-epoch" in payload
+    assert "dependencyCheckAggregate -PdependencyCheckAutoUpdate=false" in (
+        " ".join(payload.split())
+    )
+    assert "verify_dependency_check_report.py" in payload
 
     ci = _load_workflow(_ROOT / ".github" / "workflows" / "ci.yml")
     android_steps = {
