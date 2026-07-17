@@ -152,12 +152,18 @@ def pytest_execution_membership_violation(
     selected_nodeids: Sequence[str],
     expected_count: str | None,
     expected_digest: str | None,
+    allow_empty: bool = False,
 ) -> str | None:
     try:
         count = int(expected_count or "")
     except ValueError:
         return f"Managed {label} pytest execution is missing its expected count."
-    if count <= 0 or not expected_digest or not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
+    if (
+        count < 0
+        or (count == 0 and not allow_empty)
+        or not expected_digest
+        or not re.fullmatch(r"[0-9a-f]{64}", expected_digest)
+    ):
         return f"Managed {label} pytest execution has an invalid collection proof."
     actual = tuple(selected_nodeids)
     if len(actual) == count and pytest_nodeid_digest(actual) == expected_digest:

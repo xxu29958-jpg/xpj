@@ -251,6 +251,7 @@ def pytest_collection_modifyitems(
             selected_nodeids=parallel_nodeids,
             expected_count=os.environ.get(PACKAGING_EXPECTED_PARALLEL_COUNT_ENV),
             expected_digest=os.environ.get(PACKAGING_EXPECTED_PARALLEL_DIGEST_ENV),
+            allow_empty=True,
         )
     if violation is None:
         violation = execution_membership_violation(
@@ -258,6 +259,7 @@ def pytest_collection_modifyitems(
             selected_nodeids=serial_nodeids,
             expected_count=os.environ.get(PACKAGING_EXPECTED_SERIAL_COUNT_ENV),
             expected_digest=os.environ.get(PACKAGING_EXPECTED_SERIAL_DIGEST_ENV),
+            allow_empty=True,
         )
     if violation:
         raise pytest.UsageError(violation)

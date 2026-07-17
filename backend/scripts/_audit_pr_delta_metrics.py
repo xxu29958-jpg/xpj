@@ -221,22 +221,13 @@ def _extract_trusted_backend_snapshot(ref: str, destination: pathlib.Path) -> No
         archive.extractall(destination, members=members, filter="data")
 
 
-def _collect_base_packaging_memberships(
+def _collect_packaging_memberships(
     backend_root: pathlib.Path,
 ) -> dict[str, tuple[str, ...]]:
     complete = _collect_pytest_tests(
         "packaging/tests",
         backend_root=backend_root,
     )[1]
-    conftest = backend_root / "packaging" / "tests" / "conftest.py"
-    if not conftest.is_file() or "packaging_resource" not in conftest.read_text(
-        encoding="utf-8"
-    ):
-        return {
-            "packaging_all": complete,
-            "packaging_parallel": (),
-            "packaging_serial": (),
-        }
     return {
         "packaging_all": complete,
         "packaging_parallel": _collect_pytest_tests(
@@ -267,9 +258,6 @@ def _collect_base_pytest_memberships(
             snapshot_root = pathlib.Path(temporary)
             _extract_trusted_backend_snapshot(selected.commit, snapshot_root)
             backend_root = snapshot_root / "backend"
-            conftest_text = (backend_root / "tests" / "conftest.py").read_text(
-                encoding="utf-8"
-            )
             memberships = {
                 "backend_all": _collect_pytest_tests(
                     "tests",
@@ -280,16 +268,12 @@ def _collect_base_pytest_memberships(
                     mark_expression="not stateful_serial",
                     backend_root=backend_root,
                 )[1],
-                "parallel_safe": (
-                    _collect_pytest_tests(
-                        "tests",
-                        mark_expression="parallel_safe",
-                        backend_root=backend_root,
-                        allow_empty=True,
-                    )[1]
-                    if "parallel_safe:" in conftest_text
-                    else ()
-                ),
+                "parallel_safe": _collect_pytest_tests(
+                    "tests",
+                    mark_expression="parallel_safe",
+                    backend_root=backend_root,
+                    allow_empty=True,
+                )[1],
                 "real_db": _collect_pytest_tests(
                     "tests",
                     mark_expression="real_db",
@@ -302,17 +286,13 @@ def _collect_base_pytest_memberships(
                     backend_root=backend_root,
                     allow_empty=True,
                 )[1],
-                "cluster_serial": (
-                    _collect_pytest_tests(
-                        "tests",
-                        mark_expression="cluster_serial",
-                        backend_root=backend_root,
-                        allow_empty=True,
-                    )[1]
-                    if "cluster_serial:" in conftest_text
-                    else ()
-                ),
-                **_collect_base_packaging_memberships(backend_root),
+                "cluster_serial": _collect_pytest_tests(
+                    "tests",
+                    mark_expression="cluster_serial",
+                    backend_root=backend_root,
+                    allow_empty=True,
+                )[1],
+                **_collect_packaging_memberships(backend_root),
             }
     except (OSError, RuntimeError, subprocess.SubprocessError, tarfile.TarError) as exc:
         return False, {}, base_required, f"{selected.ref}: {exc}"
@@ -362,16 +342,8 @@ def main() -> int:
     )
     counts["backend_pytest_cluster_count"] = cluster_count
     counts["backend_pytest_cluster_membership_digest"] = _pytest_membership_digest(cluster_nodeids)
-    installer_count, installer_nodeids = _collect_pytest_tests("packaging/tests")
-    counts["installer_pytest_count"] = installer_count
-    _, packaging_parallel_nodeids = _collect_pytest_tests(
-        "packaging/tests",
-        mark_expression=PACKAGING_PARALLEL_MARKER,
-    )
-    _, packaging_serial_nodeids = _collect_pytest_tests(
-        "packaging/tests",
-        mark_expression=PACKAGING_SERIAL_MARKER,
-    )
+    packaging_memberships = _collect_packaging_memberships(_BACKEND_ROOT)
+    counts["installer_pytest_count"] = len(packaging_memberships["packaging_all"])
 
     print("Actuals:")
     for key, value in sorted(counts.items()):
@@ -385,9 +357,7 @@ def main() -> int:
         "real_db": real_db_nodeids,
         "stateful_serial": stateful_nodeids,
         "cluster_serial": cluster_nodeids,
-        "packaging_all": installer_nodeids,
-        "packaging_parallel": packaging_parallel_nodeids,
-        "packaging_serial": packaging_serial_nodeids,
+        **packaging_memberships,
     }
     base_readable, base_memberships, base_required, base_error = _collect_base_pytest_memberships(os.environ)
     metrics_exit = evaluate_pr_delta_metrics(counts)

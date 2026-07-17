@@ -1364,6 +1364,7 @@ Assert-TicketboxInstallationHealthResponse `
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell direct loopback contract")
 def test_bootstrap_request_bypasses_default_proxy(tmp_path: Path) -> None:
     app_data = (tmp_path / "data" / "app").resolve()

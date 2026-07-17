@@ -29,6 +29,12 @@ def test_backend_lanes_must_form_the_exact_full_membership_partition() -> None:
         "packaging_parallel": (),
         "packaging_serial": ("packaging/tests/test_installer.py::test_upgrade",),
     }
+    assert protected_pytest_membership_violations(
+        complete,
+        complete,
+        base_readable=True,
+        base_required=True,
+    ) == []
     incomplete = dict(complete)
     incomplete["backend_parallel"] = ("tests/test_auth.py::test_authorized",)
 

@@ -45,8 +45,9 @@ pip-audit --strict（OSV 库）
 Windows packaging 合同则在这里使用宿主 PostgreSQL 运行时完成限时验证。
 
 Packaging 测试以 `packaging_resource(...)` 为唯一调度真源：`hermetic` 项可由
-3 个 xdist worker 并行，`windows_fs`、`windows_host`、`postgres_cluster`、
-`inno_toolchain` 各自在自己的 `loadgroup` 内串行。runner 仍只执行一次完整
+3 个 xdist worker 并行，`windows_fs` 与 `inno_toolchain` 各自在自己的
+`loadgroup` 内串行；`windows_host` 和 `postgres_cluster` 共享宿主网络组，
+避免释放端口到真实监听建立之间被另一测试抢占。runner 仍只执行一次完整
 `packaging/tests` 根；独立预收集必须证明 parallel + serial 恰好覆盖全集，
 worker 全部干净退出后仅 controller 可以写完成回执。测试名、文件名前缀和
 nodeid 子串不参与分类。

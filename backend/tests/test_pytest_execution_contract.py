@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import subprocess
+import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -12,6 +13,7 @@ from scripts.packaging_pytest_contract import (
     PACKAGING_PARALLEL_MARKER,
     PACKAGING_SERIAL_MARKER,
     packaging_partition_violation,
+    packaging_xdist_group,
 )
 from scripts.pytest_execution_contract import (
     PytestCollectionSnapshot,
@@ -22,6 +24,20 @@ from scripts.pytest_execution_contract import (
 )
 
 pytestmark = pytest.mark.parallel_safe
+
+
+def _load_packaging_conftest() -> ModuleType:
+    conftest_path = (
+        run_packaging_tests.BACKEND_ROOT / "packaging" / "tests" / "conftest.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "xpj_packaging_conftest_probe",
+        conftest_path,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_pytest_collection_digest_is_order_independent() -> None:
@@ -92,14 +108,32 @@ def test_execution_membership_rejects_precollection_omission() -> None:
 
     assert violation is not None
     assert "independent collection" in violation
+    empty_digest = pytest_nodeid_digest(())
+    assert (
+        pytest_execution_membership_violation(
+            label="empty resource",
+            selected_nodeids=(),
+            expected_count="0",
+            expected_digest=empty_digest,
+            allow_empty=True,
+        )
+        is None
+    )
+    assert (
+        pytest_execution_membership_violation(
+            label="required resource",
+            selected_nodeids=(),
+            expected_count="0",
+            expected_digest=empty_digest,
+        )
+        is not None
+    )
 
 
 def test_packaging_runner_clears_filters_and_requires_handshake(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    parallel_snapshot = PytestCollectionSnapshot(
-        ("packaging/tests/test_contract.py::test_manifest",)
-    )
+    parallel_snapshot = PytestCollectionSnapshot(())
     serial_snapshot = PytestCollectionSnapshot(
         ("packaging/tests/test_installer.py::test_upgrade",)
     )
@@ -111,10 +145,12 @@ def test_packaging_runner_clears_filters_and_requires_handshake(
     monkeypatch.setenv("PYTEST_PLUGINS", "ambient_plugin")
     monkeypatch.setenv("PYTHONPATH", "ambient-import-root")
 
-    def collect(*_args, mark_expression: str | None = None, **_kwargs):
+    def collect(*_args, mark_expression: str | None = None, **kwargs):
         if mark_expression == PACKAGING_PARALLEL_MARKER:
+            assert kwargs["allow_empty"] is True
             return parallel_snapshot
         if mark_expression == PACKAGING_SERIAL_MARKER:
+            assert kwargs["allow_empty"] is True
             return serial_snapshot
         return snapshot
 
@@ -158,7 +194,7 @@ def test_packaging_runner_clears_filters_and_requires_handshake(
     assert "--dist=loadgroup" in observed["command"]
     assert "--max-worker-restart=0" in observed["command"]
     assert observed["command"].count("-m") == 1
-    assert environment[run_packaging_tests.PACKAGING_EXPECTED_PARALLEL_COUNT_ENV] == "1"
+    assert environment[run_packaging_tests.PACKAGING_EXPECTED_PARALLEL_COUNT_ENV] == "0"
     assert environment[run_packaging_tests.PACKAGING_EXPECTED_SERIAL_COUNT_ENV] == "1"
 
 
@@ -195,13 +231,7 @@ def test_packaging_runner_rejects_success_without_handshake(
 def test_packaging_strict_runtime_rejects_module_level_skip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conftest_path = (
-        run_packaging_tests.BACKEND_ROOT / "packaging" / "tests" / "conftest.py"
-    )
-    spec = importlib.util.spec_from_file_location("xpj_packaging_conftest_probe", conftest_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = _load_packaging_conftest()
     monkeypatch.setenv(module._STRICT_RUNTIME_ENV, "1")  # noqa: SLF001
 
     class Terminal:
@@ -229,3 +259,179 @@ def test_packaging_strict_runtime_rejects_module_level_skip(
     module.pytest_sessionfinish(session, pytest.ExitCode.OK)
 
     assert session.exitstatus == pytest.ExitCode.TESTS_FAILED
+
+
+def test_packaging_sessionfinish_rejects_late_worker_crash(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _load_packaging_conftest()
+    monkeypatch.setenv(module._STRICT_RUNTIME_ENV, "1")  # noqa: SLF001
+    monkeypatch.setattr(module.sys, "platform", "win32")
+    handshake = tmp_path / "late-worker.handshake"
+    nodeid = "packaging/tests/test_ok.py::test_ok"
+    monkeypatch.setenv(module.PYTEST_HANDSHAKE_PATH_ENV, str(handshake))
+    monkeypatch.setenv(module.PYTEST_HANDSHAKE_TOKEN_ENV, "late-worker-token")
+    monkeypatch.setenv(module.PYTEST_EXPECTED_COUNT_ENV, "1")
+    monkeypatch.setenv(module.PYTEST_EXPECTED_DIGEST_ENV, pytest_nodeid_digest((nodeid,)))
+
+    class Terminal:
+        stats = {"passed": (SimpleNamespace(nodeid=nodeid),)}
+
+        def write_sep(self, *_args, **_kwargs) -> None:
+            return None
+
+    terminal = Terminal()
+    config = SimpleNamespace(
+        pluginmanager=SimpleNamespace(get_plugin=lambda _name: terminal),
+    )
+    module._initialize_runner_state(config)  # noqa: SLF001
+    for worker_id in ("gw0", "gw1", "gw2"):
+        node = SimpleNamespace(
+            config=config,
+            gateway=SimpleNamespace(id=worker_id),
+        )
+        module.pytest_testnodeready(node)
+        error = RuntimeError("late worker crash") if worker_id == "gw2" else None
+        module.pytest_testnodedown(node, error)
+    session = SimpleNamespace(
+        config=config,
+        testscollected=1,
+        exitstatus=pytest.ExitCode.OK,
+    )
+
+    module.pytest_sessionfinish(session, pytest.ExitCode.OK)
+
+    assert session.exitstatus == pytest.ExitCode.TESTS_FAILED
+    assert not handshake.exists()
+
+
+def test_packaging_collection_rejects_authored_scheduler_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_packaging_conftest()
+    monkeypatch.delenv(module._STRICT_RUNTIME_ENV, raising=False)  # noqa: SLF001
+
+    class AuthoredItem:
+        def __init__(self, marker: SimpleNamespace) -> None:
+            self.nodeid = f"packaging/tests/test_bad.py::test_{marker.name}"
+            self.marker = marker
+
+        def get_closest_marker(self, name: str) -> SimpleNamespace | None:
+            return self.marker if name == self.marker.name else None
+
+    markers = tuple(
+        SimpleNamespace(name=name)
+        for name in (PACKAGING_PARALLEL_MARKER, PACKAGING_SERIAL_MARKER, "xdist_group")
+    )
+    for marker in markers:
+        hook = module.pytest_collection_modifyitems([AuthoredItem(marker)])
+        with pytest.raises(pytest.UsageError, match=marker.name):
+            next(hook)
+
+
+def _write_packaging_loadgroup_probe(probe_root: Path) -> Path:
+    production_conftest = (
+        run_packaging_tests.BACKEND_ROOT / "packaging" / "tests" / "conftest.py"
+    )
+    (probe_root / "conftest.py").write_text(
+        f"""
+import importlib.util
+
+_spec = importlib.util.spec_from_file_location(
+    "xpj_nested_packaging_conftest",
+    {str(production_conftest)!r},
+)
+assert _spec is not None and _spec.loader is not None
+_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_module)
+pytest_configure = _module.pytest_configure
+pytest_collection_modifyitems = _module.pytest_collection_modifyitems
+""",
+        encoding="utf-8",
+    )
+    test_file = probe_root / "test_loadgroup.py"
+    test_file.write_text(
+        """
+import os
+from pathlib import Path
+
+import pytest
+
+
+def _record(name: str) -> None:
+    root = Path(os.environ["XPJ_LOADGROUP_PROBE"])
+    (root / name).write_text(os.environ["PYTEST_XDIST_WORKER"], encoding="utf-8")
+
+
+@pytest.mark.packaging_resource("windows_host")
+def test_windows_host() -> None:
+    _record("windows-host.txt")
+
+
+@pytest.mark.packaging_resource("postgres_cluster")
+def test_postgres_cluster() -> None:
+    _record("postgres-cluster.txt")
+""",
+        encoding="utf-8",
+    )
+    return test_file
+
+
+def _run_packaging_loadgroup_probe(
+    test_file: Path,
+    probe_root: Path,
+) -> subprocess.CompletedProcess[str]:
+    environment = pytest_execution_environment(
+        remove_keys=(run_packaging_tests.STRICT_WINDOWS_RUNTIME_ENV,)
+    )
+    environment["XPJ_LOADGROUP_PROBE"] = str(probe_root)
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        str(test_file),
+        "-q",
+        "--strict-markers",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "xdist.plugin",
+        "-n",
+        "2",
+        "--dist=loadgroup",
+        "--max-worker-restart=0",
+        "-o",
+        "addopts=",
+    ]
+    return subprocess.run(
+        command,
+        cwd=run_packaging_tests.BACKEND_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=60,
+    )
+
+
+def test_packaging_loadgroup_serializes_shared_network_resources(
+    tmp_path: Path,
+) -> None:
+    assert packaging_xdist_group("windows_host") == packaging_xdist_group(
+        "postgres_cluster"
+    )
+    probe_root = tmp_path / "loadgroup-probe"
+    probe_root.mkdir()
+    test_file = _write_packaging_loadgroup_probe(probe_root)
+    completed = _run_packaging_loadgroup_probe(test_file, probe_root)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    worker_ids = {
+        (probe_root / name).read_text(encoding="utf-8")
+        for name in ("windows-host.txt", "postgres-cluster.txt")
+    }
+    assert len(worker_ids) == 1
+    assert next(iter(worker_ids)).startswith("gw")

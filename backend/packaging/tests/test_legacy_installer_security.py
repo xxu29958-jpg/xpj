@@ -779,6 +779,7 @@ class _BootstrapHandler(BaseHTTPRequestHandler):
         )
 
 
+@pytest.mark.packaging_resource("windows_host")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows listener ownership behavior contract")
 def test_bootstrap_requires_owned_listener_and_sends_utf8_json_bytes(tmp_path: Path) -> None:
     _BootstrapHandler.requests = []

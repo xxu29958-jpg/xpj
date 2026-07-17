@@ -74,12 +74,14 @@ def run_packaging_tests() -> int:
         "packaging/tests",
         mark_expression=PACKAGING_PARALLEL_MARKER,
         backend_root=BACKEND_ROOT,
+        allow_empty=True,
         remove_environment=(STRICT_WINDOWS_RUNTIME_ENV,),
     )
     serial_snapshot = collect_pytest_snapshot(
         "packaging/tests",
         mark_expression=PACKAGING_SERIAL_MARKER,
         backend_root=BACKEND_ROOT,
+        allow_empty=True,
         remove_environment=(STRICT_WINDOWS_RUNTIME_ENV,),
     )
     partition_violation = packaging_partition_violation(

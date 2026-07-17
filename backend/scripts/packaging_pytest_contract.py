@@ -21,6 +21,12 @@ PACKAGING_SERIAL_RESOURCES = frozenset(
 PACKAGING_RESOURCES = frozenset(
     {PACKAGING_HERMETIC_RESOURCE, *PACKAGING_SERIAL_RESOURCES}
 )
+_PACKAGING_XDIST_GROUP_BY_RESOURCE = {
+    "inno_toolchain": "xpj-packaging-inno-toolchain",
+    "postgres_cluster": "xpj-packaging-host-network",
+    "windows_fs": "xpj-packaging-windows-fs",
+    "windows_host": "xpj-packaging-host-network",
+}
 
 PACKAGING_EXPECTED_PARALLEL_COUNT_ENV = (
     "XPJ_PACKAGING_PYTEST_EXPECTED_PARALLEL_COUNT"
@@ -59,4 +65,4 @@ def packaging_partition_violation(
 def packaging_xdist_group(resource: str) -> str:
     if resource not in PACKAGING_SERIAL_RESOURCES:
         raise ValueError(f"packaging resource is not serial: {resource!r}")
-    return f"xpj-packaging-{resource.replace('_', '-')}"
+    return _PACKAGING_XDIST_GROUP_BY_RESOURCE[resource]

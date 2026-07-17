@@ -223,15 +223,35 @@ def test_pytest_counter_strips_ambient_collection_filters(monkeypatch, tmp_path:
 
     legacy_root = tmp_path / "legacy-backend"
     (legacy_root / "packaging" / "tests").mkdir(parents=True)
-    monkeypatch.setattr(
-        mod,
-        "_collect_pytest_tests",
-        lambda *_args, **_kwargs: (1, ("packaging/tests/test_old.py::test_old",)),
-    )
-    assert mod._collect_base_packaging_memberships(legacy_root) == {
-        "packaging_all": ("packaging/tests/test_old.py::test_old",),
+    packaging_nodeid = "packaging/tests/test_old.py::test_old"
+    contract_enabled = False
+
+    def collect_packaging(
+        *_args: object,
+        mark_expression: str | None = None,
+        **_kwargs: object,
+    ) -> tuple[int, tuple[str, ...]]:
+        if mark_expression is None:
+            return 1, (packaging_nodeid,)
+        if contract_enabled and mark_expression == mod.PACKAGING_SERIAL_MARKER:
+            return 1, (packaging_nodeid,)
+        return 0, ()
+
+    monkeypatch.setattr(mod, "_collect_pytest_tests", collect_packaging)
+    assert mod._collect_packaging_memberships(legacy_root) == {
+        "packaging_all": (packaging_nodeid,),
         "packaging_parallel": (),
         "packaging_serial": (),
+    }
+    contract_enabled = True
+    (legacy_root / "packaging" / "tests" / "conftest.py").write_text(
+        "from scripts.packaging_pytest_contract import PACKAGING_RESOURCE_MARKER\n",
+        encoding="utf-8",
+    )
+    assert mod._collect_packaging_memberships(legacy_root) == {
+        "packaging_all": (packaging_nodeid,),
+        "packaging_parallel": (),
+        "packaging_serial": (packaging_nodeid,),
     }
     _assert_protected_pytest_membership_gate()
 
