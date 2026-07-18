@@ -88,6 +88,7 @@ def pytest_command(
     *,
     workers: int,
     targets: Sequence[str] | None = None,
+    junit_path: Path | None = None,
 ) -> list[str]:
     target_arguments = tuple(targets) if targets is not None else (str(TESTS_ROOT),)
     command = [
@@ -97,6 +98,8 @@ def pytest_command(
         *target_arguments,
         *COMMON_PYTEST_ARGS[1:],
     ]
+    if junit_path is not None:
+        command.extend(["--junitxml", str(junit_path)])
     if lane == "parallel":
         command.extend(
             [
@@ -134,6 +137,7 @@ def _run_lane(
     parent_environment: dict[str, str],
     targets: Sequence[str] | None = None,
     snapshot: PytestCollectionSnapshot | None = None,
+    junit_dir: Path | None = None,
 ) -> int:
     mark_expression = BACKEND_PARALLEL_MARK_EXPRESSION if lane == "parallel" else BACKEND_STATEFUL_MARKER
     if targets is None:
@@ -155,7 +159,12 @@ def _run_lane(
         if targets is not None
         else None
     )
-    command = pytest_command(lane, workers=workers, targets=command_targets)
+    command = pytest_command(
+        lane,
+        workers=workers,
+        targets=command_targets,
+        junit_path=junit_dir / f"{lane}.xml" if junit_dir is not None else None,
+    )
     environment = pytest_execution_environment(parent_environment)
     environment[RUNNER_LANE_ENV] = lane
     environment[RUNNER_SCOPE_ENV] = "impacted" if targets is not None else "full"
@@ -204,12 +213,15 @@ def run_lanes(
     workers: int,
     targets: Sequence[str] | None = None,
     lane_snapshots: Mapping[str, PytestCollectionSnapshot] | None = None,
+    junit_dir: Path | None = None,
 ) -> int:
     if (targets is None) != (lane_snapshots is None):
         raise ValueError("impacted targets and lane snapshots must be supplied together")
     start_windows_parent_watchdog(label="PostgreSQL test-lane runner")
     parent_environment = os.environ.copy()
     database_url = configured_test_database_url(parent_environment)
+    if junit_dir is not None:
+        junit_dir.mkdir(parents=True, exist_ok=True)
     with test_postgres_consumer_lease(database_url), test_postgres_credential_environment(
         database_url,
         parent_environment,
@@ -222,6 +234,7 @@ def run_lanes(
                 parent_environment=parent_environment,
                 targets=targets,
                 snapshot=lane_snapshots.get(lane) if lane_snapshots is not None else None,
+                junit_dir=junit_dir,
             )
             if return_code:
                 return return_code
@@ -261,25 +274,43 @@ def _selected_lane_snapshots(
     return snapshots
 
 
-def run_impact_plan(plan: ImpactPlanLike, *, workers: int) -> int:
+def run_impact_plan(
+    plan: ImpactPlanLike,
+    *,
+    workers: int,
+    junit_dir: Path | None = None,
+) -> int:
     print(plan.to_json(), end="", flush=True)
     if plan.mode == "none":
         return 0
     if plan.mode == "full":
-        return run_lanes(("parallel", "stateful"), workers=workers)
+        return run_lanes(
+            ("parallel", "stateful"),
+            workers=workers,
+            junit_dir=junit_dir,
+        )
     if plan.mode != "selected" or not plan.selected_tests:
         print("Impact plan is invalid; falling back to the full backend suite.", file=sys.stderr)
-        return run_lanes(("parallel", "stateful"), workers=workers)
+        return run_lanes(
+            ("parallel", "stateful"),
+            workers=workers,
+            junit_dir=junit_dir,
+        )
     try:
         lane_snapshots = _selected_lane_snapshots(plan.selected_tests)
     except RuntimeError as exc:
         print(f"Impact collection failed ({exc}); falling back to the full backend suite.", file=sys.stderr)
-        return run_lanes(("parallel", "stateful"), workers=workers)
+        return run_lanes(
+            ("parallel", "stateful"),
+            workers=workers,
+            junit_dir=junit_dir,
+        )
     return run_lanes(
         ("parallel", "stateful"),
         workers=workers,
         targets=plan.selected_tests,
         lane_snapshots=lane_snapshots,
+        junit_dir=junit_dir,
     )
 
 
@@ -296,6 +327,7 @@ def main() -> int:
     )
     parser.add_argument("--head-ref", default="HEAD")
     parser.add_argument("--include-worktree", action="store_true")
+    parser.add_argument("--junit-dir", type=Path)
     arguments = parser.parse_args()
     try:
         workers = worker_count(os.environ.get("XPJ_PYTEST_WORKERS"))
@@ -311,9 +343,17 @@ def main() -> int:
             head_ref=arguments.head_ref,
             include_worktree=arguments.include_worktree,
         )
-        return run_impact_plan(plan, workers=workers)
+        return run_impact_plan(
+            plan,
+            workers=workers,
+            junit_dir=arguments.junit_dir,
+        )
     lanes = ("parallel", "stateful") if arguments.lane == "full" else (arguments.lane,)
-    return run_lanes(lanes, workers=workers)
+    return run_lanes(
+        lanes,
+        workers=workers,
+        junit_dir=arguments.junit_dir,
+    )
 
 
 if __name__ == "__main__":

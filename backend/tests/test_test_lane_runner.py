@@ -124,6 +124,19 @@ def test_impacted_lane_uses_only_explicit_test_files() -> None:
     ]
 
 
+def test_lane_writes_junit_to_its_own_evidence_file(tmp_path: Path) -> None:
+    junit_path = tmp_path / "parallel.xml"
+
+    command = run_test_lanes.pytest_command(
+        "parallel",
+        workers=2,
+        junit_path=junit_path,
+    )
+
+    junit_index = command.index("--junitxml")
+    assert command[junit_index + 1] == str(junit_path)
+
+
 @pytest.mark.parametrize(
     ("detected", "expected"),
     [(16, 6), (4, 4), (None, 1)],
