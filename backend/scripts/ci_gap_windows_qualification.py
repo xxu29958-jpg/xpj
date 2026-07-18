@@ -44,14 +44,13 @@ def github_pr_installer_dependency_scope_violations(
         return ["GitHub CI workflow is unavailable for installer dependency scope"]
     source = github_ci.read_text(encoding="utf-8")
     match = _PR_INSTALLER_DEPENDENCY_CLOSURE.search(source)
-    if match is None:
+    if (
+        match is not None
+        and "$scope.installer_required = $true" in match.group("body")
+    ):
         return [
-            "GitHub PR scope must close frozen backend/Manager artifacts "
-            "into installer qualification"
-        ]
-    if "$scope.installer_required = $true" not in match.group("body"):
-        return [
-            "GitHub PR artifact closure must require installer qualification"
+            "GitHub PR component smoke must not promote every frozen "
+            "backend/Manager artifact into installer qualification"
         ]
     return []
 

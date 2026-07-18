@@ -44,18 +44,7 @@ def _write_scope(workflow: Path, *, close_artifacts_into_installer: bool) -> Non
     )
 
 
-def test_installer_dependencies_are_part_of_github_pr_scope(tmp_path: Path) -> None:
-    mod = load_ci_gap_module("ci_gap_windows_qualification")
-    workflows = tmp_path / ".github" / "workflows"
-    _write_scope(
-        workflows / "ci.yml",
-        close_artifacts_into_installer=True,
-    )
-
-    assert mod.github_pr_installer_dependency_scope_violations([workflows]) == []
-
-
-def test_installer_dependency_scope_rejects_exe_only_classification(
+def test_component_smoke_does_not_force_github_pr_installer_scope(
     tmp_path: Path,
 ) -> None:
     mod = load_ci_gap_module("ci_gap_windows_qualification")
@@ -65,7 +54,20 @@ def test_installer_dependency_scope_rejects_exe_only_classification(
         close_artifacts_into_installer=False,
     )
 
+    assert mod.github_pr_installer_dependency_scope_violations([workflows]) == []
+
+
+def test_component_scope_rejects_implicit_installer_promotion(
+    tmp_path: Path,
+) -> None:
+    mod = load_ci_gap_module("ci_gap_windows_qualification")
+    workflows = tmp_path / ".github" / "workflows"
+    _write_scope(
+        workflows / "ci.yml",
+        close_artifacts_into_installer=True,
+    )
+
     assert mod.github_pr_installer_dependency_scope_violations([workflows]) == [
-        "GitHub PR scope must close frozen backend/Manager artifacts "
-        "into installer qualification",
+        "GitHub PR component smoke must not promote every frozen "
+        "backend/Manager artifact into installer qualification",
     ]

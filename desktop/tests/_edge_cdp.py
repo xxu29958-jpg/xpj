@@ -350,7 +350,7 @@ def _stop_edge(
         _reap_edge_process(process, job=job)
 
 
-def evaluate_page(
+def _evaluate_page_once(
     edge: str,
     *,
     profile: Path,
@@ -401,6 +401,36 @@ def evaluate_page(
         raise AssertionError("layout probe did not become available")
     finally:
         _stop_edge(process, job=job, page=page, browser_endpoint=browser_endpoint)
+
+
+def evaluate_page(
+    edge: str,
+    *,
+    profile: Path,
+    url: str,
+    width: int,
+    height: int,
+    expression: str,
+) -> object:
+    for attempt in range(2):
+        attempt_profile = (
+            profile
+            if attempt == 0
+            else profile.with_name(f"{profile.name}-transport-retry")
+        )
+        try:
+            return _evaluate_page_once(
+                edge,
+                profile=attempt_profile,
+                url=url,
+                width=width,
+                height=height,
+                expression=expression,
+            )
+        except (OSError, _DevToolsTransportError):
+            if attempt == 1:
+                raise
+    raise AssertionError("unreachable Edge transport retry state")
 
 
 def wait_for_app_window_close(edge: str, *, profile: Path, url: str) -> None:

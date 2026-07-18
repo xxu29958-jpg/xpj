@@ -168,6 +168,33 @@ def test_edge_window_tracks_visible_job_window_instead_of_lingering_process() ->
     assert events == ["job-close", "wait:0.5"]
 
 
+def test_edge_window_visibility_query_failure_is_bounded() -> None:
+    events: list[str] = []
+
+    class Process:
+        def poll(self):
+            return None
+
+        def wait(self, *, timeout: float):
+            events.append(f"wait:{timeout:g}")
+            return 0
+
+    class Job:
+        def has_visible_top_level_window(self) -> bool:
+            raise OSError("synthetic window query failure")
+
+        def close(self) -> None:
+            events.append("job-close")
+
+    window = desktop_shell.EdgeAppWindow(Process(), Job())  # type: ignore[arg-type]
+
+    assert window.is_open() is True
+    assert window.is_open() is True
+    assert window.is_open() is False
+    assert window.is_open() is False
+    assert events == ["job-close", "wait:0.5"]
+
+
 def test_browser_launch_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         desktop_shell.os,

@@ -16,6 +16,7 @@ from backend_manager.windows_user_security import require_local_fixed_regular_fi
 _CREATE_NO_WINDOW = 0x08000000
 _EDGE_APP_PATH = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"
 _EDGE_VISIBLE_WINDOW_STARTUP_GRACE_SECONDS = 10.0
+_EDGE_VISIBLE_WINDOW_QUERY_FAILURE_LIMIT = 3
 
 
 def open_in_browser(url: str) -> bool:
@@ -75,6 +76,7 @@ class EdgeAppWindow:
     job: WindowsKillOnCloseJob | None = None
     _started_at: float = field(default_factory=time.monotonic, repr=False)
     _visible_window_observed: bool = field(default=False, init=False, repr=False)
+    _visibility_query_failures: int = field(default=0, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
     def is_open(self) -> bool:
@@ -89,7 +91,18 @@ class EdgeAppWindow:
         try:
             visible = self.job.has_visible_top_level_window()
         except OSError:
-            return True
+            self._visibility_query_failures += 1
+            if (
+                self._visibility_query_failures
+                < _EDGE_VISIBLE_WINDOW_QUERY_FAILURE_LIMIT
+            ):
+                return True
+            self._closed = True
+            self._close_job()
+            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                self.process.wait(timeout=0.5)
+            return False
+        self._visibility_query_failures = 0
         if visible:
             self._visible_window_observed = True
             return True
