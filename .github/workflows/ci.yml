@@ -119,9 +119,6 @@ jobs:
                   $scope.manager_exe_required = $true
                 }
               }
-              if ($scope.backend_exe_required -or $scope.manager_exe_required) {
-                $scope.installer_required = $true
-              }
               if ($scope.installer_required) {
                 $scope.contract_required = $true
                 $scope.backend_exe_required = $true
@@ -180,6 +177,18 @@ jobs:
 
       - name: Lint
         run: ruff check app scripts tests packaging/tests
+
+      - name: Audit (release lanes)
+        # Run deterministic source contracts before expensive packaging. A
+        # ratchet failure must not burn the installer build budget first.
+        env:
+          XPJ_RELEASE_AUDIT_COMPACT: "1"
+          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
+          XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || inputs.adr_base_ref }}
+        run: python scripts\release_audit.py
+
+      - name: API contract
+        run: python scripts\check_api_contract.py
 
       - name: Windows installer safety behavior
         if: github.event_name != 'pull_request' || steps.windows-scope.outputs.contract_required == 'true'
@@ -307,21 +316,6 @@ jobs:
         run: |
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Audit (release lanes)
-        # Single PR gate for every read-only audit (release_audit.py::LANES):
-        # service-graph cycles, CI-gap whitelist, codebase smell report, etc.
-        # Any lane returning non-zero fails the PR.
-        env:
-          XPJ_RELEASE_AUDIT_COMPACT: "1"
-          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
-          # PRs compare with the exact target SHA; main pushes compare with the
-          # pre-push SHA; manual runs must name the canonical divergence commit.
-          XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || inputs.adr_base_ref }}
-        run: python scripts\release_audit.py
-
-      - name: API contract
-        run: python scripts\check_api_contract.py
 
       # NOTE: the business pytest suite AND the end-to-end smoke run on PostgreSQL in the
       # backend-postgres job below. SQLite (the old dev dialect) was retired in
