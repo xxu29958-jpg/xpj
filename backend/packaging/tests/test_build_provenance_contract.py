@@ -1032,6 +1032,7 @@ def _assert_windows_build_lock_serializes_and_execution_tree_detects_drift(
 ) -> None:
     tmp_path.mkdir(parents=True)
     ready = tmp_path / "ready.txt"
+    release = tmp_path / "release.txt"
     holder = subprocess.Popen(
         [
             "powershell",
@@ -1044,7 +1045,13 @@ def _assert_windows_build_lock_serializes_and_execution_tree_detects_drift(
                 f". '{_ps_literal(PROVENANCE_HELPER)}'; "
                 f"$lock = Enter-TicketboxWindowsBuildLock '{_ps_literal(tmp_path)}'; "
                 f"Set-Content -LiteralPath '{_ps_literal(ready)}' -Value ready; "
-                "try { Start-Sleep -Seconds 4 } finally { "
+                "$deadline = [DateTime]::UtcNow.AddSeconds(30); "
+                "try { "
+                f"while (-not (Test-Path -LiteralPath '{_ps_literal(release)}')) {{ "
+                "if ([DateTime]::UtcNow -ge $deadline) { "
+                "throw 'Timed out waiting for the test release signal.' }; "
+                "Start-Sleep -Milliseconds 100 }; "
+                "} finally { "
                 "Exit-TicketboxWindowsBuildLock $lock }"
             ),
         ],
@@ -1054,26 +1061,29 @@ def _assert_windows_build_lock_serializes_and_execution_tree_detects_drift(
         encoding="utf-8",
         errors="replace",
     )
-    for _ in range(40):
-        if ready.exists():
-            break
-        time.sleep(0.1)
-    assert ready.exists(), holder.communicate(timeout=5)
-    blocked = _run_powershell(
-        f". '{_ps_literal(PROVENANCE_HELPER)}'; "
-        f"Enter-TicketboxWindowsBuildLock '{_ps_literal(tmp_path)}' 1 | Out-Null"
-    )
-    assert blocked.returncode != 0
-    assert "timed out" in (blocked.stdout + blocked.stderr).lower()
-    if shutil.which("pwsh"):
-        blocked_pwsh = _run_powershell(
+    try:
+        for _ in range(100):
+            if ready.exists():
+                break
+            time.sleep(0.1)
+        assert ready.exists()
+        blocked = _run_powershell(
             f". '{_ps_literal(PROVENANCE_HELPER)}'; "
-            f"Enter-TicketboxWindowsBuildLock '{_ps_literal(tmp_path)}' 1 | Out-Null",
-            executable="pwsh",
+            f"Enter-TicketboxWindowsBuildLock '{_ps_literal(tmp_path)}' 1 | Out-Null"
         )
-        assert blocked_pwsh.returncode != 0
-        assert "timed out" in (blocked_pwsh.stdout + blocked_pwsh.stderr).lower()
-    stdout, stderr = holder.communicate(timeout=10)
+        assert blocked.returncode != 0
+        assert "timed out" in (blocked.stdout + blocked.stderr).lower()
+        if shutil.which("pwsh"):
+            blocked_pwsh = _run_powershell(
+                f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+                f"Enter-TicketboxWindowsBuildLock '{_ps_literal(tmp_path)}' 1 | Out-Null",
+                executable="pwsh",
+            )
+            assert blocked_pwsh.returncode != 0
+            assert "timed out" in (blocked_pwsh.stdout + blocked_pwsh.stderr).lower()
+    finally:
+        release.write_text("release\n", encoding="utf-8")
+        stdout, stderr = holder.communicate(timeout=10)
     assert holder.returncode == 0, stdout + stderr
     reacquired = _run_powershell(
         f". '{_ps_literal(PROVENANCE_HELPER)}'; "
