@@ -93,6 +93,7 @@ jobs:
                 elseif ($path -match '^backend/scripts/windows_(build|backend_build)_provenance\.ps1$') {
                   $scope.backend_exe_required = $true
                   $scope.manager_exe_required = $true
+                  $scope.installer_required = $true
                 }
                 elseif ($path -eq 'backend/scripts/build_backend_exe.ps1') {
                   $scope.backend_exe_required = $true
@@ -100,8 +101,15 @@ jobs:
                 elseif ($path -eq 'backend/app/version.py') {
                   $scope.installer_required = $true
                 }
+                elseif ($path -match '^backend/migrations/' -or $path -eq 'backend/alembic.ini') {
+                  $scope.installer_required = $true
+                }
                 elseif ($path -match '^backend/app/' -or $path -match '^backend/requirements' -or $path -match '^backend/pyproject\.toml$') {
                   $scope.backend_exe_required = $true
+                }
+                elseif ($path -eq 'desktop/scripts/windows_manager_build_provenance.ps1') {
+                  $scope.manager_exe_required = $true
+                  $scope.installer_required = $true
                 }
                 elseif ($path -match '^desktop/scripts/' -or $path -match '^desktop/backend_manager/' -or $path -match '^desktop/requirements') {
                   $scope.manager_exe_required = $true

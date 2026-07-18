@@ -278,6 +278,35 @@ def test_app_target_navigation_or_replacement_is_not_treated_as_window_close() -
     )
 
 
+def test_app_target_process_exit_must_be_clean() -> None:
+    class Process:
+        def __init__(self, return_code: int | None) -> None:
+            self.return_code = return_code
+
+        def poll(self) -> int | None:
+            return self.return_code
+
+    assert (
+        _edge_cdp._edge_process_closed_cleanly(  # noqa: SLF001
+            Process(None),  # type: ignore[arg-type]
+            target_id="app-target",
+        )
+        is False
+    )
+    assert (
+        _edge_cdp._edge_process_closed_cleanly(  # noqa: SLF001
+            Process(0),  # type: ignore[arg-type]
+            target_id="app-target",
+        )
+        is True
+    )
+    with pytest.raises(AssertionError, match=r"exit=7"):
+        _edge_cdp._edge_process_closed_cleanly(  # noqa: SLF001
+            Process(7),  # type: ignore[arg-type]
+            target_id="app-target",
+        )
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")
 def test_manager_shutdown_state_closes_real_edge_app_window(tmp_path: Path) -> None:
     edge = discover_edge_executable()

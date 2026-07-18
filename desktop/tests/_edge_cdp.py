@@ -301,6 +301,23 @@ def _app_window_targets_are_closed(
     return not page_targets and all(str(target.get("id")) != target_id for target in targets)
 
 
+def _edge_process_closed_cleanly(
+    process: subprocess.Popen[bytes],
+    *,
+    target_id: str | None,
+) -> bool:
+    if target_id is None:
+        return False
+    return_code = process.poll()
+    if return_code is None:
+        return False
+    if return_code != 0:
+        raise AssertionError(
+            f"Edge crashed before the app target closed cleanly (exit={return_code})"
+        )
+    return True
+
+
 def _launch_edge(edge: str, arguments: list[str]) -> tuple[subprocess.Popen[bytes], WindowsKillOnCloseJob]:
     process, job = spawn_windows_job_process(
         [edge, *arguments],
@@ -411,12 +428,12 @@ def wait_for_app_window_close(edge: str, *, profile: Path, url: str) -> None:
         target_id: str | None = None
         closed_since: float | None = None
         while time.monotonic() < deadline:
-            if target_id is not None and process.poll() is not None:
+            if _edge_process_closed_cleanly(process, target_id=target_id):
                 return
             try:
                 targets = _devtools_targets(port, deadline=deadline)
             except (OSError, ValueError):
-                if target_id is not None and process.poll() is not None:
+                if _edge_process_closed_cleanly(process, target_id=target_id):
                     return
                 time.sleep(0.05)
                 continue

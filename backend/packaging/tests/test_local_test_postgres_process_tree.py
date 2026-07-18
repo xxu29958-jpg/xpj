@@ -29,17 +29,33 @@ pytestmark = pytest.mark.packaging_resource("postgres_cluster")
 def test_bounded_process_without_standard_input_does_not_create_a_pipe(
     tmp_path: Path,
 ) -> None:
+    child = tmp_path / "stdin-file-type.py"
+    child.write_text(
+        "import ctypes\n"
+        "handle = ctypes.windll.kernel32.GetStdHandle(-10)\n"
+        "print(ctypes.windll.kernel32.GetFileType(handle))\n",
+        encoding="ascii",
+    )
     probe = tmp_path / "no-standard-input.ps1"
     probe.write_text(
-        "param($Contract)\n"
+        "param($Contract, $Python, $Child)\n"
         ". $Contract\n"
-        "foreach ($attempt in 1..20) {\n"
-        "  $result = Invoke-XpjTestPostgresBoundedProcess "
-        "-FilePath $env:ComSpec -ArgumentList @('/d','/c','exit','0') "
+        "$withoutInput = Invoke-XpjTestPostgresBoundedProcess "
+        "-FilePath $Python -ArgumentList @($Child) -TimeoutSeconds 5\n"
+        "if ($withoutInput.TimedOut -or $withoutInput.ExitCode -ne 0) {\n"
+        "  throw 'child failed without stdin'\n"
+        "}\n"
+        "if ($withoutInput.Output.Trim() -cne '2') {\n"
+        "  throw \"omitted stdin was not NUL: $($withoutInput.Output)\"\n"
+        "}\n"
+        "$withEmptyInput = Invoke-XpjTestPostgresBoundedProcess "
+        "-FilePath $Python -ArgumentList @($Child) -StandardInput '' "
         "-TimeoutSeconds 5\n"
-        "  if ($result.TimedOut -or $result.ExitCode -ne 0) {\n"
-        "    throw \"fast child failed without stdin on attempt $attempt\"\n"
-        "  }\n"
+        "if ($withEmptyInput.TimedOut -or $withEmptyInput.ExitCode -ne 0) {\n"
+        "  throw 'child failed with explicit empty stdin'\n"
+        "}\n"
+        "if ($withEmptyInput.Output.Trim() -cne '3') {\n"
+        "  throw \"explicit stdin was not a pipe: $($withEmptyInput.Output)\"\n"
         "}\n",
         encoding="ascii",
     )
@@ -57,6 +73,10 @@ def test_bounded_process_without_standard_input_does_not_create_a_pipe(
                 str(probe),
                 "-Contract",
                 str(TEST_POSTGRES_CONTRACT),
+                "-Python",
+                sys.executable,
+                "-Child",
+                str(child),
             ],
             cwd=tmp_path,
             text=True,

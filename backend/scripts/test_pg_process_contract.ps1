@@ -24,6 +24,7 @@ function Start-XpjTestPostgresProtectedProcess {
         [switch]$RestrictWindowsAdminAuthority
     )
 
+    $hasStandardInput = $PSBoundParameters.ContainsKey('StandardInput')
     $stdoutStream = $null
     $stderrStream = $null
     $stdoutCreated = $false
@@ -39,7 +40,7 @@ function Start-XpjTestPostgresProtectedProcess {
         )
         $stderrCreated = $true
         $processId = if ($RestrictWindowsAdminAuthority) {
-            if ($null -eq $StandardInput) {
+            if (-not $hasStandardInput) {
                 $Job.StartRestrictedProcess(
                     $FilePath,
                     $ArgumentList,
@@ -58,7 +59,7 @@ function Start-XpjTestPostgresProtectedProcess {
             }
         }
         else {
-            if ($null -eq $StandardInput) {
+            if (-not $hasStandardInput) {
                 $Job.StartProcess(
                     $FilePath,
                     $ArgumentList,
@@ -156,6 +157,7 @@ function Invoke-XpjTestPostgresBoundedProcess {
         [ValidateRange(1, 600)][int]$TimeoutSeconds = 60
     )
 
+    $hasStandardInput = $PSBoundParameters.ContainsKey('StandardInput')
     $temporaryRoot = [System.IO.Path]::GetTempPath()
     $processId = [Guid]::NewGuid().ToString('N')
     $stdoutPath = Join-Path $temporaryRoot ".xpj-pg-process-$processId.stdout"
@@ -170,7 +172,7 @@ function Invoke-XpjTestPostgresBoundedProcess {
             StderrPath = $stderrPath
             RestrictWindowsAdminAuthority = $RestrictWindowsAdminAuthority
         }
-        if ($null -ne $StandardInput) {
+        if ($hasStandardInput) {
             $startArguments.StandardInput = $StandardInput
         }
         [void](Start-XpjTestPostgresProtectedProcess @startArguments)
