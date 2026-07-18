@@ -421,28 +421,11 @@ jobs:
           # consume main's cache for speed but cannot publish cache state.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: Install Android SDK packages
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0"
-
-      - name: Point Gradle at cloud Android SDK
-        run: |
-          sdk_dir="${ANDROID_HOME//\\/\\\\}"
-          echo "sdk.dir=$sdk_dir" > local.properties
-          echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
-
-      - name: Tune Gradle for cloud runner
-        run: |
-          {
-            echo ""
-            echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
-            echo "org.gradle.workers.max=2"
-            echo "kotlin.daemon.jvmargs=-Xmx2560m"
-          } >> gradle.properties
+      - name: Prepare Android build
+        uses: ./.github/actions/prepare-android
+        with:
+          server-url: ${{ env.TICKETBOX_SERVER_URL }}
+          worker-count: "2"
 
       - name: Gradle / JVM versions
         run: ./gradlew --no-daemon --version
@@ -495,28 +478,24 @@ jobs:
         # are pinned — the plain :app:detekt would be a weaker gate.
         run: ./gradlew --no-daemon --max-workers=2 :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
 
-      - name: Detect legacy NVD credential
-        id: nvd-credential
+      - name: Require NVD credential
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
           set -euo pipefail
           if [ -z "$NVD_API_KEY" ]; then
-            echo "::error::NVD_API_KEY is required until the certified artifact consumer replaces the legacy scan."
+            echo "::error::NVD_API_KEY is required for the Android dependency gate."
             exit 1
           fi
-          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: NVD cache key (UTC date)
         # Day-rotating key so the cached NVD DB refreshes ~daily; restore-keys
         # below falls back to the most recent prior cache on a key miss.
         id: nvd-key
-        if: steps.nvd-credential.outputs.available == 'true'
         run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Restore OWASP NVD database
         id: nvd-cache
-        if: steps.nvd-credential.outputs.available == 'true'
         # Persists the OWASP/NVD H2 DB across runs (path mirrors data.directory in
         # android/build.gradle.kts = Gradle user home). With nvd.validForHours=24 a
         # warm cache (<24h) makes the plugin skip the NVD API call entirely. This
@@ -530,12 +509,11 @@ jobs:
 
       - name: Dependency vulnerability scan (OWASP dependency-check)
         id: android-dependency-scan
-        if: steps.nvd-credential.outputs.available == 'true'
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         # Run before APK assembly so a policy failure stops expensive artifact
-        # work. Until certified-artifact consumer cutover, every phase remains
-        # mandatory: no completed and verified report means no green gate.
+        # work. Every phase is mandatory: no completed and verified report
+        # means no green gate.
         run: |
           set -euo pipefail
           : > owasp-output.log
@@ -544,17 +522,15 @@ jobs:
           rm -f "$report_path" "$inventory_path"
 
           timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 \
-            dependencyCheckUpdate -PdependencyCheckNvdValidForHours=24 \
+            dependencyCheckUpdate \
             2>&1 | tee -a owasp-output.log
           timeout -k 1m 10m ./gradlew --no-daemon --max-workers=2 \
             dependencyCheckAggregate \
             -PdependencyCheckAutoUpdate=false \
-            -PdependencyCheckNvdValidForHours=24 \
             2>&1 | tee -a owasp-output.log
 
       - name: Verify Android dependency-check report
         id: android-dependency-report
-        if: steps.nvd-credential.outputs.available == 'true'
         run: |
           set -euo pipefail
           report_path="build/reports/dependency-check-report.json"
@@ -566,7 +542,7 @@ jobs:
             2>&1 | tee -a owasp-output.log
 
       - name: Upload Android dependency-check evidence
-        if: ${{ always() && steps.nvd-credential.outputs.available == 'true' && steps.android-dependency-scan.outcome != 'skipped' }}
+        if: ${{ always() && steps.android-dependency-scan.outcome != 'skipped' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: android-dependency-check-evidence
@@ -578,7 +554,7 @@ jobs:
           retention-days: 14
 
       - name: Save OWASP NVD database
-        if: ${{ success() && steps.nvd-credential.outputs.available == 'true' && github.ref == 'refs/heads/main' && steps.nvd-cache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.nvd-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.gradle/dependency-check-data

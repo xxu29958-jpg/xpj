@@ -73,10 +73,11 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
-      - name: Install Android SDK packages
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Prepare Android build
+        uses: ./.github/actions/prepare-android
+        with:
+          server-url: ${{ env.TICKETBOX_SERVER_URL }}
+          worker-count: "2"
 
       - name: Enable KVM
         # ubuntu runners gate /dev/kvm behind a udev rule; without this the
@@ -101,10 +102,7 @@ jobs:
             -camera-back none
           disable-animations: true
           working-directory: android
-          script: |
-            echo "sdk.dir=$ANDROID_HOME" > local.properties
-            echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
-            ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+          script: ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
 
       - name: Upload androidTest reports on failure
         if: failure()

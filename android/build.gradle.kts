@@ -26,36 +26,6 @@ val dependencyCheckAutoUpdate =
         .map { it.toBoolean() }
         .orElse(true)
 
-val dependencyCheckNvdValidForHours =
-    providers.gradleProperty("dependencyCheckNvdValidForHours")
-        .map {
-            val hours = it.toInt()
-            require(hours == 0 || hours == 24) {
-                "dependencyCheckNvdValidForHours must be 0 or 24"
-            }
-            hours
-        }
-        .orElse(24)
-
-val requestedDependencyCheckTasks =
-    gradle.startParameter.taskNames
-        .map { it.substringAfterLast(':') }
-        .filter { it.startsWith("dependencyCheck") }
-val dependencyCheckDataValidationRequested =
-    "dependencyCheckValidateNvd" in requestedDependencyCheckTasks
-if (dependencyCheckDataValidationRequested) {
-    require(requestedDependencyCheckTasks == listOf("dependencyCheckValidateNvd")) {
-        "dependencyCheckValidateNvd cannot be combined with another dependency-check task"
-    }
-}
-val dependencyCheckPolicyCvssThreshold = 7.0f
-val dependencyCheckPayloadValidationCvssThreshold = 11.0f
-val dependencyCheckFailBuildOnCvss =
-    if (dependencyCheckDataValidationRequested) {
-        dependencyCheckPayloadValidationCvssThreshold
-    } else {
-        dependencyCheckPolicyCvssThreshold
-    }
 val dependencyCheckRuntimeConfigurations =
     listOf(
         "grayDebugRuntimeClasspath",
@@ -72,15 +42,12 @@ val dependencyCheckDataDir =
     gradle.gradleUserHomeDir.resolve("dependency-check-data").absolutePath
 
 dependencyCheck {
-    failBuildOnCVSS = dependencyCheckFailBuildOnCvss
+    failBuildOnCVSS = 7.0f
     // Keep this explicit: corrupt/unreadable cache data must never become a
     // successful report-shaped no-op when an upstream default changes.
     failOnError = true
-    // corrupt/unreadable 的缓存 H2 库会让 new Engine 抛
-    // DatabaseException,12.1.0 的 AbstractAnalyze 仅在 failOnError 为 true 时重抛、否则记日志并跳过
-    // 整个分析块——那会让扫描静默 no-op 却 exit 0,绕过 CVE 阈值检查。保持 true → 缺失/损坏的
-    // NVD 数据、真实 CVE 发现与其它致命失败都保持红灯；ci.yml 只允许“更新失败但使用七天内
-    // 已验证缓存完成离线分析”降级为告警，不允许无数据或过期数据伪绿。
+    // Corrupt or unreadable H2 data must fail the task instead of producing a
+    // report-shaped no-op that bypasses the CVSS policy.
     formats = listOf("HTML", "JSON")
     // The plugin is applied at the root only. Aggregate is the multi-project
     // task and this explicit scope prevents a green root-only no-op.
@@ -101,11 +68,8 @@ dependencyCheck {
     // The hosted feed is a second mutable suppression authority. All accepted
     // suppressions must instead be reviewable in the committed local file.
     hostedSuppressions.enabled = false
-    // A trusted producer overrides both properties to force a real refresh.
-    // Existing CI keeps the warm-cache default until the read-only consumer
-    // replaces it, so the staged rollout never creates two forced writers.
     autoUpdate = dependencyCheckAutoUpdate.get()
-    nvd.validForHours = dependencyCheckNvdValidForHours.get()
+    nvd.validForHours = 24
     data.directory = dependencyCheckDataDir
 }
 
@@ -129,20 +93,14 @@ val verifyDependencyCheckContract =
             check(dependencyCheck.formats == listOf("HTML", "JSON")) {
                 "dependency-check must produce HTML and JSON reports"
             }
+            check(dependencyCheck.failBuildOnCVSS == 7.0f) {
+                "dependency-check policy must fail at CVSS 7 or above"
+            }
             check(dependencyCheck.autoUpdate == dependencyCheckAutoUpdate.get()) {
                 "dependency-check autoUpdate drifted from its runtime property"
             }
-            check(dependencyCheck.nvd.validForHours == dependencyCheckNvdValidForHours.get()) {
+            check(dependencyCheck.nvd.validForHours == 24) {
                 "dependency-check NVD freshness drifted from its runtime property"
-            }
-            if (dependencyCheckDataValidationRequested) {
-                check(dependencyCheck.failBuildOnCVSS == 11.0f) {
-                    "dependency-check payload validation must not adjudicate CVE policy"
-                }
-            } else {
-                check(dependencyCheck.failBuildOnCVSS == 7.0f) {
-                    "dependency-check policy scans must fail at CVSS 7 or above"
-                }
             }
             check(dependencyCheck.data.directory == dependencyCheckDataDir) {
                 "dependency-check data directory drifted from the shared cache contract"
@@ -247,10 +205,4 @@ tasks.named("dependencyCheckUpdate") {
 tasks.named("dependencyCheckAggregate") {
     dependsOn(verifyDependencyCheckContract)
     dependsOn(exportDependencyCheckRuntimeInventory)
-}
-
-tasks.register("dependencyCheckValidateNvd") {
-    group = "verification"
-    description = "Validates NVD data and report scope without adjudicating CVE policy."
-    dependsOn("dependencyCheckAggregate")
 }
