@@ -12,6 +12,7 @@ from scripts import run_packaging_tests
 from scripts.packaging_pytest_contract import packaging_xdist_group
 from scripts.pytest_execution_contract import (
     PytestCollectionSnapshot,
+    application_config_environment_keys,
     parse_pytest_collection,
     pytest_execution_environment,
     pytest_execution_membership_violation,
@@ -50,6 +51,10 @@ def test_pytest_execution_environment_removes_ambient_selectors() -> None:
             "PYTHONPATH": "ambient-import-root",
             "PGHOSTADDR": "203.0.113.8",
             "PGSERVICE": "foreign-cluster",
+            "ENABLE_HTTP_BOOTSTRAP": "true",
+            "HTTP_BOOTSTRAP_SECRET": "ambient-secret",
+            "TICKETBOX_DATA_DIR": "ambient-data-root",
+            "XPJ_BACKGROUND_TASK_INLINE": "1",
             "XPJ_TEST_RUNNER_LANE": "parallel",
             "XPJ_PYTEST_EXECUTION_EXPECTED_COUNT": "1",
             "KEEP": "yes",
@@ -60,6 +65,19 @@ def test_pytest_execution_environment_removes_ambient_selectors() -> None:
         "KEEP": "yes",
         "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
     }
+
+
+def test_application_environment_contract_tracks_runtime_configuration() -> None:
+    keys = application_config_environment_keys()
+
+    assert {
+        "DATABASE_URL",
+        "ENABLE_HTTP_BOOTSTRAP",
+        "HTTP_BOOTSTRAP_SECRET",
+        "TICKETBOX_DATA_DIR",
+        "XPJ_BACKGROUND_TASK_INLINE",
+    } <= keys
+    assert "PROGRAMFILES" not in keys
 
 
 def test_collection_parser_requires_every_reported_nodeid() -> None:
