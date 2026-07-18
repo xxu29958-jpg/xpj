@@ -55,3 +55,18 @@ def assert_github_gradle_cache_topology(
                     "cache-read-only": expected_read_only,
                 }
     assert writers == [("ci.yml", "android")]
+
+
+def assert_codeql_android_build_contract(job: dict[str, Any]) -> None:
+    steps = {step["name"]: step for step in job["steps"]}
+    prepare = steps["Prepare Android build"]
+    assert prepare["uses"] == "./.github/actions/prepare-android"
+    assert prepare["with"] == {
+        "server-url": "${{ env.TICKETBOX_SERVER_URL }}",
+        "worker-count": "2",
+    }
+    build = steps["Build Android for CodeQL"]["run"]
+    assert {":app:compileGrayDebugKotlin", ":app:compileInternalDebugKotlin"} <= set(
+        build.split()
+    )
+    assert not any(forbidden in build for forbidden in ("assemble", "clean"))

@@ -81,17 +81,11 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
-      - name: Install Android SDK packages
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-
-      - name: Point Gradle at cloud Android SDK
-        working-directory: android
-        run: |
-          sdk_dir="${ANDROID_HOME//\\/\\\\}"
-          echo "sdk.dir=$sdk_dir" > local.properties
-          echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
+      - name: Prepare Android build
+        uses: ./.github/actions/prepare-android
+        with:
+          server-url: ${{ env.TICKETBOX_SERVER_URL }}
+          worker-count: "2"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4
@@ -103,7 +97,10 @@ jobs:
 
       - name: Build Android for CodeQL
         working-directory: android
-        run: ./gradlew --no-daemon --no-build-cache clean :app:assembleGrayDebug :app:assembleInternalDebug
+        # Manual mode analyzes the sources built by this command. Compiling both
+        # shipped variants covers their Kotlin source sets without spending heap
+        # and time on D8/APK packaging, which is qualified in the Android CI job.
+        run: ./gradlew --no-daemon --no-build-cache --max-workers=2 :app:compileGrayDebugKotlin :app:compileInternalDebugKotlin
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4

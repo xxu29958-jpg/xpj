@@ -14,6 +14,7 @@ from types import ModuleType
 import pytest
 
 from tests._infra.android_gradle_cache import (
+    assert_codeql_android_build_contract,
     assert_github_gradle_cache_topology,
 )
 from tests._infra.android_nvd_producer import (
@@ -66,6 +67,9 @@ def test_prepare_android_keeps_runner_tuning_out_of_source_authority() -> None:
     assert 'runner_gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"' in tune["run"]
     assert '>> "$runner_gradle_home/gradle.properties"' in tune["run"]
     assert ">> gradle.properties" not in tune["run"]
+
+    codeql = _load_workflow(_ROOT / ".github" / "workflows" / "codeql.yml")
+    assert_codeql_android_build_contract(codeql["jobs"]["analyze-android"])
 
 
 def test_legacy_android_nvd_writer_fails_closed_until_consumer_cutover() -> None:
