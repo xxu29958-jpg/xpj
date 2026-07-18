@@ -11,8 +11,28 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 SOURCE_PREFIXES = ("app/", "scripts/", "tests/")
-_HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
-_IMPORT_PROPAGATION_STOPS = frozenset({"app.database"})
+_ROUTE_DECORATOR_METHODS = frozenset(
+    {
+        "api_route",
+        "delete",
+        "get",
+        "head",
+        "options",
+        "patch",
+        "post",
+        "put",
+        "websocket",
+        "websocket_route",
+    }
+)
+_DIRECT_ROUTE_REGISTRATION_METHODS = frozenset(
+    {
+        "add_api_route",
+        "add_api_websocket_route",
+        "add_route",
+        "add_websocket_route",
+    }
+)
 
 
 class ImpactEvidenceError(RuntimeError):
@@ -128,8 +148,6 @@ def modules_declaring_path_dependencies(
     changed = tuple(changed_paths)
     selected: set[str] = set()
     for module, path in modules.items():
-        if not module.startswith("tests."):
-            continue
         try:
             tree = ast.parse(_read_python_source(path), filename=str(path))
         except SyntaxError as exc:
@@ -229,8 +247,6 @@ def reverse_closure(
     queue = deque(affected)
     while queue:
         affected_module = queue.popleft()
-        if affected_module in _IMPORT_PROPAGATION_STOPS:
-            continue
         for importer in reverse.get(affected_module, ()):
             if importer not in affected:
                 affected.add(importer)
@@ -252,10 +268,11 @@ def route_paths(path: Path) -> tuple[str, ...]:
 def route_paths_from_source(source: str, *, label: str) -> tuple[str, ...]:
     tree = ast.parse(source, filename=label)
     prefixes, unresolved_prefix = _router_prefixes(tree)
-    paths, unresolved_path = _decorated_route_paths(tree, prefixes)
-    if unresolved_prefix or unresolved_path:
+    decorated, unresolved_decorator = _decorated_route_paths(tree, prefixes)
+    registered, unresolved_registration = _registered_route_paths(tree, prefixes)
+    if unresolved_prefix or unresolved_decorator or unresolved_registration:
         raise ImpactEvidenceError(f"route paths in {label} are not all static literals")
-    return tuple(sorted(paths))
+    return tuple(sorted(decorated | registered))
 
 
 def _router_prefixes(tree: ast.Module) -> tuple[dict[str, str], bool]:
@@ -307,7 +324,10 @@ def _decorator_route_path(
     if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
         return None
     owner = decorator.func.value
-    if decorator.func.attr not in _HTTP_METHODS or not isinstance(owner, ast.Name):
+    if (
+        decorator.func.attr not in _ROUTE_DECORATOR_METHODS
+        or not isinstance(owner, ast.Name)
+    ):
         return None
     if owner.id not in prefixes:
         return False
@@ -321,6 +341,58 @@ def _decorator_route_path(
     )
     suffix = _literal_string(path_node)
     return False if suffix is None else prefixes[owner.id] + suffix
+
+
+def _registered_route_paths(
+    tree: ast.Module,
+    prefixes: Mapping[str, str],
+) -> tuple[set[str], bool]:
+    paths: set[str] = set()
+    unresolved = False
+    for node in ast.walk(tree):
+        resolved = _registered_route_path(node, prefixes)
+        if resolved is False:
+            unresolved = True
+        elif isinstance(resolved, str):
+            paths.add(resolved)
+    return paths, unresolved
+
+
+def _registered_route_path(
+    node: ast.AST,
+    prefixes: Mapping[str, str],
+) -> str | bool | None:
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return None
+    if node.func.attr not in _DIRECT_ROUTE_REGISTRATION_METHODS:
+        return None
+    owner = node.func.value
+    if not isinstance(owner, ast.Name) or owner.id not in prefixes:
+        return False
+    path_node = node.args[0] if node.args else next(
+        (
+            keyword.value
+            for keyword in node.keywords
+            if keyword.arg in {"path", "url"}
+        ),
+        None,
+    )
+    suffix = _literal_string(path_node)
+    return False if suffix is None else prefixes[owner.id] + suffix
+
+
+def pytest_fixture_boundaries(
+    modules: Iterable[str],
+    module_paths: Mapping[str, Path],
+) -> tuple[str, ...]:
+    boundaries: list[str] = []
+    for module in sorted(set(modules)):
+        path = module_paths.get(module)
+        if path is None or not module.startswith("tests."):
+            continue
+        if path.name == "conftest.py":
+            boundaries.append(module)
+    return tuple(boundaries)
 
 
 def modules_referencing_routes(

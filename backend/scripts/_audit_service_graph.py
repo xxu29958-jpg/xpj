@@ -30,6 +30,7 @@ from collections import defaultdict
 # introduced it. Stale entries (cycle listed here but no longer
 # present in the code) also fail, so this list cannot rot.
 KNOWN_CYCLES: set[frozenset[str]] = set()
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/app/services/",)
 
 
 def main() -> int:

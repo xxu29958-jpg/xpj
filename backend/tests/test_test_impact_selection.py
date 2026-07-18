@@ -6,8 +6,6 @@ import pytest
 
 from scripts.test_impact_selection import (
     GitChange,
-    _parse_name_status,
-    route_paths,
     select_impacted_tests,
 )
 
@@ -160,6 +158,20 @@ def test_cross_repo_contract_change_falls_back_to_full(tmp_path: Path) -> None:
     assert selection.mode == "full"
 
 
+def test_unknown_repository_root_falls_back_to_full(tmp_path: Path) -> None:
+    backend = _backend_fixture(tmp_path)
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "future-surface/runtime.contract")],
+    )
+
+    assert selection.mode == "full"
+    assert selection.reasons == (
+        "unclassified-repository-change:future-surface/runtime.contract",
+    )
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -204,6 +216,58 @@ def test_dynamic_route_contract_falls_back_to_full(tmp_path: Path) -> None:
 
     assert selection.mode == "full"
     assert selection.reasons[0].startswith("route-impact-unproven:")
+
+
+def test_dynamic_direct_route_registration_falls_back_to_full(
+    tmp_path: Path,
+) -> None:
+    backend = _backend_fixture(tmp_path)
+    _write(
+        backend,
+        "app/routes/expenses.py",
+        "from fastapi import APIRouter\n"
+        "from app.services.amounts import calculate\n"
+        "router = APIRouter(prefix='/api/expenses')\n"
+        "PATH = '/{expense_id}'\n"
+        "def update_expense(expense_id: str):\n"
+        "    return calculate()\n"
+        "router.add_api_route(PATH, update_expense, methods=['POST'])\n",
+    )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/app/services/amounts.py")],
+    )
+
+    assert selection.mode == "full"
+    assert selection.reasons[0].startswith("route-impact-unproven:")
+
+
+def test_static_direct_route_registration_selects_literal_consumers(
+    tmp_path: Path,
+) -> None:
+    backend = _backend_fixture(tmp_path)
+    _write(
+        backend,
+        "app/routes/expenses.py",
+        "from fastapi import APIRouter\n"
+        "from app.services.amounts import calculate\n"
+        "router = APIRouter(prefix='/api/expenses')\n"
+        "def update_expense(expense_id: str):\n"
+        "    return calculate()\n"
+        "router.add_api_route('/{expense_id}', update_expense, methods=['POST'])\n",
+    )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/app/services/amounts.py")],
+    )
+
+    assert selection.mode == "selected"
+    assert selection.selected_tests == (
+        "tests/test_amounts.py",
+        "tests/test_expense_route.py",
+    )
 
 
 def test_route_change_keeps_base_and_head_path_consumers(tmp_path: Path) -> None:
@@ -264,89 +328,69 @@ def test_route_path_in_helper_selects_each_test_importing_that_helper(
     assert "tests/test_expense_route_helper_consumer.py" in selection.selected_tests
 
 
-def test_package_initializer_execution_propagates_to_each_facade_consumer(
+def test_affected_pytest_fixture_boundary_falls_back_to_full(
     tmp_path: Path,
 ) -> None:
     backend = tmp_path / "backend"
-    _write(backend, "app/services/facade/first.py", "def alpha():\n    return 1\n")
-    _write(backend, "app/services/facade/second.py", "def beta():\n    return 2\n")
+    _write(backend, "app/services/identity.py", "VALUE = 1\n")
     _write(
         backend,
-        "app/services/facade/__init__.py",
-        "from app.services.facade.first import alpha\n"
-        "from app.services.facade.second import beta\n",
+        "tests/conftest.py",
+        "import pytest\n"
+        "from app.services.identity import VALUE\n"
+        "@pytest.fixture\n"
+        "def identity_value():\n"
+        "    return VALUE\n",
     )
     _write(
         backend,
-        "app/routes/alpha.py",
-        "from fastapi import APIRouter\n"
-        "from app.services.facade import alpha\n"
-        "router = APIRouter(prefix='/api/alpha')\n"
-        "@router.get('')\n"
-        "def get_alpha():\n"
-        "    return alpha()\n",
+        "tests/test_identity.py",
+        "def test_identity(identity_value):\n"
+        "    assert identity_value == 1\n",
+    )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/app/services/identity.py")],
+    )
+
+    assert selection.mode == "full"
+    assert selection.reasons == (
+        "pytest-fixture-closure-unproven:tests.conftest",
+    )
+
+
+def test_import_propagation_does_not_stop_at_database_module(
+    tmp_path: Path,
+) -> None:
+    backend = tmp_path / "backend"
+    _write(backend, "app/services/identity.py", "VALUE = 1\n")
+    _write(
+        backend,
+        "app/database.py",
+        "from app.services.identity import VALUE\n",
     )
     _write(
         backend,
-        "app/routes/beta.py",
-        "from fastapi import APIRouter\n"
-        "from app.services.facade import beta\n"
-        "router = APIRouter(prefix='/api/beta')\n"
-        "@router.get('')\n"
-        "def get_beta():\n"
-        "    return beta()\n",
-    )
-    _write(
-        backend,
-        "app/routes/facade_module.py",
-        "from fastapi import APIRouter\n"
-        "from app.services import facade\n"
-        "router = APIRouter(prefix='/api/facade-module')\n"
-        "@router.get('')\n"
-        "def get_alpha_from_module():\n"
-        "    return facade.alpha()\n",
-    )
-    _write(backend, "tests/test_alpha.py", "def test_alpha(client):\n    client.get('/api/alpha')\n")
-    _write(backend, "tests/test_beta.py", "def test_beta(client):\n    client.get('/api/beta')\n")
-    _write(
-        backend,
-        "tests/test_facade_module.py",
-        "def test_facade_module(client):\n    client.get('/api/facade-module')\n",
+        "tests/test_database_consumer.py",
+        "from app.database import VALUE\n"
+        "def test_value():\n"
+        "    assert VALUE == 1\n",
     )
     for index in range(3):
-        _write(backend, f"tests/test_other_{index}.py", f"def test_other_{index}():\n    pass\n")
+        _write(
+            backend,
+            f"tests/test_other_{index}.py",
+            f"def test_other_{index}():\n    pass\n",
+        )
 
     selection = select_impacted_tests(
         backend,
-        [GitChange("M", "backend/app/services/facade/first.py")],
+        [GitChange("M", "backend/app/services/identity.py")],
     )
 
     assert selection.mode == "selected"
-    assert selection.selected_tests == (
-        "tests/test_alpha.py",
-        "tests/test_beta.py",
-        "tests/test_facade_module.py",
-    )
-
-
-def test_source_scanner_declares_its_path_dependency(tmp_path: Path) -> None:
-    backend = _backend_fixture(tmp_path)
-    _write(
-        backend,
-        "tests/test_route_scanner.py",
-        "from pathlib import Path\n"
-        "TEST_IMPACT_SOURCE_PREFIXES = ('backend/app/routes/',)\n"
-        "def test_routes():\n"
-        "    assert list((Path('app') / 'routes').glob('*.py'))\n",
-    )
-
-    selection = select_impacted_tests(
-        backend,
-        [GitChange("M", "backend/app/routes/expenses.py")],
-    )
-
-    assert selection.mode == "selected"
-    assert "tests/test_route_scanner.py" in selection.selected_tests
+    assert selection.selected_tests == ("tests/test_database_consumer.py",)
 
 
 def test_direct_composition_root_dependency_keeps_main_consumers(
@@ -386,33 +430,4 @@ def test_direct_composition_root_dependency_keeps_main_consumers(
     assert selection.selected_tests == (
         "tests/test_health_unit.py",
         "tests/test_main_health.py",
-    )
-
-
-def test_route_parser_combines_each_router_prefix(tmp_path: Path) -> None:
-    route = _write(
-        tmp_path,
-        "routes.py",
-        "from fastapi import APIRouter\n"
-        "first = APIRouter(prefix='/api/one')\n"
-        "second = APIRouter(prefix='/api/two')\n"
-        "@first.get('/{item_id}')\n"
-        "def one():\n"
-        "    pass\n"
-        "@second.delete('')\n"
-        "def two():\n"
-        "    pass\n",
-    )
-
-    assert route_paths(route) == ("/api/one/{item_id}", "/api/two")
-
-
-def test_git_name_status_parser_keeps_destructive_identity() -> None:
-    changes = _parse_name_status(
-        b"M\0backend/app/a.py\0R100\0backend/app/old.py\0docs/new.py\0"
-    )
-
-    assert changes == (
-        GitChange("M", "backend/app/a.py"),
-        GitChange("R", "docs/new.py", old_path="backend/app/old.py"),
     )

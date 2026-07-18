@@ -165,3 +165,22 @@ def test_git_plan_includes_untracked_tests_in_local_evidence(tmp_path: Path) -> 
 
     assert plan.mode == "selected"
     assert "tests/test_untracked.py" in plan.selected_tests
+
+
+def test_git_plan_reports_both_sides_of_a_rename(tmp_path: Path) -> None:
+    repo, backend, _base, head = _route_repo(tmp_path)
+    _git(repo, "mv", "backend/tests/test_old.py", "backend/tests/test_renamed.py")
+    renamed_head = _commit(repo, "rename test")
+
+    plan = create_impact_plan(
+        repo_root=repo,
+        backend_root=backend,
+        base_ref=head,
+        head_ref=renamed_head,
+    )
+
+    assert plan.mode == "full"
+    assert plan.changed_paths == (
+        "backend/tests/test_old.py",
+        "backend/tests/test_renamed.py",
+    )
