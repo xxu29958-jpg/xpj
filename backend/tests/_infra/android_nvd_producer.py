@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ElementTree
+from pathlib import Path
 from typing import Any
 
 _SETUP_STEPS = [
@@ -9,11 +11,41 @@ _SETUP_STEPS = [
     "Set up Gradle",
     "Prepare Android build",
 ]
+_SETUP_GRADLE_ACTION = (
+    "gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92"
+)
+
+
+def assert_gradle_cache_authority(
+    job: dict[str, Any],
+    *,
+    java_version: str,
+    cache_read_only: str | bool,
+) -> None:
+    steps = {step["name"]: step for step in job["steps"]}
+    java = steps["Set up Java"]
+    assert java["with"] == {
+        "distribution": "temurin",
+        "java-version": java_version,
+    }
+    gradle = steps["Set up Gradle"]
+    assert gradle["uses"] == _SETUP_GRADLE_ACTION
+    assert gradle["with"] == {
+        "cache-provider": "basic",
+        "cache-read-only": cache_read_only,
+    }
+    step_names = [step["name"] for step in job["steps"]]
+    assert step_names.index("Set up Java") < step_names.index("Set up Gradle")
 
 
 def assert_legacy_nvd_consumer_job(android: dict[str, Any]) -> None:
     assert "concurrency" not in android
     assert "NVD_API_KEY" not in android.get("env", {})
+    assert_gradle_cache_authority(
+        android,
+        java_version="17",
+        cache_read_only="${{ github.ref != 'refs/heads/main' }}",
+    )
     steps = {step["name"]: step for step in android["steps"]}
     require = steps["Require NVD credential"]
     assert "id" not in require
@@ -55,6 +87,9 @@ def assert_legacy_nvd_consumer_job(android: dict[str, Any]) -> None:
     assert "android/owasp-output.log" in evidence["with"]["path"]
 
     step_names = [step["name"] for step in android["steps"]]
+    assert step_names.index("Set up Gradle") < step_names.index(
+        "Install Android SDK packages"
+    )
     assert step_names.index(
         "Dependency vulnerability scan (OWASP dependency-check)"
     ) < step_names.index("Android debug APK builds")
@@ -67,6 +102,43 @@ def assert_legacy_nvd_consumer_job(android: dict[str, Any]) -> None:
     assert "Dependency vulnerability scan skipped" not in steps
     assert "Enforce OWASP CVE findings (tolerate only NVD-data outages)" not in steps
     assert json.dumps(android, sort_keys=True).count("secrets.NVD_API_KEY") == 2
+
+
+def assert_runtime_dependency_suppressions(path: Path) -> None:
+    namespace = "https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd"
+    ns = {"dc": namespace}
+    root = ElementTree.parse(path).getroot()
+    assert root.tag == f"{{{namespace}}}suppressions"
+    rules = root.findall("dc:suppress", ns)
+    assert len(rules) == 3
+
+    def text(rule: ElementTree.Element, name: str) -> str:
+        node = rule.find(f"dc:{name}", ns)
+        assert node is not None and node.text is not None
+        return node.text.strip()
+
+    sqlite, lifecycle, kotlin = rules
+    assert text(sqlite, "packageUrl") == (
+        r"^pkg:maven/androidx\.sqlite/(?:sqlite-android|sqlite-framework-android)"
+        r"@2\.6\.2$"
+    )
+    assert text(sqlite, "cpe") == "cpe:2.3:a:sqlite:sqlite:2.6.2:*:*:*:*:*:*:*"
+    assert text(lifecycle, "packageUrl") == (
+        "pkg:maven/androidx.lifecycle/lifecycle-viewmodel@2.10.0"
+    )
+    assert [node.text for node in lifecycle.findall("dc:cpe", ns)] == [
+        f"cpe:2.3:a:apache:{product}:2.10.0:*:*:*:*:*:*:*"
+        for product in ("impala", "shenyu", "skywalking", "zookeeper")
+    ]
+    assert text(kotlin, "packageUrl") == (
+        r"^pkg:maven/org\.jetbrains\.kotlin/(?:kotlin-stdlib@2\.3\.21|"
+        r"kotlin-reflect@1\.8\.21|kotlin-stdlib-jdk[78]@1\.8\.21)$"
+    )
+    assert text(kotlin, "cve") == "CVE-2026-53914"
+    for rule in rules:
+        assert rule.find("dc:notes", ns) is not None
+        assert rule.find("dc:cvssBelow", ns) is None
+        assert rule.find("dc:vulnerabilityName", ns) is None
 
 
 def assert_nvd_producer_workflow(
@@ -160,6 +232,11 @@ def _assert_refresh_job(
         "Publish staged OWASP NVD artifact",
     ]
     steps = {step["name"]: step for step in refresh["steps"]}
+    assert_gradle_cache_authority(
+        refresh,
+        java_version="17",
+        cache_read_only=True,
+    )
     restore = steps["Restore previous certified NVD artifact"]
     assert restore == {
         "name": "Restore previous certified NVD artifact",
@@ -208,6 +285,11 @@ def _assert_certify_job(
         "Certify staged OWASP NVD payload",
     ]
     steps = {step["name"]: step for step in certify["steps"]}
+    assert_gradle_cache_authority(
+        certify,
+        java_version="17",
+        cache_read_only=True,
+    )
     _assert_staged_artifact_transfer(
         steps,
         clear_name="Clear staged artifact paths",

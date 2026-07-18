@@ -412,7 +412,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+        with:
+          cache-provider: basic
+          # Cross-run build-cache metadata has one trusted writer. PRs may
+          # consume main's cache for speed but cannot publish cache state.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Install Android SDK packages
         run: |

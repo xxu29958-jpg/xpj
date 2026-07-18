@@ -1,20 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
-    <!--
-        v1.1 Batch 3: OWASP dependency-check suppression file.
-
-        Add entries here ONLY after triaging the finding. Format:
-
-        <suppress>
-            <notes><![CDATA[
-                Why this is suppressed (links to upstream issue, fixed-in
-                version, mitigation, sign-off, etc.).
-            ]]></notes>
-            <packageUrl regex="true">^pkg:maven/<group>/<artifact>@.*$</packageUrl>
-            <cve>CVE-YYYY-NNNNN</cve>
-        </suppress>
-
-        Empty file is fine — dependencyCheck will simply find no
-        suppressions and apply its default fail-on-CVSS-7 threshold.
-    -->
+    <suppress>
+        <notes><![CDATA[
+            AndroidX SQLite 2.6.2 is not SQLite core 2.6.2. sqlite-framework
+            delegates to the platform-native implementation; sqlite-bundled is
+            the separate artifact that compiles SQLite from source.
+            https://developer.android.com/jetpack/androidx/releases/sqlite
+        ]]></notes>
+        <packageUrl regex="true">^pkg:maven/androidx\.sqlite/(?:sqlite-android|sqlite-framework-android)@2\.6\.2$</packageUrl>
+        <cpe>cpe:2.3:a:sqlite:sqlite:2.6.2:*:*:*:*:*:*:*</cpe>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            AndroidX Lifecycle ViewModel is unrelated to the four Apache
+            products inferred solely from the shared 2.10.0 version.
+        ]]></notes>
+        <packageUrl>pkg:maven/androidx.lifecycle/lifecycle-viewmodel@2.10.0</packageUrl>
+        <cpe>cpe:2.3:a:apache:impala:2.10.0:*:*:*:*:*:*:*</cpe>
+        <cpe>cpe:2.3:a:apache:shenyu:2.10.0:*:*:*:*:*:*:*</cpe>
+        <cpe>cpe:2.3:a:apache:skywalking:2.10.0:*:*:*:*:*:*:*</cpe>
+        <cpe>cpe:2.3:a:apache:zookeeper:2.10.0:*:*:*:*:*:*:*</cpe>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            CVE-2026-53914 concerns unsafe deserialization of Kotlin build-cache
+            metadata, not these APK runtime jars. CI separately enforces a
+            trusted-main-only writer for cross-run Gradle cache state.
+            https://nvd.nist.gov/vuln/detail/CVE-2026-53914
+        ]]></notes>
+        <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/(?:kotlin-stdlib@2\.3\.21|kotlin-reflect@1\.8\.21|kotlin-stdlib-jdk[78]@1\.8\.21)$</packageUrl>
+        <cve>CVE-2026-53914</cve>
+    </suppress>
 </suppressions>

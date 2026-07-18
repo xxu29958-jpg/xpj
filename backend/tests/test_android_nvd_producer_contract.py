@@ -14,8 +14,10 @@ from types import ModuleType
 import pytest
 
 from tests._infra.android_nvd_producer import (
+    assert_gradle_cache_authority,
     assert_legacy_nvd_consumer_job,
     assert_nvd_producer_workflow,
+    assert_runtime_dependency_suppressions,
 )
 from tests._infra.ci_gap import load_ci_gap_audit as _load
 
@@ -67,6 +69,20 @@ def test_prepare_android_keeps_runner_tuning_out_of_source_authority() -> None:
 def test_legacy_android_nvd_writer_fails_closed_until_consumer_cutover() -> None:
     ci = _load_workflow(_ROOT / ".github" / "workflows" / "ci.yml")
     assert_legacy_nvd_consumer_job(ci["jobs"]["android"])
+    codeql = _load_workflow(_ROOT / ".github" / "workflows" / "codeql.yml")
+    assert_gradle_cache_authority(
+        codeql["jobs"]["analyze-android"],
+        java_version="21",
+        cache_read_only=True,
+    )
+    connected = _load_workflow(
+        _ROOT / ".github" / "workflows" / "android-connected-test.yml"
+    )
+    assert_gradle_cache_authority(
+        connected["jobs"]["connected"],
+        java_version="21",
+        cache_read_only=True,
+    )
 
 
 def test_legacy_android_nvd_failures_are_not_adjudicated_from_logs() -> None:
@@ -463,3 +479,6 @@ def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> Non
         'providers.environmentVariable("ORG_GRADLE_PROJECT_nvdApiKey")',
     ):
         assert forbidden not in build
+    assert_runtime_dependency_suppressions(
+        _ROOT / "android" / "config" / "dependency-check" / "suppressions.xml"
+    )
