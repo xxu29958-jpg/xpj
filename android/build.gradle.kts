@@ -77,6 +77,10 @@ dependencyCheck {
     // only through the process environment so it never appears in command
     // arguments or project properties.
     nvd.apiKey = nvdApiKey.orEmpty()
+    // This lane has one vulnerability-data authority: the certified NVD
+    // payload. OSS Index requires separate Sonatype credentials and remote
+    // availability, so it must not be enabled implicitly by plugin defaults.
+    analyzers.ossIndex.enabled = false
     // A trusted producer overrides both properties to force a real refresh.
     // Existing CI keeps the warm-cache default until the read-only consumer
     // replaces it, so the staged rollout never creates two forced writers.
@@ -116,6 +120,9 @@ val verifyDependencyCheckContract =
             }
             check(dependencyCheck.data.directory == dependencyCheckDataDir) {
                 "dependency-check data directory drifted from the shared cache contract"
+            }
+            check(dependencyCheck.analyzers.ossIndex.enabled == false) {
+                "dependency-check must not add an unauthenticated OSS Index data source"
             }
         }
     }

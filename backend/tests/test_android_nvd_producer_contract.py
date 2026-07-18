@@ -469,6 +469,7 @@ def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> Non
     for fragment in (
         "failOnError = true",
         'scanProjects = listOf(":app")',
+        "analyzers.ossIndex.enabled = false",
         "autoUpdate = dependencyCheckAutoUpdate.get()",
         'providers.gradleProperty("dependencyCheckNvdValidForHours")',
         "hours == 0 || hours == 24",
@@ -477,6 +478,7 @@ def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> Non
         "val dependencyCheckPayloadValidationCvssThreshold = 11.0f",
         'dependencyCheck.failBuildOnCVSS == 11.0f',
         'dependencyCheck.failBuildOnCVSS == 7.0f',
+        'dependencyCheck.analyzers.ossIndex.enabled == false',
         'tasks.register("verifyDependencyCheckContract")',
         'tasks.named("dependencyCheckUpdate")',
         'tasks.named("dependencyCheckAggregate")',
