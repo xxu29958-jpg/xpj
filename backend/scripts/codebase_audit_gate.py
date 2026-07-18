@@ -166,12 +166,10 @@ BASELINE_RATCHET_UP: frozenset[str] = frozenset({
     "mutate_token_carriers",
 })
 
-# DOWN-only keys may shrink as routes graduate; they must not grow back.
-# New ALLOWLIST routes need explicit ADR pointers per v1.3 PR-2.
-BASELINE_RATCHET_DOWN: frozenset[str] = frozenset({
-    "mutate_token_exempted",
-})
-_ADR_0049_EXEMPTED_GRANDFATHER = (121, 122)  # ADR-0053 web merchant catalog adds one create-row exemption (POST /web/merchants/catalog/create) while hide/delete carry OCC tokens. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop.
+# Exemption counts are not a quality score: a new route can add a legitimate,
+# reason-coded exemption. Strict equality still requires each intentional
+# distribution change to update the audited baseline in the same PR.
+BASELINE_RATCHET_DOWN: frozenset[str] = frozenset()
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -278,7 +276,6 @@ def _compute_ratchet_findings(
             bootstrapped.append(key)
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
-        adr_0049_exempt = key == "mutate_token_exempted" and (base_val, current_val) == _ADR_0049_EXEMPTED_GRANDFATHER
         if key in BASELINE_RATCHET_UP and current_val < base_val:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
@@ -286,7 +283,7 @@ def _compute_ratchet_findings(
                 f"accumulate, not vanish. Strict equality alone misses this when "
                 f"actuals dropped in lockstep — this layer catches it."
             )
-        elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not adr_0049_exempt:
+        elif key in BASELINE_RATCHET_DOWN and current_val > base_val:
             movement_violations.append(
                 f"  - {key} (DOWN-only): base={base_val}, current={current_val} "
                 f"(rose by {current_val - base_val}). Exemptions should drain as "
@@ -295,9 +292,7 @@ def _compute_ratchet_findings(
     return bootstrapped, movement_violations
 
 
-def _compute_ratchet_policy_findings(
-    base_policy: _StrictBaselinePolicy | None = None,
-) -> list[str]:
+def _compute_ratchet_policy_findings() -> list[str]:
     violations: list[str] = []
     try:
         source_policy = _parse_base_strict_policy(
@@ -327,18 +322,6 @@ def _compute_ratchet_policy_findings(
             "current ratchet policy references unknown counter(s): "
             + ", ".join(sorted(unknown))
         )
-    if base_policy is not None and base_policy.ratchet_policy_present:
-        current_keys = set(STRICT_EQUALITY_BASELINE)
-        for label, base_members, current_members in (
-            ("UP-only", base_policy.ratchet_up, BASELINE_RATCHET_UP),
-            ("DOWN-only", base_policy.ratchet_down, BASELINE_RATCHET_DOWN),
-        ):
-            removed = sorted((base_members - current_members) & current_keys)
-            if removed:
-                violations.append(
-                    f"current {label} ratchet removed still-managed counter(s): "
-                    + ", ".join(removed)
-                )
     return violations
 
 
@@ -446,9 +429,7 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
         bootstrapped, movement_violations = _compute_ratchet_findings(
             base_policy.baseline
         )
-    policy_violations = _compute_ratchet_policy_findings(
-        base_policy if base_readable else None
-    )
+    policy_violations = _compute_ratchet_policy_findings()
 
     print("== Gate. ADR-0038 PR-Δ verification (strict-equality + ratchet) ==")
     _print_strict_equality_failures(counts, missing, mismatches, extras)
