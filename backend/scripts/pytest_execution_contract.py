@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
@@ -9,6 +10,7 @@ import sys
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 
@@ -19,6 +21,8 @@ PYTEST_EXPECTED_DIGEST_ENV = "XPJ_PYTEST_EXECUTION_EXPECTED_DIGEST"
 PYTEST_HANDSHAKE_PATH_ENV = "XPJ_PYTEST_EXECUTION_HANDSHAKE_PATH"
 PYTEST_HANDSHAKE_TOKEN_ENV = "XPJ_PYTEST_EXECUTION_HANDSHAKE_TOKEN"
 _PYTEST_NO_TESTS_COLLECTED = 5
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+_APPLICATION_ENV_PREFIXES = ("TICKETBOX_", "XPJ_")
 
 
 @dataclass(frozen=True)
@@ -45,6 +49,61 @@ def pytest_target_digest(targets: Sequence[str]) -> str:
     return sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _literal_environment_key(node: ast.Call) -> str | None:
+    if not node.args:
+        return None
+    argument = node.args[0]
+    if not isinstance(argument, ast.Constant) or not isinstance(argument.value, str):
+        return None
+    function = node.func
+    if isinstance(function, ast.Name) and function.id.endswith("_env"):
+        return argument.value
+    if not isinstance(function, ast.Attribute):
+        return None
+    if (
+        function.attr == "getenv"
+        and isinstance(function.value, ast.Name)
+        and function.value.id == "os"
+    ):
+        return argument.value
+    if (
+        function.attr == "get"
+        and isinstance(function.value, ast.Attribute)
+        and isinstance(function.value.value, ast.Name)
+        and function.value.value.id == "os"
+        and function.value.attr == "environ"
+    ):
+        return argument.value
+    return None
+
+
+@lru_cache(maxsize=1)
+def application_config_environment_keys() -> frozenset[str]:
+    keys: set[str] = set()
+    config_path = _BACKEND_ROOT / "app" / "config.py"
+    for path in (_BACKEND_ROOT / "app").rglob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except (OSError, SyntaxError, UnicodeError) as exc:
+            raise RuntimeError(
+                f"Cannot derive the test application environment contract from {path}: {exc}"
+            ) from exc
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                key = _literal_environment_key(node)
+                if key is not None and (
+                    path == config_path or key.startswith(_APPLICATION_ENV_PREFIXES)
+                ):
+                    keys.add(key)
+            elif (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and node.value.startswith(_APPLICATION_ENV_PREFIXES)
+            ):
+                keys.add(node.value)
+    return frozenset(keys)
+
+
 def pytest_execution_environment(
     environment: Mapping[str, str] | None = None,
     *,
@@ -53,6 +112,8 @@ def pytest_execution_environment(
     sanitized = sanitized_libpq_test_environment(
         os.environ if environment is None else environment
     )
+    for key in application_config_environment_keys():
+        sanitized.pop(key, None)
     for key in (
         "PYTEST_ADDOPTS",
         "PYTEST_PLUGINS",
