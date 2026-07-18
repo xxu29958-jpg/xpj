@@ -270,6 +270,42 @@ def _test_targets_for_modules(
     }
 
 
+def _route_impacted_test_targets(
+    *,
+    affected: set[str],
+    reverse: dict[str, set[str]],
+    modules: dict[str, Path],
+    backend_root: Path,
+    historical_route_patterns: Iterable[str],
+) -> tuple[set[str], int]:
+    affected_routes = [
+        path
+        for module, path in modules.items()
+        if module in affected and module.startswith("app.routes.")
+    ]
+    route_patterns = set(historical_route_patterns)
+    for path in affected_routes:
+        route_patterns.update(route_paths(path))
+    route_consumers = reverse_closure(
+        modules_referencing_routes(route_patterns, modules),
+        reverse,
+    )
+    selected = _test_targets_for_modules(
+        route_consumers,
+        modules,
+        backend_root,
+    )
+    if affected_routes:
+        selected.update(
+            _test_targets_for_modules(
+                reverse_closure({"app.main"}, reverse),
+                modules,
+                backend_root,
+            )
+        )
+    return selected, len(affected_routes)
+
+
 def select_impacted_tests(
     backend_root: Path,
     changes: Sequence[GitChange],
@@ -316,30 +352,15 @@ def select_impacted_tests(
     test_files = tuple(sorted((backend_root / "tests").rglob("test_*.py")))
     selected.update(_test_targets_for_modules(affected, modules, backend_root))
 
-    affected_routes = [
-        path
-        for module, path in modules.items()
-        if module in affected and module.startswith("app.routes.")
-    ]
-    route_patterns = set(historical_route_patterns)
     try:
-        for path in affected_routes:
-            route_patterns.update(route_paths(path))
-        route_consumers = reverse_closure(
-            modules_referencing_routes(route_patterns, modules),
-            reverse,
+        route_tests, affected_route_count = _route_impacted_test_targets(
+            affected=affected,
+            reverse=reverse,
+            modules=modules,
+            backend_root=backend_root,
+            historical_route_patterns=historical_route_patterns,
         )
-        selected.update(
-            _test_targets_for_modules(route_consumers, modules, backend_root)
-        )
-        if affected_routes:
-            selected.update(
-                _test_targets_for_modules(
-                    reverse_closure({"app.main"}, reverse),
-                    modules,
-                    backend_root,
-                )
-            )
+        selected.update(route_tests)
     except ImpactEvidenceError as exc:
         return Selection("full", (f"route-impact-unproven:{exc}",), ())
 
@@ -356,7 +377,7 @@ def select_impacted_tests(
         "selected",
         (
             f"static-import-closure:{len(changed_modules)}-module(s)",
-            f"route-literal-closure:{len(affected_routes)}-module(s)",
+            f"route-literal-closure:{affected_route_count}-module(s)",
         ),
         tuple(sorted(selected)),
     )
