@@ -23,6 +23,10 @@ from pathlib import Path
 from typing import Literal
 
 from backend_manager.version_contract import is_managed_release_version
+from backend_manager.windows_job_visibility import (
+    active_job_process_ids,
+    job_has_visible_top_level_window,
+)
 
 _CREATE_NO_WINDOW = 0x08000000  # don't pop a console window for child processes
 _CREATE_SUSPENDED = 0x00000004
@@ -109,6 +113,16 @@ class WindowsKillOnCloseJob:
 
     def __init__(self, handle: int) -> None:
         self._handle = handle
+
+    def active_process_ids(self) -> frozenset[int]:
+        """Return every process generation currently owned by this Job."""
+
+        return active_job_process_ids(self._handle)
+
+    def has_visible_top_level_window(self) -> bool:
+        """Report whether any process in this Job owns a visible top-level window."""
+
+        return job_has_visible_top_level_window(self._handle)
 
     def close(self) -> None:
         handle, self._handle = self._handle, 0

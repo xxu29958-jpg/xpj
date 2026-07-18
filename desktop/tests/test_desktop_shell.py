@@ -140,6 +140,34 @@ def test_edge_window_closes_owned_job_before_waiting() -> None:
     assert events == ["job-close", "wait:1"]
 
 
+def test_edge_window_tracks_visible_job_window_instead_of_lingering_process() -> None:
+    events: list[str] = []
+
+    class Process:
+        def poll(self):
+            return None
+
+        def wait(self, *, timeout: float):
+            events.append(f"wait:{timeout:g}")
+            return 0
+
+    class Job:
+        visible = iter((False, True, False))
+
+        def has_visible_top_level_window(self) -> bool:
+            return next(self.visible)
+
+        def close(self) -> None:
+            events.append("job-close")
+
+    window = desktop_shell.EdgeAppWindow(Process(), Job())  # type: ignore[arg-type]
+
+    assert window.is_open() is True
+    assert window.is_open() is True
+    assert window.is_open() is False
+    assert events == ["job-close", "wait:0.5"]
+
+
 def test_browser_launch_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         desktop_shell.os,
