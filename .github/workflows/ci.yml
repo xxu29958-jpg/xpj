@@ -84,6 +84,9 @@ jobs:
                 elseif ($path -match '^backend/packaging/tests/') {
                   $scope.contract_required = $true
                 }
+                elseif ($path -match '^android/scripts/') {
+                  $scope.contract_required = $true
+                }
                 elseif ($path -match '^backend/packaging/' -or $path -match '^desktop/packaging/') {
                   $scope.installer_required = $true
                 }

@@ -33,6 +33,7 @@ GITEA_CONNECTED_PATHS = (
     "android/gradlew.bat",
     "android/gradlew",
     "android/settings.gradle.kts",
+    "android/scripts/**",
     ".gitea/workflows/android-connected.yml",
 )
 
