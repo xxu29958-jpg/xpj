@@ -39,6 +39,12 @@ def pytest_nodeid_digest(nodeids: Sequence[str]) -> str:
     return sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def pytest_target_digest(targets: Sequence[str]) -> str:
+    normalized = sorted({target.replace("\\", "/") for target in targets})
+    canonical = "".join(f"{target}\n" for target in normalized)
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def pytest_execution_environment(
     environment: Mapping[str, str] | None = None,
     *,
@@ -70,11 +76,20 @@ def pytest_collection_command(
     target: str,
     mark_expression: str | None,
 ) -> list[str]:
+    return pytest_targets_collection_command((target,), mark_expression)
+
+
+def pytest_targets_collection_command(
+    targets: Sequence[str],
+    mark_expression: str | None,
+) -> list[str]:
+    if not targets:
+        raise ValueError("pytest collection requires at least one target")
     command = [
         sys.executable,
         "-m",
         "pytest",
-        target,
+        *targets,
         "--collect-only",
         "-q",
         "--strict-markers",
@@ -93,11 +108,21 @@ def parse_pytest_collection(
     *,
     allow_empty: bool,
 ) -> PytestCollectionSnapshot:
+    return parse_pytest_targets_collection((target,), result, allow_empty=allow_empty)
+
+
+def parse_pytest_targets_collection(
+    targets: Sequence[str],
+    result: subprocess.CompletedProcess[str],
+    *,
+    allow_empty: bool,
+) -> PytestCollectionSnapshot:
+    target_label = " ".join(targets)
     if result.returncode == _PYTEST_NO_TESTS_COLLECTED and allow_empty:
         return PytestCollectionSnapshot(())
     if result.returncode != 0:
         raise RuntimeError(
-            f"`pytest {target} --collect-only` failed (exit={result.returncode}).\n"
+            f"`pytest {target_label} --collect-only` failed (exit={result.returncode}).\n"
             f"stdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
         )
@@ -109,17 +134,23 @@ def parse_pytest_collection(
             break
     if count is None:
         raise RuntimeError(
-            f"could not parse `pytest {target} --collect-only` output.\n"
+            f"could not parse `pytest {target_label} --collect-only` output.\n"
             f"stdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
         )
-    nodeid_prefix = f"{target.rstrip('/')}/"
+    normalized_targets = tuple(target.replace("\\", "/").rstrip("/") for target in targets)
+
+    def belongs_to_target(line: str) -> bool:
+        node_path = line.split("::", 1)[0].replace("\\", "/")
+        return any(node_path == target or node_path.startswith(f"{target}/") for target in normalized_targets)
+
     nodeids = tuple(
-        line.strip() for line in result.stdout.splitlines() if line.startswith(nodeid_prefix) and "::" in line
+        line.strip() for line in result.stdout.splitlines() if "::" in line and belongs_to_target(line)
     )
     if len(nodeids) != count:
         raise RuntimeError(
-            f"pytest reported {count} selected tests for {target!r}, but the collector emitted {len(nodeids)} node ids."
+            f"pytest reported {count} selected tests for {target_label!r}, "
+            f"but the collector emitted {len(nodeids)} node ids."
         )
     return PytestCollectionSnapshot(nodeids)
 
@@ -144,6 +175,28 @@ def collect_pytest_snapshot(
         timeout=300,
     )
     return parse_pytest_collection(target, result, allow_empty=allow_empty)
+
+
+def collect_pytest_targets_snapshot(
+    targets: Sequence[str],
+    *,
+    mark_expression: str | None = None,
+    backend_root: Path,
+    allow_empty: bool = False,
+    remove_environment: Iterable[str] = (),
+) -> PytestCollectionSnapshot:
+    result = subprocess.run(
+        pytest_targets_collection_command(targets, mark_expression),
+        cwd=backend_root,
+        env=pytest_execution_environment(remove_keys=remove_environment),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=300,
+    )
+    return parse_pytest_targets_collection(targets, result, allow_empty=allow_empty)
 
 
 def pytest_execution_membership_violation(

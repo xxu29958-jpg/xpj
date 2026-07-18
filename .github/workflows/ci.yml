@@ -264,6 +264,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          # The impact shadow compares the checked-out PR merge commit with its
+          # exact merge base. Missing history must force a full plan.
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -273,6 +277,24 @@ jobs:
           cache-dependency-path: |
             backend/requirements.txt
             backend/requirements-dev.txt
+
+      - name: Backend impact plan (non-blocking shadow)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          XPJ_IMPACT_BASE: ${{ github.event.pull_request.base.sha }}
+          XPJ_IMPACT_HEAD: ${{ github.sha }}
+        run: |
+          python scripts/test_impact_selection.py \
+            --base-ref "$XPJ_IMPACT_BASE" \
+            --head-ref "$XPJ_IMPACT_HEAD" \
+            --output "$RUNNER_TEMP/backend-impact-plan.json"
+          {
+            echo "### Backend impact plan (shadow)"
+            echo '```json'
+            cat "$RUNNER_TEMP/backend-impact-plan.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install PostgreSQL 17 client
         # ubuntu-latest's default apt has no postgresql-client-17 (PG17 lives in

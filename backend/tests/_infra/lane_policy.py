@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.pytest_execution_contract import pytest_target_digest
+
 _TESTS_ROOT = Path(__file__).resolve().parents[1]
 
 STATEFUL_POSTGRES_MARKS = [
@@ -143,6 +145,8 @@ def managed_runner_configuration_violation(
     *,
     active_lane: str | None,
     collection_roots: Sequence[str],
+    selection_scope: str | None = None,
+    expected_target_digest: str | None = None,
     collect_only: bool,
     keyword: str,
     mark_expression: str,
@@ -152,7 +156,7 @@ def managed_runner_configuration_violation(
     last_failed: bool,
     optimized: bool,
 ) -> str | None:
-    """Reject filters that could turn the managed full runner falsely green."""
+    """Reject filters or target drift that could turn a managed runner green."""
 
     if active_lane is None:
         return None
@@ -162,14 +166,33 @@ def managed_runner_configuration_violation(
     }.get(active_lane)
     if expected_mark is None:
         return f"Unknown managed PostgreSQL test lane: {active_lane!r}."
-    if len(collection_roots) != 1:
-        return "Managed PostgreSQL test lanes must collect the complete tests root."
+    scope = selection_scope or "full"
+    if scope not in {"full", "impacted"}:
+        return f"Unknown managed PostgreSQL test scope: {scope!r}."
     try:
-        collection_root = Path(collection_roots[0]).resolve()
+        resolved_roots = tuple(Path(root).resolve() for root in collection_roots)
     except OSError:
-        return "Managed PostgreSQL test lanes must collect the complete tests root."
-    if collection_root != _TESTS_ROOT:
-        return "Managed PostgreSQL test lanes must collect the complete tests root."
+        return "Managed PostgreSQL test lanes received an invalid collection target."
+    if scope == "full":
+        if resolved_roots != (_TESTS_ROOT,):
+            return "Managed PostgreSQL full test lanes must collect the complete tests root."
+    else:
+        canonical_targets: list[str] = []
+        for root in resolved_roots:
+            if (
+                not root.is_relative_to(_TESTS_ROOT)
+                or root == _TESTS_ROOT
+                or root.suffix != ".py"
+                or not root.name.startswith("test_")
+            ):
+                return "Managed impacted lanes only accept explicit test_*.py files under tests/."
+            canonical_targets.append(f"tests/{root.relative_to(_TESTS_ROOT).as_posix()}")
+        if (
+            not canonical_targets
+            or len(canonical_targets) != len(set(canonical_targets))
+            or pytest_target_digest(canonical_targets) != expected_target_digest
+        ):
+            return "Managed impacted lane targets do not match the runner's selection proof."
     if collect_only:
         return "Managed PostgreSQL test lanes must execute, not only collect, tests."
     if optimized:

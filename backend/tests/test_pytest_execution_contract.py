@@ -18,9 +18,11 @@ from scripts.packaging_pytest_contract import (
 from scripts.pytest_execution_contract import (
     PytestCollectionSnapshot,
     parse_pytest_collection,
+    parse_pytest_targets_collection,
     pytest_execution_environment,
     pytest_execution_membership_violation,
     pytest_nodeid_digest,
+    pytest_target_digest,
 )
 
 pytestmark = pytest.mark.parallel_safe
@@ -93,6 +95,30 @@ def test_collection_parser_requires_every_reported_nodeid() -> None:
             ),
             allow_empty=False,
         )
+
+
+def test_multi_target_collection_and_target_digest_are_order_independent() -> None:
+    targets = ("tests/test_a.py", "tests/test_b.py")
+    parsed = parse_pytest_targets_collection(
+        tuple(reversed(targets)),
+        subprocess.CompletedProcess(
+            ["pytest"],
+            0,
+            "tests/test_b.py::test_two\n"
+            "tests/test_a.py::test_one\n"
+            "2 tests collected in 0.01s\n",
+            "",
+        ),
+        allow_empty=False,
+    )
+
+    assert parsed == PytestCollectionSnapshot(
+        ("tests/test_b.py::test_two", "tests/test_a.py::test_one")
+    )
+    assert pytest_target_digest(targets) == pytest_target_digest(tuple(reversed(targets)))
+    assert pytest_target_digest(("tests\\test_a.py",)) == pytest_target_digest(
+        ("tests/test_a.py",)
+    )
 
 
 def test_execution_membership_rejects_precollection_omission() -> None:

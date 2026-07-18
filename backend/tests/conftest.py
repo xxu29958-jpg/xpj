@@ -40,6 +40,8 @@ from scripts.run_test_lanes import (
     RUNNER_HANDSHAKE_PATH_ENV,
     RUNNER_HANDSHAKE_TOKEN_ENV,
     RUNNER_LANE_ENV,
+    RUNNER_SCOPE_ENV,
+    RUNNER_TARGETS_DIGEST_ENV,
     runner_handshake_payload,
 )
 from scripts.test_pg_contract import (
@@ -240,6 +242,8 @@ def _validate_managed_runner_configuration(config: pytest.Config) -> None:
     violation = managed_runner_configuration_violation(
         active_lane=os.environ.get(RUNNER_LANE_ENV),
         collection_roots=config.args,
+        selection_scope=os.environ.get(RUNNER_SCOPE_ENV),
+        expected_target_digest=os.environ.get(RUNNER_TARGETS_DIGEST_ENV),
         collect_only=bool(config.getoption("collectonly", default=False)),
         keyword=config.getoption("keyword", default="") or "",
         mark_expression=config.getoption("markexpr", default="") or "",

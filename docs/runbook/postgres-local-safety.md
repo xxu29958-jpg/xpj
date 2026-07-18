@@ -74,6 +74,8 @@ $env:DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_smoke"
 
 - 需要可重复的 smoke / 全项目验证时用 `start_test_pg.ps1 -ResetDatabases`；普通本地启动默认保留测试库，避免每次编辑循环都付重建成本。重置只在在线身份验证通过后的同一 `psql` 会话执行。
 
+- 普通编辑循环可执行 `.\.venv\Scripts\python.exe scripts\run_test_lanes.py impacted --base-ref origin/main --include-worktree`。选择器只在能证明依赖闭包时缩小测试集；数据库、模型、迁移、依赖、脚本、删除/重命名和任何证据缺口自动回退 `full`。当前云端仅输出影子计划，完整双 lane 仍是阻断门。
+
 - start、stop、完整 verify 和 Gitea lane 使用同一个 Windows lifecycle mutex；每个真实数据库消费者分别持有自己创建并锁定的进程级 lease，不继承父进程锁。start 在同一 writer 临界区内完成“服务就绪 → 首个 lease”交接，因此不存在已启动但尚未登记消费者的窗口。即使外层 PowerShell 意外死亡，重置和停机仍须等待存活的 runner、pytest worker、smoke 或恢复进程退出，并确认没有其他活动数据库会话。同一计划内部的普通 worker 使用独立数据库并行，stateful lane 再通过 PostgreSQL 锁串行。
 
 ### 铁律

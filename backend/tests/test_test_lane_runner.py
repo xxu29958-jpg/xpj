@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 from scripts import run_test_lanes
-from scripts.pytest_execution_contract import PytestCollectionSnapshot
+from scripts.pytest_execution_contract import PytestCollectionSnapshot, pytest_target_digest
+from scripts.test_impact_selection import ImpactPlan
 from tests._infra.lane_policy import (
     managed_runner_completion_violation,
     managed_runner_configuration_violation,
@@ -106,6 +107,28 @@ def test_stateful_lane_is_single_process() -> None:
         *run_test_lanes.COMMON_PYTEST_ARGS,
     ]
     assert command[-4:] == ["-m", "stateful_serial", "-n", "0"]
+
+
+def test_impacted_lane_uses_only_explicit_test_files() -> None:
+    target = str(run_test_lanes.TESTS_ROOT / "test_test_lane_runner.py")
+
+    command = run_test_lanes.pytest_command(
+        "parallel",
+        workers=2,
+        targets=(target,),
+    )
+
+    assert command[3] == target
+    assert str(run_test_lanes.TESTS_ROOT) not in command[4:]
+    assert command[-7:] == [
+        "-m",
+        "not stateful_serial",
+        "-n",
+        "2",
+        "--dist",
+        "worksteal",
+        "--max-worker-restart=0",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -239,6 +262,26 @@ def test_runner_anchors_backend_root_when_invoked_elsewhere(
     assert str(expected_backend_root / "tests") in observed["command"]
 
 
+def test_full_runner_import_does_not_load_optional_impact_selector() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; from scripts import run_test_lanes; "
+                "print('scripts.test_impact_selection' in sys.modules)"
+            ),
+        ],
+        cwd=run_test_lanes.BACKEND_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "False"
+
+
 def test_runner_rejects_success_without_backend_conftest_handshake(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -255,6 +298,128 @@ def test_runner_rejects_success_without_backend_conftest_handshake(
 
     assert run_test_lanes.run_lanes(("parallel",), workers=2) == run_test_lanes.RUNNER_HANDSHAKE_FAILURE_EXIT_CODE
     assert 1 <= run_test_lanes.RUNNER_HANDSHAKE_FAILURE_EXIT_CODE <= 255
+
+
+def test_impacted_runner_binds_targets_to_collection_and_handshake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = "tests/test_test_lane_runner.py"
+    observed: dict[str, object] = {}
+    snapshot = PytestCollectionSnapshot((f"{target}::test_contract",))
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        env: dict[str, str],
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        observed.update(command=command, environment=env, cwd=cwd)
+        _write_runner_handshake(env)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(run_test_lanes.subprocess, "run", fake_run)
+
+    assert (
+        run_test_lanes.run_lanes(
+            ("parallel",),
+            workers=2,
+            targets=(target,),
+            lane_snapshots={"parallel": snapshot},
+        )
+        == 0
+    )
+    environment = observed["environment"]
+    assert isinstance(environment, dict)
+    assert environment[run_test_lanes.RUNNER_SCOPE_ENV] == "impacted"
+    assert environment[run_test_lanes.RUNNER_TARGETS_DIGEST_ENV] == pytest_target_digest((target,))
+    assert str(run_test_lanes.TESTS_ROOT / "test_test_lane_runner.py") in observed["command"]
+    assert str(run_test_lanes.TESTS_ROOT) not in observed["command"]
+
+
+def test_empty_impacted_lane_is_skipped_without_false_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        run_test_lanes.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("empty lane must not launch pytest"),
+    )
+
+    assert (
+        run_test_lanes.run_lanes(
+            ("stateful",),
+            workers=2,
+            targets=("tests/test_test_lane_runner.py",),
+            lane_snapshots={"stateful": PytestCollectionSnapshot(())},
+        )
+        == 0
+    )
+
+
+def test_impact_partition_must_cover_every_precollected_test(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter(
+        (
+            PytestCollectionSnapshot(("tests/test_a.py::test_one",)),
+            PytestCollectionSnapshot(()),
+            PytestCollectionSnapshot(()),
+        )
+    )
+    monkeypatch.setattr(
+        run_test_lanes,
+        "collect_pytest_targets_snapshot",
+        lambda *_args, **_kwargs: next(snapshots),
+    )
+
+    with pytest.raises(RuntimeError, match="exactly partition"):
+        run_test_lanes._selected_lane_snapshots(("tests/test_a.py",))  # noqa: SLF001
+
+
+def test_impacted_runner_rejects_success_without_handshake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = "tests/test_test_lane_runner.py"
+    snapshot = PytestCollectionSnapshot((f"{target}::test_contract",))
+    monkeypatch.setattr(
+        run_test_lanes.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    assert (
+        run_test_lanes.run_lanes(
+            ("parallel",),
+            workers=2,
+            targets=(target,),
+            lane_snapshots={"parallel": snapshot},
+        )
+        == run_test_lanes.RUNNER_HANDSHAKE_FAILURE_EXIT_CODE
+    )
+
+
+def test_no_impact_plan_does_not_acquire_or_run_postgres(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = ImpactPlan(
+        schema_version=1,
+        source_state="commit",
+        base_commit="a" * 40,
+        head_commit="b" * 40,
+        merge_base="a" * 40,
+        mode="none",
+        reasons=("no-backend-test-impact",),
+        changed_paths=("android/App.kt",),
+        selected_tests=(),
+    )
+    monkeypatch.setattr(
+        run_test_lanes,
+        "run_lanes",
+        lambda *_args, **_kwargs: pytest.fail("no-impact plan must not start PostgreSQL"),
+    )
+
+    assert run_test_lanes.run_impact_plan(plan, workers=2) == 0
 
 
 def test_managed_runner_rejects_partial_or_collection_only_execution() -> None:
@@ -293,6 +458,19 @@ def test_managed_runner_rejects_partial_or_collection_only_execution() -> None:
             collected_nodeids=("parallel-a", "stateful-a", "stateful-b"),
             stateful_nodeids=("stateful-a", "stateful-b"),
             selected_nodeids=("stateful-a", "parallel-a"),
+        )
+        or ""
+    )
+    impacted_target = run_test_lanes.TESTS_ROOT / "test_test_lane_runner.py"
+    impacted = common | {
+        "collection_roots": [str(impacted_target)],
+        "selection_scope": "impacted",
+        "expected_target_digest": pytest_target_digest(("tests/test_test_lane_runner.py",)),
+    }
+    assert managed_runner_configuration_violation(**impacted) is None
+    assert "selection proof" in (
+        managed_runner_configuration_violation(
+            **(impacted | {"expected_target_digest": "0" * 64})
         )
         or ""
     )
