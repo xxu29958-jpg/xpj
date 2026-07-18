@@ -20,6 +20,7 @@ pytestmark = pytest.mark.packaging_resource("hermetic")
 PACKAGING = Path(__file__).resolve().parents[1]
 BOOTSTRAP_SCRIPT = PACKAGING / "windows_backend_bootstrap.ps1"
 SAFETY_SCRIPT = PACKAGING / "windows_installation_safety.ps1"
+RELEASE_CONFIG = PACKAGING / "windows-release-config.json"
 # Host startup plus three ACL-protected writes; keep each legal stage a 15s budget.
 _PROTECTED_WRITER_CONTRACT_TIMEOUT_SECONDS = 60
 
@@ -1441,15 +1442,11 @@ def test_bootstrap_request_bypasses_default_proxy(tmp_path: Path) -> None:
         def log_message(self, _format: str, *_args: object) -> None:
             return
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    Handler.health_calls = 0
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        engines = powershell_contract_engines()
-        harness = tmp_path / "bootstrap-proxy-bypass.ps1"
-        harness.write_text(
-            f"""
+    release_config = json.loads(RELEASE_CONFIG.read_text(encoding="utf-8"))
+    request_timeout_ms = int(release_config["bootstrap_request_timeout_ms"])
+    assert request_timeout_ms > 0
+    harness = tmp_path / "bootstrap-proxy-bypass.ps1"
+    harness_template = f"""
 $ErrorActionPreference = 'Stop'
 . '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
 $AppData = '{str(app_data).replace("'", "''")}'
@@ -1492,14 +1489,14 @@ try {{
     [System.Net.WebRequest]::DefaultWebProxy = New-Object TicketboxThrowingProxy
     $body = [System.Text.Encoding]::UTF8.GetBytes('{{}}')
     $response = Invoke-TicketboxOwnerBootstrapHttpRequest `
-        -Url 'http://127.0.0.1:{server.server_port}/api/bootstrap/owner' `
+        -Url 'http://127.0.0.1:__TICKETBOX_PORT__/api/bootstrap/owner' `
         -Secret 'proxy-bypass-test-secret-with-32-byte-minimum' `
         -BodyBytes $body `
-        -TimeoutMilliseconds 5000
+        -TimeoutMilliseconds {request_timeout_ms}
     if (-not $response.ok) {{ throw 'loopback JSON response was not parsed' }}
     $health = Invoke-TicketboxDirectLoopbackHealthHttpRequest `
-        -Url 'http://127.0.0.1:{server.server_port}/api/health/installation' `
-        -TimeoutMilliseconds 5000
+        -Url 'http://127.0.0.1:__TICKETBOX_PORT__/api/health/installation' `
+        -TimeoutMilliseconds {request_timeout_ms}
     $expectedVersion = Get-TicketboxExpectedBackendVersion
     $expectedInstallationId = Get-TicketboxExpectedInstallationId
     Assert-TicketboxInstallationHealthResponse `
@@ -1558,16 +1555,16 @@ try {{
     $redirectRejected = $false
     try {{
         Invoke-TicketboxDirectLoopbackHealthHttpRequest `
-            -Url 'http://127.0.0.1:{server.server_port}/api/health/installation' `
-            -TimeoutMilliseconds 5000 | Out-Null
+            -Url 'http://127.0.0.1:__TICKETBOX_PORT__/api/health/installation' `
+            -TimeoutMilliseconds {request_timeout_ms} | Out-Null
     }}
     catch {{ $redirectRejected = $true }}
     if (-not $redirectRejected) {{ throw 'health redirect was followed or accepted' }}
     $oversizedRejected = $false
     try {{
         Invoke-TicketboxDirectLoopbackHealthHttpRequest `
-            -Url 'http://127.0.0.1:{server.server_port}/api/health/installation' `
-            -TimeoutMilliseconds 5000 | Out-Null
+            -Url 'http://127.0.0.1:__TICKETBOX_PORT__/api/health/installation' `
+            -TimeoutMilliseconds {request_timeout_ms} | Out-Null
     }}
     catch {{ $oversizedRejected = $true }}
     if (-not $oversizedRejected) {{ throw 'oversized chunked health response was accepted' }}
@@ -1577,10 +1574,20 @@ try {{
 finally {{
     [System.Net.WebRequest]::DefaultWebProxy = $previousProxy
 }}
-""",
-            encoding="utf-8-sig",
-        )
-        for engine in engines:
+"""
+    for engine in powershell_contract_engines():
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        Handler.health_calls = 0
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            harness.write_text(
+                harness_template.replace(
+                    "__TICKETBOX_PORT__",
+                    str(server.server_port),
+                ),
+                encoding="utf-8-sig",
+            )
             result = subprocess.run(
                 [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
                 check=False,
@@ -1588,14 +1595,15 @@ finally {{
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=20,
+                timeout=request_timeout_ms / 1000 + 20,
             )
             assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
             assert "proxy-bypass-test-secret" not in result.stdout + result.stderr
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+            assert not thread.is_alive()
 
 
 @pytest.mark.packaging_resource("windows_host")

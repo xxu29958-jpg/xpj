@@ -121,6 +121,7 @@ def test_suspended_job_launch_terminates_owned_child() -> None:
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     try:
+        assert child.pid in job.active_process_ids()
         job.close()
         child.wait(timeout=5)
         assert child.poll() is not None
