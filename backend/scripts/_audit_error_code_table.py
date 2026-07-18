@@ -30,6 +30,7 @@ import sys
 
 APP_DIR = pathlib.Path("app")
 ERRORS_FILE = APP_DIR / "errors.py"
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/app/",)
 
 
 def _error_message_keys() -> set[str]:

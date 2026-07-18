@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 _APP_ROOT = Path(__file__).resolve().parents[1] / "app"
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/app/",)
 
 # The full-row resolve pattern: ``.where`` directly follows the
 # ``ledger_scoped_select(Expense, <tenant>)`` close-paren. A projection's

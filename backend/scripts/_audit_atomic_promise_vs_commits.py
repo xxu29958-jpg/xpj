@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOTS = (ROOT / "app", ROOT / "scripts")
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/app/",)
 PROMISE_MARKERS = (
     "atomic",
     "single transaction",

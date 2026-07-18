@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from scripts.test_impact_git_evidence import parse_name_status
+from scripts.test_impact_python_graph import ImpactEvidenceError
 from scripts.test_impact_selection import (
     GitChange,
     select_impacted_tests,
@@ -165,6 +166,141 @@ def test_non_test_source_scanner_declaration_reaches_its_test(
     assert selection.selected_tests == ("tests/test_service_scanner.py",)
 
 
+def test_pytest_top_level_helper_import_preserves_reverse_dependency(
+    tmp_path: Path,
+) -> None:
+    backend = tmp_path / "backend"
+    _write(backend, "app/services/isolated.py", "VALUE = 1\n")
+    _write(
+        backend,
+        "tests/api_contract_helpers.py",
+        "from app.services.isolated import VALUE\n",
+    )
+    _write(
+        backend,
+        "tests/test_consumer.py",
+        "from api_contract_helpers import VALUE\n"
+        "def test_value():\n"
+        "    assert VALUE == 1\n",
+    )
+    for index in range(3):
+        _write(
+            backend,
+            f"tests/test_other_{index}.py",
+            f"def test_other_{index}():\n    pass\n",
+        )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/app/services/isolated.py")],
+    )
+
+    assert selection.mode == "selected"
+    assert selection.selected_tests == ("tests/test_consumer.py",)
+
+
+def test_pytest_top_level_test_module_import_preserves_reverse_dependency(
+    tmp_path: Path,
+) -> None:
+    backend = tmp_path / "backend"
+    _write(backend, "tests/test_policy.py", "POLICY = 'strict'\n")
+    _write(
+        backend,
+        "tests/test_policy_wrapper.py",
+        "from test_policy import POLICY\n"
+        "def test_policy_wrapper():\n"
+        "    assert POLICY == 'strict'\n",
+    )
+    for index in range(3):
+        _write(
+            backend,
+            f"tests/test_other_{index}.py",
+            f"def test_other_{index}():\n    pass\n",
+        )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/tests/test_policy.py")],
+    )
+
+    assert selection.mode == "selected"
+    assert selection.selected_tests == (
+        "tests/test_policy.py",
+        "tests/test_policy_wrapper.py",
+    )
+
+
+def test_dynamic_top_level_script_import_closes_scanner_dependency(
+    tmp_path: Path,
+) -> None:
+    backend = tmp_path / "backend"
+    _write(backend, "app/services/isolated.py", "VALUE = 1\n")
+    _write(
+        backend,
+        "scripts/service_scanner.py",
+        "TEST_IMPACT_SOURCE_PREFIXES = ('backend/app/services/',)\n"
+        "def scan():\n"
+        "    return True\n",
+    )
+    _write(
+        backend,
+        "tests/test_service_scanner.py",
+        "import importlib\n"
+        "def test_scan():\n"
+        "    assert importlib.import_module('service_scanner').scan()\n",
+    )
+    for index in range(3):
+        _write(
+            backend,
+            f"tests/test_other_{index}.py",
+            f"def test_other_{index}():\n    pass\n",
+        )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/app/services/isolated.py")],
+    )
+
+    assert selection.mode == "selected"
+    assert selection.selected_tests == ("tests/test_service_scanner.py",)
+
+
+def test_dynamic_script_file_reference_closes_scanner_dependency(
+    tmp_path: Path,
+) -> None:
+    backend = tmp_path / "backend"
+    _write(backend, "app/services/isolated.py", "VALUE = 1\n")
+    _write(
+        backend,
+        "scripts/service_scanner.py",
+        "TEST_IMPACT_SOURCE_PREFIXES = ('backend/app/services/',)\n"
+        "def scan():\n"
+        "    return True\n",
+    )
+    _write(
+        backend,
+        "tests/test_service_scanner.py",
+        "import importlib.util\n"
+        "MODULE_FILE = 'service_scanner.py'\n"
+        "def test_scan():\n"
+        "    assert importlib.util.spec_from_file_location('probe', MODULE_FILE)\n",
+    )
+    for index in range(3):
+        _write(
+            backend,
+            f"tests/test_other_{index}.py",
+            f"def test_other_{index}():\n    pass\n",
+        )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/app/services/isolated.py")],
+    )
+
+    assert selection.mode == "selected"
+    assert selection.selected_tests == ("tests/test_service_scanner.py",)
+
+
 def test_route_parser_combines_each_router_prefix(tmp_path: Path) -> None:
     route = _write(
         tmp_path,
@@ -200,6 +336,31 @@ def test_route_parser_combines_decorated_and_direct_registration(
     )
 
     assert route_paths(route) == ("/api/items", "/api/stream")
+
+
+@pytest.mark.parametrize(
+    "registration",
+    [
+        "router.include_router(child_router)\n",
+        "routes = [Route('/items', endpoint)]\n",
+        "from starlette.routing import Route as R\nroutes = [R('/items', endpoint)]\n",
+        "@router.trace('/items')\ndef trace_items():\n    pass\n",
+    ],
+)
+def test_route_parser_fails_closed_for_unmodeled_topology(
+    tmp_path: Path,
+    registration: str,
+) -> None:
+    route = _write(
+        tmp_path,
+        "routes.py",
+        "from fastapi import APIRouter\n"
+        "router = APIRouter(prefix='/api')\n"
+        f"{registration}",
+    )
+
+    with pytest.raises(ImpactEvidenceError, match="route"):
+        route_paths(route)
 
 
 def test_git_name_status_parser_keeps_destructive_identity() -> None:

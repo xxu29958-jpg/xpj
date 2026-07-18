@@ -35,6 +35,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 _SERVICES_DIR = ROOT / "app" / "services"
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/app/services/",)
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 # Service-layer helpers that are cross-cutting infrastructure, not workflow

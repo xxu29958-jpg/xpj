@@ -8,10 +8,8 @@ import tokenize
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from scripts.test_impact_source_graph import (
-    ImpactEvidenceError,
-    route_paths_from_source,
-)
+from scripts.test_impact_python_graph import ImpactEvidenceError
+from scripts.test_impact_source_graph import route_paths_from_source
 
 
 @dataclass(frozen=True)

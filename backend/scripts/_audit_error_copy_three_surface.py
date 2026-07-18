@@ -53,6 +53,7 @@ if hasattr(sys.stderr, "reconfigure"):
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 APP_DIR = REPO_ROOT / "backend" / "app"
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/app/",)
 ERRORS_FILE = REPO_ROOT / "backend" / "app" / "errors.py"
 STRINGS_XML = REPO_ROOT / "android" / "app" / "src" / "main" / "res" / "values" / "strings.xml"
 ERROR_UITEXT_KT = (

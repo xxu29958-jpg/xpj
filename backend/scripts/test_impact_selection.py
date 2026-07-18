@@ -13,14 +13,16 @@ from scripts.test_impact_git_evidence import (
     git_changes,
     historical_route_patterns,
 )
-from scripts.test_impact_source_graph import (
+from scripts.test_impact_python_graph import (
     SOURCE_PREFIXES,
     ImpactEvidenceError,
+    reverse_closure,
+    reverse_import_graph,
+)
+from scripts.test_impact_source_graph import (
     modules_declaring_path_dependencies,
     modules_referencing_routes,
     pytest_fixture_boundaries,
-    reverse_closure,
-    reverse_import_graph,
     route_paths,
 )
 

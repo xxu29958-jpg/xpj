@@ -18,6 +18,7 @@ from codebase_audit_gate import DebtCounts, evaluate_debt
 APP = pathlib.Path("app")
 TESTS = pathlib.Path("tests")
 SCRIPTS = pathlib.Path("scripts")
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/app/",)
 _MARKER_WORDS = ("TO" "DO", "FIX" "ME", "XX" "X", "HA" "CK", "TE" "MP")
 _MARKER_RX = re.compile(r"\b(" + "|".join(_MARKER_WORDS) + r")\b", re.IGNORECASE)
 
