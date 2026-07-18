@@ -13,7 +13,10 @@ from types import ModuleType
 
 import pytest
 
-from tests._infra.android_nvd_producer import assert_nvd_producer_workflow
+from tests._infra.android_nvd_producer import (
+    assert_legacy_nvd_consumer_job,
+    assert_nvd_producer_workflow,
+)
 from tests._infra.ci_gap import load_ci_gap_audit as _load
 
 pytestmark = pytest.mark.parallel_safe
@@ -63,45 +66,7 @@ def test_prepare_android_keeps_runner_tuning_out_of_source_authority() -> None:
 
 def test_legacy_android_nvd_writer_fails_closed_until_consumer_cutover() -> None:
     ci = _load_workflow(_ROOT / ".github" / "workflows" / "ci.yml")
-    android = ci["jobs"]["android"]
-    assert "concurrency" not in android
-    assert "NVD_API_KEY" not in android.get("env", {})
-    steps = {step["name"]: step for step in android["steps"]}
-    require = steps["Require NVD credential"]
-    assert "id" not in require
-    assert require["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
-    assert 'if [ -z "$NVD_API_KEY" ]; then' in require["run"]
-    assert "exit 78" in require["run"]
-    scan = steps["Dependency vulnerability scan (OWASP dependency-check)"]
-    assert scan["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
-    normalized = " ".join(scan["run"].split())
-    assert "set -euo pipefail" in scan["run"]
-    assert "continue-on-error" not in scan
-    assert "dependencyCheckUpdate -PdependencyCheckNvdValidForHours=24" in normalized
-    assert "dependencyCheckAggregate" in normalized
-    assert "-PdependencyCheckAutoUpdate=false" in normalized
-    assert normalized.count("-PdependencyCheckNvdValidForHours=24") == 2
-    assert 'rm -f "$report_path"' in scan["run"]
-    assert "env -u NVD_API_KEY python3 scripts/verify_dependency_check_report.py" in (
-        normalized
-    )
-    assert normalized.index("dependencyCheckUpdate") < normalized.index(
-        "dependencyCheckAggregate"
-    )
-    assert normalized.index("dependencyCheckAggregate") < normalized.index(
-        "verify_dependency_check_report.py"
-    )
-    assert "dependencyCheckValidateNvd" not in scan["run"]
-    assert "-PnvdApiKey" not in scan["run"]
-    for name in (
-        "NVD cache key (UTC date)",
-        "Cache OWASP NVD database",
-        "Dependency vulnerability scan (OWASP dependency-check)",
-    ):
-        assert "if" not in steps[name]
-    assert "Dependency vulnerability scan skipped" not in steps
-    assert "Enforce OWASP CVE findings (tolerate only NVD-data outages)" not in steps
-    assert json.dumps(android, sort_keys=True).count("secrets.NVD_API_KEY") == 2
+    assert_legacy_nvd_consumer_job(ci["jobs"]["android"])
 
 
 def test_legacy_android_nvd_failures_are_not_adjudicated_from_logs() -> None:
@@ -469,6 +434,11 @@ def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> Non
     for fragment in (
         "failOnError = true",
         'scanProjects = listOf(":app")',
+        '"grayDebugRuntimeClasspath"',
+        '"grayReleaseRuntimeClasspath"',
+        '"internalDebugRuntimeClasspath"',
+        '"internalReleaseRuntimeClasspath"',
+        "scanConfigurations = dependencyCheckRuntimeConfigurations",
         "analyzers.ossIndex.enabled = false",
         "autoUpdate = dependencyCheckAutoUpdate.get()",
         'providers.gradleProperty("dependencyCheckNvdValidForHours")',
@@ -478,6 +448,8 @@ def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> Non
         "val dependencyCheckPayloadValidationCvssThreshold = 11.0f",
         'dependencyCheck.failBuildOnCVSS == 11.0f',
         'dependencyCheck.failBuildOnCVSS == 7.0f',
+        "dependencyCheck.scanConfigurations ==",
+        "dependencyCheckRuntimeConfigurations",
         'dependencyCheck.analyzers.ossIndex.enabled == false',
         'tasks.register("verifyDependencyCheckContract")',
         'tasks.named("dependencyCheckUpdate")',

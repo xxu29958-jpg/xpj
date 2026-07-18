@@ -52,6 +52,13 @@ val dependencyCheckFailBuildOnCvss =
     } else {
         dependencyCheckPolicyCvssThreshold
     }
+val dependencyCheckRuntimeConfigurations =
+    listOf(
+        "grayDebugRuntimeClasspath",
+        "grayReleaseRuntimeClasspath",
+        "internalDebugRuntimeClasspath",
+        "internalReleaseRuntimeClasspath",
+    )
 
 // Keep the NVD database under Gradle user home so trusted CI events can
 // refresh one cache while pull requests consume it read-only.
@@ -72,6 +79,10 @@ dependencyCheck {
     // The plugin is applied at the root only. Aggregate is the multi-project
     // task and this explicit scope prevents a green root-only no-op.
     scanProjects = listOf(":app")
+    // Scan only dependencies that can enter a shipped APK. AGP also exposes
+    // compiler, KSP, lint, detekt, and other build-tool configurations; those
+    // belong to build-provenance auditing, not the Android runtime CVE gate.
+    scanConfigurations = dependencyCheckRuntimeConfigurations
     suppressionFile = file("config/dependency-check/suppressions.xml").takeIf { it.exists() }?.absolutePath
     // OWASP recommends an NVD API key to avoid throttling. It enters Gradle
     // only through the process environment so it never appears in command
@@ -99,6 +110,12 @@ val verifyDependencyCheckContract =
             }
             check(dependencyCheck.scanProjects == listOf(":app")) {
                 "dependency-check must scan exactly :app"
+            }
+            check(
+                dependencyCheck.scanConfigurations ==
+                    dependencyCheckRuntimeConfigurations
+            ) {
+                "dependency-check must scan exactly the four shipped runtime classpaths"
             }
             check(dependencyCheck.formats == listOf("HTML", "JSON")) {
                 "dependency-check must produce HTML and JSON reports"

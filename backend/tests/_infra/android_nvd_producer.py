@@ -11,6 +11,64 @@ _SETUP_STEPS = [
 ]
 
 
+def assert_legacy_nvd_consumer_job(android: dict[str, Any]) -> None:
+    assert "concurrency" not in android
+    assert "NVD_API_KEY" not in android.get("env", {})
+    steps = {step["name"]: step for step in android["steps"]}
+    require = steps["Require NVD credential"]
+    assert "id" not in require
+    assert require["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
+    assert 'if [ -z "$NVD_API_KEY" ]; then' in require["run"]
+    assert "exit 78" in require["run"]
+
+    scan = steps["Dependency vulnerability scan (OWASP dependency-check)"]
+    assert scan["id"] == "android-dependency-scan"
+    assert scan["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
+    normalized = " ".join(scan["run"].split())
+    assert "set -euo pipefail" in scan["run"]
+    assert "continue-on-error" not in scan
+    assert "dependencyCheckUpdate -PdependencyCheckNvdValidForHours=24" in normalized
+    assert "dependencyCheckAggregate" in normalized
+    assert "-PdependencyCheckAutoUpdate=false" in normalized
+    assert normalized.count("-PdependencyCheckNvdValidForHours=24") == 2
+    assert 'rm -f "$report_path"' in scan["run"]
+    assert "env -u NVD_API_KEY python3 scripts/verify_dependency_check_report.py" in (
+        normalized
+    )
+    assert normalized.index("dependencyCheckUpdate") < normalized.index(
+        "dependencyCheckAggregate"
+    )
+    assert normalized.index("dependencyCheckAggregate") < normalized.index(
+        "verify_dependency_check_report.py"
+    )
+    assert "dependencyCheckValidateNvd" not in scan["run"]
+    assert "-PnvdApiKey" not in scan["run"]
+
+    evidence = steps["Upload Android dependency-check evidence"]
+    assert evidence["if"] == (
+        "${{ always() && steps.android-dependency-scan.outcome != 'skipped' }}"
+    )
+    assert evidence["with"]["if-no-files-found"] == "error"
+    assert "android/build/reports/dependency-check-report.json" in (
+        evidence["with"]["path"]
+    )
+    assert "android/owasp-output.log" in evidence["with"]["path"]
+
+    step_names = [step["name"] for step in android["steps"]]
+    assert step_names.index(
+        "Dependency vulnerability scan (OWASP dependency-check)"
+    ) < step_names.index("Android debug APK builds")
+    for name in (
+        "NVD cache key (UTC date)",
+        "Cache OWASP NVD database",
+        "Dependency vulnerability scan (OWASP dependency-check)",
+    ):
+        assert "if" not in steps[name]
+    assert "Dependency vulnerability scan skipped" not in steps
+    assert "Enforce OWASP CVE findings (tolerate only NVD-data outages)" not in steps
+    assert json.dumps(android, sort_keys=True).count("secrets.NVD_API_KEY") == 2
+
+
 def assert_nvd_producer_workflow(
     workflow: dict[str, Any],
     *,
