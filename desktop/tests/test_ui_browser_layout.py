@@ -254,6 +254,63 @@ def test_edge_teardown_reaps_process_when_websocket_cleanup_fails(monkeypatch) -
     ]
 
 
+def test_edge_layout_probe_retries_only_transport_failures(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    profiles: list[Path] = []
+
+    def evaluate_once(_edge: str, *, profile: Path, **_kwargs):
+        profiles.append(profile)
+        if len(profiles) == 1:
+            raise _edge_cdp._DevToolsTransportError("synthetic transport failure")
+        return {"ok": True}
+
+    monkeypatch.setattr(_edge_cdp, "_evaluate_page_once", evaluate_once)
+    profile = tmp_path / "edge-profile"
+
+    assert (
+        _edge_cdp.evaluate_page(
+            "edge.exe",
+            profile=profile,
+            url="about:blank",
+            width=820,
+            height=660,
+            expression="1",
+        )
+        == {"ok": True}
+    )
+    assert profiles == [
+        profile,
+        tmp_path / "edge-profile-transport-retry",
+    ]
+
+
+def test_edge_layout_probe_does_not_retry_semantic_failures(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    attempts = 0
+
+    def evaluate_once(_edge: str, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        raise AssertionError("synthetic layout regression")
+
+    monkeypatch.setattr(_edge_cdp, "_evaluate_page_once", evaluate_once)
+
+    with pytest.raises(AssertionError, match="synthetic layout regression"):
+        _edge_cdp.evaluate_page(
+            "edge.exe",
+            profile=tmp_path / "edge-profile",
+            url="about:blank",
+            width=820,
+            height=660,
+            expression="1",
+        )
+    assert attempts == 1
+
+
 def test_app_target_navigation_or_replacement_is_not_treated_as_window_close() -> None:
     assert (
         _edge_cdp._app_window_targets_are_closed(  # noqa: SLF001 - target lifetime contract
