@@ -10,7 +10,15 @@ _DYNAMIC_IMPORT_ARGUMENTS = {
     "__import__": 0,
     "importlib.import_module": 0,
     "importlib.util.spec_from_file_location": 1,
+    "runpy.run_module": 0,
+    "runpy.run_path": 0,
 }
+_FILE_LOADER_CALLS = frozenset(
+    {
+        "importlib.util.spec_from_file_location",
+        "runpy.run_path",
+    }
+)
 
 
 class DynamicImportEvidenceError(RuntimeError):
@@ -35,6 +43,7 @@ def _dynamic_import_aliases(tree: ast.Module) -> dict[str, str]:
         elif isinstance(node, ast.ImportFrom) and node.module in {
             "importlib",
             "importlib.util",
+            "runpy",
         }:
             for imported in node.names:
                 aliases[imported.asname or imported.name] = (
@@ -117,18 +126,82 @@ def _expression_module_targets(
     return targets
 
 
-def _declares_source_dependency_contract(tree: ast.Module) -> bool:
+def _static_strings(
+    node: ast.AST,
+    bindings: Mapping[str, ast.AST],
+) -> tuple[str, ...] | None:
+    scalar = _static_string(node, bindings)
+    if scalar is not None:
+        return (scalar,)
+    if not isinstance(node, (ast.List, ast.Tuple)):
+        return None
+    values: list[str] = []
+    for item in node.elts:
+        value = _static_string(item, bindings)
+        if value is None:
+            return None
+        values.append(value)
+    return tuple(values)
+
+
+def _pytest_plugin_targets(
+    tree: ast.Module,
+    *,
+    bindings: Mapping[str, ast.AST],
+    importer_path: Path,
+    resolve_reference: Callable[[str], str | None],
+) -> set[str]:
+    stores = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Store)
+        and node.id == "pytest_plugins"
+    ]
+    if not stores:
+        return set()
+
+    values: list[ast.AST] = []
+    modeled_stores = 0
     for node in tree.body:
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-            continue
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        if any(
-            isinstance(target, ast.Name)
-            and target.id == "TEST_IMPACT_SOURCE_PREFIXES"
-            for target in targets
+        if isinstance(node, ast.Assign):
+            matching = [
+                target
+                for target in node.targets
+                if isinstance(target, ast.Name) and target.id == "pytest_plugins"
+            ]
+            if matching:
+                modeled_stores += len(matching)
+                values.append(node.value)
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "pytest_plugins"
+            and node.value is not None
         ):
-            return True
-    return False
+            modeled_stores += 1
+            values.append(node.value)
+    if modeled_stores != len(stores):
+        raise DynamicImportEvidenceError(
+            f"pytest_plugins in {importer_path} is not a literal module-level assignment"
+        )
+
+    imported: set[str] = set()
+    for value in values:
+        references = _static_strings(value, bindings)
+        if not references:
+            raise DynamicImportEvidenceError(
+                f"pytest_plugins in {importer_path} has no static target"
+            )
+        for reference in references:
+            resolved = resolve_reference(reference)
+            if resolved is None:
+                raise DynamicImportEvidenceError(
+                    f"pytest_plugins in {importer_path} has an unresolved target "
+                    f"{reference!r}"
+                )
+            imported.add(resolved)
+    return imported
 
 
 def dynamic_import_targets(
@@ -139,8 +212,12 @@ def dynamic_import_targets(
 ) -> set[str]:
     aliases = _dynamic_import_aliases(tree)
     bindings = _module_bindings(tree)
-    declared = _declares_source_dependency_contract(tree)
-    imported: set[str] = set()
+    imported = _pytest_plugin_targets(
+        tree,
+        bindings=bindings,
+        importer_path=importer_path,
+        resolve_reference=resolve_reference,
+    )
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -149,8 +226,6 @@ def dynamic_import_targets(
         if argument_index is None:
             continue
         if len(node.args) <= argument_index:
-            if declared:
-                continue
             raise DynamicImportEvidenceError(
                 f"dynamic import in {importer_path} has no static target"
             )
@@ -160,7 +235,15 @@ def dynamic_import_targets(
             resolved = resolve_reference(static_target)
             if resolved is not None:
                 imported.add(resolved)
-            continue
+                continue
+            raise DynamicImportEvidenceError(
+                f"dynamic import in {importer_path} has an unresolved target "
+                f"{static_target!r}"
+            )
+        if qualified in _FILE_LOADER_CALLS:
+            raise DynamicImportEvidenceError(
+                f"file loader in {importer_path} has no static path"
+            )
         expression_targets = _expression_module_targets(
             target_expression,
             bindings=bindings,
@@ -169,9 +252,7 @@ def dynamic_import_targets(
         if expression_targets:
             imported.update(expression_targets)
             continue
-        if not declared:
-            raise DynamicImportEvidenceError(
-                f"dynamic import in {importer_path} requires "
-                "TEST_IMPACT_SOURCE_PREFIXES"
-            )
+        raise DynamicImportEvidenceError(
+            f"dynamic import in {importer_path} has no provable target"
+        )
     return imported

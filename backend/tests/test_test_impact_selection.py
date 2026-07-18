@@ -174,6 +174,28 @@ def test_unknown_repository_root_falls_back_to_full(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "path",
+    (
+        "backend/build/manifest.json",
+        "backend/build/tool.py",
+    ),
+)
+def test_backend_build_inputs_cannot_skip_the_full_suite(
+    tmp_path: Path,
+    path: str,
+) -> None:
+    backend = _backend_fixture(tmp_path)
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", path)],
+    )
+
+    assert selection.mode == "full"
+    assert selection.reasons == (f"unclassified-repository-change:{path}",)
+
+
+@pytest.mark.parametrize(
+    "path",
     [
         "backend/packaging/launch.py",
         "android/app/src/main/res/values/strings.xml",

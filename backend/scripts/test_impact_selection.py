@@ -55,7 +55,6 @@ _FULL_FALLBACK_PREFIXES = (
     "backend/scripts/",
     "backend/tests/_infra/",
 )
-_IGNORED_BACKEND_PREFIXES = ("backend/build/",)
 _MAX_SELECTED_TEST_RATIO = 0.70
 
 
@@ -119,8 +118,6 @@ def _classify_source_changes(
 ) -> tuple[tuple[tuple[GitChange, str], ...], Selection | None]:
     source_changes: list[tuple[GitChange, str]] = []
     for change in changes:
-        if change.path.startswith(_IGNORED_BACKEND_PREFIXES):
-            continue
         source_path = _python_source_path(change.path)
         if source_path is None:
             return (), Selection(
@@ -130,7 +127,7 @@ def _classify_source_changes(
             )
         source_changes.append((change, source_path))
     if not source_changes:
-        return (), Selection("none", ("generated-backend-output-only",), ())
+        return (), Selection("full", ("repository-change-classification-empty",), ())
     return tuple(source_changes), None
 
 
