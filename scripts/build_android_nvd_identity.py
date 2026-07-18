@@ -56,13 +56,13 @@ def build_publication_identity(
     suffix = f"{normalized_os}-{generation}-{run_id}-{run_attempt}"
     artifact_name = f"android-nvd-{suffix}"
     artifact_prefix = f"android-nvd-{normalized_os}-{generation}-"
-    staging_key = f"nvd-staging-{suffix}"
+    staging_artifact_name = f"nvd-staging-{suffix}"
     return (
         generation,
         contract_digest,
         artifact_name,
         artifact_prefix,
-        staging_key,
+        staging_artifact_name,
     )
 
 
@@ -78,7 +78,7 @@ def main() -> int:
         contract_digest,
         artifact_name,
         artifact_prefix,
-        staging_key,
+        staging_artifact_name,
     ) = build_publication_identity(
         repository_root=repository_root,
         runner_os=os.environ.get("CACHE_OS", ""),
@@ -90,7 +90,7 @@ def main() -> int:
         stream.write(f"contract-sha256={contract_digest}\n")
         stream.write(f"artifact-name={artifact_name}\n")
         stream.write(f"artifact-prefix={artifact_prefix}\n")
-        stream.write(f"staging-value={staging_key}\n")
+        stream.write(f"staging-artifact-name={staging_artifact_name}\n")
     print(f"Android NVD artifact generation: {generation}")
     return 0
 

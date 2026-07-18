@@ -558,22 +558,20 @@ jobs:
             echo "OK signing certificate $apk"
           done
 
-      - name: Detect NVD credential
-        id: nvd-credential
+      - name: Require NVD credential
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
-          if [ -n "$NVD_API_KEY" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::NVD_API_KEY is required until the certified artifact consumer cutover."
+            exit 78
           fi
 
       - name: NVD cache key (UTC date)
         # Day-rotating key so the cached NVD DB refreshes ~daily; restore-keys
         # below falls back to the most recent prior cache on a key miss.
         id: nvd-key
-        if: steps.nvd-credential.outputs.available == 'true'
         run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Cache OWASP NVD database
@@ -582,7 +580,6 @@ jobs:
         # warm cache (<24h) makes the plugin SKIP the NVD API call entirely — the
         # whole point: kills the recurring NVD 520/524 gateway-timeout flake on
         # reruns/same-day runs and turns the full ~7min download into a cache hit.
-        if: steps.nvd-credential.outputs.available == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.gradle/dependency-check-data
@@ -591,7 +588,6 @@ jobs:
             nvd-${{ runner.os }}-
 
       - name: Dependency vulnerability scan (OWASP dependency-check)
-        if: steps.nvd-credential.outputs.available == 'true'
         id: owasp
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
@@ -624,6 +620,8 @@ jobs:
           # 137 stays unmarked so the Enforce gate fails safe instead of treating a crash
           # as a tolerated timeout.
           : > owasp-output.log
+          report_path="build/reports/dependency-check-report.json"
+          rm -f "$report_path"
 
           start=$(date +%s)
           timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckUpdate -PdependencyCheckNvdValidForHours=24 2>&1 | tee -a owasp-output.log
@@ -643,10 +641,17 @@ jobs:
           if [ "$analyze_rc" -eq 124 ] || { [ "$analyze_rc" -eq 137 ] && [ "$elapsed" -ge 600 ]; }; then
             echo "OWASP_ANALYZE_TIMED_OUT (dependency-check offline analysis exceeded the 10m bound; rc=$analyze_rc elapsed=${elapsed}s)" | tee -a owasp-output.log
           fi
+          if [ "$analyze_rc" -eq 0 ]; then
+            env -u NVD_API_KEY python3 scripts/verify_dependency_check_report.py \
+              "$report_path" 2>&1 | tee -a owasp-output.log
+            verify_rc=${PIPESTATUS[0]}
+            if [ "$verify_rc" -ne 0 ]; then
+              analyze_rc="$verify_rc"
+            fi
+          fi
           exit "$analyze_rc"
 
       - name: Enforce OWASP CVE findings (tolerate only NVD-data outages)
-        if: steps.nvd-credential.outputs.available == 'true'
         # Re-asserts the dependency-check gate the previous step's continue-on-error
         # would otherwise drop. failOnError stays true, so outcome=success genuinely
         # means "analysis ran clean" (a corrupt-DB skip can't masquerade as success).
@@ -697,10 +702,6 @@ jobs:
           fi
           echo "::error::OWASP step failed and the log is neither a CVE finding nor a known NVD-data-empty outage (could be a corrupt cache DB, parser/analyzer fatal, scan timeout, or unknown) — failing safe so no real finding is swallowed. See the previous step's log."
           exit 1
-
-      - name: Dependency vulnerability scan skipped
-        if: steps.nvd-credential.outputs.available != 'true'
-        run: echo "::warning::NVD_API_KEY is not configured in GitHub Actions secrets; skipping OWASP dependency-check until the secret is restored."
 
       - name: Upload gray debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

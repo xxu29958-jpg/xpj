@@ -246,6 +246,7 @@ def verify_manifest(
     now_epoch: int | None = None,
     allow_expired: bool = False,
     minimum_refreshed_at_epoch: int = 0,
+    expected_refreshed_at_epoch: int | None = None,
     expected_payload_sha256: str | None = None,
 ) -> VerifiedPayload:
     manifest_path = data_dir / MANIFEST_NAME
@@ -301,6 +302,14 @@ def verify_manifest(
         raise ValueError("minimum NVD refresh time cannot be negative")
     if refreshed_at < minimum_refreshed_at_epoch:
         raise ValueError("OWASP NVD payload would move certified freshness backward")
+    if (
+        expected_refreshed_at_epoch is not None
+        and (
+            expected_refreshed_at_epoch < 0
+            or refreshed_at != expected_refreshed_at_epoch
+        )
+    ):
+        raise ValueError("OWASP NVD payload freshness differs from the certified candidate")
 
     expected_identity = _manifest_identity(manifest)
     actual_identity = payload_identity(data_dir)
@@ -347,6 +356,7 @@ def main() -> int:
     parser.add_argument("--nvd-checked-after-epoch", type=int)
     parser.add_argument("--allow-expired", action="store_true")
     parser.add_argument("--minimum-refreshed-at-epoch", type=int, default=0)
+    parser.add_argument("--expected-refreshed-at-epoch", type=int)
     parser.add_argument("--expected-payload-sha256")
     parser.add_argument("--github-output", type=Path)
     args = parser.parse_args()
@@ -359,6 +369,7 @@ def main() -> int:
             or args.nvd_checked_after_epoch is None
             or args.allow_expired
             or args.minimum_refreshed_at_epoch != 0
+            or args.expected_refreshed_at_epoch is not None
             or args.expected_payload_sha256 is not None
             or args.github_output is not None
         ):
@@ -380,6 +391,7 @@ def main() -> int:
             catalog_path=catalog_path,
             allow_expired=args.allow_expired,
             minimum_refreshed_at_epoch=args.minimum_refreshed_at_epoch,
+            expected_refreshed_at_epoch=args.expected_refreshed_at_epoch,
             expected_payload_sha256=args.expected_payload_sha256,
         )
         if args.github_output is not None:

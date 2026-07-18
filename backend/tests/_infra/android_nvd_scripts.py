@@ -247,7 +247,7 @@ def install_nvd_scripts(tmp_path: Path, *names: str) -> None:
     contract_namespace = runpy.run_path(
         str(_ROOT / "android" / "scripts" / "dependency_check_contract.py")
     )
-    for relative in contract_namespace["PRODUCER_CONTRACT_PATHS"]:
+    for relative in contract_namespace["producer_contract_paths"](_ROOT):
         source = _ROOT / relative
         destination = tmp_path / relative
         destination.parent.mkdir(parents=True, exist_ok=True)

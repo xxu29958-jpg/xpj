@@ -7,6 +7,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ _SAFE_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$")
 _TRUSTED_EVENTS = frozenset({"schedule", "workflow_dispatch"})
 _WORKFLOW_PATH = ".github/workflows/android-nvd-cache.yml"
 _API_VERSION = "2022-11-28"
+_ARTIFACT_LOOKBACK_DAYS = 4
+_MAX_RUN_PAGES = 10
 
 
 def _mapping(value: object, *, label: str) -> dict[str, Any]:
@@ -39,6 +42,18 @@ def _request_json(url: str, *, token: str) -> dict[str, Any]:
             json.load(response),
             label=f"GitHub API response for {url}",
         )
+
+
+def _timestamp(value: object, *, label: str) -> datetime:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be an ISO 8601 timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label} must be an ISO 8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{label} must include a timezone")
+    return parsed.astimezone(UTC)
 
 
 def _trusted_run(
@@ -74,6 +89,21 @@ def _trusted_run(
     return run
 
 
+def _artifact_attempt(
+    *,
+    artifact_name: object,
+    artifact_prefix: str,
+    run_id: int,
+) -> int | None:
+    if not isinstance(artifact_name, str):
+        return None
+    match = re.fullmatch(
+        rf"{re.escape(artifact_prefix)}{run_id}-([1-9][0-9]*)",
+        artifact_name,
+    )
+    return int(match.group(1)) if match is not None else None
+
+
 def select_artifact(
     *,
     runs: list[object],
@@ -82,6 +112,8 @@ def select_artifact(
     default_branch: str,
     artifact_prefix: str,
 ) -> tuple[int, str, int, str] | None:
+    candidates: list[tuple[datetime, int, int, int, str, str]] = []
+    identities: set[tuple[int, str]] = set()
     for raw_run in runs:
         run = _trusted_run(
             raw_run,
@@ -91,28 +123,52 @@ def select_artifact(
         if run is None:
             continue
         run_id = run["id"]
-        expected_name = f"{artifact_prefix}{run_id}-{run['run_attempt']}"
-        matches = []
         for raw_artifact in artifacts_by_run.get(run_id, []):
             artifact = _mapping(raw_artifact, label="workflow artifact")
-            if artifact.get("name") == expected_name and artifact.get("expired") is False:
-                matches.append(artifact)
-        if len(matches) > 1:
-            raise ValueError("trusted workflow run has duplicate NVD artifacts")
-        if not matches:
-            continue
-        artifact_id = matches[0].get("id")
-        digest = matches[0].get("digest")
-        if (
-            isinstance(artifact_id, bool)
-            or not isinstance(artifact_id, int)
-            or artifact_id <= 0
-            or not isinstance(digest, str)
-            or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None
-        ):
-            raise ValueError("trusted NVD artifact has an invalid identity")
-        return run_id, expected_name, artifact_id, digest
-    return None
+            artifact_name = artifact.get("name")
+            attempt = _artifact_attempt(
+                artifact_name=artifact_name,
+                artifact_prefix=artifact_prefix,
+                run_id=run_id,
+            )
+            if attempt is None:
+                continue
+            identity = (run_id, artifact_name)
+            if identity in identities:
+                raise ValueError("trusted workflow run has duplicate NVD artifacts")
+            identities.add(identity)
+            if artifact.get("expired") is True:
+                continue
+            if artifact.get("expired") is not False or attempt > run["run_attempt"]:
+                raise ValueError("trusted NVD artifact has an invalid attempt")
+            artifact_id = artifact.get("id")
+            digest = artifact.get("digest")
+            if (
+                isinstance(artifact_id, bool)
+                or not isinstance(artifact_id, int)
+                or artifact_id <= 0
+                or not isinstance(digest, str)
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None
+            ):
+                raise ValueError("trusted NVD artifact has an invalid identity")
+            created_at = _timestamp(
+                artifact.get("created_at"),
+                label="trusted NVD artifact created_at",
+            )
+            candidates.append(
+                (
+                    created_at,
+                    attempt,
+                    artifact_id,
+                    run_id,
+                    artifact_name,
+                    digest,
+                )
+            )
+    if not candidates:
+        return None
+    _, _, artifact_id, run_id, artifact_name, digest = max(candidates)
+    return run_id, artifact_name, artifact_id, digest
 
 
 def _write_outputs(output: Path, selected: tuple[int, str, int, str] | None) -> None:
@@ -154,21 +210,34 @@ def main() -> int:
 
     owner_repo = urllib.parse.quote(repository, safe="/")
     workflow_id = urllib.parse.quote(workflow, safe="")
-    query = urllib.parse.urlencode(
-        {
-            "branch": default_branch,
-            "status": "success",
-            "per_page": 20,
-        }
-    )
-    runs_document = _request_json(
-        f"{api_url}/repos/{owner_repo}/actions/workflows/{workflow_id}/runs?{query}",
-        token=token,
-    )
-    runs = runs_document.get("workflow_runs")
-    if not isinstance(runs, list):
-        raise ValueError("GitHub workflow-runs response is invalid")
-    selected = None
+    created_after = datetime.now(UTC) - timedelta(days=_ARTIFACT_LOOKBACK_DAYS)
+    created_filter = created_after.strftime("%Y-%m-%dT%H:%M:%SZ")
+    runs: list[object] = []
+    for page in range(1, _MAX_RUN_PAGES + 1):
+        query = urllib.parse.urlencode(
+            {
+                "branch": default_branch,
+                "status": "success",
+                "created": f">={created_filter}",
+                "per_page": 100,
+                "page": page,
+            }
+        )
+        runs_document = _request_json(
+            f"{api_url}/repos/{owner_repo}/actions/workflows/"
+            f"{workflow_id}/runs?{query}",
+            token=token,
+        )
+        page_runs = runs_document.get("workflow_runs")
+        if not isinstance(page_runs, list):
+            raise ValueError("GitHub workflow-runs response is invalid")
+        runs.extend(page_runs)
+        if len(page_runs) < 100:
+            break
+    else:
+        raise ValueError("GitHub workflow-runs result exceeded the trusted window")
+
+    artifacts_by_run: dict[int, list[object]] = {}
     for raw_run in runs:
         run = _trusted_run(
             raw_run,
@@ -185,15 +254,14 @@ def main() -> int:
         artifacts = document.get("artifacts")
         if not isinstance(artifacts, list):
             raise ValueError("GitHub artifacts response is invalid")
-        selected = select_artifact(
-            runs=[run],
-            artifacts_by_run={run_id: artifacts},
-            repository=repository,
-            default_branch=default_branch,
-            artifact_prefix=artifact_prefix,
-        )
-        if selected is not None:
-            break
+        artifacts_by_run[run_id] = artifacts
+    selected = select_artifact(
+        runs=runs,
+        artifacts_by_run=artifacts_by_run,
+        repository=repository,
+        default_branch=default_branch,
+        artifact_prefix=artifact_prefix,
+    )
     _write_outputs(Path(output), selected)
     print("ANDROID_NVD_ARTIFACT_FOUND" if selected else "ANDROID_NVD_ARTIFACT_MISSING")
     return 0

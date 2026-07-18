@@ -38,13 +38,16 @@ runs:
       env:
         GRADLE_WORKER_COUNT: ${{ inputs.worker-count }}
       run: |
+        set -euo pipefail
         if ! [[ "$GRADLE_WORKER_COUNT" =~ ^[1-4]$ ]]; then
           echo "::error::Gradle worker count must be between 1 and 4."
           exit 1
         fi
+        runner_gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+        mkdir -p "$runner_gradle_home"
         {
           echo ""
           echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
           echo "org.gradle.workers.max=$GRADLE_WORKER_COUNT"
           echo "kotlin.daemon.jvmargs=-Xmx2560m"
-        } >> gradle.properties
+        } >> "$runner_gradle_home/gradle.properties"

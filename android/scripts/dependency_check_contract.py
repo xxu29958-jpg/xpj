@@ -17,8 +17,6 @@ PRODUCER_CONTRACT_PATHS = (
     ".github/actions/prepare-android/action.yml",
     ".github/actions/restore-android-nvd/action.yml",
     ".github/workflows/android-nvd-cache.yml",
-    "android/build.gradle.kts",
-    "android/gradle/libs.versions.toml",
     "android/scripts/certify_dependency_check_nvd_payload.sh",
     "android/scripts/dependency_check_contract.py",
     "android/scripts/dependency_check_nvd_manifest.py",
@@ -28,6 +26,21 @@ PRODUCER_CONTRACT_PATHS = (
     "scripts/select_android_nvd_artifact.py",
     "scripts/verify_android_nvd_publication_ref.py",
 )
+_GRADLE_ROOT_AUTHORITY_FILES = frozenset(
+    {
+        "gradle.properties",
+        "gradlew",
+        "gradlew.bat",
+    }
+)
+_GRADLE_AUTHORITY_DIRECTORIES = frozenset(
+    {
+        "build-logic",
+        "buildSrc",
+        "gradle",
+    }
+)
+_GRADLE_GENERATED_DIRECTORIES = frozenset({".gradle", "build"})
 EXPECTED_APP_REFERENCES = frozenset(
     {
         "app:grayDebugRuntimeClasspath",
@@ -52,10 +65,35 @@ def repository_root() -> Path:
     )
 
 
+def producer_contract_paths(root: Path) -> tuple[str, ...]:
+    paths = set(PRODUCER_CONTRACT_PATHS)
+    android_root = root / "android"
+    if android_root.is_symlink() or not android_root.is_dir():
+        raise ValueError("Android Gradle authority root is missing or unsafe")
+    for path in android_root.rglob("*"):
+        relative_android = path.relative_to(android_root)
+        if any(
+            part in _GRADLE_GENERATED_DIRECTORIES
+            for part in relative_android.parts
+        ):
+            continue
+        if not path.is_file() and not path.is_symlink():
+            continue
+        first_part = relative_android.parts[0]
+        is_authority = (
+            relative_android.as_posix() in _GRADLE_ROOT_AUTHORITY_FILES
+            or path.name.endswith((".gradle", ".gradle.kts"))
+            or first_part in _GRADLE_AUTHORITY_DIRECTORIES
+        )
+        if is_authority:
+            paths.add(path.relative_to(root).as_posix())
+    return tuple(sorted(paths))
+
+
 def producer_contract_sha256(root: Path) -> str:
     digest = sha256()
     digest.update(b"xpj-android-nvd-producer-contract\0sha256-tree-v1\0")
-    for relative in PRODUCER_CONTRACT_PATHS:
+    for relative in producer_contract_paths(root):
         path = root / Path(relative)
         if path.is_symlink() or not path.is_file():
             raise ValueError(f"NVD producer contract file is missing or unsafe: {relative}")

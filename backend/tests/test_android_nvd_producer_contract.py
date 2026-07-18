@@ -19,7 +19,6 @@ from tests._infra.ci_gap import load_ci_gap_audit as _load
 pytestmark = pytest.mark.parallel_safe
 
 _ROOT = Path(__file__).resolve().parents[2]
-_CACHE_ACTION_SHA = "0057852bfaa89a56745cba8c7296529d2fc39830"
 _DOWNLOAD_ACTION_SHA = "d3f86a106a0bac45b974a628896c90dbdf5c8093"
 _UPLOAD_ACTION_SHA = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 
@@ -45,21 +44,34 @@ def test_nvd_producer_workflow_stages_certifies_and_publishes_artifact() -> None
     )
     assert_nvd_producer_workflow(
         workflow,
-        cache_action_sha=_CACHE_ACTION_SHA,
         download_action_sha=_DOWNLOAD_ACTION_SHA,
         upload_action_sha=_UPLOAD_ACTION_SHA,
     )
 
 
-def test_legacy_android_nvd_writer_keeps_secret_step_scoped() -> None:
+def test_prepare_android_keeps_runner_tuning_out_of_source_authority() -> None:
+    action = _load_workflow(
+        _ROOT / ".github" / "actions" / "prepare-android" / "action.yml"
+    )
+    steps = {step["name"]: step for step in action["runs"]["steps"]}
+    tune = steps["Tune Gradle for cloud runner"]
+    assert "set -euo pipefail" in tune["run"]
+    assert 'runner_gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"' in tune["run"]
+    assert '>> "$runner_gradle_home/gradle.properties"' in tune["run"]
+    assert ">> gradle.properties" not in tune["run"]
+
+
+def test_legacy_android_nvd_writer_fails_closed_until_consumer_cutover() -> None:
     ci = _load_workflow(_ROOT / ".github" / "workflows" / "ci.yml")
     android = ci["jobs"]["android"]
     assert "concurrency" not in android
     assert "NVD_API_KEY" not in android.get("env", {})
     steps = {step["name"]: step for step in android["steps"]}
-    detect = steps["Detect NVD credential"]
-    assert detect["id"] == "nvd-credential"
-    assert detect["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
+    require = steps["Require NVD credential"]
+    assert "id" not in require
+    assert require["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
+    assert 'if [ -z "$NVD_API_KEY" ]; then' in require["run"]
+    assert "exit 78" in require["run"]
     scan = steps["Dependency vulnerability scan (OWASP dependency-check)"]
     assert scan["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
     normalized = " ".join(scan["run"].split())
@@ -68,8 +80,20 @@ def test_legacy_android_nvd_writer_keeps_secret_step_scoped() -> None:
         "dependencyCheckAggregate -PdependencyCheckAutoUpdate=false "
         "-PdependencyCheckNvdValidForHours=24"
     ) in normalized
+    assert 'rm -f "$report_path"' in scan["run"]
+    assert "env -u NVD_API_KEY python3 scripts/verify_dependency_check_report.py" in (
+        normalized
+    )
     assert "dependencyCheckValidateNvd" not in scan["run"]
     assert "-PnvdApiKey" not in scan["run"]
+    for name in (
+        "NVD cache key (UTC date)",
+        "Cache OWASP NVD database",
+        "Dependency vulnerability scan (OWASP dependency-check)",
+        "Enforce OWASP CVE findings (tolerate only NVD-data outages)",
+    ):
+        assert "if" not in steps[name]
+    assert "Dependency vulnerability scan skipped" not in steps
     assert json.dumps(android, sort_keys=True).count("secrets.NVD_API_KEY") == 2
 
 
@@ -104,8 +128,8 @@ def _assert_restore_action_interface(action: dict[object, object]) -> None:
     assert outputs["producer-run-id"]["value"] == (
         "${{ steps.select.outputs.run-id }}"
     )
-    assert outputs["staging-cache-key"]["value"] == (
-        "${{ steps.identity.outputs.staging-value }}"
+    assert outputs["staging-artifact-name"]["value"] == (
+        "${{ steps.identity.outputs.staging-artifact-name }}"
     )
     assert outputs["restored"]["value"] == "${{ steps.select.outputs.found }}"
     assert outputs["payload-sha256"]["value"] == (
@@ -183,7 +207,7 @@ def _copy_producer_contract(tmp_path: Path) -> ModuleType:
         _ROOT / "android" / "scripts" / "dependency_check_contract.py",
         name="nvd_contract_fixture",
     )
-    for relative in contract.PRODUCER_CONTRACT_PATHS:
+    for relative in contract.producer_contract_paths(_ROOT):
         source = _ROOT / relative
         destination = tmp_path / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -230,7 +254,7 @@ def test_publication_identity_binds_every_authority_contract_file(
     suffix = f"Linux-{first['generation']}-123456-2"
     assert first["artifact-name"] == f"android-nvd-{suffix}"
     assert first["artifact-prefix"] == f"android-nvd-Linux-{first['generation']}-"
-    assert first["staging-value"] == f"nvd-staging-{suffix}"
+    assert first["staging-artifact-name"] == f"nvd-staging-{suffix}"
 
     certifier = (
         tmp_path / "android" / "scripts" / "certify_dependency_check_nvd_payload.sh"
@@ -243,7 +267,17 @@ def test_publication_identity_binds_every_authority_contract_file(
     second = _run_identity(tmp_path, output_name="second.txt")
     assert second["contract-sha256"] != first["contract-sha256"]
     assert second["artifact-name"] != first["artifact-name"]
-    assert second["staging-value"] != first["staging-value"]
+    assert second["staging-artifact-name"] != first["staging-artifact-name"]
+
+    wrapper = tmp_path / "android" / "gradle" / "wrapper" / "gradle-wrapper.properties"
+    wrapper.write_text(
+        wrapper.read_text(encoding="utf-8") + "\n# wrapper mutation\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    third = _run_identity(tmp_path, output_name="third.txt")
+    assert third["contract-sha256"] != second["contract-sha256"]
+    assert third["artifact-name"] != second["artifact-name"]
 
 
 def _trusted_run(*, run_id: int, attempt: int = 1) -> dict[str, object]:
@@ -302,6 +336,7 @@ def test_artifact_selector_rejects_pr_failed_and_wrong_contract_sources() -> Non
                     "id": 282,
                     "name": f"{prefix}28-3",
                     "expired": False,
+                    "created_at": "2026-07-18T01:00:00Z",
                     "digest": f"sha256:{'d' * 64}",
                 },
             ],
@@ -313,30 +348,99 @@ def test_artifact_selector_rejects_pr_failed_and_wrong_contract_sources() -> Non
     assert selected == (28, f"{prefix}28-3", 282, f"sha256:{'d' * 64}")
 
 
-def test_publication_ref_guard_is_behavioral(tmp_path: Path) -> None:
-    script = _ROOT / "scripts" / "verify_android_nvd_publication_ref.py"
-    base = {
-        **os.environ,
+def test_artifact_selector_accepts_available_attempt_after_partial_rerun() -> None:
+    selector = _load_script(
+        _ROOT / "scripts" / "select_android_nvd_artifact.py",
+        name="nvd_partial_rerun_selector",
+    )
+    prefix = "android-nvd-Linux-dc-12.1.0-schema2-current-"
+    selected = selector.select_artifact(
+        runs=[_trusted_run(run_id=41, attempt=2)],
+        artifacts_by_run={
+            41: [
+                {
+                    "id": 411,
+                    "name": f"{prefix}41-1",
+                    "expired": False,
+                    "created_at": "2026-07-18T01:00:00Z",
+                    "digest": f"sha256:{'e' * 64}",
+                }
+            ]
+        },
+        repository="xxu29958-jpg/xpj",
+        default_branch="main",
+        artifact_prefix=prefix,
+    )
+    assert selected == (41, f"{prefix}41-1", 411, f"sha256:{'e' * 64}")
+
+
+def test_artifact_selector_uses_artifact_freshness_not_api_run_order() -> None:
+    selector = _load_script(
+        _ROOT / "scripts" / "select_android_nvd_artifact.py",
+        name="nvd_fresh_artifact_selector",
+    )
+    prefix = "android-nvd-Linux-dc-12.1.0-schema2-current-"
+    selected = selector.select_artifact(
+        runs=[_trusted_run(run_id=50), _trusted_run(run_id=49)],
+        artifacts_by_run={
+            50: [
+                {
+                    "id": 501,
+                    "name": f"{prefix}50-1",
+                    "expired": False,
+                    "created_at": "2026-07-18T01:00:00Z",
+                    "digest": f"sha256:{'f' * 64}",
+                }
+            ],
+            49: [
+                {
+                    "id": 491,
+                    "name": f"{prefix}49-1",
+                    "expired": False,
+                    "created_at": "2026-07-18T02:00:00Z",
+                    "digest": f"sha256:{'a' * 64}",
+                }
+            ],
+        },
+        repository="xxu29958-jpg/xpj",
+        default_branch="main",
+        artifact_prefix=prefix,
+    )
+    assert selected == (49, f"{prefix}49-1", 491, f"sha256:{'a' * 64}")
+
+
+def test_publication_ref_guard_is_behavioral(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard = _load_script(
+        _ROOT / "scripts" / "verify_android_nvd_publication_ref.py",
+        name="nvd_publication_ref_guard",
+    )
+    current_sha = "a" * 40
+    monkeypatch.setattr(
+        guard,
+        "_current_default_sha",
+        lambda **_kwargs: current_sha,
+    )
+    for key, value in {
+        "REQUESTED_REF": "refs/heads/main",
+        "REQUESTED_SHA": current_sha,
         "DEFAULT_BRANCH": "main",
-    }
-    accepted = subprocess.run(
-        [sys.executable, str(script)],
-        env={**base, "REQUESTED_REF": "refs/heads/main"},
-        capture_output=True,
-        check=False,
-        text=True,
-        encoding="utf-8",
-    )
-    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
-    rejected = subprocess.run(
-        [sys.executable, str(script)],
-        env={**base, "REQUESTED_REF": "refs/heads/feature"},
-        capture_output=True,
-        check=False,
-        text=True,
-        encoding="utf-8",
-    )
-    assert rejected.returncode != 0
+        "GITHUB_API_URL": "https://api.github.test",
+        "GITHUB_REPOSITORY": "xxu29958-jpg/xpj",
+        "GITHUB_TOKEN": "test-token",
+    }.items():
+        monkeypatch.setenv(key, value)
+    assert guard.main() == 0
+
+    monkeypatch.setenv("REQUESTED_SHA", "b" * 40)
+    with pytest.raises(ValueError, match="current default-branch tip"):
+        guard.main()
+
+    monkeypatch.setenv("REQUESTED_SHA", current_sha)
+    monkeypatch.setenv("REQUESTED_REF", "refs/heads/feature")
+    with pytest.raises(ValueError, match="restricted"):
+        guard.main()
 
 
 def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> None:

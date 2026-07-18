@@ -30,9 +30,9 @@ outputs:
   contract-sha256:
     description: SHA-256 identity of the producer and verifier contract.
     value: ${{ steps.identity.outputs.contract-sha256 }}
-  staging-cache-key:
-    description: Isolated same-run key used before certification.
-    value: ${{ steps.identity.outputs.staging-value }}
+  staging-artifact-name:
+    description: Isolated immutable artifact used before certification.
+    value: ${{ steps.identity.outputs.staging-artifact-name }}
   restored:
     description: Whether a certified producer artifact was restored.
     value: ${{ steps.select.outputs.found }}

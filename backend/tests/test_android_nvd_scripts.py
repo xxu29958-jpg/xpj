@@ -286,6 +286,8 @@ def test_manifest_enforces_monotonic_candidate_and_exact_payload_identity(
         str(data_dir),
         "--minimum-refreshed-at-epoch",
         str(refreshed_at),
+        "--expected-refreshed-at-epoch",
+        str(refreshed_at),
         "--expected-payload-sha256",
         payload_sha256,
         "--github-output",
@@ -315,6 +317,14 @@ def test_manifest_enforces_monotonic_candidate_and_exact_payload_identity(
         "0" * 64,
     )
     assert wrong_payload.returncode != 0
+    wrong_freshness = _run_manifest(
+        tmp_path,
+        "verify",
+        str(data_dir),
+        "--expected-refreshed-at-epoch",
+        str(refreshed_at + 1),
+    )
+    assert wrong_freshness.returncode != 0
 
 
 def test_manifest_rejects_stale_producer_contract(tmp_path: Path) -> None:
