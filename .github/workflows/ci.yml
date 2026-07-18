@@ -370,14 +370,13 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
-      - name: Backend impact plan (non-blocking shadow)
+      - name: Backend impact plan (shadow)
         if: github.event_name == 'pull_request'
-        continue-on-error: true
         env:
           XPJ_IMPACT_BASE: ${{ github.event.pull_request.base.sha }}
           XPJ_IMPACT_HEAD: ${{ github.sha }}
         run: |
-          python scripts/test_impact_selection.py \
+          python -m scripts.test_impact_selection \
             --base-ref "$XPJ_IMPACT_BASE" \
             --head-ref "$XPJ_IMPACT_HEAD" \
             --output "$RUNNER_TEMP/backend-impact-plan.json"

@@ -106,10 +106,10 @@ def _from_import_targets(
     if base is None:
         return set()
     imported: set[str] = set()
+    if base in known_modules:
+        imported.add(base)
     for alias in node.names:
         if alias.name == "*":
-            if base in known_modules:
-                imported.add(base)
             continue
         exported_target = package_exports.get((base, alias.name))
         child_module = f"{base}.{alias.name}" if base else alias.name
@@ -119,6 +119,50 @@ def _from_import_targets(
         if candidate in known_modules:
             imported.add(candidate)
     return imported
+
+
+def modules_declaring_path_dependencies(
+    changed_paths: Iterable[str],
+    modules: Mapping[str, Path],
+) -> set[str]:
+    changed = tuple(changed_paths)
+    selected: set[str] = set()
+    for module, path in modules.items():
+        if not module.startswith("tests."):
+            continue
+        try:
+            tree = ast.parse(_read_python_source(path), filename=str(path))
+        except SyntaxError as exc:
+            raise ImpactEvidenceError(f"cannot parse {path}: {exc}") from exc
+        prefixes = _declared_path_dependencies(tree)
+        if any(path.startswith(prefix) for path in changed for prefix in prefixes):
+            selected.add(module)
+    return selected
+
+
+def _declared_path_dependencies(tree: ast.Module) -> tuple[str, ...]:
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if not any(
+            isinstance(target, ast.Name)
+            and target.id == "TEST_IMPACT_SOURCE_PREFIXES"
+            for target in targets
+        ):
+            continue
+        value = node.value
+        if not isinstance(value, (ast.Tuple, ast.List)):
+            raise ImpactEvidenceError(
+                "TEST_IMPACT_SOURCE_PREFIXES must be a literal tuple or list"
+            )
+        prefixes = tuple(_literal_string(item) for item in value.elts)
+        if any(prefix is None or not prefix for prefix in prefixes):
+            raise ImpactEvidenceError(
+                "TEST_IMPACT_SOURCE_PREFIXES must contain non-empty string literals"
+            )
+        return tuple(prefix for prefix in prefixes if prefix is not None)
+    return ()
 
 
 def _resolve_imported_modules(

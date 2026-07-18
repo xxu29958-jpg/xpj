@@ -149,7 +149,7 @@ def test_selection_covering_most_test_files_falls_back_to_full(
     assert selection.reasons == ("selection-too-broad:10/10",)
 
 
-def test_non_backend_change_needs_no_backend_lane(tmp_path: Path) -> None:
+def test_cross_repo_contract_change_falls_back_to_full(tmp_path: Path) -> None:
     backend = _backend_fixture(tmp_path)
 
     selection = select_impacted_tests(
@@ -157,19 +157,30 @@ def test_non_backend_change_needs_no_backend_lane(tmp_path: Path) -> None:
         [GitChange("M", "android/app/src/main/java/example.kt")],
     )
 
-    assert selection.mode == "none"
+    assert selection.mode == "full"
 
 
-def test_packaging_only_change_is_owned_by_packaging_lane(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "path",
+    [
+        "backend/packaging/launch.py",
+        "android/app/src/main/res/values/strings.xml",
+        "desktop/backend_manager/manager.py",
+        "scripts/check_cloudflare_endpoint.ps1",
+    ],
+)
+def test_unmodeled_cross_repo_consumers_fall_back_to_full(
+    tmp_path: Path,
+    path: str,
+) -> None:
     backend = _backend_fixture(tmp_path)
 
     selection = select_impacted_tests(
         backend,
-        [GitChange("M", "backend/packaging/tests/test_installer.py")],
+        [GitChange("M", path)],
     )
 
-    assert selection.mode == "none"
-    assert selection.reasons == ("backend-packaging-only",)
+    assert selection.mode == "full"
 
 
 def test_dynamic_route_contract_falls_back_to_full(tmp_path: Path) -> None:
@@ -253,7 +264,7 @@ def test_route_path_in_helper_selects_each_test_importing_that_helper(
     assert "tests/test_expense_route_helper_consumer.py" in selection.selected_tests
 
 
-def test_package_exports_do_not_turn_one_symbol_into_whole_facade_impact(
+def test_package_initializer_execution_propagates_to_each_facade_consumer(
     tmp_path: Path,
 ) -> None:
     backend = tmp_path / "backend"
@@ -313,8 +324,29 @@ def test_package_exports_do_not_turn_one_symbol_into_whole_facade_impact(
     assert selection.mode == "selected"
     assert selection.selected_tests == (
         "tests/test_alpha.py",
+        "tests/test_beta.py",
         "tests/test_facade_module.py",
     )
+
+
+def test_source_scanner_declares_its_path_dependency(tmp_path: Path) -> None:
+    backend = _backend_fixture(tmp_path)
+    _write(
+        backend,
+        "tests/test_route_scanner.py",
+        "from pathlib import Path\n"
+        "TEST_IMPACT_SOURCE_PREFIXES = ('backend/app/routes/',)\n"
+        "def test_routes():\n"
+        "    assert list((Path('app') / 'routes').glob('*.py'))\n",
+    )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/app/routes/expenses.py")],
+    )
+
+    assert selection.mode == "selected"
+    assert "tests/test_route_scanner.py" in selection.selected_tests
 
 
 def test_direct_composition_root_dependency_keeps_main_consumers(

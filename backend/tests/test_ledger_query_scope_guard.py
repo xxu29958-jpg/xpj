@@ -6,6 +6,10 @@ from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 SCAN_ROOTS = (APP_ROOT / "routes", APP_ROOT / "services")
+TEST_IMPACT_SOURCE_PREFIXES = (
+    "backend/app/routes/",
+    "backend/app/services/",
+)
 
 LEDGER_SCOPED_MODELS = {
     "Budget",

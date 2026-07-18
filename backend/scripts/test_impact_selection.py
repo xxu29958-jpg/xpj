@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 from scripts.test_impact_source_graph import (
     SOURCE_PREFIXES,
     ImpactEvidenceError,
+    modules_declaring_path_dependencies,
     modules_referencing_routes,
     reverse_closure,
     reverse_import_graph,
@@ -50,10 +51,8 @@ _FULL_FALLBACK_PREFIXES = (
     "backend/scripts/",
     "backend/tests/_infra/",
 )
-_IGNORED_BACKEND_PREFIXES = (
-    "backend/build/",
-    "backend/packaging/",
-)
+_IGNORED_BACKEND_PREFIXES = ("backend/build/",)
+_CROSS_REPO_BACKEND_CONTRACT_PREFIXES = ("android/", "desktop/", "scripts/")
 _MAX_SELECTED_TEST_RATIO = 0.70
 
 
@@ -215,7 +214,14 @@ def _full_fallback_reason(changes: Sequence[GitChange]) -> str | None:
 
 
 def _is_backend_relevant(path: str) -> bool:
-    return path.startswith("backend/") or path.startswith((".github/workflows/", ".gitea/workflows/"))
+    return path.startswith(
+        (
+            "backend/",
+            *_CROSS_REPO_BACKEND_CONTRACT_PREFIXES,
+            ".github/workflows/",
+            ".gitea/workflows/",
+        )
+    )
 
 
 def _relevant_changes(changes: Sequence[GitChange]) -> tuple[GitChange, ...]:
@@ -245,8 +251,23 @@ def _classify_source_changes(
             return (), Selection("full", (f"unclassified-backend-change:{change.path}",), ())
         source_changes.append((change, source_path))
     if not source_changes:
-        return (), Selection("none", ("backend-packaging-only",), ())
+        return (), Selection("none", ("generated-backend-output-only",), ())
     return tuple(source_changes), None
+
+
+def _test_targets_for_modules(
+    module_names: Iterable[str],
+    modules: dict[str, Path],
+    backend_root: Path,
+) -> set[str]:
+    tests_root = backend_root / "tests"
+    return {
+        _test_target(path, backend_root)
+        for module in module_names
+        if (path := modules.get(module)) is not None
+        and path.name.startswith("test_")
+        and path.is_relative_to(tests_root)
+    }
 
 
 def select_impacted_tests(
@@ -270,6 +291,18 @@ def select_impacted_tests(
     modules_by_path = {path.resolve(): module for module, path in modules.items()}
     changed_modules: set[str] = set()
     selected: set[str] = set()
+    declared_consumers = modules_declaring_path_dependencies(
+        (
+            path
+            for change in relevant
+            for path in (change.path, change.old_path)
+            if path is not None
+        ),
+        modules,
+    )
+    selected.update(
+        _test_targets_for_modules(declared_consumers, modules, backend_root)
+    )
     for change, source_path in source_changes:
         path = (backend_root / source_path).resolve()
         module = modules_by_path.get(path)
@@ -281,10 +314,7 @@ def select_impacted_tests(
 
     affected = reverse_closure(changed_modules, reverse)
     test_files = tuple(sorted((backend_root / "tests").rglob("test_*.py")))
-    for module in affected:
-        path = modules.get(module)
-        if path is not None and path.name.startswith("test_") and path.is_relative_to(backend_root / "tests"):
-            selected.add(_test_target(path, backend_root))
+    selected.update(_test_targets_for_modules(affected, modules, backend_root))
 
     affected_routes = [
         path
@@ -299,10 +329,17 @@ def select_impacted_tests(
             modules_referencing_routes(route_patterns, modules),
             reverse,
         )
-        for module in route_consumers:
-            path = modules.get(module)
-            if path is not None and path.name.startswith("test_") and path.is_relative_to(backend_root / "tests"):
-                selected.add(_test_target(path, backend_root))
+        selected.update(
+            _test_targets_for_modules(route_consumers, modules, backend_root)
+        )
+        if affected_routes:
+            selected.update(
+                _test_targets_for_modules(
+                    reverse_closure({"app.main"}, reverse),
+                    modules,
+                    backend_root,
+                )
+            )
     except ImpactEvidenceError as exc:
         return Selection("full", (f"route-impact-unproven:{exc}",), ())
 
