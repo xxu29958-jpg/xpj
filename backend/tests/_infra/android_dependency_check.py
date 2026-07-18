@@ -17,33 +17,30 @@ def assert_dependency_check_ci_contract(android: dict[str, Any]) -> None:
         cache_read_only="${{ github.ref != 'refs/heads/main' }}",
     )
     steps = {step["name"]: step for step in android["steps"]}
-    credential = steps["Require NVD credential"]
-    assert credential["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
-    assert 'if [ -z "$NVD_API_KEY" ]; then' in credential["run"]
-    assert "::error::NVD_API_KEY is required" in credential["run"]
-    assert "exit 1" in credential["run"]
-
     cache_restore = steps["Restore OWASP NVD database"]
     assert cache_restore["id"] == "nvd-cache"
     assert cache_restore["uses"].startswith("actions/cache/restore@")
-    cache_save = steps["Save OWASP NVD database"]
-    assert cache_save["uses"].startswith("actions/cache/save@")
-    assert "github.ref == 'refs/heads/main'" in cache_save["if"]
-    assert "steps.nvd-cache.outputs.cache-hit != 'true'" in cache_save["if"]
+    assert "nvd-${{ runner.os }}-v1-" in cache_restore["with"]["key"]
+    assert cache_restore["with"]["restore-keys"].splitlines() == [
+        "nvd-${{ runner.os }}-v1-",
+        "nvd-${{ runner.os }}-",
+    ]
+    cache_required = steps["Require a trusted NVD database"]
+    assert cache_required["if"] == (
+        "steps.nvd-cache.outputs.cache-matched-key == ''"
+    )
+    assert "exit 1" in cache_required["run"]
 
     scan = steps["Dependency vulnerability scan (OWASP dependency-check)"]
     assert scan["id"] == "android-dependency-scan"
-    assert scan["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
+    assert "env" not in scan
     normalized = " ".join(scan["run"].split())
     assert "set -euo pipefail" in scan["run"]
     assert "continue-on-error" not in scan
-    assert "dependencyCheckUpdate" in normalized
+    assert "dependencyCheckUpdate" not in normalized
     assert "dependencyCheckAggregate" in normalized
     assert "-PdependencyCheckAutoUpdate=false" in normalized
     assert 'rm -f "$report_path" "$inventory_path"' in scan["run"]
-    assert normalized.index("dependencyCheckUpdate") < normalized.index(
-        "dependencyCheckAggregate"
-    )
     assert "-PnvdApiKey" not in scan["run"]
 
     verification = steps["Verify Android dependency-check report"]
@@ -72,8 +69,49 @@ def assert_dependency_check_ci_contract(android: dict[str, Any]) -> None:
         "Dependency vulnerability scan (OWASP dependency-check)"
     ) < names.index("Verify Android dependency-check report")
     assert "Dependency vulnerability scan skipped" not in steps
+    assert "Save OWASP NVD database" not in steps
     assert "Enforce OWASP CVE findings (tolerate only NVD-data outages)" not in steps
-    assert json.dumps(android, sort_keys=True).count("secrets.NVD_API_KEY") == 2
+    assert "secrets.NVD_API_KEY" not in json.dumps(android, sort_keys=True)
+
+
+def assert_dependency_check_producer_contract(workflow: dict[str, Any]) -> None:
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["concurrency"] == {
+        "group": "android-nvd-cache",
+        "cancel-in-progress": True,
+    }
+    assert set(workflow["jobs"]) == {"refresh"}
+    job = workflow["jobs"]["refresh"]
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+    assert job["environment"] == "android-nvd-producer"
+    assert "NVD_API_KEY" not in job.get("env", {})
+    assert_gradle_cache_authority(
+        job,
+        java_version="17",
+        cache_read_only=True,
+    )
+    steps = {step["name"]: step for step in job["steps"]}
+    restore = steps["Restore previous NVD database"]
+    assert restore["uses"].startswith("actions/cache/restore@")
+    assert restore["with"]["restore-keys"].splitlines() == [
+        "nvd-${{ runner.os }}-v1-",
+        "nvd-${{ runner.os }}-",
+    ]
+    refresh = steps["Refresh NVD database"]
+    assert refresh["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
+    assert 'if [ -z "$NVD_API_KEY" ]; then' in refresh["run"]
+    assert "dependencyCheckUpdate" in refresh["run"]
+    verify = steps["Verify refreshed database and Android runtime scope"]
+    assert "env" not in verify
+    normalized = " ".join(verify["run"].split())
+    assert "dependencyCheckAggregate" in normalized
+    assert "-PdependencyCheckAutoUpdate=false" in normalized
+    assert "verify_dependency_check_report.py" in normalized
+    save = steps["Save verified NVD database"]
+    assert save["uses"].startswith("actions/cache/save@")
+    assert "steps.nvd-cache.outputs.cache-hit != 'true'" in save["if"]
+    serialized = json.dumps(workflow, sort_keys=True)
+    assert serialized.count("secrets.NVD_API_KEY") == 1
 
 
 def assert_runtime_dependency_suppressions(path: Path) -> None:

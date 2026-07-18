@@ -108,7 +108,9 @@ gh pr merge N --merge --delete-branch
 **症状**：Android job 红在 `Dependency vulnerability scan (OWASP dependency-check)`；原因可能是 NVD 网络、更新或分析超时、数据损坏、报告无效，或真实 CVE。
 
 **当前合同**：
-- 更新、离线 aggregate 和报告验证都必须成功；缺 secret、timeout、`NoDataException`、缺报告和 CVE 全部红。
+- `Android NVD cache` 只在受保护的 `main` 环境更新数据库并写 cache；PR 不接收 NVD secret，也不更新共享数据。
+- PR 只读恢复 cache，再离线 aggregate，并重新验证 NVD freshness、运行时依赖覆盖和报告完整性。
+- cache miss、过期、timeout、`NoDataException`、缺报告和 CVE 全部红。
 - 不从日志字符串推断“可容忍 outage”，也不使用 `continue-on-error`。没有完成并验证扫描，就没有绿色资格。
 - warm cache 只减少 NVD I/O，不降低失败语义。确认是瞬时 NVD 故障时可以重跑，但不能把原 run 当绿。
 

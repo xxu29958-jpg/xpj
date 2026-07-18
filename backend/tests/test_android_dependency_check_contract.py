@@ -14,6 +14,7 @@ import pytest
 
 from tests._infra.android_dependency_check import (
     assert_dependency_check_ci_contract,
+    assert_dependency_check_producer_contract,
     assert_runtime_dependency_suppressions,
 )
 from tests._infra.android_gradle_cache import (
@@ -59,6 +60,7 @@ def test_android_dependency_scan_is_fail_closed_with_one_cache_writer() -> None:
     workflows = _workflows()
     android = workflows["ci.yml"]["jobs"]["android"]
     assert_dependency_check_ci_contract(android)
+    assert_dependency_check_producer_contract(workflows["android-nvd-cache.yml"])
     assert_github_gradle_cache_topology(workflows)
     serialized = json.dumps(android, sort_keys=True)
     for forbidden in (
@@ -74,6 +76,15 @@ def test_android_dependency_scan_is_fail_closed_with_one_cache_writer() -> None:
     assert gitea["jobs"]["android-unit"]["env"]["GRADLE_OPTS"] == (
         "-Dorg.gradle.caching=false"
     )
+    nvd_cache_writers = [
+        (workflow_name, job_name)
+        for workflow_name, workflow in workflows.items()
+        for job_name, job in workflow.get("jobs", {}).items()
+        for step in job.get("steps", [])
+        if str(step.get("uses", "")).startswith("actions/cache/save@")
+        and "dependency-check-data" in str(step.get("with", {}).get("path", ""))
+    ]
+    assert nvd_cache_writers == [("android-nvd-cache.yml", "refresh")]
 
 
 def test_prepare_android_keeps_runner_tuning_out_of_source_authority() -> None:

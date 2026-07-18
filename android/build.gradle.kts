@@ -36,8 +36,8 @@ val dependencyCheckRuntimeConfigurations =
 val dependencyCheckRuntimeInventoryFile =
     layout.buildDirectory.file("reports/dependency-check-runtime-inventory.json")
 
-// Keep the NVD database under Gradle user home so trusted CI events can
-// refresh one cache while pull requests consume it read-only.
+// Keep the NVD database under Gradle user home so the protected producer can
+// refresh one cache while pull requests consume and revalidate it read-only.
 val dependencyCheckDataDir =
     gradle.gradleUserHomeDir.resolve("dependency-check-data").absolutePath
 

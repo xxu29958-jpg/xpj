@@ -1,0 +1,116 @@
+name: Android NVD cache
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/actions/prepare-android/**"
+      - ".github/workflows/android-nvd-cache.yml"
+      - "android/build.gradle.kts"
+      - "android/config/dependency-check/**"
+      - "android/gradle/libs.versions.toml"
+      - "android/gradle/wrapper/**"
+      - "android/scripts/dependency_check_contract.py"
+      - "android/scripts/verify_dependency_check_report.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-nvd-cache
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Refresh and verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: android-nvd-producer
+    defaults:
+      run:
+        working-directory: android
+        shell: bash
+    env:
+      TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Java
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Prepare Android build
+        uses: ./.github/actions/prepare-android
+        with:
+          server-url: ${{ env.TICKETBOX_SERVER_URL }}
+          worker-count: "2"
+
+      - name: NVD cache key
+        id: nvd-key
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore previous NVD database
+        id: nvd-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: nvd-${{ runner.os }}-v1-${{ steps.nvd-key.outputs.date }}
+          restore-keys: |
+            nvd-${{ runner.os }}-v1-
+            nvd-${{ runner.os }}-
+
+      - name: Refresh NVD database
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::NVD_API_KEY is required by the trusted NVD writer."
+            exit 1
+          fi
+          timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckUpdate
+
+      - name: Verify refreshed database and Android runtime scope
+        run: |
+          set -euo pipefail
+          report_path="build/reports/dependency-check-report.json"
+          inventory_path="build/reports/dependency-check-runtime-inventory.json"
+          rm -f "$report_path" "$inventory_path"
+          timeout -k 1m 10m ./gradlew --no-daemon --max-workers=2 \
+            dependencyCheckAggregate -PdependencyCheckAutoUpdate=false
+          test -s "$report_path"
+          test -s "$inventory_path"
+          env -u NVD_API_KEY python3 scripts/verify_dependency_check_report.py \
+            "$report_path" --inventory "$inventory_path"
+
+      - name: Save verified NVD database
+        if: ${{ success() && steps.nvd-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: nvd-${{ runner.os }}-v1-${{ steps.nvd-key.outputs.date }}
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-nvd-cache-evidence
+          path: |
+            android/build/reports/dependency-check-report.json
+            android/build/reports/dependency-check-runtime-inventory.json
+          if-no-files-found: error
+          retention-days: 14

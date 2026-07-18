@@ -452,7 +452,9 @@ def test_installer_hash_output_dataflow_rejects_detached_mutations(
         workflow_path.write_text(workflow_text, encoding="utf-8")
         try:
             commands = mod._iter_workflow_run_commands(workflows)
-        except ValueError:
+        except ValueError as exc:
+            assert mutation == "missing verifier environment"
+            assert "duplicate key 'run'" in str(exc)
             continue
         missing = mod._missing_installer_hash_dataflow_by_platform(commands)
         assert label in missing, mutation

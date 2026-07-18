@@ -582,16 +582,6 @@ jobs:
         # are pinned — the plain :app:detekt would be a weaker gate.
         run: ./gradlew --no-daemon --max-workers=2 :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
 
-      - name: Require NVD credential
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "$NVD_API_KEY" ]; then
-            echo "::error::NVD_API_KEY is required for the Android dependency gate."
-            exit 1
-          fi
-
       - name: NVD cache key (UTC date)
         # Day-rotating key so the cached NVD DB refreshes ~daily; restore-keys
         # below falls back to the most recent prior cache on a key miss.
@@ -600,21 +590,25 @@ jobs:
 
       - name: Restore OWASP NVD database
         id: nvd-cache
-        # Persists the OWASP/NVD H2 DB across runs (path mirrors data.directory in
-        # android/build.gradle.kts = Gradle user home). With nvd.validForHours=24 a
-        # warm cache (<24h) makes the plugin skip the NVD API call entirely. This
-        # step is restore-only; only a trusted main run may publish the new key.
+        # The protected default-branch producer is the only writer. PRs restore
+        # the cache as untrusted input and prove freshness and report coverage
+        # again before the job may pass.
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.gradle/dependency-check-data
-          key: nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.date }}
+          key: nvd-${{ runner.os }}-v1-${{ steps.nvd-key.outputs.date }}
           restore-keys: |
+            nvd-${{ runner.os }}-v1-
             nvd-${{ runner.os }}-
+
+      - name: Require a trusted NVD database
+        if: steps.nvd-cache.outputs.cache-matched-key == ''
+        run: |
+          echo "::error::No trusted NVD cache is available. Run the Android NVD cache workflow on main."
+          exit 1
 
       - name: Dependency vulnerability scan (OWASP dependency-check)
         id: android-dependency-scan
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         # Run before APK assembly so a policy failure stops expensive artifact
         # work. Every phase is mandatory: no completed and verified report
         # means no green gate.
@@ -625,9 +619,6 @@ jobs:
           inventory_path="build/reports/dependency-check-runtime-inventory.json"
           rm -f "$report_path" "$inventory_path"
 
-          timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 \
-            dependencyCheckUpdate \
-            2>&1 | tee -a owasp-output.log
           timeout -k 1m 10m ./gradlew --no-daemon --max-workers=2 \
             dependencyCheckAggregate \
             -PdependencyCheckAutoUpdate=false \
@@ -656,13 +647,6 @@ jobs:
             android/owasp-output.log
           if-no-files-found: error
           retention-days: 14
-
-      - name: Save OWASP NVD database
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.nvd-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.gradle/dependency-check-data
-          key: nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.date }}
 
       - name: Android debug APK builds
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug
