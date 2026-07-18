@@ -18,9 +18,6 @@ outputs:
   artifact-name:
     description: Exact immutable artifact selected from a successful producer run.
     value: ${{ steps.select.outputs.artifact-name }}
-  publication-artifact-name:
-    description: Exact immutable artifact name reserved for the current run.
-    value: ${{ steps.identity.outputs.artifact-name }}
   producer-run-id:
     description: Successful protected workflow run that published the artifact.
     value: ${{ steps.select.outputs.run-id }}

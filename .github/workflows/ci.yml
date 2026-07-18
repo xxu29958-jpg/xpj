@@ -501,12 +501,11 @@ jobs:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -n "$NVD_API_KEY" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Certified NVD artifact consumer is not active yet; legacy scan cannot run without a repository credential."
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::NVD_API_KEY is required until the certified artifact consumer replaces the legacy scan."
+            exit 1
           fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: NVD cache key (UTC date)
         # Day-rotating key so the cached NVD DB refreshes ~daily; restore-keys
@@ -584,10 +583,6 @@ jobs:
         with:
           path: ~/.gradle/dependency-check-data
           key: nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.date }}
-
-      - name: Dependency vulnerability scan skipped
-        if: steps.nvd-credential.outputs.available != 'true'
-        run: echo "::warning::NVD_API_KEY is unavailable; the certified artifact consumer must replace this temporary skip before the producer/consumer batch merges."
 
       - name: Android debug APK builds
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug

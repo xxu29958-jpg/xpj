@@ -68,12 +68,13 @@ def test_prepare_android_keeps_runner_tuning_out_of_source_authority() -> None:
     assert ">> gradle.properties" not in tune["run"]
 
 
-def test_legacy_android_nvd_transition_and_cache_authority_are_explicit() -> None:
+def test_legacy_android_nvd_writer_fails_closed_until_consumer_cutover() -> None:
     ci = _load_workflow(_ROOT / ".github" / "workflows" / "ci.yml")
     assert_legacy_nvd_consumer_job(ci["jobs"]["android"])
     workflows = {
         path.name: _load_workflow(path)
-        for path in (_ROOT / ".github" / "workflows").glob("*.yml")
+        for path in (_ROOT / ".github" / "workflows").iterdir()
+        if path.is_file() and path.suffix.lower() in {".yml", ".yaml"}
     }
     assert_github_gradle_cache_topology(workflows)
     gitea = _load_workflow(
@@ -123,9 +124,7 @@ def _assert_restore_action_interface(action: dict[object, object]) -> None:
     assert outputs["artifact-name"]["value"] == (
         "${{ steps.select.outputs.artifact-name }}"
     )
-    assert outputs["publication-artifact-name"]["value"] == (
-        "${{ steps.identity.outputs.artifact-name }}"
-    )
+    assert "publication-artifact-name" not in outputs
     assert outputs["producer-run-id"]["value"] == (
         "${{ steps.select.outputs.run-id }}"
     )

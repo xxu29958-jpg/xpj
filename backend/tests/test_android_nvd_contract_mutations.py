@@ -84,7 +84,8 @@ def test_producer_contract_rejects_stale_attempt_publication_identity() -> None:
 def test_cache_topology_rejects_a_second_github_writer() -> None:
     workflows = {
         path.name: _load_workflow(path)
-        for path in (_ROOT / ".github" / "workflows").glob("*.yml")
+        for path in (_ROOT / ".github" / "workflows").iterdir()
+        if path.is_file() and path.suffix.lower() in {".yml", ".yaml"}
     }
     connected = workflows["android-connected-test.yml"]
     setup_gradle = next(

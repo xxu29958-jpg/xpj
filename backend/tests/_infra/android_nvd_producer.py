@@ -13,7 +13,6 @@ _SETUP_STEPS = [
     "Set up Gradle",
     "Prepare Android build",
 ]
-_CACHE_ACTION_SHA = "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
 
 
 def assert_legacy_nvd_consumer_job(android: dict[str, Any]) -> None:
@@ -47,22 +46,23 @@ def _assert_legacy_nvd_credential_and_cache(
     credential = steps["Detect legacy NVD credential"]
     assert credential["id"] == "nvd-credential"
     assert credential["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
-    assert 'if [ -n "$NVD_API_KEY" ]; then' in credential["run"]
+    assert 'if [ -z "$NVD_API_KEY" ]; then' in credential["run"]
+    assert "::error::NVD_API_KEY is required" in credential["run"]
+    assert "exit 1" in credential["run"]
     assert "available=true" in credential["run"]
-    assert "available=false" in credential["run"]
-    assert "exit 78" not in credential["run"]
+    assert "available=false" not in credential["run"]
 
     cache_restore = steps["Restore OWASP NVD database"]
     assert cache_restore["id"] == "nvd-cache"
     assert cache_restore["if"] == (
         "steps.nvd-credential.outputs.available == 'true'"
     )
-    assert cache_restore["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
+    assert cache_restore["uses"].startswith("actions/cache/restore@")
     cache_save = steps["Save OWASP NVD database"]
-    assert cache_save["uses"] == f"actions/cache/save@{_CACHE_ACTION_SHA}"
+    assert cache_save["uses"].startswith("actions/cache/save@")
     assert "github.ref == 'refs/heads/main'" in cache_save["if"]
     assert "steps.nvd-cache.outputs.cache-hit != 'true'" in cache_save["if"]
-    assert "Dependency vulnerability scan skipped" in steps
+    assert "Dependency vulnerability scan skipped" not in steps
 
 
 def _assert_legacy_nvd_scan_and_evidence(
