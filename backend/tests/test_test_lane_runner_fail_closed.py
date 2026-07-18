@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 
 from scripts import run_test_lanes
-from scripts.pytest_execution_contract import collect_pytest_snapshot
+from scripts.pytest_execution_contract import (
+    collect_pytest_snapshot,
+    pytest_execution_environment,
+)
 from tests._infra.lane_policy import stateful_selection_violation
 
 pytestmark = pytest.mark.parallel_safe
@@ -32,7 +35,7 @@ def test_managed_runner_rejects_zero_execution_with_success_exit(
         "def pytest_runtestloop(session):\n    return True\n",
         encoding="utf-8",
     )
-    environment = os.environ.copy()
+    environment = pytest_execution_environment()
     environment[run_test_lanes.RUNNER_LANE_ENV] = "parallel"
     handshake_path = tmp_path / "zero-execution.handshake"
     environment[run_test_lanes.RUNNER_HANDSHAKE_PATH_ENV] = str(handshake_path)
@@ -87,7 +90,7 @@ def test_worker_side_guard_rejects_a_retained_stateful_item() -> None:
 
 
 def test_pytest_rejects_ambient_worker_without_runtime_authority() -> None:
-    environment = os.environ.copy()
+    environment = pytest_execution_environment()
     environment["PYTEST_XDIST_WORKER"] = "gw7"
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
 
@@ -130,7 +133,7 @@ def test_managed_runner_rejects_collection_hook_identity_drift(
         "            break\n",
         encoding="utf-8",
     )
-    environment = os.environ.copy()
+    environment = pytest_execution_environment()
     environment[run_test_lanes.RUNNER_LANE_ENV] = "parallel"
     handshake_path = tmp_path / "backend-conftest.handshake"
     environment[run_test_lanes.RUNNER_HANDSHAKE_PATH_ENV] = str(handshake_path)
@@ -188,7 +191,7 @@ def test_managed_runner_rejects_precollection_omission(
         "    )\n",
         encoding="utf-8",
     )
-    environment = os.environ.copy()
+    environment = pytest_execution_environment()
     environment[run_test_lanes.RUNNER_LANE_ENV] = "parallel"
     handshake_path = tmp_path / "precollection-drift.handshake"
     environment[run_test_lanes.RUNNER_HANDSHAKE_PATH_ENV] = str(handshake_path)
