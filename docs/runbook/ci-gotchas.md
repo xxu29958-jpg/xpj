@@ -63,7 +63,7 @@ body: { "ref": "<分支名>" }
 **正确做法**：
 - 盯 CI 用**后台轮询脚本**（bash `run_in_background`，`gh pr checks N` 轮到 pending==0 再数 fail），别死等、别信 `gh pr checks --watch`。
 - 红 triage：先 `gh run view --job <id>` 看哪步 ✗，再 `gh run view --job <id> --log` 全日志搜 `^e: `(detekt finding)/ `FAILED` / `failures="[1-9]` / `error:` 定位文件:行。别被被取消 run 的「fail」唬住，也别把 workflow 里 `echo "::error::..."` 的守卫定义文本当真错。
-- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。OWASP 数据源 flake **非 required、不挡合**。
+- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。OWASP 属于 required `Android` job；数据源故障可重跑，但原 run 必须保持红灯。
 
 **铁律**：被 concurrency 取消的旧 run 的 `fail` 是噪声；只认最新 head 那条 run。
 
@@ -182,4 +182,4 @@ git push gitee main                  # 推 cloud mirror
 
 5. **emulator AVD/路径**：gitea `android-connected.yml` 用 runner 宿主用户级 AVD `ticketbox_api36_host`（与记忆一致）；但 **GitHub `android-connected-test.yml` 用 `reactivecircus/android-emulator-runner@v2` 动态起 pixel_6 / api-36，无 `ticketbox_api36_host`**。HANDOFF 把宿主 AVD 当成两端通用，实为 gitea 专属。
 
-（其余记忆陈述——Gradle daemon 共享、OWASP `if NVD_API_KEY != ''` 跳过分支 + `actions/cache@v4` + `validForHours=24`、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。）
+（其余记忆陈述——Gradle daemon 共享、OWASP `actions/cache@v4` + `validForHours=24`、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。）
