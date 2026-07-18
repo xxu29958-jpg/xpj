@@ -29,22 +29,11 @@ import java.util.Locale
  * 本函数不做汇率折算。展示后端 home amount 时使用 [formatDisplayAmount]，
  * 它会传入 backend home currency 让 minor-unit 语义一致。
  */
-fun formatAmount(amountCents: Long?, currency: CurrencyCode = CurrencyCode.Default): String {
-    if (amountCents == null) return "待填写金额"
-    val locale = Locale.forLanguageTag(currency.localeTag)
-    val symbols = DecimalFormatSymbols.getInstance(locale)
-    return if (currency.noFractionDigits) {
-        // JPY/KRW 等无小数币种：minor 已等于 major，不再除以 100
-        val pattern = DecimalFormat("#,##0", symbols)
-        "${currency.symbol}${pattern.format(amountCents)}"
-    } else {
-        val yuan = BigDecimal(amountCents).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
-        val pattern = DecimalFormat("#,##0.00", symbols)
-        "${currency.symbol}${pattern.format(yuan)}"
-    }
+fun formatAmount(amountCents: Long?, currency: CurrencyCode): String {
+    return formatMinorAmount(amountCents, currency)
 }
 
-fun formatDisplayAmount(amountCents: Long?, display: CurrencyDisplay = CurrencyDisplay.Base): String {
+fun formatDisplayAmount(amountCents: Long?, display: CurrencyDisplay): String {
     if (amountCents == null) return "待填写金额"
     return formatAmount(amountCents, display.homeCurrency)
 }
@@ -53,33 +42,23 @@ fun formatMinorAmount(amountMinor: Long?, currency: CurrencyCode): String {
     if (amountMinor == null) return "待填写金额"
     val locale = Locale.forLanguageTag(currency.localeTag)
     val symbols = DecimalFormatSymbols.getInstance(locale)
-    return if (currency.noFractionDigits) {
-        val pattern = DecimalFormat("#,##0", symbols)
-        "${currency.symbol}${pattern.format(amountMinor)}"
-    } else {
-        val major = BigDecimal(amountMinor).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
-        val pattern = DecimalFormat("#,##0.00", symbols)
-        "${currency.symbol}${pattern.format(major)}"
-    }
+    val patternText = if (currency.noFractionDigits) "#,##0" else "#,##0.${"0".repeat(currency.minorUnitDigits)}"
+    val pattern = DecimalFormat(patternText, symbols)
+    val major = BigDecimal.valueOf(amountMinor).movePointLeft(currency.minorUnitDigits)
+    val sign = if (amountMinor < 0L) "-" else ""
+    return "$sign${currency.symbol}${pattern.format(major.abs())}"
 }
 
 fun formatMinorAmountInput(amountMinor: Long?, currency: CurrencyCode): String {
     if (amountMinor == null) return ""
-    return if (currency.noFractionDigits) {
-        amountMinor.toString()
-    } else {
-        BigDecimal(amountMinor).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
-    }
+    return BigDecimal.valueOf(amountMinor)
+        .movePointLeft(currency.minorUnitDigits)
+        .setScale(currency.minorUnitDigits)
+        .toPlainString()
 }
 
-fun sanitizeMinorAmountInput(input: String, currency: CurrencyCode, maxLength: Int = 12): String {
+fun sanitizeMinorAmountInput(input: String, maxLength: Int = 12): String {
     val trimmed = input.trim()
-    if (currency.noFractionDigits) {
-        return trimmed
-            .takeWhile { it != '.' }
-            .filter(Char::isDigit)
-            .take(maxLength)
-    }
     val builder = StringBuilder()
     var hasDecimal = false
     for (char in trimmed) {
@@ -95,70 +74,71 @@ fun sanitizeMinorAmountInput(input: String, currency: CurrencyCode, maxLength: I
     return builder.toString()
 }
 
-fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
+fun parseMinorAmount(
+    input: String,
+    currency: CurrencyCode,
+    allowNegative: Boolean = false,
+): Long? {
     val trimmed = input.trim()
     if (trimmed.isBlank()) return null
     return runCatching {
         val decimal = BigDecimal(trimmed)
-        val scaled = if (currency.noFractionDigits) {
-            decimal.setScale(0, RoundingMode.HALF_UP)
-        } else {
-            decimal.multiply(BigDecimal(100)).setScale(0, RoundingMode.HALF_UP)
-        }
-        if (scaled < BigDecimal.ZERO) return null
-        scaled.longValueExact()
+        if (!allowNegative && decimal.signum() < 0) return null
+        decimal
+            .setScale(currency.minorUnitDigits, RoundingMode.UNNECESSARY)
+            .movePointRight(currency.minorUnitDigits)
+            .longValueExact()
     }.getOrNull()
 }
 
 fun formatExpensePrimaryAmount(
     expense: Expense,
-    display: CurrencyDisplay = CurrencyDisplay.Base,
 ): String {
     val currency = expense.originalCurrencyCode
     val homeCurrency = expense.homeCurrency
     val originalAmount = expense.originalAmountMinor
     return if (currency == homeCurrency || originalAmount == null) {
-        formatDisplayAmount(expense.homeAmountCents ?: expense.amountCents, display)
+        formatAmount(expense.homeAmountCents ?: expense.amountCents, homeCurrency)
     } else {
-        formatMinorAmount(originalAmount, currency)
+        "${formatMinorAmount(originalAmount, currency)} ${currency.storageKey}"
     }
 }
 
-fun formatExpenseExchangeMeta(expense: Expense): String? {
+fun formatExpenseExchangeMeta(
+    expense: Expense,
+    pendingRateLabel: String,
+): String? {
     val currency = expense.originalCurrencyCode
     if (currency == expense.homeCurrency) return null
     val date = (expense.fxRateDate ?: expense.exchangeRateDate)?.takeIf { it.isNotBlank() }
     if (expense.fxStatus == FxContract.StatusPending || expense.fxRate.isNullOrBlank() || expense.homeAmountCents == null) {
         return buildString {
-            append("汇率待同步")
+            append(currency.storageKey)
+                .append(" → ")
+                .append(expense.homeCurrency.storageKey)
+                .append(" · ")
+                .append(pendingRateLabel)
             if (date != null) append(" · ").append(date)
         }
     }
     val rate = expense.fxRate.trim()
-    val cny = formatAmount(expense.homeAmountCents, expense.homeCurrency)
+    val homeAmount = formatAmount(expense.homeAmountCents, expense.homeCurrency)
     return buildString {
-        append("≈ ").append(cny)
+        append("≈ ").append(homeAmount)
         append(" · 汇率 1 ").append(currency.storageKey).append(" = ").append(rate).append(" ")
         append(expense.homeCurrency.storageKey)
         if (date != null) append(" · ").append(date)
     }
 }
 
-fun formatAmountInput(amountCents: Long?): String {
-    if (amountCents == null) return ""
-    return BigDecimal(amountCents).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
-}
+fun formatAmountInput(amountMinor: Long?, currency: CurrencyCode): String =
+    formatMinorAmountInput(amountMinor, currency)
 
-fun parseAmountCents(input: String): Long? {
-    val trimmed = input.trim()
-    if (trimmed.isBlank()) return null
-    return runCatching {
-        BigDecimal(trimmed)
-            .multiply(BigDecimal(100))
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
-    }.getOrNull()
-}
+fun parseAmountCents(
+    input: String,
+    currency: CurrencyCode,
+    allowNegative: Boolean = false,
+): Long? = parseMinorAmount(input, currency, allowNegative)
 
 fun displayTime(value: String?): String {
     if (value.isNullOrBlank()) return "未填写时间"

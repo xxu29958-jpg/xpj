@@ -105,6 +105,7 @@ fun ExpenseEditViewModel.updateSplitAmount(memberId: Long, amountText: String) {
 fun ExpenseEditViewModel.evenSplitAmounts() {
     _uiState.update { state ->
         val parent = state.expenseSplits?.parentAmountCents ?: return@update state
+        val currency = state.expense?.homeCurrency ?: return@update state
         val checked = state.splitDrafts.filter { it.included && !it.disabled }
         if (checked.isEmpty()) return@update state
         // Disabled members already on the split hold fixed amounts the user
@@ -113,12 +114,12 @@ fun ExpenseEditViewModel.evenSplitAmounts() {
         // total (otherwise 差额 can never reach zero when a disabled share exists).
         val fixedDisabledTotal = state.splitDrafts
             .filter { it.disabled }
-            .sumOf { parseAmountCents(it.amountText) ?: 0L }
+            .sumOf { parseAmountCents(it.amountText, currency) ?: 0L }
         val shares = evenSplitActiveCents(parent, fixedDisabledTotal, checked.size)
         val shareByMember = checked.mapIndexed { index, draft -> draft.memberId to shares[index] }.toMap()
         val drafts = state.splitDrafts.map { draft ->
             val share = shareByMember[draft.memberId]
-            if (share != null) draft.copy(amountText = centsToYuanText(share)) else draft
+            if (share != null) draft.copy(amountText = centsToYuanText(share, currency)) else draft
         }
         state.copy(splitDrafts = drafts)
     }
@@ -154,11 +155,11 @@ fun ExpenseEditViewModel.saveSplits() {
         .filter { (it.included || it.disabled) && it.amountText.isNotBlank() }
     // Audit P3 #11: same unparsable-amount guard as saveItems — "1.2.3" must
     // not silently land as a ¥0 split share.
-    if (draftRows.any { parseAmountCents(it.amountText) == null }) {
+    if (draftRows.any { parseAmountCents(it.amountText, expense.homeCurrency) == null }) {
         showSplitsDanger(UiText.res(R.string.expense_edit_splits_amount_unparsable))
         return
     }
-    val drafts = draftRows.map { it.toDomainDraft() }
+    val drafts = draftRows.map { it.toDomainDraft(expense.homeCurrency) }
     viewModelScope.launch {
         _uiState.update {
             it.copy(splitsSaving = true, splitsMessage = null, splitsMessageTone = MessageTone.Neutral)
@@ -207,6 +208,7 @@ private fun ExpenseEditViewModel.buildSplitDrafts(
     members: List<FamilyMember>,
     currentSplits: ExpenseSplits,
 ): List<EditableSplit> {
+    val currency = _uiState.value.expense?.homeCurrency ?: return emptyList()
     val splitByMember = currentSplits.splits.associateBy { it.memberId }
     // Members on a split that the roster no longer lists (disabled + dropped
     // from /members) still need a read-only row so we don't silently lose
@@ -222,7 +224,7 @@ private fun ExpenseEditViewModel.buildSplitDrafts(
                 memberId = member.memberId,
                 displayName = member.displayName,
                 included = existing != null,
-                amountText = existing?.let { centsToYuanText(it.amountCents) }.orEmpty(),
+                amountText = existing?.let { centsToYuanText(it.amountCents, currency) }.orEmpty(),
                 disabled = false,
             )
             // Disabled member already on a split: keep, read-only.
@@ -230,7 +232,7 @@ private fun ExpenseEditViewModel.buildSplitDrafts(
                 memberId = member.memberId,
                 displayName = member.displayName,
                 included = true,
-                amountText = centsToYuanText(existing.amountCents),
+                amountText = centsToYuanText(existing.amountCents, currency),
                 disabled = true,
             )
             // Disabled member NOT on a split: drop (can't add a disabled member).
@@ -242,15 +244,17 @@ private fun ExpenseEditViewModel.buildSplitDrafts(
             memberId = split.memberId,
             displayName = split.accountName.ifBlank { "未命名成员" },
             included = true,
-            amountText = centsToYuanText(split.amountCents),
+            amountText = centsToYuanText(split.amountCents, currency),
             disabled = true,
         )
     }
     return rosterDrafts + orphanDrafts
 }
 
-private fun EditableSplit.toDomainDraft(): ExpenseSplitDraft = ExpenseSplitDraft(
+private fun EditableSplit.toDomainDraft(
+    currency: com.ticketbox.domain.model.CurrencyCode,
+): ExpenseSplitDraft = ExpenseSplitDraft(
     memberId = memberId,
-    amountCents = parseAmountCents(amountText) ?: 0L,
+    amountCents = parseAmountCents(amountText, currency) ?: 0L,
     note = null,
 )

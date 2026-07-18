@@ -28,25 +28,25 @@ import com.ticketbox.ui.components.formatMinorAmount
 enum class DraftNotificationDecision { NONE, DRAFT, LARGE }
 
 /**
- * 大额提醒阈值：50_000 分 = ¥500，本位币（人民币）最小单位。
+ * 大额提醒阈值：50_000 个当前账本本位币最小单位。
  *
  * 比较输入是后端汇率换算后的本位币金额（[Expense.homeAmountCents]），
- * 外币票天然按折算后的人民币金额参与比较，无需另设外币阈值。
- * 改阈值时同步改 strings_notifications.xml 里写明「¥500」的大额副标题文案。
+ * 外币票按冻结折算后的本位币金额参与比较。设置页必须用服务器下发的
+ * home currency 格式化同一个阈值，不能把该数值解释成固定 CNY「分」。
  */
-const val LARGE_AMOUNT_THRESHOLD_CENTS = 50_000L
+const val LARGE_AMOUNT_THRESHOLD_MINOR = 50_000L
 
 /**
  * 纯 JVM 决策函数（零 Android 依赖，单测直测）：草稿创建成功后发哪种系统通知。
  *
  * 规则：
  * - [notificationsAllowed] 为 false（系统通知被关闭/权限未授予）一律 [DraftNotificationDecision.NONE]。
- * - 大额开关开且 [amountCents] 达到 [LARGE_AMOUNT_THRESHOLD_CENTS] → [DraftNotificationDecision.LARGE]，
+ * - 大额开关开且 [amountCents] 达到 [LARGE_AMOUNT_THRESHOLD_MINOR] → [DraftNotificationDecision.LARGE]，
  *   吞并 DRAFT 不双响（大额提醒本身已含「有新草稿待确认」语义）。
  * - 否则待确认开关开 → [DraftNotificationDecision.DRAFT]。
  * - [amountCents] 为 null 时无从判断大额，只可能 DRAFT。
  *
- * [amountCents] 是本位币（人民币）分，见 [LARGE_AMOUNT_THRESHOLD_CENTS]。
+ * [amountCents] 是冻结的本位币最小单位，见 [LARGE_AMOUNT_THRESHOLD_MINOR]。
  */
 fun decideDraftNotification(
     pendingEnabled: Boolean,
@@ -55,7 +55,7 @@ fun decideDraftNotification(
     notificationsAllowed: Boolean,
 ): DraftNotificationDecision {
     if (!notificationsAllowed) return DraftNotificationDecision.NONE
-    val reachesLargeThreshold = amountCents != null && amountCents >= LARGE_AMOUNT_THRESHOLD_CENTS
+    val reachesLargeThreshold = amountCents != null && amountCents >= LARGE_AMOUNT_THRESHOLD_MINOR
     return when {
         largeEnabled && reachesLargeThreshold -> DraftNotificationDecision.LARGE
         pendingEnabled -> DraftNotificationDecision.DRAFT

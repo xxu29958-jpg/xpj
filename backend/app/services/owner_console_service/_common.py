@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Account, Expense, UploadLink
+from app.services.currency_common import home_currency_code, minor_amount_value
 from app.services.ledger_service import list_managed_ledgers_for_account
 from app.services.time_service import now_utc
 
@@ -22,7 +23,9 @@ OWNER_CONSOLE_TIMEZONE = "Asia/Shanghai"
 
 
 def _amount_yuan(amount_cents: int) -> str:
-    return f"{int(amount_cents) / 100:.2f}"
+    """Legacy Owner VM key; value follows the configured home currency."""
+
+    return minor_amount_value(int(amount_cents), home_currency_code())
 
 
 def get_owner_account_id(db: Session) -> int | None:

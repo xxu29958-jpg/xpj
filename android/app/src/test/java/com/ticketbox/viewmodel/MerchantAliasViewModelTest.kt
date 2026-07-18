@@ -59,6 +59,7 @@ class MerchantAliasViewModelTest {
         assertTrue(state.merchantCatalog.any { it.publicId == "catalog-created" })
         assertEquals(UiText.res(R.string.merchant_catalog_added), state.message)
         assertEquals(MessageTone.Success, state.messageTone)
+        assertEquals(1, state.changedRevision)
     }
 
     @Test
@@ -135,6 +136,7 @@ class MerchantAliasViewModelTest {
         assertEquals("source", suggestion.source.publicId)
         assertEquals("target", suggestion.target.publicId)
         assertEquals(9L, suggestion.target.rowVersion)
+        assertEquals(0, state.changedRevision)
     }
 
     @Test
@@ -187,6 +189,7 @@ class MerchantAliasViewModelTest {
         assertTrue(harness.api.merchantCatalogDeleteRequests.isEmpty())
         assertEquals(UiText.res(R.string.common_readonly_ledger), harness.vm.uiState.value.message)
         assertEquals(MessageTone.Danger, harness.vm.uiState.value.messageTone)
+        assertEquals(0, harness.vm.uiState.value.changedRevision)
     }
 
     private fun harness(

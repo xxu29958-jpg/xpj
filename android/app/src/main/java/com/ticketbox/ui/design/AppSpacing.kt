@@ -20,5 +20,9 @@ object AppSpacing {
     val compactPadding: Dp = 10.dp
     val chipGap: Dp = 8.dp
     val bottomContentPadding: Dp = 24.dp
-    val controlMinHeight: Dp = 40.dp
+    /**
+     * Minimum interactive target. Keep the visual glyph smaller when needed,
+     * but never shrink the hit region below Android's 48dp accessibility floor.
+     */
+    val controlMinHeight: Dp = 48.dp
 }

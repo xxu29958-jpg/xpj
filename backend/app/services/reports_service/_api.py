@@ -13,6 +13,11 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.services.category_service import normalize_category
 from app.services.csv_security import safe_csv_cell
+from app.services.currency_common import (
+    home_currency_code,
+    minor_amount_major_number,
+    minor_amount_value,
+)
 from app.services.reports_service._aggregation import (
     _range_amount_count,
     _range_amount_counts,
@@ -126,12 +131,15 @@ def six_month_summary(
     """6 个月（含锚定月）的逐月已确认支出 + 预算汇总。
 
     供 /web/reports 的「六个月，看清节奏」柱+线图使用。返回顺序：最早 → 锚定月。
-    每项 {'month', 'amount_cents', 'amount_yuan', 'count', 'budget_cents', 'budget_yuan'}。
+    ``amount_yuan`` / ``budget_yuan`` are retained compatibility keys whose
+    numeric values are home-currency major units. New consumers should use
+    ``amount_major`` / ``budget_major`` or the exact display-value strings.
     """
     timezone_key, _zone = _resolve_timezone(timezone_name)
     # 避免循环导入：budget_service 没有反向依赖 reports_service。
     from app.services.budget_service import get_monthly_budget
 
+    currency_code = home_currency_code()
     results: list[dict] = []
     for month_label in _month_labels_ending_at(anchor_month, 6):
         start_utc, end_utc = _month_bounds(month_label, timezone_key)
@@ -161,10 +169,14 @@ def six_month_summary(
             {
                 "month": month_label,
                 "amount_cents": int(amount),
-                "amount_yuan": int(amount) / 100.0,
+                "amount_major": minor_amount_major_number(int(amount), currency_code),
+                "amount_value": minor_amount_value(int(amount), currency_code),
+                "amount_yuan": minor_amount_major_number(int(amount), currency_code),
                 "count": int(count),
                 "budget_cents": budget_cents,
-                "budget_yuan": budget_cents / 100.0,
+                "budget_major": minor_amount_major_number(budget_cents, currency_code),
+                "budget_value": minor_amount_value(budget_cents, currency_code),
+                "budget_yuan": minor_amount_major_number(budget_cents, currency_code),
             }
         )
     return results

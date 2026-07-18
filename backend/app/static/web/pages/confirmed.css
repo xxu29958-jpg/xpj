@@ -64,8 +64,7 @@
 .timeline-row.lrow.has-check { grid-template-columns: var(--space-6) var(--space-9) minmax(0, 1fr) auto; }
 .timeline-row.lrow + .timeline-row.lrow { border-top: 1px solid var(--border-card); } /* 1px 发丝线 */
 .timeline-row.lrow:hover { background: var(--surface-sunken); }
-.timeline-row.lrow.selected,
-.timeline-row.lrow[aria-selected="true"] { background: var(--surface-sunken); box-shadow: 0 0 0 1px var(--border-card) inset; }
+.timeline-row.lrow.selected { background: var(--surface-sunken); box-shadow: 0 0 0 1px var(--border-card) inset; }
 
 .lrow-sel { display: flex; align-items: center; }
 .lrow-ic {

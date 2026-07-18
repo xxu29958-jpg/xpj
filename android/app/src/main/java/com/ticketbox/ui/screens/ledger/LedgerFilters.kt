@@ -16,8 +16,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -34,10 +38,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.shiftLedgerMonth
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
-import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
-import com.ticketbox.domain.model.shiftLedgerMonth
+import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
@@ -45,66 +49,131 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
+import com.ticketbox.viewmodel.LedgerDataQualityFilter
+
+private object LedgerFilterLayout {
+    val CompactIconSize = 16.dp
+    val StepIconSize = 20.dp
+    val InlineIconSize = 18.dp
+    val ToolMinimumWidth = 84.dp
+}
 
 @Composable
 internal fun LedgerFilterPanel(
     state: LedgerUiState,
-    onOpenMonthPicker: () -> Unit,
-    onOpenTools: () -> Unit,
-    onManualAdd: () -> Unit,
-    onMonthChange: (String) -> Unit,
+    actions: LedgerFilterPanelActions,
+    showSummaryHeader: Boolean = true,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
-        // 三段竖向布局：账本头（含状态 pill + KPI）→ 视图模式段 → 内联 chip 筛选。
-        // 之前在最末又渲染了一段 `ledgerCombinedStatusLine` 文本——它把 LedgerHeader
-        // 的状态 pill 和 LedgerInlineFilters 的 chip 状态又重新文字叙述一遍，纯冗余。
-        // 移除后顶部垂直高度减少 ~24dp，信息密度更高且没有损失任何用户能用上的信息。
-        LedgerHeader(state = state, onManualAdd = onManualAdd)
+    AppContentCard(
+        contentPadding = PaddingValues(
+            horizontal = AppSpacing.compactPadding,
+            vertical = AppSpacing.smallGap,
+        ),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        if (showSummaryHeader) {
+            LedgerHeader(
+                state = state,
+            )
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
+            )
+        }
         LedgerInlineFilters(
             state = state,
-            onOpenMonthPicker = onOpenMonthPicker,
-            onOpenTools = onOpenTools,
-            onMonthChange = onMonthChange,
+            onOpenMonthPicker = actions.onOpenMonthPicker,
+            onOpenTools = actions.onOpenTools,
+            onManualAdd = actions.onManualAdd,
+            onMonthChange = actions.onMonthChange,
         )
     }
 }
+
+internal data class LedgerFilterPanelActions(
+    val onOpenMonthPicker: () -> Unit,
+    val onOpenTools: () -> Unit,
+    val onManualAdd: () -> Unit,
+    val onMonthChange: (String) -> Unit,
+)
 
 @Composable
 private fun LedgerInlineFilters(
     state: LedgerUiState,
     onOpenMonthPicker: () -> Unit,
     onOpenTools: () -> Unit,
+    onManualAdd: () -> Unit,
     onMonthChange: (String) -> Unit,
 ) {
     val activeFilterCount = ledgerActiveFilterCount(state)
     // Prev/next only when a concrete month is selected; "全部月份" has no neighbor.
     val previousMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, -1L) }
     val nextMonth = remember(state.monthFilter) { shiftLedgerMonth(state.monthFilter, 1L) }
-    AppAdaptiveEqualControlRow(
-        leading = { controlModifier ->
-            LedgerMonthStepper(
-                state = LedgerMonthStepperState(
-                    label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
-                        ?: stringResource(R.string.ledger_inline_month_all),
-                    previousMonth = previousMonth,
-                    nextMonth = nextMonth,
-                ),
-                actions = LedgerMonthStepperActions(
-                    onOpenMonthPicker = onOpenMonthPicker,
-                    onMonthChange = onMonthChange,
-                ),
-                modifier = controlModifier,
-            )
-        },
-        trailing = { controlModifier ->
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        LedgerMonthStepper(
+            state = LedgerMonthStepperState(
+                label = compactLedgerMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                    ?: stringResource(R.string.ledger_inline_month_all),
+                previousMonth = previousMonth,
+                nextMonth = nextMonth,
+            ),
+            actions = LedgerMonthStepperActions(
+                onOpenMonthPicker = onOpenMonthPicker,
+                onMonthChange = onMonthChange,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             LedgerFilterToolButton(
                 onClick = onOpenTools,
                 label = ledgerInlineFilterLabel(state, activeFilterCount),
                 selected = activeFilterCount > 0,
-                modifier = controlModifier,
+                modifier = Modifier.weight(1f),
             )
-        },
-    )
+            if (!state.readOnly) {
+                Button(
+                    onClick = onManualAdd,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = AppSpacing.controlMinHeight),
+                    shape = RoundedCornerShape(AppRadius.extraSmall),
+                    contentPadding = PaddingValues(horizontal = AppSpacing.smallGap),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(LedgerFilterLayout.CompactIconSize),
+                    )
+                    Text(
+                        text = stringResource(R.string.ledger_header_add_button),
+                        modifier = Modifier.padding(start = AppSpacing.miniGap),
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun compactLedgerMonthLabel(monthFilter: String): String {
+    val parts = monthFilter.split("-")
+    return if (parts.size == 2 && parts[0].length == 4 && parts[1].length == 2) {
+        "${parts[0]}.${parts[1]}"
+    } else {
+        displayMonthLabel(monthFilter)
+    }
 }
 
 @Composable
@@ -117,6 +186,10 @@ private fun ledgerInlineFilterLabel(
         activeFilterCount > 1 -> stringResource(R.string.ledger_inline_filter_count, activeFilterCount)
         state.categoryFilter.isNotBlank() -> state.categoryFilter
         state.tagFilter.isNotBlank() -> "#${state.tagFilter}"
+        state.dataQualityFilter == LedgerDataQualityFilter.MissingCategory ->
+            stringResource(R.string.ledger_inline_filter_missing_category)
+        state.dataQualityFilter == LedgerDataQualityFilter.ConfirmedWithoutImage ->
+            stringResource(R.string.ledger_inline_filter_confirmed_without_image)
         else -> stringResource(R.string.ledger_inline_searched)
     }
 }
@@ -126,6 +199,7 @@ private fun ledgerActiveFilterCount(state: LedgerUiState): Int {
     if (state.categoryFilter.isNotBlank()) count += 1
     if (state.tagFilter.isNotBlank()) count += 1
     if (state.query.isNotBlank()) count += 1
+    if (state.dataQualityFilter != null) count += 1
     return count
 }
 
@@ -149,7 +223,7 @@ private fun LedgerMonthStepper(
 ) {
     Row(
         modifier = modifier
-            .heightIn(min = 40.dp)
+            .heightIn(min = AppSpacing.controlMinHeight)
             .padding(vertical = AppSpacing.tinyGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -180,7 +254,7 @@ private fun LedgerMonthStepper(
                 imageVector = Icons.Filled.ExpandMore,
                 contentDescription = stringResource(R.string.ledger_inline_month_picker_description),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(LedgerFilterLayout.CompactIconSize),
             )
         }
         LedgerMonthStepButton(
@@ -201,7 +275,7 @@ private fun LedgerMonthStepButton(
 ) {
     Box(
         modifier = Modifier
-            .size(32.dp)
+            .size(AppSpacing.controlMinHeight)
             .alpha(if (enabled) 1f else 0.36f)
             .clip(RoundedCornerShape(AppRadius.extraSmall))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
@@ -211,7 +285,7 @@ private fun LedgerMonthStepButton(
             imageVector = icon,
             contentDescription = description,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(LedgerFilterLayout.StepIconSize),
         )
     }
 }
@@ -228,8 +302,8 @@ private fun LedgerFilterToolButton(
     val labelColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = modifier
-            .heightIn(min = 40.dp)
-            .widthIn(min = 84.dp)
+            .heightIn(min = AppSpacing.controlMinHeight)
+            .widthIn(min = LedgerFilterLayout.ToolMinimumWidth)
             .clip(shape)
             .then(
                 if (selected) {
@@ -248,7 +322,7 @@ private fun LedgerFilterToolButton(
                 imageVector = Icons.Filled.Check,
                 contentDescription = null,
                 tint = labelColor,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(LedgerFilterLayout.CompactIconSize),
             )
         }
         Text(
@@ -275,14 +349,17 @@ internal fun LedgerInlineButton(
         onClick = onClick,
         options = AppOutlinedButtonOptions(
             enabled = enabled,
-            contentPadding = PaddingValues(horizontal = AppSpacing.compactPadding, vertical = 0.dp),
+            contentPadding = PaddingValues(
+                horizontal = AppSpacing.compactPadding,
+                vertical = AppSpacing.none,
+            ),
         ),
     ) {
         if (icon != null) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(LedgerFilterLayout.InlineIconSize),
             )
         }
         Text(

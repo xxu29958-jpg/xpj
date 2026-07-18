@@ -31,11 +31,21 @@
     <string name="shortcut_review_long_label">查看待确认账单</string>
 
     <!-- 底部导航 tab 标签（AppBottomNav 的可见 Text + contentDescription） -->
-    <string name="nav_tab_ledger">账本</string>
-    <string name="nav_tab_today">今日</string>
-    <string name="nav_tab_pending">待确认</string>
-    <string name="nav_tab_insights">洞察</string>
-    <string name="nav_tab_settings">设置</string>
+    <string name="nav_domain_inbox">收件</string>
+    <string name="nav_domain_transactions">流水</string>
+    <string name="nav_domain_obligations">往来</string>
+    <string name="nav_domain_plans">计划</string>
+    <string name="nav_domain_insights">洞察</string>
+    <string name="relations_title">往来</string>
+    <string name="relations_i_owe_tab">我欠</string>
+    <string name="relations_owed_to_me_tab">欠我</string>
+    <string name="relations_i_owe_subtitle">需要我继续处理的欠款、还款与分期。</string>
+    <string name="relations_owed_to_me_subtitle">我替别人垫付、等待确认或收回的往来。</string>
+    <string name="relations_bill_splits">拆账</string>
+    <string name="relations_repayment_review">还款复核</string>
+    <string name="relations_debt_goals">还债计划</string>
+    <string name="relations_task_section_title">往来任务</string>
+    <string name="navigation_open_account">打开账户与设置</string>
 
     <!-- BiometricAuthManager：本地生物识别解锁的系统弹窗 + 错误文案（release REQUIRE_LOCAL_UNLOCK=true 时可见，经 onError→AppViewModel→LoginScreen） -->
     <string name="biometric_prompt_title">解锁小票夹</string>
@@ -94,8 +104,9 @@
     <string name="error_currency_not_supported">暂不支持这个币种。</string>
     <string name="error_exchange_rate_required">请先填写这一天的汇率。</string>
     <string name="error_exchange_rate_pending">汇率还没同步完成，稍后再确认。</string>
+    <string name="expense_exchange_rate_pending_label">汇率待同步</string>
     <string name="error_exchange_rate_invalid">汇率格式不正确。</string>
-    <string name="error_exchange_rate_base_currency">人民币是基准币种，不需要维护汇率。</string>
+    <string name="error_exchange_rate_base_currency">账本本位币不需要维护汇率。</string>
     <string name="error_image_not_found">图片不存在。</string>
     <string name="error_rule_not_found">分类规则不存在。</string>
     <string name="error_rule_in_use">分类规则仍在使用，不能删除。</string>

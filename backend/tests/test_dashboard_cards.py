@@ -15,6 +15,40 @@ def _set_owner_ledger_role(role: str) -> None:
         db.commit()
 
 
+def _assert_other_ledger_keeps_default_web_layout(
+    client: TestClient,
+    *,
+    headers: dict[str, str],
+) -> None:
+    gray_web = client.get(
+        "/api/dashboard/cards?surface=web",
+        headers=headers,
+    )
+    assert gray_web.status_code == 200, gray_web.json()
+    assert [item["key"] for item in gray_web.json()["items"]][:3] == [
+        "monthly_spend",
+        "budget",
+        "reports",
+    ]
+    gray_visibility = {
+        item["key"]: item["visible"] for item in gray_web.json()["items"]
+    }
+    assert all(
+        gray_visibility[key]
+        for key in (
+            "monthly_spend",
+            "budget",
+            "reports",
+            "goals",
+            "recurring",
+            "pending",
+            "recent_uploads",
+        )
+    )
+    assert gray_visibility["backup_status"] is False
+    assert gray_visibility["device_status"] is False
+
+
 def test_dashboard_cards_defaults_update_and_ledger_scope(client: TestClient, *, identity) -> None:
     default_android = client.get(
         "/api/dashboard/cards?surface=android",
@@ -79,17 +113,10 @@ def test_dashboard_cards_defaults_update_and_ledger_scope(client: TestClient, *,
         "reports",
     ]
 
-    gray_web = client.get(
-        "/api/dashboard/cards?surface=web",
+    _assert_other_ledger_keeps_default_web_layout(
+        client,
         headers=identity.gray_app_headers,
     )
-    assert gray_web.status_code == 200, gray_web.json()
-    assert [item["key"] for item in gray_web.json()["items"]][:3] == [
-        "monthly_spend",
-        "budget",
-        "reports",
-    ]
-    assert all(item["visible"] for item in gray_web.json()["items"])
 
 
 def test_dashboard_cards_validation_and_viewer_write_guard(client: TestClient, *, identity) -> None:

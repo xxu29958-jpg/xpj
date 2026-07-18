@@ -61,6 +61,17 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     assert response.status_code == 200
     assert "预算" in response.text
     assert "未配置" in response.text
+    assert "2026 年 5 月还没有预算基线" in response.text
+    assert "月度预算使用进度" not in response.text
+    assert "占总预算" not in response.text
+    assert '<span class="dt-pill ok">正常</span>' not in response.text
+    assert "本月已确认支出" in response.text
+    assert "设置后开始计算" in response.text
+    assert "总额 + 结转 − 固定 − 预留" in response.text
+    assert "aria-label=\"上一月\"" in response.text
+    assert "month=2026-04" in response.text
+    assert "aria-label=\"下一月\"" in response.text
+    assert "month=2026-06" in response.text
     assert "/web/budgets?ledger_id=owner" in response.text
     assert 'name="total_amount_yuan"' in response.text
     assert 'for="budget-total-amount-yuan"' in response.text
@@ -97,10 +108,11 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
     assert page.status_code == 200
     assert "¥1000.00" in page.text
     assert "¥50.00" in page.text
-    assert 'name="non_monthly_amount_yuan" value="120.00"' in page.text
+    assert 'name="non_monthly_amount_yuan"' in page.text
+    assert 'value="120.00"' in page.text
     assert "餐饮" in page.text
     assert "超支 ¥25.00" in page.text
-    assert "医疗 ¥30.00" in page.text
+    assert "医疗 · ¥30.00" in page.text
 
 
 def test_web_budgets_viewer_read_only_and_post_denied(web_client: TestClient) -> None:

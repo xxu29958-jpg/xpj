@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
@@ -24,8 +25,8 @@ import java.time.ZoneOffset
  *  - remove the debt-voided link(s) via [removeVoidedDebts] (link-replace → new version)
  *  - keep it for audit via [acknowledge] (clears needs_review for the current version)
  *
- * This slice is view + integrity-review only; creating a debt goal (which needs a
- * Debt picker) lands with the broader debt-management UI in a later slice.
+ * The detail also owns a complete link-replacement editor: it reads current candidates from
+ * [DebtActions], keeps a recoverable draft, and writes through the goal's OCC contract.
  */
 data class DebtGoalUiState(
     val isLoading: Boolean = false,
@@ -33,6 +34,15 @@ data class DebtGoalUiState(
     val goals: List<Goal> = emptyList(),
     /** Non-null = the detail page for this goal is open; null = the list. */
     val selectedGoal: Goal? = null,
+    /** True while the full linked-debt picker replaces this goal's link set. */
+    val linkEditorOpen: Boolean = false,
+    val linkCandidates: List<com.ticketbox.domain.model.Debt> = emptyList(),
+    val selectedDebtIds: Set<String> = emptySet(),
+    val isLoadingLinkCandidates: Boolean = false,
+    /** True only when both the target goal OCC snapshot and debt candidates were refreshed together. */
+    val isLinkEditorSnapshotFresh: Boolean = false,
+    /** Goal row version paired atomically with [linkCandidates] and [selectedDebtIds]. */
+    val linkEditorSnapshotRowVersion: Long? = null,
     val isSubmitting: Boolean = false,
     val error: UiText? = null,
     val flashMessage: UiText? = null,
@@ -47,6 +57,7 @@ data class DebtGoalCelebration(val goalName: String)
 
 class DebtGoalViewModel(
     private val repository: ReportsActions,
+    debts: DebtActions? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DebtGoalUiState(canModify = repository.canModifyLedger()))
@@ -57,6 +68,25 @@ class DebtGoalViewModel(
     // 直接转发协作者的 flow（property，不计入 TooManyFunctions）。
     private val celebrationController = DebtGoalCelebrationController()
     val celebration: StateFlow<DebtGoalCelebration?> get() = celebrationController.celebration
+
+    /**
+     * Link-set editing is a cohesive sub-flow, so its commands live in a narrow controller instead
+     * of inflating this screen ViewModel beyond the project's complexity gate. Its draft still
+     * resides in [state], which keeps selection and inline feedback stable across recomposition.
+     */
+    internal val linkEditor = DebtGoalLinkEditorController(
+        state = _state,
+        reports = repository,
+        debts = debts,
+        scope = viewModelScope,
+        onCommitted = { updated ->
+            applyMutation(
+                result = Result.success(updated),
+                successRes = R.string.debt_goal_links_updated,
+                closeLinkEditor = true,
+            )
+        },
+    )
 
     // Monotonic load token (mirrors StatsReportsViewModel): a load applies its result
     // only if it is still the latest. Overlapping loads (init + refresh(clearStale=true)
@@ -83,8 +113,20 @@ class DebtGoalViewModel(
      */
     fun refresh(clearStale: Boolean = false) {
         if (clearStale) {
+            linkEditor.invalidate()
             _state.update {
-                it.copy(goals = emptyList(), selectedGoal = null, error = null, flashMessage = null)
+                it.copy(
+                    goals = emptyList(),
+                    selectedGoal = null,
+                    linkEditorOpen = false,
+                    linkCandidates = emptyList(),
+                    selectedDebtIds = emptySet(),
+                    isLoadingLinkCandidates = false,
+                    isLinkEditorSnapshotFresh = false,
+                    linkEditorSnapshotRowVersion = null,
+                    error = null,
+                    flashMessage = null,
+                )
             }
         }
         val gen = ++loadGeneration
@@ -144,6 +186,13 @@ class DebtGoalViewModel(
                 current
             }
         }
+        if (
+            _state.value.linkEditorOpen &&
+            !_state.value.isSubmitting &&
+            _state.value.linkEditorSnapshotRowVersion != fresh.rowVersion
+        ) {
+            linkEditor.refresh()
+        }
         // 主路径：详情停在 in_progress 时一次 refresh 拉到 achieved（用户在场目击跨边沿，§6.6）。
         // 成员达成 emit overlay 撒花信号；外部/混装返回轻量 flash 文案就展示（§6.7）。
         celebrationController.onGoalApplied(old = selected, new = fresh)?.let { flash ->
@@ -156,8 +205,19 @@ class DebtGoalViewModel(
      * the single goal so the pane uses the canonical row. A failed re-fetch keeps the list copy.
      */
     fun openDetail(goal: Goal) {
+        linkEditor.invalidate()
         val gen = ++loadGeneration
-        _state.update { it.copy(selectedGoal = goal) }
+        _state.update {
+            it.copy(
+                selectedGoal = goal,
+                linkEditorOpen = false,
+                linkCandidates = emptyList(),
+                selectedDebtIds = emptySet(),
+                isLoadingLinkCandidates = false,
+                isLinkEditorSnapshotFresh = false,
+                linkEditorSnapshotRowVersion = null,
+            )
+        }
         viewModelScope.launch {
             val fresh = repository.goal(goal.publicId).getOrNull() ?: return@launch
             // A newer load/mutation superseded this detail fetch — don't clobber it.
@@ -169,6 +229,13 @@ class DebtGoalViewModel(
                     current
                 }
             }
+            if (
+                _state.value.linkEditorOpen &&
+                !_state.value.isSubmitting &&
+                _state.value.linkEditorSnapshotRowVersion != fresh.rowVersion
+            ) {
+                linkEditor.refresh()
+            }
             // Opening a goal whose list copy is in_progress but whose fresh detail just turned
             // achieved is a witnessed cross-edge. An already-achieved list copy -> no replay.
             celebrationController.onGoalApplied(old = goal, new = fresh)?.let { flash ->
@@ -178,7 +245,19 @@ class DebtGoalViewModel(
     }
 
     fun closeDetail() {
-        _state.update { it.copy(selectedGoal = null, error = null) }
+        linkEditor.invalidate()
+        _state.update {
+            it.copy(
+                selectedGoal = null,
+                linkEditorOpen = false,
+                linkCandidates = emptyList(),
+                selectedDebtIds = emptySet(),
+                isLoadingLinkCandidates = false,
+                isLinkEditorSnapshotFresh = false,
+                linkEditorSnapshotRowVersion = null,
+                error = null,
+            )
+        }
     }
 
     /** §6/F13 exit (a): drop the debt-voided link(s) → a new goal version. */
@@ -228,8 +307,8 @@ class DebtGoalViewModel(
     /**
      * Archive the open goal. The only clean exit when a not-yet-achieved goal's whole
      * link set is voided (§6/F13): "remove voided" has no non-voided replacement and
-     * acknowledge is achieved-only, so without a Debt picker (a later slice) archiving
-     * is how the user clears the dead-end review.
+     * acknowledge is achieved-only. The link editor can now repair the set; archive remains
+     * the explicit exit when the goal itself is no longer wanted.
      */
     fun archiveSelected() {
         val goal = _state.value.selectedGoal ?: return
@@ -245,6 +324,12 @@ class DebtGoalViewModel(
                         it.copy(
                             isSubmitting = false,
                             selectedGoal = null,
+                            linkEditorOpen = false,
+                            linkCandidates = emptyList(),
+                            selectedDebtIds = emptySet(),
+                            isLoadingLinkCandidates = false,
+                            isLinkEditorSnapshotFresh = false,
+                            linkEditorSnapshotRowVersion = null,
                             flashMessage = UiText.res(R.string.debt_goal_archived),
                             error = null,
                         )
@@ -264,7 +349,11 @@ class DebtGoalViewModel(
         _state.update { it.copy(flashMessage = null) }
     }
 
-    private fun applyMutation(result: Result<Goal>, successRes: Int) {
+    private fun applyMutation(
+        result: Result<Goal>,
+        successRes: Int,
+        closeLinkEditor: Boolean = false,
+    ) {
         result.fold(
             onSuccess = { updated ->
                 // Supersede any in-flight load so it can't revert this committed change.
@@ -275,6 +364,15 @@ class DebtGoalViewModel(
                         isSubmitting = false,
                         selectedGoal = updated,
                         goals = current.goals.replaceGoal(updated),
+                        linkEditorOpen = if (closeLinkEditor) false else current.linkEditorOpen,
+                        linkCandidates = if (closeLinkEditor) emptyList() else current.linkCandidates,
+                        selectedDebtIds = if (closeLinkEditor) emptySet() else current.selectedDebtIds,
+                        isLoadingLinkCandidates =
+                            if (closeLinkEditor) false else current.isLoadingLinkCandidates,
+                        isLinkEditorSnapshotFresh =
+                            if (closeLinkEditor) false else current.isLinkEditorSnapshotFresh,
+                        linkEditorSnapshotRowVersion =
+                            if (closeLinkEditor) null else current.linkEditorSnapshotRowVersion,
                         flashMessage = UiText.res(successRes),
                         error = null,
                     )

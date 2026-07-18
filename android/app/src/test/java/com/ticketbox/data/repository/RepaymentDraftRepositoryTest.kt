@@ -8,6 +8,7 @@ import com.ticketbox.data.remote.dto.RepaymentDraftConfirmRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentDraftStatuses
 import com.ticketbox.domain.model.RepaymentNotificationDraft
@@ -83,6 +84,18 @@ class RepaymentDraftRepositoryTest {
     @Test
     fun createDraftRejectedWhenLedgerSwitchedSincePost() = runTest {
         val handler = RepaymentDraftApiHandler()
+        val nonCnySettings = boundSettingsStore().apply {
+            saveHomeCurrencyCodeKey(CurrencyCode.JPY.storageKey)
+        }
+
+        val unsupportedCurrency = repository(handler, nonCnySettings).createDraft(
+            draft = RepaymentNotificationDraft(RepaymentDraftSource.Alipay, 50_000, null, "2026-06-17T08:00:00Z"),
+            expectedLedgerId = "owner",
+            notificationKey = "key-jpy",
+        )
+
+        assertTrue(unsupportedCurrency.isFailure)
+        assertTrue(handler.createCalls.isEmpty())
 
         // The post-time ledger no longer matches the active ledger → reject rather than capture into
         // the wrong book (mirrors createNotificationDraft). The API must not be hit.

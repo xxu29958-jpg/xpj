@@ -20,18 +20,18 @@ val LocalSwipeActionTokens = compositionLocalOf { swipeActionTokensForSkin(AppSk
 
 fun swipeActionTokensForSkin(skin: AppSkin): SwipeActionTokens = when (skin) {
     AppSkin.Paper -> SwipeActionTokens(
-        confirm = SwipeAction(Color(0xFF4F6B3A), Color(0xFFFBF8F1), Color(0xFFFBF8F1)),
-        ignore = SwipeAction(Color(0xFF807968), Color(0xFFFBF8F1), Color(0xFFFBF8F1)),
-        delete = SwipeAction(Color(0xFFA4361C), Color(0xFFFBF8F1), Color(0xFFFBF8F1)),
+        confirm = SwipeAction(Color(0xFF176B5B), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
+        ignore = SwipeAction(Color(0xFF66716B), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
+        delete = SwipeAction(Color(0xFFA83D32), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
     )
     AppSkin.Mono -> SwipeActionTokens(
-        confirm = SwipeAction(Color(0xFF2C5036), Color(0xFFFAFAF8), Color(0xFFFAFAF8)),
-        ignore = SwipeAction(Color(0xFF6F6E6A), Color(0xFFFAFAF8), Color(0xFFFAFAF8)),
-        delete = SwipeAction(Color(0xFF8E1D12), Color(0xFFFAFAF8), Color(0xFFFAFAF8)),
+        confirm = SwipeAction(Color(0xFF315A45), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
+        ignore = SwipeAction(Color(0xFF626965), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
+        delete = SwipeAction(Color(0xFF8C3B32), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
     )
     AppSkin.Midnight -> SwipeActionTokens(
-        confirm = SwipeAction(Color(0xFF2E3D2A), Color(0xFFA8B88A), Color(0xFFA8B88A)),
-        ignore = SwipeAction(Color(0xFF2A2D35), Color(0xFFB8B4A8), Color(0xFFB8B4A8)),
-        delete = SwipeAction(Color(0xFF3D2823), Color(0xFFD97757), Color(0xFFD97757)),
+        confirm = SwipeAction(Color(0xFF2C4B40), Color(0xFFB4E2D2), Color(0xFFB4E2D2)),
+        ignore = SwipeAction(Color(0xFF303A35), Color(0xFFAAB5AF), Color(0xFFAAB5AF)),
+        delete = SwipeAction(Color(0xFF4D302A), Color(0xFFF1A08E), Color(0xFFF1A08E)),
     )
 }

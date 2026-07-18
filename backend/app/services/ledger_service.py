@@ -56,6 +56,48 @@ LEDGER_NAME_MAX_LEN = 60
 LEDGER_ID_RANDOM_BYTES = 6  # 12 hex chars; ledger_id stays well under 64 chars.
 LEDGER_ID_ALLOCATION_RETRIES = 8
 
+
+def build_loopback_owner_auth_context(
+    db: Session,
+    *,
+    ledger_id: str,
+    role: str,
+) -> AuthContext:
+    """Build the owner-console identity used by loopback Web form adapters."""
+    account_id = find_owner_account_id_for_ledger(db, ledger_id=ledger_id)
+    account = db.get(Account, account_id) if account_id is not None else None
+    ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id))
+    device = (
+        db.scalar(
+            select(Device)
+            .where(
+                Device.account_id == account_id,
+                Device.revoked_at.is_(None),
+            )
+            .order_by(Device.id.asc())
+            .limit(1)
+        )
+        if account_id is not None
+        else None
+    )
+    if account is None or ledger is None or device is None:
+        raise AppError(
+            "invalid_request",
+            "当前账号缺少可用设备身份，暂时无法手工记账。",
+            status_code=400,
+        )
+    return AuthContext(
+        account_id=account.id,
+        account_name=account.display_name,
+        ledger_id=ledger.ledger_id,
+        ledger_name=ledger.name,
+        device_id=device.id,
+        device_name=device.device_name,
+        role=role,
+        scope="app",
+    )
+
+
 def _normalize_ledger_name(value: str | None) -> str:
     cleaned = (value or "").strip()
     if not cleaned:
@@ -68,8 +110,7 @@ def _normalize_ledger_name(value: str | None) -> str:
 def _new_ledger_id(db: Session) -> str:
     """Generate a unique public ``ledger_id``. Retries on the rare collision."""
     candidates = [
-        f"{LEDGER_ID_PREFIX}{secrets.token_hex(LEDGER_ID_RANDOM_BYTES)}"
-        for _ in range(LEDGER_ID_ALLOCATION_RETRIES)
+        f"{LEDGER_ID_PREFIX}{secrets.token_hex(LEDGER_ID_RANDOM_BYTES)}" for _ in range(LEDGER_ID_ALLOCATION_RETRIES)
     ]
     existing = set(db.scalars(select(Ledger.ledger_id).where(Ledger.ledger_id.in_(candidates))))
     for candidate in candidates:
@@ -268,11 +309,7 @@ def _lock_ledger_switch_context(
     # global order shared with archive/member-disable/token revocation.  The
     # target rows are re-read under FOR UPDATE before the source token can be
     # revoked, so a losing switch rolls back without stranding the caller.
-    ledger = db.scalar(
-        select(Ledger)
-        .where(Ledger.ledger_id == target_ledger_id)
-        .with_for_update()
-    )
+    ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == target_ledger_id).with_for_update())
     if ledger is None or ledger.archived_at is not None:
         raise AppError("ledger_forbidden", status_code=403)
     membership = db.scalar(
@@ -306,6 +343,12 @@ def switch_ledger(
         device_id=device_id,
         target_ledger_id=target_ledger_id,
     )
+    if (device.platform or "").strip().lower() == "desktop":
+        raise AppError(
+            "desktop_activation_required",
+            "桌面端切换必须先安全保存待激活凭证。",
+            status_code=409,
+        )
 
     from app.services.time_service import now_utc
 
@@ -351,6 +394,7 @@ def ledger_member_counts(db: Session, *, ledger_id: str) -> dict[str, int]:
         db.scalar(
             select(func.count(func.distinct(AuthToken.device_id)))
             .where(AuthToken.ledger_id == ledger_id)
+            .where(AuthToken.activation_state == "active")
             .where(AuthToken.revoked_at.is_(None))
         )
         or 0
@@ -360,6 +404,7 @@ def ledger_member_counts(db: Session, *, ledger_id: str) -> dict[str, int]:
             select(func.count())
             .select_from(AuthToken)
             .where(AuthToken.ledger_id == ledger_id)
+            .where(AuthToken.activation_state == "active")
             .where(AuthToken.revoked_at.is_(None))
         )
         or 0

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,10 +32,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
-import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
 import com.ticketbox.ui.components.displayTime
@@ -44,6 +45,7 @@ import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyCode
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
 import java.time.Instant
@@ -57,6 +59,7 @@ private object LedgerItemLayout {
     const val CategoryMarkAlpha = 0.78f
     const val TableMerchantWeight = 1.35f
     const val TableCategoryWeight = 0.72f
+    val DayHeaderTrailingMaxWidth = 160.dp
     val RowTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 }
 
@@ -98,7 +101,7 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
         ?.let { stringResource(R.string.ledger_day_count_with_preview, state.itemCount, it) }
         ?: stringResource(R.string.ledger_day_count, state.itemCount)
     Column(modifier = Modifier.fillMaxWidth()) {
-        AppAdaptiveContentActionStateRow(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(
@@ -107,27 +110,27 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
                 )
                 .padding(
                     horizontal = AppSpacing.smallGap,
-                    vertical = AppSpacing.tinyGap + AppSpacing.tinyGap,
+                    vertical = AppSpacing.smallGap,
                 ),
-            wideActionWeight = AppAdaptiveAmountRowDefaults.groupHeaderTrailingWeight,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
-            content = {
-                LedgerDayHeaderCopy(state = state, metaText = metaText, modifier = Modifier.fillMaxWidth())
-            },
-            action = { amountModifier, _ ->
-                Row(
-                    modifier = amountModifier,
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    LedgerDayHeaderAmount(
-                        state = state,
-                        modifier = Modifier.weight(1f),
-                    )
-                    LedgerDayHeaderToggleIcon(state)
-                }
-            },
-        )
+        ) {
+            LedgerDayHeaderCopy(state = state, metaText = metaText, modifier = Modifier.weight(1f))
+            Row(
+                modifier = Modifier.widthIn(
+                    min = AppAdaptiveAmountRowDefaults.statusMinWidth,
+                    max = LedgerItemLayout.DayHeaderTrailingMaxWidth,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LedgerDayHeaderAmount(
+                    state = state,
+                    modifier = Modifier.weight(1f),
+                )
+                LedgerDayHeaderToggleIcon(state)
+            }
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f))
     }
 }
@@ -168,7 +171,7 @@ private fun LedgerDayHeaderAmount(
     ) {
         AppEndAlignedAmountText(
             modifier = Modifier.fillMaxWidth(),
-            text = formatAmount(state.dayTotalCents),
+            text = formatAmount(state.dayTotalCents, LocalCurrencyCode.current),
             role = AppAmountRole.Compact,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -268,6 +271,7 @@ internal fun LedgerExpenseCard(
                 ) {
                     LedgerAmountOrPending(
                         amountCents = expense.amountCents,
+                        currency = expense.homeCurrency,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
@@ -315,34 +319,37 @@ internal fun LedgerExpenseListRow(
                 onLongClick = actions.onEnterSelection,
             ),
     ) {
-        AppAdaptiveContentActionRow(
-            modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = rowMetrics.rowPadding),
-            wideActionWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
+            horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
             verticalAlignment = Alignment.CenterVertically,
-            content = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (state.selection.enabled) {
-                        Checkbox(checked = state.selection.selected, onCheckedChange = null)
-                    }
-                    LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
-                    LedgerListTextBlock(
-                        expense = expense,
-                        metaText = metaText,
-                        modifier = Modifier.weight(1f),
-                    )
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (state.selection.enabled) {
+                    Checkbox(checked = state.selection.selected, onCheckedChange = null)
                 }
-            },
-            action = { amountModifier ->
-                LedgerAmountOrPending(
-                    amountCents = expense.amountCents,
-                    modifier = amountModifier,
+                LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
+                LedgerListTextBlock(
+                    expense = expense,
+                    metaText = metaText,
+                    modifier = Modifier.weight(1f),
                 )
-            },
-        )
+            }
+            LedgerAmountOrPending(
+                amountCents = expense.amountCents,
+                currency = expense.homeCurrency,
+                modifier = Modifier.widthIn(
+                    min = AppAdaptiveAmountRowDefaults.statusMinWidth,
+                    max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
+                ),
+            )
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
     }
 }
@@ -420,6 +427,7 @@ internal fun LedgerExpenseTableRow(
             action = { amountModifier, _ ->
                 LedgerAmountOrPending(
                     amountCents = expense.amountCents,
+                    currency = expense.homeCurrency,
                     modifier = amountModifier,
                 )
             },
@@ -431,13 +439,14 @@ internal fun LedgerExpenseTableRow(
 @Composable
 private fun LedgerAmountOrPending(
     amountCents: Long?,
+    currency: CurrencyCode,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.CenterEnd) {
         amountCents?.let {
             AppEndAlignedAmountText(
                 modifier = Modifier.fillMaxWidth(),
-                text = formatAmount(it),
+                text = formatAmount(it, currency),
                 role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
             )

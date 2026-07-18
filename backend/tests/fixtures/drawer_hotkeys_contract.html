@@ -1,0 +1,108 @@
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+</head>
+<body>
+  <main id="workspace">
+    <div id="exp-table">
+      <article class="exp-row">
+        <a id="row-1"
+           class="exp-row-detail"
+           href="/web/expenses/1/edit"
+           data-fragment-url="/web/expenses/1/edit?fragment=1">第一笔</a>
+      </article>
+      <article class="exp-row">
+        <a id="row-2"
+           class="exp-row-detail"
+           href="/web/expenses/2/edit"
+           data-fragment-url="/web/expenses/2/edit?fragment=1">第二笔</a>
+      </article>
+    </div>
+  </main>
+  <div class="drawer-host">
+    <button id="drawer-scrim" type="button">关闭抽屉</button>
+    <aside id="drawer" aria-hidden="true" tabindex="-1"></aside>
+  </div>
+  <script>
+    (() => {
+      const scenario = "__SCENARIO__";
+      let fetchCount = 0;
+      const headers = { get: (name) => name.toLowerCase() === "content-type" ? "text/html; charset=utf-8" : null };
+      const editFragment = `
+        <div data-drawer-fragment="expense-edit">
+          <form data-drawer-form action="/web/expenses/1/save">
+            <button type="submit" formaction="/web/expenses/1/confirm">确认入账</button>
+          </form>
+          <button type="button" data-drawer-close>关闭</button>
+        </div>`;
+      const loginPage = "<main>LOGIN PAGE SENTINEL</main>";
+      function response(body, options) {
+        return Promise.resolve({
+          ok: options.ok,
+          redirected: options.redirected,
+          url: options.url,
+          headers,
+          text: () => Promise.resolve(body)
+        });
+      }
+      window.fetch = () => {
+        fetchCount += 1;
+        if (scenario === "mutation_redirect" && fetchCount === 1) {
+          return response(editFragment, {
+            ok: true,
+            redirected: false,
+            url: "https://example.invalid/web/expenses/1/edit?fragment=1"
+          });
+        }
+        return response(loginPage, {
+          ok: true,
+          redirected: true,
+          url: "https://example.invalid/web/auth/login?next=%2Fweb%2Fpending"
+        });
+      };
+    })();
+  </script>
+  <script src="__DRAWER_URI__"></script>
+  <script src="__HOTKEYS_URI__"></script>
+  <script>
+    (() => {
+      const app = window.TicketboxWeb;
+      const row1 = document.getElementById("row-1");
+      const row2 = document.getElementById("row-2");
+      app.initDrawer();
+      app.initReviewHotkeys();
+
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+      const globalSelection = document.querySelector("[aria-current=true]");
+      row1.focus();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+      const firstScopedSelection = document.querySelector("[aria-current=true]");
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+      const secondScopedSelection = document.querySelector("[aria-current=true]");
+      const scopedActiveElement = document.activeElement;
+
+      row1.click();
+      if ("__SCENARIO__" === "mutation_redirect") {
+        setTimeout(() => app.drawerApi.submitConfirm(), 80);
+      }
+      setTimeout(() => {
+        const drawer = document.getElementById("drawer");
+        const loginLink = drawer.querySelector("[data-drawer-session-expired] a");
+        window.__webConsumerProbe = {
+          globalSelection: globalSelection ? globalSelection.id : null,
+          firstScopedSelection: firstScopedSelection ? firstScopedSelection.id : null,
+          secondScopedSelection: secondScopedSelection ? secondScopedSelection.id : null,
+          scopedActiveElement: scopedActiveElement ? scopedActiveElement.id : null,
+          rowCount: document.querySelectorAll(".exp-row").length,
+          currentRow: document.querySelector("[aria-current=true]")?.id || null,
+          sessionExpired: Boolean(drawer.querySelector("[data-drawer-session-expired]")),
+          loginSentinelInjected: drawer.textContent.includes("LOGIN PAGE SENTINEL"),
+          loginPath: loginLink ? loginLink.getAttribute("href") : null,
+          row1Connected: row1.isConnected,
+          row2Connected: row2.isConnected
+        };
+      }, 220);
+    })();
+  </script>
+</body>
+</html>

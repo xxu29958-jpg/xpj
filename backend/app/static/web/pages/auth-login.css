@@ -1,100 +1,276 @@
-/* /web/auth/login page — extracted from login.html inline <style> (P2 audit).
- * Tokens come from /static/shared/tokens.css (loaded by the template before
- * this stylesheet).
- */
-
-* { box-sizing: border-box; }
-
-body {
-    margin: 0;
-    min-height: 100vh;
-    background: var(--surface-app);
-    color: var(--text-default);
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
-    display: grid;
-    place-items: center;
-    padding: 24px;
+* {
+    box-sizing: border-box;
 }
 
-.card {
-    width: 100%;
-    max-width: 360px;
-    background: var(--surface-card);
+html {
+    min-width: 0;
+    min-height: 100%;
+    background: var(--surface-app);
+}
+
+body {
+    min-width: 0;
+    min-height: 100dvh;
+    margin: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    background: var(--surface-app);
+    color: var(--text-default);
+    font-family: "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
+    font-size: var(--type-body-size);
+    line-height: var(--type-body-line);
+}
+
+.access-page {
+    --access-copy-max: 42ch;
+    --access-title-max: 12ch;
+}
+
+button,
+input {
+    font: inherit;
+}
+
+.access-header,
+.access-layout,
+.access-footer {
+    width: min(var(--layout-page-max), 100%);
+    margin-inline: auto;
+}
+
+.access-header {
+    padding: var(--space-7) var(--space-8);
+}
+
+.access-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.access-brand-mark {
+    display: block;
+    width: var(--space-9);
+    height: var(--space-9);
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+}
+
+.access-brand > span:last-child {
+    display: grid;
+    gap: var(--space-1);
+}
+
+.access-brand strong {
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-title-weight);
+}
+
+.access-brand small {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.access-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, .8fr);
+    align-items: center;
+    gap: var(--space-12);
+    padding: var(--space-8);
+}
+
+.access-intro {
+    display: grid;
+    max-width: var(--access-copy-max);
+    gap: var(--space-5);
+}
+
+.access-eyebrow {
+    color: var(--brand-primary-strong);
+    font-size: var(--type-meta-size);
+    font-weight: var(--type-meta-weight);
+    letter-spacing: var(--type-meta-tracking);
+}
+
+.access-intro h1,
+.access-form-panel h2 {
+    margin: 0;
+    color: var(--text-default);
+}
+
+.access-intro h1 {
+    max-width: var(--access-title-max);
+    font-size: var(--type-display-size);
+    line-height: var(--type-display-line);
+    font-weight: var(--type-display-weight);
+}
+
+.access-intro > p {
+    max-width: 42ch;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--type-subtitle-size);
+    line-height: var(--type-body-line);
+}
+
+.access-assurance {
+    display: grid;
+    max-width: var(--access-copy-max);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-block-start: 1px solid var(--border-card);
+}
+
+.access-assurance > div {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-5) var(--space-5) 0 0;
+}
+
+.access-assurance > div + div {
+    padding-inline-start: var(--space-5);
+    border-inline-start: 1px solid var(--border-card);
+}
+
+.access-assurance strong {
+    font-size: var(--type-body-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.access-assurance span,
+.access-field > span {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
+
+.access-form-panel {
+    display: grid;
+    gap: var(--space-6);
+    padding: var(--space-8);
     border: 1px solid var(--border-card);
-    border-radius: var(--radius-card);
-    padding: 32px 28px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-card);
     box-shadow: var(--shadow-card);
 }
 
-h1 {
-    margin: 0 0 4px;
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--brand-primary);
+.access-form-panel > div:first-child {
+    display: grid;
+    gap: var(--space-3);
 }
 
-.hint {
-    margin: 0 0 24px;
-    font-size: 13px;
-    color: var(--text-meta);
+.access-form-panel h2 {
+    font-size: var(--type-headline-size);
+    line-height: var(--type-headline-line);
+    font-weight: var(--type-headline-weight);
 }
 
-label {
-    display: block;
-    font-size: 13px;
+.access-form-hint {
+    margin: 0;
     color: var(--text-muted);
-    margin: 16px 0 6px;
 }
 
-input[type="text"],
-input[type="password"] {
+.access-form-panel form {
+    display: grid;
+    gap: var(--space-6);
+}
+
+.access-field {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.access-field label {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.access-field input {
     width: 100%;
-    padding: 10px 12px;
+    min-height: var(--space-10);
+    padding: var(--space-3) var(--space-4);
     border: 1px solid var(--border-input);
-    border-radius: var(--radius-input);
+    border-radius: var(--radius-sm);
     background: var(--surface-raised);
     color: var(--text-default);
-    font-size: 15px;
+}
+
+.access-code-input {
+    font-size: var(--type-title-size);
     font-variant-numeric: tabular-nums;
-    letter-spacing: 0.12em;
+    letter-spacing: var(--type-meta-tracking);
 }
 
-input:focus {
-    outline: none;
-    border-color: var(--brand-primary);
-    box-shadow: 0 0 0 3px var(--brand-focus-ring);
+.access-field input:hover {
+    border-color: var(--control-border-hover);
 }
 
-button {
-    width: 100%;
-    margin-top: 24px;
-    padding: 11px 14px;
+.access-field input:focus-visible,
+.access-form-panel button:focus-visible {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+.access-form-panel button {
+    min-height: var(--space-10);
+    padding: var(--space-3) var(--space-5);
+    border: 1px solid var(--brand-primary);
+    border-radius: var(--radius-sm);
     background: var(--brand-primary);
     color: var(--text-on-primary);
-    border: 0;
-    border-radius: var(--radius-input);
-    font-size: 15px;
-    font-weight: 500;
     cursor: pointer;
+    font-weight: var(--type-subtitle-weight);
 }
 
-button:hover { background: var(--brand-primary-strong); }
+.access-form-panel button:hover {
+    border-color: var(--brand-primary-strong);
+    background: var(--brand-primary-strong);
+}
 
-.error {
-    margin: 12px 0 0;
-    padding: 10px 12px;
+.access-error {
+    padding: var(--space-4);
+    border: 1px solid var(--state-danger-border);
+    border-radius: var(--radius-sm);
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);
-    border: 1px solid var(--state-danger-border);
-    border-radius: var(--radius-input);
-    font-size: 13px;
 }
 
-.foot {
-    margin-top: 28px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border-card);
-    font-size: 12px;
+.access-footer {
+    padding: var(--space-5) var(--space-8) var(--space-7);
     color: var(--text-faint);
-    line-height: 1.6;
+    font-size: var(--type-caption-size);
+}
+
+@media (max-width: 48rem) {
+    .access-layout {
+        grid-template-columns: minmax(0, 1fr);
+        align-content: center;
+        gap: var(--space-8);
+    }
+
+    .access-intro h1 {
+        max-width: none;
+        font-size: var(--type-hero-size);
+        line-height: var(--type-hero-line);
+    }
+}
+
+@media (max-width: 32rem) {
+    .access-header,
+    .access-layout,
+    .access-footer {
+        padding-inline: var(--space-5);
+    }
+
+    .access-form-panel {
+        padding: var(--space-6);
+    }
+
+    .access-assurance {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .access-assurance > div + div {
+        padding-inline-start: 0;
+        border-inline-start: 0;
+    }
 }

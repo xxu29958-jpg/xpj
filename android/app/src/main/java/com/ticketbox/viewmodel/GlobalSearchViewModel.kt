@@ -6,11 +6,12 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.GlobalSearchActions
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.RECENT_SEARCH_LIMIT
+import com.ticketbox.domain.model.SearchMoneyAmount
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.appendRecentSearch
 import com.ticketbox.domain.model.expenseLedgerMonth
-import com.ticketbox.domain.model.expenseMatchesAmountCents
-import com.ticketbox.domain.model.parseSearchAmountCents
+import com.ticketbox.domain.model.expenseMatchesSearchAmount
+import com.ticketbox.domain.model.parseSearchMoneyAmount
 import com.ticketbox.domain.model.searchableCategories
 import com.ticketbox.domain.model.searchableMonths
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -219,7 +220,7 @@ class GlobalSearchViewModel(
             }
             val criteria = SearchCriteria(
                 term = term,
-                amountCents = parseSearchAmountCents(term),
+                moneyAmount = parseSearchMoneyAmount(term, repository.currentHomeCurrency),
                 category = state.categoryFilter,
                 month = state.monthFilter,
             )
@@ -282,7 +283,9 @@ private fun Expense.toSearchResult(
  *  match. A blank term with active filters matches every filtered row. */
 private fun Expense.matchTerm(criteria: SearchCriteria): UiText? {
     if (criteria.term.isBlank()) return UiText.res(R.string.global_search_field_all)
-    val amountHit = criteria.amountCents != null && expenseMatchesAmountCents(this, criteria.amountCents)
+    val amountHit =
+        criteria.moneyAmount != null &&
+            expenseMatchesSearchAmount(this, criteria.moneyAmount)
     val textMatch = textSearchMatch(criteria.term)
     return when {
         textMatch != null -> textMatch
@@ -320,7 +323,7 @@ private fun Expense.textSearchMatch(term: String): UiText? {
 
 private data class SearchCriteria(
     val term: String,
-    val amountCents: Long?,
+    val moneyAmount: SearchMoneyAmount?,
     val category: String,
     val month: String,
 )

@@ -4,9 +4,11 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtDetailActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
+import com.ticketbox.domain.model.DebtRepaymentHistory
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,12 +19,12 @@ import kotlinx.coroutines.launch
 
 /**
  * ADR-0049 §3 (slice 8c) 欠款详情 + 记账管理 —— 进入欠款详情后记还款（§3.1）/ 调整本金（§3.3）/
- * 作废欠款（§3.5）。三类写都是直接提交事实（external/manual 欠款；成员/拆账欠款走 slice8d 的对方
+ * 撤销误记还款（§3.4）/ 作废欠款（§3.5）。四类写都是直接提交事实（external/manual 欠款；成员/拆账欠款走 slice8d 的对方
  * 确认流程，后端 [guard_direct_fact_writable] 对其返回 409），均带 §2.1 OCC 载体
  * （[DebtDetailUiState.debt] 的 `rowVersion`）。提交成功后用服务端折叠后的 [Debt] 原子替换本地态，
  * 故下一次写自动用新的 `rowVersion`。
  *
- * 一个统一的动作面板（[activeAction]）承载三类写：还款只填金额、调整填金额+原因、作废只填原因，
+ * 一个统一的动作面板（[activeAction]）承载四类写：还款只填金额，调整填金额+原因，撤销还款/作废填原因，
  * 让详情屏保持纯渲染。详情自身的数据由进入时的 [refresh] 拉取（账本隔离 + 始终最新），写返回的
  * 折叠态直接覆盖本地 [debt]，无需再次拉取。
  */
@@ -40,10 +42,19 @@ data class DebtDetailUiState(
     val validationError: UiText? = null,
     val isSubmitting: Boolean = false,
     val flashMessage: UiText? = null,
+    // Canonical first page loaded from Repayment + RepaymentVoid facts. This is deliberately
+    // independent from the current process/session so reopening the detail restores audit history.
+    val repaymentHistory: DebtRepaymentHistory? = null,
+    val isRepaymentHistoryLoading: Boolean = false,
+    val repaymentHistoryError: UiText? = null,
+    val isRepaymentHistoryLoadingMore: Boolean = false,
+    val repaymentHistoryLoadMoreError: UiText? = null,
+    // Stable id selected from an ACTIVE canonical fact; never reconstructed from amount or Debt.
+    val repaymentToVoidPublicId: String? = null,
 )
 
-/** The three direct fact writes a detail action panel can submit (ADR-0049 §3.1 / §3.3 / §3.5). */
-enum class DebtAction { Repayment, Adjustment, Void }
+/** Direct fact writes submitted from the detail action surface (ADR-0049 §3.1 / §3.3–§3.5). */
+enum class DebtAction { Repayment, Adjustment, RepaymentVoid, Void }
 
 /**
  * A one-shot member-debt 两清 celebration signal (ADR-0049 §5.2 / slice 8e-4): the viewer witnessed a
@@ -53,7 +64,7 @@ enum class DebtAction { Repayment, Adjustment, Void }
 data class DebtSettleCelebration(val counterpartyLabel: String?)
 
 class DebtDetailViewModel(
-    private val repository: DebtActions,
+    private val repository: DebtDetailActions,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DebtDetailUiState(canModify = repository.canModifyLedger()))
@@ -102,6 +113,12 @@ class DebtDetailViewModel(
                     validationError = null,
                     isSubmitting = false,
                     flashMessage = null,
+                    repaymentHistory = null,
+                    isRepaymentHistoryLoading = false,
+                    repaymentHistoryError = null,
+                    isRepaymentHistoryLoadingMore = false,
+                    repaymentHistoryLoadMoreError = null,
+                    repaymentToVoidPublicId = null,
                 )
             }
         }
@@ -112,16 +129,30 @@ class DebtDetailViewModel(
         val publicId = loadedPublicId ?: return
         val gen = ++loadGeneration
         latestRefreshGeneration = gen
-        _state.update { it.copy(isLoading = true, error = null) }
+        _state.update {
+            it.copy(
+                isLoading = true,
+                error = null,
+                isRepaymentHistoryLoading = true,
+                repaymentHistoryError = null,
+                isRepaymentHistoryLoadingMore = false,
+                repaymentHistoryLoadMoreError = null,
+            )
+        }
         viewModelScope.launch {
             val result = repository.getDebt(publicId)
+            val historyResult = if (result.isSuccess) {
+                repository.listRepaymentFacts(publicId, REPAYMENT_HISTORY_FIRST_PAGE)
+            } else {
+                null
+            }
             // Drop a load superseded by a newer load or a committed write — before celebration
             // detection (a discarded snapshot must not record a status edge). Clear our loading flag
             // only when no newer refresh now owns it (a non-refresh superseder — submit — would
             // otherwise leave the screen stuck loading).
             if (gen != loadGeneration) {
                 if (gen == latestRefreshGeneration) {
-                    _state.update { it.copy(isLoading = false) }
+                    _state.update { it.copy(isLoading = false, isRepaymentHistoryLoading = false) }
                 }
                 return@launch
             }
@@ -130,7 +161,7 @@ class DebtDetailViewModel(
                     detectSettleCelebration(debt, previousStatusByPublicId, celebratedDebtIds)
                         ?.let { _celebration.value = it }
                     _state.update {
-                        it.copy(
+                        it.withRepaymentHistory(checkNotNull(historyResult)).copy(
                             isLoading = false,
                             debt = debt,
                             canModify = repository.canModifyLedger(),
@@ -140,14 +171,63 @@ class DebtDetailViewModel(
                 },
                 onFailure = { err ->
                     _state.update {
-                        it.copy(isLoading = false, error = err.toUiText(R.string.debt_detail_load_failed))
+                        it.copy(
+                            isLoading = false,
+                            isRepaymentHistoryLoading = false,
+                            error = err.toUiText(R.string.debt_detail_load_failed),
+                        )
                     }
                 },
             )
         }
     }
 
-    fun openAction(action: DebtAction) {
+    fun loadMoreRepaymentHistory() {
+        val current = _state.value
+        val publicId = loadedPublicId ?: return
+        val history = current.repaymentHistory ?: return
+        if (current.isRepaymentHistoryLoading ||
+            current.isRepaymentHistoryLoadingMore ||
+            current.repaymentHistoryError != null ||
+            !history.hasMore
+        ) {
+            return
+        }
+        val requestedPage = history.page + 1
+        val generation = loadGeneration
+        _state.update {
+            it.copy(
+                isRepaymentHistoryLoadingMore = true,
+                repaymentHistoryLoadMoreError = null,
+            )
+        }
+        viewModelScope.launch {
+            val result = repository.listRepaymentFacts(publicId, requestedPage)
+            if (generation != loadGeneration || loadedPublicId != publicId) return@launch
+            _state.update {
+                it.withNextRepaymentHistoryPage(
+                    result = result,
+                    expectedDebtPublicId = publicId,
+                    expectedPage = requestedPage,
+                )
+            }
+        }
+    }
+
+    fun openAction(action: DebtAction, repaymentPublicId: String? = null) {
+        val current = _state.value
+        if (!current.canModify) return
+        val selectedRepaymentPublicId = current.repaymentHistory
+            ?.items
+            ?.firstOrNull { fact -> fact.publicId == repaymentPublicId && fact.isActive }
+            ?.publicId
+        if (action == DebtAction.RepaymentVoid &&
+            (selectedRepaymentPublicId == null ||
+                current.isRepaymentHistoryLoading ||
+                current.repaymentHistoryError != null)
+        ) {
+            return
+        }
         _state.update {
             it.copy(
                 activeAction = action,
@@ -155,20 +235,24 @@ class DebtDetailViewModel(
                 reasonInput = "",
                 adjustmentIncrease = true,
                 validationError = null,
+                repaymentToVoidPublicId = selectedRepaymentPublicId,
             )
         }
     }
 
-    fun updateAmount(value: String) {
-        _state.update { it.copy(amountInput = value, validationError = null) }
-    }
-
-    fun updateReason(value: String) {
-        _state.update { it.copy(reasonInput = value, validationError = null) }
-    }
-
-    fun setAdjustmentSign(increase: Boolean) {
-        _state.update { it.copy(adjustmentIncrease = increase, validationError = null) }
+    fun updateActionInput(
+        amount: String? = null,
+        reason: String? = null,
+        adjustmentIncrease: Boolean? = null,
+    ) {
+        _state.update {
+            it.copy(
+                amountInput = amount ?: it.amountInput,
+                reasonInput = reason ?: it.reasonInput,
+                adjustmentIncrease = adjustmentIncrease ?: it.adjustmentIncrease,
+                validationError = null,
+            )
+        }
     }
 
     fun dismissAction() {
@@ -179,17 +263,24 @@ class DebtDetailViewModel(
                 reasonInput = "",
                 validationError = null,
                 isSubmitting = false,
+                repaymentToVoidPublicId = null,
             )
         }
     }
 
     fun submit() {
         val current = _state.value
+        if (!current.canModify) return
         val debt = current.debt ?: return
         val action = current.activeAction ?: return
-        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；sign-agnostic，>0 magnitude 由
-        // validateDebtAction 按动作类型校验（调整的正负来自 adjustmentIncrease 开关）。
-        val amountCents = parseAmountCents(current.amountInput)
+        val repaymentToVoidPublicId = current.repaymentToVoidPublicId
+        if (action == DebtAction.RepaymentVoid && repaymentToVoidPublicId == null) return
+        // Exact minor-unit parsing uses the debt's frozen home currency. The input is
+        // a positive magnitude; adjustment direction is carried by the explicit toggle.
+        val amountCents = parseAmountCents(
+            current.amountInput,
+            CurrencyCode.requireSupported(debt.homeCurrencyCode),
+        )
         val reason = current.reasonInput.trim()
         validateDebtAction(action, amountCents, reason)?.let { errorRes ->
             _state.update { it.copy(validationError = UiText.res(errorRes)) }
@@ -197,37 +288,39 @@ class DebtDetailViewModel(
         }
         _state.update { it.copy(isSubmitting = true) }
         val magnitude = amountCents ?: 0L
+        val command = DebtMutationCommand(
+            action = action,
+            amountCents = magnitude,
+            reason = reason,
+            adjustmentIncrease = current.adjustmentIncrease,
+            repaymentToVoidPublicId = repaymentToVoidPublicId,
+        )
         viewModelScope.launch {
-            val result = when (action) {
-                DebtAction.Repayment ->
-                    repository.recordRepayment(debt.publicId, debt.rowVersion, magnitude)
-                DebtAction.Adjustment ->
-                    repository.recordAdjustment(
-                        debt.publicId,
-                        debt.rowVersion,
-                        if (current.adjustmentIncrease) magnitude else -magnitude,
-                        reason,
-                    )
-                DebtAction.Void ->
-                    repository.voidDebt(debt.publicId, debt.rowVersion, reason)
-            }
+            val result = executeDebtMutation(repository, debt, command)
             result.fold(
-                onSuccess = { updated ->
+                onSuccess = { mutation ->
                     // Supersede any in-flight refresh so its stale fold can't revert this committed
                     // write (which would make the next write's OCC carrier stale → a 409).
-                    loadGeneration++
+                    val mutationGeneration = ++loadGeneration
+                    val updated = mutation.debt
+                    val changesRepaymentHistory = action.changesRepaymentHistory()
                     detectSettleCelebration(updated, previousStatusByPublicId, celebratedDebtIds)
                         ?.let { _celebration.value = it }
                     _state.update {
-                        it.copy(
-                            debt = updated,
-                            activeAction = null,
-                            amountInput = "",
-                            reasonInput = "",
-                            isSubmitting = false,
-                            validationError = null,
-                            flashMessage = UiText.res(debtActionDoneRes(action)),
+                        it.afterSuccessfulMutation(
+                            updatedDebt = updated,
+                            action = action,
+                            reloadRepaymentHistory = changesRepaymentHistory,
                         )
+                    }
+                    if (changesRepaymentHistory) {
+                        val historyResult = repository.listRepaymentFacts(
+                            updated.publicId,
+                            REPAYMENT_HISTORY_FIRST_PAGE,
+                        )
+                        if (mutationGeneration == loadGeneration && loadedPublicId == updated.publicId) {
+                            _state.update { it.withRepaymentHistory(historyResult) }
+                        }
                     }
                 },
                 onFailure = { err ->
@@ -314,6 +407,8 @@ private fun validateDebtAction(action: DebtAction, amountCents: Long?, reason: S
         } else {
             null
         }
+    DebtAction.RepaymentVoid ->
+        if (reason.isEmpty()) R.string.debt_action_repayment_void_validation else null
     DebtAction.Void -> if (reason.isEmpty()) R.string.debt_action_void_validation else null
 }
 
@@ -321,5 +416,133 @@ private fun validateDebtAction(action: DebtAction, amountCents: Long?, reason: S
 private fun debtActionDoneRes(action: DebtAction): Int = when (action) {
     DebtAction.Repayment -> R.string.debt_action_repayment_done
     DebtAction.Adjustment -> R.string.debt_action_adjustment_done
+    DebtAction.RepaymentVoid -> R.string.debt_action_repayment_void_done
     DebtAction.Void -> R.string.debt_action_void_done
 }
+
+private data class DebtMutationResult(val debt: Debt)
+
+private data class DebtMutationCommand(
+    val action: DebtAction,
+    val amountCents: Long,
+    val reason: String,
+    val adjustmentIncrease: Boolean,
+    val repaymentToVoidPublicId: String?,
+)
+
+private suspend fun executeDebtMutation(
+    repository: DebtDetailActions,
+    debt: Debt,
+    command: DebtMutationCommand,
+): Result<DebtMutationResult> = when (command.action) {
+    DebtAction.Repayment ->
+        repository.recordRepayment(debt.publicId, debt.rowVersion, command.amountCents)
+            .map { DebtMutationResult(debt = it.debt) }
+    DebtAction.Adjustment ->
+        repository.recordAdjustment(
+            debt.publicId,
+            debt.rowVersion,
+            if (command.adjustmentIncrease) command.amountCents else -command.amountCents,
+            command.reason,
+        ).map { DebtMutationResult(debt = it) }
+    DebtAction.RepaymentVoid ->
+        repository.voidRepayment(
+            publicId = debt.publicId,
+            repaymentPublicId = checkNotNull(command.repaymentToVoidPublicId),
+            expectedRowVersion = debt.rowVersion,
+            reason = command.reason,
+        ).map { DebtMutationResult(debt = it) }
+    DebtAction.Void ->
+        repository.voidDebt(debt.publicId, debt.rowVersion, command.reason)
+            .map { DebtMutationResult(debt = it) }
+}
+
+private fun DebtAction.changesRepaymentHistory(): Boolean =
+    this == DebtAction.Repayment || this == DebtAction.RepaymentVoid
+
+private fun DebtDetailUiState.afterSuccessfulMutation(
+    updatedDebt: Debt,
+    action: DebtAction,
+    reloadRepaymentHistory: Boolean,
+): DebtDetailUiState = copy(
+    debt = updatedDebt,
+    activeAction = null,
+    amountInput = "",
+    reasonInput = "",
+    isSubmitting = false,
+    validationError = null,
+    flashMessage = UiText.res(debtActionDoneRes(action)),
+    repaymentHistory = if (reloadRepaymentHistory) null else repaymentHistory,
+    isRepaymentHistoryLoading = reloadRepaymentHistory,
+    repaymentHistoryError = null,
+    isRepaymentHistoryLoadingMore = false,
+    repaymentHistoryLoadMoreError = null,
+    repaymentToVoidPublicId = null,
+)
+
+private fun DebtDetailUiState.withRepaymentHistory(
+    result: Result<DebtRepaymentHistory>,
+): DebtDetailUiState = result.fold(
+    onSuccess = { history ->
+        copy(
+            repaymentHistory = history,
+            isRepaymentHistoryLoading = false,
+            repaymentHistoryError = null,
+            isRepaymentHistoryLoadingMore = false,
+            repaymentHistoryLoadMoreError = null,
+        )
+    },
+    onFailure = { error ->
+        copy(
+            isRepaymentHistoryLoading = false,
+            repaymentHistoryError = error.toUiText(R.string.debt_repayment_history_load_failed),
+            isRepaymentHistoryLoadingMore = false,
+            repaymentHistoryLoadMoreError = null,
+        )
+    },
+)
+
+private fun DebtDetailUiState.withNextRepaymentHistoryPage(
+    result: Result<DebtRepaymentHistory>,
+    expectedDebtPublicId: String,
+    expectedPage: Int,
+): DebtDetailUiState = result.fold(
+    onSuccess = { next ->
+        val current = repaymentHistory
+        if (current == null ||
+            next.debtPublicId != expectedDebtPublicId ||
+            next.debtPublicId != current.debtPublicId ||
+            next.page != expectedPage
+        ) {
+            copy(
+                isRepaymentHistoryLoadingMore = false,
+                repaymentHistoryLoadMoreError = UiText.res(
+                    R.string.debt_repayment_history_load_more_failed,
+                ),
+            )
+        } else {
+            val seenPublicIds = current.items.mapTo(mutableSetOf()) { it.publicId }
+            val newItems = next.items.filter { seenPublicIds.add(it.publicId) }
+            copy(
+                repaymentHistory = current.copy(
+                    items = current.items + newItems,
+                    page = next.page,
+                    pageSize = next.pageSize,
+                    total = next.total,
+                ),
+                isRepaymentHistoryLoadingMore = false,
+                repaymentHistoryLoadMoreError = null,
+            )
+        }
+    },
+    onFailure = { error ->
+        copy(
+            isRepaymentHistoryLoadingMore = false,
+            repaymentHistoryLoadMoreError = error.toUiText(
+                R.string.debt_repayment_history_load_more_failed,
+            ),
+        )
+    },
+)
+
+private const val REPAYMENT_HISTORY_FIRST_PAGE = 1

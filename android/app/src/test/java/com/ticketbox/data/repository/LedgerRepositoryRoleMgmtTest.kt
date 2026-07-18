@@ -172,6 +172,7 @@ class LedgerRepositoryRoleMgmtTest {
         name = name,
         role = role,
         isDefault = isDefault,
+        homeCurrencyCode = "CNY",
         createdAt = "2026-01-01T00:00:00Z",
         archivedAt = null,
     )

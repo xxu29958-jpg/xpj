@@ -29,17 +29,17 @@ from datetime import date
 # the route needs no optimistic-concurrency token.
 REASON_CODES: frozenset[str] = frozenset(
     {
-        "create_row",            # inserts a brand-new row; no prior version exists
-        "append_only_fact",      # appends to an append-only log / event table
-        "terminal_flag_flip",    # flips a status/archived flag; state machine guards races
-        "upsert_bucket",         # replaces a tenant/account-keyed bucket; single writer
-        "batch_db_write",        # touches many rows; owns its own batch / preview contract
-        "governance_action",     # permission-gated membership / invitation / role write
-        "session_rotation",      # mints / rotates / consumes auth + identity rows
-        "admin_single_writer",   # owner/admin single-writer edit/toggle (rename/rotate/extend/limits/ledger archive)
-        "enqueue_task",          # inserts a background_tasks row; the worker does the real write
+        "create_row",  # inserts a brand-new row; no prior version exists
+        "append_only_fact",  # appends to an append-only log / event table
+        "terminal_flag_flip",  # flips a status/archived flag; state machine guards races
+        "upsert_bucket",  # replaces a tenant/account-keyed bucket; single writer
+        "batch_db_write",  # touches many rows; owns its own batch / preview contract
+        "governance_action",  # permission-gated membership / invitation / role write
+        "session_rotation",  # mints / rotates / consumes auth + identity rows
+        "admin_single_writer",  # owner/admin single-writer edit/toggle (rename/rotate/extend/limits/ledger archive)
+        "enqueue_task",  # inserts a background_tasks row; the worker does the real write
         "external_side_effect",  # writes filesystem / .env / network only — NO db row
-        "read_only_compute",     # preview / computation — NO write at all
+        "read_only_compute",  # preview / computation — NO write at all
     }
 )
 
@@ -49,9 +49,7 @@ REASON_CODES: frozenset[str] = frozenset(
 # cannot be parked as read_only_compute with no tables — the audit
 # rejects the mismatch, so the "/web/import/preview said read-only but
 # creates a batch" class of drift can no longer be expressed.
-EMPTY_TABLE_REASON_CODES: frozenset[str] = frozenset(
-    {"external_side_effect", "read_only_compute"}
-)
+EMPTY_TABLE_REASON_CODES: frozenset[str] = frozenset({"external_side_effect", "read_only_compute"})
 
 # Owning subsystem (maps to a service / route family), so an exemption
 # always has a clear "who reviews this".
@@ -147,12 +145,19 @@ _DASHBOARD = ("dashboard_card_preferences",)
 _DEBTS = ("debts",)
 _MEMBER_REPAYMENT_PROPOSAL = ("member_repayment_proposals",)
 _REPAYMENT_DRAFTS = ("repayment_drafts",)
+_DEBT_GOAL_CREATE = ("goals", "debt_goal_links")
 
 
 # Key format: ``"METHOD PATH"`` exactly as FastAPI registers it.
 ALLOWLIST: dict[str, Exempt] = {
     # --- /api create routes (collection POST → new row, no prior version) ---
     "POST /api/auth/pair": Exempt("session_rotation", "identity", _PAIR_BIND, "medium"),
+    "POST /api/auth/desktop/activate": Exempt(
+        "session_rotation",
+        "identity",
+        _SWITCH,
+        "medium",
+    ),
     "POST /api/auth/refresh": Exempt("session_rotation", "identity", ("auth_tokens",)),
     "POST /api/app/upload-screenshot": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/bootstrap/owner": Exempt("session_rotation", "identity", _BOOTSTRAP_IDENTITY, "medium"),
@@ -170,9 +175,7 @@ ALLOWLIST: dict[str, Exempt] = {
     # pending proposal row — no prior version to fence; safe replay rests on the
     # [[0042]] Idempotency-Key the route requires + the one-pending partial UNIQUE
     # index. NOT fold-changing (a pending proposal is an intent, not a fact).
-    "POST /api/debts/{public_id}/repayment-proposals": Exempt(
-        "create_row", "debts", _MEMBER_REPAYMENT_PROPOSAL
-    ),
+    "POST /api/debts/{public_id}/repayment-proposals": Exempt("create_row", "debts", _MEMBER_REPAYMENT_PROPOSAL),
     # ADR-0049 §杠杆③ (slice 3a): the NLS captures a repayment notification and posts a
     # brand-new PENDING RepaymentDraft row — no prior version to fence; safe replay rests
     # on the per-tenant content+identity dedup key (uq_repayment_drafts_idem), not an
@@ -195,14 +198,18 @@ ALLOWLIST: dict[str, Exempt] = {
     # no row_version: rename is a single-writer name update, revoke latches
     # revoked_at, pairing-codes mints a new row — none is fold-changing.
     "POST /api/ledgers/{ledger_id}/devices/{public_id}/rename": Exempt("admin_single_writer", "identity", ("devices",)),
-    "POST /api/ledgers/{ledger_id}/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "identity", _DEVICE_REVOKE, "medium"),
+    "POST /api/ledgers/{ledger_id}/devices/{public_id}/revoke": Exempt(
+        "terminal_flag_flip", "identity", _DEVICE_REVOKE, "medium"
+    ),
     # issue #65 slice A: owner-facing app-token twin of the loopback
     # /owner/devices/{public_id}/delete entry below. Hard-deletes a REVOKED
     # device + its in-scope auth_tokens AND upload_links (delete_device purges
     # links too — hence _DEVICE_CLEANUP, not revoke's _DEVICE_REVOKE). Device
     # has no row_version; the revoked-first precondition is re-asserted at delete
     # time, so there is no fold to fence → exempt.
-    "POST /api/ledgers/{ledger_id}/devices/{public_id}/delete": Exempt("terminal_flag_flip", "identity", _DEVICE_CLEANUP, "medium"),
+    "POST /api/ledgers/{ledger_id}/devices/{public_id}/delete": Exempt(
+        "terminal_flag_flip", "identity", _DEVICE_CLEANUP, "medium"
+    ),
     "POST /api/ledgers/{ledger_id}/devices/pairing-codes": Exempt("create_row", "identity", ("pairing_codes",)),
     "POST /api/merchants/aliases": Exempt("create_row", "merchants", ("merchant_aliases",)),
     "POST /api/merchants/catalog": Exempt("create_row", "merchants", _MERCHANT_CATALOG),
@@ -215,15 +222,15 @@ ALLOWLIST: dict[str, Exempt] = {
         "terminal_flag_flip", "rules", ("category_rules", "ledger_audit_logs")
     ),
     "POST /u/{upload_key}": Exempt("create_row", "expenses", _PUBLIC_UPLOAD, "medium"),
-
     # --- /api admin devices / upload-links (account-scoped owner admin) ---
     "POST /api/admin/devices/{public_id}/rename": Exempt("admin_single_writer", "identity", ("devices",)),
     "POST /api/admin/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "identity", _DEVICE_REVOKE, "medium"),
     "POST /api/admin/upload-links": Exempt("create_row", "identity", _UPLOAD_LINKS),
     "POST /api/admin/upload-links/{public_id}/revoke": Exempt("terminal_flag_flip", "identity", _UPLOAD_LINKS),
-    "POST /api/admin/upload-links/{public_id}/rotate": Exempt("admin_single_writer", "identity", _UPLOAD_LINKS, "medium"),
+    "POST /api/admin/upload-links/{public_id}/rotate": Exempt(
+        "admin_single_writer", "identity", _UPLOAD_LINKS, "medium"
+    ),
     "POST /api/admin/upload-links/{public_id}/extend": Exempt("admin_single_writer", "identity", _UPLOAD_LINKS),
-
     # --- /api lifecycle terminal / append-only flows ---
     "POST /api/bill-splits/{public_id}/accept": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT, "medium"),
     "POST /api/bill-splits/{public_id}/reject": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT),
@@ -251,16 +258,19 @@ ALLOWLIST: dict[str, Exempt] = {
     # (the draft row serializes concurrent resolutions); commits no Repayment, so no
     # expected_row_version. (CONFIRM IS fold-changing — it records a Repayment and carries
     # the token — and is auto-detected as a carrier, not listed here.)
-    "POST /api/repayment-drafts/{public_id}/dismiss": Exempt(
-        "terminal_flag_flip", "debts", _REPAYMENT_DRAFTS
-    ),
+    "POST /api/repayment-drafts/{public_id}/dismiss": Exempt("terminal_flag_flip", "debts", _REPAYMENT_DRAFTS),
     "POST /api/recurring/items/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
     "POST /api/tasks/{public_id}/cancel": Exempt("terminal_flag_flip", "tasks", ("background_tasks",)),
-
     # --- /api batch / maintenance / preview / advisor / session ---
     "POST /api/budget/advise": Exempt("append_only_fact", "budget", _ADVISOR_WRITE, "high"),
     "POST /api/imports/csv/{public_id}/apply": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),
     "POST /api/ledgers/{ledger_id}/switch": Exempt("session_rotation", "identity", _SWITCH),
+    "POST /api/ledgers/{ledger_id}/switch/prepare": Exempt(
+        "session_rotation",
+        "identity",
+        ("auth_tokens",),
+        "medium",
+    ),
     "POST /api/maintenance/cleanup-ai-advisor-audit": Exempt(
         "batch_db_write", "maintenance", ("budget_advisor_audit_logs",)
     ),
@@ -274,7 +284,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/rules/apply-pending/preview": Exempt("read_only_compute", "rules", ()),
     "POST /api/rules/applications/{public_id}/rollback": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /api/rules/preview": Exempt("read_only_compute", "rules", ()),
-
     # --- /api governance (permission-gated membership / invitations / rates) ---
     "POST /api/ledgers/{ledger_id}/invitations/{public_id}/revoke": Exempt(
         "governance_action", "identity", ("invitations",)
@@ -291,12 +300,10 @@ ALLOWLIST: dict[str, Exempt] = {
     "PUT /api/exchange-rates/{currency_code}/{rate_date}": Exempt(
         "upsert_bucket", "exchange_rates", ("exchange_rates",)
     ),
-
     # --- /api upsert / replace-all / lifecycle (tenant/account-keyed bucket) ---
     "PUT /api/budgets/monthly/{month}": Exempt("upsert_bucket", "budget", _BUDGET_BUCKET),
     "PUT /api/dashboard/cards": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "PUT /api/me/ui-preferences": Exempt("upsert_bucket", "identity", ("user_ui_preferences",)),
-
     # --- /web mutate forms / create / batch / terminal ---
     "POST /web/budgets/save": Exempt("upsert_bucket", "budget", _BUDGET_BUCKET),
     "POST /web/budget-advise": Exempt("append_only_fact", "budget", _ADVISOR_WRITE, "high"),
@@ -306,6 +313,16 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/categories/uncategorized/bulk-set": Exempt("batch_db_write", "expenses", ("expenses",)),
     "POST /web/dashboard/cards/reset": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/dashboard/cards/save": Exempt("upsert_bucket", "budget", _DASHBOARD),
+    "POST /web/debt-goals/create": Exempt("create_row", "goals", _DEBT_GOAL_CREATE),
+    "POST /web/debts": Exempt("create_row", "debts", _DEBTS),
+    "POST /web/debts/{public_id}/repayment-proposals": Exempt("create_row", "debts", _MEMBER_REPAYMENT_PROPOSAL),
+    "POST /web/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject": Exempt(
+        "terminal_flag_flip", "debts", _MEMBER_REPAYMENT_PROPOSAL
+    ),
+    "POST /web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw": Exempt(
+        "terminal_flag_flip", "debts", _MEMBER_REPAYMENT_PROPOSAL
+    ),
+    "POST /web/expenses/new": Exempt("create_row", "expenses", ("expenses",)),
     "POST /web/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
     "POST /web/goals/create": Exempt("create_row", "goals", ("goals",)),
     "POST /web/goals/{public_id}/archive": Exempt("terminal_flag_flip", "goals", ("goals",)),
@@ -318,19 +335,15 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/merchants/aliases/{public_id}/undo": Exempt(
         "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")
     ),
-    "POST /web/pending/batch-reject": Exempt("batch_db_write", "expenses", ("expenses",)),
+    "POST /web/repayment-drafts/{public_id}/dismiss": Exempt("terminal_flag_flip", "debts", _REPAYMENT_DRAFTS),
     "POST /web/recurring/confirm-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /web/recurring/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
-    "POST /web/review/bulk": Exempt("batch_db_write", "expenses", ("expenses",)),
     "POST /web/rules/applications/{public_id}/rollback": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /web/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /web/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /web/rules/create": Exempt("create_row", "rules", ("category_rules",)),
-    "POST /web/rules/{rule_id}/undo": Exempt(
-        "terminal_flag_flip", "rules", ("category_rules", "ledger_audit_logs")
-    ),
+    "POST /web/rules/{rule_id}/undo": Exempt("terminal_flag_flip", "rules", ("category_rules", "ledger_audit_logs")),
     "POST /web/tasks/{public_id}/cancel": Exempt("terminal_flag_flip", "tasks", ("background_tasks",)),
-
     # --- /owner console (loopback-only admin / single-writer / batch) ---
     "POST /owner/ai-advisor/confirmation": Exempt("external_side_effect", "owner_console", (), "medium"),
     "POST /owner/algorithm-versions/withdraw": Exempt("batch_db_write", "learning", _ALGO_DECISIONS, "medium"),
@@ -343,15 +356,15 @@ ALLOWLIST: dict[str, Exempt] = {
     # trigger) but no row_version to guard — concurrency safety rests on the
     # upsert being idempotent (same data either way), not on single-writer.
     "POST /owner/fx/refresh": Exempt("upsert_bucket", "exchange_rates", ("fx_rates",)),
-    "POST /owner/learning-maintenance/dismiss-decision": Exempt(
-        "terminal_flag_flip", "learning", _ALGO_DECISIONS
-    ),
+    "POST /owner/learning-maintenance/dismiss-decision": Exempt("terminal_flag_flip", "learning", _ALGO_DECISIONS),
     "POST /owner/learning-maintenance/run": Exempt("batch_db_write", "learning", _LEARNING_PRUNE, "medium"),
     "POST /owner/ledgers": Exempt("create_row", "owner_console", _LEDGER_CREATE),
     # ADR-0038 PR-D (原 PR-A.1): /owner loopback single-admin reversible toggle,
     # already atomic UPDATE WHERE archived_at — admin_single_writer fits better
     # than terminal_flag_flip (no concurrent writer to guard against on loopback).
-    "POST /owner/ledgers/{ledger_id}/archive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE, "medium"),
+    "POST /owner/ledgers/{ledger_id}/archive": Exempt(
+        "admin_single_writer", "owner_console", _LEDGER_ARCHIVE, "medium"
+    ),
     "POST /owner/ledgers/{ledger_id}/invitations": Exempt("create_row", "owner_console", ("invitations",)),
     "POST /owner/ledgers/{ledger_id}/invitations/{public_id}/revoke": Exempt(
         "governance_action", "owner_console", ("invitations",)
@@ -372,7 +385,9 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /owner/upload-links/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/limits": Exempt("admin_single_writer", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/revoke": Exempt("terminal_flag_flip", "owner_console", _UPLOAD_LINKS),
-    "POST /owner/upload-links/{public_id}/rotate": Exempt("admin_single_writer", "owner_console", _UPLOAD_LINKS, "medium"),
+    "POST /owner/upload-links/{public_id}/rotate": Exempt(
+        "admin_single_writer", "owner_console", _UPLOAD_LINKS, "medium"
+    ),
     "POST /owner/upload-links/{public_id}/extend": Exempt("admin_single_writer", "owner_console", _UPLOAD_LINKS),
 }
 
@@ -399,9 +414,7 @@ def validate_entries(entries: dict[str, Exempt], real_table_names: set[str]) -> 
         is_empty = len(entry.touched_tables) == 0
         must_be_empty = entry.reason_code in EMPTY_TABLE_REASON_CODES
         if must_be_empty and not is_empty:
-            problems.append(
-                f"{key}: reason_code {entry.reason_code!r} writes no row - touched_tables must be empty"
-            )
+            problems.append(f"{key}: reason_code {entry.reason_code!r} writes no row - touched_tables must be empty")
         if not must_be_empty and is_empty:
             problems.append(
                 f"{key}: reason_code {entry.reason_code!r} writes rows - touched_tables must list >=1 table"

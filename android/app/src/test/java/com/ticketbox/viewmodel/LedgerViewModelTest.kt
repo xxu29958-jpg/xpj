@@ -118,6 +118,61 @@ class LedgerViewModelTest {
     }
 
     @Test
+    fun dataQualityFilterOpensAnExplicitLedgerWideActionContext() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(
+                expense(
+                    id = 1,
+                    amountCents = 1200,
+                    category = "",
+                    merchant = "早餐店",
+                ).copy(imagePath = "receipt-1.jpg"),
+                expense(
+                    id = 2,
+                    amountCents = 3000,
+                    category = "未分類",
+                    merchant = "地铁",
+                ).copy(imagePath = "receipt-2.jpg"),
+                expense(id = 3, amountCents = 900, category = "餐饮", merchant = "无图"),
+                expense(
+                    id = 4,
+                    amountCents = 500,
+                    category = "交通",
+                    merchant = "已清图",
+                ).copy(
+                    imagePath = "receipt-4.jpg",
+                    imageDeletedAt = "2026-05-18T00:00:00Z",
+                ),
+                expense(
+                    id = 5,
+                    amountCents = 700,
+                    category = "购物",
+                    merchant = "完整",
+                ).copy(imagePath = "receipt-5.jpg"),
+            ),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+
+        vm.applyDataQualityFilter(LedgerDataQualityFilter.MissingCategory)
+        advanceUntilIdle()
+        assertEquals("", vm.uiState.value.monthFilter)
+        assertEquals(
+            LedgerDataQualityFilter.MissingCategory,
+            vm.uiState.value.dataQualityFilter,
+        )
+        assertEquals(listOf(1L, 2L), vm.uiState.value.items.map(Expense::id))
+
+        vm.applyDataQualityFilter(LedgerDataQualityFilter.ConfirmedWithoutImage)
+        advanceUntilIdle()
+        assertEquals(listOf(3L, 4L), vm.uiState.value.items.map(Expense::id))
+
+        vm.clearFilters()
+        assertEquals(null, vm.uiState.value.dataQualityFilter)
+        assertEquals(listOf(1L, 2L, 3L, 4L, 5L), vm.uiState.value.items.map(Expense::id))
+    }
+
+    @Test
     fun exposesRecentMerchantsFromFullConfirmedCacheNewestFirst() = ledgerTest {
         val fake = FakeLedgerActions(
             expenses = listOf(
@@ -271,7 +326,8 @@ class LedgerViewModelTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
         )
-        val vm = LedgerViewModel(fake)
+        var dataChangeCount = 0
+        val vm = LedgerViewModel(fake, onDataChanged = { dataChangeCount += 1 })
         advanceUntilIdle()
 
         vm.createManualExpense(manualDraft())
@@ -282,6 +338,7 @@ class LedgerViewModelTest {
         assertEquals(null, state.manualCreateError)
         assertEquals(UiText.res(R.string.ledger_msg_manual_saved), state.message)
         assertEquals(MessageTone.Success, state.messageTone)
+        assertEquals(1, dataChangeCount)
 
         vm.manualCreateSettled()
         assertTrue(!vm.uiState.value.manualCreateDone)
@@ -313,7 +370,8 @@ class LedgerViewModelTest {
             // screen-specific fallback resource asserted below.
             manualCreate = ManualCreateBehavior(failure = RuntimeException()),
         )
-        val vm = LedgerViewModel(fake)
+        var dataChangeCount = 0
+        val vm = LedgerViewModel(fake, onDataChanged = { dataChangeCount += 1 })
         advanceUntilIdle()
 
         vm.createManualExpense(manualDraft())
@@ -325,6 +383,7 @@ class LedgerViewModelTest {
         assertTrue(!state.manualCreateDone)
         assertEquals(UiText.res(R.string.ledger_msg_manual_save_failed), state.manualCreateError)
         assertTrue(!state.creatingManual)
+        assertEquals(0, dataChangeCount)
 
         vm.manualCreateSettled()
         assertEquals(null, vm.uiState.value.manualCreateError)

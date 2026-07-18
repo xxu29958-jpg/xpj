@@ -15,10 +15,12 @@ from app.routes.web_common import (
     _amount_yuan,
     _base_ctx,
     _list_ledger_options,
+    _minor_amount_label,
     _resolve_selected_ledger_id,
     _sidebar_counts,
     templates,
 )
+from app.services.currency_common import average_minor_amount
 from app.services.monthly_report_service import (
     BudgetExplanation,
     MonthlyReport,
@@ -53,6 +55,15 @@ def _percent(value: int, maximum: int) -> int:
     if maximum <= 0:
         return 0
     return max(2, min(100, round(value * 100 / maximum)))
+
+
+def _six_month_average_minor(rows: list[dict]) -> int:
+    """Round an average once, at the integer-minor boundary (financial half-up)."""
+
+    if not rows:
+        return 0
+    total_minor = sum(int(row["amount_cents"]) for row in rows)
+    return average_minor_amount(total_minor, len(rows))
 
 
 def _trend_view(points: list[dict]) -> list[dict]:
@@ -107,9 +118,7 @@ def _category_comparison_view(rows: list[dict]) -> list[dict]:
             "previous_amount_yuan": _amount_yuan(int(row["previous_amount_cents"])),
             "delta_amount_yuan": _amount_yuan(int(row["delta_amount_cents"])),
             "year_over_year_amount_yuan": _amount_yuan(int(row["year_over_year_amount_cents"])),
-            "year_over_year_delta_amount_yuan": _amount_yuan(
-                int(row["year_over_year_delta_amount_cents"])
-            ),
+            "year_over_year_delta_amount_yuan": _amount_yuan(int(row["year_over_year_delta_amount_cents"])),
             "amount_cents": int(row["amount_cents"]),
             "previous_amount_cents": int(row["previous_amount_cents"]),
             "delta_amount_cents": int(row["delta_amount_cents"]),
@@ -129,6 +138,8 @@ def _category_comparison_view(rows: list[dict]) -> list[dict]:
 
 
 def _view_model(payload: dict) -> dict:
+    previous_count = int(payload["previous_count"])
+    year_over_year_count = int(payload["year_over_year_count"])
     return {
         "month": payload["month"],
         "timezone": payload["timezone"],
@@ -139,15 +150,13 @@ def _view_model(payload: dict) -> dict:
         "count": int(payload["count"]),
         "previous_month": payload["previous_month"],
         "previous_total_amount_yuan": _amount_yuan(int(payload["previous_total_amount_cents"])),
-        "previous_count": int(payload["previous_count"]),
+        "previous_count": previous_count,
+        "has_previous_baseline": previous_count > 0,
         "year_over_year_month": payload["year_over_year_month"],
-        "year_over_year_total_amount_yuan": _amount_yuan(
-            int(payload["year_over_year_total_amount_cents"])
-        ),
-        "year_over_year_count": int(payload["year_over_year_count"]),
-        "year_over_year_delta_amount_yuan": _amount_yuan(
-            int(payload["year_over_year_delta_amount_cents"])
-        ),
+        "year_over_year_total_amount_yuan": _amount_yuan(int(payload["year_over_year_total_amount_cents"])),
+        "year_over_year_count": year_over_year_count,
+        "has_year_over_year_baseline": year_over_year_count > 0,
+        "year_over_year_delta_amount_yuan": _amount_yuan(int(payload["year_over_year_delta_amount_cents"])),
         "year_over_year_delta_amount_cents": int(payload["year_over_year_delta_amount_cents"]),
         "year_over_year_delta_count": int(payload["year_over_year_delta_count"]),
         "trend": _trend_view(payload["trend"]),
@@ -182,11 +191,7 @@ def _budget_explanation_view_model(item: BudgetExplanation) -> dict:
         "actual_yuan": _amount_yuan(item.actual_cents),
         "p50_yuan": _amount_yuan(item.p50_cents) if item.p50_cents is not None else None,
         "p75_yuan": _amount_yuan(item.p75_cents) if item.p75_cents is not None else None,
-        "delta_vs_p75_yuan": (
-            _amount_yuan(item.delta_vs_p75_cents)
-            if item.delta_vs_p75_cents is not None
-            else None
-        ),
+        "delta_vs_p75_yuan": (_amount_yuan(item.delta_vs_p75_cents) if item.delta_vs_p75_cents is not None else None),
         "verdict": item.verdict,
         "verdict_label": _budget_verdict_label(item.verdict),
     }
@@ -202,18 +207,14 @@ def _budget_verdict_label(value: str) -> str:
     return labels.get(value, value)
 
 
-def _top_expenses_view(
-    db: Session, *, tenant_id: str, month: str, timezone_name: str
-) -> list[dict[str, str]]:
+def _top_expenses_view(db: Session, *, tenant_id: str, month: str, timezone_name: str) -> list[dict[str, str]]:
     """Highest-amount confirmed expenses for the month (former /web/stats panel).
 
     This was the only content unique to the deleted /web/stats page, so it moves
     here when stats is merged into reports (UI/UX 批 14).
     """
     rows: list[dict[str, str]] = []
-    for e in top_expenses_for_month(
-        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
-    ):
+    for e in top_expenses_for_month(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name):
         rows.append(
             {
                 "merchant": e.merchant or "未填写商家",
@@ -225,9 +226,7 @@ def _top_expenses_view(
     return rows
 
 
-def _monthly_report_sections(
-    db: Session, *, tenant_id: str, month: str, timezone_name: str
-) -> tuple[dict, list[dict]]:
+def _monthly_report_sections(db: Session, *, tenant_id: str, month: str, timezone_name: str) -> tuple[dict, list[dict]]:
     """月报摘要 + 预算解释两段的 ctx 视图(从 route 拆出守 80 行债线)。"""
     monthly_report = compose_monthly_report(
         db,
@@ -248,6 +247,25 @@ def _monthly_report_sections(
     return (
         _monthly_report_view_model(monthly_report),
         [_budget_explanation_view_model(item) for item in explanations],
+    )
+
+
+def _report_export_query(
+    *,
+    ledger_id: str,
+    month: str,
+    granularity: str,
+    ranking_metric: str,
+    merchant_category: str | None,
+) -> str:
+    return urlencode(
+        {
+            "ledger_id": ledger_id,
+            "month": month,
+            "granularity": granularity,
+            "ranking_metric": ranking_metric,
+            "merchant_category": (merchant_category or "").strip(),
+        }
     )
 
 
@@ -283,11 +301,18 @@ def web_reports(
         month=target_month,
         timezone_name=timezone_name,
     )
+    six_month_trend = six_month_summary(
+        db,
+        anchor_month=target_month,
+        tenant_id=selected_id,
+        timezone_name=timezone_name,
+    )
+    six_month_average_minor = _six_month_average_minor(six_month_trend)
     ctx = _base_ctx(
         request,
         options=options,
         selected_ledger_id=selected_id,
-        page_title="报表",
+        page_title="洞察",
         show_month_picker=True,
         selected_month=target_month,
         sidebar_counts=_sidebar_counts(db, selected_id),
@@ -297,14 +322,12 @@ def web_reports(
             "report": _view_model(payload),
             "monthly_report": monthly_report_vm,
             "budget_explanations": budget_explanations,
-            "report_export_query": urlencode(
-                {
-                    "ledger_id": selected_id,
-                    "month": target_month,
-                    "granularity": selected_granularity,
-                    "ranking_metric": selected_metric,
-                    "merchant_category": (merchant_category or "").strip(),
-                }
+            "report_export_query": _report_export_query(
+                ledger_id=selected_id,
+                month=target_month,
+                granularity=selected_granularity,
+                ranking_metric=selected_metric,
+                merchant_category=merchant_category,
             ),
             "month": target_month,
             "granularity_options": [("day", "日"), ("week", "周"), ("month", "月")],
@@ -315,11 +338,12 @@ def web_reports(
                 month=target_month,
                 timezone_name=timezone_name,
             ),
-            "six_month_trend": six_month_summary(
-                db,
-                anchor_month=target_month,
-                tenant_id=selected_id,
-                timezone_name=timezone_name,
+            "six_month_trend": six_month_trend,
+            "six_month_average_amount_cents": six_month_average_minor,
+            "six_month_average_amount_value": _amount_yuan(six_month_average_minor),
+            "six_month_average_amount_label": _minor_amount_label(
+                six_month_average_minor,
+                None,
             ),
         }
     )

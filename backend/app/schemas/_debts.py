@@ -46,7 +46,10 @@ __all__ = [
     "MemberRepaymentProposalWithdrawRequest",
     "RepaymentCreateRequest",
     "RepaymentCreateResponse",
+    "RepaymentFactListResponse",
+    "RepaymentFactResponse",
     "RepaymentVoidCreateRequest",
+    "RepaymentVoidFactResponse",
 ]
 
 
@@ -178,6 +181,56 @@ class RepaymentCreateResponse(DebtResponse):
     """Fold-after Debt response plus the committed repayment id for void flows."""
 
     repayment_public_id: str
+
+
+class RepaymentVoidFactResponse(BaseModel):
+    """The append-only correction attached to one repayment fact (ADR-0049 §3.4)."""
+
+    public_id: str
+    reason: str
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_void_datetime(self, value: datetime) -> str:
+        return to_iso(value)
+
+
+class RepaymentFactResponse(BaseModel):
+    """One committed repayment plus its optional append-only void fact.
+
+    ``status`` is a read projection derived only from whether a
+    ``RepaymentVoid`` row exists. The original repayment remains in ``items``
+    after it is voided so a restarting client can recover both the historical
+    payment and the correction without guessing from the parent Debt balance.
+    Internal actor ids and idempotency keys are intentionally not exposed.
+    """
+
+    public_id: str
+    amount_cents: int
+    original_currency_code: str | None = None
+    original_amount_minor: int | None = None
+    exchange_rate_to_cny: Decimal | None = None
+    exchange_rate_date: datetime | None = None
+    exchange_rate_source: str | None = None
+    paid_at: datetime
+    created_at: datetime
+    status: Literal["active", "voided"]
+    void_fact: RepaymentVoidFactResponse | None = None
+
+    @field_serializer("paid_at", "created_at", "exchange_rate_date")
+    def serialize_repayment_datetime(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+
+class RepaymentFactListResponse(BaseModel):
+    """Bounded, restart-safe repayment history for one authorized Debt."""
+
+    debt_public_id: str
+    home_currency_code: str
+    items: list[RepaymentFactResponse]
+    page: int
+    page_size: int
+    total: int
 
 
 class RepaymentCreateRequest(BaseModel):

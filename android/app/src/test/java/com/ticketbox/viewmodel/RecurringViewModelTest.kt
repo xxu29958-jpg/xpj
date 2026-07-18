@@ -92,7 +92,8 @@ class RecurringViewModelTest {
         val fake = FakeRecurringActions(
             candidatesResult = Result.success(listOf(targetCandidate)),
         )
-        val vm = RecurringViewModel(fake)
+        var dataChangeCount = 0
+        val vm = RecurringViewModel(fake, onDataChanged = { dataChangeCount += 1 })
         advanceUntilIdle()
 
         fake.itemsResult = Result.failure(IllegalStateException("items offline"))
@@ -105,6 +106,7 @@ class RecurringViewModelTest {
         assertEquals(emptyList(), vm.uiState.value.candidates)
         assertEquals(RecurringListLoadState.Failed, vm.uiState.value.itemsLoadState)
         assertEquals(RecurringListLoadState.Failed, vm.uiState.value.candidatesLoadState)
+        assertEquals(1, dataChangeCount)
     }
 
     @Test

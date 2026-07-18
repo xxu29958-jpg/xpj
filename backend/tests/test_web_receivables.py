@@ -1,9 +1,4 @@
-"""/web/receivables 欠我的 (应收) 页 (ADR-0049 债务域 web 面 ⑤c-3 / P3b creditor 发现).
-
-只读 **account-scoped 跨账本** 列出 viewer 作为跨账本 member 债权人的应收 —— bill_split
-成员债住在债务人账本,发起人(债权人)在自己账本欠款页看不到,这页补上。每行 communal
-关系行(债务人名 + 「我帮你垫的…」关系主句 + 进度条 + 状态徽章,永不红),**纯只读非链接**
-(镜像还款捕获审计页);还款由债务人在手机 App 发起、债权人确认。
+"""/web/receivables viewer-personal same-ledger + cross-ledger receivables.
 
 uses ``web_client`` (conftest) 绕过 /web loopback 门;plain ``client`` 留门给 remote-403。
 自包含 seed(``create_bill_split_debt`` 直接造成员债,owner=债务人、counterparty=发起人=
@@ -100,8 +95,10 @@ def test_web_receivables_remote_returns_403(client: TestClient) -> None:
 
 def test_web_receivables_empty_renders_premium_empty_state(web_client: TestClient) -> None:
     html = _page(web_client)
-    assert "还没有待对上的款" in html
-    assert "dt-card--empty" in html
+    assert "当前没有待收往来" in html
+    assert 'class="product-state"' in html
+    assert 'class="dt-' not in html
+    assert 'style="' not in html
 
 
 # ── communal open row ────────────────────────────────────────────────────────
@@ -130,7 +127,7 @@ def test_web_receivables_cleared_row_receded(web_client: TestClient, *, identity
     html = _page(web_client)
     assert "小红" in html
     assert "已两清" in html  # cleared member status pill
-    assert "debt-card-sunk" in html  # cleared rows recede (永不红)
+    assert "is-receded" in html  # cleared rows recede (永不红)
     assert "两清啦" in html  # cleared communal headline
 
 
@@ -172,13 +169,18 @@ def test_web_receivables_active_first_open_before_cleared_before_voided(
 # ── _receivable_row_view pure unit (status tone + recede + communal headline) ─
 def _row(**overrides) -> SimpleNamespace:
     base = {
+        "public_id": "debt-receivable-1",
         "counterparty_label": "阿明",
         "counterparty_type": "member",
+        "direction": "i_owe",
         "viewer_is_debtor": False,  # the viewer is the creditor (by construction of the list)
         "status": "open",
         "is_forgiven": False,
         "paid_amount_cents": 0,
         "principal_amount_cents": 2500,
+        "remaining_amount_cents": 2500,
+        "home_currency_code": "CNY",
+        "original_currency_code": None,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -187,8 +189,8 @@ def _row(**overrides) -> SimpleNamespace:
 def test_view_open_communal_creditor_headline() -> None:
     view = _receivable_row_view(_row(status="open", paid_amount_cents=0))
     assert view["name"] == "阿明"
-    assert view["status_label"] == "进行中"
-    assert view["status_tone"] == ""  # neutral, never danger
+    assert view["member_status_label"] == "进行中"
+    assert view["member_status_tone"] == ""  # neutral, never danger
     assert view["recede"] is False
     assert view["show_progress"] is True
     assert "我帮你垫的" in view["member_headline"]  # creditor side (viewer_is_debtor False)
@@ -196,8 +198,8 @@ def test_view_open_communal_creditor_headline() -> None:
 
 def test_view_cleared_recedes_and_two_clear_headline() -> None:
     view = _receivable_row_view(_row(status="cleared", paid_amount_cents=2500))
-    assert view["status_label"] == "已两清"
-    assert view["status_tone"] == "ok"
+    assert view["member_status_label"] == "已两清"
+    assert view["member_status_tone"] == "ok"
     assert view["recede"] is True
     assert view["show_progress"] is False
     assert "两清" in view["member_headline"]
@@ -205,6 +207,13 @@ def test_view_cleared_recedes_and_two_clear_headline() -> None:
 
 def test_view_voided_recedes_neutral() -> None:
     view = _receivable_row_view(_row(status="voided"))
-    assert view["status_label"] == "已不算"
-    assert view["status_tone"] == ""  # voided is neutral, never danger (红线②)
+    assert view["member_status_label"] == "已不算"
+    assert view["member_status_tone"] == ""  # voided is neutral, never danger (红线②)
     assert view["recede"] is True
+
+
+def test_view_unknown_status_uses_neutral_open_fallback() -> None:
+    view = _receivable_row_view(_row(status="future_status"))
+    assert view["member_status_label"] == "进行中"
+    assert view["member_status_tone"] == ""
+    assert view["show_progress"] is False

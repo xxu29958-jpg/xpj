@@ -82,7 +82,7 @@ internal fun MissingAmountSheetContent(
             ),
             actions = AppAmountInputActions(
                 onValueChange = { raw ->
-                    input = sanitizeMinorAmountInput(raw, currency)
+                    input = sanitizeMinorAmountInput(raw)
                 },
             ),
             focusRequester = focusRequester,

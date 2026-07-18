@@ -55,8 +55,6 @@ internal fun ReportsInsightCard(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
-        ReportsAnswerHeader(model = model)
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
         ReportsChartPanel(
             model = model,
             recentTrend = recentTrend,

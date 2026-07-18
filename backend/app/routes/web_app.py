@@ -1,4 +1,4 @@
-"""Web account center — dashboard, confirmed, stats, expense edit.
+"""Web product shell — canonical entry routing and confirmed transactions.
 
 v0.4-alpha3 slice 2: this module is the slim host for the /web pages that
 remain in ``web_app.py``. Pending / bulk live in ``web_pending.py``, rules
@@ -21,27 +21,26 @@ from app.database import get_db
 from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
+    _amount_segments,
+    _amount_yuan,
     _base_ctx,
     _confirmed_by_day,
     _confirmed_source_breakdown,
-    _dashboard_data_payload,
     _expense_view,
     _list_ledger_options,
+    _minor_amount_label,
+    _minor_amount_number,
     _require_local,  # re-exported for tests
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _sidebar_counts,
     _web_redirect,
-    _with_ledger,
     parse_form_row_version_token,
     templates,
 )
 from app.schemas import ConfirmedExpenseBatchUpdateRequest
-from app.services.expense_service import (
-    batch_update_confirmed_expenses,
-    ledger_has_any_expense,
-    list_confirmed,
-)
+from app.services.currency_common import average_minor_amount
+from app.services.expense_service import batch_update_confirmed_expenses, list_confirmed
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month
 
@@ -50,44 +49,26 @@ __all__ = ["router", "_require_local", "templates"]
 router = APIRouter(prefix="/web", tags=["web"])
 
 
-@router.get("", response_class=HTMLResponse, include_in_schema=False)
+@router.get("", response_class=RedirectResponse, include_in_schema=False)
 def web_root(
     request: Request,
     ledger_id: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> HTMLResponse:
+) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    ctx = _base_ctx(
-        request,
-        options=options,
-        selected_ledger_id=selected_id,
-        page_title="仪表盘",
-        sidebar_counts=_sidebar_counts(db, selected_id),
-    )
-    dashboard_payload = _dashboard_data_payload(db, selected_id)
-    ctx["cards"] = dashboard_payload["cards"]
-    ctx["trend14"] = dashboard_payload["trend14"]
-    ctx["category_share"] = dashboard_payload["category_share"]
-    ctx["dashboard_data_url"] = _with_ledger("/web/dashboard/data", selected_id)
-    # First-day onboarding: a brand-new ledger (zero lifetime expenses) shows the
-    # page-header sub-line as three "where to add the first receipt" links instead
-    # of a row of zeros. This lives in the page ctx (page-header is server-rendered
-    # outside the JS-controlled dashboard region) — not in the JSON data payload,
-    # which only feeds the card grid.
-    ctx["has_any_expense"] = ledger_has_any_expense(db, selected_id)
-    return templates.TemplateResponse(request=request, name="dashboard.html", context=ctx)
+    return _web_redirect("/web/pending", selected_id)
 
 
-@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+@router.get("/", response_class=RedirectResponse, include_in_schema=False)
 def web_root_slash(
     ledger_id: str | None = None,
     _local: None = LocalOnly,
 ) -> RedirectResponse:
     if ledger_id:
-        return _web_redirect("/web", ledger_id)
-    return RedirectResponse(url="/web", status_code=303)
+        return _web_redirect("/web/pending", ledger_id)
+    return RedirectResponse(url="/web/pending", status_code=303)
 
 
 def _confirmed_redirect(
@@ -158,8 +139,19 @@ def web_confirmed(
     ctx["month"] = month or ""
     ctx["tag"] = tag or ""
     ctx["pager_query"] = urlencode(pager_params)
-    ctx["month_total_amount_yuan"] = int(month_stats.get("total_amount_cents", 0)) / 100.0
-    ctx["month_total_count"] = int(month_stats.get("count", 0))
+    month_total_minor = int(month_stats.get("total_amount_cents", 0))
+    month_total_count = int(month_stats.get("count", 0))
+    month_average_minor = average_minor_amount(month_total_minor, month_total_count)
+    ctx["month_total_amount_yuan"] = _minor_amount_number(month_total_minor, None)
+    ctx["month_total_amount_value"] = _amount_yuan(month_total_minor)
+    ctx["month_total_amount_segments"] = _amount_segments(month_total_minor, None)
+    ctx["month_total_count"] = month_total_count
+    ctx["month_average_amount_cents"] = month_average_minor
+    ctx["month_average_amount_value"] = _amount_yuan(month_average_minor)
+    ctx["month_average_amount_label"] = _minor_amount_label(
+        month_average_minor,
+        None,
+    )
     ctx["by_day"] = _confirmed_by_day(db, selected_id, effective_month)
     ctx["source_breakdown"] = _confirmed_source_breakdown(db, selected_id, effective_month)
     ctx["flash_message"] = msg or ""

@@ -25,8 +25,7 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
-import com.ticketbox.ui.components.AppSecondaryRefreshState
-import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
@@ -56,7 +55,7 @@ fun CreateSpendingGoalScreen(
         }
     }
 
-    AppSecondaryScrollableContent(
+    AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
             title = stringResource(R.string.spending_goal_create_title),
@@ -66,7 +65,6 @@ fun CreateSpendingGoalScreen(
             hasBottomBar = false,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
         ),
-        refresh = AppSecondaryRefreshState(isRefreshing = false, onRefresh = {}),
         slots = AppSecondaryPageSlots(
             status = { CreateSpendingGoalStatusStack(state = state) },
             bottomBar = {
@@ -77,26 +75,22 @@ fun CreateSpendingGoalScreen(
                 )
             },
         ),
-    ) {
-        item {
-            DebtGoalOpenSection(
-                title = stringResource(R.string.spending_goal_create_month_section),
-                subtitle = stringResource(R.string.spending_goal_create_month_hint),
-            ) {
-                MonthSwitcher(
-                    month = displayMonthLabel(state.month),
-                    onPreviousMonth = viewModel::previousMonth,
-                    onNextMonth = viewModel::nextMonth,
-                )
-            }
+    ) { _ ->
+        DebtGoalOpenSection(
+            title = stringResource(R.string.spending_goal_create_month_section),
+            subtitle = stringResource(R.string.spending_goal_create_month_hint),
+        ) {
+            MonthSwitcher(
+                month = displayMonthLabel(state.month),
+                onPreviousMonth = viewModel::previousMonth,
+                onNextMonth = viewModel::nextMonth,
+            )
         }
-        item {
-            DebtGoalOpenSection(
-                title = stringResource(R.string.spending_goal_create_form_section),
-                subtitle = stringResource(R.string.spending_goal_create_form_hint),
-            ) {
-                SpendingGoalForm(state = state, viewModel = viewModel)
-            }
+        DebtGoalOpenSection(
+            title = stringResource(R.string.spending_goal_create_form_section),
+            subtitle = stringResource(R.string.spending_goal_create_form_hint),
+        ) {
+            SpendingGoalForm(state = state, viewModel = viewModel)
         }
     }
 }
@@ -108,7 +102,11 @@ private fun CreateSpendingGoalStatusStack(state: CreateSpendingGoalUiState) {
             tone = if (state.isSubmitting) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
         )
         if (!state.canModify) {
-            AppStatusBanner(message = UiText.res(R.string.common_readonly_ledger), tone = MessageTone.Info)
+            AppStatusBanner(
+                message = UiText.res(R.string.common_readonly_ledger),
+                tone = MessageTone.Info,
+                announceUpdates = false,
+            )
         }
         state.formError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
     }

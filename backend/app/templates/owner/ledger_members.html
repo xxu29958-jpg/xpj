@@ -74,10 +74,10 @@
         <td>
           {% if can_manage_members and not m.disabled_at and m.role != 'owner' %}
           <div class="member-actions">
-          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/transfer-owner" class="inline-form" data-confirm="确定把 {{ ledger_name or ledger_id }} 的拥有者转让给 {{ m.account_name }} 吗？当前拥有者会降为成员。">
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/transfer-owner" class="inline-form" data-confirm-variant="danger" data-confirm="确定把 {{ ledger_name or ledger_id }} 的拥有者转让给 {{ m.account_name }} 吗？当前拥有者会降为成员。">
             <button type="submit" class="btn btn-secondary btn--compact">转让拥有者</button>
           </form>
-          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/disable" class="inline-form" data-confirm="确定停用 {{ m.account_name }} 吗？该成员的所有登录将立即失效。">
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/disable" class="inline-form" data-confirm-variant="danger" data-confirm="确定停用 {{ m.account_name }} 吗？该成员的所有登录将立即失效。">
             <button type="submit" class="btn btn-secondary btn--compact">停用</button>
           </form>
           </div>
@@ -152,7 +152,7 @@
         </td>
         <td>
           {% if not inv.used_at and not inv.revoked_at %}
-          <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations/{{ inv.public_id }}/revoke" class="inline-form" data-confirm="确定撤销这条邀请？撤销后被邀请人无法再使用此邀请明文。">
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations/{{ inv.public_id }}/revoke" class="inline-form" data-confirm-variant="danger" data-confirm="确定撤销这条邀请？撤销后被邀请人无法再使用此邀请明文。">
             <button type="submit" class="btn btn-secondary btn--compact">撤销</button>
           </form>
           {% else %}<span class="text-faint">—</span>{% endif %}

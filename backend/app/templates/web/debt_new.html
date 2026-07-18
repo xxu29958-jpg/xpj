@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}新增外部往来 · 往来 · 小票夹{% endblock %}
+
+{% block content %}
+<nav class="detail-breadcrumb" aria-label="面包屑">
+  <a class="page-back-link" href="/web/debts?ledger_id={{ selected_ledger_id }}">我欠</a>
+  <span aria-hidden="true">/</span>
+  <span>新增外部往来</span>
+</nav>
+
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">往来 / 外部欠款</span>
+    <h1 class="page-title page-title--compact">新增外部往来</h1>
+    <p class="product-page-summary">
+      记录信用卡、贷款或个人借款；保存时由服务端冻结本位币金额和外币汇率快照。
+    </p>
+  </div>
+</header>
+
+{% if form_error %}
+<div class="product-feedback product-feedback--error" role="alert">{{ form_error }}</div>
+{% endif %}
+
+<section class="product-panel product-panel--padded">
+  <form method="post" action="/web/debts" class="product-form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ form_values.idempotency_key }}">
+
+    <label class="product-field">
+      <span>方向</span>
+      <select class="product-input" name="direction" required>
+        <option value="i_owe"{% if form_values.direction == 'i_owe' %} selected{% endif %}>我欠对方</option>
+        <option value="owed_to_me"{% if form_values.direction == 'owed_to_me' %} selected{% endif %}>对方欠我</option>
+      </select>
+    </label>
+
+    <label class="product-field">
+      <span>对方或机构</span>
+      <input class="product-input"
+             type="text"
+             name="counterparty_label"
+             value="{{ form_values.counterparty_label }}"
+             maxlength="255"
+             placeholder="例如：招商信用卡"
+             autocomplete="organization"
+             required>
+    </label>
+
+    <label class="product-field">
+      <span>币种</span>
+      <select class="product-input" name="currency_code" aria-describedby="debt-currency-hint" required>
+        {% for option in currency_options %}
+        <option value="{{ option.currency_code }}"{% if form_values.currency_code == option.currency_code %} selected{% endif %}>
+          {{ option.label }}
+        </option>
+        {% endfor %}
+      </select>
+      <small id="debt-currency-hint">
+        本位币为 {{ home_currency_code }}；外币由服务端按发生日冻结汇率。JPY、KRW 只接受整数，其余币种最多两位小数。
+      </small>
+    </label>
+
+    <label class="product-field">
+      <span>本金</span>
+      <input class="product-input"
+             type="number"
+             name="amount_major"
+             value="{{ form_values.amount_major }}"
+             min="0"
+             step="any"
+             inputmode="decimal"
+             placeholder="0.00"
+             required>
+    </label>
+
+    <label class="product-field">
+      <span>发生时间</span>
+      <input class="product-input"
+             type="datetime-local"
+             name="event_time"
+             value="{{ form_values.event_time }}"
+             required>
+    </label>
+
+    <label class="product-field">
+      <span>还款类型</span>
+      <select class="product-input" name="debt_kind" aria-describedby="debt-kind-hint" required>
+        {% for value, label in debt_kind_options %}
+        <option value="{{ value }}"{% if form_values.debt_kind == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <small id="debt-kind-hint">分类只决定还清时间的计算口径，不改变本金或已还事实。</small>
+    </label>
+
+    <details>
+      <summary>分期设置</summary>
+      <div class="product-form-grid">
+        <p class="product-page-summary">仅在还款类型选择“分期还款”时填写；周期留空表示每月一期。</p>
+        <label class="product-field">
+          <span>总期数</span>
+          <input class="product-input"
+                 type="number"
+                 name="installment_count"
+                 value="{{ form_values.installment_count }}"
+                 min="1"
+                 max="600"
+                 step="1"
+                 inputmode="numeric"
+                 placeholder="例如：12">
+        </label>
+        <label class="product-field">
+          <span>每几个月一期</span>
+          <input class="product-input"
+                 type="number"
+                 name="installment_period_months"
+                 value="{{ form_values.installment_period_months }}"
+                 min="1"
+                 max="120"
+                 step="1"
+                 inputmode="numeric"
+                 placeholder="留空为 1">
+        </label>
+      </div>
+    </details>
+
+    <div class="cluster">
+      <button class="product-button product-button--primary" type="submit">保存并查看详情</button>
+      <a class="product-button" href="/web/debts?ledger_id={{ selected_ledger_id }}">取消</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

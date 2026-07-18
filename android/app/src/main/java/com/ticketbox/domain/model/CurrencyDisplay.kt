@@ -1,9 +1,10 @@
 package com.ticketbox.domain.model
 
 data class CurrencyDisplay(
-    val homeCurrency: CurrencyCode = FxContract.HomeCurrency,
+    val homeCurrency: CurrencyCode,
 ) {
     companion object {
-        val Base: CurrencyDisplay = CurrencyDisplay()
+        val LegacyFallback: CurrencyDisplay =
+            CurrencyDisplay(FxContract.LegacyHomeCurrencyFallback)
     }
 }

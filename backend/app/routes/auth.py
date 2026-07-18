@@ -10,10 +10,13 @@ from app.errors import AppError
 from app.network_boundary import pairing_rate_limit_key
 from app.schemas import (
     AuthCheckResponse,
+    DesktopSessionActivationResponse,
     PairRequest,
     PairResponse,
     RefreshSessionResponse,
 )
+from app.services.currency_common import home_currency_code
+from app.services.desktop_session_service import activate_desktop_session
 from app.services.identity_service import pair_device
 from app.services.session_lifecycle_service import (
     app_token_expiry_window,
@@ -63,8 +66,40 @@ def pair(payload: PairRequest, request: Request, db: Session = Depends(get_db)) 
         ledger_name=result.ledger_name,
         device_name=result.device_name,
         role=result.role,
+        home_currency_code=home_currency_code(),
         expires_at=to_iso(result.expires_at),
         soft_refresh_after=to_iso(result.soft_refresh_after),
+        activation_required=result.activation_required,
+        activation_expires_at=to_iso(result.activation_expires_at),
+    )
+
+
+@router.post(
+    "/desktop/activate",
+    response_model=DesktopSessionActivationResponse,
+)
+def activate_desktop(
+    authorization: str | None = Header(default=None),
+    x_ticketbox_previous_session: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> DesktopSessionActivationResponse:
+    # Pending Desktop bearers are intentionally rejected by the ordinary auth
+    # dependency.  This one narrow proof-of-possession endpoint hashes B and
+    # performs the pending -> active transition in the service transaction.
+    result = activate_desktop_session(
+        db,
+        token_value=_bearer_token_value(authorization),
+        previous_token_value=x_ticketbox_previous_session,
+    )
+    return DesktopSessionActivationResponse(
+        account_name=result.account_name,
+        ledger_id=result.ledger_id,
+        ledger_name=result.ledger_name,
+        device_name=result.device_name,
+        role=result.role,
+        expires_at=to_iso(result.expires_at),
+        soft_refresh_after=to_iso(result.soft_refresh_after),
+        activation_required=result.activation_required,
     )
 
 

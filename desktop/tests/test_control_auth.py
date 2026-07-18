@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from backend_manager.app_controller import AppController
@@ -21,6 +23,11 @@ _INSTANCE_SECRET = "instance-proof-secret"
 _ORIGIN = "http://127.0.0.1:8799"
 _CONTENT_SECURITY_POLICY = (
     "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+    "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; "
+    "frame-ancestors 'none'"
+)
+_PRODUCT_CONTENT_SECURITY_POLICY = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; "
     "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; "
     "frame-ancestors 'none'"
 )
@@ -62,10 +69,13 @@ def test_foreign_origin_is_rejected() -> None:
 
 
 def test_foreign_host_is_rejected_even_when_origin_matches_it() -> None:
-    assert _auth(
-        provided_host="evil.test:8799",
-        origin="http://evil.test:8799",
-    ) is False
+    assert (
+        _auth(
+            provided_host="evil.test:8799",
+            origin="http://evil.test:8799",
+        )
+        is False
+    )
 
 
 def test_token_alone_passes_when_fetch_metadata_absent() -> None:
@@ -76,12 +86,15 @@ def test_token_alone_passes_when_fetch_metadata_absent() -> None:
 
 def test_host_and_origin_are_compared_as_canonical_tuples() -> None:
     assert _auth(provided_host=" 127.0.0.1:8799 ", origin=" HTTP://127.0.0.1:8799 ") is True
-    assert _auth(
-        provided_host="LOCALHOST",
-        expected_host="localhost:80",
-        origin="HTTP://LOCALHOST",
-        expected_origin="http://localhost:80",
-    ) is True
+    assert (
+        _auth(
+            provided_host="LOCALHOST",
+            expected_host="localhost:80",
+            origin="HTTP://LOCALHOST",
+            expected_origin="http://localhost:80",
+        )
+        is True
+    )
 
 
 def test_canonicalization_does_not_accept_hostile_authorities() -> None:
@@ -90,8 +103,12 @@ def test_canonicalization_does_not_accept_hostile_authorities() -> None:
     assert _auth(origin="http://127.0.0.1.evil:8799") is False
 
 
-def _assert_security_headers(response: http.client.HTTPResponse) -> None:
-    assert response.getheader("Content-Security-Policy") == _CONTENT_SECURITY_POLICY
+def _assert_security_headers(
+    response: http.client.HTTPResponse,
+    *,
+    content_security_policy: str = _CONTENT_SECURITY_POLICY,
+) -> None:
+    assert response.getheader("Content-Security-Policy") == content_security_policy
     assert response.getheader("X-Frame-Options") == "DENY"
     assert response.getheader("X-Content-Type-Options") == "nosniff"
     assert response.getheader("Cache-Control") == "no-store"
@@ -100,6 +117,7 @@ def _assert_security_headers(response: http.client.HTTPResponse) -> None:
 
 def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> None:
     reopened: list[str] = []
+
     class Controller:
         def status(self) -> dict:
             return {"status": "ok"}
@@ -114,6 +132,8 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
 
     ui = tmp_path / "ui.html"
     ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    product = tmp_path / "product.html"
+    product.write_text("product-token=__CONTROL_TOKEN__", encoding="utf-8")
     server = ControlServer(
         "127.0.0.1",
         0,
@@ -121,6 +141,7 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         token=_TOKEN,
         instance_secret=_INSTANCE_SECRET,
         ui_html=ui,
+        product_html=product,
         request_window=lambda: (reopened.append("window"), True)[-1],
     )
     thread = threading.Thread(target=server.serve_forever)
@@ -137,6 +158,17 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         connection.close()
 
         connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/app")
+        response = connection.getresponse()
+        assert response.status == 404
+        _assert_security_headers(
+            response,
+            content_security_policy=_PRODUCT_CONTENT_SECURITY_POLICY,
+        )
+        assert _TOKEN.encode() not in response.read()
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
         connection.request("GET", "/")
         response = connection.getresponse()
         assert response.status == 403
@@ -147,9 +179,113 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
         connection.request("GET", f"/?instance={_INSTANCE_SECRET}")
         response = connection.getresponse()
-        assert response.status == 200
+        assert response.status == 404
         _assert_security_headers(response)
+        assert _TOKEN.encode() not in response.read()
+        connection.close()
+
+        bootstrap_path = tmp_path / "bootstrap.html"
+        bootstrap_url = server.prepare_web_bootstrap(bootstrap_path)
+        assert _INSTANCE_SECRET not in bootstrap_url
+        assert _INSTANCE_SECRET not in str(bootstrap_path)
+        bootstrap_html = bootstrap_path.read_text(encoding="utf-8")
+        assert _INSTANCE_SECRET not in bootstrap_html
+        match = re.search(r'name="bootstrap_token" value="([^"]+)"', bootstrap_html)
+        assert match is not None
+        bootstrap_token = match.group(1)
+        bootstrap_body = urllib.parse.urlencode(
+            {"bootstrap_token": bootstrap_token}
+        ).encode()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request(
+            "POST",
+            "/api/bootstrap",
+            body=bootstrap_body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        assert response.status == 200
+        cookies = response.headers.get_all("Set-Cookie")
+        assert any("Path=/web" in cookie for cookie in cookies)
+        assert any("Path=/static" in cookie for cookie in cookies)
+        assert any("ticketbox_manager_control=" in cookie for cookie in cookies)
+        assert all("HttpOnly" in cookie for cookie in cookies)
+        assert all("SameSite=Strict" in cookie for cookie in cookies)
+        assert _TOKEN.encode() not in response.read()
+        connection.close()
+        assert not bootstrap_path.exists()
+
+        cookie_header = "; ".join(cookie.partition(";")[0] for cookie in cookies)
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/", headers={"Cookie": cookie_header})
+        response = connection.getresponse()
+        assert response.status == 200
         assert _TOKEN.encode() in response.read()
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request(
+            "POST",
+            "/api/bootstrap",
+            body=bootstrap_body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        assert response.status == 410
+        response.read()
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        invalid_body = urllib.parse.urlencode(
+            {"bootstrap_token": "invalid-bootstrap-token"}
+        ).encode()
+        connection.request(
+            "POST",
+            "/api/bootstrap",
+            body=invalid_body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        assert response.status == 401
+        response.read()
+        connection.close()
+
+        cancelled_path = tmp_path / "cancelled-bootstrap.html"
+        server.prepare_web_bootstrap(cancelled_path)
+        cancelled_html = cancelled_path.read_text(encoding="utf-8")
+        cancelled_match = re.search(
+            r'name="bootstrap_token" value="([^"]+)"',
+            cancelled_html,
+        )
+        assert cancelled_match is not None
+        cancelled_body = urllib.parse.urlencode(
+            {"bootstrap_token": cancelled_match.group(1)}
+        ).encode()
+        server.cancel_web_bootstrap(cancelled_path)
+        assert not cancelled_path.exists()
+
+        connection = http.client.HTTPConnection(
+            "127.0.0.1",
+            server.server_address[1],
+            timeout=2,
+        )
+        connection.request(
+            "POST",
+            "/api/bootstrap",
+            body=cancelled_body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        assert response.status == 410
+        response.read()
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", f"/app?instance={_INSTANCE_SECRET}")
+        response = connection.getresponse()
+        assert response.status == 404
+        response.read()
         connection.close()
 
         connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
@@ -193,14 +329,20 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         _assert_security_headers(response)
         response.read()
         connection.close()
-        assert probe_existing_manager(
-            f"http://127.0.0.1:{server.server_address[1]}/",
-            _INSTANCE_SECRET,
-        ) is True
-        assert request_existing_manager_window(
-            f"http://127.0.0.1:{server.server_address[1]}/",
-            _INSTANCE_SECRET,
-        ) is True
+        assert (
+            probe_existing_manager(
+                f"http://127.0.0.1:{server.server_address[1]}/",
+                _INSTANCE_SECRET,
+            )
+            is True
+        )
+        assert (
+            request_existing_manager_window(
+                f"http://127.0.0.1:{server.server_address[1]}/",
+                _INSTANCE_SECRET,
+            )
+            is True
+        )
         assert reopened == ["window"]
 
         browser_reopen = http.client.HTTPConnection(
@@ -263,14 +405,20 @@ def test_fake_fixed_identity_listener_cannot_prove_manager_ownership() -> None:
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     try:
-        assert probe_existing_manager(
-            f"http://127.0.0.1:{server.server_address[1]}/",
-            _INSTANCE_SECRET,
-        ) is False
-        assert request_existing_manager_window(
-            f"http://127.0.0.1:{server.server_address[1]}/",
-            _INSTANCE_SECRET,
-        ) is False
+        assert (
+            probe_existing_manager(
+                f"http://127.0.0.1:{server.server_address[1]}/",
+                _INSTANCE_SECRET,
+            )
+            is False
+        )
+        assert (
+            request_existing_manager_window(
+                f"http://127.0.0.1:{server.server_address[1]}/",
+                _INSTANCE_SECRET,
+            )
+            is False
+        )
     finally:
         server.shutdown()
         server.server_close()

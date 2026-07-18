@@ -1,122 +1,138 @@
 {% extends "base.html" %}
-{% block title %}疑似重复 · 小票夹{% endblock %}
+{% block title %}疑似重复 · 收件 · 小票夹{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">这几笔，看起来像同一件事。<span class="page-title-count">· {{ duplicate_pairs | length }} 组</span></h1>
-  <div class="page-sub">
-    每组并排呈现：左侧是已入账的原账单，右侧是新上传的待确认草稿。
-    差异字段以茶铜色标出。决定保留哪一份，剩下的会被标记为忽略。
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">收件 / 疑似重复</span>
+    <h1 class="page-title page-title--compact">疑似重复</h1>
+    <p class="product-page-summary">
+      左侧是系统找到的参考记录，右侧是当前待核对记录；两边都按各自实际状态呈现。
+    </p>
   </div>
-</div>
+  <div class="product-page-actions">
+    <span class="product-status{% if duplicate_pairs %} product-status--warning{% else %} product-status--success{% endif %}">
+      {{ duplicate_pairs | length }} 组待核对
+    </span>
+  </div>
+</header>
 
 {% if flash_message %}
-<div class="callout-info">{{ flash_message }}</div>
+<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
 {% endif %}
 
-<div class="toolbar">
-  <div class="seg">
-    <button class="on" type="button">待处理 <span class="count">{{ duplicate_pairs | length }}</span></button>
-  </div>
-  <div class="spacer"></div>
-  <span class="toolbar-hint">
-    判定依据：相同截图，或金额/商家/时间高度接近。「不是重复」会被记到忽略列表，未来不再触发。
-  </span>
+<div class="product-commandbar">
+  <span class="meta">判定依据：相同截图，或金额、商家与时间高度接近。</span>
+  <a class="product-button" href="/web/pending{{ q }}">返回待我处理</a>
 </div>
 
 {% if duplicate_pairs | length == 0 %}
-<div class="dt-card dt-card--empty">
-  <h3 class="empty-headline">没有疑似重复</h3>
-  <div class="empty-body">新草稿和已入账账单都不冲突，可以放心确认。</div>
+<div class="product-state">
+  <div class="product-state-title">没有疑似重复</div>
+  <div class="product-state-body">当前没有需要逐组比较的相似记录，可以继续处理收件队列。</div>
+  <a class="product-state-action" href="/web/pending{{ q }}">查看待我处理</a>
 </div>
 {% else %}
-<div class="stack-col">
+<div class="duplicate-case-list">
   {% for pair in duplicate_pairs %}
   {% set cur = pair.current %}
   {% set orig = pair.original %}
-  <div class="dt-card dup-card">
-    <div class="dup-head">
-      <h3>
-        {{ (orig.merchant if orig else cur.merchant) or '（未填）' }}
-        <span class="similar">× {{ pair.score_pct }}% 相似</span>
-      </h3>
-      <span class="dt-pill {% if pair.confidence_tier == 'high' %}danger{% else %}warn{% endif %}">
-        {% if pair.confidence_tier == 'high' %}高置信度{% else %}中置信度{% endif %} · {{ pair.score_pct }}
+  <section class="product-panel duplicate-case">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">{{ (orig.merchant if orig else cur.merchant) or '未填写商家' }}</div>
+        <div class="product-panel-subtitle">组 #{{ cur.id }} · {{ pair.score_pct }}% 相似</div>
+      </div>
+      <span class="product-status{% if pair.confidence_tier == 'high' %} product-status--danger{% else %} product-status--warning{% endif %}">
+        {{ '高置信度' if pair.confidence_tier == 'high' else '中置信度' }}
       </span>
-      <span class="gid">组 ID · #{{ cur.id }}</span>
     </div>
 
-    <div class="dup-stack">
-      {# 左：原账单 #}
-      <div class="dup-side">
-        <span class="dup-side-tag">原账单 · 已入账</span>
-        <div class="dup-thumb"><span class="label">receipt scan #{{ orig.id if orig else '—' }}</span></div>
-        <dl class="dup-fields">
-          <dt>商家</dt><dd class="{% if 'merchant' in pair.diff_fields %}diff{% endif %}">{{ (orig.merchant if orig else '—') or '—' }}</dd>
-          <dt>金额</dt><dd class="num {% if 'amount' in pair.diff_fields %}diff{% endif %}">
+    <div class="duplicate-compare">
+      <article class="duplicate-record">
+        <div class="duplicate-record-header">
+          <div>
+            <span class="product-eyebrow">用于比较</span>
+            <h2>参考记录</h2>
+          </div>
+          <span class="product-status{% if orig and orig.status_tone %} product-status--{{ orig.status_tone }}{% endif %}">
+            {{ orig.status_label if orig else '记录不可用' }}
+          </span>
+        </div>
+        <dl class="duplicate-fields">
+          <dt>记录</dt><dd>#{{ orig.id if orig else '—' }}</dd>
+          <dt>商家</dt><dd{% if 'merchant' in pair.diff_fields %} class="is-different"{% endif %}>{{ (orig.merchant if orig else '—') or '—' }}</dd>
+          <dt>金额</dt>
+          <dd{% if 'amount' in pair.diff_fields %} class="is-different"{% endif %}>
             {{ orig.amount_label if orig else '—' }}
-            {% if orig and orig.fx_meta %}<div class="meta">{{ orig.fx_meta }}</div>{% endif %}
+            {% if orig and orig.fx_meta %}<span class="meta">{{ orig.fx_meta }}</span>{% endif %}
           </dd>
-          <dt>时间</dt><dd class="num {% if 'time' in pair.diff_fields %}diff{% endif %}">{{ (orig.expense_time if orig else '—') or '—' }}</dd>
+          <dt>时间</dt><dd{% if 'time' in pair.diff_fields %} class="is-different"{% endif %}>{{ (orig.expense_time if orig else '—') or '—' }}</dd>
           <dt>分类</dt><dd>{{ (orig.category if orig else '—') or '—' }}</dd>
           <dt>来源</dt><dd>{{ orig.source_label if orig else '—' }}</dd>
-          <dt>状态</dt>
-          <dd>
-            <span class="dt-pill ok">{{ orig.status if orig else '—' }}</span>
-            <span class="num dup-id">#{{ orig.id if orig else '—' }}</span>
-          </dd>
         </dl>
-      </div>
+      </article>
 
-      <div class="dup-divider"><div class="vs">vs</div></div>
+      <div class="duplicate-versus" aria-hidden="true">对比</div>
 
-      {# 右：新草稿 #}
-      <div class="dup-side draft">
-        <span class="dup-side-tag">新草稿 · 待确认</span>
-        <div class="dup-thumb"><span class="label">receipt scan #{{ cur.id }}</span></div>
-        <dl class="dup-fields">
-          <dt>商家</dt><dd class="{% if 'merchant' in pair.diff_fields %}diff{% endif %}">{{ cur.merchant or '—' }}</dd>
-          <dt>金额</dt><dd class="num {% if 'amount' in pair.diff_fields %}diff{% endif %}">
+      <article class="duplicate-record duplicate-record--draft">
+        <div class="duplicate-record-header">
+          <div>
+            <span class="product-eyebrow">本次需要处理</span>
+            <h2>当前待核对记录</h2>
+          </div>
+          <span class="product-status{% if cur.status_tone %} product-status--{{ cur.status_tone }}{% endif %}">
+            {{ cur.status_label }}
+          </span>
+        </div>
+        <dl class="duplicate-fields">
+          <dt>记录</dt><dd>#{{ cur.id }}</dd>
+          <dt>商家</dt><dd{% if 'merchant' in pair.diff_fields %} class="is-different"{% endif %}>{{ cur.merchant or '—' }}</dd>
+          <dt>金额</dt>
+          <dd{% if 'amount' in pair.diff_fields %} class="is-different"{% endif %}>
             {{ cur.amount_label or '—' }}
-            {% if cur.fx_meta %}<div class="meta">{{ cur.fx_meta }}</div>{% endif %}
+            {% if cur.fx_meta %}<span class="meta">{{ cur.fx_meta }}</span>{% endif %}
           </dd>
-          <dt>时间</dt><dd class="num {% if 'time' in pair.diff_fields %}diff{% endif %}">{{ cur.expense_time or '—' }}</dd>
+          <dt>时间</dt><dd{% if 'time' in pair.diff_fields %} class="is-different"{% endif %}>{{ cur.expense_time or '—' }}</dd>
           <dt>分类</dt><dd>{{ cur.category }}</dd>
           <dt>来源</dt><dd>{{ cur.source_label }}</dd>
-          <dt>状态</dt>
-          <dd>
-            <span class="dt-pill warn">{{ cur.status }}</span>
-            <span class="num dup-id">#{{ cur.id }}</span>
-          </dd>
         </dl>
-      </div>
+      </article>
     </div>
 
-    <div class="dup-foot">
-      <span class="reason">
-        <span class="dt-pill muted">判定原因</span>
-        {{ pair.reason or '系统未提供原因。' }}
-      </span>
-      <div class="spacer"></div>
+    <div class="duplicate-decision">
+      <div>
+        <span class="product-eyebrow">判定原因</span>
+        <p>{{ pair.reason_label }}</p>
+      </div>
       {% if can_write %}
-      <form method="post" action="/web/duplicates/{{ cur.id }}/keep" class="inline-form">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
-        <button class="dt-btn" type="submit">保留两条</button>
-      </form>
-      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-original" class="inline-form">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
-        <button class="dt-btn" type="submit">忽略原账单</button>
-      </form>
-      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-current" class="inline-form">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
-        <button class="dt-btn primary" type="submit">忽略新草稿</button>
-      </form>
+      <div class="product-row-actions">
+        <form method="post" action="/web/duplicates/{{ cur.id }}/keep" class="product-inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
+          <button class="product-button" type="submit">不是重复，保留两条</button>
+        </form>
+        <form method="post" action="/web/duplicates/{{ cur.id }}/reject-original" class="product-inline-form"
+              data-confirm="将参考记录移入回收站，并保留当前记录。继续吗？">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
+          <button class="product-button" type="submit">忽略参考记录</button>
+        </form>
+        <form method="post" action="/web/duplicates/{{ cur.id }}/reject-current" class="product-inline-form"
+              data-confirm="将当前待核对记录移入回收站。继续吗？">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
+          <button class="product-button product-button--primary" type="submit">忽略当前记录</button>
+        </form>
+      </div>
+      {% else %}
+      <span class="readonly-inline">只读角色无法处理重复项。</span>
       {% endif %}
     </div>
-  </div>
+  </section>
   {% endfor %}
 </div>
 {% endif %}

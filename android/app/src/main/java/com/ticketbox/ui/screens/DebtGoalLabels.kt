@@ -63,6 +63,7 @@ internal fun debtCounterpartyFallbackRes(counterpartyType: String): Int = when (
 internal fun debtActionTitleRes(action: DebtAction): Int = when (action) {
     DebtAction.Repayment -> R.string.debt_action_repayment_title
     DebtAction.Adjustment -> R.string.debt_action_adjustment_title
+    DebtAction.RepaymentVoid -> R.string.debt_action_repayment_void_title
     DebtAction.Void -> R.string.debt_action_void_title
 }
 

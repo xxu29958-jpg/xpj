@@ -19,92 +19,92 @@
 
 :root,
 :root[data-theme="paper"] {
-    /* Surface — 暖中性底 + 纯白卡（方案B refresh：卡片从暖底"弹"出来） */
-    --surface-app: #f8f7f4;
+    /* Surface — 冷静工作区 + 纯白业务面板 */
+    --surface-app: #eef2ef;
     --surface-card: #ffffff;
     --surface-raised: #ffffff;
-    --surface-nav: #21201c;
-    --surface-sunken: #f1efea;
+    --surface-nav: #ffffff;
+    --surface-sunken: #eef2ef;
 
-    /* Text — 墨色四级（暖中性，最重 SemiBold 即止） */
-    --text-default: #21201c;
-    --text-muted: #63635e;
-    --text-meta: #9c9b96;
-    --text-faint: #bebcb5;
+    /* Text — 石墨四级，最重 SemiBold 即止 */
+    --text-default: #17201c;
+    --text-muted: #66716b;
+    --text-meta: #87928c;
+    --text-faint: #b7c0bb;
     --text-on-primary: #ffffff;
 
-    /* Brand — 精炼铜（只用主 CTA / 选中态；金额永远用墨） */
-    --brand-primary: #a0561f;
-    --brand-primary-strong: #864718;
-    --brand-accent: #c99a5b;
-    --brand-primary-bg: #f3ebe2;
-    --brand-focus-ring: rgba(160, 86, 31, 0.40);
+    /* Brand — 低饱和常青色，只用于主 CTA、选中态与焦点 */
+    --brand-primary: #176b5b;
+    --brand-primary-strong: #0e5146;
+    --brand-accent: #86bbaa;
+    --brand-primary-bg: #e1f0ea;
+    --brand-focus-ring: rgba(23, 107, 91, 0.40);
 
     /* State */
-    --state-success-bg: #e7efdd; --state-success-fg: #3f6b2e; --state-success-border: #c8dbb4;
-    --state-warn-bg:    #f6ecd7; --state-warn-fg:    #8a5a12; --state-warn-border:    #e6d3a6;
-    --state-danger-bg:  #f6e2d9; --state-danger-fg:  #b23a1e; --state-danger-border:  #ecc3b5;
-    --state-info-bg:    #e3ecee; --state-info-fg:    #3a5560; --state-info-border:    #c6d6da;
-    --state-neutral-bg: #eeede7; --state-neutral-fg: #63635e; --state-neutral-border: #dcdad2;
+    --state-success-bg: #e7efdd; --state-success-fg: #236a57; --state-success-border: #c8dbb4;
+    --state-warn-bg:    #f6ecd7; --state-warn-fg:    #8a5a18; --state-warn-border:    #e6d3a6;
+    --state-danger-bg:  #f6e2d9; --state-danger-fg:  #a83d32; --state-danger-border:  #ecc3b5;
+    --state-info-bg:    #e3ecee; --state-info-fg:    #49656b; --state-info-border:    #c6d6da;
+    --state-neutral-bg: #eeede7; --state-neutral-fg: #66716b; --state-neutral-border: #dcdad2;
 
     /* Borders / radii / shadows */
     --border-card: #eceae3;
     --border-input: #d8d5cc;
-    --control-border: rgba(160, 86, 31, 0.26);
-    --control-border-hover: rgba(160, 86, 31, 0.44);
-    --control-border-active: rgba(160, 86, 31, 0.62);
-    --control-press-bg: rgba(160, 86, 31, 0.10);
+    --control-border: rgba(23, 107, 91, 0.26);
+    --control-border-hover: rgba(23, 107, 91, 0.44);
+    --control-border-active: rgba(23, 107, 91, 0.62);
+    --control-press-bg: rgba(23, 107, 91, 0.10);
     --radius-card: 16px;
     --radius-input: 6px;
     --radius-pill: 999px;
-    /* 暖调分层柔阴影（非纯黑，让白卡从暖底浮起） */
-    --shadow-card: 0 1px 2px hsl(36 22% 16% / .05), 0 6px 18px hsl(36 22% 16% / .05);
-    --shadow-raised: 0 2px 6px hsl(36 22% 16% / .06), 0 14px 36px hsl(36 22% 16% / .10);
+    /* 石墨柔阴影，让白色业务面板从工作区中分层 */
+    --shadow-card: 0 1px 2px rgba(23, 32, 28, .05), 0 6px 18px rgba(23, 32, 28, .05);
+    --shadow-raised: 0 2px 6px rgba(23, 32, 28, .06), 0 14px 36px rgba(23, 32, 28, .10);
 
     /* Chart — 8 色调色板 */
-    --chart-series-1: #8a5a2b;
-    --chart-series-2: #1c1a18;
-    --chart-series-3: #4f6b3a;
-    --chart-series-4: #a4361c;
-    --chart-series-5: #3e6770;
-    --chart-series-6: #d6b487;
-    --chart-series-7: #5a4a6e;
-    --chart-series-8: #807968;
-    --chart-sequential-from: #f1e7d5;
-    --chart-sequential-to:   #6f4621;
-    --chart-diverging-negative: #a4361c;
-    --chart-diverging-zero:     #ece7d8;
-    --chart-diverging-positive: #4f6b3a;
-    --chart-axis: #aaa294;
-    --chart-axis-label: #4a463f;
-    --chart-grid: rgba(28, 26, 24, 0.08);
-    --chart-grid-emphasis: rgba(138, 90, 43, 0.40);
-    --chart-tooltip-bg: #1c1a18;
-    --chart-tooltip-fg: #fbf8f1;
-    --chart-tooltip-border: #3a3530;
-    --chart-legend-fg: #1c1a18;
-    --chart-legend-marker: #fbf8f1;
-    --chart-sankey-ribbon: rgba(138, 90, 43, 0.30);
-    --chart-sankey-ribbon-emphasis: rgba(111, 70, 33, 0.80);
-    --chart-overspend: #a4361c;
-    --chart-empty: #ddd6c5;
+    --chart-series-1: #176b5b;
+    --chart-series-2: #26322d;
+    --chart-series-3: #a9783e;
+    --chart-series-4: #b65e47;
+    --chart-series-5: #55747a;
+    --chart-series-6: #7f8f68;
+    --chart-series-7: #756a8a;
+    --chart-series-8: #8c9691;
+    --chart-sequential-from: #e1f0ea;
+    --chart-sequential-to:   #0e5146;
+    --chart-diverging-negative: #b65e47;
+    --chart-diverging-zero:     #e7ece8;
+    --chart-diverging-positive: #176b5b;
+    --chart-axis: #aab4ae;
+    --chart-axis-label: #66716b;
+    --chart-grid: #17201c14;
+    --chart-grid-emphasis: #176b5b66;
+    --chart-tooltip-bg: #17201c;
+    --chart-tooltip-fg: #f7f8f6;
+    --chart-tooltip-border: #34413b;
+    --chart-legend-fg: #17201c;
+    --chart-legend-marker: #f7f8f6;
+    --chart-sankey-ribbon: #176b5b4d;
+    --chart-sankey-ribbon-emphasis: #0e5146cc;
+    --chart-overspend: #b65e47;
+    --chart-empty: #dce2dd;
 
     /* Goal state */
-    --goal-idle-bg:        #ece7d8; --goal-idle-fg:        #807968; --goal-idle-border:        #d6cfbe;
-    --goal-on-track-bg:    #d9e0c4; --goal-on-track-fg:    #4f6b3a; --goal-on-track-border:    #bccaa6;
-    --goal-near-limit-bg:  #f5e3c0; --goal-near-limit-fg:  #7c4f0f; --goal-near-limit-border:  #e3cb91;
-    --goal-exceeded-bg:    #f1d4cb; --goal-exceeded-fg:    #a4361c; --goal-exceeded-border:    #e2b3a5;
-    --goal-expired-bg:     #e9e5d9; --goal-expired-fg:     #8a8478; --goal-expired-border:     #d2ccbd;
+    --goal-idle-bg:        #ece7d8; --goal-idle-fg:        #66716b; --goal-idle-border:        #d6cfbe;
+    --goal-on-track-bg:    #d9e0c4; --goal-on-track-fg:    #176b5b; --goal-on-track-border:    #bccaa6;
+    --goal-near-limit-bg:  #f5e3c0; --goal-near-limit-fg:  #8a5a18; --goal-near-limit-border:  #e3cb91;
+    --goal-exceeded-bg:    #f1d4cb; --goal-exceeded-fg:    #a83d32; --goal-exceeded-border:    #e2b3a5;
+    --goal-expired-bg:     #e9e5d9; --goal-expired-fg:     #7a847e; --goal-expired-border:     #d2ccbd;
 
     /* Dashboard card */
-    --card-pending-accent:       #8a5a2b; --card-pending-icon:       #5a3a14; --card-pending-surface:       #fbf8f1;
-    --card-month-spend-accent:   #1c1a18; --card-month-spend-icon:   #0a0908; --card-month-spend-surface:   #fbf8f1;
-    --card-recent-upload-accent: #3e6770; --card-recent-upload-icon: #1c3e46; --card-recent-upload-surface: #fbf8f1;
-    --card-recurring-accent:     #a4361c; --card-recurring-icon:     #6e220f; --card-recurring-surface:     #fbf8f1;
-    --card-goals-accent:         #4f6b3a; --card-goals-icon:         #2e4220; --card-goals-surface:         #fbf8f1;
-    --card-budget-accent:        #8a5a2b; --card-budget-icon:        #5a3a14; --card-budget-surface:        #fbf8f1;
-    --card-backup-accent:        #807968; --card-backup-icon:        #4a463f; --card-backup-surface:        #fbf8f1;
-    --card-device-accent:        #5a4a6e; --card-device-icon:        #382d44; --card-device-surface:        #fbf8f1;
+    --card-pending-accent:       #176b5b; --card-pending-icon:       #0e5146; --card-pending-surface:       #ffffff;
+    --card-month-spend-accent:   #26322d; --card-month-spend-icon:   #17201c; --card-month-spend-surface:   #ffffff;
+    --card-recent-upload-accent: #55747a; --card-recent-upload-icon: #38565c; --card-recent-upload-surface: #ffffff;
+    --card-recurring-accent:     #b65e47; --card-recurring-icon:     #8b4233; --card-recurring-surface:     #ffffff;
+    --card-goals-accent:         #7f8f68; --card-goals-icon:         #586b46; --card-goals-surface:         #ffffff;
+    --card-budget-accent:        #a9783e; --card-budget-icon:        #7a5428; --card-budget-surface:        #ffffff;
+    --card-backup-accent:        #8c9691; --card-backup-icon:        #66716b; --card-backup-surface:        #ffffff;
+    --card-device-accent:        #756a8a; --card-device-icon:        #574d6a; --card-device-surface:        #ffffff;
 
     /* v0.10 Motion (layout 级，三主题共享值；放在 :root 默认块) */
     --motion-fast: 120ms;
@@ -127,206 +127,205 @@
     --elevation-swipe-row: 0 2px 8px rgba(0, 0, 0, 0.06);
 
     /* v0.10 Skeleton（按主题，paper 用墨灰 + 白光带） */
-    --skeleton-base-bg: rgba(28, 26, 24, 0.08);
+    --skeleton-base-bg: #17201c14;
     --skeleton-shine-bg: rgba(255, 255, 255, 0.20);
 
     /* v0.10 Swipe actions（左滑确认 / 右滑忽略 / 长按删除） */
-    --swipe-confirm-bg: #4f6b3a; --swipe-confirm-fg: #fbf8f1;
-    --swipe-ignore-bg:  #807968; --swipe-ignore-fg:  #fbf8f1;
-    --swipe-delete-bg:  #a4361c; --swipe-delete-fg:  #fbf8f1;
+    --swipe-confirm-bg: #176b5b; --swipe-confirm-fg: #ffffff;
+    --swipe-ignore-bg:  #66716b; --swipe-ignore-fg:  #ffffff;
+    --swipe-delete-bg:  #a83d32; --swipe-delete-fg:  #ffffff;
 
     /* v0.10 Drawer overlay（窄屏抽屉遮罩） */
-    --drawer-overlay-bg: rgba(28, 26, 24, 0.32);
+    --drawer-overlay-bg: rgba(23, 32, 28, 0.32);
 }
 
 :root[data-theme="mono"] {
     /* Surface — 冷灰极简 */
-    --surface-app: #ededea;
-    --surface-card: #fafaf8;
+    --surface-app: #ecefed;
+    --surface-card: #ffffff;
     --surface-raised: #ffffff;
-    --surface-nav: #0e0e0c;
-    --surface-sunken: #f1f0ed;
+    --surface-nav: #ffffff;
+    --surface-sunken: #f0f2f1;
 
     /* Text */
-    --text-default: #0e0e0c;
-    --text-muted: #3a3a37;
-    --text-meta: #6f6e6a;
-    --text-faint: #adaca7;
-    --text-on-primary: #fafaf8;
+    --text-default: #171b19;
+    --text-muted: #626965;
+    --text-meta: #858c88;
+    --text-faint: #b6bcb8;
+    --text-on-primary: #ffffff;
 
-    /* Brand — 墨即强调 */
-    --brand-primary: #0e0e0c;
-    --brand-primary-strong: #000000;
-    --brand-accent: #6f6e6a;
-    --brand-primary-bg: #e3e2dd;
-    --brand-focus-ring: rgba(14, 14, 12, 0.40);
+    /* Brand — 石墨即强调 */
+    --brand-primary: #202824;
+    --brand-primary-strong: #111614;
+    --brand-accent: #7a8780;
+    --brand-primary-bg: #e5eae7;
+    --brand-focus-ring: rgba(32, 40, 36, 0.40);
 
     /* State */
-    --state-success-bg: #d6e2d6; --state-success-fg: #2c5036; --state-success-border: #b7c9b8;
-    --state-warn-bg:    #e7dbc0; --state-warn-fg:    #665015; --state-warn-border:    #d2c39a;
-    --state-danger-bg:  #f1d8d4; --state-danger-fg:  #8e1d12; --state-danger-border:  #e2b9b3;
-    --state-info-bg:    #dbe1e3; --state-info-fg:    #3a4a52; --state-info-border:    #bcc6ca;
-    --state-neutral-bg: #e3e2dd; --state-neutral-fg: #3a3a37; --state-neutral-border: #c9c8c3;
+    --state-success-bg: #d6e2d6; --state-success-fg: #315a45; --state-success-border: #b7c9b8;
+    --state-warn-bg:    #e7dbc0; --state-warn-fg:    #6d5729; --state-warn-border:    #d2c39a;
+    --state-danger-bg:  #f1d8d4; --state-danger-fg:  #8c3b32; --state-danger-border:  #e2b9b3;
+    --state-info-bg:    #dbe1e3; --state-info-fg:    #485a5f; --state-info-border:    #bcc6ca;
+    --state-neutral-bg: #e3e2dd; --state-neutral-fg: #626965; --state-neutral-border: #c9c8c3;
 
     --border-card: #dad9d4;
     --border-input: #b8b7b3;
-    --control-border: rgba(14, 14, 12, 0.24);
-    --control-border-hover: rgba(14, 14, 12, 0.42);
-    --control-border-active: rgba(14, 14, 12, 0.62);
-    --control-press-bg: rgba(14, 14, 12, 0.08);
+    --control-border: rgba(32, 40, 36, 0.24);
+    --control-border-hover: rgba(32, 40, 36, 0.42);
+    --control-border-active: rgba(32, 40, 36, 0.62);
+    --control-press-bg: rgba(32, 40, 36, 0.08);
     --radius-card: 10px;
     --radius-input: 6px;
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.06);
     --shadow-raised: 0 4px 16px rgba(0,0,0,.10);
 
-    --chart-series-1: #0e0e0c;
-    --chart-series-2: #6f6e6a;
-    --chart-series-3: #2c5036;
-    --chart-series-4: #8e1d12;
-    --chart-series-5: #3a4a52;
-    --chart-series-6: #665015;
-    --chart-series-7: #5a4a6e;
-    --chart-series-8: #adaca7;
-    --chart-sequential-from: #e8e7e3;
-    --chart-sequential-to:   #0e0e0c;
-    --chart-diverging-negative: #8e1d12;
-    --chart-diverging-zero:     #e3e2dd;
-    --chart-diverging-positive: #2c5036;
-    --chart-axis: #a6a5a0;
-    --chart-axis-label: #3a3a37;
+    --chart-series-1: #202824;
+    --chart-series-2: #6a746f;
+    --chart-series-3: #315a45;
+    --chart-series-4: #8c3b32;
+    --chart-series-5: #485a5f;
+    --chart-series-6: #79653b;
+    --chart-series-7: #655f72;
+    --chart-series-8: #aab3ae;
+    --chart-sequential-from: #e5eae7;
+    --chart-sequential-to:   #202824;
+    --chart-diverging-negative: #8c3b32;
+    --chart-diverging-zero:     #e8ece9;
+    --chart-diverging-positive: #315a45;
+    --chart-axis: #a9b0ac;
+    --chart-axis-label: #626965;
     --chart-grid: rgba(0, 0, 0, 0.06);
-    --chart-grid-emphasis: rgba(14, 14, 12, 0.40);
-    --chart-tooltip-bg: #0e0e0c;
-    --chart-tooltip-fg: #fafaf8;
-    --chart-tooltip-border: #2a2a28;
-    --chart-legend-fg: #0e0e0c;
-    --chart-legend-marker: #fafaf8;
-    --chart-sankey-ribbon: rgba(14, 14, 12, 0.20);
-    --chart-sankey-ribbon-emphasis: rgba(14, 14, 12, 0.70);
-    --chart-overspend: #8e1d12;
-    --chart-empty: #d6d5d0;
+    --chart-grid-emphasis: #20282466;
+    --chart-tooltip-bg: #171b19;
+    --chart-tooltip-fg: #f7f8f7;
+    --chart-tooltip-border: #353d39;
+    --chart-legend-fg: #171b19;
+    --chart-legend-marker: #f7f8f7;
+    --chart-sankey-ribbon: #20282433;
+    --chart-sankey-ribbon-emphasis: #202824b3;
+    --chart-overspend: #8c3b32;
+    --chart-empty: #d8deda;
 
-    --goal-idle-bg:        #e3e2dd; --goal-idle-fg:        #3a3a37; --goal-idle-border:        #c9c8c3;
-    --goal-on-track-bg:    #d6e2d6; --goal-on-track-fg:    #2c5036; --goal-on-track-border:    #b7c9b8;
-    --goal-near-limit-bg:  #e7dbc0; --goal-near-limit-fg:  #665015; --goal-near-limit-border:  #d2c39a;
-    --goal-exceeded-bg:    #f1d8d4; --goal-exceeded-fg:    #8e1d12; --goal-exceeded-border:    #e2b9b3;
-    --goal-expired-bg:     #e7e6e1; --goal-expired-fg:     #6f6e6a; --goal-expired-border:     #cdcdc8;
+    --goal-idle-bg:        #e3e2dd; --goal-idle-fg:        #626965; --goal-idle-border:        #c9c8c3;
+    --goal-on-track-bg:    #d6e2d6; --goal-on-track-fg:    #315a45; --goal-on-track-border:    #b7c9b8;
+    --goal-near-limit-bg:  #e7dbc0; --goal-near-limit-fg:  #6d5729; --goal-near-limit-border:  #d2c39a;
+    --goal-exceeded-bg:    #f1d8d4; --goal-exceeded-fg:    #8c3b32; --goal-exceeded-border:    #e2b9b3;
+    --goal-expired-bg:     #e7e6e1; --goal-expired-fg:     #7b827e; --goal-expired-border:     #cdcdc8;
 
-    --card-pending-accent:       #6f6e6a; --card-pending-icon:       #3a3a37; --card-pending-surface:       #fafaf8;
-    --card-month-spend-accent:   #0e0e0c; --card-month-spend-icon:   #000000; --card-month-spend-surface:   #fafaf8;
-    --card-recent-upload-accent: #3a4a52; --card-recent-upload-icon: #1d2a30; --card-recent-upload-surface: #fafaf8;
-    --card-recurring-accent:     #8e1d12; --card-recurring-icon:     #5a1009; --card-recurring-surface:     #fafaf8;
-    --card-goals-accent:         #2c5036; --card-goals-icon:         #15301c; --card-goals-surface:         #fafaf8;
-    --card-budget-accent:        #0e0e0c; --card-budget-icon:        #000000; --card-budget-surface:        #fafaf8;
-    --card-backup-accent:        #6f6e6a; --card-backup-icon:        #3a3a37; --card-backup-surface:        #fafaf8;
-    --card-device-accent:        #5a4a6e; --card-device-icon:        #382d44; --card-device-surface:        #fafaf8;
+    --card-pending-accent:       #4e5b55; --card-pending-icon:       #303b36; --card-pending-surface:       #ffffff;
+    --card-month-spend-accent:   #202824; --card-month-spend-icon:   #111614; --card-month-spend-surface:   #ffffff;
+    --card-recent-upload-accent: #485a5f; --card-recent-upload-icon: #304348; --card-recent-upload-surface: #ffffff;
+    --card-recurring-accent:     #8c3b32; --card-recurring-icon:     #672921; --card-recurring-surface:     #ffffff;
+    --card-goals-accent:         #315a45; --card-goals-icon:         #214332; --card-goals-surface:         #ffffff;
+    --card-budget-accent:        #79653b; --card-budget-icon:        #594820; --card-budget-surface:        #ffffff;
+    --card-backup-accent:        #7c8580; --card-backup-icon:        #5b635f; --card-backup-surface:        #ffffff;
+    --card-device-accent:        #655f72; --card-device-icon:        #494353; --card-device-surface:        #ffffff;
 
     /* v0.10 Mono theme-specific elevation / skeleton / swipe / drawer overlay */
     --elevation-dragging-card: 0 8px 24px rgba(0, 0, 0, 0.18);
     --elevation-swipe-row: 0 2px 8px rgba(0, 0, 0, 0.06);
-    --skeleton-base-bg: rgba(14, 14, 12, 0.08);
+    --skeleton-base-bg: #171b1914;
     --skeleton-shine-bg: rgba(255, 255, 255, 0.20);
-    --swipe-confirm-bg: #2c5036; --swipe-confirm-fg: #fafaf8;
-    --swipe-ignore-bg:  #6f6e6a; --swipe-ignore-fg:  #fafaf8;
-    --swipe-delete-bg:  #8e1d12; --swipe-delete-fg:  #fafaf8;
-    --drawer-overlay-bg: rgba(14, 14, 12, 0.32);
+    --swipe-confirm-bg: #315a45; --swipe-confirm-fg: #ffffff;
+    --swipe-ignore-bg:  #626965; --swipe-ignore-fg:  #ffffff;
+    --swipe-delete-bg:  #8c3b32; --swipe-delete-fg:  #ffffff;
+    --drawer-overlay-bg: rgba(32, 40, 36, 0.32);
 }
 
 :root[data-theme="midnight"] {
-    /* Surface — 深色玻璃 */
-    --surface-app: #0c0d10;
-    --surface-card: #15171c;
+    /* Surface — 深石墨工作区 */
+    --surface-app: #0f1311;
+    --surface-card: #171c19;
     --surface-raised: #222530;
-    --surface-nav: #08090c;
-    --surface-sunken: #1c1f25;
+    --surface-nav: #111513;
+    --surface-sunken: #1c2320;
 
     /* Text */
-    --text-default: #e9e7df;
-    --text-muted: #b8b4a8;
-    --text-meta: #807c70;
-    --text-faint: #4d4a44;
-    --text-on-primary: #15171c;
+    --text-default: #e8eeea;
+    --text-muted: #aab5af;
+    --text-meta: #77837d;
+    --text-faint: #46514b;
+    --text-on-primary: #0d1d18;
 
-    /* Brand — 暖金 */
-    --brand-primary: #d6b487;
-    --brand-primary-strong: #b89564;
-    --brand-accent: #8a6a3e;
-    --brand-primary-bg: rgba(214, 180, 135, 0.14);
-    --brand-focus-ring: rgba(214, 180, 135, 0.55);
+    /* Brand — 夜间常青高亮 */
+    --brand-primary: #69bfa4;
+    --brand-primary-strong: #4a9d84;
+    --brand-accent: #315c50;
+    --brand-primary-bg: #69bfa42e;
+    --brand-focus-ring: rgba(105, 191, 164, 0.55);
 
     /* State */
-    --state-success-bg: rgba(168, 184, 138, 0.14); --state-success-fg: #a8b88a; --state-success-border: rgba(168, 184, 138, 0.30);
-    --state-warn-bg:    rgba(214, 180, 135, 0.14); --state-warn-fg:    #d6b487; --state-warn-border:    rgba(214, 180, 135, 0.30);
-    --state-danger-bg:  rgba(217, 119, 87, 0.14);  --state-danger-fg:  #d97757; --state-danger-border:  rgba(217, 119, 87, 0.30);
-    --state-info-bg:    rgba(132, 188, 212, 0.12); --state-info-fg:    #84bcd4; --state-info-border:    rgba(132, 188, 212, 0.30);
-    --state-neutral-bg: #1c1f25;                   --state-neutral-fg: #b8b4a8; --state-neutral-border: #2a2d35;
+    --state-success-bg: rgba(168, 184, 138, 0.14); --state-success-fg: #77c3a9; --state-success-border: rgba(168, 184, 138, 0.30);
+    --state-warn-bg:    rgba(214, 180, 135, 0.14); --state-warn-fg:    #e3b36c; --state-warn-border:    rgba(214, 180, 135, 0.30);
+    --state-danger-bg:  rgba(217, 119, 87, 0.14);  --state-danger-fg:  #e0836f; --state-danger-border:  rgba(217, 119, 87, 0.30);
+    --state-info-bg:    rgba(132, 188, 212, 0.12); --state-info-fg:    #8db8c0; --state-info-border:    rgba(132, 188, 212, 0.30);
+    --state-neutral-bg: #1c1f25;                   --state-neutral-fg: #aab5af; --state-neutral-border: #2a2d35;
 
     --border-card: #262932;
     --border-input: #3a3e48;
-    --control-border: rgba(214, 180, 135, 0.28);
-    --control-border-hover: rgba(214, 180, 135, 0.46);
-    --control-border-active: rgba(214, 180, 135, 0.68);
-    --control-press-bg: rgba(214, 180, 135, 0.12);
+    --control-border: rgba(105, 191, 164, 0.28);
+    --control-border-hover: rgba(105, 191, 164, 0.46);
+    --control-border-active: rgba(105, 191, 164, 0.68);
+    --control-press-bg: rgba(105, 191, 164, 0.12);
     --radius-card: 10px;
     --radius-input: 6px;
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.40);
     --shadow-raised: 0 6px 24px rgba(0,0,0,.45);
 
-    --chart-series-1: #d6b487;
-    --chart-series-2: #a8b88a;
-    --chart-series-3: #d97757;
-    --chart-series-4: #84bcd4;
-    /* 5-8 跨色相重排（plum / teal 族），脱离 1-4 暖金/鼠尾草/陶土/天蓝 邻位，
-     * 多分类环图相邻系列才分得开；逐色对 #15171c 卡底 WCAG ≥3:1（见 ChartTokens.kt 镜像注）。 */
-    --chart-series-5: #c9a0c4;
-    --chart-series-6: #5fb0a8;
-    --chart-series-7: #b88ac9;
-    --chart-series-8: #6cba93;
-    --chart-sequential-from: #1c1f25;
-    --chart-sequential-to:   #d6b487;
-    --chart-diverging-negative: #d97757;
-    --chart-diverging-zero:     #2a2d35;
-    --chart-diverging-positive: #a8b88a;
-    --chart-axis: #5e636f;
-    --chart-axis-label: #b8b4a8;
+    --chart-series-1: #69bfa4;
+    --chart-series-2: #b7c4bd;
+    --chart-series-3: #e3b36c;
+    --chart-series-4: #e0836f;
+    /* 5-8 跨色相重排，避免多分类环图的相邻系列混在一起。 */
+    --chart-series-5: #8db8c0;
+    --chart-series-6: #a7b98c;
+    --chart-series-7: #b19db8;
+    --chart-series-8: #7f9188;
+    --chart-sequential-from: #1c2320;
+    --chart-sequential-to:   #69bfa4;
+    --chart-diverging-negative: #e0836f;
+    --chart-diverging-zero:     #303a35;
+    --chart-diverging-positive: #69bfa4;
+    --chart-axis: #4d5a54;
+    --chart-axis-label: #aab5af;
     --chart-grid: rgba(255, 255, 255, 0.06);
-    --chart-grid-emphasis: rgba(214, 180, 135, 0.40);
-    --chart-tooltip-bg: #08090c;
-    --chart-tooltip-fg: #e9e7df;
-    --chart-tooltip-border: #2a2d35;
-    --chart-legend-fg: #e9e7df;
-    --chart-legend-marker: #15171c;
-    --chart-sankey-ribbon: rgba(214, 180, 135, 0.20);
-    --chart-sankey-ribbon-emphasis: rgba(214, 180, 135, 0.70);
-    --chart-overspend: #d97757;
-    --chart-empty: #2a2d35;
+    --chart-grid-emphasis: #69bfa466;
+    --chart-tooltip-bg: #0d110f;
+    --chart-tooltip-fg: #e8eeea;
+    --chart-tooltip-border: #303a35;
+    --chart-legend-fg: #e8eeea;
+    --chart-legend-marker: #151a17;
+    --chart-sankey-ribbon: #69bfa433;
+    --chart-sankey-ribbon-emphasis: #69bfa4b3;
+    --chart-overspend: #e0836f;
+    --chart-empty: #303a35;
 
-    --goal-idle-bg:        #1c1f25;                   --goal-idle-fg:        #b8b4a8; --goal-idle-border:        #2a2d35;
-    --goal-on-track-bg:    rgba(168, 184, 138, 0.14); --goal-on-track-fg:    #a8b88a; --goal-on-track-border:    rgba(168, 184, 138, 0.30);
-    --goal-near-limit-bg:  rgba(214, 180, 135, 0.14); --goal-near-limit-fg:  #d6b487; --goal-near-limit-border:  rgba(214, 180, 135, 0.30);
-    --goal-exceeded-bg:    rgba(217, 119, 87, 0.14);  --goal-exceeded-fg:    #d97757; --goal-exceeded-border:    rgba(217, 119, 87, 0.30);
-    --goal-expired-bg:     #1d2025;                   --goal-expired-fg:     #807c70; --goal-expired-border:     #2c2f37;
+    --goal-idle-bg:        #1c1f25;                   --goal-idle-fg:        #aab5af; --goal-idle-border:        #2a2d35;
+    --goal-on-track-bg:    rgba(168, 184, 138, 0.14); --goal-on-track-fg:    #77c3a9; --goal-on-track-border:    rgba(168, 184, 138, 0.30);
+    --goal-near-limit-bg:  rgba(214, 180, 135, 0.14); --goal-near-limit-fg:  #e3b36c; --goal-near-limit-border:  rgba(214, 180, 135, 0.30);
+    --goal-exceeded-bg:    rgba(217, 119, 87, 0.14);  --goal-exceeded-fg:    #e0836f; --goal-exceeded-border:    rgba(217, 119, 87, 0.30);
+    --goal-expired-bg:     #1d2025;                   --goal-expired-fg:     #77837d; --goal-expired-border:     #2c2f37;
 
-    --card-pending-accent:       #d6b487; --card-pending-icon:       #f0d9b3; --card-pending-surface:       #15171c;
-    --card-month-spend-accent:   #b89564; --card-month-spend-icon:   #e8d2ad; --card-month-spend-surface:   #15171c;
-    --card-recent-upload-accent: #84bcd4; --card-recent-upload-icon: #c4dee9; --card-recent-upload-surface: #15171c;
-    --card-recurring-accent:     #d97757; --card-recurring-icon:     #f0b8a3; --card-recurring-surface:     #15171c;
-    --card-goals-accent:         #a8b88a; --card-goals-icon:         #ccd9b8; --card-goals-surface:         #15171c;
-    --card-budget-accent:        #d6b487; --card-budget-icon:        #f0d9b3; --card-budget-surface:        #15171c;
-    --card-backup-accent:        #7c8a6a; --card-backup-icon:        #b8c4a3; --card-backup-surface:        #15171c;
-    --card-device-accent:        #8a7eac; --card-device-icon:        #c3b9d9; --card-device-surface:        #15171c;
+    --card-pending-accent:       #69bfa4; --card-pending-icon:       #b4e2d2; --card-pending-surface:       #171c19;
+    --card-month-spend-accent:   #b7c4bd; --card-month-spend-icon:   #e8eeea; --card-month-spend-surface:   #171c19;
+    --card-recent-upload-accent: #8db8c0; --card-recent-upload-icon: #c8e2e7; --card-recent-upload-surface: #171c19;
+    --card-recurring-accent:     #e0836f; --card-recurring-icon:     #f2b5a7; --card-recurring-surface:     #171c19;
+    --card-goals-accent:         #a7b98c; --card-goals-icon:         #d5e0c5; --card-goals-surface:         #171c19;
+    --card-budget-accent:        #e3b36c; --card-budget-icon:        #f1d39e; --card-budget-surface:        #171c19;
+    --card-backup-accent:        #7f9188; --card-backup-icon:        #b8c5bf; --card-backup-surface:        #171c19;
+    --card-device-accent:        #b19db8; --card-device-icon:        #dccfe0; --card-device-surface:        #171c19;
 
     /* v0.10 Midnight theme-specific elevation / skeleton / swipe / drawer overlay
-     * 注意：midnight 必须把 skeleton 改为暖金 alpha，否则 shimmer 在深色底上几乎不可见。 */
+     * 深色主题的 skeleton 使用常青高亮 alpha，确保 shimmer 在工作区可见。 */
     --elevation-dragging-card: 0 8px 24px rgba(0, 0, 0, 0.50);
     --elevation-swipe-row: 0 2px 10px rgba(0, 0, 0, 0.40);
-    --skeleton-base-bg: rgba(214, 180, 135, 0.06);
-    --skeleton-shine-bg: rgba(214, 180, 135, 0.12);
-    --swipe-confirm-bg: #2e3d2a; --swipe-confirm-fg: #a8b88a;
-    --swipe-ignore-bg:  #2a2d35; --swipe-ignore-fg:  #b8b4a8;
-    --swipe-delete-bg:  #3d2823; --swipe-delete-fg:  #d97757;
+    --skeleton-base-bg: #69bfa414;
+    --skeleton-shine-bg: #69bfa424;
+    --swipe-confirm-bg: #2c4b40; --swipe-confirm-fg: #b4e2d2;
+    --swipe-ignore-bg:  #303a35; --swipe-ignore-fg:  #aab5af;
+    --swipe-delete-bg:  #4d302a; --swipe-delete-fg:  #f1a08e;
     --drawer-overlay-bg: rgba(0, 0, 0, 0.48);
 }
 
@@ -354,8 +353,8 @@
      * owner.css 的 system stack、Android Material3 FontFamily）,shared 层只统一
      * 字号/行高/字重的语义阶梯。
      *
-     *  display  38/1.05/900  —— 大金额(每屏 ≤1 处),对齐 Android AppTextHierarchy.hero+
-     *  hero     28/1.15/900  —— 页面主标题,每屏 1 处
+     *  display  34/1.12/800  —— 焦点金额(每屏 ≤1 处),对齐 Android AppTypography.amountLarge
+     *  hero     28/1.15/700  —— 页面主标题,每屏 1 处
      *  headline 22/1.25/700  —— 区块大标题、h1
      *  title    18/1.30/600  —— 卡片/section 标题,对齐 AppTextHierarchy.heading
      *  subtitle 15/1.40/500  —— 列表项首行、强调正文,对齐 AppTextHierarchy.body
@@ -363,8 +362,8 @@
      *  caption  12/1.40/400  —— 辅助文字(meta/时间/标签),对齐 AppTextHierarchy.caption
      *  meta     10/1.30/500  —— uppercase eyebrow 文字,letter-spacing 0.18em
      */
-    --type-display-size: 38px;   --type-display-line: 1.05; --type-display-weight: 900;
-    --type-hero-size: 28px;      --type-hero-line: 1.15;    --type-hero-weight: 900;
+    --type-display-size: 34px;   --type-display-line: 1.12; --type-display-weight: 800;
+    --type-hero-size: 28px;      --type-hero-line: 1.15;    --type-hero-weight: 700;
     --type-headline-size: 22px;  --type-headline-line: 1.25; --type-headline-weight: 700;
     --type-title-size: 18px;     --type-title-line: 1.30;   --type-title-weight: 600;
     --type-subtitle-size: 15px;  --type-subtitle-line: 1.40; --type-subtitle-weight: 500;

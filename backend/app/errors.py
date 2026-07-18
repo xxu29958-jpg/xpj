@@ -61,6 +61,7 @@ ERROR_MESSAGES = {
     "ledger_forbidden": "当前账号没有该账本的访问权限。",
     "cannot_archive_default_ledger": "默认账本不能归档，它是系统的兜底账本。",
     "permission_denied": "当前角色为只读，无法修改账本。",
+    "desktop_bridge_required": "Desktop 数据面只接受本机产品桥请求。",
     "invitation_invalid": "邀请码无效、已过期或已被使用。",
     "invitation_role_invalid": "邀请角色只能是成员或只读。",
     "invitation_note_too_long": "备注最多 80 个字。",

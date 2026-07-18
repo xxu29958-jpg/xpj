@@ -13,11 +13,14 @@
     if (!points || !points.length) return;
     svg.setAttribute("data-spark-rendered", "1");
     const W = 280, H = 56;
-    const vs = points.map(function (d) { return d.amount_yuan || 0; });
+    function majorValue(point) {
+      return Number(point.amount_major == null ? point.amount_yuan : point.amount_major) || 0;
+    }
+    const vs = points.map(majorValue);
     const max = Math.max.apply(null, vs) || 1;
     const stepX = W / Math.max(points.length - 1, 1);
     const pts = points.map(function (d, i) {
-      return [i * stepX, H - 6 - ((d.amount_yuan || 0) / max) * (H - 12)];
+      return [i * stepX, H - 6 - (majorValue(d) / max) * (H - 12)];
     });
     const path = pts.map(function (p, i) {
       return (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1);

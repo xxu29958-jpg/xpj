@@ -4,8 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.BudgetActions
-import com.ticketbox.data.repository.DashboardCardsActions
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtDetailActions
+import com.ticketbox.data.repository.DebtListActions
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.ExpenseRepositoryBackgroundTaskActions
 import com.ticketbox.data.repository.ExpenseRepository
@@ -39,17 +40,16 @@ fun repositoryViewModelFactory(
     recurringRepository: RecurringRepository,
     budgetRepository: BudgetActions? = null,
     reportsRepository: ReportsActions? = null,
-    // 轨道2 [P1]：StatsReportsViewModel 的还款待确认 badge 计数源（pending 还款草稿）。
-    repaymentDrafts: RepaymentDraftActions? = null,
+    onExpenseDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when (modelClass) {
-            PendingViewModel::class.java -> PendingViewModel(repository)
-            LedgerViewModel::class.java -> LedgerViewModel(repository)
+            PendingViewModel::class.java -> PendingViewModel(repository, onDataChanged = onExpenseDataChanged)
+            LedgerViewModel::class.java -> LedgerViewModel(repository, onDataChanged = onExpenseDataChanged)
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
             MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository, recurringRepository)
             StatsBudgetViewModel::class.java -> StatsBudgetViewModel(repository, budgetRepository)
-            StatsReportsViewModel::class.java -> StatsReportsViewModel(reportsRepository, repaymentDrafts)
+            StatsReportsViewModel::class.java -> StatsReportsViewModel(reportsRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
     }
@@ -58,42 +58,55 @@ fun repositoryViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun budgetViewModelFactory(
     repository: BudgetActions,
+    onDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BudgetViewModel(repository) as T
+        return BudgetViewModel(repository, onDataChanged = onDataChanged) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun budgetAdviceViewModelFactory(
+    repository: BudgetActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return BudgetAdviceViewModel(repository) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun recurringViewModelFactory(
     repository: RecurringRepository,
+    onDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return RecurringViewModel(repository) as T
+        return RecurringViewModel(repository, onDataChanged = onDataChanged) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun incomePlanViewModelFactory(
     repository: IncomePlanActions,
+    onDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return IncomePlanViewModel(repository) as T
+        return IncomePlanViewModel(repository, onDataChanged = onDataChanged) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun debtGoalViewModelFactory(
     repository: ReportsActions,
+    debts: DebtActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtGoalViewModel(repository) as T
+        return DebtGoalViewModel(repository, debts) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun debtViewModelFactory(
-    repository: DebtActions,
+    repository: DebtListActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return DebtListViewModel(repository) as T
@@ -102,15 +115,14 @@ fun debtViewModelFactory(
 
 @Suppress("UNCHECKED_CAST")
 fun debtDetailViewModelFactory(
-    repository: DebtActions,
+    repository: DebtDetailActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return DebtDetailViewModel(repository) as T
     }
 }
 
-// ADR-0049 P3b / ⑤c (slice ⑤c-2): 欠我的(应收) 只读发现面。只依赖窄接口 ReceivablesActions
-// （DebtRepository 实现它），故无需碰其它 DebtActions 的测试 fake。
+// 欠我的 viewer-personal 应收只读面，只依赖窄接口 ReceivablesActions。
 @Suppress("UNCHECKED_CAST")
 fun receivablesViewModelFactory(
     repository: ReceivablesActions,
@@ -203,15 +215,6 @@ fun appearanceViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return AppearanceViewModel(settingsStore) as T
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-fun dashboardCardsViewModelFactory(
-    repository: DashboardCardsActions,
-): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DashboardCardsViewModel(repository) as T
     }
 }
 

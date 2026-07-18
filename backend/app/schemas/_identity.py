@@ -18,6 +18,7 @@ __all__ = [
     "AdminUploadLinkSecretResponse",
     "BootstrapOwnerRequest",
     "BootstrapOwnerResponse",
+    "DesktopSessionActivationResponse",
     "InvitationAcceptRequest",
     "InvitationAcceptResponse",
     "InvitationCreateRequest",
@@ -59,12 +60,26 @@ class PairResponse(BaseModel):
     ledger_name: str
     device_name: str
     role: str
+    home_currency_code: str
     # v1.1 Batch 2: app tokens now carry an expiry. ``expires_at`` is
     # ISO-8601 UTC; ``None`` means the token never expires (env opted out).
     # Clients should silently rotate via ``/api/auth/refresh`` once the
     # remaining lifetime drops below ``soft_refresh_after``.
     expires_at: str | None = None
     soft_refresh_after: str | None = None
+    activation_required: bool = False
+    activation_expires_at: str | None = None
+
+
+class DesktopSessionActivationResponse(BaseModel):
+    account_name: str
+    ledger_id: str
+    ledger_name: str
+    device_name: str
+    role: str
+    expires_at: str | None = None
+    soft_refresh_after: str | None = None
+    activation_required: bool = False
 
 
 class RefreshSessionResponse(BaseModel):
@@ -79,6 +94,7 @@ class LedgerResponse(BaseModel):
     name: str
     role: str
     is_default: bool
+    home_currency_code: str
     created_at: str | None = None
     archived_at: str | None = None
 
@@ -100,6 +116,8 @@ class LedgerSwitchResponse(BaseModel):
     ledger: LedgerResponse
     account_name: str
     device_name: str
+    activation_required: bool = False
+    activation_expires_at: str | None = None
 
 
 # v0.4-beta1 — family ledger invitations & members
@@ -163,6 +181,7 @@ class InvitationAcceptResponse(BaseModel):
     ledger_name: str
     device_name: str
     role: str
+    home_currency_code: str
 
 
 class LedgerMemberResponse(BaseModel):

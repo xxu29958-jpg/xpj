@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import exists, or_, select, update
+from sqlalchemy import case, exists, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -27,6 +27,13 @@ class DeviceCleanupResult:
     deleted_devices: int
     deleted_tokens: int
     deleted_upload_links: int
+
+
+_NOMINAL_TOKEN_ORDER = (
+    case((AuthToken.activation_state == "active", 1), else_=0).desc(),
+    AuthToken.last_used_at.desc().nullslast(),
+    AuthToken.id.desc(),
+)
 
 
 def device_public_id(db: Session, device_id: int | None) -> str:
@@ -51,11 +58,7 @@ def _device_with_relations(
     token_statement = select(AuthToken).where(AuthToken.device_id == device.id)
     if ledger_ids is not None:
         token_statement = token_statement.where(AuthToken.ledger_id.in_(ledger_ids))
-    token = db.scalar(
-        token_statement
-        .order_by(AuthToken.last_used_at.desc().nullslast(), AuthToken.id.desc())
-        .limit(1)
-    )
+    token = db.scalar(token_statement.order_by(*_NOMINAL_TOKEN_ORDER).limit(1))
     ledger_id: str | None = None
     ledger_name: str | None = None
     if token is not None:
@@ -82,18 +85,10 @@ def _linked_to_allowed_ledger(db: Session, device_id: int, ledger_ids: set[str] 
     if not ledger_ids:
         return False
     token_match = db.scalar(
-        select(
-            exists()
-            .where(AuthToken.device_id == device_id)
-            .where(AuthToken.ledger_id.in_(ledger_ids))
-        )
+        select(exists().where(AuthToken.device_id == device_id).where(AuthToken.ledger_id.in_(ledger_ids)))
     )
     link_match = db.scalar(
-        select(
-            exists()
-            .where(UploadLink.device_id == device_id)
-            .where(UploadLink.ledger_id.in_(ledger_ids))
-        )
+        select(exists().where(UploadLink.device_id == device_id).where(UploadLink.ledger_id.in_(ledger_ids)))
     )
     return bool(token_match or link_match)
 
@@ -164,11 +159,7 @@ def list_devices(db: Session, *, ledger_ids: set[str] | None = None) -> list[Dev
     device_ids = [d.id for d in devices]
     account_ids = list({d.account_id for d in devices})
 
-    token_stmt = (
-        select(AuthToken)
-        .where(AuthToken.device_id.in_(device_ids))
-        .order_by(AuthToken.last_used_at.desc().nullslast(), AuthToken.id.desc())
-    )
+    token_stmt = select(AuthToken).where(AuthToken.device_id.in_(device_ids)).order_by(*_NOMINAL_TOKEN_ORDER)
     if ledger_ids is not None:
         token_stmt = token_stmt.where(AuthToken.ledger_id.in_(ledger_ids))
     latest_token_by_device: dict[int, AuthToken] = {}
@@ -176,17 +167,11 @@ def list_devices(db: Session, *, ledger_ids: set[str] | None = None) -> list[Dev
         # Stream is already ordered most-recent-first; first hit per device wins.
         latest_token_by_device.setdefault(token.device_id, token)
 
-    accounts_by_id = {
-        a.id: a
-        for a in db.scalars(select(Account).where(Account.id.in_(account_ids)))
-    }
+    accounts_by_id = {a.id: a for a in db.scalars(select(Account).where(Account.id.in_(account_ids)))}
 
     ledger_id_set = {t.ledger_id for t in latest_token_by_device.values()}
     ledgers_by_id: dict[str, Ledger] = (
-        {
-            ledger.ledger_id: ledger
-            for ledger in db.scalars(select(Ledger).where(Ledger.ledger_id.in_(ledger_id_set)))
-        }
+        {ledger.ledger_id: ledger for ledger in db.scalars(select(Ledger).where(Ledger.ledger_id.in_(ledger_id_set)))}
         if ledger_id_set
         else {}
     )
@@ -409,9 +394,7 @@ def cleanup_revoked_devices(
     batch_size: int = 500,
 ) -> DeviceCleanupResult:
     keep_days = (
-        max(get_settings().device_cleanup_retention_days, 0)
-        if retention_days is None
-        else max(int(retention_days), 0)
+        max(get_settings().device_cleanup_retention_days, 0) if retention_days is None else max(int(retention_days), 0)
     )
     cutoff = now_utc() - timedelta(days=keep_days)
     scoped_token_devices = select(AuthToken.device_id).where(AuthToken.ledger_id == tenant_id)

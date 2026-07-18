@@ -11,6 +11,7 @@ data class LedgerSummary(
     val name: String,
     val role: String,
     val isDefault: Boolean,
+    val homeCurrency: CurrencyCode,
     val createdAt: String? = null,
     val archivedAt: String? = null,
 )

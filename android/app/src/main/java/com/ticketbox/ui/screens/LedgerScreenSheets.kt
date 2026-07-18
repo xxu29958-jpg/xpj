@@ -9,6 +9,7 @@ import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.ui.components.MonthPickerSheet
+import com.ticketbox.ui.design.LocalCurrencyCode
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetActions
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetState
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
@@ -74,6 +75,7 @@ private fun LedgerManualSheetHost(
     actions: LedgerScreenActions,
 ) {
     if (!chromeState.showManualSheet || state.readOnly) return
+    val homeCurrency = LocalCurrencyCode.current
     val dismissManualSheet = {
         chromeState.showManualSheet = false
         actions.onManualCreateSettled()
@@ -84,6 +86,7 @@ private fun LedgerManualSheetHost(
             state = ManualExpenseSheetState(
                 categories = state.categories,
                 saving = state.creatingManual,
+                homeCurrency = homeCurrency,
                 recentMerchants = state.recentMerchants,
                 errorMessage = state.manualCreateError?.asString(),
             ),
@@ -123,11 +126,8 @@ private fun LedgerToolsSheetHost(
                 onViewModeChange = actions.onViewModeChange,
                 onSync = actions.onSync,
                 onExportCsv = actions.onExportCsv,
-                onOpenBillSplit = { openSecondaryPage(actions.onOpenBillSplit) },
-                onOpenDebts = { openSecondaryPage(actions.onOpenDebts) },
-                onOpenReceivables = { openSecondaryPage(actions.onOpenReceivables) },
-                onOpenRepaymentDrafts = { openSecondaryPage(actions.onOpenRepaymentDrafts) },
                 onOpenGlobalSearch = { openSecondaryPage(actions.onOpenGlobalSearch) },
+                onOpenLibrary = { openSecondaryPage(actions.onOpenLibrary) },
                 onDismiss = { chromeState.showLedgerTools = false },
             ),
         )

@@ -32,16 +32,13 @@ from app.schemas import (
     RepaymentDraftResponse,
 )
 from app.services.debt_service import (
-    confirm_repayment_draft,
     create_repayment_draft,
     dismiss_repayment_draft,
-    get_repayment_draft_response,
     list_repayment_drafts,
     repayment_draft_response,
 )
-from app.services.idempotency import (
-    claim_idempotent_request,
-    mark_idempotency_succeeded,
+from app.services.repayment_draft_command_service import (
+    confirm_repayment_draft_idempotently,
 )
 from app.tenants import AuthContext
 
@@ -50,17 +47,6 @@ router = APIRouter(
     tags=["repayment-drafts"],
 )
 
-_CONFIRM_OPERATION = "confirm_repayment_draft"
-_DRAFT_TARGET_TYPE = "repayment_draft"
-
-
-def _actor_scoped_fingerprint_body(
-    body: dict[str, object], *, actor_account_id: int
-) -> dict[str, object]:
-    # ADR-0049 §3.6: scope the [[0042]] fingerprint by actor — a HIT returns before
-    # the writer guard re-runs, so a different actor must not replay past it.
-    return {**body, "actor_account_id": actor_account_id}
-
 
 @router.get("", response_model=RepaymentDraftListResponse)
 def get_repayment_drafts(
@@ -68,9 +54,7 @@ def get_repayment_drafts(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> RepaymentDraftListResponse:
-    return list_repayment_drafts(
-        db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, status=status
-    )
+    return list_repayment_drafts(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, status=status)
 
 
 @router.post("", response_model=RepaymentDraftResponse, status_code=201)
@@ -96,40 +80,14 @@ def post_repayment_draft_confirm(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RepaymentDraftResponse:
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation=_CONFIRM_OPERATION,
-        target_id=public_id,
-        target_type=_DRAFT_TARGET_TYPE,
-        body=_actor_scoped_fingerprint_body(
-            payload.model_dump(
-                mode="json", exclude_unset=True, exclude={"expected_row_version"}
-            ),
-            actor_account_id=auth.account_id,
-        ),
-        expected_row_version=payload.expected_row_version,
-    )
-    if claim is None:  # replay: re-serialise the (already confirmed) draft, no re-record.
-        return get_repayment_draft_response(
-            db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, public_id=public_id
-        )
-    draft = confirm_repayment_draft(
+    return confirm_repayment_draft_idempotently(
         db,
         tenant_id=auth.tenant_id,
         actor_account_id=auth.account_id,
         public_id=public_id,
-        target_debt_public_id=payload.target_debt_public_id,
-        expected_row_version=payload.expected_row_version,
+        payload=payload,
         idempotency_key=idempotency_key,
-        commit=False,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type=_DRAFT_TARGET_TYPE, resource_id=draft.public_id
-    )
-    db.commit()
-    return repayment_draft_response(draft)
 
 
 @router.post("/{public_id}/dismiss", response_model=RepaymentDraftResponse, status_code=201)

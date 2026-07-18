@@ -8,8 +8,10 @@ import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.formatAmountInput
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +44,7 @@ data class MemberProposalUiState(
     // 每次 confirm 提交还款（改变折叠）后自增，让宿主详情屏据此刷新欠款摘要；
     // propose/withdraw/reject 不改折叠，故不动它。
     val foldChangedAt: Int = 0,
+    val homeCurrency: CurrencyCode? = null,
 ) {
     /** 唯一的待确认 proposal（§3.2 一债一待确认），没有则为 null。 */
     val pendingProposal: MemberRepaymentProposal? get() = proposals.firstOrNull { it.isPending }
@@ -78,9 +81,22 @@ class MemberRepaymentProposalViewModel(
     private var loadGeneration = 0L
 
     fun load(publicId: String) {
+        load(publicId, repository.currentHomeCurrency().storageKey)
+    }
+
+    fun load(publicId: String, homeCurrencyCode: String) {
         debtPublicId = publicId
+        val homeCurrency = CurrencyCode.requireSupported(homeCurrencyCode)
         // 切换到另一笔成员欠款时先清空旧 proposal，避免在新欠款下短暂看到上一笔的收发箱（隔离）。
-        _state.update { it.copy(proposals = emptyList(), error = null, activeForm = null, validationError = null) }
+        _state.update {
+            it.copy(
+                proposals = emptyList(),
+                error = null,
+                activeForm = null,
+                validationError = null,
+                homeCurrency = homeCurrency,
+            )
+        }
         refresh()
     }
 
@@ -109,7 +125,12 @@ class MemberRepaymentProposalViewModel(
                 activeForm = form,
                 targetProposalPublicId = proposal?.publicId,
                 // 确认表单预填 proposal 提出的金额（债权人可下调成部分确认）；发起表单留空。
-                amountInput = proposal?.let { p -> centsToYuanInput(p.proposedAmountCents) }.orEmpty(),
+                amountInput = proposal?.let { p ->
+                    formatAmountInput(
+                        p.proposedAmountCents,
+                        CurrencyCode.requireSupported(p.homeCurrencyCode),
+                    )
+                }.orEmpty(),
                 noteInput = "",
                 validationError = null,
             )
@@ -145,8 +166,9 @@ class MemberRepaymentProposalViewModel(
         val publicId = debtPublicId ?: return
         val current = _state.value
         val form = current.activeForm ?: return
-        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；>0 由 proposalValidationError 校验。
-        val amountCents = parseAmountCents(current.amountInput)
+        // Exact minor-unit parsing uses the proposal debt's server home currency.
+        val homeCurrency = current.homeCurrency ?: return
+        val amountCents = parseAmountCents(current.amountInput, homeCurrency)
         proposalValidationError(form, amountCents, current.pendingProposal?.proposedAmountCents)?.let { res ->
             _state.update { it.copy(validationError = UiText.res(res)) }
             return
@@ -248,9 +270,6 @@ class MemberRepaymentProposalViewModel(
         refresh()
     }
 }
-
-/** 把本位币分格式化成元为单位的输入串（用于确认表单预填提出金额），不走浮点避免大额丢精度。 */
-private fun centsToYuanInput(cents: Long): String = "${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
 
 /** 表单输入的校验文案 res，输入可接受时返回 null。 */
 @StringRes

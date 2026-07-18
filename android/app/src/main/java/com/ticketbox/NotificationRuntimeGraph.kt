@@ -26,6 +26,7 @@ import com.ticketbox.notification.recurring.RecurringReminderRuntime
 import com.ticketbox.notification.recurring.RepositoryRecurringReminderSource
 import com.ticketbox.notification.recurring.SharedPrefsRecurringReminderStore
 import com.ticketbox.notification.recurring.WorkManagerRecurringReminderScheduler
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.security.SecureTokenStore
 import java.time.LocalDate
 import java.time.YearMonth
@@ -87,6 +88,9 @@ internal class NotificationRuntimeGraph(
                 dependencies.settingsStore.notificationPreferences().budgetOverspendAlerts
             },
             activeLedgerId = { dependencies.settingsStore.activeLedgerId() },
+            homeCurrency = {
+                CurrencyCode.fromStorageKey(dependencies.settingsStore.homeCurrencyCodeKey())
+            },
             currentMonth = { YearMonth.now(budgetOverspendZone).toString() },
             monotonicNowMillis = { SystemClock.elapsedRealtime() },
         ),

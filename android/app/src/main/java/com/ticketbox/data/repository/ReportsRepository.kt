@@ -10,6 +10,7 @@ import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.CsvExport
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
@@ -30,6 +31,7 @@ import java.util.UUID
 
 interface DashboardCardsActions {
     fun canModifyLedger(): Boolean
+    fun currentHomeCurrency(): CurrencyCode = CurrencyCode.LegacyFallback
     suspend fun dashboardCards(surface: DashboardSurface = DashboardSurface.Android): Result<DashboardCards>
     suspend fun updateDashboardCards(
         updates: List<DashboardCardUpdate>,
@@ -113,6 +115,9 @@ class ReportsRepository(
         context = "Reports",
         statusMessages = mapOf(404 to "没有找到目标。"),
     )
+
+    override fun currentHomeCurrency(): CurrencyCode =
+        CurrencyCode.fromStorageKey(settingsStore.homeCurrencyCodeKey())
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 

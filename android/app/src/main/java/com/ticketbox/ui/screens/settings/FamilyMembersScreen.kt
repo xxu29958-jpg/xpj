@@ -290,7 +290,7 @@ private fun InviteRoleActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 44.dp)
+            .heightIn(min = AppSpacing.controlMinHeight)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = AppSpacing.smallGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),

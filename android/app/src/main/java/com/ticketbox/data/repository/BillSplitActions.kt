@@ -5,6 +5,8 @@ import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.LedgerSummary
 
 interface BillSplitActions {
+    fun canModifyLedger(): Boolean = true
+
     suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>>
 
     suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>>

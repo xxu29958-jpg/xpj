@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +32,7 @@ import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -93,39 +93,13 @@ internal fun TagUndoPanel(
 }
 
 @Composable
-internal fun TagOverviewSection(tags: List<ManagedTag>) {
-    val summary = remember(tags) { tagManagementSummaryModel(tags) }
-    SettingsSection(
-        title = stringResource(R.string.tag_management_section_overview),
-        icon = Icons.AutoMirrored.Filled.Label,
-    ) {
-        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            SettingsMetricGrid(
-                metrics = listOf(
-                    SettingsMetricData(
-                        label = stringResource(R.string.tag_management_overview_total_label),
-                        value = summary.totalCount.toString(),
-                        caption = stringResource(R.string.tag_management_overview_total_caption),
-                    ),
-                    SettingsMetricData(
-                        label = stringResource(R.string.tag_management_overview_active_label),
-                        value = summary.activeCount.toString(),
-                        caption = stringResource(R.string.tag_management_overview_active_caption),
-                    ),
-                    SettingsMetricData(
-                        label = stringResource(R.string.tag_management_overview_unused_label),
-                        value = summary.unusedCount.toString(),
-                        caption = stringResource(R.string.tag_management_overview_unused_caption),
-                    ),
-                ),
-            )
-            Text(
-                text = stringResource(R.string.tag_management_overview_body),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-    }
+internal fun TagSemanticsNote() {
+    Text(
+        text = stringResource(R.string.tag_management_semantics_note),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
@@ -133,41 +107,51 @@ internal fun TagListSection(
     state: TagListState,
     actions: TagRowActions,
 ) {
-    SettingsSection(title = stringResource(R.string.tag_management_section_all), icon = Icons.Filled.Tune) {
-        if (state.bodyState != TagManagementBodyState.Content) {
-            SettingsListStateSlot(
-                loading = state.bodyState == TagManagementBodyState.Loading,
-                hasData = false,
-                copy = SettingsStateSlotCopy(
-                    loadingTitle = stringResource(R.string.tag_management_loading_title),
-                    loadingBody = stringResource(R.string.tag_management_loading_body),
-                    emptyText = stringResource(R.string.tag_management_list_empty),
-                    emptyTitle = stringResource(R.string.tag_management_summary_empty),
-                    emptyBody = stringResource(R.string.tag_management_list_empty),
-                ),
-                message = if (state.bodyState == TagManagementBodyState.LoadFailed) {
-                    SettingsStateSlotMessage(
-                        text = UiText.res(R.string.tag_management_load_failed),
-                        tone = MessageTone.Danger,
-                    )
-                } else {
-                    null
-                },
-            )
-            return@SettingsSection
-        }
-        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            state.tags.forEachIndexed { index, tag ->
-                if (index > 0) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-                }
-                TagRow(
-                    tag = tag,
-                    readOnly = state.readOnly,
-                    busy = state.busy,
-                    canMerge = state.tags.size > 1,
-                    actions = actions,
+    SettingsSection(
+        title = stringResource(R.string.tag_management_section_all),
+        icon = Icons.AutoMirrored.Filled.Label,
+    ) {
+        AppSolidCard {
+            if (state.bodyState != TagManagementBodyState.Content) {
+                SettingsListStateSlot(
+                    loading = state.bodyState == TagManagementBodyState.Loading,
+                    hasData = false,
+                    copy = SettingsStateSlotCopy(
+                        loadingTitle = stringResource(R.string.tag_management_loading_title),
+                        loadingBody = stringResource(R.string.tag_management_loading_body),
+                        emptyText = stringResource(R.string.tag_management_list_empty),
+                        emptyTitle = stringResource(R.string.tag_management_summary_empty),
+                        emptyBody = stringResource(R.string.tag_management_list_empty),
+                    ),
+                    message = if (state.bodyState == TagManagementBodyState.LoadFailed) {
+                        SettingsStateSlotMessage(
+                            text = UiText.res(R.string.tag_management_load_failed),
+                            tone = MessageTone.Danger,
+                        )
+                    } else {
+                        null
+                    },
                 )
+                return@AppSolidCard
+            }
+            Column(
+                modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingSmall),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
+                state.tags.forEachIndexed { index, tag ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
+                        )
+                    }
+                    TagRow(
+                        tag = tag,
+                        readOnly = state.readOnly,
+                        busy = state.busy,
+                        canMerge = state.tags.size > 1,
+                        actions = actions,
+                    )
+                }
             }
         }
     }
@@ -185,35 +169,31 @@ private fun TagRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = AppSpacing.smallGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(
+        Text(
+            text = tag.name,
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            Text(
-                text = tag.name,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = if (tag.usageCount > 0) {
-                    stringResource(R.string.tag_management_card_usage_count, tag.usageCount)
-                } else {
-                    stringResource(R.string.tag_management_card_orphan)
-                },
-                color = if (tag.usageCount > 0) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-            )
-        }
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = if (tag.usageCount > 0) {
+                stringResource(R.string.tag_management_card_usage_count, tag.usageCount)
+            } else {
+                stringResource(R.string.tag_management_card_orphan)
+            },
+            color = if (tag.usageCount > 0) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+        )
         if (!readOnly) {
             TagActionMenu(tag = tag, busy = busy, canMerge = canMerge, actions = actions)
         }

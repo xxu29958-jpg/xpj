@@ -1,7 +1,7 @@
 /* 批10: keyboard pipeline for the待确认 review queue.
  *
- *   J / K      move the selection down / up through the visible rows
- *   Enter      open the selected row's edit drawer
+ *   J / K      while the review list owns focus, move down / up
+ *   Enter      while the review list owns focus, open the selected row
  *   Ctrl/⌘+Enter   confirm the row in the open drawer (= 确认并下一笔)
  *
  * Progressive enhancement on top of the existing mouse flow — every action is
@@ -24,24 +24,36 @@
       // here, but a removed row is gone from the DOM, so offsetParent guards
       // the rare hidden case).
       return Array.prototype.filter.call(
-        table.querySelectorAll(".exp-row[data-fragment-url]"),
-        function (r) { return r.offsetParent !== null; }
+        table.querySelectorAll(".exp-row-detail[data-fragment-url]"),
+        function (r) {
+          return r.offsetParent !== null && r.getAttribute("aria-disabled") !== "true";
+        }
       );
     }
 
     function selectedIndex(list) {
       for (let i = 0; i < list.length; i++) {
-        if (list[i].getAttribute("aria-selected") === "true") return i;
+        if (list[i].getAttribute("aria-current") === "true") return i;
       }
       return -1;
     }
 
     function select(row, list) {
       list.forEach(function (r) {
-        r.setAttribute("aria-selected", r === row ? "true" : "false");
+        const container = r.closest(".exp-row");
+        if (r === row) {
+          r.setAttribute("aria-current", "true");
+          if (container) container.classList.add("is-current");
+        } else {
+          r.removeAttribute("aria-current");
+          if (container) container.classList.remove("is-current");
+        }
       });
       if (row && row.scrollIntoView) {
         row.scrollIntoView({ block: "nearest" });
+      }
+      if (row && typeof row.focus === "function") {
+        row.focus({ preventScroll: true });
       }
     }
 
@@ -83,6 +95,10 @@
       // While the drawer is open, leave plain keys to the form (Esc closes it,
       // handled in drawer.js).
       if (app.drawerApi && app.drawerApi.isOpen()) return;
+      // WCAG 2.1.4: single-character shortcuts are active only while the
+      // review collection itself owns focus. Voice input or a stray J/K
+      // elsewhere on the page must never move the financial-record selection.
+      if (!table.contains(document.activeElement)) return;
 
       if (e.key === "j" || e.key === "J") {
         e.preventDefault();

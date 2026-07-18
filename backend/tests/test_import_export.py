@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
@@ -74,6 +75,39 @@ def test_parse_csv_preview_accepts_foreign_currency_columns() -> None:
     assert row.exchange_rate_date and row.exchange_rate_date.isoformat() == "2026-05-04"
 
 
+@pytest.mark.parametrize(
+    "csv",
+    [
+        "amount_yuan,original_currency_code\n12.34,JPY\n",
+        "amount_cents,original_currency_code\n1234,JPY\n",
+    ],
+)
+def test_parse_csv_preview_rejects_ambiguous_foreign_amount(csv: str) -> None:
+    preview = parse_csv_preview(csv)
+    assert preview.valid_count == 0
+    assert preview.error_count == 1
+    row = preview.rows[0]
+    assert row.amount_cents is None
+    assert row.original_amount_minor is None
+    assert "original_amount_minor" in (row.error or "")
+
+
+def test_parse_csv_preview_binds_blank_currency_to_runtime_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        preview = parse_csv_preview("amount_yuan,merchant\n12.34,Tokyo\n")
+        assert preview.valid_count == 1
+        row = preview.rows[0]
+        assert row.original_currency_code == "JPY"
+        assert row.amount_cents == 1234
+        assert row.original_amount_minor == 1234
+    finally:
+        get_settings.cache_clear()
+
+
 def test_parse_csv_preview_treats_naive_time_as_configured_local_time() -> None:
     csv = "amount_yuan,merchant,expense_time\n1.00,Cafe,2026-05-01 00:30:00\n"
     preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai")
@@ -84,8 +118,9 @@ def test_parse_csv_preview_treats_naive_time_as_configured_local_time() -> None:
 
 def test_parse_csv_preview_derives_fx_date_from_local_spending_day() -> None:
     csv = (
-        "amount_cents,original_currency_code,exchange_rate_to_cny,merchant,expense_time\n"
-        "12345,USD,7.0000,Overseas Cafe,2026-05-04T16:30:00Z\n"
+        "amount_cents,original_currency_code,original_amount_minor,"
+        "exchange_rate_to_cny,merchant,expense_time\n"
+        "12345,USD,12345,7.0000,Overseas Cafe,2026-05-04T16:30:00Z\n"
     )
     preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai")
 
@@ -97,8 +132,9 @@ def test_parse_csv_preview_derives_fx_date_from_local_spending_day() -> None:
 
 def test_parse_csv_preview_expense_time_overrides_legacy_fx_date() -> None:
     csv = (
-        "amount_cents,original_currency_code,exchange_rate_to_cny,exchange_rate_date,merchant,expense_time\n"
-        "12345,USD,7.0000,2026-04-30,Overseas Cafe,2026-04-30T16:30:00Z\n"
+        "amount_cents,original_currency_code,original_amount_minor,"
+        "exchange_rate_to_cny,exchange_rate_date,merchant,expense_time\n"
+        "12345,USD,12345,7.0000,2026-04-30,Overseas Cafe,2026-04-30T16:30:00Z\n"
     )
     preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai")
 
@@ -201,7 +237,17 @@ def test_web_export_csv_remote_returns_403(client: TestClient) -> None:
 def test_web_import_form_renders(web_client: TestClient) -> None:
     resp = web_client.get("/web/import?ledger_id=owner")
     assert resp.status_code == 200
-    assert "导入 CSV" in resp.text
+    body = resp.text
+    assert "流水 / 导入导出" in body
+    assert '<h1 class="page-title page-title--compact">导入与导出</h1>' in body
+    assert 'data-domain="transactions"' in body
+    assert 'action="/web/import/preview"' in body
+    assert 'name="csrf_token"' in body
+    assert 'action="/web/export.csv"' in body
+    assert 'name="tag"' in body
+    assert "dt-card" not in body
+    assert 'class="dt-' not in body
+    assert 'style="' not in body
 
 
 def test_web_import_preview_then_confirm_inserts_pending(web_client: TestClient) -> None:
@@ -225,6 +271,12 @@ def test_web_import_preview_then_confirm_inserts_pending(web_client: TestClient)
     assert "CSV 导入批次" in detail.text
     assert "Cafe" in detail.text
     assert "Bus" in detail.text
+    assert 'data-domain="transactions"' in detail.text
+    assert 'data-page="import-detail" data-page-level="tertiary"' in detail.text
+    assert 'class="product-table"' in detail.text
+    assert 'name="csrf_token"' in detail.text
+    assert "dt-card" not in detail.text
+    assert 'class="dt-' not in detail.text
 
     confirm = web_client.post(
         f"/web/import/{batch.public_id}/apply",
@@ -259,6 +311,8 @@ def test_web_import_batch_errors_csv(web_client: TestClient) -> None:
     detail = web_client.get(f"/web/import/{batch.public_id}?ledger_id=owner&status=error")
     assert detail.status_code == 200
     assert "amount_yuan" in detail.text
+    assert "product-feedback--error" not in detail.text
+    assert "import-error" in detail.text
 
     errors = web_client.get(f"/web/import/{batch.public_id}/errors.csv?ledger_id=owner")
     assert errors.status_code == 200

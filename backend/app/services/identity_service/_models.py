@@ -17,6 +17,7 @@ PAIRING_CODE_TTL_MINUTES = 15
 PAIRING_MAX_FAILED_ATTEMPTS = 20
 PAIRING_ATTEMPT_WINDOW = timedelta(minutes=10)
 WEB_SESSION_TTL_SECONDS = 8 * 60 * 60
+DESKTOP_PENDING_TOKEN_TTL_SECONDS = 5 * 60
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,20 @@ class PairingResult:
     role: str
     expires_at: datetime | None = None
     soft_refresh_after: datetime | None = None
+    activation_required: bool = False
+    activation_expires_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class DesktopSessionResult:
+    account_name: str
+    ledger_id: str
+    ledger_name: str
+    device_name: str
+    role: str
+    expires_at: datetime | None
+    soft_refresh_after: datetime | None
+    activation_required: bool
 
 
 @dataclass(frozen=True)

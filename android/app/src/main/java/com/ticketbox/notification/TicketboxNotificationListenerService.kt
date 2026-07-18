@@ -4,6 +4,7 @@ import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.ticketbox.TicketboxApplication
+import com.ticketbox.domain.model.CurrencyCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +24,13 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         val ledgerIdAtPost = container.expenseRepository.currentActiveLedgerId()
             ?.takeIf { it.isNotBlank() }
             ?: return
+        val homeCurrency = runCatching {
+            CurrencyCode.fromStorageKey(container.settingsStore.homeCurrencyCodeKey())
+        }.getOrNull() ?: return
+        // Notification parsing is an explicit CNY-only capture contract. Until
+        // the protocol can carry original currency + frozen FX, other ledgers
+        // must not reinterpret CNY notification amounts as home minor units.
+        if (homeCurrency != CurrencyCode.CNY) return
 
         // 隐私边界（codex P2）：非白名单包**在读正文前**就退出——`toSnapshot()` 会读 EXTRA_TITLE/TEXT/
         // BIG_TEXT/SUB_TEXT，必须先按包名过滤，否则非白名单 App 的通知正文仍被读进快照（parse() 内的同款
@@ -30,7 +38,7 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         if (!PaymentNotificationParser.isCandidatePackage(sbn.packageName)) return
 
         // 统一分类器：一条通知分类成消费 / 还款 / 忽略（§杠杆③ 修双计——含「还款」措辞不再落支出）。
-        val result = PaymentNotificationParser.parse(sbn.toSnapshot()) ?: return
+        val result = PaymentNotificationParser.parse(sbn.toSnapshot(homeCurrency)) ?: return
         // 去重按**这条通知的每次投递身份** = hash(sbn.key | sbn.postTime)：含 postTime,故个别 App 复用同一
         // 通知槽承载第二笔真账(同 sbn.key、新 postTime)时各算一笔(codex P2#1);定长 hash 不触后端长度上限、
         // 原始 key 不离设备(codex P2#2)。本地去重器 + 透传后端幂等键共用同一身份(否则后端按内容去重仍吞单)。
@@ -80,10 +88,11 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         super.onDestroy()
     }
 
-    private fun StatusBarNotification.toSnapshot(): PaymentNotificationSnapshot {
+    private fun StatusBarNotification.toSnapshot(homeCurrency: CurrencyCode): PaymentNotificationSnapshot {
         val extras = notification.extras
         return PaymentNotificationSnapshot(
             packageName = packageName,
+            homeCurrency = homeCurrency,
             title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
             text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
             bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),

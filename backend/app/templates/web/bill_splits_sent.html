@@ -1,73 +1,85 @@
 {% extends "base.html" %}
-{% block title %}已发出拆账 · 小票夹{% endblock %}
+{% block title %}发出的拆账 · 往来 · 小票夹{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">已发出的拆账邀请</h1>
-  <div class="page-sub">
-    你从当前账本发起的所有拆账邀请。仅"待处理"状态可以撤回；
-    一旦接收方已接受，对应账单已在对方账本生成，不能再撤回。
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">往来 / 发出的拆账</span>
+    <h1 class="page-title page-title--compact">发出的拆账</h1>
+    <p class="product-page-summary">
+      待处理邀请可以撤回；对方接受后，账单已写入对方账本，不能再撤回。
+    </p>
   </div>
-</div>
+</header>
 
-{% if message %}
-<div class="callout-info">{{ message }}</div>
-{% endif %}
+{% if message %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
 
-{% if not bill_split_rows %}
-<div class="dt-card">
-  <div class="empty-state">
-    <div class="empty-state-title">当前账本还没有已发起的拆账邀请</div>
-    <div class="empty-state-hint">拆账目前在手机 App 的已确认账单详情里发起，发出后会显示在这里。</div>
+<section class="product-panel product-panel--padded">
+  <div class="product-panel-header">
+    <div>
+      <div class="product-panel-title">发出的邀请</div>
+      <div class="product-panel-subtitle">{{ bill_split_rows | length }} 条记录</div>
+    </div>
   </div>
-</div>
-{% else %}
-<table class="dt-table bsplit-table">
-  <thead>
-    <tr>
-      <th>状态</th>
-      <th>发给</th>
-      <th class="amount">金额</th>
-      <th>商家</th>
-      <th>消费时间</th>
-      <th>到期</th>
-      <th>操作</th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for row in bill_split_rows %}
-    <tr>
-      <td>
-        {% if row.status == 'invited' %}
-          <span class="dt-pill">待处理</span>
-        {% elif row.status == 'accepted' %}
-          <span class="dt-pill ok">已接受</span>
-        {% elif row.status == 'rejected' %}
-          <span class="dt-pill">已拒绝</span>
-        {% elif row.status == 'cancelled' %}
-          <span class="dt-pill">已撤回</span>
-        {% else %}
-          <span class="dt-pill">已过期</span>
-        {% endif %}
-      </td>
-      <td class="party">{{ row.receiver_display_name }}</td>
-      <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
-      <td>{{ row.merchant or '—' }}</td>
-      <td class="num">{{ row.expense_time or '—' }}</td>
-      <td class="num">{{ row.expires_at or '—' }}</td>
-      <td>
-        {% if row.status == 'invited' %}
-          <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">
-            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <button type="submit" class="dt-btn">撤回</button>
-          </form>
-        {% else %}
-          <span class="meta">—</span>
-        {% endif %}
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% endif %}
+  {% if not bill_split_rows %}
+  <div class="product-state">
+    <div class="product-state-title">当前账本还没有发出拆账</div>
+    <div class="product-state-body">从一笔已确认流水的详情页发起，进度会显示在这里。</div>
+    <a class="product-state-action" href="/web/confirmed{{ q }}">查看全部流水</a>
+  </div>
+  {% else %}
+  <div class="product-table-wrap">
+    <table class="product-table">
+      <thead>
+        <tr>
+          <th>状态</th>
+          <th>发给</th>
+          <th>金额</th>
+          <th>商家</th>
+          <th>消费时间</th>
+          <th>到期</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in bill_split_rows %}
+        <tr>
+          <td>
+            {% if row.status == 'invited' %}
+            <span class="product-status product-status--warning">待处理</span>
+            {% elif row.status == 'accepted' %}
+            <span class="product-status product-status--success">已接受</span>
+            {% elif row.status == 'rejected' %}
+            <span class="product-status">已拒绝</span>
+            {% elif row.status == 'cancelled' %}
+            <span class="product-status">已撤回</span>
+            {% elif row.status == 'expired' %}
+            <span class="product-status">已过期</span>
+            {% else %}
+            <span class="product-status">状态待确认</span>
+            {% endif %}
+          </td>
+          <td><strong>{{ row.receiver_display_name }}</strong></td>
+          <td class="num">{{ row.amount_label }} <small>{{ row.currency_code }}</small></td>
+          <td>{{ row.merchant or '—' }}</td>
+          <td class="num">{{ row.expense_time or '—' }}</td>
+          <td class="num">{{ row.expires_at or '—' }}</td>
+          <td>
+            {% if row.status == 'invited' %}
+            <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="product-inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <button type="submit" class="product-button">撤回</button>
+            </form>
+            {% else %}
+            <span class="readonly-inline">无需操作</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

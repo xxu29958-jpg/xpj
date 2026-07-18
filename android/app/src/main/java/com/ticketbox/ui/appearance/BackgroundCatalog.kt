@@ -26,8 +26,8 @@ object BackgroundCatalog {
             id = "paper",
             name = "纸本",
             category = BuiltInBackgroundCategory.Minimal,
-            description = "温润米白与茶铜纸影，和桌面账本默认视觉一致。",
-            gradientColors = listOf(0xFFFBF8F1L, 0xFFF3EFE6L, 0xFFEAD8B8L),
+            description = "冷白纸面与低对比层次，长时间整理账单也不刺眼。",
+            gradientColors = listOf(0xFFF7F8F6L, 0xFFF4F6F3L, 0xFFE7ECE8L),
             preferredSkin = AppSkin.Paper,
         ),
         BuiltInBackground(
@@ -35,7 +35,7 @@ object BackgroundCatalog {
             name = "茶雾",
             category = BuiltInBackgroundCategory.Nature,
             description = "更明显的暖纸雾面，适合待确认和统计首页。",
-            gradientColors = listOf(0xFFFFFBF3L, 0xFFECD8B5L, 0xFFC8B895L),
+            gradientColors = listOf(0xFFF8F7F2L, 0xFFEDE8DDL, 0xFFD8D0C1L),
             preferredSkin = AppSkin.Paper,
         ),
         BuiltInBackground(
@@ -43,7 +43,7 @@ object BackgroundCatalog {
             name = "墨白",
             category = BuiltInBackgroundCategory.Minimal,
             description = "冷灰纸面，减少彩色干扰。",
-            gradientColors = listOf(0xFFFAFAF8L, 0xFFF1F0EDL, 0xFFDAD9D4L),
+            gradientColors = listOf(0xFFF7F8F7L, 0xFFF3F5F4L, 0xFFDDE2DFL),
             preferredSkin = AppSkin.Mono,
         ),
         BuiltInBackground(
@@ -51,15 +51,15 @@ object BackgroundCatalog {
             name = "灰雾",
             category = BuiltInBackgroundCategory.Illustration,
             description = "低对比灰雾，适合表格和长列表。",
-            gradientColors = listOf(0xFFF7F7F4L, 0xFFE3E2DDL, 0xFFB8B7B3L),
+            gradientColors = listOf(0xFFF5F7F6L, 0xFFE7EBE8L, 0xFFC8D0CBL),
             preferredSkin = AppSkin.Mono,
         ),
         BuiltInBackground(
             id = "midnight",
             name = "玄夜",
             category = BuiltInBackgroundCategory.Nature,
-            description = "深色玻璃与暖金，适合夜间。",
-            gradientColors = listOf(0xFF15171CL, 0xFF1C1F25L, 0xFF8A6A3EL),
+            description = "深色纸面与低饱和绿，适合夜间核对账单。",
+            gradientColors = listOf(0xFF151A17L, 0xFF111513L, 0xFF29483FL),
             preferredSkin = AppSkin.Midnight,
         ),
         BuiltInBackground(
@@ -67,7 +67,7 @@ object BackgroundCatalog {
             name = "暖金",
             category = BuiltInBackgroundCategory.Emotion,
             description = "深色底上的暖金光晕，保留暗色但不回到旧蓝绿。",
-            gradientColors = listOf(0xFF0C0D10L, 0xFF2A2D35L, 0xFFB89564L),
+            gradientColors = listOf(0xFF0F1311L, 0xFF202722L, 0xFF6D5A3EL),
             preferredSkin = AppSkin.Midnight,
         ),
     )

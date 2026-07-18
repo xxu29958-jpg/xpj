@@ -28,10 +28,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
@@ -47,7 +47,6 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
-import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -107,11 +106,10 @@ fun BillSplitScreen(
                 sentCount = state.sent.size,
             )
         }
-        state.message?.takeIf { bodyStates.selected != ReadableListBodyState.LoadFailed }?.let {
-            item {
-                AppStatusBanner(message = it, tone = MessageTone.Danger)
-            }
-        }
+        billSplitBanners(
+            message = state.message?.takeIf { bodyStates.selected != ReadableListBodyState.LoadFailed },
+            showReadOnly = selectedTab == 1 && !state.canModify,
+        )
         item {
             if (selectedTab == 0) {
                 InboxCard(
@@ -125,6 +123,7 @@ fun BillSplitScreen(
                 SentCard(
                     sent = state.sent,
                     chrome = BillSplitListChrome(bodyState = bodyStates.sent, onRetry = viewModel::refresh),
+                    canModify = state.canModify,
                     onCancel = viewModel::cancel,
                 )
             }
@@ -207,6 +206,7 @@ private fun InboxCard(
 private fun SentCard(
     sent: List<BillSplitSent>,
     chrome: BillSplitListChrome,
+    canModify: Boolean,
     onCancel: (String) -> Unit,
 ) {
     when (chrome.bodyState) {
@@ -234,7 +234,7 @@ private fun SentCard(
                     if (index > 0) {
                         HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = 0.72f))
                     }
-                    SentRow(row = row, onCancel = onCancel)
+                    SentRow(row = row, canModify = canModify, onCancel = onCancel)
                 }
             }
         }
@@ -253,7 +253,11 @@ private fun InboxRow(
     // instead of inviting a tap that can only 410.
     val locallyExpired = row.isInviteLocallyExpired()
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        BillSplitPartyAmountRow(name = row.senderDisplayName, amountCents = row.amountCents)
+        BillSplitPartyAmountRow(
+            name = row.senderDisplayName,
+            amountCents = row.amountCents,
+            currency = row.homeCurrency,
+        )
         InboxMetaLine(row = row, locallyExpired = locallyExpired)
         if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
             BillSplitInboxActions(
@@ -352,16 +356,21 @@ private fun InboxMetaLine(row: BillSplitInbox, locallyExpired: Boolean) {
 @Composable
 private fun SentRow(
     row: BillSplitSent,
+    canModify: Boolean,
     onCancel: (String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        BillSplitPartyAmountRow(name = row.receiverDisplayNameSnapshot ?: "—", amountCents = row.amountCents)
+        BillSplitPartyAmountRow(
+            name = row.receiverDisplayNameSnapshot ?: "—",
+            amountCents = row.amountCents,
+            currency = row.homeCurrency,
+        )
         Text(
             text = "${row.merchantSnapshot ?: "—"} · ${billSplitStatusLabel(row.status)}",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        if (row.status == BillSplitStatusValues.INVITED) {
+        if (row.status == BillSplitStatusValues.INVITED && canModify) {
             AppAdaptiveTrailingActionRow {
                 QuietOutlinedButton(
                     text = stringResource(R.string.bill_split_sent_cancel),
@@ -377,6 +386,7 @@ private fun SentRow(
 private fun BillSplitPartyAmountRow(
     name: String,
     amountCents: Long,
+    currency: CurrencyCode,
 ) {
     AppAdaptiveContentActionRow(
         modifier = Modifier.fillMaxWidth(),
@@ -391,7 +401,7 @@ private fun BillSplitPartyAmountRow(
         },
         action = { actionModifier ->
             AppEndAlignedAmountText(
-                text = formatAmount(amountCents),
+                text = formatAmount(amountCents, currency),
                 modifier = actionModifier,
                 role = AppAmountRole.Compact,
             )

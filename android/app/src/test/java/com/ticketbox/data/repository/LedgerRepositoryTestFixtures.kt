@@ -160,6 +160,7 @@ internal class StubApi(
             name = request.name,
             role = "owner",
             isDefault = false,
+            homeCurrencyCode = "CNY",
             createdAt = "2026-01-01T00:00:00Z",
             archivedAt = null,
         )
@@ -241,6 +242,12 @@ internal class StubApi(
         query: Map<String, String>,
     ): PaginatedExpensesDto = ledgerUnsupported()
     override suspend fun categories(): CategoriesDto = ledgerUnsupported()
+    override suspend fun categoryPreferences(): com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto =
+        ledgerUnsupported()
+    override suspend fun deleteCategoryPreference(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.CategoryPreferenceTokenRequestDto,
+    ): com.ticketbox.data.remote.dto.CategoryPreferenceDto = ledgerUnsupported()
     override suspend fun tags(): TagsDto = ledgerUnsupported()
     override suspend fun listManagedTags(): com.ticketbox.data.remote.dto.TagManagementListDto = ledgerUnsupported()
     override suspend fun renameTag(publicId: String, request: com.ticketbox.data.remote.dto.TagRenameRequest): com.ticketbox.data.remote.dto.TagDetailDto = ledgerUnsupported()
@@ -429,6 +436,7 @@ internal class StubApi(
         timezone: String?,
     ): GoalDto = ledgerUnsupported()
     override suspend fun debts(): com.ticketbox.data.remote.dto.DebtListResponseDto = ledgerUnsupported()
+    override suspend fun debtPayables(): com.ticketbox.data.remote.dto.DebtListResponseDto = ledgerUnsupported()
     override suspend fun debtReceivables(): com.ticketbox.data.remote.dto.DebtListResponseDto = ledgerUnsupported()
     override suspend fun createDebt(
         request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
@@ -438,9 +446,19 @@ internal class StubApi(
         file: MultipartBody.Part,
     ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = ledgerUnsupported()
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
+    override suspend fun debtRepayments(
+        publicId: String,
+        page: Int,
+        pageSize: Int,
+    ): com.ticketbox.data.remote.dto.RepaymentFactListResponseDto = ledgerUnsupported()
     override suspend fun recordDebtRepayment(
         publicId: String,
         request: com.ticketbox.data.remote.dto.RepaymentCreateRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.RepaymentCreateResponseDto = ledgerUnsupported()
+    override suspend fun voidDebtRepayment(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
     override suspend fun recordDebtAdjustment(

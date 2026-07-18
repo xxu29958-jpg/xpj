@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 def test_web_merchants_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/merchants?ledger_id=owner")
     assert resp.status_code == 200
-    assert "商家治理" in resp.text
-    assert "不会覆盖原始账单商家" in resp.text
+    assert '<h1 class="page-title page-title--compact">商家</h1>' in resp.text
+    assert "不会覆盖原始账单或批量改写历史" in resp.text
 
 
 def test_web_merchants_catalog_and_alias_create_toggle_delete(web_client: TestClient) -> None:
@@ -157,7 +157,7 @@ def _exercise_web_catalog_create_toggle_delete(web_client: TestClient, re_module
     )
     assert catalog_deleted.status_code in {303, 307}
     page = web_client.get("/web/merchants?ledger_id=owner")
-    assert "还没有商家目录" in page.text
+    assert "还没有标准商家" in page.text
 
 
 def _exercise_web_alias_create_toggle_delete(web_client: TestClient, re_module) -> None:

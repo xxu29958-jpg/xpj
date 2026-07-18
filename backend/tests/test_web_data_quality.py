@@ -24,7 +24,7 @@ def test_web_data_quality_remote_returns_403(client: TestClient) -> None:
 def test_web_data_quality_empty_renders(web_client: TestClient) -> None:
     resp = web_client.get("/web/data-quality")
     assert resp.status_code == 200
-    assert "数据体检" in resp.text
+    assert '<h1 class="page-title page-title--compact">数据质量</h1>' in resp.text
     # All 8 counter labels render.
     for label in (
         "待确认总数",
@@ -33,7 +33,7 @@ def test_web_data_quality_empty_renders(web_client: TestClient) -> None:
         "未分类",
         "疑似重复",
         "已确认无图",
-        "可一键确认",
+        "可直接确认",
         "最久待确认",
     ):
         assert label in resp.text

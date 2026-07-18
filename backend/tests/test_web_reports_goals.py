@@ -13,6 +13,16 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
+from app.routes.web_goals import _goal_progress_ui
+from tests._web_reports_test_support import (
+    assert_report_data_tables as _assert_report_data_tables,
+)
+from tests._web_reports_test_support import (
+    assert_reports_surface as _assert_reports_surface,
+)
+from tests._web_reports_test_support import (
+    parse_reports_overview as _parse_reports_overview,
+)
 
 
 @pytest.fixture()
@@ -44,6 +54,34 @@ def _create_expense(
     assert response.status_code == 200, response.text
 
 
+def _create_report_service_expenses(client: TestClient, *, identity) -> None:
+    _create_expense(
+        client,
+        amount_cents=4200,
+        merchant="星巴克",
+        category="餐饮",
+        expense_time="2026-05-03T12:00:00Z",
+        identity=identity,
+    )
+    _create_expense(
+        client,
+        amount_cents=1800,
+        merchant="地铁",
+        category="交通",
+        expense_time="2026-05-04T12:00:00Z",
+        identity=identity,
+    )
+    _create_expense(
+        client,
+        amount_cents=9900,
+        merchant="灰度账本商家",
+        category="餐饮",
+        expense_time="2026-05-05T12:00:00Z",
+        gray=True,
+        identity=identity,
+    )
+
+
 def _demote_owner_ledger_to_viewer() -> None:
     with SessionLocal() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
@@ -59,28 +97,7 @@ def test_web_reports_and_goals_remote_return_403(client: TestClient) -> None:
 
 
 def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *, identity) -> None:
-    _create_expense(
-        web_client,
-        amount_cents=4200,
-        merchant="星巴克",
-        category="餐饮",
-        expense_time="2026-05-03T12:00:00Z",
-     identity=identity)
-    _create_expense(
-        web_client,
-        amount_cents=1800,
-        merchant="地铁",
-        category="交通",
-        expense_time="2026-05-04T12:00:00Z",
-     identity=identity)
-    _create_expense(
-        web_client,
-        amount_cents=9900,
-        merchant="灰度账本商家",
-        category="餐饮",
-        expense_time="2026-05-05T12:00:00Z",
-        gray=True,
-     identity=identity)
+    _create_report_service_expenses(web_client, identity=identity)
 
     response = web_client.get(
         "/web/reports?ledger_id=owner&month=2026-05&granularity=week"
@@ -88,50 +105,11 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *,
     )
 
     assert response.status_code == 200
-    assert "动态报表" in response.text
-    assert "月报摘要" in response.text
-    assert "预算解释" in response.text
-    assert "历史不足" in response.text
-    assert "¥60.00" in response.text
-
-    # ADR-0026: reports.js renders the charts from the injected JSON; verify the
-    # data contract + that the category-filtered merchant ranking is correct.
-    blob = re.search(
-        r'<script type="application/json" id="reports-overview-data">(.*?)</script>',
-        response.text,
-        re.DOTALL,
-    )
-    assert blob is not None
-    overview = json.loads(blob.group(1))
-    assert {
-        "trend",
-        "merchant_ranking",
-        "ranking_metric",
-        "category_comparison",
-        "year_over_year_month",
-    } <= overview.keys()
-    assert overview["ranking_metric"] == "count"
+    overview = _parse_reports_overview(response.text)
     assert "星巴克" in [row["merchant"] for row in overview["merchant_ranking"]]
     assert "灰度账本商家" not in [row["merchant"] for row in overview["merchant_ranking"]]
-    assert "分类对比" in response.text
-    assert "去年同月" in response.text
-    assert "灰度账本商家" not in response.text
-    assert "/web/reports/export.csv" in response.text
-    assert "granularity=week" in response.text
-    assert "ranking_metric=count" in response.text
-    assert "merchant_category=%E9%A4%90%E9%A5%AE" in response.text
-    # ADR-0026: charts rendered by reports.js from #reports-overview-data.
-    assert 'id="reports-overview-data"' in response.text
-    assert 'id="reports-trend-chart"' in response.text
-    assert 'id="reports-merchant-chart"' in response.text
-    assert 'id="reports-category-chart"' in response.text
-    assert 'id="reports-export-png"' in response.text
-    assert "/static/web/reports.js" in response.text
-    assert "商家排行" in response.text
-    assert "/static/web/vendor/echarts.min.js" in response.text
-    assert "/static/web/desktop.js" in response.text
-    assert 'style="' not in response.text
-    assert 'class="report-export-dialog"' in response.text
+    _assert_report_data_tables(response.text, overview)
+    _assert_reports_surface(response.text)
 
 
 def test_web_reports_absorbs_stats_top_expenses_and_seg_controls(
@@ -212,6 +190,7 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     script = client.get("/static/web/vendor/echarts.min.js")
     license_file = client.get("/static/web/vendor/echarts.LICENSE")
     reports_js = client.get("/static/web/reports.js")
+    trend_chart_js = client.get("/static/web/desktop/trend-chart.js")
     reports_css = client.get("/static/web/pages/reports.css")
     reports_feature_css = client.get("/static/web/features/_reports_goals.css")
     pending_css = client.get("/static/web/pages/pending.css")
@@ -224,10 +203,15 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert "Apache License" in license_file.text
     assert reports_js.status_code == 200
     assert "reports-overview-data" in reports_js.text
+    assert "aria: { enabled: true }" in reports_js.text
+    assert trend_chart_js.status_code == 200
+    assert "aria: { enabled: true }" in trend_chart_js.text
     assert "rgba(15,23,42" not in reports_js.text
     assert reports_css.status_code == 200
     assert ".report-export-dialog::backdrop" in reports_css.text
     assert ".reports-export-dialog" not in reports_css.text
+    assert "@media (max-width: 560px)" in reports_css.text
+    assert ".kpi-strip--compact" in reports_css.text
     assert reports_feature_css.status_code == 200
     assert ".reports-export-dialog" not in reports_feature_css.text
     assert pending_css.status_code == 200
@@ -271,6 +255,10 @@ def test_web_reports_selected_ledger_isolated(web_client: TestClient, *, identit
     assert "OwnerOnly" not in tester.text
 
 
+def test_web_goal_progress_unknown_uses_product_fallback() -> None:
+    assert _goal_progress_ui("future_state") == ("状态待确认", "")
+
+
 def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, identity) -> None:
     _create_expense(
         web_client,
@@ -296,9 +284,14 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert page.status_code == 200
     assert "本月餐饮" in page.text
+    assert '<h1 class="page-title page-title--compact">目标</h1>' in page.text
+    assert 'name="month" value="2026-05"' in page.text
     assert "¥640.00 / ¥800.00" in page.text
     assert "80%" in page.text
     assert "保存目标" in page.text
+    assert 'class="plan-workspace goal-workspace"' in page.text
+    assert 'class="dt-' not in page.text
+    assert 'style="' not in page.text
 
     match = re.search(r"/web/goals/([^/]+)/archive", page.text)
     assert match, page.text[:1000]

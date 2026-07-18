@@ -14,31 +14,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseRepository
-import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
-import com.ticketbox.data.repository.ReportsActions
-import com.ticketbox.data.repository.TagRepository
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
-import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ImmersionMode
-import com.ticketbox.domain.model.MerchantAlias
-import com.ticketbox.domain.model.MerchantCatalog
-import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.NotificationPreferences
-import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.ui.appearance.background.BackgroundImageStore
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.screens.BillSplitScreen
-import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.settings.AboutScreen
 import com.ticketbox.ui.screens.settings.AppearanceBackgroundActions
 import com.ticketbox.ui.screens.settings.AppearanceImmersionActions
@@ -51,76 +39,41 @@ import com.ticketbox.ui.screens.settings.BackgroundCropScreen
 import com.ticketbox.ui.screens.settings.BackgroundGalleryScreen
 import com.ticketbox.ui.screens.settings.BackgroundPreviewScreen
 import com.ticketbox.ui.screens.settings.BackgroundTasksScreen
-import com.ticketbox.ui.screens.settings.CategoryRulesApplicationActions
-import com.ticketbox.ui.screens.settings.CategoryRulesApplicationState
-import com.ticketbox.ui.screens.settings.CategoryRulesInteractionState
-import com.ticketbox.ui.screens.settings.CategoryRulesRuleActions
-import com.ticketbox.ui.screens.settings.CategoryRulesRuleListState
-import com.ticketbox.ui.screens.settings.CategoryRulesScreen
-import com.ticketbox.ui.screens.settings.CategoryRulesScreenActions
-import com.ticketbox.ui.screens.settings.CategoryRulesScreenState
-import com.ticketbox.ui.screens.settings.CategoryRulesStatusState
-import com.ticketbox.ui.screens.settings.CategoryRulesUndoActions
-import com.ticketbox.ui.screens.settings.DashboardCardsScreen
 import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
-import com.ticketbox.ui.screens.settings.MerchantAliasesAliasActions
-import com.ticketbox.ui.screens.settings.MerchantAliasesCatalogActions
-import com.ticketbox.ui.screens.settings.MerchantAliasesMergeSuggestionActions
-import com.ticketbox.ui.screens.settings.MerchantAliasesScreen
-import com.ticketbox.ui.screens.settings.MerchantAliasesScreenActions
-import com.ticketbox.ui.screens.settings.MerchantAliasesScreenState
-import com.ticketbox.ui.screens.settings.MerchantAliasesUndoActions
 import com.ticketbox.ui.screens.settings.MyDevicesScreen
 import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
-import com.ticketbox.ui.screens.settings.RecycleBinScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreenActions
 import com.ticketbox.ui.screens.settings.ServerSettingsScreenState
 import com.ticketbox.ui.screens.settings.SettingsRootAlertsAppearanceNavigationActions
-import com.ticketbox.ui.screens.settings.SettingsRootBookkeepingNavigationActions
 import com.ticketbox.ui.screens.settings.SettingsRootConnectionSystemNavigationActions
-import com.ticketbox.ui.screens.settings.SettingsRootDataToolsNavigationActions
+import com.ticketbox.ui.screens.settings.SettingsRootDataPrivacyNavigationActions
 import com.ticketbox.ui.screens.settings.SettingsRootLedgerFamilyNavigationActions
 import com.ticketbox.ui.screens.settings.SettingsRootNavigationActions
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
 import com.ticketbox.ui.screens.settings.SettingsRoute as SettingsDestination
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
-import com.ticketbox.ui.screens.settings.TagManagementScreen
 import com.ticketbox.viewmodel.AppearanceUiState
 import com.ticketbox.viewmodel.BackgroundTasksViewModel
-import com.ticketbox.viewmodel.BillSplitViewModel
-import com.ticketbox.viewmodel.CategoryRulesUiState
-import com.ticketbox.viewmodel.DashboardCardsViewModel
 import com.ticketbox.viewmodel.FamilyMembersViewModel
-import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
-import com.ticketbox.viewmodel.MerchantAliasUiState
 import com.ticketbox.viewmodel.MyDevicesViewModel
 import com.ticketbox.viewmodel.OutboxStatusViewModel
-import com.ticketbox.viewmodel.RecycleBinViewModel
 import com.ticketbox.viewmodel.SettingsUiState
-import com.ticketbox.viewmodel.TagManagementViewModel
 import com.ticketbox.viewmodel.backgroundTasksViewModelFactory
-import com.ticketbox.viewmodel.billSplitViewModelFactory
-import com.ticketbox.viewmodel.dashboardCardsViewModelFactory
 import com.ticketbox.viewmodel.familyMembersViewModelFactory
-import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 import com.ticketbox.viewmodel.ledgerSwitcherViewModelFactory
 import com.ticketbox.viewmodel.myDevicesViewModelFactory
 import com.ticketbox.viewmodel.outboxStatusViewModelFactory
-import com.ticketbox.viewmodel.recycleBinViewModelFactory
-import com.ticketbox.viewmodel.tagManagementViewModelFactory
 
 internal data class SettingsRouteStates(
     val settings: SettingsUiState,
-    val rules: CategoryRulesUiState,
-    val merchant: MerchantAliasUiState,
     val appearance: AppearanceUiState,
 )
 
@@ -130,6 +83,11 @@ internal data class SettingsDestinationChromeState(
     val showAdvancedTools: Boolean,
 )
 
+internal data class SettingsDestinationNavigation(
+    val onSecondaryActiveChange: (Boolean) -> Unit = {},
+    val onCloseRoot: () -> Unit = {},
+)
+
 internal data class SettingsRouteActions(
     val onTestConnection: () -> Unit,
     val onRunDiagnostics: () -> Unit,
@@ -137,26 +95,6 @@ internal data class SettingsRouteActions(
     val onSync: () -> Unit,
     val onClearCache: () -> Unit,
     val onSaveNotificationPreferences: (NotificationPreferences) -> Unit,
-    val onCreateRule: (String, String, Int) -> Unit,
-    val onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
-    val onToggleRule: (CategoryRule) -> Unit,
-    val onDeleteRule: (CategoryRule) -> Unit,
-    val onUndoRuleDelete: () -> Unit,
-    val onDismissRuleUndo: () -> Unit,
-    val onCreateMerchantCatalog: (String) -> Unit,
-    val onRenameMerchantCatalog: (MerchantCatalog, String) -> Unit,
-    val onToggleMerchantCatalog: (MerchantCatalog) -> Unit,
-    val onMergeMerchantCatalog: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
-    val onDeleteMerchantCatalog: (MerchantCatalog) -> Unit,
-    val onCreateMerchantAlias: (String, String) -> Unit,
-    val onToggleMerchantAlias: (MerchantAlias) -> Unit,
-    val onDeleteMerchantAlias: (MerchantAlias) -> Unit,
-    val onUndoMerchantAlias: () -> Unit,
-    val onDismissMerchantAliasUndo: () -> Unit,
-    val onDismissMerchantCatalogMergeSuggestion: () -> Unit,
-    val onPreviewApplyConfirmedRules: () -> Unit,
-    val onConfirmApplyConfirmedRules: () -> Unit,
-    val onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
     val onSkinChange: (AppSkin) -> Unit,
     val onCurrencyChange: (CurrencyCode) -> Unit,
     val onApplyBackgroundSettings: (BackgroundSettings) -> Unit,
@@ -168,16 +106,12 @@ internal data class SettingsRouteActions(
     val onBindingCleared: () -> Unit,
     val onBindingChanged: () -> Unit,
     val onLedgerSwitched: () -> Unit,
-    val onDashboardCardsChanged: () -> Unit,
 )
 
 internal data class SettingsRouteRepositories(
     val ledgerRepository: LedgerRepository,
     val expenseRepository: ExpenseRepository,
-    val reportsRepository: ReportsActions,
-    val incomePlanRepository: IncomePlanActions,
     val outboxRepository: OutboxRepository,
-    val tagRepository: TagRepository,
     val activeLedgerId: String?,
 )
 
@@ -185,7 +119,7 @@ internal data class SettingsRouteRepositories(
 internal fun SettingsDestinationHost(
     states: SettingsRouteStates,
     chromeState: SettingsDestinationChromeState,
-    onSecondaryActiveChange: (Boolean) -> Unit = {},
+    navigation: SettingsDestinationNavigation = SettingsDestinationNavigation(),
     actions: SettingsRouteActions,
     repositories: SettingsRouteRepositories,
 ) {
@@ -200,10 +134,10 @@ internal fun SettingsDestinationHost(
     val backgroundCropFailedMessage = stringResource(R.string.settings_background_crop_failed)
 
     LaunchedEffect(route) {
-        onSecondaryActiveChange(route != SettingsDestination.Root)
+        navigation.onSecondaryActiveChange(route != SettingsDestination.Root)
     }
     DisposableEffect(Unit) {
-        onDispose { onSecondaryActiveChange(false) }
+        onDispose { navigation.onSecondaryActiveChange(false) }
     }
 
     val backgroundPickerLauncher = rememberLauncherForActivityResult(
@@ -227,13 +161,17 @@ internal fun SettingsDestinationHost(
         actions.onApplyBackgroundSettings(states.appearance.backgroundSettings.withoutBackground())
     }
 
-    BackHandler(enabled = route != SettingsDestination.Root) {
-        route = when (route) {
-            SettingsDestination.BackgroundGallery,
-            is SettingsDestination.BackgroundCrop,
-            is SettingsDestination.BackgroundPreview,
-            -> SettingsDestination.Appearance
-            else -> SettingsDestination.Root
+    BackHandler {
+        if (route == SettingsDestination.Root) {
+            navigation.onCloseRoot()
+        } else {
+            route = when (route) {
+                SettingsDestination.BackgroundGallery,
+                is SettingsDestination.BackgroundCrop,
+                is SettingsDestination.BackgroundPreview,
+                -> SettingsDestination.Appearance
+                else -> SettingsDestination.Root
+            }
         }
     }
 
@@ -241,24 +179,16 @@ internal fun SettingsDestinationHost(
         SettingsDestination.Root -> SettingsRootScreen(
             state = states.settings,
             showAdvancedTools = chromeState.showAdvancedTools,
+            onBack = navigation.onCloseRoot,
             navigationActions = SettingsRootNavigationActions(
                 ledgerFamily = SettingsRootLedgerFamilyNavigationActions(
                     onOpenLedgers = { route = SettingsDestination.Ledgers },
                     onOpenFamilyMembers = { route = SettingsDestination.FamilyMembers },
                     onOpenMyDevices = { route = SettingsDestination.MyDevices },
                     onOpenJoinFamilyLedger = { route = SettingsDestination.JoinFamilyLedger },
-                    onOpenBillSplits = { route = SettingsDestination.BillSplits },
                 ),
-                bookkeeping = SettingsRootBookkeepingNavigationActions(
-                    onOpenCategoryRules = { route = SettingsDestination.CategoryRules },
-                    onOpenMerchantAliases = { route = SettingsDestination.MerchantAliases },
-                    onOpenTagManagement = { route = SettingsDestination.TagManagement },
-                    onOpenRecycleBin = { route = SettingsDestination.RecycleBin },
-                ),
-                dataTools = SettingsRootDataToolsNavigationActions(
-                    onOpenDashboardCards = { route = SettingsDestination.DashboardCards },
+                dataPrivacy = SettingsRootDataPrivacyNavigationActions(
                     onOpenDataExport = { route = SettingsDestination.DataExport },
-                    onOpenIncomePlans = { route = SettingsDestination.IncomePlans },
                 ),
                 alertsAppearance = SettingsRootAlertsAppearanceNavigationActions(
                     onOpenNotifications = { route = SettingsDestination.NotificationPreferences },
@@ -365,132 +295,6 @@ internal fun SettingsDestinationHost(
             },
         )
 
-        SettingsDestination.DashboardCards -> {
-            val vm: DashboardCardsViewModel = viewModel(
-                key = "settings-dashboard-cards",
-                factory = dashboardCardsViewModelFactory(repositories.reportsRepository),
-            )
-            val state by vm.uiState.collectAsStateWithLifecycle()
-            LaunchedEffect(state.savedRevision) {
-                if (state.savedRevision > 0) actions.onDashboardCardsChanged()
-            }
-            DashboardCardsScreen(
-                state = state,
-                onBack = { route = SettingsDestination.Root },
-                actions = com.ticketbox.ui.screens.settings.DashboardCardsScreenActions(
-                    onMoveCard = vm::moveCard,
-                    onReorder = vm::reorderCards,
-                    onVisibleChange = vm::setVisible,
-                    onSave = vm::saveCards,
-                    onReset = vm::resetCards,
-                ),
-            )
-        }
-
-        SettingsDestination.CategoryRules -> CategoryRulesScreen(
-            state = CategoryRulesScreenState(
-                rules = CategoryRulesRuleListState(
-                    rules = states.rules.categoryRules,
-                    loading = states.rules.categoryRulesLoading,
-                ),
-                interaction = CategoryRulesInteractionState(
-                    busy = states.rules.busy,
-                    readOnly = !ledgerRoleCanModify(states.settings.role),
-                ),
-                status = CategoryRulesStatusState(
-                    message = states.rules.message,
-                    messageTone = states.rules.messageTone,
-                ),
-                applications = CategoryRulesApplicationState(
-                    history = states.rules.ruleApplications,
-                    loading = states.rules.ruleApplicationsLoading,
-                    confirmedPreview = states.rules.confirmedRulesPreview,
-                ),
-                undoableRule = states.rules.undoableRule,
-            ),
-            actions = CategoryRulesScreenActions(
-                onBack = { route = SettingsDestination.Root },
-                rules = CategoryRulesRuleActions(
-                    onCreate = actions.onCreateRule,
-                    onUpdate = actions.onUpdateRule,
-                    onToggle = actions.onToggleRule,
-                    onDelete = actions.onDeleteRule,
-                ),
-                applications = CategoryRulesApplicationActions(
-                    onPreviewApplyConfirmedRules = actions.onPreviewApplyConfirmedRules,
-                    onConfirmApplyConfirmedRules = actions.onConfirmApplyConfirmedRules,
-                    onRollbackRuleApplication = actions.onRollbackRuleApplication,
-                ),
-                undo = CategoryRulesUndoActions(
-                    onUndoDelete = actions.onUndoRuleDelete,
-                    onDismiss = actions.onDismissRuleUndo,
-                ),
-            ),
-        )
-
-        SettingsDestination.MerchantAliases -> MerchantAliasesScreen(
-            state = MerchantAliasesScreenState(
-                catalog = states.merchant.merchantCatalog,
-                aliases = states.merchant.merchantAliases,
-                busy = states.merchant.busy,
-                readOnly = !ledgerRoleCanModify(states.settings.role),
-                message = states.merchant.message,
-                messageTone = states.merchant.messageTone,
-                undoableAlias = states.merchant.undoableAlias,
-                mergeSuggestion = states.merchant.mergeSuggestion,
-            ),
-            actions = MerchantAliasesScreenActions(
-                onBack = { route = SettingsDestination.Root },
-                catalog = MerchantAliasesCatalogActions(
-                    onCreate = actions.onCreateMerchantCatalog,
-                    onRename = actions.onRenameMerchantCatalog,
-                    onToggle = actions.onToggleMerchantCatalog,
-                    onMerge = actions.onMergeMerchantCatalog,
-                    onDelete = actions.onDeleteMerchantCatalog,
-                ),
-                alias = MerchantAliasesAliasActions(
-                    onCreate = actions.onCreateMerchantAlias,
-                    onToggle = actions.onToggleMerchantAlias,
-                    onDelete = actions.onDeleteMerchantAlias,
-                ),
-                mergeSuggestion = MerchantAliasesMergeSuggestionActions(
-                    onDismiss = actions.onDismissMerchantCatalogMergeSuggestion,
-                ),
-                undo = MerchantAliasesUndoActions(
-                    onUndoDelete = actions.onUndoMerchantAlias,
-                    onDismiss = actions.onDismissMerchantAliasUndo,
-                ),
-            ),
-        )
-
-        SettingsDestination.TagManagement -> {
-            val vm: TagManagementViewModel = viewModel(
-                // Key by ledger so switching ledgers gets a fresh VM (fresh load),
-                // not the previous ledger's tags / undo handle / message.
-                key = "tag-management-${repositories.activeLedgerId ?: "none"}",
-                factory = tagManagementViewModelFactory(repositories.tagRepository),
-            )
-            TagManagementScreen(
-                viewModel = vm,
-                readOnly = !ledgerRoleCanModify(states.settings.role),
-                onBack = { route = SettingsDestination.Root },
-                // P4 stale-refresh: a committed tag mutation reuses the stats-refresh
-                // signal so the stats tab re-pulls its tag list (drops the dead chip)
-                // on next show — same validated channel as dashboard-card edits.
-                onTagsChanged = actions.onDashboardCardsChanged,
-            )
-        }
-
-        SettingsDestination.RecycleBin -> {
-            val vm: RecycleBinViewModel = viewModel(
-                factory = recycleBinViewModelFactory(repositories.ledgerRepository),
-            )
-            RecycleBinScreen(
-                viewModel = vm,
-                onBack = { route = SettingsDestination.Root },
-            )
-        }
-
         SettingsDestination.DataExport -> DataExportScreen(
             state = states.settings,
             onBack = { route = SettingsDestination.Root },
@@ -572,20 +376,6 @@ internal fun SettingsDestinationHost(
             )
         }
 
-        SettingsDestination.BillSplits -> {
-            val vm: BillSplitViewModel = viewModel(
-                key = "bill-splits",
-                factory = billSplitViewModelFactory(
-                    repositories.expenseRepository,
-                    repositories.ledgerRepository,
-                ),
-            )
-            BillSplitScreen(
-                viewModel = vm,
-                onBack = { route = SettingsDestination.Root },
-            )
-        }
-
         SettingsDestination.BackgroundTasks -> {
             val vm: BackgroundTasksViewModel = viewModel(
                 key = "background-tasks",
@@ -607,18 +397,6 @@ internal fun SettingsDestinationHost(
             )
             SyncStatusScreen(
                 viewModel = vm,
-                onBack = { route = SettingsDestination.Root },
-            )
-        }
-
-        SettingsDestination.IncomePlans -> {
-            val vm: IncomePlanViewModel = viewModel(
-                key = IncomePlanViewModelKey,
-                factory = incomePlanViewModelFactory(repositories.incomePlanRepository),
-            )
-            IncomePlanScreen(
-                viewModel = vm,
-                currency = LocalCurrencyDisplay.current,
                 onBack = { route = SettingsDestination.Root },
             )
         }

@@ -23,8 +23,7 @@ data class AppUiState(
     val unlocked: Boolean = false,
     val binding: Boolean = false,
     val skin: AppSkin = AppSkin.Default,
-    val currency: CurrencyCode = CurrencyCode.Default,
-    val currencyDisplay: CurrencyDisplay = CurrencyDisplay.Base,
+    val currency: CurrencyCode = CurrencyCode.LegacyFallback,
     val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val authMessage: UiText? = null,
     /**
@@ -35,7 +34,10 @@ data class AppUiState(
      * unaffected (§5: the local door only unlocks local state).
      */
     val localUnlockDisabled: Boolean = false,
-)
+) {
+    val currencyDisplay: CurrencyDisplay
+        get() = CurrencyDisplay(currency)
+}
 
 class AppViewModel(
     private val repository: ServerBindingRepository,
@@ -57,14 +59,13 @@ class AppViewModel(
         }
         skin
     }
-    private val initialCurrency = CurrencyCode.fromStorageKey(settingsStore.currencyCodeKey())
+    private val initialCurrency = CurrencyCode.fromStorageKey(settingsStore.homeCurrencyCodeKey())
     private val _uiState = MutableStateFlow(
         AppUiState(
             isBound = hasActiveBinding,
             unlocked = hasActiveBinding && (!requireLocalUnlock || !settingsStore.requiresUnlock()),
             skin = initialSkin,
             currency = initialCurrency,
-            currencyDisplay = CurrencyDisplay.Base,
         ),
     )
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -76,16 +77,13 @@ class AppViewModel(
             }
         }
         viewModelScope.launch {
-            settingsStore.observeCurrencyCodeKey().collect { key ->
+            settingsStore.observeHomeCurrencyCodeKey().collect { key ->
                 val resolved = CurrencyCode.fromStorageKey(key)
                 _uiState.update { state ->
                     if (state.currency == resolved) {
                         state
                     } else {
-                        state.copy(
-                            currency = resolved,
-                            currencyDisplay = CurrencyDisplay.Base,
-                        )
+                        state.copy(currency = resolved)
                     }
                 }
             }
@@ -177,29 +175,23 @@ class AppViewModel(
     }
 
     fun selectCurrency(currency: CurrencyCode) {
-        settingsStore.saveCurrencyCodeKey(currency.storageKey)
-        _uiState.update {
-            it.copy(
-                currency = currency,
-                currencyDisplay = CurrencyDisplay.Base,
-                authMessage = UiText.res(R.string.app_currency_switched, currency.displayName),
-            )
+        // Kept temporarily as a binary-compatible callback for the navigation shell.
+        // The appearance surface is read-only: the server pairing/switch contract
+        // is the only authority allowed to update home currency.
+        check(currency == _uiState.value.currency) {
+            "Home currency is server-authoritative and cannot be changed locally."
         }
     }
 
     fun clearBinding() {
         val currentSkin = _uiState.value.skin
-        val currentCurrency = _uiState.value.currency
         val currentBackground = _uiState.value.backgroundSettings
         viewModelScope.launch {
             repository.clearBinding()
             settingsStore.saveAppSkinKey(currentSkin.storageKey)
-            settingsStore.saveCurrencyCodeKey(currentCurrency.storageKey)
             _uiState.update {
                 AppUiState(
                     skin = currentSkin,
-                    currency = currentCurrency,
-                    currencyDisplay = CurrencyDisplay.Base,
                     backgroundSettings = currentBackground,
                 )
             }

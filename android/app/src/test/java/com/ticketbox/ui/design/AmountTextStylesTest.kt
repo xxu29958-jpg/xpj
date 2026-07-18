@@ -11,25 +11,25 @@ import kotlin.test.assertSame
 /**
  * 金额排版制度单源 [asAmount] / [AppAmountRole] 的回归钉。各屏焦点金额迁到这套
  * API 后，字号 / 字重 / 行高 / 等宽数字若被悄悄改动会在这里炸出来——这类回退
- * （金额列又不对齐、英雄数字缩水）肉眼很难一眼察觉。
+ * （金额列又不对齐、金额层级漂移）肉眼很难一眼察觉。
  */
 class AmountTextStylesTest {
     @Test
     fun heroRoleAppliesTabularFiguresAndHeroDimensions() {
         val style = TextStyle().asAmount(AppAmountRole.Hero)
         assertEquals("tnum", style.fontFeatureSettings)
-        assertEquals(38.sp, style.fontSize)
+        assertEquals(34.sp, style.fontSize)
         assertEquals(38.sp, style.lineHeight)
         assertEquals(0.sp, style.letterSpacing)
-        assertEquals(FontWeight.Black, style.fontWeight)
+        assertEquals(FontWeight.ExtraBold, style.fontWeight)
     }
 
     @Test
     fun mediumRoleAppliesTabularFiguresAndMediumDimensions() {
         val style = TextStyle().asAmount(AppAmountRole.Medium)
         assertEquals("tnum", style.fontFeatureSettings)
-        assertEquals(24.sp, style.fontSize)
-        assertEquals(28.sp, style.lineHeight)
+        assertEquals(22.sp, style.fontSize)
+        assertEquals(26.sp, style.lineHeight)
         assertEquals(0.sp, style.letterSpacing)
         assertEquals(FontWeight.Bold, style.fontWeight)
     }

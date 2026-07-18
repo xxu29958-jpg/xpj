@@ -55,6 +55,33 @@ class ReceivablesViewModelTest {
     }
 
     @Test
+    fun initKeepsServerPersonalExternalLocalMemberAndCrossMemberRows() = runTest(dispatcher) {
+        val repo = FakeReceivablesActions(
+            result = Result.success(
+                listOf(
+                    sampleExternalReceivable("external-local"),
+                    sampleReceivable("member-local").copy(
+                        ledgerId = "owner",
+                        direction = DebtDirections.OWED_TO_ME,
+                    ),
+                    sampleReceivable("member-cross"),
+                ),
+            ),
+        )
+
+        val viewModel = ReceivablesViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("external-local", "member-local", "member-cross"),
+            viewModel.state.value.receivables.map { it.publicId },
+        )
+        assertTrue(viewModel.state.value.receivables.first().isExternal)
+        assertEquals(false, viewModel.state.value.receivables[1].viewerIsDebtor)
+        assertNull(viewModel.state.value.receivables.last().ledgerId)
+    }
+
+    @Test
     fun refreshFailureSetsErrorAndClearsLoading() = runTest(dispatcher) {
         val repo = FakeReceivablesActions(result = Result.failure(RuntimeException("offline")))
         val viewModel = ReceivablesViewModel(repo)
@@ -90,6 +117,20 @@ class ReceivablesViewModelTest {
         advanceUntilIdle()
         assertEquals("second", viewModel.state.value.receivables.single().publicId)
         assertEquals(false, viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun reloadClearsPriorLedgerRowsBeforeRefetch() = runTest(dispatcher) {
+        val repo = FakeReceivablesActions(result = Result.success(listOf(sampleExternalReceivable("ledger-a"))))
+        val viewModel = ReceivablesViewModel(repo)
+        advanceUntilIdle()
+
+        repo.result = Result.success(listOf(sampleExternalReceivable("ledger-b")))
+        viewModel.reload()
+        assertTrue(viewModel.state.value.receivables.isEmpty())
+        advanceUntilIdle()
+
+        assertEquals("ledger-b", viewModel.state.value.receivables.single().publicId)
     }
 
     @Test
@@ -156,3 +197,15 @@ private fun sampleReceivable(publicId: String, status: String = DebtLinkStatuses
     rowVersion = 1,
     viewerIsDebtor = false,
 )
+
+private fun sampleExternalReceivable(publicId: String): Debt =
+    sampleReceivable(publicId).copy(
+        ledgerId = "owner",
+        direction = DebtDirections.OWED_TO_ME,
+        counterpartyType = DebtCounterpartyTypes.EXTERNAL,
+        counterpartyAccountId = null,
+        counterpartyLabel = "阿禾",
+        sourceType = DebtSourceTypes.MANUAL,
+        sourceId = null,
+        viewerIsDebtor = null,
+    )

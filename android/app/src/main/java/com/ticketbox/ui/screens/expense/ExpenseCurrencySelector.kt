@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFilterChipOptions
@@ -28,10 +27,11 @@ import com.ticketbox.ui.design.AppTextHierarchy
 @Composable
 internal fun ExpenseCurrencySelector(
     currency: CurrencyCode,
+    homeCurrency: CurrencyCode,
     enabled: Boolean,
     onCurrencySelect: (CurrencyCode) -> Unit,
 ) {
-    var expanded by rememberSaveable { mutableStateOf(currency != FxContract.HomeCurrency) }
+    var expanded by rememberSaveable(homeCurrency) { mutableStateOf(currency != homeCurrency) }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),

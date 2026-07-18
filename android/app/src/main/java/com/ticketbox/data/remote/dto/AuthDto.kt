@@ -36,6 +36,8 @@ data class PairResponseDto(
     @param:Json(name = "device_name")
     val deviceName: String,
     val role: String,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
     @param:Json(name = "expires_at")
     val expiresAt: String? = null,
     @param:Json(name = "soft_refresh_after")

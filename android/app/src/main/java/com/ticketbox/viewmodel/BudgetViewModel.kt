@@ -7,8 +7,11 @@ import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.domain.model.BudgetCategoryDraft
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,8 +19,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.YearMonth
 
 data class BudgetCategoryInput(
@@ -35,6 +36,7 @@ data class BudgetFormState(
 
 data class BudgetUiState(
     val month: String = YearMonth.now().toString(),
+    val homeCurrency: CurrencyCode = CurrencyCode.LegacyFallback,
     val loading: Boolean = false,
     val saving: Boolean = false,
     val message: UiText? = null,
@@ -53,10 +55,12 @@ data class BudgetUiState(
 class BudgetViewModel(
     private val repository: BudgetActions,
     initialMonth: String = YearMonth.now().toString(),
+    private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
         BudgetUiState(
             month = initialMonth,
+            homeCurrency = repository.currentHomeCurrency(),
             canModify = repository.canModifyLedger(),
         ),
     )
@@ -78,6 +82,7 @@ class BudgetViewModel(
                     _uiState.update {
                         it.copy(
                             loading = true,
+                            homeCurrency = repository.currentHomeCurrency(),
                             saving = false,
                             budget = null,
                             form = BudgetFormState(),
@@ -111,8 +116,9 @@ class BudgetViewModel(
                         if (requestGeneration != generation || it.month != month) return@update it
                         it.copy(
                             loading = false,
+                            homeCurrency = repository.currentHomeCurrency(),
                             budget = budget,
-                            form = budget.toFormState(),
+                            form = budget.toFormState(repository.currentHomeCurrency()),
                             loadError = null,
                             canModify = repository.canModifyLedger(),
                         )
@@ -185,19 +191,13 @@ class BudgetViewModel(
     }
 
     fun save() {
-        if (!repository.canModifyLedger()) {
-            _uiState.update {
-                it.copy(
-                    canModify = false,
-                    message = UiText.res(R.string.common_readonly_ledger),
-                    messageTone = MessageTone.Danger,
-                )
-            }
-            return
-        }
+        if (rejectReadOnlySave()) return
         val month = _uiState.value.month
         val generation = requestGeneration
-        val update = parseBudgetUpdate(_uiState.value.form)
+        val update = parseBudgetUpdate(
+            form = _uiState.value.form,
+            currency = _uiState.value.homeCurrency,
+        )
             .getOrElse { error ->
                 val message = (error as? BudgetInputError)?.uiText
                     ?: error.toUiText(R.string.budget_message_content_invalid)
@@ -219,14 +219,16 @@ class BudgetViewModel(
                         if (requestGeneration != generation || it.month != month) return@update it
                         it.copy(
                             saving = false,
+                            homeCurrency = repository.currentHomeCurrency(),
                             budget = budget,
-                            form = budget.toFormState(),
+                            form = budget.toFormState(repository.currentHomeCurrency()),
                             message = UiText.res(R.string.budget_message_saved),
                             messageTone = MessageTone.Success,
                             loadError = null,
                             canModify = repository.canModifyLedger(),
                         )
                     }
+                    onDataChanged()
                 }
                 .onFailure { error ->
                     _uiState.update {
@@ -240,6 +242,18 @@ class BudgetViewModel(
                     }
                 }
         }
+    }
+
+    private fun rejectReadOnlySave(): Boolean {
+        if (repository.canModifyLedger()) return false
+        _uiState.update {
+            it.copy(
+                canModify = false,
+                message = UiText.res(R.string.common_readonly_ledger),
+                messageTone = MessageTone.Danger,
+            )
+        }
+        return true
     }
 
     private fun changeMonth(delta: Long) {
@@ -264,34 +278,43 @@ class BudgetViewModel(
     }
 }
 
-private fun BudgetMonthly.toFormState(): BudgetFormState {
+private fun BudgetMonthly.toFormState(currency: CurrencyCode): BudgetFormState {
     if (!configured) {
         return BudgetFormState()
     }
     return BudgetFormState(
-        totalAmount = amountInput(totalAmountCents),
-        rolloverAmount = amountInput(rolloverAmountCents),
-        nonMonthlyAmount = amountInput(nonMonthlyAmountCents),
+        totalAmount = amountInput(totalAmountCents, currency),
+        rolloverAmount = amountInput(rolloverAmountCents, currency),
+        nonMonthlyAmount = amountInput(nonMonthlyAmountCents, currency),
         excludedCategories = excludedCategories.joinToString("，"),
         categoryRows = categoryBudgets
-            .map { BudgetCategoryInput(category = it.category, amount = amountInput(it.amountCents)) }
+            .map { BudgetCategoryInput(category = it.category, amount = amountInput(it.amountCents, currency)) }
             .ifEmpty { listOf(BudgetCategoryInput()) },
     )
 }
 
 private class BudgetInputError(val uiText: UiText) : IllegalArgumentException()
 
-private fun parseBudgetUpdate(form: BudgetFormState): Result<BudgetMonthlyUpdate> = runCatching {
-    val total = parseRequiredCents(form.totalAmount, UiText.res(R.string.budget_validation_total_required))
+private fun parseBudgetUpdate(
+    form: BudgetFormState,
+    currency: CurrencyCode,
+): Result<BudgetMonthlyUpdate> = runCatching {
+    val total = parseRequiredAmount(
+        value = form.totalAmount,
+        currency = currency,
+        blankError = UiText.res(R.string.budget_validation_total_required),
+    )
     if (total <= 0L) throw BudgetInputError(UiText.res(R.string.budget_validation_total_positive))
-    val rollover = parseOptionalCents(
-        form.rolloverAmount,
+    val rollover = parseOptionalAmount(
+        value = form.rolloverAmount,
+        currency = currency,
         allowNegative = true,
         amountInvalid = UiText.res(R.string.budget_validation_rollover_amount_invalid),
         negative = UiText.res(R.string.budget_validation_rollover_negative),
     )
-    val nonMonthly = parseOptionalCents(
-        form.nonMonthlyAmount,
+    val nonMonthly = parseOptionalAmount(
+        value = form.nonMonthlyAmount,
+        currency = currency,
         allowNegative = false,
         amountInvalid = UiText.res(R.string.budget_validation_nonmonthly_amount_invalid),
         negative = UiText.res(R.string.budget_validation_nonmonthly_negative),
@@ -303,7 +326,11 @@ private fun parseBudgetUpdate(form: BudgetFormState): Result<BudgetMonthlyUpdate
         if (category.isBlank()) throw BudgetInputError(UiText.res(R.string.budget_validation_category_name_required))
         BudgetCategoryDraft(
             category = category,
-            amountCents = parseRequiredCents(amountText, UiText.res(R.string.budget_validation_category_amount_required)).also {
+            amountCents = parseRequiredAmount(
+                value = amountText,
+                currency = currency,
+                blankError = UiText.res(R.string.budget_validation_category_amount_required),
+            ).also {
                 if (it < 0L) throw BudgetInputError(UiText.res(R.string.budget_validation_category_amount_negative))
             },
         )
@@ -327,38 +354,33 @@ private fun splitCategories(value: String): List<String> {
     return seen.toList()
 }
 
-private fun parseRequiredCents(value: String, blankError: UiText): Long {
+private fun parseRequiredAmount(
+    value: String,
+    currency: CurrencyCode,
+    blankError: UiText,
+): Long {
     val trimmed = value.trim()
     if (trimmed.isBlank()) throw BudgetInputError(blankError)
-    return parseCents(trimmed) ?: throw BudgetInputError(UiText.res(R.string.budget_validation_amount_invalid))
+    return parseAmountCents(trimmed, currency)
+        ?: throw BudgetInputError(UiText.res(R.string.budget_validation_amount_invalid))
 }
 
-private fun parseOptionalCents(
+private fun parseOptionalAmount(
     value: String,
+    currency: CurrencyCode,
     allowNegative: Boolean,
     amountInvalid: UiText,
     negative: UiText,
 ): Long {
     val trimmed = value.trim()
     if (trimmed.isBlank()) return 0L
-    val amount = parseCents(trimmed) ?: throw BudgetInputError(amountInvalid)
+    val amount = parseAmountCents(trimmed, currency, allowNegative = true)
+        ?: throw BudgetInputError(amountInvalid)
     if (!allowNegative && amount < 0L) throw BudgetInputError(negative)
     return amount
 }
 
-private fun parseCents(value: String): Long? {
-    return runCatching {
-        BigDecimal(value)
-            .multiply(BigDecimal(100))
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
-    }.getOrNull()
-}
-
-private fun amountInput(amountCents: Long): String {
-    if (amountCents == 0L) return ""
-    return BigDecimal(amountCents)
-        .divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
-        .stripTrailingZeros()
-        .toPlainString()
-}
+private fun amountInput(amountMinor: Long, currency: CurrencyCode): String =
+    formatAmountInput(amountMinor, currency)
+        .takeUnless { amountMinor == 0L }
+        .orEmpty()

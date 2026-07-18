@@ -31,6 +31,7 @@ data class CategoryRulesUiState(
     // ADR-0038 undo: the just-(soft-)deleted rule, surfaced as a 5s 撤销
     // affordance. Null when there is nothing to undo.
     val undoableRule: CategoryRule? = null,
+    val changedRevision: Int = 0,
 )
 
 class CategoryRulesViewModel(
@@ -128,6 +129,7 @@ class CategoryRulesViewModel(
                             busy = false,
                             message = UiText.res(R.string.category_rules_added),
                             messageTone = MessageTone.Success,
+                            changedRevision = it.changedRevision + 1,
                         )
                     }
                 }
@@ -177,6 +179,7 @@ class CategoryRulesViewModel(
                             busy = false,
                             message = message,
                             messageTone = tone,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -228,6 +231,7 @@ class CategoryRulesViewModel(
                             categoryRules = state.categoryRules.map { if (it.id == outcome.rule.id) outcome.rule else it },
                             message = message,
                             messageTone = tone,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -267,6 +271,7 @@ class CategoryRulesViewModel(
                             message = message,
                             messageTone = tone,
                             undoableRule = undoable,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -293,6 +298,7 @@ class CategoryRulesViewModel(
                             message = UiText.res(R.string.category_rules_restored),
                             messageTone = MessageTone.Success,
                             undoableRule = null,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -379,6 +385,11 @@ class CategoryRulesViewModel(
                                 UiText.res(R.string.category_rules_apply_changed, result.changedCount)
                             },
                             messageTone = if (result.changedCount == 0) MessageTone.Info else MessageTone.Success,
+                            changedRevision = if (result.changedCount > 0) {
+                                it.changedRevision + 1
+                            } else {
+                                it.changedRevision
+                            },
                         )
                     }
                 }
@@ -414,6 +425,11 @@ class CategoryRulesViewModel(
                             busy = false,
                             message = UiText.res(R.string.category_rules_rollback_done, rollback.changed, rollback.skipped),
                             messageTone = MessageTone.Success,
+                            changedRevision = if (rollback.changed > 0) {
+                                it.changedRevision + 1
+                            } else {
+                                it.changedRevision
+                            },
                         )
                     }
                 }

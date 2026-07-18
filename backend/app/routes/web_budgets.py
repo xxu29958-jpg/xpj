@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -15,6 +13,8 @@ from app.routes.web_common import (
     _amount_yuan,
     _base_ctx,
     _list_ledger_options,
+    _month_display_label,
+    _parse_major_amount,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
@@ -29,21 +29,6 @@ from app.services.spending_contract_service import (
 from app.services.time_service import local_month_bounds_utc
 
 router = APIRouter(prefix="/web/budgets", tags=["web"])
-
-
-def _parse_amount_yuan(raw: str, *, label: str, allow_negative: bool = False, required: bool = False) -> int:
-    text = (raw or "").strip()
-    if not text:
-        if required:
-            raise AppError("invalid_request", f"请填写{label}。", status_code=422)
-        return 0
-    try:
-        amount = Decimal(text)
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
-    if amount < 0 and not allow_negative:
-        raise AppError("invalid_request", f"{label}不能为负数。", status_code=422)
-    return int((amount * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _split_categories(raw: str) -> list[str]:
@@ -75,7 +60,11 @@ def _parse_category_budgets(categories: list[str], amounts: list[str]) -> list[B
         rows.append(
             BudgetCategoryRequest(
                 category=category,
-                amount_cents=_parse_amount_yuan(amount_text, label="分类预算金额"),
+                amount_cents=_parse_major_amount(
+                    amount_text,
+                    label="分类预算金额",
+                    required=True,
+                ),
             )
         )
     return rows
@@ -165,6 +154,7 @@ def _render_budgets(
         selected_month=month,
     )
     ctx["month"] = month
+    ctx["month_label"] = _month_display_label(month)
     ctx["budget"] = _budget_view(budget)
     ctx["message"] = message
     ctx["error"] = error
@@ -214,9 +204,22 @@ def web_budgets_save(
     target_month = (month or "").strip() or current_accounting_month(timezone_name)
     try:
         payload = BudgetMonthlyUpdateRequest(
-            total_amount_cents=_parse_amount_yuan(total_amount_yuan, label="月度总预算", required=True),
-            rollover_amount_cents=_parse_amount_yuan(rollover_amount_yuan, label="结转金额", allow_negative=True),
-            non_monthly_amount_cents=_parse_amount_yuan(non_monthly_amount_yuan, label="非月度预留"),
+            total_amount_cents=_parse_major_amount(
+                total_amount_yuan,
+                label="月度总预算",
+                required=True,
+            ),
+            rollover_amount_cents=_parse_major_amount(
+                rollover_amount_yuan,
+                label="结转金额",
+                allow_negative=True,
+                empty_value=0,
+            ),
+            non_monthly_amount_cents=_parse_major_amount(
+                non_monthly_amount_yuan,
+                label="非月度预留",
+                empty_value=0,
+            ),
             excluded_categories=_split_categories(excluded_categories),
             category_budgets=_parse_category_budgets(
                 category_budget_category,

@@ -4,10 +4,19 @@ import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
+import com.ticketbox.data.remote.dto.RepaymentCreateResponseDto
+import com.ticketbox.data.remote.dto.RepaymentFactDto
+import com.ticketbox.data.remote.dto.RepaymentFactListResponseDto
+import com.ticketbox.data.remote.dto.RepaymentVoidFactDto
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtKinds
+import com.ticketbox.domain.model.DebtRepaymentFact
+import com.ticketbox.domain.model.DebtRepaymentHistory
+import com.ticketbox.domain.model.DebtRepaymentRecord
+import com.ticketbox.domain.model.DebtRepaymentVoidFact
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberRepaymentProposal
 
@@ -29,14 +38,75 @@ fun DebtDto.toDomain(): Debt = Debt(
     installmentPeriodMonths = installmentPeriodMonths,
     installmentPayoffDate = installmentPayoffDate,
     installmentPaidCount = installmentPaidCount,
-    homeCurrencyCode = homeCurrencyCode,
-    originalCurrencyCode = originalCurrencyCode,
+    homeCurrencyCode = supportedCurrencyCode(homeCurrencyCode),
+    originalCurrencyCode = originalCurrencyCode?.let(::supportedCurrencyCode),
     originalAmountMinor = originalAmountMinor,
     createdAt = createdAt,
     updatedAt = updatedAt,
     rowVersion = rowVersion,
     viewerIsDebtor = viewerIsDebtor,
     isForgiven = isForgiven,
+)
+
+fun RepaymentCreateResponseDto.toDomain(amountCents: Long): DebtRepaymentFact = DebtRepaymentFact(
+    publicId = repaymentPublicId,
+    amountCents = amountCents,
+    debt = Debt(
+        publicId = publicId,
+        ledgerId = ledgerId,
+        direction = direction,
+        counterpartyType = counterpartyType,
+        counterpartyAccountId = counterpartyAccountId,
+        counterpartyLabel = counterpartyLabel,
+        principalAmountCents = principalAmountCents,
+        remainingAmountCents = remainingAmountCents,
+        paidAmountCents = paidAmountCents,
+        status = status,
+        sourceType = sourceType,
+        sourceId = sourceId,
+        debtKind = debtKind,
+        installmentCount = installmentCount,
+        installmentPeriodMonths = installmentPeriodMonths,
+        installmentPayoffDate = installmentPayoffDate,
+        installmentPaidCount = installmentPaidCount,
+        homeCurrencyCode = supportedCurrencyCode(homeCurrencyCode),
+        originalCurrencyCode = originalCurrencyCode?.let(::supportedCurrencyCode),
+        originalAmountMinor = originalAmountMinor,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+        rowVersion = rowVersion,
+        viewerIsDebtor = viewerIsDebtor,
+        isForgiven = isForgiven,
+    ),
+)
+
+fun RepaymentFactListResponseDto.toDomain(): DebtRepaymentHistory = DebtRepaymentHistory(
+    debtPublicId = debtPublicId,
+    homeCurrencyCode = supportedCurrencyCode(homeCurrencyCode),
+    items = items.map { it.toDomain() },
+    page = page,
+    pageSize = pageSize,
+    total = total,
+)
+
+private fun RepaymentFactDto.toDomain(): DebtRepaymentRecord = DebtRepaymentRecord(
+    publicId = publicId,
+    amountCents = amountCents,
+    originalCurrencyCode = originalCurrencyCode?.let(::supportedCurrencyCode),
+    originalAmountMinor = originalAmountMinor,
+    exchangeRateToCny = exchangeRateToCny,
+    exchangeRateDate = exchangeRateDate,
+    exchangeRateSource = exchangeRateSource,
+    paidAt = paidAt,
+    createdAt = createdAt,
+    status = status,
+    voidFact = voidFact?.toDomain(),
+)
+
+private fun RepaymentVoidFactDto.toDomain(): DebtRepaymentVoidFact = DebtRepaymentVoidFact(
+    publicId = publicId,
+    reason = reason,
+    createdAt = createdAt,
 )
 
 fun DebtBillParseResponseDto.toDomain(): DebtBillSuggestion = DebtBillSuggestion(
@@ -95,8 +165,8 @@ fun MemberRepaymentProposalDto.toDomain(): MemberRepaymentProposal = MemberRepay
     status = status,
     proposedAmountCents = proposedAmountCents,
     confirmedAmountCents = confirmedAmountCents,
-    homeCurrencyCode = homeCurrencyCode,
-    originalCurrencyCode = originalCurrencyCode,
+    homeCurrencyCode = supportedCurrencyCode(homeCurrencyCode),
+    originalCurrencyCode = originalCurrencyCode?.let(::supportedCurrencyCode),
     originalAmountMinor = originalAmountMinor,
     paidAt = paidAt,
     note = note,
@@ -106,3 +176,6 @@ fun MemberRepaymentProposalDto.toDomain(): MemberRepaymentProposal = MemberRepay
     supersedesProposalPublicId = supersedesProposalPublicId,
     committedRepaymentPublicId = committedRepaymentPublicId,
 )
+
+private fun supportedCurrencyCode(value: String): String =
+    CurrencyCode.requireSupported(value).storageKey

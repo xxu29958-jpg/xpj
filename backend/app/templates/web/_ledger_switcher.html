@@ -1,32 +1,51 @@
 {# 顶栏右上角 ledger 切换器（带下拉） #}
-{# 上下文：selected_ledger_id, selected_ledger_name, selected_ledger_role, ledger_options, request.url.path #}
+{# 上下文：selected_ledger_id, selected_ledger_name, selected_ledger_role,
+   ledger_options, has_web_session, csrf_token, request.url.path #}
 {% set _name = selected_ledger_name or '未选择' %}
 {% set _initial = _name[:1] if _name else '夹' %}
 {% set _role = selected_ledger_role or 'owner' %}
-{% set _role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_role, _role|upper) %}
+{% set _role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_role, '未知角色') %}
 {% set _ledger_kind = '个人账本' if selected_ledger_is_default else '共享账本' %}
-<div class="ledger-switcher" id="ledger-switcher" data-open="false">
+<div class="ledger-switcher-wrap" id="ledger-switcher" data-open="false">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-  <div class="ledger-avatar">{{ _initial }}</div>
-  <div class="ledger-name">{{ _name }}<span class="ledger-kind"> · {{ _ledger_kind }}</span></div>
-  <div class="role-badge ledger-role-chip ledger-role-{{ _role }} {{ _role }}">{{ _role_zh }}</div>
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-       stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="6 9 12 15 18 9"/>
-  </svg>
+  <button class="ledger-switcher" id="ledger-switcher-trigger" type="button"
+          aria-controls="ledger-popover" aria-expanded="false">
+    <span class="ledger-avatar">{{ _initial }}</span>
+    <span class="ledger-name">{{ _name }}<span class="ledger-kind"> · {{ _ledger_kind }} · {{ home_currency_code }}</span></span>
+    <span class="role-badge ledger-role-chip ledger-role-{{ _role }} {{ _role }}">{{ _role_zh }}</span>
+    <span class="ledger-switch-label">切换</span>
+  </button>
   <div class="ledger-popover" id="ledger-popover">
     <div class="head">切换账本</div>
     {% for opt in ledger_options %}
     {% set _opt_role = opt.role or 'owner' %}
     <a class="row {% if opt.ledger_id == selected_ledger_id %}on{% endif %}"
-       href="{{ request.url.path }}?ledger_id={{ opt.ledger_id }}{% for k, v in request.query_params.multi_items() %}{% if k != 'ledger_id' %}&{{ k }}={{ v }}{% endif %}{% endfor %}">
+       href="{{ request.url.path }}?ledger_id={{ opt.ledger_id | urlencode }}{% for k, v in request.query_params.multi_items() %}{% if k != 'ledger_id' %}&{{ k | urlencode }}={{ v | urlencode }}{% endif %}{% endfor %}">
       <div class="ledger-avatar ledger-avatar--sm">{{ opt.name[:1] if opt.name else '夹' }}</div>
       <div class="meta">
         <div class="name">{{ opt.name }}{% if opt.is_default %} · 默认{% endif %}</div>
-        <div class="sub">{{ opt.ledger_id }}</div>
+        <div class="sub">{{ '个人账本' if opt.is_default else '共享账本' }}</div>
       </div>
-      <div class="role-badge ledger-role-chip ledger-role-{{ _opt_role }} {{ _opt_role }}">{{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_opt_role, _opt_role|upper) }}</div>
+      <div class="role-badge ledger-role-chip ledger-role-{{ _opt_role }} {{ _opt_role }}">{{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_opt_role, '未知角色') }}</div>
     </a>
     {% endfor %}
+    <fieldset class="ledger-appearance" aria-label="外观">
+      <legend>外观</legend>
+      <div class="ledger-appearance-options">
+        <button type="button" class="appearance-choice" data-theme-choice="paper" aria-pressed="false">纸本</button>
+        <button type="button" class="appearance-choice" data-theme-choice="mono" aria-pressed="false">墨白</button>
+        <button type="button" class="appearance-choice" data-theme-choice="midnight" aria-pressed="false">玄夜</button>
+      </div>
+      <p data-theme-sync-status role="status" aria-live="polite" hidden></p>
+    </fieldset>
+    {% if has_web_session and web_session_platform == 'web' %}
+    <div class="ledger-session-actions">
+      <div class="head">当前浏览器会话</div>
+      <form method="post" action="/web/auth/logout" class="ledger-session-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="product-button product-button--quiet" type="submit">退出此浏览器</button>
+      </form>
+    </div>
+    {% endif %}
   </div>
 </div>

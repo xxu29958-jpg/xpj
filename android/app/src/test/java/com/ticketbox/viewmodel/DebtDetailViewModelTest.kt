@@ -1,6 +1,6 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtDetailActions
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -8,6 +8,11 @@ import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtLinkStatuses
+import com.ticketbox.domain.model.DebtRepaymentFact
+import com.ticketbox.domain.model.DebtRepaymentFactStatuses
+import com.ticketbox.domain.model.DebtRepaymentHistory
+import com.ticketbox.domain.model.DebtRepaymentRecord
+import com.ticketbox.domain.model.DebtRepaymentVoidFact
 import com.ticketbox.domain.model.DebtSourceTypes
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +48,7 @@ class DebtDetailViewModelTest {
         val repo = FakeDebtDetailActions(
             canModify = false,
             getResult = Result.success(sampleDebt("d1", remaining = 4_200L)),
+            historyResult = Result.success(repaymentHistory("d1")),
         )
         val viewModel = DebtDetailViewModel(repo)
         viewModel.loadDebt("d1")
@@ -52,6 +58,8 @@ class DebtDetailViewModelTest {
         assertEquals(4_200L, viewModel.state.value.debt?.remainingAmountCents)
         assertEquals(false, viewModel.state.value.canModify)
         assertEquals(false, viewModel.state.value.isLoading)
+        assertEquals("repayment-1", viewModel.state.value.repaymentHistory?.items?.single()?.publicId)
+        assertEquals(1, repo.historyCalls.size)
     }
 
     @Test
@@ -63,6 +71,24 @@ class DebtDetailViewModelTest {
 
         assertNull(viewModel.state.value.debt)
         assertTrue(viewModel.state.value.error != null)
+    }
+
+    @Test
+    fun repaymentHistoryFailureKeepsDebtDetailReadable() = runTest(dispatcher) {
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1")),
+            historyResult = Result.failure(RuntimeException("history offline")),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        assertEquals("d1", viewModel.state.value.debt?.publicId)
+        assertNull(viewModel.state.value.error)
+        assertNull(viewModel.state.value.repaymentHistory)
+        assertTrue(viewModel.state.value.repaymentHistoryError != null)
+        assertEquals(false, viewModel.state.value.isRepaymentHistoryLoading)
     }
 
     @Test
@@ -85,6 +111,7 @@ class DebtDetailViewModelTest {
         val viewModel = DebtDetailViewModel(repo)
         viewModel.loadDebt("d1")
         advanceUntilIdle()
+        repo.historyResult = Result.success(repaymentHistory("d1", amountCents = 10_000L))
 
         viewModel.openAction(DebtAction.Repayment)
         viewModel.updateAmount("100")
@@ -99,18 +126,19 @@ class DebtDetailViewModelTest {
         // Fold-after Debt swapped in (row_version advanced, remaining dropped); dialog closed + flash.
         assertEquals(6L, viewModel.state.value.debt?.rowVersion)
         assertEquals(40_000L, viewModel.state.value.debt?.remainingAmountCents)
+        val repayment = viewModel.state.value.repaymentHistory?.items?.single()
+        assertEquals("repayment-1", repayment?.publicId)
+        assertEquals(10_000L, repayment?.amountCents)
+        assertEquals(2, repo.historyCalls.size)
         assertNull(viewModel.state.value.activeAction)
         assertTrue(viewModel.state.value.flashMessage != null)
         assertEquals(false, viewModel.state.value.isSubmitting)
     }
 
     @Test
-    fun submitRepaymentParsesAmountWithBigDecimalPrecision() = runTest(dispatcher) {
-        // §3：元→分走共享 BigDecimal 解析器。"1.005" HALF_UP → 101 分；旧 Double Math.round 给 100
-        // （1.005*100 的 double 是 100.4999… → 100），故此断言会在退回 Double 时变红。
+    fun submitRepaymentRejectsSurplusFractionalPrecisionWithoutWrite() = runTest(dispatcher) {
         val repo = FakeDebtDetailActions(
             getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L)),
-            writeResult = Result.success(sampleDebt("d1", rowVersion = 2L, remaining = 49_899L)),
         )
         val viewModel = DebtDetailViewModel(repo)
         viewModel.loadDebt("d1")
@@ -121,7 +149,9 @@ class DebtDetailViewModelTest {
         viewModel.submit()
         advanceUntilIdle()
 
-        assertEquals(101L, repo.repaymentCalls.single().amountCents)
+        assertTrue(viewModel.state.value.validationError != null)
+        assertTrue(repo.repaymentCalls.isEmpty())
+        assertEquals(DebtAction.Repayment, viewModel.state.value.activeAction)
     }
 
     @Test
@@ -140,6 +170,116 @@ class DebtDetailViewModelTest {
         assertTrue(repo.repaymentCalls.isEmpty())
         // Dialog stays open so the user can correct the amount.
         assertEquals(DebtAction.Repayment, viewModel.state.value.activeAction)
+    }
+
+    @Test
+    fun submitRepaymentVoidUsesRestoredStableIdAndReloadsVoidedFact() = runTest(dispatcher) {
+        val firstPageIds = (51 downTo 2).map { "repayment-$it" }
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1", rowVersion = 5L, remaining = 50_000L)),
+            writeResult = Result.success(sampleDebt("d1", rowVersion = 6L, remaining = 50_000L)),
+            historyResult = Result.success(
+                repaymentHistoryPage("d1", page = 1, total = 51, publicIds = firstPageIds),
+            ),
+        ).apply {
+            historyPageResults[2] = Result.success(
+                repaymentHistoryPage("d1", page = 2, total = 51, publicIds = listOf("repayment-1")),
+            )
+        }
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+        viewModel.loadMoreRepaymentHistory()
+        advanceUntilIdle()
+
+        repo.historyResult = Result.success(
+            repaymentHistory("d1", voidReason = "金额记错了").copy(
+                items = listOf(
+                    repaymentRecord(
+                        publicId = "repayment-51",
+                        amountCents = 100L,
+                        voidReason = "金额记错了",
+                    ),
+                ),
+            ),
+        )
+        viewModel.openAction(DebtAction.RepaymentVoid, "repayment-51")
+        viewModel.updateReason("金额记错了")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        val call = repo.repaymentVoidCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals("repayment-51", call.repaymentPublicId)
+        assertEquals(5L, call.expectedRowVersion)
+        assertEquals("金额记错了", call.reason)
+        assertEquals(6L, viewModel.state.value.debt?.rowVersion)
+        val reloaded = viewModel.state.value.repaymentHistory?.items?.single()
+        assertTrue(reloaded?.isVoided == true)
+        assertEquals("金额记错了", reloaded?.voidFact?.reason)
+        assertEquals("2026-07-18T00:05:00Z", reloaded?.voidFact?.createdAt)
+        assertEquals(1, viewModel.state.value.repaymentHistory?.page)
+        assertEquals(1, viewModel.state.value.repaymentHistory?.items?.size)
+        assertNull(viewModel.state.value.activeAction)
+        assertEquals(
+            listOf(
+                RepaymentHistoryArgs("d1", 1),
+                RepaymentHistoryArgs("d1", 2),
+                RepaymentHistoryArgs("d1", 1),
+            ),
+            repo.historyCalls,
+        )
+    }
+
+    @Test
+    fun staleRepaymentVoidKeepsReasonFactAndEditorOpen() = runTest(dispatcher) {
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1", rowVersion = 5L)),
+            historyResult = Result.success(repaymentHistory("d1")),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        repo.writeResult = Result.failure(RuntimeException("欠款状态已变化，请刷新后再试。"))
+        viewModel.openAction(DebtAction.RepaymentVoid, "repayment-1")
+        viewModel.updateReason("金额记错了")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(DebtAction.RepaymentVoid, viewModel.state.value.activeAction)
+        assertEquals("金额记错了", viewModel.state.value.reasonInput)
+        assertEquals("repayment-1", viewModel.state.value.repaymentToVoidPublicId)
+        assertTrue(viewModel.state.value.repaymentHistory?.items?.single()?.isActive == true)
+        assertEquals(5L, viewModel.state.value.debt?.rowVersion)
+        assertTrue(viewModel.state.value.validationError != null)
+        assertEquals(false, viewModel.state.value.isSubmitting)
+    }
+
+    @Test
+    fun repaymentVoidRequiresReasonAndViewerCannotOpenActions() = runTest(dispatcher) {
+        val viewerViewModel = DebtDetailViewModel(
+            FakeDebtDetailActions(
+                canModify = false,
+                historyResult = Result.success(repaymentHistory("d1")),
+            ),
+        )
+        viewerViewModel.loadDebt("d1")
+        advanceUntilIdle()
+        viewerViewModel.openAction(DebtAction.RepaymentVoid, "repayment-1")
+        assertNull(viewerViewModel.state.value.activeAction)
+
+        val repo = FakeDebtDetailActions(historyResult = Result.success(repaymentHistory("d1")))
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+        viewModel.openAction(DebtAction.RepaymentVoid, "repayment-1")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(DebtAction.RepaymentVoid, viewModel.state.value.activeAction)
+        assertTrue(viewModel.state.value.validationError != null)
+        assertTrue(repo.repaymentVoidCalls.isEmpty())
     }
 
     @Test
@@ -604,24 +744,37 @@ class DebtDetailViewModelTest {
     }
 }
 
-private data class WriteArgs(
+internal data class WriteArgs(
     val publicId: String,
     val expectedRowVersion: Long,
     val amountCents: Long?,
     val reason: String?,
 )
 
-private data class KindArgs(val publicId: String, val expectedRowVersion: Long, val kind: String)
+internal data class RepaymentVoidArgs(
+    val publicId: String,
+    val repaymentPublicId: String,
+    val expectedRowVersion: Long,
+    val reason: String,
+)
 
-private class FakeDebtDetailActions(
+internal data class RepaymentHistoryArgs(val publicId: String, val page: Int)
+
+internal data class KindArgs(val publicId: String, val expectedRowVersion: Long, val kind: String)
+
+internal class FakeDebtDetailActions(
     private val canModify: Boolean = true,
     var getResult: Result<Debt> = Result.success(sampleDebt()),
     var writeResult: Result<Debt> = Result.success(sampleDebt()),
-) : DebtActions {
+    var historyResult: Result<DebtRepaymentHistory> = Result.success(emptyRepaymentHistory()),
+) : DebtDetailActions {
     val repaymentCalls = mutableListOf<WriteArgs>()
+    val repaymentVoidCalls = mutableListOf<RepaymentVoidArgs>()
     val adjustmentCalls = mutableListOf<WriteArgs>()
     val voidCalls = mutableListOf<WriteArgs>()
     val setKindCalls = mutableListOf<KindArgs>()
+    val historyCalls = mutableListOf<RepaymentHistoryArgs>()
+    val historyPageResults = mutableMapOf<Int, Result<DebtRepaymentHistory>>()
     var setKindResult: Result<Debt> = Result.success(sampleDebt())
 
     /** When set, getDebt() stalls until completed — used to interleave a slow load. */
@@ -639,6 +792,14 @@ private class FakeDebtDetailActions(
         return captured
     }
 
+    override suspend fun listRepaymentFacts(
+        publicId: String,
+        page: Int,
+    ): Result<DebtRepaymentHistory> {
+        historyCalls += RepaymentHistoryArgs(publicId, page)
+        return historyPageResults[page] ?: historyResult
+    }
+
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(sampleDebt())
 
     override suspend fun parseDebtBillImage(
@@ -651,8 +812,18 @@ private class FakeDebtDetailActions(
         publicId: String,
         expectedRowVersion: Long,
         amountCents: Long,
-    ): Result<Debt> {
+    ): Result<DebtRepaymentFact> {
         repaymentCalls += WriteArgs(publicId, expectedRowVersion, amountCents, null)
+        return writeResult.map { DebtRepaymentFact("repayment-1", amountCents, it) }
+    }
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> {
+        repaymentVoidCalls += RepaymentVoidArgs(publicId, repaymentPublicId, expectedRowVersion, reason)
         return writeResult
     }
 
@@ -684,6 +855,83 @@ private class FakeDebtDetailActions(
         return setKindResult
     }
 }
+
+private fun repaymentHistory(
+    debtPublicId: String,
+    amountCents: Long = 10_000L,
+    voidReason: String? = null,
+): DebtRepaymentHistory {
+    return DebtRepaymentHistory(
+        debtPublicId = debtPublicId,
+        homeCurrencyCode = "CNY",
+        items = listOf(
+            repaymentRecord(
+                publicId = "repayment-1",
+                amountCents = amountCents,
+                voidReason = voidReason,
+            ),
+        ),
+        page = 1,
+        pageSize = 50,
+        total = 1,
+    )
+}
+
+internal fun repaymentHistoryPage(
+    debtPublicId: String,
+    page: Int,
+    total: Int,
+    publicIds: List<String>,
+): DebtRepaymentHistory = DebtRepaymentHistory(
+    debtPublicId = debtPublicId,
+    homeCurrencyCode = "CNY",
+    items = publicIds.mapIndexed { index, publicId ->
+        repaymentRecord(publicId = publicId, amountCents = (index + 1L) * 100L)
+    },
+    page = page,
+    pageSize = 50,
+    total = total,
+)
+
+private fun repaymentRecord(
+    publicId: String,
+    amountCents: Long,
+    voidReason: String? = null,
+): DebtRepaymentRecord {
+    val voidFact = voidReason?.let {
+        DebtRepaymentVoidFact(
+            publicId = "void-$publicId",
+            reason = it,
+            createdAt = "2026-07-18T00:05:00Z",
+        )
+    }
+    return DebtRepaymentRecord(
+        publicId = publicId,
+        amountCents = amountCents,
+        originalCurrencyCode = null,
+        originalAmountMinor = null,
+        exchangeRateToCny = null,
+        exchangeRateDate = null,
+        exchangeRateSource = null,
+        paidAt = "2026-07-18T00:00:00Z",
+        createdAt = "2026-07-18T00:00:01Z",
+        status = if (voidFact == null) {
+            DebtRepaymentFactStatuses.ACTIVE
+        } else {
+            DebtRepaymentFactStatuses.VOIDED
+        },
+        voidFact = voidFact,
+    )
+}
+
+private fun emptyRepaymentHistory(): DebtRepaymentHistory = DebtRepaymentHistory(
+    debtPublicId = "d1",
+    homeCurrencyCode = "CNY",
+    items = emptyList(),
+    page = 1,
+    pageSize = 50,
+    total = 0,
+)
 
 private fun sampleDebt(
     publicId: String = "d1",
@@ -723,3 +971,10 @@ private fun memberDebt(
     viewerIsDebtor = viewerIsDebtor,
     isForgiven = isForgiven,
 )
+
+private fun DebtDetailViewModel.updateAmount(value: String) = updateActionInput(amount = value)
+
+private fun DebtDetailViewModel.updateReason(value: String) = updateActionInput(reason = value)
+
+private fun DebtDetailViewModel.setAdjustmentSign(increase: Boolean) =
+    updateActionInput(adjustmentIncrease = increase)

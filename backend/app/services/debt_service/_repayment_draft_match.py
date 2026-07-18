@@ -63,16 +63,19 @@ _EXACT = 2
 
 @dataclass(frozen=True)
 class RepaymentMatchCandidate:
-    """A repayable Debt reduced to the fields the matcher needs (folded ``remaining``)."""
+    """A repayable Debt with folded remaining and its current OCC token.
+
+    The matcher ignores ``row_version``; actionable clients reuse the same candidate
+    set so the chosen Debt and its stale-intent token cannot drift apart.
+    """
 
     public_id: str
     counterparty_label: str | None
     remaining_amount_cents: int
+    row_version: int = 0
 
 
-def list_repayment_match_candidates(
-    db: Session, *, tenant_id: str
-) -> list[RepaymentMatchCandidate]:
+def list_repayment_match_candidates(db: Session, *, tenant_id: str) -> list[RepaymentMatchCandidate]:
     """Open external/manual Debt in the tenant, folded for ``remaining`` (the picker set).
 
     SQL prefilters by ``counterparty_type='external'`` / ``source_type='manual'`` and
@@ -100,6 +103,7 @@ def list_repayment_match_candidates(
                 public_id=debt.public_id,
                 counterparty_label=debt.counterparty_label,
                 remaining_amount_cents=remaining,
+                row_version=debt.row_version,
             )
         )
     return candidates
@@ -141,10 +145,7 @@ def suggest_debt_public_id(
 
     has_merchant = bool(merchant_label and merchant_label.strip())
     if has_merchant:
-        scored = [
-            (c, _label_match_strength(merchant_label or "", c.counterparty_label or ""))
-            for c in feasible
-        ]
+        scored = [(c, _label_match_strength(merchant_label or "", c.counterparty_label or "")) for c in feasible]
         matched = [(c, strength) for c, strength in scored if strength > _NO_MATCH]
         if matched:
             best = max(strength for _, strength in matched)
@@ -201,11 +202,7 @@ def learned_debt_for_signature(
         .where(RepaymentDraft.status == "confirmed")
         .where(RepaymentDraft.committed_debt_public_id.in_(feasible_ids))
     ).all()
-    distinct = {
-        committed_id
-        for label, committed_id in rows
-        if _normalize_label(label) == target
-    }
+    distinct = {committed_id for label, committed_id in rows if _normalize_label(label) == target}
     return next(iter(distinct)) if len(distinct) == 1 else None
 
 
@@ -225,14 +222,10 @@ def suggest_debt_for_draft(
     learned fallback only fills the gap the matcher leaves, over the SAME feasible candidate set,
     so a suggested ``public_id`` is always something the user could also pick manually.
     """
-    confident = suggest_debt_public_id(
-        amount_cents=amount_cents, merchant_label=merchant_label, candidates=candidates
-    )
+    confident = suggest_debt_public_id(amount_cents=amount_cents, merchant_label=merchant_label, candidates=candidates)
     if confident is not None:
         return confident
-    feasible_ids = {
-        c.public_id for c in candidates if amount_cents <= c.remaining_amount_cents
-    }
+    feasible_ids = {c.public_id for c in candidates if amount_cents <= c.remaining_amount_cents}
     return learned_debt_for_signature(
         db,
         account_id=account_id,

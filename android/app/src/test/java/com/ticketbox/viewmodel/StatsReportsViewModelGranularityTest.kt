@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalDraft
+import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
@@ -95,6 +96,18 @@ class StatsReportsViewModelGranularityTest {
     }
 
     @Test
+    fun refreshNeverRequestsRetiredDashboardCards() = reportsTest { repo ->
+        val vm = StatsReportsViewModel(repo)
+
+        vm.refresh(month = "2026-06", selectedTag = "")
+        advanceUntilIdle()
+        vm.refresh(month = "2026-06", selectedTag = "coffee")
+        advanceUntilIdle()
+
+        assertEquals(0, repo.dashboardCardCalls)
+    }
+
+    @Test
     fun overviewStopsReportsLoadingBeforeGoalsComplete() = reportsTest { repo ->
         val goalsGate = CompletableDeferred<Result<List<Goal>>>()
         repo.overviewResult = Result.success(overview(month = "2026-06"))
@@ -127,6 +140,29 @@ class StatsReportsViewModelGranularityTest {
         assertEquals(emptyList(), vm.uiState.value.reportGoals)
         assertEquals(ReportGoalsLoadState.Failed, vm.uiState.value.reportGoalsLoadState)
         assertNull(vm.uiState.value.reportsMessage)
+    }
+
+    @Test
+    fun refreshKeepsLastTrustedGoalsWhileLoadingAndOnFailure() = reportsTest { repo ->
+        val trustedGoal = goal("goal-trusted")
+        repo.overviewResult = Result.success(overview(month = "2026-06"))
+        repo.goalsResponder = { Result.success(listOf(trustedGoal)) }
+        val vm = StatsReportsViewModel(repo)
+        vm.refresh(month = "2026-06", selectedTag = "")
+        advanceUntilIdle()
+
+        val goalsGate = CompletableDeferred<Result<List<Goal>>>()
+        repo.goalsResponder = { goalsGate.await() }
+        vm.refresh(month = "2026-05", selectedTag = "")
+        runCurrent()
+
+        assertEquals(listOf(trustedGoal), vm.uiState.value.reportGoals)
+        assertEquals(ReportGoalsLoadState.Loading, vm.uiState.value.reportGoalsLoadState)
+
+        goalsGate.complete(Result.failure(RuntimeException("goals unavailable")))
+        advanceUntilIdle()
+        assertEquals(listOf(trustedGoal), vm.uiState.value.reportGoals)
+        assertEquals(ReportGoalsLoadState.Failed, vm.uiState.value.reportGoalsLoadState)
     }
 
     @Test
@@ -163,7 +199,7 @@ class StatsReportsViewModelGranularityTest {
         advanceUntilIdle()
 
         assertEquals(1, repo.overviewQueries.size)
-        assertEquals(2, repo.dashboardCardCalls)
+        assertEquals(0, repo.dashboardCardCalls)
         assertNull(vm.uiState.value.reportsOverview)
         assertFalse(vm.uiState.value.reportsLoading)
         assertNull(vm.uiState.value.reportsMessage)
@@ -256,4 +292,24 @@ private fun overview(month: String) = ReportsOverview(
     trend = listOf(ReportTrendPoint(bucket = "$month-01", label = "1日", amountCents = 1200L, count = 1)),
     merchantRanking = emptyList(),
     categoryComparison = emptyList(),
+)
+
+private fun goal(publicId: String) = Goal(
+    publicId = publicId,
+    ledgerId = "ledger-1",
+    name = "本月餐饮",
+    goalType = "spending_limit",
+    period = "monthly",
+    month = "2026-06",
+    category = "餐饮",
+    targetAmountCents = 10_000L,
+    spentAmountCents = 2_500L,
+    remainingAmountCents = 7_500L,
+    progressPercent = 25,
+    progressState = GoalProgressState.OnTrack,
+    status = "active",
+    createdAt = "2026-06-01T00:00:00Z",
+    updatedAt = "2026-06-02T00:00:00Z",
+    rowVersion = 1L,
+    archivedAt = null,
 )

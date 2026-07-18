@@ -513,33 +513,45 @@ class ExpenseFiltersTest {
     }
 
     @Test
-    fun parsesSearchAmountToCentsWithBoundaryRules() {
-        // Whole yuan, one decimal, currency-symbol + two decimals all parse.
-        assertEquals(1_200L, parseSearchAmountCents("12"))
-        assertEquals(1_250L, parseSearchAmountCents("12.5"))
-        assertEquals(1_250L, parseSearchAmountCents("¥12.50"))
-        assertEquals(1_250L, parseSearchAmountCents("￥12.5"))
-        assertEquals(12_800L, parseSearchAmountCents("128"))
-        assertEquals(128_000L, parseSearchAmountCents("1,280"))
-        assertEquals(0L, parseSearchAmountCents("0"))
-        // More than two fraction digits is rejected (no silent rounding).
-        assertNull(parseSearchAmountCents("12.345"))
-        // Non-numeric / blank / negative do not parse to an amount.
-        assertNull(parseSearchAmountCents("咖啡"))
-        assertNull(parseSearchAmountCents("12a"))
-        assertNull(parseSearchAmountCents("   "))
-        assertNull(parseSearchAmountCents("-12"))
+    fun parsesSearchMoneyWithExplicitCurrencyAndExactExponent() {
+        assertEquals(SearchMoneyAmount(CurrencyCode.CNY, 1_200L), parseSearchMoneyAmount("12", CurrencyCode.CNY))
+        assertEquals(SearchMoneyAmount(CurrencyCode.CNY, 1_250L), parseSearchMoneyAmount("12.5", CurrencyCode.CNY))
+        assertEquals(SearchMoneyAmount(CurrencyCode.CNY, 128_000L), parseSearchMoneyAmount("1,280", CurrencyCode.CNY))
+        assertEquals(SearchMoneyAmount(CurrencyCode.USD, 1_250L), parseSearchMoneyAmount("USD 12.50", CurrencyCode.CNY))
+        assertEquals(SearchMoneyAmount(CurrencyCode.JPY, 1_200L), parseSearchMoneyAmount("JPY 1200", CurrencyCode.CNY))
+        assertEquals(SearchMoneyAmount(CurrencyCode.KRW, 1_200L), parseSearchMoneyAmount("krw 1,200", CurrencyCode.CNY))
+
+        // Shared symbols never choose between CNY and JPY; an ISO code is required for foreign money.
+        assertNull(parseSearchMoneyAmount("¥12.50", CurrencyCode.CNY))
+        assertNull(parseSearchMoneyAmount("￥12.5", CurrencyCode.CNY))
+        // Every exponent is fail-closed: no silent rounding and no decimal syntax for zero-decimal money.
+        assertNull(parseSearchMoneyAmount("12.345", CurrencyCode.CNY))
+        assertNull(parseSearchMoneyAmount("JPY 12.0", CurrencyCode.CNY))
+        assertNull(parseSearchMoneyAmount("KRW 12.5", CurrencyCode.CNY))
+        assertNull(parseSearchMoneyAmount("ABC 12.50", CurrencyCode.CNY))
+        assertNull(parseSearchMoneyAmount("咖啡", CurrencyCode.CNY))
+        assertNull(parseSearchMoneyAmount("-12", CurrencyCode.CNY))
     }
 
     @Test
-    fun expenseMatchesAmountOnHomeOrOriginalLeg() {
+    fun expenseMatchesOnlyTheSameCurrencyHomeOrOriginalLeg() {
         val homeLeg = expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 1_250)
         val foreignLeg = expense(id = 2, category = "餐饮", expenseTime = null, amountCents = 9_900)
-            .copy(originalAmountMinor = 1_250)
+            .copy(
+                originalCurrencyCode = CurrencyCode.USD,
+                originalAmountMinor = 1_250,
+            )
+        val jpyLeg = expense(id = 3, category = "交通", expenseTime = null, amountCents = 5_900)
+            .copy(
+                originalCurrencyCode = CurrencyCode.JPY,
+                originalAmountMinor = 1_250,
+            )
 
-        assertTrue(expenseMatchesAmountCents(homeLeg, 1_250))
-        assertTrue(expenseMatchesAmountCents(foreignLeg, 1_250))
-        assertFalse(expenseMatchesAmountCents(homeLeg, 800))
+        assertTrue(expenseMatchesSearchAmount(homeLeg, SearchMoneyAmount(CurrencyCode.CNY, 1_250)))
+        assertTrue(expenseMatchesSearchAmount(foreignLeg, SearchMoneyAmount(CurrencyCode.USD, 1_250)))
+        assertTrue(expenseMatchesSearchAmount(jpyLeg, SearchMoneyAmount(CurrencyCode.JPY, 1_250)))
+        assertFalse(expenseMatchesSearchAmount(foreignLeg, SearchMoneyAmount(CurrencyCode.CNY, 1_250)))
+        assertFalse(expenseMatchesSearchAmount(homeLeg, SearchMoneyAmount(CurrencyCode.USD, 1_250)))
     }
 
     @Test

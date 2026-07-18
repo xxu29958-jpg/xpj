@@ -33,9 +33,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ticketbox.R
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.notification.LARGE_AMOUNT_THRESHOLD_MINOR
 import com.ticketbox.notification.NotificationListenerStatus
 import com.ticketbox.ui.components.AppSwitch
+import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.LocalCurrencyCode
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -195,7 +198,11 @@ private fun NotificationReminderSection(
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
-            val rows = reminderRows(preferences)
+            val homeCurrency = LocalCurrencyCode.current
+            val rows = reminderRows(
+                preferences = preferences,
+                largeAmountThreshold = formatAmount(LARGE_AMOUNT_THRESHOLD_MINOR, homeCurrency),
+            )
             rows.forEachIndexed { index, row ->
                 NotificationReminderRow(
                     row = row,
@@ -220,7 +227,7 @@ private fun NotificationReminderRow(
 ) {
     NotificationSwitchLine(
         title = stringResource(row.titleRes),
-        subtitle = stringResource(row.subtitleRes),
+        subtitle = stringResource(row.subtitleRes, *row.subtitleArgs.toTypedArray()),
         checked = row.checked,
         onCheckedChange = { turnedOn ->
             if (turnedOn && shouldRequestPostNotifications(systemNotificationsAllowed)) {
@@ -314,11 +321,15 @@ private fun NotificationSwitchLine(
 private data class ReminderToggleRow(
     @param:StringRes val titleRes: Int,
     @param:StringRes val subtitleRes: Int,
+    val subtitleArgs: List<Any> = emptyList(),
     val checked: Boolean,
     val updated: (Boolean) -> NotificationPreferences,
 )
 
-private fun reminderRows(preferences: NotificationPreferences): List<ReminderToggleRow> = listOf(
+private fun reminderRows(
+    preferences: NotificationPreferences,
+    largeAmountThreshold: String,
+): List<ReminderToggleRow> = listOf(
     ReminderToggleRow(
         titleRes = R.string.notification_preferences_reminder_pending_title,
         subtitleRes = R.string.notification_preferences_reminder_pending_subtitle,
@@ -328,6 +339,7 @@ private fun reminderRows(preferences: NotificationPreferences): List<ReminderTog
     ReminderToggleRow(
         titleRes = R.string.notification_preferences_reminder_large_amount_title,
         subtitleRes = R.string.notification_preferences_reminder_large_amount_subtitle,
+        subtitleArgs = listOf(largeAmountThreshold),
         checked = preferences.largeAmountAlerts,
         updated = { preferences.copy(largeAmountAlerts = it) },
     ),

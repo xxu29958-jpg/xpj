@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
@@ -14,8 +17,11 @@ from app.routes._web_expense_helpers import (
     drawer_fragment_ok,
     parse_expense_time_local,
     parse_original_amount,
-    resolve_return_to,
     web_edit_context,
+)
+from app.routes._web_expense_return_context import (
+    resolve_return_to,
+    return_context_params,
 )
 from app.routes.web_bill_split import build_split_invite_context
 from app.routes.web_common import (
@@ -30,6 +36,7 @@ from app.routes.web_common import (
 from app.schemas import ExpenseUpdateRequest
 from app.services.expense_service import (
     confirm_expense,
+    get_expense,
     reject_expense,
     undo_reject_expense,
     update_expense,
@@ -55,12 +62,8 @@ def _confirm_reject_error(
     (fallback list = /web/pending for both confirm and reject).
     """
     if fragment:
-        return drawer_fragment_error(
-            db, request, options, selected_id, expense_id, error_msg
-        )
-    return _edit_page_or_flash_redirect(
-        db, request, options, selected_id, expense_id, error_msg, "/web/pending"
-    )
+        return drawer_fragment_error(db, request, options, selected_id, expense_id, error_msg)
+    return _edit_page_or_flash_redirect(db, request, options, selected_id, expense_id, error_msg, "/web/pending")
 
 
 def _web_save_response(
@@ -73,6 +76,10 @@ def _web_save_response(
     error: str | None,
     fragment: int,
     return_to: str,
+    return_month: str,
+    return_filter: str,
+    return_page: str,
+    return_tag: str,
 ) -> Response:
     """批10: build the save response by request mode (kept out of ``web_save`` so
     that handler stays thin AND visibly delegates to ``update_expense``).
@@ -85,16 +92,118 @@ def _web_save_response(
     """
     if error is not None:
         if fragment:
-            return drawer_fragment_error(
-                db, request, options, selected_id, expense_id, error
-            )
-        return _edit_page_or_flash_redirect(
-            db, request, options, selected_id, expense_id, error, "/web/confirmed"
-        )
+            return drawer_fragment_error(db, request, options, selected_id, expense_id, error)
+        return _edit_page_or_flash_redirect(db, request, options, selected_id, expense_id, error, "/web/confirmed")
     if fragment:
         return drawer_fragment_ok("save")
     return _web_redirect(
-        resolve_return_to(return_to, f"/web/expenses/{expense_id}/edit"), selected_id
+        resolve_return_to(return_to, f"/web/expenses/{expense_id}/edit"),
+        selected_id,
+        **return_context_params(
+            return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+        ),
+    )
+
+
+def _parse_web_expense_values(
+    *,
+    amount_yuan: str,
+    submitted_currency: str,
+    frozen_original_currency: str,
+    expense_time: str | None,
+) -> tuple[Decimal | None, datetime | None, str | None]:
+    if submitted_currency and submitted_currency != frozen_original_currency:
+        original_amount = None
+        error = "账单币种已冻结，不能在编辑金额时更改。"
+    else:
+        original_amount, error = parse_original_amount(
+            amount_yuan,
+            currency_code=frozen_original_currency,
+        )
+    expense_time_value, time_error = parse_expense_time_local(expense_time)
+    return original_amount, expense_time_value, error or time_error
+
+
+def _apply_web_expense_update(
+    db: Session,
+    *,
+    expense_id: int,
+    selected_id: str,
+    expected_row_version: str,
+    merchant: str,
+    category: str,
+    note: str,
+    tags: str,
+    frozen_original_currency: str,
+    original_amount: Decimal | None,
+    expense_time_value: datetime | None,
+) -> str | None:
+    payload_args: dict[str, object] = {
+        "expected_row_version": expected_row_version,
+        "merchant": merchant.strip() or None,
+        "category": category.strip() or None,
+        "note": note.strip() or None,
+        "tags": tags,
+    }
+    if expense_time_value is not None:
+        payload_args["expense_time"] = expense_time_value
+    if original_amount is not None:
+        payload_args["original_currency"] = frozen_original_currency
+        payload_args["original_amount"] = original_amount
+    try:
+        update_expense(
+            db,
+            expense_id,
+            selected_id,
+            ExpenseUpdateRequest(**payload_args),
+        )
+    except ValueError as exc:
+        return f"提交参数不正确：{exc}"
+    except AppError as exc:
+        return exc.message
+    return None
+
+
+def _save_expense_changes(
+    db: Session,
+    *,
+    expense_id: int,
+    selected_id: str,
+    expected_row_version: str,
+    amount_yuan: str,
+    original_currency: str,
+    merchant: str,
+    category: str,
+    note: str,
+    tags: str,
+    expense_time: str | None,
+) -> str | None:
+    expense = get_expense(db, expense_id, selected_id)
+    frozen_currency = (expense.original_currency_code or expense.home_currency_code).upper()
+    original_amount, expense_time_value, error = _parse_web_expense_values(
+        amount_yuan=amount_yuan,
+        submitted_currency=(original_currency or "").strip().upper(),
+        frozen_original_currency=frozen_currency,
+        expense_time=expense_time,
+    )
+    if error is not None:
+        return error
+    return _apply_web_expense_update(
+        db,
+        expense_id=expense_id,
+        selected_id=selected_id,
+        expected_row_version=expected_row_version,
+        merchant=merchant,
+        category=category,
+        note=note,
+        tags=tags,
+        frozen_original_currency=frozen_currency,
+        original_amount=original_amount,
+        expense_time_value=expense_time_value,
     )
 
 
@@ -123,9 +232,7 @@ def web_edit_get(
         return _web_redirect("/web/confirmed", selected_id, msg=exc.message)
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.
     if fragment:
-        return templates.TemplateResponse(
-            request=request, name="_edit_drawer.html", context=ctx
-        )
+        return templates.TemplateResponse(request=request, name="_edit_drawer.html", context=ctx)
     # A8: full edit page only — wire the "找家人分摊" 发起卡 to the existing
     # /web/expenses/{id}/split-invite route (None hides the whole block).
     ctx["split_invite"] = build_split_invite_context(
@@ -147,8 +254,7 @@ def web_save(
     merchant: str = Form(default=""),
     category: str = Form(default=""),
     note: str = Form(default=""),
-    # ``expense_time``: blank = leave untouched (FastAPI normalises a blank
-    # optional Form to None, which matches the wanted semantics here).
+    # Blank expense_time leaves the stored time untouched.
     expense_time: str | None = Form(default=None),
     # ``tags``: blank = CLEAR. FastAPI normalises a blank ``str | None`` Form
     # to None, making blank indistinguishable from omitted — so this field is
@@ -164,6 +270,10 @@ def web_save(
     # ``fragment`` switches the response to the drawer fetch-mutation contract:
     # success → tiny 200 marker, error → the drawer fragment carrying the error.
     return_to: str = Form(default=""),
+    return_month: str = Form(default=""),
+    return_filter: str = Form(default=""),
+    return_page: str = Form(default=""),
+    return_tag: str = Form(default=""),
     fragment: int = Form(default=0),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -171,39 +281,36 @@ def web_save(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    original_amount, error = parse_original_amount(amount_yuan)
-    expense_time_value, time_error = parse_expense_time_local(expense_time)
-    if error is None:
-        error = time_error
-
-    if error is None:
-        # ADR-0038: the hidden ``expected_row_version`` is forwarded as the OCC
-        # token; ``update_expense``'s atomic claim returns 409 ``state_conflict``
-        # for a stale form. Blank time stays unset (= leave); ``tags`` always
-        # forwards so "" clears (normalize_tags("") -> None), matching the /web
-        # form which always renders the field.
-        payload_args: dict[str, object] = {
-            "expected_row_version": expected_row_version,
-            "merchant": merchant.strip() or None,
-            "category": category.strip() or None,
-            "note": note.strip() or None,
-            "tags": tags,
-        }
-        if expense_time_value is not None:
-            payload_args["expense_time"] = expense_time_value
-        if original_amount is not None:
-            payload_args["original_currency"] = (original_currency or "").strip().upper() or None
-            payload_args["original_amount"] = original_amount
-        try:
-            update_expense(db, expense_id, selected_id, ExpenseUpdateRequest(**payload_args))
-        except ValueError as exc:
-            error = f"提交参数不正确：{exc}"
-        except AppError as exc:
-            error = exc.message
+    try:
+        error = _save_expense_changes(
+            db,
+            expense_id=expense_id,
+            selected_id=selected_id,
+            expected_row_version=expected_row_version,
+            amount_yuan=amount_yuan,
+            original_currency=original_currency,
+            merchant=merchant,
+            category=category,
+            note=note,
+            tags=tags,
+            expense_time=expense_time,
+        )
+    except AppError as exc:
+        error = exc.message
 
     return _web_save_response(
-        db, request, options, selected_id, expense_id,
-        error=error, fragment=fragment, return_to=return_to,
+        db,
+        request,
+        options,
+        selected_id,
+        expense_id,
+        error=error,
+        fragment=fragment,
+        return_to=return_to,
+        return_month=return_month,
+        return_filter=return_filter,
+        return_page=return_page,
+        return_tag=return_tag,
     )
 
 
@@ -213,6 +320,7 @@ def web_confirm(
     request: Request,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    return_filter: str = Form(default=""),
     # 批10: ``fragment=1`` switches confirm to the drawer fetch-mutation contract
     # (success → tiny 200 so the client removes the row + opens the next drawer;
     # error → the drawer fragment carrying the error). No ``return_to``: confirm's
@@ -227,8 +335,13 @@ def web_confirm(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _confirm_reject_error(
-            db, request, options, selected_id, expense_id,
-            "页面已过期，请刷新后重新确认。", fragment,
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            "页面已过期，请刷新后重新确认。",
+            fragment,
         )
     try:
         confirm_expense(db, expense_id, selected_id, expected_row_version=parsed)
@@ -236,12 +349,14 @@ def web_confirm(
         # ADR-0038 PR-2b: 409 state_conflict surfaces a clearer message
         # than the generic AppError text because user has to refetch.
         error_msg = "账单已在其它端被修改，请刷新后重新确认。" if exc.error == "state_conflict" else exc.message
-        return _confirm_reject_error(
-            db, request, options, selected_id, expense_id, error_msg, fragment
-        )
+        return _confirm_reject_error(db, request, options, selected_id, expense_id, error_msg, fragment)
     if fragment:
         return drawer_fragment_ok("confirm")
-    return _web_redirect("/web/pending", selected_id)
+    return _web_redirect(
+        "/web/pending",
+        selected_id,
+        **return_context_params("pending", return_filter=return_filter),
+    )
 
 
 @router.post("/expenses/{expense_id}/reject", response_class=HTMLResponse)
@@ -250,6 +365,7 @@ def web_reject(
     expense_id: int,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    return_filter: str = Form(default=""),
     # 批10: ``fragment=1`` switches reject to the drawer fetch-mutation contract.
     # The full-page (no-JS) success keeps the ADR-0038 5s 撤销 banner via the
     # /web/pending redirect; the in-drawer fast path just removes the row (the
@@ -264,16 +380,19 @@ def web_reject(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _confirm_reject_error(
-            db, request, options, selected_id, expense_id,
-            "页面已过期，请刷新后重新操作。", fragment,
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            "页面已过期，请刷新后重新操作。",
+            fragment,
         )
     try:
         reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
     except AppError as exc:
         error_msg = "账单已在其它端被修改，请刷新后重新操作。" if exc.error == "state_conflict" else exc.message
-        return _confirm_reject_error(
-            db, request, options, selected_id, expense_id, error_msg, fragment
-        )
+        return _confirm_reject_error(db, request, options, selected_id, expense_id, error_msg, fragment)
     if fragment:
         return drawer_fragment_ok("reject")
     # ADR-0038 undo: redirect to /web/pending with msg + just-rejected expense_id so
@@ -286,6 +405,7 @@ def web_reject(
         msg="已忽略这笔账单。",
         undo=str(expense_id),
         flash_type="success",
+        **return_context_params("pending", return_filter=return_filter),
     )
 
 
@@ -313,8 +433,10 @@ def web_expense_undo(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect(
-            "/web/pending", selected_id,
-            msg="页面已过期，请刷新后重新操作。", flash_type="error",
+            "/web/pending",
+            selected_id,
+            msg="页面已过期，请刷新后重新操作。",
+            flash_type="error",
         )
     try:
         undo_reject_expense(db, expense_id, selected_id, parsed)

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.config import reset_settings_cache
 from app.database import SessionLocal
 from app.models import BudgetAdvisorAuditLog, LedgerMember
+from app.routes.web_budget_advise import _advise_error_label
 from app.services.budget_advisor_service import _providers as providers_module
 
 
@@ -69,6 +70,13 @@ def _audit_count() -> int:
     return len(_audit_rows())
 
 
+def test_web_budget_advise_unknown_reason_uses_product_fallback() -> None:
+    assert (
+        _advise_error_label("future_reason_code")
+        == "暂时无法生成智能建议，请稍后再试。"
+    )
+
+
 def test_web_get_run_advise_does_not_call_live_provider(
     web_client: TestClient, *, identity, live_provider_env
 ) -> None:
@@ -92,6 +100,11 @@ def test_web_budget_advise_form_keeps_csrf_token_out_of_get_url(
     assert 'name="csrf_token"' in response.text
     assert 'method="get"' not in response.text
     assert "formmethod" not in response.text
+    assert "智能预算建议暂未启用" in response.text
+    assert "2026 年 5 月" in response.text
+    assert "BUDGET_ADVISOR_PROVIDER" not in response.text
+    assert "BUDGET_ADVISOR_BASE_URL" not in response.text
+    assert "ADR-0036" not in response.text
 
 
 def test_web_live_provider_without_owner_confirm_does_not_audit(
@@ -110,12 +123,18 @@ def test_web_live_provider_without_owner_confirm_does_not_audit(
     assert _audit_count() == before_count
 
 
+@pytest.mark.parametrize("role", ["member", "viewer"])
 def test_web_live_provider_requires_owner_role(
-    web_client: TestClient, *, identity, live_provider_env, monkeypatch
+    web_client: TestClient,
+    *,
+    identity,
+    live_provider_env,
+    monkeypatch,
+    role: str,
 ) -> None:
     live_provider_env.setenv("BUDGET_ADVISOR_OWNER_CONFIRMED", "true")
     reset_settings_cache()
-    _set_owner_role("member")
+    _set_owner_role(role)
     _patch_openai_call(monkeypatch)
     before_count = _audit_count()
 
@@ -126,6 +145,9 @@ def test_web_live_provider_requires_owner_role(
 
     assert response.status_code == 200, response.text
     assert _audit_count() == before_count
+    assert 'name="run_advise" value="true"' not in response.text
+    assert "仅账本拥有者可生成智能建议" in response.text
+    assert ">重新计算</button>" in response.text
 
 
 def test_web_live_provider_records_audit_with_owner_confirm(
@@ -143,6 +165,7 @@ def test_web_live_provider_records_audit_with_owner_confirm(
 
     assert response.status_code == 200, response.text
     assert "web ok" in response.text
+    assert 'name="run_advise" value="true"' in response.text
     rows = _audit_rows()
     assert len(rows) == before_count + 1
     row = rows[-1]

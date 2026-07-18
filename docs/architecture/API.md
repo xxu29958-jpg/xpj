@@ -86,6 +86,8 @@ invalid_request
 route_not_found
 method_not_allowed
 state_conflict
+desktop_activation_required
+desktop_identity_rotation_required
 tag_not_found
 tag_conflict
 tag_undo_not_found
@@ -123,6 +125,11 @@ Authorization: Bearer <session_token>
 X-Timezone: Asia/Shanghai
 ```
 
+Desktop 使用同一 pairing code 入口，但 `platform=desktop` 返回的是 5 分钟
+短 TTL 的 `pending` 凭证。Manager 必须先把它写入 Windows Credential Manager
+recovery 位，再调用 `/api/auth/desktop/activate`；激活前它不能通过任何普通
+Session Token 鉴权。Android、Web 和非 Desktop pairing 仍直接签发 active token。
+
 ### iPhone 上传（UploadLink）
 
 iPhone 快捷指令使用完整 UploadLink URL，不再需要请求头鉴权：
@@ -152,7 +159,9 @@ Authorization: Bearer <admin_token>
 | `/api/bootstrap/owner` | POST | `backend/app/routes/bootstrap.py` | 无 | `BootstrapOwnerRequest` | `BootstrapOwnerResponse` | 默认禁用；启用后需 `X-Bootstrap-Secret`（一次性） | `backend/tests/test_auth_bootstrap.py` | owner 初始化 |
 | `/api/bootstrap/pairing-codes` | POST | `backend/app/routes/bootstrap.py` | 无 | `PairingCodeCreateRequest` | `PairingCodeResponse` | Admin Token | `backend/tests/test_auth_bootstrap.py` | 生成新绑定码 |
 | `/api/auth/pair` | POST | `backend/app/routes/auth.py` | `pairDevice()` | `PairRequest` | `PairResponse` | 无 | `backend/tests/test_auth_bootstrap.py` | 设备绑定 |
+| `/api/auth/desktop/activate` | POST | `backend/app/routes/auth.py` | Desktop Manager | `Authorization: Bearer <pending_B>`；可选 `X-Ticketbox-Previous-Session: <A>` | `DesktopSessionActivationResponse` | 精确 Desktop B possession proof；不走普通 app auth | `backend/tests/test_desktop_session_activation.py`, `desktop/tests/test_app_controller.py` | Desktop 两阶段激活/响应丢失重放 |
 | `/api/auth/check` | GET | `backend/app/routes/auth.py` | `checkAuth()` | header `Authorization` | `AuthCheckDto` | Session Token | `backend/tests/test_auth_bootstrap.py` | 校验 session |
+| `/api/ledgers/{ledger_id}/switch/prepare` | POST | `backend/app/routes/ledgers.py` | Desktop Manager | active Desktop `Authorization` | `LedgerSwitchResponse`（`activation_required=true`） | active Desktop Session Token | `backend/tests/test_desktop_session_activation.py`, `desktop/tests/test_product_data.py` | Desktop 切账只准备 pending B，不撤销 A |
 | `/api/upload/check` | GET | `backend/app/routes/uploads.py` | 无 | 旧版 `Upload-Token` | 错误响应 | 旧版 Upload-Token（已废弃） | `backend/tests/test_auth_bootstrap.py`, smoke | 旧版上传检查（已废弃） |
 | `/api/upload-screenshot` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart | `UploadResponseDto` | 旧版 Upload-Token（已废弃） | `backend/tests/test_uploads.py`, smoke | 旧版 iPhone 入口（已废弃） |
 | `/u/{upload_key}` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart；query `tz` | `UploadResponseDto` | UploadLink URL | `backend/tests/test_uploads.py`, smoke | iPhone 快捷指令上传 |
@@ -182,6 +191,9 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseManualCreateRequest` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/expenses/notification-drafts` | POST | `backend/app/routes/expenses.py` | `createNotificationDraft(request)` | `NotificationDraftCreateRequest` / `NotificationDraftRequestDto` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_notification_drafts.py`, `ExpenseDtoContractTest`, `ExpenseRepositoryBindingTest` | v0.6；结构化草稿，不上传通知原文 |
 | `/api/expenses/{id}/repayment-draft` | POST | `backend/app/routes/expenses.py` | `createRepaymentDraftFromExpense(id,request)` | `ExpenseRepaymentDraftCreateRequest` / `ExpenseRepaymentDraftCreateRequestDto` | `RepaymentDraftResponse` / `RepaymentDraftDto` | Session Token，owner/member 写权限 | `backend/tests/test_repayment_drafts.py`, `ExpenseEditViewModelTest` | 将已入账流水转入还款复核箱；不修改原 Expense，不自动抵扣欠款 |
+| `/api/debts/payables` | GET | `backend/app/routes/debts.py` | `debtPayables()` | 无 | `DebtListResponse` / `DebtListResponseDto` | Session Token；viewer 可读 | `backend/tests/test_debt_personal_lenses.py`, `DebtRepositoryTest` | 当前账号在所选账本内的个人应付；服务端合并 owner `i_owe` 与 member-counterparty `owed_to_me`，排除应收和第三方 |
+| `/api/debts/receivables` | GET | `backend/app/routes/debts.py` | `debtReceivables()` | 无 | `DebtListResponse` / `DebtListResponseDto` | Session Token；viewer 可读 | `backend/tests/test_debt_personal_lenses.py`, `backend/tests/test_debt_receivables.py`, `DebtRepositoryTest` | 当前账号个人应收；合并所选账本 owner/member 行与跨账本 member 债权人 shell，按 `public_id` 去重 |
+| `/api/debts/{public_id}/repayments` | GET | `backend/app/routes/debts.py` | — | query `page/page_size` | `RepaymentFactListResponse` | Session Token；同账本 viewer 可读；成员债跨账本参与者可读；其他跨账本请求 404 | `backend/tests/test_debt_repayment_activity.py` | 从 `Repayment` + `RepaymentVoid` 追加事实恢复历史还款和 void 状态；不读取客户端缓存或可变 Debt status |
 | `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/debug 读取详情 |
 | `/api/expenses/{id}/items` | GET | `backend/app/routes/expenses.py` | `expenseItems(id)` | path `id` | `ExpenseItemsResponse` | Session Token | `backend/tests/test_expense_items.py` | v1.0 账单明细行；viewer 可读 |
 | `/api/expenses/{id}/items` | PUT | `backend/app/routes/expenses.py` | `replaceExpenseItems(id,request)` | `ExpenseItemReplaceRequest` | `ExpenseItemsResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expense_items.py` | v1.0 整体替换账单明细行 |
@@ -320,17 +332,52 @@ Android 首次绑定后校验 session token 使用。
   "ledger_id": "owner",
   "ledger_name": "我的小票夹",
   "device_name": "小米 15 Pro",
-  "role": "owner"
+  "role": "owner",
+  "activation_required": false,
+  "activation_expires_at": null
 }
 ```
 
 > v0.4-alpha1 起新增 `ledger_id`。
+
+当 `platform=desktop` 时：
+
+- `activation_required=true`，`activation_expires_at` 是约 5 分钟后的 UTC 时间；
+- `session_token` 是 pending B，数据库仍只保存 hash；
+- prepare commit 不撤销现有 Desktop A，B 对 `/api/auth/check`、业务 API 和
+  Desktop bridge 都返回 `401 invalid_token`；
+- pairing code 仍一次性消费；若 prepare 响应丢失，B 只会过期，不会成为可用
+  的无人管理长期凭证。
 
 错误：
 
 - `invalid_pairing_code`：绑定码不存在。
 - `invalid_pairing_code` + HTTP 429：同一来源短时间内失败次数过多，稍后再试或重新生成绑定码。
 - `invalid_pairing_code` + HTTP 401：绑定码不存在、已过期或已使用；公网/云端部署下不区分这些状态，避免暴露 code 存在性。
+
+### POST /api/auth/desktop/activate
+
+Desktop Manager 必须先把 pending B 写入安装级 WinCred recovery 位，再调用：
+
+```http
+Authorization: Bearer <pending_B>
+X-Ticketbox-Previous-Session: <previous_A>
+```
+
+首次绑定没有 A 时可省略第二个 header。服务端在一个身份生命周期事务中验证 B、
+把 B 从 `pending` 改为 `active`、换成长 app-token TTL，并撤销 B 同设备的其它
+app token。若 Manager 仍持有 previous A，服务端仅按该明文的 hash 精确查找：
+A 仍是 live Desktop token 时同事务撤销（允许跨 device/account 重绑定）；A 已
+过期、已撤销或已清理时按 no-op 处理，避免 stale WinCred 卡死新 pairing。
+`B == A` 返回 `409 desktop_identity_rotation_required`，不会激活或撤销 token。
+若本机主 WinCred 已丢失而服务端仍存在未知的 live A，Manager 无法证明该 A 的
+possession，因此不得按 `device_name` 或可伪造安装标识猜测并批量撤销；需由用户在
+Owner Console 撤销旧设备后重新绑定。任何 `pending` B 若无到期时间、已过期或到期
+时间超过签发后 5 分钟上限，activation 都按 `401 invalid_token` fail closed。
+
+同一仍 active 的 B 可重复调用并返回同一身份投影；因此后端 commit 后 HTTP 响应
+丢失、Manager crash 或主 WinCred 写失败时，recovery B 可以重放激活并提升为主
+凭证。已经被后续操作撤销的 B 不会复活。
 
 ### GET /api/ledgers
 
@@ -356,7 +403,9 @@ Android 首次绑定后校验 session token 使用。
 
 ### POST /api/ledgers/{ledger_id}/switch
 
-> v0.4-alpha1 起提供。把当前会话切换到目标账本，**轮换** session token；旧 token 立即失效。
+> v0.4-alpha1 起提供。Android/非 Desktop 会话切换到目标账本时，**轮换**
+> session token；旧 token 立即失效。Desktop 必须使用下面的 prepare/activate
+> 两阶段路径；直接调用本路由返回 `409 desktop_activation_required`。
 
 ```json
 {
@@ -371,6 +420,23 @@ Android 首次绑定后校验 session token 使用。
 错误：
 
 - `forbidden` / `请选择一个有权限的账本`：调用方对该账本无成员关系。
+
+### POST /api/ledgers/{ledger_id}/switch/prepare
+
+只接受 active Desktop A。校验目标 membership 后签发短 TTL pending B，但不撤销
+A；响应形状与 switch 一致，并附带：
+
+```json
+{
+  "activation_required": true,
+  "activation_expires_at": "2026-07-18T08:05:00Z"
+}
+```
+
+Manager 将 B 先写 recovery 位，再调用 `/api/auth/desktop/activate`，同时通过
+`X-Ticketbox-Previous-Session` 携带 A。激活事务成功后 A 才失效；主 WinCred 写入
+失败时 recovery 必须保留。重复 prepare 只撤销同设备上旧的 pending 候选，不动
+active A。
 
 ### POST /api/ledgers/{ledger_id}/invitations
 
@@ -1474,6 +1540,86 @@ Idempotency-Key: <uuid-v4>
 ```
 
 清除疑似重复标记，并记录这组账单在当前检测类型下的"非重复"判断。图片 hash 重复和金额/商家/时间相似会分别记录，互不覆盖。`expected_row_version` 必填，stale → `409 state_conflict`；本路由经 outbox 重放，必须带 `Idempotency-Key`，缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
+
+## 债务还款事实
+
+### JSON 往来个人视图
+
+- `GET /api/debts/payables` 是当前账号在所选账本内的个人应付投影：owner-relative `i_owe` 与 member-counterparty-relative `owed_to_me`。账本管理权限不会让其它成员的 external 或 member 债务进入结果。
+- `GET /api/debts/receivables` 是当前账号的个人应收投影：合并所选账本内 owner-relative `owed_to_me`、member-counterparty-relative `i_owe`，以及跨账本 member 债权人发现结果，并按 `public_id` 去重。只有跨账本 shell 隐藏 `ledger_id`。
+- 两个投影均由服务端使用已鉴权的 `account_id` 与 `tenant_id` 裁决。`direction` 是 Debt owner 相对值，Android/Web 不得据此自行推导当前账号角色。
+- 原始 `GET /api/debts` 仍是当前账本全量 Debt 列表，供目标选择器、还款复核等账本级工作流使用；不能直接作为“我欠”或“欠我”的个人视图。
+
+### Web 往来个人视图与外部债务命令
+
+- `GET /web/debts` 是当前 Web 主体在所选账本内的个人应付视图：只包含主体作为 owner 的 `direction=i_owe`，以及主体作为 member counterparty 的镜像 `direction=owed_to_me`。不展示应收或第三方成员债务。
+- `GET /web/receivables` 是个人应收视图：合并所选账本内的 owner-relative `owed_to_me`、member-counterparty-relative `i_owe`，以及既有的跨账本 member 债权人发现结果；跨账本结果继续隐藏债务人账本 id。
+- `GET /web/debts/{public_id}` 按当前主体角色呈现详情。成员债务仍只走 repayment proposal / 双方确认流程，不提供直接事实命令。
+- 仅 `counterparty_type=external && source_type=manual && status=open` 的详情向 `owner/member` 显示以下表单命令：
+  - `POST /web/debts/{public_id}/repayments`
+  - `POST /web/debts/{public_id}/adjustments`
+  - `POST /web/debts/{public_id}/void`
+
+三个 POST 都是 `application/x-www-form-urlencoded`，必须携带 `csrf_token`、`ledger_id`、`expected_row_version` 和 `idempotency_key`。金额由 Web adapter 从元单位字符串精确转换为分；adjustment 的正数增加、负数减少当前 remaining，但不会改写冻结的 principal。Web 和 JSON API 共用同一个 actor-scoped 幂等命令层：先 claim 幂等键、再执行 OCC，事实写入、Debt `row_version` bump 与幂等成功记录同事务提交；成功回放只重读 canonical fold，不重复写事实或再次 bump。
+
+`viewer` 对三个 POST 均返回 `403 permission_denied`。过期 `expected_row_version` 返回页面内的冲突反馈（底层仍为 `409 state_conflict` 语义）；缺失/复用中的幂等键、金额越界和原因缺失保留现有 Debt 错误码与文案。CSRF 由 `/web` 中间件在进入 handler 前校验。
+
+### Web 债务创建、成员提案、还款草稿与还债目标
+
+Web 债务工作区不是只读投影。以下浏览器会话路由与 JSON API 共用服务层、权限裁决和事实模型，不复制一套 Web 真值：
+
+- `GET /web/debts/new` + `POST /web/debts`：创建 `external + manual` 往来，支持方向、机构、本金、币种、发生时间及分期元数据；外币创建由服务端写入完整冻结币种快照。
+- `POST /web/debts/{public_id}/repayment-proposals`：成员债参与者发起还款提案。
+- `POST /web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw|confirm|reject`：按提案角色撤回或答复；`confirm` 必须携带 `expected_row_version`。
+- `GET /web/repayment-drafts` + `POST /web/repayment-drafts/{public_id}/confirm|dismiss`：在当前账本和捕获账户范围内复核通知生成的还款草稿；确认时必须选择同账本可还的外部债务并携带 `expected_row_version`。
+- `GET /web/debt-goals` + `POST /web/debt-goals/create`：查看或创建还债目标。
+- `POST /web/debt-goals/{public_id}/links|target-date|review/acknowledge|review/remove-voided|archive|restore`：调整关联债务、还清日期，处理完整性复核，以及归档或恢复目标。
+
+所有表单写入都要求当前账本 `owner/member`、有效浏览器 session、同源 CSRF token 和明确的 `ledger_id`；`viewer` fail closed。创建 Debt、成员提案、草稿确认及全部目标命令使用 actor-scoped 幂等键；会生成或改写事实的并发敏感动作同时使用 OCC。草稿 `dismiss` 是单行状态迁移，不生成还款事实，但仍受 writer gate、CSRF、账本与捕获账户隔离约束。校验失败保留表单输入或经 PRG 返回可操作错误，不再把用户转交到手机端完成同一流程。
+
+### GET /api/debts/{public_id}/repayments
+
+返回一笔有权查看的 Debt 的还款事实列表，按 `created_at DESC, id DESC` 稳定排序。
+
+查询参数：
+
+```text
+page: int，默认 1，最小 1
+page_size: int，默认 50，范围 1..100
+```
+
+响应：
+
+```json
+{
+  "debt_public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
+  "home_currency_code": "CNY",
+  "items": [
+    {
+      "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2e",
+      "amount_cents": 3000,
+      "paid_at": "2026-07-18T01:00:00Z",
+      "created_at": "2026-07-18T01:00:01Z",
+      "status": "voided",
+      "void_fact": {
+        "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2f",
+        "reason": "重复记了一次",
+        "created_at": "2026-07-18T01:05:00Z"
+      }
+    }
+  ],
+  "page": 1,
+  "page_size": 50,
+  "total": 1
+}
+```
+
+语义：
+
+- `status=active` 仅表示不存在对应 `RepaymentVoid`，该 repayment 进入当前 paid/remaining fold。
+- `status=voided` 必须同时带 `void_fact`；原 `Repayment` 不删除，客户端重启后仍可恢复历史和纠正原因。
+- `actor_account_id`、内部整数 id 和 `idempotency_key` 不对客户端公开。
+- 普通账本成员（含 viewer）可读本账本 Debt；成员债的跨账本 counterparty 可按参与者身份读取；其他跨账本请求使用 `404 debt_not_found` 隐藏存在性。
 
 ## 重复检测
 

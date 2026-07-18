@@ -1,6 +1,7 @@
 package com.ticketbox.notification.budget
 
 import com.ticketbox.domain.model.BudgetMonthly
+import com.ticketbox.domain.model.CurrencyCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 
@@ -34,6 +35,7 @@ internal class CheckerHarness(
         runtime = BudgetOverspendRuntime(
             budgetOverspendAlertsEnabled = { enabled },
             activeLedgerId = { activeLedgerId },
+            homeCurrency = { CurrencyCode.CNY },
             currentMonth = { month },
             monotonicNowMillis = { nowMillis },
         ),

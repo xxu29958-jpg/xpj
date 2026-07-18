@@ -3,14 +3,15 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtSourceTypes
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,8 +25,8 @@ import kotlin.math.abs
  * ADR-0049 §2 (slice 8) 欠款列表 — Android 生活流：卡片列 → 页头 CTA → 底部抽屉新建外部欠款。
  *
  * UI 形态镜像 [IncomePlanViewModel]（list + draft + submit），ViewModel 持草稿+校验态让底部
- * 抽屉保持纯渲染。债务读取按账本作用域，overlay VM 缓存且跨账本存活，故 [reload] 在每次进入时
- * 先清上一账本的欠款再拉（账本隔离，与 DebtGoalViewModel.refresh(clearStale = true) 同构）。
+ * 抽屉保持纯渲染。列表读取服务端裁决的 viewer-personal 应付 lens；overlay VM 缓存且跨账本存活，
+ * 故 [reload] 在每次进入时先清上一账本的欠款再拉（账本隔离）。
  */
 data class DebtListUiState(
     val isLoading: Boolean = false,
@@ -58,12 +59,14 @@ data class DebtDraftUi(
     val installmentCountInput: String = "",
     val installmentPeriodInput: String = "",
     val validationError: UiText? = null,
+    val homeCurrency: CurrencyCode = CurrencyCode.LegacyFallback,
 ) {
     val isValid: Boolean
         get() = counterpartyLabel.trim().isNotEmpty() && parsedAmountCents() != null
 
-    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；本金须 > 0（符号保持，分空间判等价）。
-    fun parsedAmountCents(): Long? = parseAmountCents(amountYuanInput)?.takeIf { it > 0 }
+    // Requires an exactly representable positive amount in the server home currency.
+    fun parsedAmountCents(): Long? =
+        parseAmountCents(amountYuanInput, homeCurrency)?.takeIf { it > 0 }
 
     // 分期期数：正整数且 1..600（镜像后端 installment_count 的 gt=0/le=600）；空 / 非数字 / 越界 → null（不排期）。
     fun parsedInstallmentCount(): Int? = installmentCountInput.trim().toIntOrNull()?.takeIf { it in 1..600 }
@@ -74,10 +77,15 @@ data class DebtDraftUi(
 }
 
 class DebtListViewModel(
-    private val repository: DebtActions,
+    private val repository: DebtListActions,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(DebtListUiState(canModify = repository.canModifyLedger()))
+    private val _state = MutableStateFlow(
+        DebtListUiState(
+            canModify = repository.canModifyLedger(),
+            addDraft = DebtDraftUi(homeCurrency = repository.currentHomeCurrency()),
+        ),
+    )
     val state: StateFlow<DebtListUiState> = _state.asStateFlow()
 
     // Monotonic load token (mirrors DebtGoalViewModel): a refresh applies its result only if it is
@@ -106,7 +114,7 @@ class DebtListViewModel(
         val gen = ++loadGeneration
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val result = repository.listDebts()
+            val result = repository.listPayables()
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration) return@launch
             result.fold(
@@ -148,7 +156,7 @@ class DebtListViewModel(
     fun resetDraft() {
         _state.update {
             it.copy(
-                addDraft = DebtDraftUi(),
+                addDraft = DebtDraftUi(homeCurrency = repository.currentHomeCurrency()),
                 isSubmitting = false,
                 addSucceeded = false,
                 pendingBillParsePrefill = false,
@@ -178,7 +186,7 @@ class DebtListViewModel(
         viewModelScope.launch {
             repository.parseDebtBillImage(fileName, contentType, bytes).fold(
                 onSuccess = { suggestion ->
-                    val filled = DebtDraftUi()
+                    val filled = DebtDraftUi(homeCurrency = repository.currentHomeCurrency())
                         .prefillFrom(suggestion)
                         .withInheritedModelFrom(_state.value.debts)
                     _state.update {
@@ -239,7 +247,7 @@ class DebtListViewModel(
                     _state.update {
                         it.copy(
                             isSubmitting = false,
-                            addDraft = DebtDraftUi(),
+                            addDraft = DebtDraftUi(homeCurrency = repository.currentHomeCurrency()),
                             flashMessage = UiText.res(R.string.debt_create_added),
                             addSucceeded = true,
                         )
@@ -276,7 +284,7 @@ private fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi
     val parsedInstallmentPeriod = suggestion.installmentPeriodMonths?.toIntOrNullIn(1, 120)
     return copy(
         counterpartyLabel = suggestion.merchant?.trim().orEmpty(),
-        amountYuanInput = suggestion.principalAmountCents?.toYuanInput().orEmpty(),
+        amountYuanInput = suggestion.principalAmountCents?.toAmountInput(homeCurrency).orEmpty(),
         kind = if (parsedInstallmentCount != null) DebtKinds.INSTALLMENT else DebtKinds.UNSPECIFIED,
         installmentCountInput = parsedInstallmentCount?.toString().orEmpty(),
         installmentPeriodInput = parsedInstallmentPeriod?.toString().orEmpty(),
@@ -331,11 +339,8 @@ private fun String?.normalizedDebtLabel(): String =
 private fun Long.toIntOrNullIn(min: Int, max: Int): Int? =
     takeIf { it in min.toLong()..max.toLong() }?.toInt()
 
-private fun Long.toYuanInput(): String {
-    val yuan = this / 100
-    val fen = abs(this % 100)
-    return if (fen == 0L) yuan.toString() else "$yuan.${fen.toString().padStart(2, '0')}"
-}
+private fun Long.toAmountInput(currency: CurrencyCode): String =
+    com.ticketbox.ui.components.formatAmountInput(this, currency)
 
 private fun parseBillDoneRes(suggestion: DebtBillSuggestion): Int =
     if (suggestion.hasAnyPrefill) {

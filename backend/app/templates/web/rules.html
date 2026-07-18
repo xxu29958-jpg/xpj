@@ -1,30 +1,41 @@
 {% extends "base.html" %}
 {% block title %}分类规则 — 小票夹{% endblock %}
 {% block content %}
-<h1 class="page-title page-title--compact">分类规则</h1>
-<p class="meta">规则按关键词匹配商家，仅改写「其他/未分类」的<b>待确认</b>账单。不会自动确认，不会回写已确认记录。</p>
-{% if not can_write %}
-<div class="readonly-callout">只读角色可以查看和预览规则，但不能新增、启停、删除或一键应用。</div>
-{% endif %}
+<nav class="detail-breadcrumb" aria-label="面包屑">
+  <a class="page-back-link" href="/web/library{{ q }}">资料库</a>
+  <span aria-hidden="true">/</span>
+  <span>规则</span>
+</nav>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">资料库 / 规则</span>
+    <h1 class="page-title page-title--compact">规则</h1>
+    <p class="product-page-summary">
+      规则按关键词、金额、来源或标签匹配。默认只改写未分类记录，不会自动确认。
+    </p>
+  </div>
+</header>
 
 {% if flash_message %}
-<div class="dt-alert success{% if undo_rule_id and can_write %} undo-banner{% endif %}">
+<div class="product-feedback product-feedback--success{% if undo_rule_id and can_write %} undo-banner{% endif %}">
   <span>{{ flash_message }}</span>
   {% if undo_rule_id and can_write %}
   {# ADR-0038 undo: 5s 撤销 affordance (CSS auto-dismisses the banner). #}
   <form method="post" action="/web/rules/{{ undo_rule_id }}/undo" class="undo-banner-action">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <button type="submit" class="dt-btn">撤销</button>
+    <button type="submit" class="product-button">撤销</button>
   </form>
   {% endif %}
 </div>
 {% endif %}
 
-<div class="grid two-col">
+<div class="rules-builder-grid">
   {% if can_write %}
-  <section class="dt-card">
-    <h2>新增规则</h2>
-    <form method="post" action="/web/rules/create" class="dt-form-grid">
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-title">新增规则</div>
+    <form method="post" action="/web/rules/create" class="product-form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <label>关键词
         <input type="text" name="keyword" required placeholder="如：星巴克">
@@ -35,33 +46,46 @@
       <label>优先级（越小越优先）
         <input type="number" name="priority" value="100" min="0" max="9999">
       </label>
-      <div class="grid two-col compact">
-        <label>金额下限（元，可选）
-          <input type="number" name="amount_min_yuan" min="0" step="0.01" placeholder="如：10.00">
+      <div class="product-form-grid">
+        <label>金额下限（{{ home_currency_code }}，可选）
+          <input type="number"
+                 name="amount_min_yuan"
+                 min="0"
+                 step="{{ home_currency_input.amount_step }}"
+                 inputmode="{{ home_currency_input.inputmode }}"
+                 placeholder="{{ home_currency_input.amount_example }}"
+                 aria-describedby="rule-amount-hint">
         </label>
-        <label>金额上限（元，可选）
-          <input type="number" name="amount_max_yuan" min="0" step="0.01" placeholder="如：200.00">
+        <label>金额上限（{{ home_currency_code }}，可选）
+          <input type="number"
+                 name="amount_max_yuan"
+                 min="0"
+                 step="{{ home_currency_input.amount_step }}"
+                 inputmode="{{ home_currency_input.inputmode }}"
+                 placeholder="{{ home_currency_input.amount_example }}"
+                 aria-describedby="rule-amount-hint">
         </label>
       </div>
+      <div class="hint" id="rule-amount-hint">{{ home_currency_input.amount_input_hint }}</div>
       <label>来源包含（可选）
         <input type="text" name="source_contains" placeholder="如：微信 / 手动记账">
       </label>
       <label>标签等于（可选）
         <input type="text" name="tag_contains" placeholder="如：真香">
       </label>
-      <button type="submit" class="dt-btn primary">添加规则</button>
+      <button type="submit" class="product-button product-button--primary">添加规则</button>
     </form>
   </section>
   {% else %}
-  <section class="dt-card">
-    <h2>新增规则</h2>
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-title">新增规则</div>
     <p class="meta">只读角色无法新增分类规则。</p>
   </section>
   {% endif %}
 
-  <section class="dt-card">
-    <h2>预览匹配</h2>
-    <form method="get" action="/web/rules" class="dt-form-grid">
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-title">预览单条匹配</div>
+    <form method="get" action="/web/rules" class="product-form-grid">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <label>关键词
         <input type="text" name="preview_keyword" value="{{ preview_keyword }}" placeholder="如：星巴克">
@@ -69,15 +93,16 @@
       <label>目标分类
         <input type="text" name="preview_category" value="{{ preview_category }}" placeholder="如：餐饮">
       </label>
-      <button type="submit" class="dt-btn">预览</button>
+      <button type="submit" class="product-button">预览</button>
     </form>
     {% if preview_error %}
-    <div class="dt-pill warn">{{ preview_error }}</div>
+    <div class="product-status product-status--warning">{{ preview_error }}</div>
     {% endif %}
     {% if preview %}
     <div class="meta">命中 {{ preview.matched_count }} 条（最多展示 {{ preview['items']|length }} 条）</div>
     {% if preview['items'] %}
-    <table class="dt-table dt-table--compact">
+    <div class="product-table-wrap">
+    <table class="product-table">
       <thead><tr><th>ID</th><th>商家</th><th>原分类</th><th>命中原因</th></tr></thead>
       <tbody>
       {% for it in preview['items'] %}
@@ -90,46 +115,51 @@
       {% endfor %}
       </tbody>
     </table>
+    </div>
     {% endif %}
     {% endif %}
   </section>
 </div>
 
-<section class="dt-card">
-  <div class="card-header">
-    <h2>批量应用前预览</h2>
-    <form method="get" action="/web/rules" class="inline-form">
+<section class="product-panel product-panel--padded">
+  <div class="product-panel-header">
+    <div>
+      <div class="product-panel-title">待处理流水</div>
+      <div class="product-panel-subtitle">预览规则将改写的未分类记录</div>
+    </div>
+    <form method="get" action="/web/rules" class="product-inline-form">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="apply_preview" value="1">
-      <button type="submit" class="dt-btn">预览影响范围</button>
+      <button type="submit" class="product-button">预览影响范围</button>
     </form>
   </div>
   <p class="meta">批量应用只会改写「其他/未分类」的待确认账单；不会自动确认，也不会回写已确认记录。</p>
   {% if bulk_preview %}
-  <div class="kpi-strip kpi-strip--compact">
-    <div class="kpi-cell primary">
-      <div class="label">将改写</div>
-      <div class="val">{{ bulk_preview.changed_count }}</div>
-      <div class="foot">待确认分类</div>
+  <div class="rule-impact-grid">
+    <div class="rule-impact-item is-primary">
+      <div class="rule-impact-label">将改写</div>
+      <div class="rule-impact-value">{{ bulk_preview.changed_count }}</div>
+      <div class="rule-impact-note">待确认分类</div>
     </div>
-    <div class="kpi-cell">
-      <div class="label">扫描</div>
-      <div class="val">{{ bulk_preview.pending_scanned }}</div>
-      <div class="foot">待确认账单</div>
+    <div class="rule-impact-item">
+      <div class="rule-impact-label">扫描</div>
+      <div class="rule-impact-value">{{ bulk_preview.pending_scanned }}</div>
+      <div class="rule-impact-note">待确认账单</div>
     </div>
-    <div class="kpi-cell">
-      <div class="label">跳过</div>
-      <div class="val">{{ bulk_preview.skipped_non_default_category }}</div>
-      <div class="foot">已有手动分类</div>
+    <div class="rule-impact-item">
+      <div class="rule-impact-label">跳过</div>
+      <div class="rule-impact-value">{{ bulk_preview.skipped_non_default_category }}</div>
+      <div class="rule-impact-note">已有手动分类</div>
     </div>
-    <div class="kpi-cell">
-      <div class="label">未命中</div>
-      <div class="val">{{ bulk_preview.no_match_count }}</div>
-      <div class="foot">没有规则命中</div>
+    <div class="rule-impact-item">
+      <div class="rule-impact-label">未命中</div>
+      <div class="rule-impact-value">{{ bulk_preview.no_match_count }}</div>
+      <div class="rule-impact-note">没有规则命中</div>
     </div>
   </div>
   {% if bulk_preview['items'] %}
-  <table class="dt-table dt-table--compact">
+  <div class="product-table-wrap">
+  <table class="product-table">
     <thead><tr><th>ID</th><th>商家</th><th>当前分类</th><th>将改为</th><th>规则</th></tr></thead>
     <tbody>
     {% for it in bulk_preview['items'] %}
@@ -137,24 +167,26 @@
         <td>{{ it.id }}</td>
         <td>{{ it.merchant or '—' }}</td>
         <td>{{ it.current_category }}</td>
-        <td><span class="dt-tag">{{ it.suggested_category }}</span></td>
+        <td><span class="product-status">{{ it.suggested_category }}</span></td>
         <td>{{ it.rule_keyword }}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">没有需要改写的待确认账单</div>
-    <div class="empty-state-hint">可以先新增规则，或保留现有分类。</div>
+  <div class="product-state">
+    <div class="product-state-title">没有需要改写的待确认账单</div>
+    <div class="product-state-body">可以先新增规则，或保留现有分类。</div>
   </div>
   {% endif %}
   {% if can_write and bulk_preview.changed_count > 0 %}
   <form method="post" action="/web/rules/apply-pending" class="form--gap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="preview_confirmed" value="yes">
     <input type="hidden" name="preview_token" value="{{ bulk_preview.preview_token }}">
-    <button type="submit" class="dt-btn primary"
+    <button type="submit" class="product-button product-button--primary"
             data-confirm="已预览影响范围，确认把规则应用到这些待确认账单？">
       确认应用到待确认
     </button>
@@ -163,51 +195,55 @@
   <span class="readonly-inline">只读角色无法应用规则。</span>
   {% endif %}
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">先预览，再批量应用</div>
-    <div class="empty-state-hint">预览会列出将改写的账单样本和跳过原因。</div>
+  <div class="product-state">
+    <div class="product-state-title">先预览，再批量应用</div>
+    <div class="product-state-body">预览会列出将改写的账单样本和跳过原因。</div>
   </div>
   {% endif %}
 </section>
 
-<section class="dt-card">
-  <div class="card-header">
-    <h2>历史账单规则预览</h2>
-    <form method="get" action="/web/rules" class="inline-form">
+<section class="product-panel product-panel--padded">
+  <div class="product-panel-header">
+    <div>
+      <div class="product-panel-title">历史账单规则预览</div>
+      <div class="product-panel-subtitle">确认后才会改写未分类的已入账记录</div>
+    </div>
+    <form method="get" action="/web/rules" class="product-inline-form">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="confirmed_preview" value="1">
-      <button type="submit" class="dt-btn">预览已确认影响</button>
+      <button type="submit" class="product-button">预览已确认影响</button>
     </form>
   </div>
   <p class="meta">历史账单默认先预览、再应用。确认应用只处理「其他/未分类」的已确认账单，并记录可回滚批次。</p>
   {% if confirmed_bulk_preview %}
-  <div class="kpi-strip kpi-strip--compact">
-    <div class="kpi-cell primary">
-      <div class="label">将改写</div>
-      <div class="val">{{ confirmed_bulk_preview.changed_count }}</div>
-      <div class="foot">已确认分类</div>
+  <div class="rule-impact-grid">
+    <div class="rule-impact-item is-primary">
+      <div class="rule-impact-label">将改写</div>
+      <div class="rule-impact-value">{{ confirmed_bulk_preview.changed_count }}</div>
+      <div class="rule-impact-note">已确认分类</div>
     </div>
-    <div class="kpi-cell">
-      <div class="label">扫描</div>
-      <div class="val">{{ confirmed_bulk_preview.confirmed_scanned }}</div>
-      <div class="foot">已确认账单</div>
+    <div class="rule-impact-item">
+      <div class="rule-impact-label">扫描</div>
+      <div class="rule-impact-value">{{ confirmed_bulk_preview.confirmed_scanned }}</div>
+      <div class="rule-impact-note">已确认账单</div>
     </div>
-    <div class="kpi-cell">
-      <div class="label">跳过</div>
-      <div class="val">{{ confirmed_bulk_preview.skipped_non_default_category }}</div>
-      <div class="foot">已有分类</div>
+    <div class="rule-impact-item">
+      <div class="rule-impact-label">跳过</div>
+      <div class="rule-impact-value">{{ confirmed_bulk_preview.skipped_non_default_category }}</div>
+      <div class="rule-impact-note">已有分类</div>
     </div>
-    <div class="kpi-cell">
-      <div class="label">未命中</div>
-      <div class="val">{{ confirmed_bulk_preview.no_match_count }}</div>
-      <div class="foot">没有规则命中</div>
+    <div class="rule-impact-item">
+      <div class="rule-impact-label">未命中</div>
+      <div class="rule-impact-value">{{ confirmed_bulk_preview.no_match_count }}</div>
+      <div class="rule-impact-note">没有规则命中</div>
     </div>
   </div>
   {% if confirmed_bulk_preview.scan_limit_reached %}
-  <div class="dt-pill warn">本次只扫描前 {{ confirmed_bulk_preview.scan_limit }} 条，确认后可再次预览剩余账单。</div>
+  <div class="product-status product-status--warning">本次只扫描前 {{ confirmed_bulk_preview.scan_limit }} 条，确认后可再次预览剩余账单。</div>
   {% endif %}
   {% if confirmed_bulk_preview['items'] %}
-  <table class="dt-table dt-table--compact">
+  <div class="product-table-wrap">
+  <table class="product-table">
     <thead><tr><th>ID</th><th>商家</th><th>当前分类</th><th>将改为</th><th>规则</th></tr></thead>
     <tbody>
     {% for it in confirmed_bulk_preview['items'] %}
@@ -215,24 +251,26 @@
         <td>{{ it.id }}</td>
         <td>{{ it.merchant or '—' }}</td>
         <td>{{ it.current_category }}</td>
-        <td><span class="dt-tag">{{ it.suggested_category }}</span></td>
+        <td><span class="product-status">{{ it.suggested_category }}</span></td>
         <td>{{ it.rule_keyword }}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">没有需要改写的已确认账单</div>
-    <div class="empty-state-hint">只有仍为「其他/未分类」的历史账单会进入确认应用。</div>
+  <div class="product-state">
+    <div class="product-state-title">没有需要改写的已确认账单</div>
+    <div class="product-state-body">只有仍为「其他/未分类」的历史账单会进入确认应用。</div>
   </div>
   {% endif %}
   {% if can_write and confirmed_bulk_preview.changed_count > 0 %}
   <form method="post" action="/web/rules/apply-confirmed" class="form--gap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="preview_confirmed" value="yes">
     <input type="hidden" name="preview_token" value="{{ confirmed_bulk_preview.preview_token }}">
-    <button type="submit" class="dt-btn danger"
+    <button type="submit" class="product-button product-button--danger"
             data-confirm="确认把规则应用到这些已确认历史账单？操作会被记录，可从规则应用记录回滚。">
       确认应用到已确认
     </button>
@@ -241,21 +279,22 @@
   <span class="readonly-inline">只读角色无法应用规则。</span>
   {% endif %}
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">历史账单必须先预览再应用</div>
-    <div class="empty-state-hint">预览会展示影响数量和样本，确认后才会改写。</div>
+  <div class="product-state">
+    <div class="product-state-title">历史账单必须先预览再应用</div>
+    <div class="product-state-body">预览会展示影响数量和样本，确认后才会改写。</div>
   </div>
   {% endif %}
 </section>
 
-<section class="dt-card">
-  <div class="card-header">
-    <h2>规则应用记录</h2>
+<section class="product-panel product-panel--padded">
+  <div class="product-panel-header">
+    <div class="product-panel-title">规则应用记录</div>
     <span class="meta">最近 {{ rule_applications|length }} 次</span>
   </div>
-  <p class="meta">只记录真实改写的批次。回滚只会恢复仍停留在当时目标分类的账单，手动改过的会跳过。</p>
+  <p class="meta">这里只记录发生过分类变更的批次。回滚会跳过后来又被手动调整的账单。</p>
   {% if rule_applications %}
-  <table class="dt-table dt-table--compact">
+  <div class="product-table-wrap">
+  <table class="product-table">
     <thead>
       <tr>
         <th>批次</th>
@@ -270,20 +309,21 @@
       <tr>
         <td><code>{{ batch.public_id[:8] }}</code></td>
         <td>
-          {% if batch.status == 'rolled_back' %}<span class="dt-pill muted">已回滚</span>
-          {% elif batch.status == 'rollback_partial' %}<span class="dt-pill warn">部分回滚</span>
-          {% elif batch.status == 'rollback_skipped' %}<span class="dt-pill muted">未回滚</span>
-          {% elif batch.status == 'applied_confirmed' %}<span class="dt-pill ok">已应用历史</span>
-          {% else %}<span class="dt-pill ok">已应用</span>{% endif %}
+          {% if batch.status == 'rolled_back' %}<span class="product-status">已回滚</span>
+          {% elif batch.status == 'rollback_partial' %}<span class="product-status product-status--warning">部分回滚</span>
+          {% elif batch.status == 'rollback_skipped' %}<span class="product-status">未回滚</span>
+          {% elif batch.status == 'applied_confirmed' %}<span class="product-status product-status--success">已应用历史</span>
+          {% else %}<span class="product-status product-status--success">已应用</span>{% endif %}
         </td>
         <td>{{ batch.changed_count }}</td>
         <td>{{ batch.pending_scanned }}</td>
         <td>
           {% if can_write and not batch.rolled_back_at %}
-          <form method="post" action="/web/rules/applications/{{ batch.public_id }}/rollback" class="inline-form"
+          <form method="post" action="/web/rules/applications/{{ batch.public_id }}/rollback" class="product-inline-form"
                 data-confirm="回滚这次规则应用？只会恢复未被手动改过的账单。">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <button type="submit" class="dt-btn danger">回滚</button>
+            <button type="submit" class="product-button product-button--danger">回滚</button>
           </form>
           {% elif not can_write %}
           <span class="readonly-inline">只读</span>
@@ -295,21 +335,23 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">还没有规则应用记录</div>
-    <div class="empty-state-hint">通过上方预览并确认应用后，这里会出现可回滚的批次。</div>
+  <div class="product-state">
+    <div class="product-state-title">还没有规则应用记录</div>
+    <div class="product-state-body">通过上方预览并确认应用后，这里会出现可回滚的批次。</div>
   </div>
   {% endif %}
 </section>
 
-<section class="dt-card">
-  <div class="card-header">
-    <h2>当前规则（{{ rules|length }} 条）</h2>
+<section class="product-panel product-panel--padded">
+  <div class="product-panel-header">
+    <div class="product-panel-title">当前规则（{{ rules|length }} 条）</div>
     <span class="meta">批量应用入口已移到上方预览区。</span>
   </div>
   {% if rules %}
-  <table class="dt-table">
+  <div class="product-table-wrap">
+  <table class="product-table">
     <thead>
       <tr>
         <th class="th-w-60">优先级</th>
@@ -325,33 +367,35 @@
       <tr>
         <td>{{ r.priority }}</td>
         <td><code>{{ r.keyword }}</code></td>
-        <td><span class="dt-tag">{{ r.category }}</span></td>
+        <td><span class="product-status">{{ r.category }}</span></td>
         <td>
           {% set conditions = [] %}
-          {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ' ~ home_currency_symbol ~ ('%.2f' % (r.amount_min_cents / 100))) %}{% endif %}
-          {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ' ~ home_currency_symbol ~ ('%.2f' % (r.amount_max_cents / 100))) %}{% endif %}
+          {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ' ~ home_amount_label(r.amount_min_cents)) %}{% endif %}
+          {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ' ~ home_amount_label(r.amount_max_cents)) %}{% endif %}
           {% if r.source_contains %}{% set _ = conditions.append('来源含「' ~ r.source_contains ~ '」') %}{% endif %}
           {% if r.tag_contains %}{% set _ = conditions.append('标签「' ~ r.tag_contains ~ '」') %}{% endif %}
           {{ conditions|join(' · ') if conditions else '—' }}
         </td>
         <td>
-          {% if r.enabled %}<span class="dt-pill ok">启用</span>
-          {% else %}<span class="dt-pill muted">停用</span>{% endif %}
+          {% if r.enabled %}<span class="product-status product-status--success">启用</span>
+          {% else %}<span class="product-status">停用</span>{% endif %}
         </td>
         <td>
           {% if can_write %}
-          <form method="post" action="/web/rules/{{ r.id }}/toggle" class="inline-form">
+          <form method="post" action="/web/rules/{{ r.id }}/toggle" class="product-inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
-            <button type="submit" class="dt-btn">
+            <button type="submit" class="product-button">
               {% if r.enabled %}停用{% else %}启用{% endif %}
             </button>
           </form>
-          <form method="post" action="/web/rules/{{ r.id }}/delete" class="inline-form"
+          <form method="post" action="/web/rules/{{ r.id }}/delete" class="product-inline-form"
                 data-confirm="删除规则「{{ r.keyword }}」？">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
-            <button type="submit" class="dt-btn danger">删除</button>
+            <button type="submit" class="product-button product-button--danger">删除</button>
           </form>
           {% else %}<span class="readonly-inline">只读</span>{% endif %}
         </td>
@@ -359,10 +403,11 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">还没有自定义规则</div>
-    <div class="empty-state-hint">{% if can_write %}默认 36 条内置规则仍在生效。可以在左侧新增本账本自有的关键词。{% else %}默认内置规则仍在生效；只读角色不能新增本账本规则。{% endif %}</div>
+  <div class="product-state">
+    <div class="product-state-title">还没有自定义规则</div>
+    <div class="product-state-body">{% if can_write %}默认 36 条内置规则仍在生效。可以在上方新增本账本自有的关键词。{% else %}默认内置规则仍在生效；只读角色不能新增本账本规则。{% endif %}</div>
   </div>
   {% endif %}
 </section>

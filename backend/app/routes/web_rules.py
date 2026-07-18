@@ -5,7 +5,6 @@ Split from ``web_app.py`` in v0.4-alpha3 slice 2.
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -18,6 +17,7 @@ from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
+    _parse_major_amount,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
@@ -48,17 +48,7 @@ router = APIRouter(prefix="/web", tags=["web"])
 
 
 def _parse_optional_amount_cents(raw: str) -> int | None:
-    text = (raw or "").strip()
-    if not text:
-        return None
-    try:
-        amount = Decimal(text)
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", "金额条件不是合法数字。", status_code=422) from exc
-    cents = int((amount * Decimal("100")).to_integral_value())
-    if cents < 0:
-        raise AppError("invalid_request", "金额条件不能为负数。", status_code=422)
-    return cents
+    return _parse_major_amount(raw, label="金额条件")
 
 
 @router.get("/rules", response_class=HTMLResponse)

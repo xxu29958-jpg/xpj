@@ -31,6 +31,8 @@ internal data class DebtDetailScreenCallbacks(
     val onRefresh: () -> Unit,
     val onSelectKind: (String) -> Unit,
     val onOpenAction: (DebtAction) -> Unit,
+    val onVoidRepayment: (String) -> Unit,
+    val onLoadMoreRepayments: () -> Unit,
 )
 
 @Composable
@@ -71,29 +73,56 @@ internal fun DebtDetailContent(
             proposalState = readableProposalState,
             bodyState = bodyState,
         )
-        when (bodyState) {
-            DebtDetailBodyState.Loading,
-            DebtDetailBodyState.LoadFailed -> item {
-                DebtDetailBodyStateSlot(
-                    bodyState = bodyState,
-                    error = state.error,
-                    onRetry = callbacks.onRefresh,
-                )
+        debtDetailBodyItems(
+            state = state,
+            proposalState = readableProposalState,
+            proposalViewModel = proposalViewModel,
+            currency = currency,
+            callbacks = callbacks,
+        )
+    }
+}
+
+private fun LazyListScope.debtDetailBodyItems(
+    state: DebtDetailUiState,
+    proposalState: MemberProposalUiState,
+    proposalViewModel: MemberRepaymentProposalViewModel,
+    currency: CurrencyDisplay,
+    callbacks: DebtDetailScreenCallbacks,
+) {
+    val bodyState = debtDetailBodyState(
+        hasDebt = state.debt != null,
+        isLoading = state.isLoading,
+        error = state.error,
+    )
+    when (bodyState) {
+        DebtDetailBodyState.Loading,
+        DebtDetailBodyState.LoadFailed -> item {
+            DebtDetailBodyStateSlot(
+                bodyState = bodyState,
+                error = state.error,
+                onRetry = callbacks.onRefresh,
+            )
+        }
+        DebtDetailBodyState.Content -> state.debt?.let { debt ->
+            if (debt.isMember) {
+                debtDetailMemberItems(debt, proposalState, proposalViewModel, currency)
+            } else {
+                debtDetailExternalItems(debt, state.canModify, currency, callbacks)
             }
-            DebtDetailBodyState.Content -> debt?.let { loaded ->
-                if (loaded.isMember) {
-                    debtDetailMemberItems(
-                        debt = loaded,
-                        proposalState = readableProposalState,
-                        proposalViewModel = proposalViewModel,
-                        currency = currency,
-                    )
-                } else {
-                    debtDetailExternalItems(
-                        debt = loaded,
+            debtRepaymentHistoryItem(
+                debt = debt,
+                state = state,
+                currency = currency,
+                onUndo = callbacks.onVoidRepayment,
+                onLoadMore = callbacks.onLoadMoreRepayments,
+            )
+            if (!debt.isMember) {
+                item {
+                    DebtActionPanel(
+                        debt = debt,
                         canModify = state.canModify,
-                        currency = currency,
-                        callbacks = callbacks,
+                        onAction = callbacks.onOpenAction,
                     )
                 }
             }
@@ -187,11 +216,42 @@ private fun LazyListScope.debtDetailExternalItems(
         )
     }
     debtInstallmentItem(debt = debt, currency = currency)
+}
+
+private fun LazyListScope.debtRepaymentHistoryItem(
+    debt: Debt,
+    state: DebtDetailUiState,
+    currency: CurrencyDisplay,
+    onUndo: (String) -> Unit,
+    onLoadMore: () -> Unit,
+) {
+    val historyIsFresh = !state.isRepaymentHistoryLoading && state.repaymentHistoryError == null
+    val undoableIds = state.repaymentHistory
+        ?.items
+        .orEmpty()
+        .filter { repayment ->
+            canVoidRepayment(
+                debt = debt,
+                history = state.repaymentHistory,
+                repayment = repayment,
+                canModify = state.canModify,
+                historyIsFresh = historyIsFresh,
+            )
+        }
+        .mapTo(mutableSetOf()) { it.publicId }
     item {
-        DebtActionPanel(
-            debt = debt,
-            canModify = canModify,
-            onAction = callbacks.onOpenAction,
+        DebtRepaymentHistoryCard(
+            state = DebtRepaymentHistoryCardState(
+                history = state.repaymentHistory,
+                isLoading = state.isRepaymentHistoryLoading,
+                error = state.repaymentHistoryError,
+                isLoadingMore = state.isRepaymentHistoryLoadingMore,
+                loadMoreError = state.repaymentHistoryLoadMoreError,
+                undoablePublicIds = undoableIds,
+            ),
+            currency = currency,
+            onUndo = onUndo,
+            onLoadMore = onLoadMore,
         )
     }
 }

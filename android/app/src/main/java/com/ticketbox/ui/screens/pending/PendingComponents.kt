@@ -3,27 +3,32 @@ package com.ticketbox.ui.screens.pending
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 internal fun PendingMessageCard(message: String) {
@@ -56,42 +61,47 @@ internal fun PendingTop(
     trailingAction: (@Composable () -> Unit)? = null,
 ) {
     val pendingCount = state.counts.all
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-        AppPageHeader(
-            title = stringResource(R.string.pending_top_title),
-            subtitle = when {
-                pendingCount > 0 -> stringResource(R.string.pending_top_subtitle_has_items)
-                state.readOnly -> stringResource(R.string.pending_top_subtitle_empty_readonly)
-                else -> stringResource(R.string.pending_top_subtitle_empty)
-            },
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            verticalAlignment = Alignment.Top,
         ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+            ) {
+                Text(
+                    text = stringResource(R.string.pending_top_title),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    text = when {
+                        pendingCount > 0 -> stringResource(R.string.pending_top_subtitle_count, pendingCount)
+                        state.readOnly -> stringResource(R.string.pending_top_subtitle_empty_readonly)
+                        else -> stringResource(R.string.pending_top_subtitle_empty)
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             trailingAction?.invoke()
         }
 
-        when {
-            pendingCount > 0 -> {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    PendingCountMetric(count = pendingCount, modifier = Modifier.weight(1f))
-                    if (!state.readOnly) {
-                        PendingUploadAction(
-                            uploading = state.uploading,
-                            onUploadScreenshot = onUploadScreenshot,
-                        )
-                    }
-                }
-            }
-
-            !state.readOnly -> {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    PendingUploadAction(
-                        uploading = state.uploading,
-                        onUploadScreenshot = onUploadScreenshot,
-                    )
-                }
+        if (!state.readOnly) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PendingUploadAction(
+                    uploading = state.uploading,
+                    onUploadScreenshot = onUploadScreenshot,
+                )
+                Spacer(modifier = Modifier.weight(1f))
             }
         }
     }
@@ -104,33 +114,6 @@ internal data class PendingTopState(
 )
 
 @Composable
-private fun PendingCountMetric(
-    count: Int,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = count.toString(),
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = AppTextHierarchy.hero.weight,
-            maxLines = 1,
-        )
-        Text(
-            text = stringResource(R.string.pending_top_metric_caption),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = AppTextHierarchy.caption.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
 private fun PendingUploadAction(
     uploading: Boolean,
     onUploadScreenshot: () -> Unit,
@@ -140,22 +123,36 @@ private fun PendingUploadAction(
     } else {
         stringResource(R.string.pending_top_cta_upload)
     }
-    AppSecondaryButton(
-        enabled = !uploading,
-        leadingIcon = Icons.Filled.AddPhotoAlternate,
-        text = text,
+    TextButton(
         onClick = onUploadScreenshot,
-    )
+        modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
+        enabled = !uploading,
+        shape = RoundedCornerShape(AppRadius.small),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.AddPhotoAlternate,
+            contentDescription = null,
+            modifier = Modifier.size(AppIconSize.compact),
+        )
+        Text(
+            text = text,
+            modifier = Modifier.padding(start = AppSpacing.smallGap),
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
 }
 
 @Composable
 internal fun PendingDisplayModeButton(
     loading: Boolean,
-    displayMode: PendingDisplayMode,
     onClick: () -> Unit,
 ) {
     AppSecondaryButton(
-        text = if (loading) stringResource(R.string.pending_display_mode_button_loading) else pendingDisplayModeLabel(displayMode),
+        text = if (loading) {
+            stringResource(R.string.pending_display_mode_button_loading)
+        } else {
+            stringResource(R.string.pending_display_options_button)
+        },
         enabled = !loading,
         onClick = onClick,
     )

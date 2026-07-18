@@ -70,7 +70,7 @@
     --font-serif: "Newsreader", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
-/* ───── Body 噪点纸本质感（midnight 弱化） ───── */
+/* ───── Body：以账本内容为视觉主体，不叠加氛围光或装饰纹理 ───── */
 .desktop-shell-active {
     background: var(--surface-app);
     color: var(--text-default);
@@ -81,18 +81,6 @@
     font-feature-settings: "ss01", "ss02";
     letter-spacing: 0.005em;
 }
-.desktop-shell-active::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background:
-        radial-gradient(1200px 600px at 80% -10%, var(--surface-sunken) 0%, transparent 60%),
-        radial-gradient(900px 500px at -10% 110%, var(--surface-sunken) 0%, transparent 60%);
-    opacity: 0.7;
-}
-[data-theme="midnight"] .desktop-shell-active::before { opacity: 0.5; }
 
 .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .serif { font-family: var(--font-serif); font-weight: 400; }

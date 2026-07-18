@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.GoalDraft
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import java.time.YearMonth
@@ -23,24 +24,31 @@ data class CreateSpendingGoalUiState(
     val isSubmitting: Boolean = false,
     val formError: UiText? = null,
     val createdPublicId: String? = null,
+    val homeCurrency: CurrencyCode = CurrencyCode.LegacyFallback,
 ) {
     val canSubmit: Boolean
         get() = canModify &&
             !isSubmitting &&
             name.trim().isNotEmpty() &&
-            (parseAmountCents(targetAmountInput)?.let { it > 0L } == true)
+            (parseAmountCents(targetAmountInput, homeCurrency)?.let { it > 0L } == true)
 }
 
 class CreateSpendingGoalViewModel(
     private val reports: ReportsActions,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(CreateSpendingGoalUiState(canModify = reports.canModifyLedger()))
+    private val _state = MutableStateFlow(
+        CreateSpendingGoalUiState(
+            canModify = reports.canModifyLedger(),
+            homeCurrency = reports.currentHomeCurrency(),
+        ),
+    )
     val state: StateFlow<CreateSpendingGoalUiState> = _state.asStateFlow()
 
     fun reset(month: String = YearMonth.now().toString()) {
         _state.value = CreateSpendingGoalUiState(
             canModify = reports.canModifyLedger(),
             month = month.cleanGoalMonth(),
+            homeCurrency = reports.currentHomeCurrency(),
         )
     }
 
@@ -66,7 +74,7 @@ class CreateSpendingGoalViewModel(
 
     fun submit() {
         val current = _state.value
-        val amountCents = parseAmountCents(current.targetAmountInput)
+        val amountCents = parseAmountCents(current.targetAmountInput, current.homeCurrency)
         if (current.name.trim().isBlank() || amountCents == null || amountCents <= 0L) {
             _state.update { it.copy(formError = UiText.res(R.string.spending_goal_create_validation)) }
             return

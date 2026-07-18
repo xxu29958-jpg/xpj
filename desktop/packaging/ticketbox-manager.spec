@@ -17,6 +17,9 @@ analysis = Analysis(
     binaries=[],
     datas=[
         (os.path.join(DESKTOP, "backend_manager", "ui.html"), "backend_manager"),
+        (os.path.join(DESKTOP, "backend_manager", "product.html"), "backend_manager"),
+        (os.path.join(DESKTOP, "backend_manager", "product.css"), "backend_manager"),
+        (os.path.join(DESKTOP, "backend_manager", "product.js"), "backend_manager"),
     ],
     hiddenimports=[],
     hookspath=[],

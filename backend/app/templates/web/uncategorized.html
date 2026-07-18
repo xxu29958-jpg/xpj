@@ -1,77 +1,114 @@
 {% extends "base.html" %}
-{% block title %}未分类清单 — 小票夹{% endblock %}
+{% block title %}未分类 · 资料库 · 小票夹{% endblock %}
+
 {% block content %}
-<h1 class="page-title page-title--compact">未分类的待确认账单</h1>
-<p class="meta">
-  {% if can_write %}
-  下列账单的分类为「其他/未分类」。勾选后批量改写分类，不会自动确认，也不会修改已确认账单。
-  如需让规则自动接管，请到<a href="/web/rules{{ q }}">分类规则</a>新增关键词规则。
-  {% else %}
-  下列账单的分类为「其他/未分类」。只读角色只能查看，不能批量改写分类。
-  {% endif %}
-</p>
+<nav class="detail-breadcrumb" aria-label="面包屑">
+  <a class="page-back-link" href="/web/library{{ q }}">资料库</a>
+  <span aria-hidden="true">/</span>
+  <span>未分类</span>
+</nav>
+
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水 / 资料库 / 未分类</span>
+    <h1 class="page-title page-title--compact">未分类流水</h1>
+    <p class="product-page-summary">
+      这里只收拢仍在“待我处理”中的其他或未分类账单。批量设置分类不会自动入账，也不会改动已入账流水。
+    </p>
+  </div>
+  <div class="product-page-actions">
+    <a class="product-button" href="/web/rules{{ q }}">管理自动分类规则</a>
+  </div>
+</header>
 
 {% if flash_message %}
-<div class="dt-alert success">{{ flash_message }}</div>
+<div class="product-feedback" role="status">{{ flash_message }}</div>
+{% endif %}
+
+{% if not can_write %}
+<div class="product-feedback" role="status">只读角色可以核对未分类流水，但不能批量修改分类。</div>
 {% endif %}
 
 {% if uncategorized_items %}
-<section class="dt-card">
-  <form method="post" action="/web/categories/uncategorized/bulk-set" class="dt-form-grid">
+<section class="uncategorized-workspace" aria-label="未分类流水">
+  <form method="post"
+        action="/web/categories/uncategorized/bulk-set"
+        class="product-panel uncategorized-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <table class="dt-table">
-      <thead>
-        <tr>
-          <th><input type="checkbox" id="select-all" {% if not can_write %}disabled{% endif %}></th>
-          <th>创建时间</th>
-          <th>商家</th>
-          <th class="num">金额</th>
-          <th>当前分类</th>
-          <th>备注</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in uncategorized_items %}
-        <tr>
-          <td><input type="checkbox" name="expense_ids" value="{{ item.id }}" {% if not can_write %}disabled{% endif %}></td>
-          <td>{{ item.created_at }}</td>
-          <td>{{ item.merchant or '—' }}</td>
-          <td class="num">{% if item.amount_yuan %}{{ home_currency_symbol }}{{ item.amount_yuan }}{% else %}—{% endif %}</td>
-          <td>{{ item.category or '未分类' }}</td>
-          <td>{{ item.note or '' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <div class="form-inline">
+
+    <div class="product-panel-header uncategorized-header">
+      <div>
+        <h2 class="product-panel-title">待整理（{{ uncategorized_items | length }} 笔）</h2>
+        <p class="product-panel-subtitle">选择需要归到同一分类的流水，再一次应用。</p>
+      </div>
+      <a class="product-button product-button--small" href="/web/categories{{ q }}">查看分类结构</a>
+    </div>
+
+    <div class="product-table-wrap">
+      <table class="product-table uncategorized-table">
+        <thead>
+          <tr>
+            <th>
+              <span class="sr-only">选择</span>
+            </th>
+            <th>流水</th>
+            <th>创建时间</th>
+            <th>当前分类</th>
+            <th class="amount">金额</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in uncategorized_items %}
+          <tr>
+            <td>
+              <label class="product-check">
+                <input type="checkbox"
+                       name="expense_ids"
+                       value="{{ item.id }}"
+                       aria-label="选择 {{ item.merchant or '未命名流水' }}"
+                       {% if not can_write %}disabled{% endif %}>
+                <span class="sr-only">选择</span>
+              </label>
+            </td>
+            <td>
+              <strong>{{ item.merchant or '待补商家' }}</strong>
+              <div class="uncategorized-note">{{ item.note or '没有备注' }}</div>
+            </td>
+            <td>{{ item.created_at or '—' }}</td>
+            <td><span class="product-status product-status--warning">{{ item.category or '未分类' }}</span></td>
+            <td class="amount">
+              {% if item.amount_yuan %}{{ home_currency_symbol }}{{ item.amount_yuan }}{% else %}待补金额{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="uncategorized-bulkbar">
       {% if can_write %}
-      <label>批量设置为
-        <select name="category" required>
-          <option value="">请选择分类…</option>
-          {% for cat in default_categories %}
+      <label class="product-field uncategorized-category-field">
+        <span>将所选流水归到</span>
+        <select class="product-input" name="category" required>
+          <option value="">选择分类</option>
+          {% for cat in available_categories %}
           <option value="{{ cat }}">{{ cat }}</option>
           {% endfor %}
         </select>
       </label>
-      <button type="submit" class="dt-btn primary">应用到所选</button>
-      {% else %}<span class="readonly-inline">只读角色无法批量改写分类。</span>{% endif %}
-      <a href="/web/categories{{ q }}" class="dt-btn">返回分类账本</a>
+      <button type="submit" class="product-button product-button--primary">应用分类</button>
+      {% else %}
+      <span class="readonly-inline">当前仅可查看。</span>
+      {% endif %}
     </div>
   </form>
 </section>
-<script>
-  (function () {
-    var all = document.getElementById('select-all');
-    if (!all) { return; }
-    all.addEventListener('change', function () {
-      var boxes = document.querySelectorAll('input[name="expense_ids"]');
-      for (var i = 0; i < boxes.length; i++) { boxes[i].checked = all.checked; }
-    });
-  })();
-</script>
 {% else %}
-<div class="dt-card">
-  <p>当前账本没有未分类的待确认账单。可以回到<a href="/web/categories{{ q }}">分类账本</a>。</p>
+<div class="product-state">
+  <div class="product-state-title">没有需要整理的未分类流水</div>
+  <div class="product-state-body">待我处理中的账单都已经有分类；后续新增的未分类草稿会自动汇集到这里。</div>
+  <a class="product-state-action" href="/web/categories{{ q }}">返回分类结构</a>
 </div>
 {% endif %}
 {% endblock %}

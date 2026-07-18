@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -14,6 +15,7 @@ data class LedgerSessionIdentity(
     val deviceName: String,
     val role: String,
     val boundAt: String,
+    val homeCurrency: CurrencyCode? = null,
 )
 
 data class LedgerSessionSnapshot(
@@ -233,4 +235,5 @@ private fun LedgerSessionIdentity.toPersistedIdentity(): PersistedLedgerIdentity
         deviceName = deviceName,
         role = role,
         boundAt = boundAt,
+        homeCurrencyCode = homeCurrency?.storageKey,
     )

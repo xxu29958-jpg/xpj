@@ -46,12 +46,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.ticketbox.R
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
@@ -76,12 +74,12 @@ typealias PageRole = AppPageRole
 val PageRole.density: PageDensity
     get() = when (this) {
         PageRole.Ledger,
-        PageRole.Edit -> PageDensity.Compact
+        PageRole.Edit,
+        PageRole.Settings -> PageDensity.Compact
 
         PageRole.Today,
         PageRole.Pending,
         PageRole.Stats,
-        PageRole.Settings,
         PageRole.Auth -> PageDensity.Comfortable
     }
 
@@ -89,9 +87,6 @@ object AppPageDefaults {
     val HorizontalPadding: Dp = AppSpacing.screenHorizontal
     val ImeStatusBarFallback: Dp = 44.dp
 
-    // 浮动底栏（含上下外边距）的估算高度。后续若改为实测高度，
-    // 仅需在这里替换。
-    val BottomBarHeight: Dp = 96.dp
     val BottomContentExtraPadding: Dp =
         AppSpacing.bottomContentPadding + AppSpacing.sectionGap + AppSpacing.cardGap
     val CardGap: Dp = AppSpacing.cardGap
@@ -119,6 +114,21 @@ object AppPageDefaults {
 }
 
 internal val LocalAppImeVisible = compositionLocalOf { false }
+
+/**
+ * True only while the outer Material scaffold has already inset content by a
+ * measured compact-window navigation bar. Pages then must not guess or add a
+ * second navigation-bar inset.
+ */
+internal val LocalPrimaryNavigationInsetHandled = compositionLocalOf { false }
+
+/**
+ * True while the product shell already owns the status-bar inset through its
+ * global domain bar. Primary pages then start below that bar instead of adding
+ * the system inset a second time. Secondary pages keep their own inset because
+ * the shell bar is intentionally absent while drilling in.
+ */
+internal val LocalPrimaryStatusInsetHandled = compositionLocalOf { false }
 
 @Immutable
 data class AppPageChrome(
@@ -162,18 +172,14 @@ data class AppPageLayoutValues(
 
 object BottomBarAwarePadding {
     @Composable
-    fun viewport(hasBottomBar: Boolean): Dp {
+    fun viewport(): Dp {
+        if (LocalPrimaryNavigationInsetHandled.current) return 0.dp
         val density = LocalDensity.current
-        val navigationBottom = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
-        return if (hasBottomBar) {
-            AppPageDefaults.BottomBarHeight + navigationBottom
-        } else {
-            navigationBottom
-        }
+        return with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     }
 
     @Composable
-    fun bottom(hasBottomBar: Boolean): Dp = viewport(hasBottomBar) + AppPageDefaults.BottomContentExtraPadding
+    fun bottom(): Dp = viewport() + AppPageDefaults.BottomContentExtraPadding
 }
 
 @Composable
@@ -203,8 +209,12 @@ fun rememberAppPageLayout(
         )
         measuredStatusTop
     }
-    val safeTop = if (chrome.includeStatusBarPadding) statusTop else 0.dp
-    val bottomViewportPadding = BottomBarAwarePadding.viewport(hasBottomBar = chrome.hasBottomBar)
+    val safeTop = resolveStatusPadding(
+        includeStatusBarPadding = chrome.includeStatusBarPadding,
+        shellInsetHandled = LocalPrimaryStatusInsetHandled.current,
+        measuredStatusPadding = statusTop,
+    )
+    val bottomViewportPadding = BottomBarAwarePadding.viewport()
     val bottomPadding = bottomViewportPadding + AppPageDefaults.BottomContentExtraPadding
     val pageDensity = chrome.role.density
     val contentTopPadding = AppPageDefaults.topContentPadding(pageDensity)
@@ -220,6 +230,12 @@ fun rememberAppPageLayout(
         contentGap = AppPageDefaults.sectionGap(pageDensity),
     )
 }
+
+internal fun resolveStatusPadding(
+    includeStatusBarPadding: Boolean,
+    shellInsetHandled: Boolean,
+    measuredStatusPadding: Dp,
+): Dp = if (includeStatusBarPadding && !shellInsetHandled) measuredStatusPadding else 0.dp
 
 /**
  * 页面骨架。统一负责：
@@ -248,8 +264,8 @@ fun AppPageScaffold(
 
 /**
  * 可滚动的页面列。可选 [bottomBar] 槽：传入时在 [Box] 底部居中浮一条操作栏。
- * 滚动**视口止于栏上沿**：按**实测**栏高（栏可能两行加提示，高度不固定，
- * 静态估算 [AppPageDefaults.BottomBarHeight] 会算少）收缩视口，而不是把栏高
+ * 滚动**视口止于栏上沿**：按**实测**栏高（栏可能两行加提示，高度不固定）
+ * 收缩视口，而不是把栏高
  * 折成滚动内容的底 padding。后者会让视口延伸到栏背后——"最小滚动"类的
  * bring-into-view（无障碍聚焦、测试 `performScrollTo`）把目标停在视口底缘
  * 即栏底下，看似可见、点击却被栏吃掉。传 [bottomBar] 时调用方应让
@@ -326,7 +342,7 @@ fun AppPageHeader(
     title: String,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
-    eyebrow: String = stringResource(R.string.components_page_header_eyebrow),
+    eyebrow: String = "",
     action: (@Composable RowScope.() -> Unit)? = null,
 ) {
     ScreenHeader(
@@ -448,7 +464,7 @@ private fun BoxScope.AppPullToRefreshIndicator(
         isRefreshing = isRefreshing,
         modifier = Modifier
             .align(Alignment.TopCenter)
-            .padding(top = topPadding + 4.dp),
+            .padding(top = topPadding + AppSpacing.miniGap),
     )
 }
 

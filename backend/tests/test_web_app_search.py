@@ -74,6 +74,10 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, ide
 
     page = web_client.get("/web/search?ledger_id=owner&q=SearchCafe")
     assert page.status_code == 200
+    assert 'data-domain="transactions"' in page.text
+    assert 'class="ledger-search-results"' in page.text
+    assert "dt-card" not in page.text
+    assert 'class="dt-' not in page.text
     assert f"/web/expenses/{pending_id}/edit?ledger_id=owner" in page.text
     assert f"/web/expenses/{confirmed_id}/edit?ledger_id=owner" in page.text
     assert "/web/rules?ledger_id=owner" in page.text

@@ -50,6 +50,7 @@ import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanel
 import com.ticketbox.ui.screens.expense.ExpenseDateField
 import com.ticketbox.ui.screens.expense.ExpenseDateFieldActions
 import com.ticketbox.ui.screens.expense.ExpenseDateFieldState
+import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldActions
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
@@ -188,6 +189,7 @@ fun ExpenseEditScreen(
                 drafts = state.itemDrafts,
                 parentAmountCents = state.expenseItems?.parentAmountCents,
                 saving = state.itemsSaving,
+                currency = checkNotNull(state.expense).homeCurrency,
             ),
             actions = itemizationActions.editor,
         )
@@ -200,6 +202,7 @@ fun ExpenseEditScreen(
                 parentAmountCents = state.expenseSplits?.parentAmountCents,
                 saving = state.splitsSaving,
                 loading = state.splitMembersLoading,
+                currency = checkNotNull(state.expense).homeCurrency,
             ),
             actions = splitEditingActions.editor,
         )
@@ -445,11 +448,12 @@ fun ExpenseEditScreen(
 
         ExpenseCurrencyFields(
             currency = currency,
-            onCurrencyChange = {
-                currency = it
-            },
+            homeCurrency = currentExpense.homeCurrency,
             amountText = amountText,
-            onAmountChange = { amountText = it },
+            actions = ExpenseCurrencyFieldActions(
+                onCurrencyChange = { currency = it },
+                onAmountChange = { amountText = it },
+            ),
             options = ExpenseCurrencyFieldOptions(
                 enabled = !readOnly,
                 autoFocusAmount = false,

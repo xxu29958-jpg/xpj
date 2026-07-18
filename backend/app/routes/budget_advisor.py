@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context
+from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     BudgetAdviceDto,
@@ -77,7 +77,7 @@ def get_discretionary(
 @router.post("/advise", response_model=BudgetAdviseResponse)
 def post_advise(
     payload: BudgetAdviseRequest,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> BudgetAdviseResponse:
     result = run_budget_advisor(

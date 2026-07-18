@@ -79,7 +79,7 @@ private fun AppAdaptiveMetricGridTwoColumn(
 }
 
 internal fun resolveAppAdaptiveMetricGridMode(maxWidth: Dp): AppAdaptiveMetricGridMode =
-    if (maxWidth <= AppAdaptiveBreakpoints.singleColumnMaxWidth) {
+    if (maxWidth < AppAdaptiveBreakpoints.mediumWidthMin) {
         AppAdaptiveMetricGridMode.SingleColumn
     } else {
         AppAdaptiveMetricGridMode.TwoColumn

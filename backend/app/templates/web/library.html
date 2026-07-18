@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}资料库 · 小票夹{% endblock %}
+
+{% block content %}
+<header class="product-page-header task-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水</span>
+    <h1 class="page-title" id="library-title">资料库</h1>
+  </div>
+  <div class="task-header__command">
+    <p class="task-header__status">
+      管理分类、商家、标签和自动归档规则；误删记录从回收站恢复。
+    </p>
+  </div>
+</header>
+
+<section class="library-directory library-management-list" aria-label="资料库管理">
+  <a class="library-row" href="/web/categories{{ q }}">
+    <div class="library-row-main">
+      <h2>分类</h2>
+      <span class="product-status">账面结构</span>
+    </div>
+    <p>维护支出结构，处理未分类流水。</p>
+    <span class="library-row-action">进入</span>
+  </a>
+  <a class="library-row" href="/web/merchants{{ q }}">
+    <div class="library-row-main">
+      <h2>商家</h2>
+      <span class="product-status">名称归一</span>
+    </div>
+    <p>合并不同写法，维护标准商家名称。</p>
+    <span class="library-row-action">进入</span>
+  </a>
+  <a class="library-row" href="/web/tags{{ q }}">
+    <div class="library-row-main">
+      <h2>标签</h2>
+      <span class="product-status">跨分类语境</span>
+    </div>
+    <p>整理报销、旅行等语境，合并重复标签。</p>
+    <span class="library-row-action">进入</span>
+  </a>
+  <a class="library-row" href="/web/rules{{ q }}">
+    <div class="library-row-main">
+      <h2>规则</h2>
+      <span class="product-status">自动归档</span>
+    </div>
+    <p>按商家和关键词自动分类，应用前预览影响。</p>
+    <span class="library-row-action">进入</span>
+  </a>
+  <a class="library-row" href="/web/recycle-bin{{ q }}">
+    <div class="library-row-main">
+      <h2>回收站</h2>
+      <span class="product-status">可恢复记录</span>
+    </div>
+    <p>查看已归档项目，在版本仍匹配时恢复。</p>
+    <span class="library-row-action">进入</span>
+  </a>
+</section>
+{% endblock %}

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="debt_repayment_history_title">还款记录</string>
+    <string name="debt_repayment_history_count">已加载 %1$d / 共 %2$d 笔</string>
+    <string name="debt_repayment_history_loading">正在同步还款事实…</string>
+    <string name="debt_repayment_history_empty">还没有还款记录。</string>
+    <string name="debt_repayment_history_load_failed">还款记录暂时无法同步；欠款详情仍可查看。</string>
+    <string name="debt_repayment_history_load_more_failed">更多还款记录暂时无法同步，已加载的记录仍可查看。</string>
+    <string name="debt_repayment_history_load_more">加载更多记录</string>
+    <string name="debt_repayment_history_loading_more">正在加载更多…</string>
+    <string name="debt_repayment_history_retry_load_more">重试加载更多</string>
+    <string name="debt_repayment_history_active">已生效</string>
+    <string name="debt_repayment_history_voided">已撤销</string>
+    <string name="debt_repayment_history_unknown">状态待同步</string>
+    <string name="debt_repayment_history_paid_at">还款时间：%1$s</string>
+    <string name="debt_repayment_history_void_reason">撤销原因：%1$s</string>
+    <string name="debt_repayment_history_voided_at">撤销时间：%1$s</string>
+    <string name="debt_repayment_history_undo">撤销这笔误记</string>
+    <string name="debt_action_repayment_void_title">撤销误记还款</string>
+    <string name="debt_action_repayment_void_warning">撤销会恢复相应未还金额，并保留原还款和本次更正记录。</string>
+    <string name="debt_action_repayment_void_validation">请填写撤销原因。</string>
+    <string name="debt_action_repayment_void_done">已撤销这笔误记还款。</string>
+</resources>

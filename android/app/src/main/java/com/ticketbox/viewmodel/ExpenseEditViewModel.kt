@@ -9,6 +9,7 @@ import com.ticketbox.data.repository.ExpenseEditActions
 import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.domain.model.BillSplitSent
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -21,8 +22,7 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
-import java.math.BigDecimal
-import java.math.RoundingMode
+import com.ticketbox.ui.components.formatAmountInput
 import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -788,10 +788,10 @@ class ExpenseEditViewModel(
         return true
     }
 
-    /** Yuan-text rendering shared by the items / splits editor extension files. */
-    internal fun centsToYuanText(cents: Long?): String {
+    /** Home-currency input rendering shared by the items / splits editor extension files. */
+    internal fun centsToYuanText(cents: Long?, currency: CurrencyCode): String {
         if (cents == null) return ""
-        return BigDecimal(abs(cents)).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
+        return formatAmountInput(abs(cents), currency)
     }
 }
 

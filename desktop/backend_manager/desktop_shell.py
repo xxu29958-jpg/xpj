@@ -13,6 +13,7 @@ from backend_manager.windows_user_security import require_local_fixed_regular_fi
 
 _CREATE_NO_WINDOW = 0x08000000
 _EDGE_APP_PATH = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"
+_APP_WINDOW_SIZE = "1180,760"
 
 
 def open_in_browser(url: str) -> bool:
@@ -111,7 +112,7 @@ def open_app_window(url: str, *, profile: Path) -> EdgeAppWindow | None:
                 "--no-default-browser-check",
                 f"--user-data-dir={profile_path}",
                 f"--app={url}",
-                "--window-size=820,660",
+                f"--window-size={_APP_WINDOW_SIZE}",
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

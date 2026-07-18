@@ -5,10 +5,9 @@
 不该被当独立 lane 收割。命名 `_token_parity_tables.py` 既走下划线「私有单一用途」
 约定,又避开 lane 发现 glob。
 
-为什么拆出来:`_audit_token_parity.py` 把 ≈230 个 token 的逐字段 mapping 内联会顶破
-`_audit_codebase.py` 的 500 行 file-LOC 门(`codebase_audit_gate.files_over_500` 已
-满额 14,再涨即 FAIL)。映射表是稳定的「哪个 CSS var ↔ 哪个 Kotlin 字段」声明,与
-解析/比对逻辑正交,拆开后两个文件都稳在 500 行内,且表本身就是给人审的「真相清单」。
+为什么拆出来:映射表是稳定的「哪个 CSS var ↔ 哪个 Kotlin 字段」声明,与解析/比对
+逻辑正交;独立表本身就是给人审的「真相清单」,也避免 lane 再次逼近
+`_audit_codebase.py` 的 500 行 file-LOC 门。
 
 每张表是扁平 `tuple[(css_var, kotlin_field), ...]`,顺序 = Kotlin data class 字段顺序,
 方便逐行目检对账。Kotlin 端的结构化导航(series List、嵌套 data class)由 lane 里
@@ -18,6 +17,8 @@
   - Goal 的 bg/border 在 midnight 端 /web 用半透明叠加、Android 预合成不透明,
     属刻意分叉 → 本表只列 GoalTokens 的 **fg**(5 个 tone)。
   - state 的 bg/border 同理(已在 lane 既有 `_STATE_TONES` 处理,本表不重复)。
+  - Dashboard Cards UI 与 `DashboardCardTokens.kt` 已一起退役;旧 card CSS 兼容变量
+    没有 Android 消费者,不再构成跨端 parity 表。其余仍有消费者的表不放宽。
 """
 
 from __future__ import annotations
@@ -68,21 +69,6 @@ GOAL_FG_MAPPING: tuple[tuple[str, str], ...] = (
     ("--goal-near-limit-fg", "nearLimit"),
     ("--goal-exceeded-fg", "exceeded"),
     ("--goal-expired-fg", "expired"),
-)
-
-# ── DashboardCardTokens(全量 24 = 8 卡 × accent/icon/surface)────────────────
-# 表项 = (css_accent_var, css_icon_var, css_surface_var, card_field)。
-# Kotlin 端 card_field 是 DashboardCardTokens 里的卡名,对应
-# DashboardCardAccent(accent, iconTint, surface) 三个 Color,按位对齐三个 css var。
-CARD_MAPPING: tuple[tuple[str, str, str, str], ...] = (
-    ("--card-pending-accent", "--card-pending-icon", "--card-pending-surface", "pending"),
-    ("--card-month-spend-accent", "--card-month-spend-icon", "--card-month-spend-surface", "monthSpend"),
-    ("--card-recent-upload-accent", "--card-recent-upload-icon", "--card-recent-upload-surface", "recentUpload"),
-    ("--card-recurring-accent", "--card-recurring-icon", "--card-recurring-surface", "recurring"),
-    ("--card-goals-accent", "--card-goals-icon", "--card-goals-surface", "goals"),
-    ("--card-budget-accent", "--card-budget-icon", "--card-budget-surface", "budget"),
-    ("--card-backup-accent", "--card-backup-icon", "--card-backup-surface", "backup"),
-    ("--card-device-accent", "--card-device-icon", "--card-device-surface", "device"),
 )
 
 # ── SwipeActionTokens(bg/fg × 3;iconTint 不比 —— 见下注)─────────────────────

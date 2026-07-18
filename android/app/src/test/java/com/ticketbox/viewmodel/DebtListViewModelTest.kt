@@ -1,7 +1,8 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
@@ -200,7 +201,7 @@ class DebtListViewModelTest {
         val draft = viewModel.state.value.addDraft
         assertEquals(listOf("bill.jpg"), repo.parseBillCalls)
         assertEquals("花呗", draft.counterpartyLabel)
-        assertEquals("1200", draft.amountYuanInput)
+        assertEquals("1200.00", draft.amountYuanInput)
         assertEquals(DebtKinds.INSTALLMENT, draft.kind)
         assertEquals("12", draft.installmentCountInput)
         assertEquals("1", draft.installmentPeriodInput)
@@ -348,7 +349,7 @@ class DebtListViewModelTest {
         val viewModel = DebtListViewModel(repo)
         advanceUntilIdle() // init refresh → debts = []
 
-        // A slow refresh stalls inside listDebts() (it captured the pre-create empty list)...
+        // A slow refresh stalls inside listPayables() (it captured the pre-create empty list)...
         val gate = CompletableDeferred<Unit>()
         repo.listGate = gate
         viewModel.refresh()
@@ -402,17 +403,19 @@ private class FakeDebtActions(
     var listResult: Result<List<Debt>> = Result.success(emptyList()),
     var createResult: Result<Debt> = Result.success(sampleDebt()),
     var parseBillResult: Result<DebtBillSuggestion> = Result.success(blankBillSuggestion()),
-) : DebtActions {
+) : DebtListActions {
     val createDrafts = mutableListOf<DebtDraft>()
     val parseBillCalls = mutableListOf<String>()
     var listCalls = 0
 
-    /** When set, listDebts() stalls until completed — used to interleave a slow load. */
+    /** When set, listPayables() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(): Result<List<Debt>> {
+    override fun currentHomeCurrency(): CurrencyCode = CurrencyCode.CNY
+
+    override suspend fun listPayables(): Result<List<Debt>> {
         listCalls++
         // Capture the result at entry so a stalled load returns the snapshot it started with, even
         // if a newer load swaps listResult in the meantime.
@@ -420,8 +423,6 @@ private class FakeDebtActions(
         listGate?.await()
         return captured
     }
-
-    override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))
 
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
         createDrafts += draft
@@ -437,30 +438,6 @@ private class FakeDebtActions(
         return parseBillResult
     }
 
-    override suspend fun recordRepayment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-    ): Result<Debt> = Result.success(sampleDebt(publicId))
-
-    override suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt> = Result.success(sampleDebt(publicId))
-
-    override suspend fun voidDebt(
-        publicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt> = Result.success(sampleDebt(publicId))
-
-    override suspend fun setDebtKind(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtKind: String,
-    ): Result<Debt> = Result.success(sampleDebt(publicId))
 }
 
 private fun blankBillSuggestion(): DebtBillSuggestion = DebtBillSuggestion(

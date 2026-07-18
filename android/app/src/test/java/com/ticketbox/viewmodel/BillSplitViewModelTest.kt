@@ -5,6 +5,7 @@ import com.ticketbox.data.repository.BillSplitLedgerActions
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LedgerSummary
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertFalse
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BillSplitViewModelTest {
@@ -104,12 +106,31 @@ class BillSplitViewModelTest {
 
         assertEquals(listOf(BillSplitTargetLedger("fresh", "Fresh ledger")), vm.uiState.value.candidateTargetLedgers)
     }
+
+    @Test
+    fun viewerCannotCancelSentInvitation() = billSplitTest {
+        val fake = FakeBillSplitActions(canModify = false)
+        val vm = BillSplitViewModel(fake, FakeBillSplitLedgerActions())
+
+        vm.cancel("split_out_1")
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.canModify)
+        assertEquals(0, fake.cancelCalls)
+        assertNotNull(vm.uiState.value.message)
+    }
 }
 
 private class FakeBillSplitActions(
     var inboxResult: Result<List<BillSplitInbox>> = Result.success(emptyList()),
     var sentResult: Result<List<BillSplitSent>> = Result.success(emptyList()),
+    private val canModify: Boolean = true,
 ) : BillSplitActions {
+    var cancelCalls: Int = 0
+        private set
+
+    override fun canModifyLedger(): Boolean = canModify
+
     override suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> = inboxResult
 
     override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> = sentResult
@@ -122,8 +143,10 @@ private class FakeBillSplitActions(
     override suspend fun rejectBillSplitInvitation(publicId: String): Result<BillSplitInbox> =
         Result.success(inboxInvite(publicId = publicId, status = BillSplitStatusValues.REJECTED))
 
-    override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
-        Result.success(sentInvite(publicId = publicId, status = BillSplitStatusValues.CANCELLED))
+    override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> {
+        cancelCalls += 1
+        return Result.success(sentInvite(publicId = publicId, status = BillSplitStatusValues.CANCELLED))
+    }
 }
 
 private class FakeBillSplitLedgerActions(
@@ -140,6 +163,7 @@ private fun ledger(ledgerId: String, name: String): LedgerSummary = LedgerSummar
     name = name,
     role = LEDGER_ROLE_OWNER,
     isDefault = true,
+    homeCurrency = com.ticketbox.domain.model.CurrencyCode.CNY,
 )
 
 private fun inboxInvite(
@@ -149,6 +173,12 @@ private fun inboxInvite(
     publicId = publicId,
     status = status,
     amountCents = 1200,
+    homeCurrency = CurrencyCode.CNY,
+    originalCurrency = CurrencyCode.CNY,
+    originalAmountMinor = 1200L,
+    exchangeRateToHome = null,
+    exchangeRateDate = null,
+    exchangeRateSource = null,
     merchantSnapshot = "Cafe",
     categorySuggestion = "Food",
     expenseTimeSnapshot = "2026-07-01T00:00:00Z",
@@ -169,6 +199,12 @@ private fun sentInvite(
     publicId = publicId,
     status = status,
     amountCents = 1200,
+    homeCurrency = CurrencyCode.CNY,
+    originalCurrency = CurrencyCode.CNY,
+    originalAmountMinor = 1200L,
+    exchangeRateToHome = null,
+    exchangeRateDate = null,
+    exchangeRateSource = null,
     merchantSnapshot = "Cafe",
     categorySuggestion = "Food",
     expenseTimeSnapshot = "2026-07-01T00:00:00Z",

@@ -1,6 +1,7 @@
 package com.ticketbox.notification.budget
 
 import com.ticketbox.domain.model.BudgetMonthly
+import com.ticketbox.domain.model.CurrencyCode
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -31,6 +32,7 @@ fun interface BudgetOverspendSource {
 class BudgetOverspendRuntime(
     val budgetOverspendAlertsEnabled: () -> Boolean,
     val activeLedgerId: () -> String?,
+    val homeCurrency: () -> CurrencyCode,
     val currentMonth: () -> String,
     val monotonicNowMillis: () -> Long,
     val logWarning: (String, Throwable?) -> Unit = { _, _ -> },
@@ -88,7 +90,7 @@ class BudgetOverspendChecker(
         if (budget.month != month) return
         // 拉取期间切了账本 → monthlyBudget 绑的是新 active ledger 的数据，丢弃。
         if (runtime.activeLedgerId() != ledgerId) return
-        val decision = evaluateBudgetOverspend(ledgerId, budget) ?: return
+        val decision = evaluateBudgetOverspend(ledgerId, budget, runtime.homeCurrency()) ?: return
         if (dispatcher.dispatch(decision) == BudgetOverspendDispatchOutcome.SENT) {
             store.markSent(decision.key)
         }

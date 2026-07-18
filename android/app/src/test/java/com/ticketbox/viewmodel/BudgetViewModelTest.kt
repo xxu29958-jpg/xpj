@@ -2,9 +2,13 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.domain.model.BudgetAdvice
+import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.BudgetSuggestion
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
@@ -43,6 +47,7 @@ class BudgetViewModelTest {
                 rolloverAmountCents = -20000,
                 categoryBudgets = listOf(categoryBudget("餐饮", 120000)),
             ),
+            homeCurrency = CurrencyCode.JPY,
         )
 
         val vm = BudgetViewModel(fake, initialMonth = "2026-05")
@@ -52,16 +57,49 @@ class BudgetViewModelTest {
         assertFalse(state.loading)
         assertEquals("2026-05", state.month)
         assertEquals(500000L, state.budget?.totalAmountCents)
-        assertEquals("5000", state.form.totalAmount)
-        assertEquals("-200", state.form.rolloverAmount)
+        assertEquals(CurrencyCode.JPY, state.homeCurrency)
+        assertEquals("500000", state.form.totalAmount)
+        assertEquals("-20000", state.form.rolloverAmount)
         assertEquals("餐饮", state.form.categoryRows.single().category)
         assertEquals(1, fake.loadCalls)
+
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
+        assertEquals(0, fake.adviceMonths.size)
+
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
+        assertEquals(listOf("2026-05"), fake.adviceMonths)
+        assertEquals("餐饮", adviceViewModel.uiState.value.result?.advice?.suggestions?.single()?.category)
+
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(
+                    advice = null,
+                    providerName = "empty",
+                    reasonCode = "ai_advisor_provider_empty",
+                ),
+            )
+        }
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Empty, adviceViewModel.uiState.value.loadState)
+        assertNull(adviceViewModel.uiState.value.result?.advice)
     }
 
     @Test
     fun saveBuildsUpdateAndReloadsReturnedBudget() = budgetTest {
         val fake = FakeBudgetActions(budget = budget(configured = false))
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        var dataChangeCount = 0
+        val vm = BudgetViewModel(
+            repository = fake,
+            initialMonth = "2026-05",
+            onDataChanged = { dataChangeCount += 1 },
+        )
         advanceUntilIdle()
 
         vm.updateTotalAmount(" 3000 ")
@@ -82,13 +120,26 @@ class BudgetViewModelTest {
         assertEquals(120000L, request.categoryBudgets.single().amountCents)
         assertEquals(UiText.res(R.string.budget_message_saved), vm.uiState.value.message)
         assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
+        assertEquals(1, dataChangeCount)
     }
 
     @Test
     fun saveRejectsInvalidAmountsBeforeRepositoryCall() = budgetTest {
         val fake = FakeBudgetActions(budget = budget(configured = false))
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        var dataChangeCount = 0
+        val vm = BudgetViewModel(
+            repository = fake,
+            initialMonth = "2026-05",
+            onDataChanged = { dataChangeCount += 1 },
+        )
         advanceUntilIdle()
+
+        vm.updateTotalAmount("1.005")
+        vm.save()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.savedRequests.size)
+        assertEquals(UiText.res(R.string.budget_validation_amount_invalid), vm.uiState.value.message)
 
         vm.updateTotalAmount("3000")
         vm.updateNonMonthlyAmount("-1")
@@ -98,6 +149,7 @@ class BudgetViewModelTest {
         assertEquals(0, fake.savedRequests.size)
         assertEquals(UiText.res(R.string.budget_validation_nonmonthly_negative), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+        assertEquals(0, dataChangeCount)
     }
 
     @Test
@@ -117,6 +169,15 @@ class BudgetViewModelTest {
         assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertFalse(vm.uiState.value.canModify)
+
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
+        assertFalse(adviceViewModel.uiState.value.canRequest)
+        assertEquals(UiText.res(R.string.common_readonly_ledger), adviceViewModel.uiState.value.error)
+        assertEquals(0, fake.adviceMonths.size)
     }
 
     @Test
@@ -135,6 +196,14 @@ class BudgetViewModelTest {
         assertNull(state.budget)
         assertNull(state.message)
         assertEquals(UiText.res(R.string.budget_message_load_failed), state.loadError)
+
+        fake.adviceResponder = { Result.failure(RuntimeException()) }
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Failed, adviceViewModel.uiState.value.loadState)
+        assertEquals(UiText.res(R.string.budget_advice_load_failed), adviceViewModel.uiState.value.error)
     }
 
     @Test
@@ -169,7 +238,7 @@ class BudgetViewModelTest {
         assertFalse(state.loading)
         assertNull(state.message)
         assertEquals(500000L, state.budget?.totalAmountCents)
-        assertEquals("5000", state.form.totalAmount)
+        assertEquals("5000.00", state.form.totalAmount)
         assertEquals(UiText.res(R.string.budget_message_refresh_failed_with_data), state.loadError)
 
         vm.save()
@@ -219,7 +288,7 @@ class BudgetViewModelTest {
 
         assertEquals("2026-04", vm.uiState.value.month)
         assertEquals(111000L, vm.uiState.value.budget?.totalAmountCents)
-        assertEquals("1110", vm.uiState.value.form.totalAmount)
+        assertEquals("1110.00", vm.uiState.value.form.totalAmount)
     }
 }
 
@@ -227,14 +296,19 @@ private class FakeBudgetActions(
     var budget: BudgetMonthly,
     private val canModify: Boolean = true,
     private val activeLedgerFlow: Flow<String?> = emptyFlow(),
+    private val homeCurrency: CurrencyCode = CurrencyCode.CNY,
 ) : BudgetActions {
     val loadedMonths = mutableListOf<String>()
     val savedMonths = mutableListOf<String>()
     val savedRequests = mutableListOf<BudgetMonthlyUpdate>()
+    val adviceMonths = mutableListOf<String>()
     val loadCalls: Int get() = loadedMonths.size
     var monthlyBudgetResponder: (suspend (String) -> Result<BudgetMonthly>)? = null
+    var adviceResponder: (suspend (String) -> Result<BudgetAdviceResult>)? = null
 
     override fun canModifyLedger(): Boolean = canModify
+
+    override fun currentHomeCurrency(): CurrencyCode = homeCurrency
 
     override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
 
@@ -242,6 +316,28 @@ private class FakeBudgetActions(
         loadedMonths += month
         monthlyBudgetResponder?.let { return it(month) }
         return Result.success(budget.copy(month = month))
+    }
+
+    override suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult> {
+        adviceMonths += month
+        adviceResponder?.let { return it(month) }
+        return Result.success(
+            BudgetAdviceResult(
+                advice = BudgetAdvice(
+                    summary = "保持弹性支出空间。",
+                    suggestions = listOf(
+                        BudgetSuggestion(
+                            category = "餐饮",
+                            suggestedAmountCents = 80_000,
+                            rationale = "近期支出稳定。",
+                        ),
+                    ),
+                    confidence = 0.8,
+                ),
+                providerName = "mock",
+                reasonCode = "advisor_ready",
+            ),
+        )
     }
 
     override suspend fun saveMonthlyBudget(

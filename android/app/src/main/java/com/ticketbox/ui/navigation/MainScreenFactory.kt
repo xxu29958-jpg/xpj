@@ -2,6 +2,7 @@ package com.ticketbox.ui.navigation
 
 import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.repository.BudgetRepository
+import com.ticketbox.data.repository.CategoryPreferenceRepository
 import com.ticketbox.data.repository.DebtRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanActions
@@ -27,6 +28,8 @@ internal class MainScreenFactory(
     val repaymentDraftRepository: RepaymentDraftRepository get() = repositories.repaymentDraftRepository
     val outboxRepository: OutboxRepository get() = repositories.outboxRepository
     val tagRepository: TagRepository get() = repositories.tagRepository
+    val categoryPreferenceRepository: CategoryPreferenceRepository
+        get() = repositories.categoryPreferenceRepository
     val settingsViewModelFactory: ViewModelProvider.Factory get() = viewModelFactories.settingsViewModelFactory
     val categoryRulesViewModelFactory: ViewModelProvider.Factory get() =
         viewModelFactories.categoryRulesViewModelFactory
@@ -39,7 +42,16 @@ internal class MainScreenFactory(
         recurringRepository = repositories.recurringRepository,
         budgetRepository = repositories.budgetRepository,
         reportsRepository = repositories.reportsRepository,
-        repaymentDrafts = repositories.repaymentDraftRepository,
+    )
+
+    fun repositoryViewModelFactory(
+        onExpenseDataChanged: () -> Unit,
+    ): ViewModelProvider.Factory = createRepositoryViewModelFactory(
+        repository = repositories.repository,
+        recurringRepository = repositories.recurringRepository,
+        budgetRepository = repositories.budgetRepository,
+        reportsRepository = repositories.reportsRepository,
+        onExpenseDataChanged = onExpenseDataChanged,
     )
 }
 
@@ -54,6 +66,7 @@ internal data class MainFeatureRepositories(
     val repaymentDraftRepository: RepaymentDraftRepository,
     val outboxRepository: OutboxRepository,
     val tagRepository: TagRepository,
+    val categoryPreferenceRepository: CategoryPreferenceRepository,
 )
 
 internal data class MainScreenViewModelFactories(

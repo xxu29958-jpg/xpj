@@ -46,6 +46,7 @@ enum class BillSplitListLoadState {
 }
 
 data class BillSplitUiState(
+    val canModify: Boolean = true,
     val inbox: List<BillSplitInbox> = emptyList(),
     val sent: List<BillSplitSent> = emptyList(),
     val candidateTargetLedgers: List<BillSplitTargetLedger> = emptyList(),
@@ -70,6 +71,7 @@ class BillSplitViewModel(
 
     private val _uiState = MutableStateFlow(
         BillSplitUiState(
+            canModify = billSplitActions.canModifyLedger(),
             candidateTargetLedgers = ledgerActions.cachedLedgers()
                 .filter { ledgerRoleCanModify(it.role) }
                 .map { BillSplitTargetLedger(ledgerId = it.ledgerId, name = it.name) },
@@ -81,6 +83,7 @@ class BillSplitViewModel(
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
+                    canModify = billSplitActions.canModifyLedger(),
                     loading = true,
                     inboxLoadState = BillSplitListLoadState.Loading,
                     sentLoadState = BillSplitListLoadState.Loading,
@@ -104,6 +107,7 @@ class BillSplitViewModel(
             val sentResult = billSplitActions.fetchBillSplitSent()
             _uiState.update {
                 it.copy(
+                    canModify = billSplitActions.canModifyLedger(),
                     loading = false,
                     inbox = inboxResult.getOrNull() ?: it.inbox,
                     sent = sentResult.getOrNull() ?: it.sent,
@@ -139,6 +143,16 @@ class BillSplitViewModel(
     }
 
     fun cancel(publicId: String) {
+        if (!billSplitActions.canModifyLedger()) {
+            _uiState.update {
+                it.copy(
+                    canModify = false,
+                    loading = false,
+                    message = UiText.res(R.string.common_readonly_ledger),
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, message = null) }
             billSplitActions.cancelBillSplitInvitation(publicId)

@@ -9,6 +9,8 @@ import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentCreateResponseDto
+import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -25,13 +27,6 @@ interface DebtApi {
     // always supplies a UUID). Both routes return the server-derived fold shape.
     @GET("api/debts")
     suspend fun debts(): DebtListResponseDto
-
-    // ADR-0049 P3b / ⑤c (slice ⑤c-2) creditor discovery: the ACCOUNT-scoped (cross-ledger) list of
-    // member Debts this account is the creditor of — "money owed to me" that the ledger-scoped
-    // GET /api/debts can't surface (a bill_split member Debt lives in the debtor's ledger). Every row
-    // is a member receivable (viewer_is_debtor=false), ledger_id redacted to null (§5.2). Read-only.
-    @GET("api/debts/receivables")
-    suspend fun debtReceivables(): DebtListResponseDto
 
     @POST("api/debts")
     suspend fun createDebt(
@@ -54,12 +49,19 @@ interface DebtApi {
     // through the slice-3 proposal flow, §5.2 → 409 here). Each carries expected_row_version in the
     // body (§2.1 stale-intent fence + §3.6 fingerprint) and an ADR-0042 intent-time idempotency key
     // in the header (nullable for Retrofit ergonomics — the repository always supplies a UUID). The
-    // repayment route returns RepaymentCreateResponse (a DebtResponse superset); Moshi keeps the
-    // shared fold fields and drops the unused repayment_public_id, so DebtDto is the right shape.
+    // repayment route returns RepaymentCreateResponse (a DebtResponse superset). Its
+    // repayment_public_id must survive so the append-only correction route can target that fact.
     @POST("api/debts/{publicId}/repayments")
     suspend fun recordDebtRepayment(
         @Path("publicId") publicId: String,
         @Body request: RepaymentCreateRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): RepaymentCreateResponseDto
+
+    @POST("api/debts/{publicId}/repayment-voids")
+    suspend fun voidDebtRepayment(
+        @Path("publicId") publicId: String,
+        @Body request: RepaymentVoidCreateRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): DebtDto
 

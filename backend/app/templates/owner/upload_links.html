@@ -102,6 +102,7 @@
             {% if not link.revoked_at %}
             <form class="inline" method="post"
                   action="/owner/upload-links/{{ link.public_id }}/rotate"
+                  data-confirm-variant="danger"
                   data-confirm="重新生成上传 Key？旧 iPhone 快捷指令将立即失效。">
               <button type="submit" class="btn btn-secondary"{% if not public_base_url_configured %} disabled aria-disabled="true" title="请先配置手机 HTTPS 地址"{% endif %}>重新生成</button>
             </form>

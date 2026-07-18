@@ -368,6 +368,17 @@ def test_viewer_cannot_upload_android_screenshot(client: TestClient, *, identity
     _assert_permission_denied(response, label="android screenshot upload")
 
 
+def test_viewer_cannot_cancel_background_task(client: TestClient, *, identity) -> None:
+    _, _, viewer_token = _make_role_token(client, "viewer", identity=identity)
+
+    response = client.post(
+        "/api/tasks/task_missing/cancel",
+        headers=_bearer(viewer_token),
+    )
+
+    _assert_permission_denied(response, label="background task cancellation")
+
+
 def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient, *, identity) -> None:
     _, owner_token, viewer_token = _make_role_token(client, "viewer", identity=identity)
     created = client.post(

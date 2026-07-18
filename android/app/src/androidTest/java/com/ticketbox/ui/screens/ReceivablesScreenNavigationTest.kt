@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.ticketbox.data.repository.ReceivablesActions
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -18,9 +19,8 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * ⑤b-2 契约：应收行从 ⑤c-2 的「静态不可点」反转为可点。点击一行必须以那笔 [Debt] 调用
- * [onOpenReceivable]，路由据此打开跨账本详情、债权人在那里确认对方的还款 proposal——这是翻
- * `DEBT_ROLLOUT` 后 creditor 唯一的 Android 确认入口（闭合 §0 端到端）。本测试钉住 tap → 回调的接线。
+ * 个人应收可同时包含 member 与 external。点击任一行必须把那笔 [Debt] 交给
+ * [onOpenReceivable]；本测试用 external 第二行钉住 mixed projection 与逐行回调接线。
  */
 class ReceivablesScreenNavigationTest {
     @get:Rule
@@ -37,7 +37,7 @@ class ReceivablesScreenNavigationTest {
             FakeReceivables(
                 listOf(
                     memberReceivable(publicId = "debt-1", debtorName = "小明"),
-                    memberReceivable(publicId = "debt-2", debtorName = "小红"),
+                    externalReceivable(publicId = "debt-2", debtorName = "阿禾"),
                 ),
             ),
         )
@@ -46,6 +46,7 @@ class ReceivablesScreenNavigationTest {
             TicketboxTheme(skin = AppSkin.Default) {
                 ReceivablesScreen(
                     viewModel = viewModel,
+                    currency = CurrencyDisplay.LegacyFallback,
                     onOpenReceivable = { openedPublicId = it.publicId },
                     onBack = {},
                 )
@@ -54,9 +55,9 @@ class ReceivablesScreenNavigationTest {
 
         // The VM loads on a viewModelScope coroutine; wait for the row to render before clicking.
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithText("小红").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("阿禾").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("小红").performClick()
+        composeRule.onNodeWithText("阿禾").performClick()
 
         composeRule.runOnIdle { assertEquals("debt-2", openedPublicId) }
     }
@@ -90,3 +91,14 @@ private fun memberReceivable(publicId: String, debtorName: String): Debt = Debt(
     viewerIsDebtor = false,
     isForgiven = false,
 )
+
+private fun externalReceivable(publicId: String, debtorName: String): Debt =
+    memberReceivable(publicId, debtorName).copy(
+        ledgerId = "owner",
+        direction = DebtDirections.OWED_TO_ME,
+        counterpartyType = DebtCounterpartyTypes.EXTERNAL,
+        counterpartyAccountId = null,
+        sourceType = DebtSourceTypes.MANUAL,
+        sourceId = null,
+        viewerIsDebtor = null,
+    )

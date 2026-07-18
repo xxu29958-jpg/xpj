@@ -271,8 +271,11 @@ private fun ProposalForm(
     AppSheetScaffold(title = stringResource(proposalFormTitleRes(form))) {
         AppAmountInput(
             state = AppAmountInputState(
-                label = stringResource(R.string.debt_action_amount_label),
-                currency = currency.homeCurrency,
+                label = stringResource(
+                    R.string.debt_action_amount_label,
+                    state.homeCurrency?.storageKey ?: currency.homeCurrency.storageKey,
+                ),
+                currency = state.homeCurrency ?: currency.homeCurrency,
                 value = state.amountInput,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
                 isError = state.validationError != null,

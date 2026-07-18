@@ -38,6 +38,10 @@ class OpenApiContractGateTest {
 
     private val pairs = listOf(
         Pairing(ErrorDto::class, "ErrorResponse"),
+        Pairing(PairResponseDto::class, "PairResponse"),
+        Pairing(LedgerDto::class, "LedgerResponse"),
+        Pairing(LedgerSwitchResponseDto::class, "LedgerSwitchResponse"),
+        Pairing(InvitationAcceptResponseDto::class, "InvitationAcceptResponse"),
         Pairing(ExpenseDto::class, "ExpenseResponse"),
         // Dedicated manual-create DTO (no OCC-token field) + the PATCH body it
         // was split from — the forward check is the forbid-protection: a DTO
@@ -63,6 +67,9 @@ class OpenApiContractGateTest {
         Pairing(RecurringCandidateItemDto::class, "RecurringCandidateItem"),
         Pairing(RecurringCandidatesResponseDto::class, "RecurringCandidatesResponse"),
         Pairing(DataQualitySummaryDto::class, "DataQualitySummaryResponse"),
+        Pairing(CategoryPreferenceDto::class, "CategoryPreferenceResponse"),
+        Pairing(CategoryPreferenceListResponseDto::class, "CategoryPreferenceListResponse"),
+        Pairing(CategoryPreferenceTokenRequestDto::class, "CategoryPreferenceTokenRequest"),
         Pairing(TagListItemDto::class, "TagListItem"),
         Pairing(TagManagementListDto::class, "TagManagementListResponse"),
         Pairing(TagDetailDto::class, "TagDetailResponse"),
@@ -135,7 +142,15 @@ class OpenApiContractGateTest {
         // ADR-0049 §3 (slice 8c) direct fact-write bodies. Each is additionalProperties=false →
         // the forward check is the forbid protection; the home-currency-only DTOs intentionally omit
         // the optional foreign-currency fields (a subset of the schema, so the forward check passes).
+        // The repayment response keeps repayment_public_id because RepaymentVoid targets that fact.
+        Pairing(RepaymentCreateResponseDto::class, "RepaymentCreateResponse"),
+        // Restart-safe history: the list and both nested fact shapes are paired so a renamed status,
+        // stable public id, void reason, or audit timestamp reddens the Android unit lane.
+        Pairing(RepaymentFactListResponseDto::class, "RepaymentFactListResponse"),
+        Pairing(RepaymentFactDto::class, "RepaymentFactResponse"),
+        Pairing(RepaymentVoidFactDto::class, "RepaymentVoidFactResponse"),
         Pairing(RepaymentCreateRequestDto::class, "RepaymentCreateRequest"),
+        Pairing(RepaymentVoidCreateRequestDto::class, "RepaymentVoidCreateRequest"),
         Pairing(DebtAdjustmentCreateRequestDto::class, "DebtAdjustmentCreateRequest"),
         Pairing(DebtVoidCreateRequestDto::class, "DebtVoidCreateRequest"),
         // ADR-0049 §3.7 / §4 (slice 8e-3) creditor-forgive body (expected_row_version only),

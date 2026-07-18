@@ -1,5 +1,7 @@
 package com.ticketbox.domain.model
 
+import java.util.Locale
+
 /**
  * 支持记录和展示的币种。
  *
@@ -28,12 +30,31 @@ enum class CurrencyCode(
         get() = minorUnitDigits == 0
 
     companion object {
-        val Default: CurrencyCode = CNY
+        /**
+         * Compatibility value for persisted rows and previews that predate the
+         * server home-currency contract. Production bound sessions must replace it
+         * with Pair/Ledger/Switch/Invitation authority before accepting money input.
+         */
+        val LegacyFallback: CurrencyCode = CNY
 
         fun fromStorageKey(value: String?): CurrencyCode {
-            if (value.isNullOrBlank()) return Default
-            val normalized = value.trim().uppercase()
-            return entries.firstOrNull { it.storageKey == normalized } ?: Default
+            if (value.isNullOrBlank()) return LegacyFallback
+            return requireSupported(value)
         }
+
+        fun requireSupported(value: String): CurrencyCode {
+            val normalized = value.trim().uppercase(Locale.ROOT)
+            require(
+                normalized.length == ISO_CODE_LENGTH &&
+                    normalized.all { it in 'A'..'Z' },
+            ) {
+                "Invalid ISO 4217 currency code."
+            }
+            return requireNotNull(entries.firstOrNull { it.storageKey == normalized }) {
+                "Unsupported currency code: $normalized"
+            }
+        }
+
+        private const val ISO_CODE_LENGTH = 3
     }
 }

@@ -1,8 +1,9 @@
 """/web/debt-goals 还债目标进度 (ADR-0049 债务域 web 面 slice 4).
 
-只读：列本账本 debt_repayment 目标 + 清偿进度。镜像 Android DebtPlanProgress——成员/混装件数
-英雄(金额弱化、成员永不带「欠」、混币隐藏)，仅纯外部目标显 KPI(three_state 琥珀非红 + 投影三态
-诚实)，写动作留 App。本文件走真 route→service→DB→模板的 HTTP 路径；视图模型派生分支的纯单测拆在
+列本账本 debt_repayment 目标 + 清偿进度，并覆盖创建、关联调整、目标日期、复核、归档和恢复。
+镜像 Android DebtPlanProgress——成员/混装件数英雄(金额弱化、成员永不带「欠」、混币隐藏)，
+仅纯外部目标显 KPI(three_state 琥珀非红 + 投影三态诚实)。本文件走真
+route→service→DB→模板的 HTTP 路径；视图模型派生分支的纯单测拆在
 ``test_web_debt_goals_view.py``(守 files_over_500 门)。复用 conftest 的 ``web_client``(绕过 /web
 loopback gate，viewer 解析为账本 owner)；``client`` 保 gate 验 remote-403。
 """
@@ -178,7 +179,9 @@ def test_web_debt_goals_empty_renders(web_client: TestClient) -> None:
     resp = web_client.get("/web/debt-goals")
     assert resp.status_code == 200
     assert "还没有还债目标" in resp.text
-    assert "dt-card--empty" in resp.text
+    assert 'class="product-state"' in resp.text
+    assert 'class="dt-' not in resp.text
+    assert 'style="' not in resp.text
 
 
 def test_web_debt_goals_member_in_progress_is_communal(web_client: TestClient) -> None:
@@ -216,7 +219,7 @@ def test_web_debt_goals_member_all_cleared_done(web_client: TestClient) -> None:
     assert resp.status_code == 200
     assert "这几笔，和家人都两清啦" in resp.text  # member done headline
     assert "已达成" in resp.text  # achieved eval badge
-    assert "dt-pill ok" in resp.text  # achieved → ok tone
+    assert "product-status--success" in resp.text  # achieved → success tone
 
 
 def test_web_debt_goals_external_in_progress_shows_kpi(web_client: TestClient) -> None:
@@ -249,7 +252,7 @@ def test_web_debt_goals_external_projection_at_risk_renders_amber(web_client: Te
     resp = web_client.get("/web/debt-goals")
     assert resp.status_code == 200
     assert "可能晚于计划" in resp.text  # at_risk three_state label
-    assert "dt-pill amber" in resp.text  # at_risk badge renders amber...
+    assert "product-status--warning" in resp.text  # at_risk badge renders warning...
     assert "dt-pill danger" not in resp.text  # ...NOT red (红线: at_risk 永不 danger)
     assert "还清目标" in resp.text  # target_date label
     assert "按最近" in resp.text and "前后还清" in resp.text  # projected payoff line (count/date-independent)
@@ -264,7 +267,7 @@ def test_web_debt_goals_external_projection_stale_renders_warn(web_client: TestC
     resp = web_client.get("/web/debt-goals")
     assert resp.status_code == 200
     assert "估算可能已过期" in resp.text  # stale projection copy (day-count-independent fragment)
-    assert "dg-projection--warn" in resp.text  # amber warn projection class
+    assert "text-warning" in resp.text  # warning projection class
     assert "还没有足够数据估算还清日期" not in resp.text  # not the insufficient arm
     assert "dt-pill danger" not in resp.text  # stale is amber-toned, never red
 
@@ -321,7 +324,7 @@ def test_web_debt_goals_mixed_has_no_kpi_block(web_client: TestClient) -> None:
 def test_web_debt_goals_voided_member_link_needs_review_never_red(web_client: TestClient) -> None:
     # A member goal with one open + one voided link → not_evaluable + needs_review amber note,
     # the voided link recedes (sunk) with a neutral 已不算 badge — member surface never red.
-    _seed_debt_goal(
+    goal_public_id = _seed_debt_goal(
         name="有作废",
         links=[
             {"type": "member", "status": "open", "principal": 10000, "label": "妈妈"},
@@ -332,9 +335,11 @@ def test_web_debt_goals_voided_member_link_needs_review_never_red(web_client: Te
     assert resp.status_code == 200
     assert "待复核" in resp.text  # not_evaluable eval badge
     assert "某关联欠款被判无效，需要你拿个主意" in resp.text  # needs_review descriptive note
-    assert "复核与处理请在手机 App" in resp.text  # web read-only hint, no buttons
+    assert f"/web/debt-goals/{goal_public_id}/review/remove-voided" in resp.text
+    assert "移除不再有效的欠款" in resp.text
+    assert "复核与处理请在手机 App" not in resp.text
     assert "这件事不算了" in resp.text  # voided member link note
-    assert "debt-card-sunk" in resp.text  # voided link recedes
+    assert "is-receded" in resp.text  # voided link recedes
     assert "dt-pill danger" not in resp.text  # member voided never red (红线②)
 
 
@@ -349,11 +354,13 @@ def test_web_debt_goals_all_voided_short_circuits(web_client: TestClient) -> Non
     assert resp.status_code == 200
     assert "关联的欠款都已作废" in resp.text  # all-voided short-circuit text
     assert "已还清" not in resp.text and "已处理" not in resp.text  # no count headline
-    assert "debt-card-sunk" in resp.text  # the voided link still listed, receded
+    assert "is-receded" in resp.text  # the voided link still listed, receded
 
 
 def test_web_debt_goals_nav_and_planning_group(web_client: TestClient) -> None:
     resp = web_client.get("/web/debt-goals")
     assert resp.status_code == 200
     assert 'href="/web/debt-goals' in resp.text  # nav link present
-    assert "<span>还债目标</span>" in resp.text
+    assert 'aria-label="当前领域页面"' in resp.text
+    assert ">还债计划</a>" in resp.text
+    assert 'href="/web/debt-goals?ledger_id=owner" aria-current="page"' in resp.text

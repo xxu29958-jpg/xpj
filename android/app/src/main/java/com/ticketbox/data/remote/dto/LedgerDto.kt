@@ -17,6 +17,8 @@ data class LedgerDto(
     val role: String,
     @param:Json(name = "is_default")
     val isDefault: Boolean,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
     @param:Json(name = "created_at")
     val createdAt: String?,
     @param:Json(name = "archived_at")
@@ -201,6 +203,8 @@ data class InvitationAcceptResponseDto(
     @param:Json(name = "device_name")
     val deviceName: String,
     val role: String,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
     @param:Json(name = "expires_at")
     val expiresAt: String? = null,
     @param:Json(name = "soft_refresh_after")

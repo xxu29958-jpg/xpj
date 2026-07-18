@@ -168,7 +168,7 @@
     <string name="notification_preferences_reminder_pending_title">待确认提醒</string>
     <string name="notification_preferences_reminder_pending_subtitle">有新的待确认草稿时提醒你回来核对。</string>
     <string name="notification_preferences_reminder_large_amount_title">大额提醒</string>
-    <!-- 大额开关副标题已随通知文案包迁入 strings_notifications.xml（写明 ¥500 阈值）。 -->
+    <!-- 大额开关副标题已随通知文案包迁入 strings_notifications.xml（按服务器本位币展示阈值）。 -->
     <string name="notification_preferences_reminder_recurring_title">固定支出提醒</string>
     <string name="notification_preferences_reminder_recurring_subtitle">固定支出临近或金额异常时提醒。</string>
     <string name="notification_preferences_reminder_budget_title">预算超支提醒</string>
@@ -228,29 +228,30 @@
     <string name="my_devices_message_deleted">已移除「%1$s」。</string>
     <string name="my_devices_message_pairing_failed">生成配对码失败，请稍后再试。</string>
 
-    <!-- RecycleBinScreen：设置→回收站 屏（ADR-0051 当前账本回收站） -->
+    <!-- RecycleBinScreen：流水→资料库→回收站（ADR-0051 当前账本回收站） -->
     <string name="recycle_bin_page_title">回收站</string>
-    <string name="recycle_bin_page_subtitle">恢复归档和限期保留的项目。</string>
-    <string name="recycle_bin_section_items">可恢复项目</string>
+    <string name="recycle_bin_page_subtitle">查看当前账本中仍可恢复的已移除数据。</string>
+    <string name="recycle_bin_section_items">可恢复数据</string>
     <string name="recycle_bin_summary_total_label">可恢复</string>
     <string name="recycle_bin_summary_limited_label">限期保留</string>
     <string name="recycle_bin_summary_long_label">长期归档</string>
     <string name="recycle_bin_summary_count">%1$d 项</string>
+    <string name="recycle_bin_summary_line">共 %1$d 项 · 限期保留 %2$d 项 · 长期归档 %3$d 项</string>
     <string name="recycle_bin_readonly_title">只读账本</string>
     <string name="recycle_bin_readonly_body">当前角色可以查看回收站；恢复项目需要拥有者或成员权限。</string>
-    <string name="recycle_bin_loading_title">正在同步回收站</string>
-    <string name="recycle_bin_loading_body">同步完成后显示可恢复项目。</string>
+    <string name="recycle_bin_loading_title">正在加载回收站</string>
+    <string name="recycle_bin_loading_body">可恢复数据将在这里显示。</string>
     <string name="recycle_bin_empty_title">暂无可恢复项目</string>
-    <string name="recycle_bin_empty_body">归档预算、收入、目标和限期保留的规则会出现在这里。</string>
-    <string name="recycle_bin_load_failed_title">回收站未更新</string>
-    <string name="recycle_bin_load_failed_body">暂时无法读取小票夹服务，请稍后重试。</string>
+    <string name="recycle_bin_empty_body">当前账本没有可恢复的已移除数据。</string>
+    <string name="recycle_bin_load_failed_title">暂时无法加载回收站</string>
+    <string name="recycle_bin_load_failed_body">列表暂时无法加载，现有记录不会被视为已清空。</string>
     <string name="recycle_bin_refresh">刷新</string>
     <string name="recycle_bin_refresh_loading">刷新中…</string>
-    <string name="recycle_bin_row_status">%1$s · 移除时间 %2$s</string>
+    <string name="recycle_bin_row_status">保留期限 %1$s · 移除于 %2$s</string>
     <string name="recycle_bin_restore">恢复</string>
     <string name="recycle_bin_restore_busy">恢复中…</string>
     <string name="recycle_bin_restore_dialog_title">恢复项目？</string>
-    <string name="recycle_bin_restore_dialog_text">恢复「%1$s」后，它会回到当前账本对应列表。</string>
+    <string name="recycle_bin_restore_dialog_text">恢复「%1$s」后，它会回到当前账本对应位置。</string>
     <string name="recycle_bin_restore_dialog_confirm">恢复</string>
     <string name="recycle_bin_message_load_failed">回收站暂时打不开。</string>
     <string name="recycle_bin_message_restore_failed">恢复没有完成，请刷新后再试。</string>

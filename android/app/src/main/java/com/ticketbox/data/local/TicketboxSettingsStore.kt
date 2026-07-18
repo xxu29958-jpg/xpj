@@ -5,6 +5,7 @@ import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 data class PersistedLedgerIdentity(
     val accountName: String,
@@ -13,6 +14,7 @@ data class PersistedLedgerIdentity(
     val deviceName: String,
     val role: String,
     val boundAt: String,
+    val homeCurrencyCode: String? = null,
 )
 
 interface TicketboxSettingsStore {
@@ -119,6 +121,16 @@ interface TicketboxSettingsStore {
      * 币种偏好变更 hot flow。订阅时立即 emit 当前值。
      */
     fun observeCurrencyCodeKey(): Flow<String?>
+
+    /**
+     * Server-authoritative home currency for the active binding. `null` is
+     * allowed only for bindings persisted before this contract existed.
+     */
+    fun homeCurrencyCodeKey(): String? = null
+
+    fun saveHomeCurrencyCodeKey(currencyKey: String) = Unit
+
+    fun observeHomeCurrencyCodeKey(): Flow<String?> = flowOf(homeCurrencyCodeKey())
 
     fun saveServerUrl(serverUrl: String)
 

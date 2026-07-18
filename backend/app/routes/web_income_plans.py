@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -15,6 +13,7 @@ from app.routes.web_common import (
     _amount_yuan,
     _base_ctx,
     _list_ledger_options,
+    _parse_major_amount,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
@@ -27,23 +26,11 @@ from app.services.income_plan_service import (
     list_income_plans,
     restore_income_plan,
     total_monthly_income_cents,
+    update_income_plan,
 )
 from app.services.spending_contract_service import current_accounting_month
 
 router = APIRouter(prefix="/web/income-plans", tags=["web"])
-
-
-def _parse_yuan(raw: str, *, label: str) -> int:
-    text = (raw or "").strip()
-    if not text:
-        raise AppError("invalid_request", f"请填写{label}。", status_code=422)
-    try:
-        amount = Decimal(text)
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
-    if amount < 0:
-        raise AppError("invalid_request", f"{label}不能为负数。", status_code=422)
-    return int((amount * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _parse_pay_day(raw: str) -> int:
@@ -158,7 +145,12 @@ def post_create(
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     _require_selected_ledger_write(options, selected)
-    amount_cents = _parse_yuan(amount_yuan, label="收入金额")
+    amount_cents = _parse_major_amount(
+        amount_yuan,
+        label="收入金额",
+        required=True,
+    )
+    assert amount_cents is not None
     day = _parse_pay_day(pay_day)
     create_income_plan(
         db,
@@ -175,6 +167,73 @@ def post_create(
         pay_day=day,
     )
     return _web_redirect("/web/income-plans", selected, message="已添加收入")
+
+
+@router.post("/{public_id}/edit")
+def post_edit(
+    request: Request,
+    public_id: str,
+    ledger_id: str | None = Form(default=None),
+    expected_row_version: str = Form(default=""),
+    label: str = Form(default=""),
+    source_type: str = Form(default="salary"),
+    frequency: str = Form(default="one_time"),
+    income_month_year: str | None = Form(default=None),
+    income_month_number: str | None = Form(default=None),
+    amount_yuan: str = Form(default=""),
+    pay_day: str = Form(default=""),
+    db: Session = Depends(get_db),
+    _local: None = LocalOnly,
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(
+        db,
+        ledger_id,
+        options=options,
+        request=request,
+    )
+    _require_selected_ledger_write(options, selected)
+    parsed = parse_form_row_version_token(expected_row_version)
+    if parsed is None:
+        return _web_redirect(
+            "/web/income-plans",
+            selected,
+            error="页面已过期，请刷新后重新操作。",
+        )
+    try:
+        amount_cents = _parse_major_amount(
+            amount_yuan,
+            label="收入金额",
+            required=True,
+        )
+        assert amount_cents is not None
+        clean_frequency = frequency.strip()
+        clean_income_month = (
+            _income_month_from_form(
+                None,
+                year=income_month_year,
+                month=income_month_number,
+            )
+            if clean_frequency == "one_time"
+            else None
+        )
+        update_income_plan(
+            db,
+            tenant_id=selected,
+            public_id=public_id,
+            expected_row_version=parsed,
+            label=label,
+            source_type=source_type,
+            frequency=clean_frequency,
+            income_month=clean_income_month,
+            income_month_provided=True,
+            amount_cents=amount_cents,
+            pay_day=_parse_pay_day(pay_day),
+        )
+    except AppError as exc:
+        message = "页面已过期，请刷新后重新操作。" if exc.error == "state_conflict" else exc.message
+        return _web_redirect("/web/income-plans", selected, error=message)
+    return _web_redirect("/web/income-plans", selected, message="已更新收入")
 
 
 @router.post("/{public_id}/archive")
@@ -194,18 +253,12 @@ def post_archive(
     # than flipping status under the user.
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect(
-            "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
-        )
+        return _web_redirect("/web/income-plans", selected, error="页面已过期，请刷新后重新操作。")
     try:
-        archive_income_plan(
-            db, tenant_id=selected, public_id=public_id, expected_row_version=parsed
-        )
+        archive_income_plan(db, tenant_id=selected, public_id=public_id, expected_row_version=parsed)
     except AppError as exc:
         if exc.error == "state_conflict":
-            return _web_redirect(
-                "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
-            )
+            return _web_redirect("/web/income-plans", selected, error="页面已过期，请刷新后重新操作。")
         raise
     return _web_redirect("/web/income-plans", selected, message="已归档收入")
 
@@ -224,17 +277,11 @@ def post_restore(
     _require_selected_ledger_write(options, selected)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect(
-            "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
-        )
+        return _web_redirect("/web/income-plans", selected, error="页面已过期，请刷新后重新操作。")
     try:
-        restore_income_plan(
-            db, tenant_id=selected, public_id=public_id, expected_row_version=parsed
-        )
+        restore_income_plan(db, tenant_id=selected, public_id=public_id, expected_row_version=parsed)
     except AppError as exc:
         if exc.error == "state_conflict":
-            return _web_redirect(
-                "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
-            )
+            return _web_redirect("/web/income-plans", selected, error="页面已过期，请刷新后重新操作。")
         raise
     return _web_redirect("/web/income-plans", selected, message="已恢复收入")

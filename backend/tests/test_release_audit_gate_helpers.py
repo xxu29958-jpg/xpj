@@ -114,37 +114,66 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
     assert "stderr detail" in captured.err
 
 
-def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> None:
-    # The single in-flight grandfather now points at the ADR-0053 merchant
-    # catalog web create-row exemption. Older up-hops are dead history.
+def test_pr_delta_carrier_ratchet_still_blocks_coverage_loss(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 122
+    baseline["mutate_token_carriers"] = 95
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 121}
+        {"mutate_token_carriers": 96}
     )
 
-    assert violations == []
+    assert len(violations) == 1
+    assert "mutate_token_carriers" in violations[0]
+    assert "base=96" in violations[0]
+    assert "current=95" in violations[0]
 
 
-def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
-    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+def test_mutate_allowlist_delta_accepts_exact_contract_and_auto_extinguishes() -> None:
+    mod = importlib.reload(importlib.import_module("_audit_mutate_token_allowlist_delta"))
+    old = ("batch_db_write", "expenses", ("expenses",), "low")
+    kept = ("terminal_flag_flip", "goals", ("goals",), "low")
+    new = ("create_row", "debts", ("debts",), "low")
+    base = {"POST /old": old, "POST /kept": kept}
+    current = {"POST /new": new, "POST /kept": kept}
 
-    # Non-grandfathered transitions still fail: the 121 -> 122 exception is exact, so
-    # neither older up-hops nor overshoots are waved through.
-    for base_count, current_count in ((116, 119), (119, 120), (120, 121), (121, 123)):
-        baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-        baseline["mutate_token_exempted"] = current_count
-        monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
-        _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-            {"mutate_token_exempted": base_count}
+    assert mod._delta_failures(
+        base,
+        current,
+        {"POST /new": new},
+        {"POST /old": old},
+    ) == []
+    assert mod._delta_failures(
+        current,
+        current,
+        {"POST /new": new},
+        {"POST /old": old},
+    ) == []
+
+
+def test_mutate_allowlist_delta_rejects_substitution_and_incomplete_changes() -> None:
+    mod = importlib.reload(importlib.import_module("_audit_mutate_token_allowlist_delta"))
+    old = ("batch_db_write", "expenses", ("expenses",), "low")
+    kept = ("terminal_flag_flip", "goals", ("goals",), "low")
+    new = ("create_row", "debts", ("debts",), "low")
+    base = {"POST /old": old, "POST /kept": kept}
+    approved_additions = {"POST /new": new}
+    approved_removals = {"POST /old": old}
+
+    bad_currents = (
+        {"POST /wrong": new, "POST /kept": kept},
+        {"POST /new": new, "POST /extra": new, "POST /kept": kept},
+        {"POST /kept": kept},
+        {"POST /new": (*new[:3], "medium"), "POST /kept": kept},
+    )
+    for current in bad_currents:
+        assert mod._delta_failures(
+            base,
+            current,
+            approved_additions,
+            approved_removals,
         )
-
-        assert len(violations) == 1
-        assert str(base_count) in violations[0]
-        assert str(current_count) in violations[0]
 
 
 def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(

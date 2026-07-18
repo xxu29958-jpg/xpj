@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from hashlib import sha256
 
 from sqlalchemy import func, select
@@ -31,6 +31,8 @@ def lock_bootstrap_owner_transaction(db: Session) -> None:
 
 
 def _token_is_usable(token: AuthToken, *, checked_at: datetime) -> bool:
+    if token.activation_state != "active":
+        return False
     if token.revoked_at is not None:
         grace_until = ensure_utc(token.grace_until)
         if token.scope != "app" or grace_until is None or grace_until <= checked_at:
@@ -52,6 +54,7 @@ def _reload_auth_context(db: Session, token: AuthToken) -> AuthContext:
         .where(LedgerMember.ledger_id == Ledger.ledger_id)
         .where(LedgerMember.account_id == Account.id)
         .where(LedgerMember.disabled_at.is_(None))
+        .execution_options(populate_existing=True)
         .limit(1)
     ).first()
     if row is None:
@@ -94,6 +97,99 @@ def lock_and_revalidate_credential_mint_context(
     if refreshed != auth:
         raise AppError("invalid_token", status_code=401)
     return refreshed
+
+
+def _lock_and_revalidate_product_session_principal(
+    db: Session,
+    auth: AuthContext,
+    *,
+    platform: str,
+    fallback_ttl_seconds: int | None,
+) -> AuthContext:
+    """Revalidate a platform-bound product principal under the lifecycle lock.
+
+    Middleware authentication happens before FastAPI parses a request body.
+    A token, device, or membership can change while a slow form is still being
+    uploaded, so an unsafe product handler must not authorize from that stale
+    snapshot. The caller keeps this transaction open through the business
+    mutation commit/rollback.
+
+    Role and display-name changes are deliberately refreshed. Credential,
+    account, device, ledger, scope, and platform bindings are immutable for an
+    in-flight principal and therefore fail closed when they disagree.
+    """
+    if platform not in {"desktop", "web"}:
+        raise AppError("invalid_token", status_code=401)
+    if auth.scope != "app" or auth.credential_id is None or not auth.credential_hash:
+        raise AppError("invalid_token", status_code=401)
+
+    lock_bootstrap_owner_transaction(db)
+    token = db.scalar(
+        select(AuthToken)
+        .join(Device, Device.id == AuthToken.device_id)
+        .where(AuthToken.id == auth.credential_id)
+        .where(AuthToken.token_hash == auth.credential_hash)
+        .where(AuthToken.scope == "app")
+        .where(AuthToken.activation_state == "active")
+        .where(AuthToken.revoked_at.is_(None))
+        .where(Device.platform == platform)
+        .execution_options(populate_existing=True)
+        .limit(1)
+    )
+    if token is None:
+        raise AppError("invalid_token", status_code=401)
+
+    checked_at = now_utc()
+    expires_at = ensure_utc(token.expires_at)
+    if fallback_ttl_seconds is not None and expires_at is None:
+        issued_at = ensure_utc(token.created_at) or token.created_at
+        expires_at = issued_at + timedelta(seconds=fallback_ttl_seconds)
+    if expires_at is not None and expires_at <= checked_at:
+        token.revoked_at = checked_at
+        token.grace_until = None
+        db.commit()
+        raise AppError("invalid_token", status_code=401)
+
+    refreshed = _reload_auth_context(db, token)
+    if (
+        refreshed.scope != auth.scope
+        or refreshed.credential_id != auth.credential_id
+        or refreshed.credential_hash != auth.credential_hash
+        or refreshed.account_id != auth.account_id
+        or refreshed.device_id != auth.device_id
+        or refreshed.ledger_id != auth.ledger_id
+    ):
+        raise AppError("invalid_token", status_code=401)
+    return refreshed
+
+
+def lock_and_revalidate_web_session_principal(
+    db: Session,
+    auth: AuthContext,
+    *,
+    platform: str,
+    ttl_seconds: int,
+) -> AuthContext:
+    """Revalidate a Web-surface principal at an unsafe command boundary."""
+    return _lock_and_revalidate_product_session_principal(
+        db,
+        auth,
+        platform=platform,
+        fallback_ttl_seconds=ttl_seconds,
+    )
+
+
+def lock_and_revalidate_desktop_session_principal(
+    db: Session,
+    auth: AuthContext,
+) -> AuthContext:
+    """Revalidate an exact live Desktop principal before a business write."""
+    return _lock_and_revalidate_product_session_principal(
+        db,
+        auth,
+        platform="desktop",
+        fallback_ttl_seconds=None,
+    )
 
 
 def lock_and_revalidate_mutation_actor(

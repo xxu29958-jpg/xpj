@@ -28,12 +28,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import SessionLocal
 from app.main import app
 from app.middleware import web_session as web_session_middleware
-from app.models import AuthToken
+from app.models import Account, AuthToken, Device, Ledger, LedgerMember
 from app.routes.web_auth import (
     SESSION_COOKIE_MAX_AGE_SECONDS,
     SESSION_COOKIE_NAME,
 )
-from app.services.identity_service import hash_secret
+from app.services.identity_service import hash_secret, new_session_token
 from app.services.time_service import ensure_utc, now_utc
 
 # A public host header that the test injects to simulate a Cloudflare
@@ -98,6 +98,48 @@ def _mint_session(client: TestClient, *, identity) -> str:
     return token
 
 
+def _mint_bound_viewer_session() -> str:
+    """Create a viewer Web session for L1 while the local owner also has L2."""
+    token = new_session_token()
+    with SessionLocal() as db:
+        l1 = db.scalar(select(Ledger).where(Ledger.ledger_id == "owner"))
+        l2 = db.scalar(select(Ledger).where(Ledger.ledger_id == "tester_1"))
+        assert l1 is not None
+        assert l2 is not None
+        l1.name = "家庭主账本 L1"
+        l2.name = "仅限本机的私密账本 L2"
+
+        viewer = Account(display_name="只读家人")
+        db.add(viewer)
+        db.flush()
+        device = Device(
+            account_id=viewer.id,
+            device_name="pytest viewer browser",
+            platform="web",
+        )
+        db.add(device)
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id=l1.ledger_id,
+                account_id=viewer.id,
+                role="viewer",
+            )
+        )
+        db.add(
+            AuthToken(
+                token_hash=hash_secret(token),
+                account_id=viewer.id,
+                device_id=device.id,
+                ledger_id=l1.ledger_id,
+                scope="app",
+                expires_at=now_utc() + timedelta(hours=8),
+            )
+        )
+        db.commit()
+    return token
+
+
 def test_public_host_without_cookie_redirects_to_login(client: TestClient) -> None:
     pub = _public_client()
     resp = pub.get("/web/pending", follow_redirects=False)
@@ -115,16 +157,24 @@ def test_public_host_login_page_itself_does_not_redirect(client: TestClient) -> 
     assert "绑定码" in resp.text
 
 
-def test_public_host_with_valid_cookie_renders_dashboard(client: TestClient, *, identity) -> None:
-    token = _mint_session(client, identity=identity)
+def test_public_host_viewer_session_projects_only_bound_ledger(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    token = _mint_bound_viewer_session()
     pub = _public_client()
     resp = pub.get(
         "/web/pending",
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={token}"},
     )
     assert resp.status_code == 200, resp.text
-    # Lands on the owner ledger (the test identity uses the owner ledger)
-    assert "待确认" in resp.text
+    # The owner has L1 and L2, but this viewer cookie is authorized only for L1.
+    assert '<h1 class="page-title" id="pending-title">待我处理</h1>' in resp.text
+    assert "家庭主账本 L1" in resp.text
+    assert "仅限本机的私密账本 L2" not in resp.text
+    assert "tester_1" not in resp.text
+    assert 'ledger-role-viewer viewer">只读</span>' in resp.text
     assert SESSION_COOKIE_NAME not in resp.headers.get("set-cookie", "")
 
 
@@ -149,6 +199,54 @@ def test_public_host_cookie_does_not_refresh_last_used_or_cookie(client: TestCli
         row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
         assert row is not None
         assert ensure_utc(row.last_used_at) == ensure_utc(old_last_used)
+
+
+def test_public_host_session_exposes_working_logout_but_loopback_hides_it(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    token = _mint_session(web_client, identity=identity)
+    pub = _public_client()
+    pub.cookies.set(
+        SESSION_COOKIE_NAME,
+        token,
+        path="/",
+    )
+
+    page = pub.get("/web/pending")
+    assert page.status_code == 200, page.text
+    logout_form = re.search(
+        r'<form method="post" action="/web/auth/logout".*?'
+        r'name="csrf_token" value="([^"]+)"',
+        page.text,
+        re.DOTALL,
+    )
+    assert logout_form is not None, page.text
+    assert "退出此浏览器" in page.text
+    assert 'data-theme-sync="local"' in page.text
+
+    loopback = web_client.get("/web/pending")
+    assert loopback.status_code == 200, loopback.text
+    assert 'action="/web/auth/logout"' not in loopback.text
+    assert 'data-theme-sync="local"' in loopback.text
+
+    logout = pub.post(
+        "/web/auth/logout",
+        data={"csrf_token": logout_form.group(1)},
+        headers={"Origin": f"https://{PUBLIC_HOST}"},
+        follow_redirects=False,
+    )
+    assert logout.status_code == 303, logout.text
+    assert logout.headers["location"] == "/web/auth/login"
+    set_cookie = logout.headers.get("set-cookie", "")
+    assert SESSION_COOKIE_NAME in set_cookie
+    assert "Max-Age=0" in set_cookie
+
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        assert row.revoked_at is not None
 
 
 def test_public_host_cross_ledger_query_rejected(client: TestClient, *, identity) -> None:

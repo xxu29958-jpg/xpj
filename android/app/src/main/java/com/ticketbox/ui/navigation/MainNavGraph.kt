@@ -1,7 +1,5 @@
 package com.ticketbox.ui.navigation
 
-import android.annotation.SuppressLint
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -9,31 +7,74 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ticketbox.ui.components.AppBottomNav
-import com.ticketbox.ui.components.DrillTransition
+import com.ticketbox.ui.components.AppAccountButton
+import com.ticketbox.ui.components.AppNavigationRail
+import com.ticketbox.ui.components.AppPostureSafeContent
+import com.ticketbox.ui.components.AppPrimaryNavItem
+import com.ticketbox.ui.components.LocalAppAdaptivePaneDirective
+import com.ticketbox.ui.components.LocalPrimaryNavigationInsetHandled
+import com.ticketbox.ui.components.LocalPrimaryStatusInsetHandled
+import com.ticketbox.ui.design.AppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.AppMotion
+import com.ticketbox.ui.design.AppPrimaryNavigationMode
+import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
+import com.ticketbox.ui.design.toAppAdaptiveLayoutPolicy
+import com.ticketbox.ui.design.toAppAdaptivePaneDirective
+import com.ticketbox.ui.design.toAppPostureSafeHingeBounds
 
 internal data class MainNavigationRuntime(
     val navController: NavHostController,
     val shellState: MainShellState,
     val screenFactory: MainScreenFactory,
+)
+
+internal data class MainWorkspaceControls(
+    val preferences: SettingsPreferenceControls,
+    val onBindingCleared: () -> Unit,
+)
+
+private data class MainProductShellLayout(
+    val showPrimaryNavigation: Boolean,
+    val activeDomain: PrimaryDomain?,
+    val useNavigationRail: Boolean,
+    val outerBottomBarHandlesInsets: Boolean,
+    val primaryNavigationItems: List<AppPrimaryNavItem>,
+    val adaptiveLayoutPolicy: AppAdaptiveLayoutPolicy,
 )
 
 @Composable
@@ -83,7 +124,6 @@ internal fun MainNavGraph(
 }
 
 @Composable
-@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 private fun MainRoute(
     runtime: MainNavigationRuntime,
     snackbarHostState: SnackbarHostState,
@@ -91,151 +131,211 @@ private fun MainRoute(
     onBindingCleared: () -> Unit,
 ) {
     val shellState = runtime.shellState
+    val productNavController = rememberNavController()
+    val productBackStackEntry by productNavController.currentBackStackEntryAsState()
+    val productDestination = mainProductDestination(productBackStackEntry?.destination?.route)
+        ?: MainProductDestination.Domain(PrimaryDomain.Inbox)
+    val windowAdaptiveInfo = currentWindowAdaptiveInfo(
+        supportLargeAndXLargeWidth = true,
+    )
+    val adaptiveLayoutPolicy = windowAdaptiveInfo.toAppAdaptiveLayoutPolicy()
+    val adaptivePaneDirective = windowAdaptiveInfo.toAppAdaptivePaneDirective(adaptiveLayoutPolicy)
+    val postureSafeHingeBounds = windowAdaptiveInfo.toAppPostureSafeHingeBounds(
+        adaptiveLayoutPolicy,
+    )
+    val showPrimaryNavigation = productDestination is MainProductDestination.Domain
+    val useNavigationRail = showPrimaryNavigation &&
+        adaptiveLayoutPolicy.primaryNavigation == AppPrimaryNavigationMode.Rail
+    val outerBottomBarHandlesInsets = showPrimaryNavigation && !useNavigationRail
+    val shellLayout = MainProductShellLayout(
+        showPrimaryNavigation = showPrimaryNavigation,
+        activeDomain = (productDestination as? MainProductDestination.Domain)?.domain,
+        useNavigationRail = useNavigationRail,
+        outerBottomBarHandlesInsets = outerBottomBarHandlesInsets,
+        primaryNavigationItems = PrimaryDomain.entries.map { it.toPrimaryNavItem() },
+        adaptiveLayoutPolicy = adaptiveLayoutPolicy,
+    )
+    val workspaceControls = MainWorkspaceControls(
+        preferences = preferenceControls,
+        onBindingCleared = onBindingCleared,
+    )
+
+    MainProductNavigationSync(
+        navController = productNavController,
+        shellState = shellState,
+        currentRoute = productBackStackEntry?.destination?.route,
+    )
+
+    CompositionLocalProvider(LocalAppAdaptivePaneDirective provides adaptivePaneDirective) {
+        AppPostureSafeContent(excludedBounds = postureSafeHingeBounds) {
+            MainProductScaffold(
+                runtime = runtime,
+                productNavController = productNavController,
+                shellLayout = shellLayout,
+                snackbarHostState = snackbarHostState,
+                workspaceControls = workspaceControls,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MainProductScaffold(
+    runtime: MainNavigationRuntime,
+    productNavController: NavHostController,
+    shellLayout: MainProductShellLayout,
+    snackbarHostState: SnackbarHostState,
+    workspaceControls: MainWorkspaceControls,
+) {
     Scaffold(
-        containerColor = Color.Transparent,
-        contentWindowInsets = WindowInsets(0.dp),
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(AppSpacing.none),
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = {
-            if (shellState.statsSecondaryPage == null && !shellState.settingsSecondaryActive) {
-                AppBottomNav(
-                    items = BottomTab.entries.map { it.toBottomNavItem() },
-                    selectedKey = shellState.selectedTab.key,
-                    onSelect = { item -> shellState.selectBottomTab(item.key) },
+        topBar = {
+            shellLayout.activeDomain?.let { domain ->
+                MainDomainTopBar(
+                    domain = domain,
+                    onOpenWorkspace = runtime.shellState::openAccount,
                 )
             }
         },
-    ) { _ ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            MainRouteContent(
-                runtime = runtime,
-                preferenceControls = preferenceControls,
-                onBindingCleared = onBindingCleared,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MainRouteContent(
-    runtime: MainNavigationRuntime,
-    preferenceControls: SettingsPreferenceControls,
-    onBindingCleared: () -> Unit,
-) {
-    val shellState = runtime.shellState
-    val screenFactory = runtime.screenFactory
-    DrillTransition(targetState = shellState.statsSecondaryPage, label = "stats-secondary") { page ->
-        when (page) {
-            StatsSecondaryPage.SpendingGoal -> CreateSpendingGoalRoute(
-                screenFactory = screenFactory,
-                onBack = shellState::closeStatsSecondaryPage,
-                onCreated = {
-                    shellState.markDashboardCardsChanged()
-                    shellState.closeStatsSecondaryPage()
-                },
-            )
-
-            StatsSecondaryPage.Budget -> BudgetRoute(
-                screenFactory = screenFactory,
-                onBack = shellState::closeStatsSecondaryPage,
-            )
-
-            StatsSecondaryPage.Recurring -> RecurringRoute(
-                screenFactory = screenFactory,
-                onBack = shellState::closeStatsSecondaryPage,
-            )
-
-            StatsSecondaryPage.IncomePlans -> IncomePlanRoute(
-                screenFactory = screenFactory,
-                onBack = shellState::closeStatsSecondaryPage,
-            )
-
-            StatsSecondaryPage.BillSplits -> BillSplitRoute(
-                screenFactory = screenFactory,
-                onBack = shellState::closeStatsSecondaryPage,
-            )
-
-            StatsSecondaryPage.GlobalSearch -> SearchRoute(
-                navController = runtime.navController,
-                screenFactory = screenFactory,
-                onBack = shellState::closeStatsSecondaryPage,
-            )
-
-            StatsSecondaryPage.DebtGoals -> DebtGoalRoute(
-                screenFactory = screenFactory,
-                onBack = shellState::closeStatsSecondaryPage,
-            )
-
-            StatsSecondaryPage.Debts -> DebtRoute(
-                screenFactory = screenFactory,
-                onBack = shellState::closeStatsSecondaryPage,
-            )
-
-            StatsSecondaryPage.Receivables -> ReceivablesRoute(
-                screenFactory = screenFactory,
-                onBack = shellState::closeStatsSecondaryPage,
-            )
-
-            StatsSecondaryPage.RepaymentDrafts -> RepaymentDraftRoute(
-                screenFactory = screenFactory,
-                focusedDraftPublicId = shellState.focusedRepaymentDraftPublicId,
-                onFocusConsumed = shellState::clearFocusedRepaymentDraft,
-                onBack = shellState::closeStatsSecondaryPage,
-            )
-
-            null -> MainTabRoute(
-                runtime = runtime,
-                preferenceControls = preferenceControls,
-                onBindingCleared = onBindingCleared,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MainTabRoute(
-    runtime: MainNavigationRuntime,
-    preferenceControls: SettingsPreferenceControls,
-    onBindingCleared: () -> Unit,
-) {
-    val shellState = runtime.shellState
-    val screenFactory = runtime.screenFactory
-    AnimatedContent(
-        targetState = shellState.selectedTab,
-        transitionSpec = {
-            fadeIn(AppMotion.standardSpec(AppMotion.normalMillis))
-                .togetherWith(fadeOut(AppMotion.exitSpec(AppMotion.fastMillis)))
+        bottomBar = {
+            if (shellLayout.showPrimaryNavigation && !shellLayout.useNavigationRail) {
+                AppBottomNav(
+                    items = shellLayout.primaryNavigationItems,
+                    selectedKey = runtime.shellState.selectedDomain.key,
+                    onSelect = { item -> runtime.shellState.selectPrimaryDomain(item.key) },
+                )
+            }
         },
-        label = "main-tab",
-    ) { tab ->
-        when (tab) {
-            BottomTab.Today -> TodayRoute(
-                shellState = shellState,
-                screenFactory = screenFactory,
-            )
+    ) { innerPadding ->
+        CompositionLocalProvider(
+            LocalPrimaryNavigationInsetHandled provides shellLayout.outerBottomBarHandlesInsets,
+            LocalPrimaryStatusInsetHandled provides shellLayout.showPrimaryNavigation,
+            LocalAppAdaptiveLayoutPolicy provides shellLayout.adaptiveLayoutPolicy,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
+                if (shellLayout.useNavigationRail) {
+                    AppNavigationRail(
+                        items = shellLayout.primaryNavigationItems,
+                        selectedKey = runtime.shellState.selectedDomain.key,
+                        onSelect = { item -> runtime.shellState.selectPrimaryDomain(item.key) },
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                ) {
+                    MainProductNavHost(
+                        runtime = runtime,
+                        navController = productNavController,
+                        workspaceControls = workspaceControls,
+                    )
+                }
+            }
+        }
+    }
+}
 
-            BottomTab.Pending -> PendingRoute(
-                navController = runtime.navController,
-                shellState = shellState,
-                screenFactory = screenFactory,
-            )
+@Composable
+private fun MainDomainTopBar(
+    domain: PrimaryDomain,
+    onOpenWorkspace: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = AppSpacing.none,
+        shadowElevation = AppSpacing.none,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = AppSpacing.controlMinHeight)
+                    .padding(horizontal = AppSpacing.screenHorizontal),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(domain.labelRes),
+                    modifier = Modifier.weight(1f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                AppAccountButton(onClick = onOpenWorkspace)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+    }
+}
 
-            BottomTab.Ledger -> LedgerRoute(
-                navController = runtime.navController,
-                shellState = shellState,
-                screenFactory = screenFactory,
-            )
+@Composable
+private fun MainProductNavHost(
+    runtime: MainNavigationRuntime,
+    navController: NavHostController,
+    workspaceControls: MainWorkspaceControls,
+) {
+    val dependencies = MainProductRouteDependencies(
+        runtime = runtime,
+        navController = navController,
+        workspaceControls = workspaceControls,
+    )
 
-            BottomTab.Insights -> StatsRoute(
-                shellState = shellState,
-                screenFactory = screenFactory,
-            )
+    NavHost(
+        navController = navController,
+        startDestination = PrimaryDomain.Inbox.route,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        addPrimaryDomainRoutes(dependencies)
+        addWorkspaceRoute(dependencies)
+        addInboxRoutes(dependencies)
+        addPlanRoutes(dependencies)
+        addInsightsRoutes(dependencies)
+        addTransactionRoutes(dependencies)
+        addObligationRoutes(dependencies)
+    }
+}
 
-            BottomTab.Settings -> SettingsRoute(
-                shellState = shellState,
-                screenFactory = screenFactory,
-                preferenceControls = preferenceControls,
-                onBindingCleared = onBindingCleared,
-            )
+@Composable
+private fun MainProductNavigationSync(
+    navController: NavHostController,
+    shellState: MainShellState,
+    currentRoute: String?,
+) {
+    LaunchedEffect(currentRoute) {
+        mainProductDestination(currentRoute)?.let(shellState::syncDestination)
+    }
+    LaunchedEffect(shellState.navigationRequest) {
+        when (val request = shellState.consumeNavigationRequest()) {
+            is MainNavigationRequest.OpenDomain -> {
+                navController.navigatePrimaryDomain(
+                    request.navigationStrategy(
+                        currentDestination = mainProductDestination(currentRoute),
+                    ),
+                )
+            }
+            is MainNavigationRequest.OpenSecondary -> {
+                navController.navigate(request.route) {
+                    launchSingleTop = true
+                }
+            }
+            MainNavigationRequest.OpenWorkspace -> {
+                navController.navigate(WORKSPACE_ROUTE) {
+                    launchSingleTop = true
+                }
+            }
+            MainNavigationRequest.Back -> {
+                navController.popBackStack()
+            }
+            null -> Unit
         }
     }
 }

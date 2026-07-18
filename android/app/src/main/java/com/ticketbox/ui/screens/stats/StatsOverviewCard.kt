@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -107,7 +106,6 @@ internal fun StatsOverviewCard(
                 currencyDisplay = currencyDisplay,
             )
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
@@ -129,8 +127,8 @@ private fun OverviewAmountHeader(
                 modifier = Modifier.fillMaxWidth(),
                 text = formatDisplayAmount(stats.totalAmountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
-                role = AppAmountRole.Hero,
-                minFontSize = 22.sp,
+                role = AppAmountRole.Medium,
+                minFontSize = 18.sp,
             )
             when {
                 hasCurrentConfirmedSpend -> comparison?.let { MonthDeltaPill(it, currencyDisplay) }

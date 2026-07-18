@@ -4,10 +4,13 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
+import com.ticketbox.data.repository.IncomePlanPatch
+import com.ticketbox.data.repository.IncomePlanSaveOutcome
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.IncomeSourceType
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,6 +19,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import java.time.YearMonth
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -34,21 +38,50 @@ class IncomePlanViewModelTest {
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
 
     @Test
-    fun initRefreshLoadsActiveAndArchivedAndTotal() = runTest(dispatcher) {
+    fun initRefreshSharesCurrentMonthExpectedAndHistoricalSummary() = runTest(dispatcher) {
         val repo = FakeRepository(
             active = IncomePlanListing(
-                plans = listOf(plan("p1", 100_000, status = IncomePlanStatus.ACTIVE)),
-                totalActiveAmountCents = 100_000,
+                plans = listOf(
+                    plan("monthly", 100_000, status = IncomePlanStatus.ACTIVE),
+                    plan(
+                        "current-once",
+                        25_000,
+                        status = IncomePlanStatus.ACTIVE,
+                        frequency = IncomeFrequency.ONE_TIME,
+                        incomeMonth = "2026-07",
+                    ),
+                    plan(
+                        "history-once",
+                        50_000,
+                        status = IncomePlanStatus.ACTIVE,
+                        frequency = IncomeFrequency.ONE_TIME,
+                        incomeMonth = "2026-06",
+                    ),
+                    plan(
+                        "future-once",
+                        75_000,
+                        status = IncomePlanStatus.ACTIVE,
+                        frequency = IncomeFrequency.ONE_TIME,
+                        incomeMonth = "2026-08",
+                    ),
+                ),
+                // API total is received-to-date, not the expected-month amount.
+                totalActiveAmountCents = 50_000,
             ),
             archived = listOf(plan("p2", 50_000, status = IncomePlanStatus.ARCHIVED)),
         )
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(
+            repo,
+            currentMonthProvider = { YearMonth.of(2026, 7) },
+        )
         advanceUntilIdle()
         val state = viewModel.state.value
         assertFalse(state.isLoading)
-        assertEquals(1, state.activePlans.size)
+        assertEquals(4, state.activePlans.size)
         assertEquals(1, state.archivedPlans.size)
-        assertEquals(100_000L, state.totalActiveAmountCents)
+        assertEquals(2, state.currentMonthSummary.effectivePlanCount)
+        assertEquals(125_000L, state.currentMonthSummary.expectedAmountCents)
+        assertEquals(1, state.currentMonthSummary.historicalRecordCount)
     }
 
     @Test
@@ -68,7 +101,11 @@ class IncomePlanViewModelTest {
     @Test
     fun submitDraftHappyPathClearsAndRefreshes() = runTest(dispatcher) {
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        var dataChangeCount = 0
+        val viewModel = IncomePlanViewModel(
+            repository = repo,
+            onDataChanged = { dataChangeCount += 1 },
+        )
         advanceUntilIdle()
         viewModel.updateDraftLabel("工资")
         viewModel.updateDraftSource(IncomeSourceType.SALARY)
@@ -84,6 +121,7 @@ class IncomePlanViewModelTest {
         assertEquals(10, repo.lastDraft?.payDay)
         assertEquals(UiText.res(R.string.income_plan_added), viewModel.state.value.flashMessage)
         assertEquals("", viewModel.state.value.addDraft.label) // reset
+        assertEquals(1, dataChangeCount)
     }
 
     @Test
@@ -170,11 +208,147 @@ class IncomePlanViewModelTest {
     }
 
     @Test
+    fun editMonthlyPlanPreloadsDraftAndSendsOneTimePatchWithOccToken() = runTest(dispatcher) {
+        val baseline = plan("salary", 100_000).copy(
+            label = "工资",
+            payDay = 10,
+            rowVersion = 7L,
+        )
+        val saved = baseline.copy(
+            label = "项目尾款",
+            sourceType = IncomeSourceType.FREELANCE,
+            frequency = IncomeFrequency.ONE_TIME,
+            incomeMonth = "2026-08",
+            amountCents = 250_000L,
+            payDay = 28,
+            rowVersion = 8L,
+        )
+        val repo = FakeRepository(
+            active = IncomePlanListing(listOf(baseline), baseline.amountCents),
+            updateResult = Result.success(IncomePlanSaveOutcome.Synced(saved)),
+        )
+        val viewModel = IncomePlanViewModel(
+            repository = repo,
+            currentMonthProvider = { YearMonth.of(2026, 7) },
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.beginEdit(baseline))
+        assertEquals("工资", viewModel.state.value.addDraft.label)
+        assertEquals(100_000L, viewModel.state.value.addDraft.parsedAmountCents())
+        assertEquals("2026-07", viewModel.state.value.addDraft.incomeMonthInput)
+        viewModel.updateDraftLabel("项目尾款")
+        viewModel.updateDraftSource(IncomeSourceType.FREELANCE)
+        viewModel.updateDraftFrequency(IncomeFrequency.ONE_TIME)
+        viewModel.updateDraftIncomeMonth("2026-08")
+        viewModel.updateDraftAmount("2500")
+        viewModel.updateDraftPayDay("28")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertEquals(1, repo.updateCalls)
+        assertEquals(baseline, repo.lastUpdateBaseline)
+        assertEquals(7L, repo.lastUpdatePatch?.expectedRowVersion)
+        assertEquals(IncomeFrequency.ONE_TIME, repo.lastUpdatePatch?.frequency)
+        assertEquals("2026-08", repo.lastUpdatePatch?.incomeMonth)
+        assertEquals(250_000L, repo.lastUpdatePatch?.amountCents)
+        assertTrue(viewModel.state.value.editSucceeded)
+        assertEquals(UiText.res(R.string.income_plan_updated), viewModel.state.value.flashMessage)
+        assertEquals(saved, viewModel.state.value.activePlans.single())
+        assertEquals(0, viewModel.state.value.currentMonthSummary.effectivePlanCount)
+    }
+
+    @Test
+    fun editOneTimePlanToMonthlyKeepsQueuedProjectionAndClearsMonthShape() = runTest(dispatcher) {
+        val baseline = plan(
+            id = "bonus",
+            amountCents = 50_000L,
+            frequency = IncomeFrequency.ONE_TIME,
+            incomeMonth = "2026-07",
+        ).copy(label = "奖金", rowVersion = 11L)
+        val optimistic = baseline.copy(
+            label = "固定津贴",
+            frequency = IncomeFrequency.MONTHLY,
+            incomeMonth = null,
+            amountCents = 60_000L,
+            payDay = 15,
+        )
+        var dataChangeCount = 0
+        val repo = FakeRepository(
+            active = IncomePlanListing(listOf(baseline), baseline.amountCents),
+            updateResult = Result.success(IncomePlanSaveOutcome.Queued(optimistic)),
+        )
+        val viewModel = IncomePlanViewModel(
+            repository = repo,
+            currentMonthProvider = { YearMonth.of(2026, 7) },
+            onDataChanged = { dataChangeCount += 1 },
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.beginEdit(baseline))
+        viewModel.updateDraftLabel("固定津贴")
+        viewModel.updateDraftFrequency(IncomeFrequency.MONTHLY)
+        viewModel.updateDraftAmount("600")
+        viewModel.updateDraftPayDay("15")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertEquals(11L, repo.lastUpdatePatch?.expectedRowVersion)
+        assertEquals(IncomeFrequency.MONTHLY, repo.lastUpdatePatch?.frequency)
+        assertNull(repo.lastUpdatePatch?.incomeMonth)
+        assertEquals(optimistic, viewModel.state.value.activePlans.single())
+        assertEquals(1, viewModel.state.value.currentMonthSummary.effectivePlanCount)
+        assertEquals(60_000L, viewModel.state.value.currentMonthSummary.expectedAmountCents)
+        assertEquals(UiText.res(R.string.income_plan_update_queued), viewModel.state.value.flashMessage)
+        assertEquals(MessageTone.Info, viewModel.state.value.flashTone)
+        assertTrue(viewModel.state.value.editSucceeded)
+        assertEquals(1, dataChangeCount)
+    }
+
+    @Test
+    fun editFailureKeepsEditorDraftAndSurfacesError() = runTest(dispatcher) {
+        val baseline = plan("salary", 100_000L)
+        val repo = FakeRepository(
+            active = IncomePlanListing(listOf(baseline), baseline.amountCents),
+            updateResult = Result.failure(RuntimeException("版本冲突")),
+        )
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.beginEdit(baseline))
+        viewModel.updateDraftLabel("调整后工资")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertEquals("调整后工资", viewModel.state.value.addDraft.label)
+        assertEquals(baseline, viewModel.state.value.editingPlan)
+        assertEquals(UiText.raw("版本冲突"), viewModel.state.value.addDraft.validationError)
+        assertFalse(viewModel.state.value.isSubmitting)
+        assertFalse(viewModel.state.value.editSucceeded)
+    }
+
+    @Test
+    fun viewerCannotOpenIncomePlanEditor() = runTest(dispatcher) {
+        val baseline = plan("salary", 100_000L)
+        val repo = FakeRepository(
+            active = IncomePlanListing(listOf(baseline), baseline.amountCents),
+            canModify = false,
+        )
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.beginEdit(baseline))
+        assertNull(viewModel.state.value.editingPlan)
+        assertEquals(UiText.res(R.string.common_readonly_ledger), viewModel.state.value.error)
+        assertEquals(0, repo.updateCalls)
+    }
+
+    @Test
     fun archiveTriggersRepositoryAndFlashMessage() = runTest(dispatcher) {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
-        viewModel.archive("some-id", 1L)
+        viewModel.setArchived("some-id", 1L, archived = true)
         advanceUntilIdle()
         assertEquals("some-id", repo.lastArchiveId)
         assertEquals(UiText.res(R.string.income_plan_archived), viewModel.state.value.flashMessage)
@@ -185,7 +359,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
-        viewModel.restore("some-id", 1L)
+        viewModel.setArchived("some-id", 1L, archived = false)
         advanceUntilIdle()
         assertEquals("some-id", repo.lastRestoreId)
         assertEquals(UiText.res(R.string.income_plan_restored), viewModel.state.value.flashMessage)
@@ -196,7 +370,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
-        viewModel.archive("x", 1L)
+        viewModel.setArchived("x", 1L, archived = true)
         advanceUntilIdle()
         viewModel.dismissFlash()
         assertNull(viewModel.state.value.flashMessage)
@@ -214,12 +388,11 @@ class IncomePlanViewModelTest {
     fun draftAmountParsing() {
         val draft = IncomePlanDraftUi(amountYuanInput = "123.45")
         assertEquals(12345L, draft.parsedAmountCents())
-        // §3 BigDecimal 精度：>2 位小数 HALF_UP 精确进位。"1.005" → 101；旧 Double Math.round 给 100
-        // （1.005*100 的 double 是 100.4999… → 100），故此断言会在退回 Double 时变红。
-        assertEquals(101L, IncomePlanDraftUi(amountYuanInput = "1.005").parsedAmountCents())
+        // Surplus fractional precision is invalid; money input is never rounded.
+        assertEquals(null, IncomePlanDraftUi(amountYuanInput = "1.005").parsedAmountCents())
         // 收入计划允许 0（与 DebtList 的 > 0 不同：这里是 >= 0 边界）。
         assertEquals(0L, IncomePlanDraftUi(amountYuanInput = "0").parsedAmountCents())
-        // 拒负：极小负额在分空间 HALF_UP 舍入到 0，也按元符号拒，不静默当成 0 元计划。
+        // Every negative input is rejected explicitly, including sub-minor values.
         assertEquals(null, IncomePlanDraftUi(amountYuanInput = "-0.004").parsedAmountCents())
         // 溢出 Long 安全返回 null（旧 Double Math.round 会回 Long.MAX 垃圾值）。
         assertEquals(null, IncomePlanDraftUi(amountYuanInput = "99999999999999999999").parsedAmountCents())
@@ -277,12 +450,14 @@ class IncomePlanViewModelTest {
         id: String,
         amountCents: Long,
         status: IncomePlanStatus = IncomePlanStatus.ACTIVE,
+        frequency: IncomeFrequency = IncomeFrequency.MONTHLY,
+        incomeMonth: String? = null,
     ) = IncomePlan(
         publicId = id,
         label = "label-$id",
         sourceType = IncomeSourceType.SALARY,
-        frequency = IncomeFrequency.MONTHLY,
-        incomeMonth = null,
+        frequency = frequency,
+        incomeMonth = incomeMonth,
         amountCents = amountCents,
         payDay = 1,
         status = status,
@@ -297,9 +472,13 @@ class IncomePlanViewModelTest {
         private val archived: List<IncomePlan> = emptyList(),
         private val canModify: Boolean = true,
         private val createResult: Result<IncomePlan>? = null,
+        private val updateResult: Result<IncomePlanSaveOutcome>? = null,
     ) : IncomePlanActions {
         var createCalls = 0
+        var updateCalls = 0
         var lastDraft: IncomePlanDraft? = null
+        var lastUpdateBaseline: IncomePlan? = null
+        var lastUpdatePatch: IncomePlanPatch? = null
         var lastArchiveId: String? = null
         var lastRestoreId: String? = null
 
@@ -316,8 +495,20 @@ class IncomePlanViewModelTest {
             return createResult ?: Result.success(stub(draft.label))
         }
 
-        override suspend fun update(publicId: String, patch: com.ticketbox.data.repository.IncomePlanPatch) =
+        override suspend fun update(publicId: String, patch: IncomePlanPatch) =
             Result.success(stub(publicId))
+
+        override suspend fun updateAllowingOffline(
+            baseline: IncomePlan,
+            patch: IncomePlanPatch,
+        ): Result<IncomePlanSaveOutcome> {
+            updateCalls += 1
+            lastUpdateBaseline = baseline
+            lastUpdatePatch = patch
+            return updateResult ?: Result.success(
+                IncomePlanSaveOutcome.Synced(baseline.copy(rowVersion = baseline.rowVersion + 1L)),
+            )
+        }
 
         override suspend fun archive(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
             lastArchiveId = publicId

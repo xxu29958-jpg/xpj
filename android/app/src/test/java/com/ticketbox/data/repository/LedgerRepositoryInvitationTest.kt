@@ -33,6 +33,7 @@ class LedgerRepositoryInvitationTest {
                     ledgerName = "家庭账本",
                     deviceName = "Pixel 8",
                     role = "member",
+                    homeCurrencyCode = "CNY",
                 ),
                 // refreshLedgers is called after accept; let it succeed with a tiny list.
                 listLedgersResult = LedgerListResponseDto(
@@ -92,6 +93,7 @@ class LedgerRepositoryInvitationTest {
                     ledgerName = "邀请账本",
                     deviceName = "Invite Pixel",
                     role = "member",
+                    homeCurrencyCode = "CNY",
                 ),
             ),
         )
@@ -311,6 +313,7 @@ class LedgerRepositoryInvitationTest {
         name = name,
         role = role,
         isDefault = isDefault,
+        homeCurrencyCode = "CNY",
         createdAt = "2026-01-01T00:00:00Z",
         archivedAt = null,
     )

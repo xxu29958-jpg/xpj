@@ -131,9 +131,12 @@ def test_display_merchant_preserves_case() -> None:
 def test_web_categories_renders_with_navigation(web_client: TestClient) -> None:
     resp = web_client.get("/web/categories?ledger_id=owner")
     assert resp.status_code == 200
-    # Page heading + nav active marker.
-    assert "分类账本" in resp.text
-    assert 'href="/web/rules?ledger_id=owner"' in resp.text
+    # 分类是流水域资料库的三级能力页；标题与领域归属分别钉住。
+    assert 'data-domain="transactions"' in resp.text
+    assert '<span class="topbar-domain">流水</span>' in resp.text
+    assert '<span class="product-eyebrow">资料库 / 分类</span>' in resp.text
+    assert '<h1 class="page-title page-title--compact">分类</h1>' in resp.text
+    assert 'href="/web/library?ledger_id=owner"' in resp.text
     assert 'aria-label="选择分类月份"' in resp.text
 
 
@@ -228,12 +231,8 @@ def test_category_summary_uses_accounting_timezone_month_bounds(
     assert all(item.category != "Boundary" for item in utc.summaries)
 
 
-def test_custom_category_preference_delete_restore_controls_options(
-    client: TestClient, *, identity
-) -> None:
-    _create_manual_category(
-        client, identity=identity, category="咖啡", client_ref="cat-pref-coffee"
-    )
+def test_custom_category_preference_delete_restore_controls_options(client: TestClient, *, identity) -> None:
+    _create_manual_category(client, identity=identity, category="咖啡", client_ref="cat-pref-coffee")
     preference = _category_preference(client, identity=identity, name="咖啡")
     assert preference["usage_count"] == 1
     categories = client.get("/api/expenses/categories", headers=identity.app_headers)
@@ -250,10 +249,7 @@ def test_custom_category_preference_delete_restore_controls_options(
 
     recycle = client.get("/api/recycle-bin", headers=identity.app_headers)
     assert recycle.status_code == 200
-    assert any(
-        item["kind"] == "category_preference" and item["title"] == "咖啡"
-        for item in recycle.json()["items"]
-    )
+    assert any(item["kind"] == "category_preference" and item["title"] == "咖啡" for item in recycle.json()["items"])
 
     restored = client.post(
         f"/api/expenses/categories/preferences/{preference['public_id']}/restore",
@@ -265,12 +261,8 @@ def test_custom_category_preference_delete_restore_controls_options(
     assert "咖啡" in visible.json()["items"]
 
 
-def test_deleted_preference_suppresses_historical_fallback_only_for_that_key(
-    client: TestClient, *, identity
-) -> None:
-    _create_manual_category(
-        client, identity=identity, category="咖啡", client_ref="cat-pref-hide"
-    )
+def test_deleted_preference_suppresses_historical_fallback_only_for_that_key(client: TestClient, *, identity) -> None:
+    _create_manual_category(client, identity=identity, category="咖啡", client_ref="cat-pref-hide")
     preference = _category_preference(client, identity=identity, name="咖啡")
     deleted = client.post(
         f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
@@ -301,12 +293,8 @@ def test_deleted_preference_suppresses_historical_fallback_only_for_that_key(
     assert "手作" in categories.json()["items"]
 
 
-def test_default_category_usage_does_not_create_custom_preference(
-    client: TestClient, *, identity
-) -> None:
-    _create_manual_category(
-        client, identity=identity, category="吃饭", client_ref="cat-pref-default"
-    )
+def test_default_category_usage_does_not_create_custom_preference(client: TestClient, *, identity) -> None:
+    _create_manual_category(client, identity=identity, category="吃饭", client_ref="cat-pref-default")
     resp = client.get(
         "/api/expenses/categories/preferences",
         headers=identity.app_headers,
@@ -315,12 +303,8 @@ def test_default_category_usage_does_not_create_custom_preference(
     assert resp.json()["items"] == []
 
 
-def test_delete_category_preference_rejects_active_rule_reference(
-    client: TestClient, *, identity
-) -> None:
-    _create_manual_category(
-        client, identity=identity, category="咖啡", client_ref="cat-pref-rule"
-    )
+def test_delete_category_preference_rejects_active_rule_reference(client: TestClient, *, identity) -> None:
+    _create_manual_category(client, identity=identity, category="咖啡", client_ref="cat-pref-rule")
     preference = _category_preference(client, identity=identity, name="咖啡")
     with SessionLocal() as db:
         now = now_utc()
@@ -351,12 +335,26 @@ def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, i
     eid_other = _create_pending(web_client, identity=identity)  # stays "其他"
     eid_food = _create_pending(web_client, identity=identity)
     _save_pending(
-        web_client, eid_food, identity=identity,
-        amount_yuan="12.34", merchant="星巴克", category="餐饮",
+        web_client,
+        eid_food,
+        identity=identity,
+        amount_yuan="12.34",
+        merchant="星巴克",
+        category="餐饮",
     )
     resp = web_client.get("/web/categories/uncategorized?ledger_id=owner")
     assert resp.status_code == 200
-    ids = set(re.findall(r'name="expense_ids" value="(\d+)"', resp.text))
+    body = resp.text
+    assert "流水 / 资料库 / 未分类" in body
+    assert 'data-domain="transactions"' in body
+    assert '<h1 class="page-title page-title--compact">未分类流水</h1>' in body
+    assert 'data-page="category-detail" data-page-level="tertiary"' in body
+    assert 'action="/web/categories/uncategorized/bulk-set"' in body
+    assert 'name="csrf_token"' in body
+    assert "dt-card" not in body
+    assert 'class="dt-' not in body
+    assert 'style="' not in body
+    ids = set(re.findall(r'name="expense_ids"\s+value="(\d+)"', body))
     assert str(eid_other) in ids
     assert str(eid_food) not in ids
 

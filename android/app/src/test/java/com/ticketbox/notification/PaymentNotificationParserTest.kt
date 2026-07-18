@@ -2,6 +2,7 @@ package com.ticketbox.notification
 
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.NotificationDraftSource
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentNotificationDraft
 import java.time.Instant
@@ -284,6 +285,16 @@ class PaymentNotificationParserTest {
                 snapshot(packageName = "com.eg.android.AlipayGphone", title = "支付宝", text = "花呗还款成功"),
             ),
         )
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(
+                    packageName = "com.eg.android.AlipayGphone",
+                    title = "支付宝",
+                    text = "花呗还款成功 ¥500.00",
+                    homeCurrency = CurrencyCode.JPY,
+                ),
+            ),
+        )
     }
 
     @Test
@@ -314,9 +325,11 @@ class PaymentNotificationParserTest {
         packageName: String,
         title: String,
         text: String,
+        homeCurrency: CurrencyCode = CurrencyCode.CNY,
     ): PaymentNotificationSnapshot =
         PaymentNotificationSnapshot(
             packageName = packageName,
+            homeCurrency = homeCurrency,
             title = title,
             text = text,
             bigText = null,

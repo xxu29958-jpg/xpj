@@ -202,6 +202,10 @@ def export_confirmed_csv(
             amount_yuan = ""
         else:
             amount_cents = int(expense.amount_cents)
+            # Published CSV round-trip contract: ``amount_yuan`` remains the
+            # historical fixed two-decimal projection. Web/Owner presentation
+            # must use currency_common instead; changing this column would
+            # silently break existing import files and integrations.
             amount_yuan = str((Decimal(amount_cents) / Decimal(100)).quantize(Decimal("0.01")))
         stat_time = _stat_time(expense)
         confirmed_at = ensure_utc(expense.confirmed_at)

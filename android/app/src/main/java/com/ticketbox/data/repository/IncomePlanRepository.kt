@@ -5,6 +5,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomePlanStatus
@@ -25,6 +26,7 @@ import java.util.UUID
  */
 interface IncomePlanActions {
     fun canModifyLedger(): Boolean
+    val currentHomeCurrency: CurrencyCode get() = CurrencyCode.LegacyFallback
     fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
     suspend fun listActive(): Result<IncomePlanListing>
     suspend fun listIncluding(status: IncomePlanStatus): Result<List<IncomePlan>>
@@ -85,6 +87,9 @@ class IncomePlanRepository(
     )
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+
+    override val currentHomeCurrency: CurrencyCode get() =
+        CurrencyCode.fromStorageKey(settingsStore.homeCurrencyCodeKey())
 
     override fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
 
@@ -148,9 +153,8 @@ class IncomePlanRepository(
      * failure (4xx / 409 / 5xx HttpException) propagates and surfaces as
      * Result.failure.
      *
-     * Foundation-only in Slice F — no UI yet calls this (there's no income-plan
-     * edit caller). The method itself is the enqueue site the outbox-coverage
-     * audit needs to consider [UpdateIncomePlan] "wired".
+     * The Android income-plan editor uses this as its only update path, so
+     * online OCC and offline persistence share one production contract.
      */
     override suspend fun updateAllowingOffline(
         baseline: IncomePlan,

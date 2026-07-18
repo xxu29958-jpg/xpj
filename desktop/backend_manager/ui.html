@@ -59,6 +59,19 @@
     }
     .brand-name { font-size: 17px; font-weight: 700; line-height: 1.25; }
     .brand-meta { margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .product-link {
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      margin-left: auto;
+      padding: 5px 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .product-link:hover { color: var(--ink); text-decoration: underline; }
+    .product-link + .overall-state { margin-left: 0; }
     .overall-state {
       margin-left: auto;
       display: flex;
@@ -224,6 +237,7 @@
         <div class="brand-name">小票夹管理器</div>
         <div class="brand-meta" id="runtimeLabel">正在读取本机状态</div>
       </div>
+      <a class="product-link" id="productHomeLink" href="#">返回日常账务</a>
       <div class="overall-state" id="overallState" role="status" aria-live="polite">
         <span class="state-dot" aria-hidden="true"></span>
         <span id="overallText">检查中</span>
@@ -307,6 +321,7 @@
     let actionInFlight = false;
     let latestStatus = null;
     const $ = (id) => document.getElementById(id);
+    $("productHomeLink").href = "/web";
 
     function serviceState(state) {
       const labels = {

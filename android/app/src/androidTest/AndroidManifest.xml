@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!--
+          The target APK owns AndroidX Startup. The instrumentation APK can
+          inherit ProfileInstaller's provider declaration while AGP correctly
+          de-duplicates the Startup classes already packaged by the target APK.
+          Do not start that provider in the separate test process.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            tools:node="remove" />
+    </application>
+</manifest>

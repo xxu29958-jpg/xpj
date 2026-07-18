@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.GlobalSearchActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +15,7 @@ internal class FakeGlobalSearchActions(
     confirmed: List<Expense> = emptyList(),
     initialRecent: List<String> = emptyList(),
 ) : GlobalSearchActions {
+    override var currentHomeCurrency: CurrencyCode = CurrencyCode.CNY
     private val confirmedFlow = MutableStateFlow(confirmed)
     var pendingResult = pendingResult
     var fetchPendingResponder: (suspend () -> Result<List<Expense>>)? = null

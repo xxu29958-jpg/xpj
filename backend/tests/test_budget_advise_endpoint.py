@@ -17,9 +17,10 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense, MonthlyIncomePlan, RecurringItem
+from app.models import Expense, LedgerMember, MonthlyIncomePlan, RecurringItem
 from app.services.budget_advisor_service import (
     BudgetInputs,
     MockBudgetAdvisor,
@@ -122,11 +123,31 @@ def test_advise_with_default_empty_provider_returns_null_advice(
     assert body["reason_code"] == "ai_advisor_provider_empty"
 
 
-def test_advise_requires_auth(client: TestClient, *, identity) -> None:  # noqa: ARG001
-    resp = client.post(
+def test_advise_requires_auth_and_writer_role(
+    client: TestClient, *, identity
+) -> None:
+    unauthenticated = client.post(
         "/api/budget/advise", json={"month": _current_month()}
     )
-    assert resp.status_code == 401
+    assert unauthenticated.status_code == 401
+
+    with SessionLocal() as db:
+        membership = db.scalar(
+            select(LedgerMember)
+            .where(LedgerMember.ledger_id == "owner")
+            .limit(1)
+        )
+        assert membership is not None
+        membership.role = "viewer"
+        db.commit()
+
+    viewer = client.post(
+        "/api/budget/advise",
+        headers=identity.app_headers,
+        json={"month": _current_month()},
+    )
+    assert viewer.status_code == 403
+    assert viewer.json()["error"] == "permission_denied"
 
 
 @pytest.mark.parametrize("bad_month", ["2026-1", "2026-13-01", "26-05", "", "abc"])

@@ -1,5 +1,9 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -47,7 +51,34 @@ class AppStatusBannerTest {
             }
         }
 
-        composeRule.onNodeWithText("已保存").assertIsDisplayed()
+        composeRule.onNodeWithText("已保存")
+            .assertIsDisplayed()
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.LiveRegion,
+                    LiveRegionMode.Polite,
+                ),
+            )
+    }
+
+    @Test
+    fun staticInformationDoesNotExposeLiveRegion() {
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                AppStatusBanner(
+                    message = UiText.Raw("当前账本只读"),
+                    tone = MessageTone.Info,
+                    announceUpdates = false,
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("当前账本只读")
+            .assert(
+                SemanticsMatcher.keyNotDefined(
+                    SemanticsProperties.LiveRegion,
+                ),
+            )
     }
 
     @Test

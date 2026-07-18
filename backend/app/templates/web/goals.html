@@ -1,97 +1,140 @@
 {% extends "base.html" %}
-{% block title %}目标 · 小票夹{% endblock %}
+{% block title %}目标 · 计划 · 小票夹{% endblock %}
 
 {% block content %}
-<div class="page-header page-header--with-action">
-  <div>
-    <h1 class="page-title">{{ month }} 月度目标</h1>
-    <div class="page-sub">目标只做提醒和报表展示,不阻断上传、确认或预算计算。</div>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">计划 / 目标</span>
+    <h1 class="page-title page-title--compact">目标</h1>
+    <p class="product-page-summary">目标用于提醒和报表展示，不会阻断记账、确认或预算计算。</p>
   </div>
-  <a class="dt-btn ghost" href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ month }}">查看动态报表 →</a>
-</div>
+  <div class="product-page-actions">
+    <a class="product-button" href="/web/reports?ledger_id={{ selected_ledger_id }}&amp;month={{ month }}">查看分析</a>
+  </div>
+</header>
 
-{% if message %}<div class="callout-info callout-info--success">{{ message }}</div>{% endif %}
-{% if error %}<div class="callout-info callout-info--danger">{{ error }}</div>{% endif %}
+{% if message %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="product-feedback product-feedback--error" role="alert">{{ error }}</div>{% endif %}
 
-{# 月份由顶栏月份切换器统一管理；本表单只保留「显示已归档」过滤(切月经顶栏会保留它)。 #}
-<form method="get" action="/web/goals" class="toolbar">
+<form method="get" action="/web/goals" class="product-commandbar">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="month" value="{{ month }}">
-  <label class="dt-form-row dt-form-row--inline">
+  <label class="product-check">
     <input type="checkbox" name="include_archived" value="true" {% if include_archived %}checked{% endif %}>
-    <span class="text-muted">显示已归档</span>
+    <span>显示已归档</span>
   </label>
-  <div class="spacer"></div>
-  <button class="dt-btn" type="submit">查看</button>
+  <button class="product-button" type="submit">应用筛选</button>
 </form>
 
-{% if can_write %}
-<div class="dt-card">
-  <div class="card-head">
-    <div class="card-title">新建目标</div>
-    <div class="card-sub">不影响预算,仅做提醒</div>
-  </div>
-  <form method="post" action="/web/goals/create">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="month" value="{{ month }}">
-    <div class="dt-form-grid">
-      <div class="dt-form-row">
-        <label>目标名称</label>
-        <input class="dt-input" type="text" name="name" maxlength="80" placeholder="本月餐饮" required>
-      </div>
-      <div class="dt-form-row">
-        <label>目标金额（元）</label>
-        <input class="dt-input" type="number" name="target_amount_yuan" step="0.01" min="0.01" placeholder="800.00" required>
-      </div>
-      <div class="dt-form-row">
-        <label>分类（留空为总支出）</label>
-        <input class="dt-input" type="text" name="category" maxlength="64" placeholder="餐饮">
+<div class="plan-workspace goal-workspace{% if not can_write %} plan-workspace--single{% endif %}">
+  {% if can_write %}
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">新建目标</div>
+        <div class="product-panel-subtitle">金额只用于提醒，不会改变预算。</div>
       </div>
     </div>
-    <div class="dt-actions">
-      <button class="dt-btn primary" type="submit">保存目标</button>
-    </div>
-  </form>
-</div>
-{% endif %}
-
-<div class="dt-card">
-  <div class="card-head">
-    <div class="card-title">目标进度</div>
-    <div class="card-sub">{{ goals|length }} 个</div>
-  </div>
-  {% if goals %}
-  <div class="goal-list">
-    {% for goal in goals %}
-    <div class="goal-row {{ 'is-archived' if goal.is_archived else '' }}">
-      <div class="goal-row-head">
-        <div class="goal-row-head__title">
-          <strong>{{ goal.name }}</strong>
-          <span class="dt-tag">{{ goal.category }}</span>
-          {% if goal.is_archived %}<span class="dt-pill muted">已归档</span>{% endif %}
-          {% if goal.is_over_limit %}<span class="dt-pill danger">已超出</span>{% endif %}
-        </div>
-        <div class="goal-row-head__amt font-num">{{ home_currency_symbol }}{{ goal.spent_yuan }} / {{ home_currency_symbol }}{{ goal.target_yuan }}</div>
-      </div>
-      <div class="dt-progress">
-        <div class="dt-progress__fill {{ 'is-over' if goal.is_over_limit else '' }}" style="width: {{ goal.bar_percent }}%"></div>
-      </div>
-      <div class="dt-progress-meta">
-        <span>{{ goal.progress_percent }}%</span>
-        <span>剩余 {{ home_currency_symbol }}{{ goal.remaining_yuan }}</span>
-      </div>
-      {% if can_write and not goal.is_archived %}
-      <form method="post" action="/web/goals/{{ goal.public_id }}/archive" class="goal-archive-form">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="month" value="{{ month }}">
-        <button type="submit" class="dt-btn ghost dt-btn--sm">归档</button>
-      </form>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="empty-cell">这个月还没有目标。可以先设总支出目标,再按分类补充餐饮、购物等目标。</div>
+    <form method="post" action="/web/goals/create" class="product-form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="month" value="{{ month }}">
+      <label class="product-field">
+        <span>目标名称</span>
+        <input class="product-input" type="text" name="name" maxlength="80" placeholder="本月餐饮" required>
+      </label>
+      <label class="product-field">
+        <span>目标金额（{{ home_currency_code }}）</span>
+        <input class="product-input"
+               type="number"
+               name="target_amount_yuan"
+               step="{{ home_currency_input.amount_step }}"
+               min="{{ home_currency_input.positive_amount_min }}"
+               inputmode="{{ home_currency_input.inputmode }}"
+               placeholder="{{ home_currency_input.amount_example }}"
+               aria-describedby="goal-amount-hint"
+               required>
+        <small id="goal-amount-hint">{{ home_currency_input.amount_input_hint }}</small>
+      </label>
+      <label class="product-field">
+        <span>分类（留空为总支出）</span>
+        <input class="product-input" type="text" name="category" maxlength="64" placeholder="餐饮">
+      </label>
+      <button class="product-button product-button--primary" type="submit">保存目标</button>
+    </form>
+  </section>
   {% endif %}
+
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">目标进度</div>
+        <div class="product-panel-subtitle">{{ goals | length }} 个目标</div>
+      </div>
+    </div>
+    {% if goals %}
+    <div class="plan-goal-list">
+      {% for goal in goals %}
+      <article class="plan-goal{% if goal.is_archived %} is-receded{% endif %}">
+        <div class="plan-goal-header">
+          <div>
+            <strong>{{ goal.name }}</strong>
+            <div class="cluster">
+              <span class="product-status">{{ goal.category }}</span>
+              <span class="product-status{% if goal.progress_tone %} product-status--{{ goal.progress_tone }}{% endif %}">{{ goal.progress_label }}</span>
+            </div>
+          </div>
+          <span class="plan-goal-amount">{{ home_currency_symbol }}{{ goal.spent_yuan }} / {{ home_currency_symbol }}{{ goal.target_yuan }}</span>
+        </div>
+        <progress class="plan-progress{% if goal.is_over_limit %} is-over{% endif %}"
+                  value="{{ goal.bar_percent }}"
+                  max="100"
+                  aria-label="{{ goal.name }} 已完成 {{ goal.progress_percent }}%">
+          {{ goal.progress_percent }}%
+        </progress>
+        <div class="plan-progress-meta">
+          <span>{{ goal.progress_percent }}%</span>
+          <span>剩余 {{ home_currency_symbol }}{{ goal.remaining_yuan }}</span>
+        </div>
+        {% if can_write and not goal.is_archived %}
+        <details class="product-disclosure">
+          <summary>编辑目标</summary>
+          <form method="post" action="/web/goals/{{ goal.public_id }}/edit" class="product-form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+            <label class="product-field"><span>目标名称</span>
+              <input class="product-input" type="text" name="name" value="{{ goal.name }}" maxlength="80" required>
+            </label>
+            <label class="product-field"><span>月份</span>
+              <input class="product-input" type="month" name="month" value="{{ goal.month }}" required>
+            </label>
+            <label class="product-field"><span>目标金额（{{ home_currency_code }}）</span>
+              <input class="product-input" type="number" name="target_amount_yuan" value="{{ goal.target_yuan }}"
+                     step="{{ home_currency_input.amount_step }}" min="{{ home_currency_input.positive_amount_min }}" required>
+            </label>
+            <label class="product-field"><span>分类（留空为总支出）</span>
+              <input class="product-input" type="text" name="category" value="{% if goal.category != '总支出' %}{{ goal.category }}{% endif %}" maxlength="64">
+            </label>
+            <button class="product-button product-button--primary product-button--small" type="submit">保存修改</button>
+          </form>
+        </details>
+        <form method="post" action="/web/goals/{{ goal.public_id }}/archive" class="product-inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <input type="hidden" name="month" value="{{ month }}">
+          <button type="submit" class="product-button product-button--small">归档</button>
+        </form>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="product-state">
+      <div class="product-state-title">这个月还没有目标</div>
+      <div class="product-state-body">可以先设总支出目标，再按餐饮、购物等分类补充。</div>
+    </div>
+    {% endif %}
+  </section>
 </div>
 {% endblock %}

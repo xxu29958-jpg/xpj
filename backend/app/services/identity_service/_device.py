@@ -46,6 +46,7 @@ def _create_auth_token(
     device_id: int,
     ledger_id: str,
     scope: str,
+    activation_state: str = "active",
     expires_at: datetime | None = None,
     token_value: str | None = None,
 ) -> str:
@@ -55,6 +56,7 @@ def _create_auth_token(
         device_id=device_id,
         ledger_id=ledger_id,
         scope=scope,
+        activation_state=activation_state,
         expires_at=expires_at,
         token_value=token_value,
     )

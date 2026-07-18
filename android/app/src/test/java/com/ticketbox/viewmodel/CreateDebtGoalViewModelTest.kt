@@ -269,6 +269,13 @@ private class FakeCreateDebtActions(
         publicId: String,
         expectedRowVersion: Long,
         amountCents: Long,
+    ): Result<com.ticketbox.domain.model.DebtRepaymentFact> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
     ): Result<Debt> = Result.failure(UnsupportedOperationException())
 
     override suspend fun recordAdjustment(

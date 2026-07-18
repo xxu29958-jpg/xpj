@@ -1,17 +1,22 @@
 package com.ticketbox.ui.components
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.People
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -28,8 +33,8 @@ class AppBottomNavLayoutTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun tabSemanticTargetsStayEqualWidthAndClickable() {
-        var selectedKey by mutableStateOf("today")
+    fun primaryDestinationTargetsStayEqualWidthAndClickable() {
+        var selectedKey by mutableStateOf("inbox")
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 AppBottomNav(
@@ -39,8 +44,10 @@ class AppBottomNavLayoutTest {
                 )
             }
         }
+        assertExactlyOneSelected("收件")
 
         val bounds = bottomNavLabels.map { label ->
+            composeRule.onNodeWithText(label).assertIsDisplayed()
             composeRule.onNodeWithContentDescription(label).getUnclippedBoundsInRoot()
         }
         val expectedWidth = bounds.first().right - bounds.first().left
@@ -51,10 +58,16 @@ class AppBottomNavLayoutTest {
             assertTrue("Expected bottom nav target height >= 48.dp, got $height", height >= 48.dp)
         }
 
-        composeRule.onNodeWithContentDescription("账本").performClick()
+        composeRule.onNodeWithContentDescription("流水").performClick()
         composeRule.waitForIdle()
 
-        assertEquals("ledger", selectedKey)
+        assertEquals("transactions", selectedKey)
+        assertExactlyOneSelected("流水")
+    }
+
+    private fun assertExactlyOneSelected(label: String) {
+        composeRule.onAllNodes(isSelected()).assertCountEquals(1)
+        composeRule.onNodeWithContentDescription(label).assertIsSelected()
     }
 
     private fun assertDpWithin(expected: Dp, actual: Dp) {
@@ -63,14 +76,14 @@ class AppBottomNavLayoutTest {
     }
 
     private companion object {
-        val bottomNavLabels = listOf("今日", "待确认", "账本", "洞察", "设置")
+        val bottomNavLabels = listOf("收件", "流水", "往来", "计划", "洞察")
 
-        fun bottomNavItems(): List<AppBottomNavItem> = listOf(
-            AppBottomNavItem("today", "今日", Icons.Default.Today),
-            AppBottomNavItem("pending", "待确认", Icons.Default.CheckCircle),
-            AppBottomNavItem("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
-            AppBottomNavItem("insights", "洞察", Icons.Default.Insights),
-            AppBottomNavItem("settings", "设置", Icons.Default.Settings),
+        fun bottomNavItems(): List<AppPrimaryNavItem> = listOf(
+            AppPrimaryNavItem("inbox", "收件", Icons.Default.Inbox),
+            AppPrimaryNavItem("transactions", "流水", Icons.AutoMirrored.Filled.ReceiptLong),
+            AppPrimaryNavItem("obligations", "往来", Icons.Default.People),
+            AppPrimaryNavItem("plans", "计划", Icons.AutoMirrored.Filled.EventNote),
+            AppPrimaryNavItem("insights", "洞察", Icons.Default.Insights),
         )
     }
 }

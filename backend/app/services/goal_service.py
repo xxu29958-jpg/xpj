@@ -244,6 +244,47 @@ def create_goal(
     return goal_response(goal, totals)
 
 
+def _prepare_spending_goal_update(
+    db: Session,
+    *,
+    tenant_id: str,
+    goal: Goal,
+    payload: GoalUpdateRequest,
+) -> dict[str, object]:
+    """Clean a spending-goal patch and reject an active scope collision."""
+    updates = payload.model_dump(
+        exclude_unset=True, exclude={"expected_row_version"}
+    )
+    new_name = _clean_name(updates["name"]) if "name" in updates else goal.name
+    new_month = _clean_month(updates["month"]) if "month" in updates else goal.month
+    new_category = (
+        _clean_category(updates["category"])
+        if "category" in updates
+        else goal.category
+    )
+    new_target = (
+        _clean_target_amount(updates["target_amount_cents"])
+        if "target_amount_cents" in updates
+        else goal.target_amount_cents
+    )
+    if _active_goal_conflict_exists(
+        db,
+        tenant_id=tenant_id,
+        month=new_month,
+        category=new_category,
+        goal_type=goal.goal_type,
+        period=goal.period,
+        exclude_public_id=goal.public_id,
+    ):
+        _raise_duplicate_goal()
+    return {
+        "name": new_name,
+        "month": new_month,
+        "category": new_category,
+        "target_amount_cents": new_target,
+    }
+
+
 def update_goal(
     db: Session,
     *,
@@ -280,34 +321,16 @@ def update_goal(
     if goal.status == "archived":
         raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
 
-    updates = payload.model_dump(
-        exclude_unset=True, exclude={"expected_row_version"}
-    )
     goal_id = goal.id
-    new_name = goal.name
-    new_month = goal.month
-    new_category = goal.category
-    new_target = goal.target_amount_cents
-    if "name" in updates:
-        new_name = _clean_name(updates["name"])
-    if "month" in updates:
-        new_month = _clean_month(updates["month"])
-    if "category" in updates:
-        new_category = _clean_category(updates["category"])
-    if "target_amount_cents" in updates:
-        new_target = _clean_target_amount(updates["target_amount_cents"])
-    if _active_goal_conflict_exists(
+    set_values = _prepare_spending_goal_update(
         db,
         tenant_id=tenant_id,
-        month=new_month,
-        category=new_category,
-        goal_type=goal.goal_type,
-        period=goal.period,
-        exclude_public_id=goal.public_id,
-    ):
-        _raise_duplicate_goal()
+        goal=goal,
+        payload=payload,
+    )
 
     now = now_utc()
+    set_values["updated_at"] = now
     try:
         rowcount = claim_row_with_token(
             db,
@@ -315,13 +338,7 @@ def update_goal(
             pk_id=goal_id,
             tenant_id=tenant_id,
             expected_row_version=payload.expected_row_version,
-            set_values={
-                "name": new_name,
-                "month": new_month,
-                "category": new_category,
-                "target_amount_cents": new_target,
-                "updated_at": now,
-            },
+            set_values=set_values,
             extra_where=(Goal.status == "active",),
             synchronize_session=False,
         )
@@ -341,14 +358,12 @@ def update_goal(
     # synchronize_session=False left the identity-mapped row stale; drop it so
     # the re-read below reflects the UPDATE (whether committed or only flushed).
     db.expire_all()
-    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
-    totals = month_spend_totals(
+    return get_goal_response(
         db,
         tenant_id=tenant_id,
-        month=goal.month,
+        public_id=public_id,
         timezone_name=timezone_name,
     )
-    return goal_response(goal, totals)
 
 
 def _goal_response_by_type(

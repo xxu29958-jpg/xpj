@@ -50,8 +50,13 @@ def _request_pairing_code(client: TestClient, *, identity) -> str:
 def test_login_form_renders(client: TestClient) -> None:
     resp = client.get("/web/auth/login")
     assert resp.status_code == 200
-    assert "绑定码" in resp.text
+    assert "连接到你的账本" in resp.text
+    assert "8 位绑定码" in resp.text
+    assert "连接并继续" in resp.text
     assert 'action="/web/auth/login"' in resp.text
+    assert 'autocomplete="one-time-code"' in resp.text
+    assert "APP_TOKEN" not in resp.text
+    assert 'style="' not in resp.text
 
 
 def test_login_form_shows_error_param(client: TestClient) -> None:

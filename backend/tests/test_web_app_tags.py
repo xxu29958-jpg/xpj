@@ -8,6 +8,8 @@ real carrier the browser submits), not read from the DB.
 from __future__ import annotations
 
 import re as _re
+from html import unescape
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi.testclient import TestClient
 
@@ -25,19 +27,68 @@ def _row_version_for(page_text: str, public_id: str, action: str) -> str:
     return m.group(1)
 
 
+def _parsed_href_query(href: str) -> tuple[dict[str, list[str]], str]:
+    parsed = urlsplit(unescape(href))
+    return parse_qs(parsed.query, keep_blank_values=True), parsed.fragment
+
+
 def test_web_tags_local_returns_200(web_client: TestClient, *, identity) -> None:
     manual_expense(web_client, identity.app_headers, tags="出差", merchant="A")
     resp = web_client.get("/web/tags?ledger_id=owner")
     assert resp.status_code == 200
-    assert "标签管理" in resp.text
+    assert '<h1 class="page-title page-title--compact">标签</h1>' in resp.text
     assert "出差" in resp.text
-    # UI/UX 批 14: 旧「按标签看统计」(跳已删除的 /web/stats) 改成行级「看账单」,
-    # 跳已确认账单页并按本标签过滤(tag 经 urlencode;& 写字面量,不经 autoescape)。
-    assert "看账单" in resp.text
-    assert (
-        "/web/confirmed?ledger_id=owner&tag=%E5%87%BA%E5%B7%AE" in resp.text
-    )
+    # The tag object links back to its owning Transactions view and preserves
+    # the tag as an encoded filter.
+    assert "查看流水" in resp.text
+    assert "/web/confirmed?ledger_id=owner&tag=%E5%87%BA%E5%B7%AE" in resp.text
     assert "/web/stats" not in resp.text
+
+
+def test_web_reserved_tag_survives_edit_month_and_ledger_links(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    tag = "报销&A + #1"
+    manual_expense(
+        web_client,
+        identity.app_headers,
+        tags=tag,
+        merchant="保留字符测试",
+    )
+    response = web_client.get(
+        "/web/confirmed",
+        params={"ledger_id": "owner", "month": "2026-05", "tag": tag},
+    )
+    assert response.status_code == 200, response.text
+
+    edit_link = _re.search(
+        r'<a class="timeline-row-detail"[^>]*href="([^"]+)"',
+        response.text,
+        flags=_re.DOTALL,
+    )
+    previous_month_link = _re.search(
+        r'<a href="([^"]+)" aria-label="上一月">',
+        response.text,
+    )
+    other_ledger_link = _re.search(
+        r'<a class="row[^"]*"[^>]*href="([^"]*ledger_id=tester_1[^"]*)"',
+        response.text,
+        flags=_re.DOTALL,
+    )
+    assert edit_link is not None, response.text
+    assert previous_month_link is not None, response.text
+    assert other_ledger_link is not None, response.text
+
+    edit_query, edit_fragment = _parsed_href_query(edit_link.group(1))
+    month_query, month_fragment = _parsed_href_query(previous_month_link.group(1))
+    ledger_query, ledger_fragment = _parsed_href_query(other_ledger_link.group(1))
+
+    assert edit_query["return_tag"] == [tag]
+    assert month_query["tag"] == [tag]
+    assert ledger_query["tag"] == [tag]
+    assert edit_fragment == month_fragment == ledger_fragment == ""
 
 
 def test_web_tag_rename(web_client: TestClient, *, identity) -> None:

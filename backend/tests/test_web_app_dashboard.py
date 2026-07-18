@@ -45,17 +45,30 @@ def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00"
     return expense_id
 
 
-def test_web_root_renders_dashboard(web_client: TestClient) -> None:
+def test_web_root_routes_to_inbox_and_overview_stays_in_insights(
+    web_client: TestClient,
+) -> None:
     resp = web_client.get("/web", follow_redirects=False)
-    assert resp.status_code == 200
-    assert "仪表盘" in resp.text
+    overview = web_client.get("/web/overview?ledger_id=owner")
+    insights_css = web_client.get("/static/web/product/domains/insights.css")
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/web/pending?ledger_id=owner"
+    assert overview.status_code == 200
+    assert '<h1 class="page-title" id="overview-title">本月概览</h1>' in overview.text
+    assert 'data-page="insights" data-page-level="primary"' in overview.text
+    assert "/static/web/pages/dashboard.css" not in overview.text
+    assert insights_css.status_code == 200
+    assert ".insight-sequence" in insights_css.text
+    assert "grid-template-columns: repeat(12" in insights_css.text
+    assert ".insight-category-layout" in insights_css.text
 
 
-def test_web_root_slash_redirects_to_root_with_ledger(web_client: TestClient) -> None:
+def test_web_root_slash_redirects_to_inbox_with_ledger(web_client: TestClient) -> None:
     resp = web_client.get("/web/?ledger_id=owner", follow_redirects=False)
     assert resp.status_code in {303, 307}
     loc = resp.headers.get("location", "")
-    assert loc.startswith("/web?") and "ledger_id=owner" in loc
+    assert loc == "/web/pending?ledger_id=owner"
 
 
 def test_web_no_secret_leaks(web_client: TestClient, *, identity) -> None:
@@ -170,6 +183,7 @@ def test_dashboard_data_payload_includes_budget_and_goals_top(
 
     payload = web_client.get("/web/dashboard/data?ledger_id=owner").json()
     cards = payload["cards"]
+    assert payload["has_any_expense"] is True
 
     budget_top = cards["budget_top"]
     assert budget_top, "budget_top should carry per-category rows"
@@ -205,11 +219,11 @@ def test_dashboard_renders_budget_and_goals_progress_bars(
         web_client, identity=identity, name="控制餐饮", target_amount_cents=10000, category="餐饮"
     )
 
-    body = web_client.get("/web?ledger_id=owner").text
-    # The bar list section renders server-side. (``cat-bar-fill`` alone would
-    # be hollow — the pre-existing category-share card already emits it; the
-    # load-bearing new-progress markers are ``cat-list--gap`` + the names.)
-    assert "cat-list--gap" in body
+    body = web_client.get("/web/overview?ledger_id=owner").text
+    # The semantic progress list renders server-side and does not depend on
+    # a JS-created bar with inline width styles.
+    assert "insight-progress-list" in body
+    assert '<progress class="product-progress"' in body
     # Budget category name + goal name surface in the bar rows.
     assert "控制餐饮" in body
 
@@ -233,5 +247,5 @@ def test_dashboard_budget_overspent_row_marks_over_state(
     assert over["overspent_yuan"] == "30.00"  # 13000 - 10000 = 3000 cents
     assert over["percent"] == 100  # capped at 100 even though 130%
 
-    body = web_client.get("/web?ledger_id=owner").text
+    body = web_client.get("/web/overview?ledger_id=owner").text
     assert "超 " in body  # overspend label「超 ¥30.00」renders in the fallback

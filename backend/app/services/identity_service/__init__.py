@@ -9,7 +9,7 @@ Split into private sub-modules by responsibility:
 - ``_device``: device + auth_token / upload_link / pairing_code issuance.
 - ``_bootstrap``: first-time ``bootstrap_owner`` ceremony.
 - ``_bootstrap_recovery``: credential rotation after listener exposure.
-- ``_auth``: ``authenticate_session_token`` / ``authenticate_web_session_token`` / ``authenticate_upload_link`` + ``_role_for``.
+- ``_auth``: app / Desktop / Web / UploadLink credential authentication + ``_role_for``.
 - ``_pair``: ``pair_device`` (consume pairing_code → mint session token).
 
 Also re-exports ``hash_secret`` / ``hash_pairing_code`` / ``new_session_token``
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from app.services.identity_service._auth import (
     UPLOAD_LINK_INVALID_MESSAGE,
+    authenticate_desktop_session_token,
     authenticate_session_token,
     authenticate_upload_link,
     authenticate_web_session_token,
@@ -70,6 +71,7 @@ from app.services.identity_service._seed import (
 )
 from app.services.session_credential_lock import (
     lock_and_revalidate_credential_mint_context,
+    lock_and_revalidate_web_session_principal,
     lock_bootstrap_owner_transaction,
 )
 from app.services.session_lifecycle_service import (
@@ -97,6 +99,7 @@ __all__ = [
     "WebSessionAuthResult",
     # public API
     "active_auth_token_count",
+    "authenticate_desktop_session_token",
     "authenticate_session_token",
     "authenticate_upload_link",
     "authenticate_web_session_token",
@@ -113,6 +116,7 @@ __all__ = [
     "is_legacy_upload_token",
     "ledger_ids",
     "lock_and_revalidate_credential_mint_context",
+    "lock_and_revalidate_web_session_principal",
     "lock_bootstrap_owner_transaction",
     "pair_device",
     "upload_link_default_timezone",

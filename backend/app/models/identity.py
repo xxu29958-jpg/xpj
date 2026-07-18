@@ -75,6 +75,10 @@ class AuthToken(Base):
     __tablename__ = "auth_tokens"
     __table_args__ = (
         CheckConstraint("scope IN ('app', 'admin')", name="ck_auth_tokens_scope_valid"),
+        CheckConstraint(
+            "activation_state IN ('active', 'pending')",
+            name="ck_auth_tokens_activation_state_valid",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -83,6 +87,13 @@ class AuthToken(Base):
     device_id: Mapped[int] = mapped_column(Integer, ForeignKey("devices.id"), nullable=False, index=True)
     ledger_id: Mapped[str] = mapped_column(String(64), ForeignKey("ledgers.ledger_id"), nullable=False, index=True)
     scope: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    activation_state: Mapped[str] = mapped_column(
+        String(16),
+        default="active",
+        server_default="active",
+        nullable=False,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -97,7 +108,10 @@ Index(
     AuthToken.ledger_id,
     AuthToken.scope,
     unique=True,
-    postgresql_where=AuthToken.revoked_at.is_(None),
+    postgresql_where=(
+        AuthToken.revoked_at.is_(None)
+        & (AuthToken.activation_state == "active")
+    ),
 )
 
 

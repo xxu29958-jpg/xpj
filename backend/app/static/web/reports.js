@@ -61,20 +61,32 @@
     }
   }
 
-  function yuan(cents) {
-    var amount = Number(cents || 0) / 100;
-    return amount.toLocaleString('zh-CN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+  function homeMinorDigits() {
+    var digits = Number.parseInt(root.getAttribute('data-home-currency-minor-digits') || '', 10);
+    return Number.isInteger(digits) && digits >= 0 ? digits : 2;
   }
 
-  function compactYuan(cents) {
-    var yuanValue = Number(cents || 0) / 100;
-    var abs = Math.abs(yuanValue);
-    if (abs >= 10000) return (yuanValue / 10000).toFixed(1) + '万';
-    if (abs >= 1000) return Math.round(yuanValue).toString();
-    return yuanValue.toFixed(0);
+  function minorToMajor(minor) {
+    var value = Number(minor || 0);
+    return (Number.isFinite(value) ? value : 0) / (10 ** homeMinorDigits());
+  }
+
+  function majorNumber(value) {
+    var amount = Number(value || 0);
+    var digits = homeMinorDigits();
+    return new Intl.NumberFormat('zh-CN', {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+      useGrouping: true,
+    }).format(Number.isFinite(amount) ? amount : 0);
+  }
+
+  function compactMajor(value) {
+    var amount = Number(value || 0);
+    return new Intl.NumberFormat('zh-CN', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(Number.isFinite(amount) ? amount : 0);
   }
 
   function homeCurrencySymbol() {
@@ -83,12 +95,12 @@
       '';
   }
 
-  function homeMoneyCents(cents) {
-    return homeCurrencySymbol() + yuan(cents);
+  function homeMoneyMinor(minor) {
+    return homeCurrencySymbol() + majorNumber(minorToMajor(minor));
   }
 
-  function homeCompactCents(cents) {
-    return homeCurrencySymbol() + compactYuan(cents);
+  function homeCompactMinor(minor) {
+    return homeCurrencySymbol() + compactMajor(minorToMajor(minor));
   }
 
   function rgba(color, alpha) {
@@ -139,13 +151,14 @@
     var chart = window.echarts.init(container);
     var lineColor = colors.series[0];
     chart.setOption({
+      aria: { enabled: true },
       color: colors.series,
       tooltip: Object.assign(baseTooltipColors(colors), {
         trigger: 'axis',
         formatter: function (items) {
           if (!items || !items.length) return '';
           var point = points[items[0].dataIndex];
-          return point.label + '<br><strong>' + homeMoneyCents(point.amount_cents) + '</strong> · ' + point.count + ' 笔';
+          return point.label + '<br><strong>' + homeMoneyMinor(point.amount_cents) + '</strong> · ' + point.count + ' 笔';
         },
       }),
       grid: { left: 58, right: 20, top: 24, bottom: 38 },
@@ -164,7 +177,7 @@
         axisLabel: {
           color: colors.axisLabel,
           fontSize: 11,
-          formatter: function (value) { return homeCompactCents(value); },
+          formatter: function (value) { return homeCompactMinor(value); },
         },
         splitLine: { lineStyle: { color: colors.grid, type: 'dashed' } },
       },
@@ -207,6 +220,7 @@
     var reversedRows = rows.slice().reverse();
     var chart = window.echarts.init(container);
     chart.setOption({
+      aria: { enabled: true },
       color: colors.series,
       tooltip: Object.assign(baseTooltipColors(colors), {
         trigger: 'axis',
@@ -214,7 +228,7 @@
         formatter: function (items) {
           if (!items || !items.length) return '';
           var row = reversedRows[items[0].dataIndex];
-          var value = metric === 'count' ? row.count + ' 笔' : homeMoneyCents(row.amount_cents);
+          var value = metric === 'count' ? row.count + ' 笔' : homeMoneyMinor(row.amount_cents);
           return row.merchant + '<br><strong>' + value + '</strong>';
         },
       }),
@@ -227,7 +241,7 @@
           color: colors.axisLabel,
           fontSize: 11,
           formatter: function (value) {
-            return metric === 'count' ? value : homeCompactCents(value);
+            return metric === 'count' ? value : homeCompactMinor(value);
           },
         },
         splitLine: { lineStyle: { color: colors.grid, type: 'dashed' } },
@@ -255,7 +269,7 @@
           color: colors.axisLabel,
           fontSize: 11,
           formatter: function (item) {
-            return metric === 'count' ? item.value + ' 笔' : homeCompactCents(item.value);
+            return metric === 'count' ? item.value + ' 笔' : homeCompactMinor(item.value);
           },
         },
       }],
@@ -271,6 +285,7 @@
 
     var chart = window.echarts.init(container);
     chart.setOption({
+      aria: { enabled: true },
       color: [colors.series[0], rgba(colors.series[2], 0.55), rgba(colors.series[4], 0.55)],
       legend: {
         data: ['本月', '上月', '去年同月'],
@@ -287,11 +302,11 @@
           var yoyDelta = Number(row.year_over_year_delta_amount_cents || 0);
           var prefix = delta > 0 ? '+' : '';
           var yoyPrefix = yoyDelta > 0 ? '+' : '';
-          return row.category + '<br>本月 ' + homeMoneyCents(row.amount_cents)
-            + '<br>上月 ' + homeMoneyCents(row.previous_amount_cents)
-            + '<br>去年同月 ' + homeMoneyCents(row.year_over_year_amount_cents)
-            + '<br>环比 ' + prefix + homeMoneyCents(delta)
-            + '<br>同比 ' + yoyPrefix + homeMoneyCents(yoyDelta);
+          return row.category + '<br>本月 ' + homeMoneyMinor(row.amount_cents)
+            + '<br>上月 ' + homeMoneyMinor(row.previous_amount_cents)
+            + '<br>去年同月 ' + homeMoneyMinor(row.year_over_year_amount_cents)
+            + '<br>环比 ' + prefix + homeMoneyMinor(delta)
+            + '<br>同比 ' + yoyPrefix + homeMoneyMinor(yoyDelta);
         },
       }),
       grid: { left: 58, right: 22, top: 36, bottom: 44 },
@@ -309,7 +324,7 @@
         axisLabel: {
           color: colors.axisLabel,
           fontSize: 11,
-          formatter: function (value) { return homeCompactCents(value); },
+          formatter: function (value) { return homeCompactMinor(value); },
         },
         splitLine: { lineStyle: { color: colors.grid, type: 'dashed' } },
       },

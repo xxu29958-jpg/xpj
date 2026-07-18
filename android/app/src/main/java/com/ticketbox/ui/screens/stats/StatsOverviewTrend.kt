@@ -34,7 +34,6 @@ internal fun HeroSpendTrend(
     currencyDisplay: CurrencyDisplay,
 ) {
     val points = remember(reportTrend) { heroSpendTrendPoints(reportTrend) }
-    val visiblePoints = rememberSpendWindowChartPoints(points = points, maxWindows = 6)
     val summary = remember(points) { heroSpendTrendSummary(points) }
     val chartA11y = remember(points, currencyDisplay) {
         points.joinToString(separator = "\uFF0C") {
@@ -48,7 +47,7 @@ internal fun HeroSpendTrend(
             HeroTrendEmpty()
         } else {
             HeroTrendBody(
-                points = visiblePoints,
+                points = points,
                 summary = summary,
                 currencyDisplay = currencyDisplay,
                 chartA11y = chartA11y,
@@ -116,9 +115,10 @@ private fun HeroTrendBody(
         }
         else -> {
             HeroTrendFactStrip(summary = summary, currencyDisplay = currencyDisplay)
-            StatsSpendTrendChart(
+            AdaptiveStatsSpendTrendChart(
                 points = points,
                 contentDescription = chartA11y,
+                maxWindows = 6,
             )
         }
     }

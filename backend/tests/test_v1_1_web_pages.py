@@ -9,7 +9,7 @@ Coverage:
 - Income plan create form round-trips and shows up in the table.
 - Archive + restore work and redirect back to the list.
 - Budget advise page renders the discretionary breakdown and the
-  "AI 未启用" hint when BUDGET_ADVISOR_PROVIDER=empty (the default).
+  unavailable state when no smart-advice provider is enabled.
 - Budget advise page accepts run_advise=true and returns 200 even
   with no provider — never 500.
 """
@@ -36,6 +36,9 @@ def test_income_plans_page_renders_empty(web_client: TestClient, *, identity) ->
     body = resp.text
     assert "收入记录" in body
     assert "还没有收入记录" in body
+    assert 'class="income-workspace"' in body
+    assert 'class="dt-' not in body
+    assert 'style="' not in body
 
 
 def test_income_plans_create_and_list(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
@@ -55,7 +58,7 @@ def test_income_plans_create_and_list(web_client: TestClient, *, identity) -> No
     assert list_resp.status_code == 200
     body = list_resp.text
     assert "我的工资" in body
-    assert "实际到账" in body
+    assert "单次到账" in body
     # 10000 元 should render somewhere
     assert "10000.00" in body or "10,000.00" in body or "10000" in body
 
@@ -83,6 +86,29 @@ def test_income_plans_one_time_month_is_user_facing(
     assert "2026年6月" in body
     assert "2026-06" not in body
     assert "YYYY-MM" not in body
+
+
+def test_income_plans_unknown_source_uses_product_fallback(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:  # noqa: ARG001
+    create_resp = web_client.post(
+        "/web/income-plans/create",
+        data={
+            "label": "临时入账",
+            "source_type": "future_source",
+            "frequency": "monthly",
+            "amount_yuan": "800",
+            "pay_day": "12",
+        },
+        follow_redirects=False,
+    )
+    assert create_resp.status_code == 303
+
+    body = web_client.get("/web/income-plans").text
+    assert "类型待确认" in body
+    assert "future_source" not in body
 
 
 def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
@@ -172,12 +198,13 @@ def test_budget_advise_page_renders_with_default_empty_provider(
     resp = web_client.get("/web/budget-advise")
     assert resp.status_code == 200
     body = resp.text
-    assert "本月可自由支配" in body
-    assert "AI 建议" in body
-    # Default config keeps provider=empty, so the page must surface
-    # "AI 未启用" hint rather than try to call out.
-    assert "AI 未启用" in body or "empty" in body
-    assert "BUDGET_ADVISOR_PROVIDER=empty" in body or "empty" in body
+    assert "本月灵活可花" in body
+    assert "智能建议" in body
+    assert "智能预算建议暂未启用" in body
+    assert "BUDGET_ADVISOR_PROVIDER" not in body
+    assert 'class="advice-workspace"' in body
+    assert 'class="dt-' not in body
+    assert 'style="' not in body
 
 
 def test_budget_advise_accepts_query_params(
@@ -196,7 +223,7 @@ def test_budget_advise_accepts_query_params(
 def test_budget_advise_run_advise_with_empty_provider_is_safe(
     web_client: TestClient, *, identity
 ) -> None:  # noqa: ARG001
-    # Even when the user clicks "调用 AI 建议", the empty provider path
+    # Even when the user asks for smart advice, the empty-provider path
     # must return 200 without making any HTTP call (run_advise skipped
     # internally because provider == 'empty').
     resp = web_client.get("/web/budget-advise?run_advise=true")

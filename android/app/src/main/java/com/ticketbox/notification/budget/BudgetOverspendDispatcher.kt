@@ -42,5 +42,5 @@ class NotifierBudgetOverspendDispatcher(
     private val onBudgetOverspent: (overspentAmount: String, dedupeTag: String) -> BudgetOverspendDispatchOutcome,
 ) : BudgetOverspendDispatcher {
     override fun dispatch(decision: BudgetOverspendDecision): BudgetOverspendDispatchOutcome =
-        onBudgetOverspent(formatAmount(decision.overspentCents), decision.key)
+        onBudgetOverspent(formatAmount(decision.overspentCents, decision.homeCurrency), decision.key)
 }

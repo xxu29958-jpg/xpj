@@ -135,7 +135,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         private val Migration4To5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE expenses ADD COLUMN originalCurrencyCode TEXT NOT NULL DEFAULT '${FxContract.HomeCurrency.storageKey}'")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN originalCurrencyCode TEXT NOT NULL DEFAULT '${FxContract.LegacyHomeCurrencyFallback.storageKey}'")
                 db.execSQL("ALTER TABLE expenses ADD COLUMN originalAmountMinor INTEGER")
                 db.execSQL("ALTER TABLE expenses ADD COLUMN exchangeRateToCny TEXT")
                 db.execSQL("ALTER TABLE expenses ADD COLUMN exchangeRateDate TEXT")
@@ -146,7 +146,7 @@ abstract class AppDatabase : RoomDatabase() {
                     SET originalAmountMinor = amountCents,
                         exchangeRateToCny = CASE WHEN amountCents IS NULL THEN NULL ELSE '${FxContract.BaseRateToHome}' END,
                         exchangeRateSource = CASE WHEN amountCents IS NULL THEN NULL ELSE '${FxContract.SourceBase}' END
-                    WHERE originalCurrencyCode = '${FxContract.HomeCurrency.storageKey}'
+                    WHERE originalCurrencyCode = '${FxContract.LegacyHomeCurrencyFallback.storageKey}'
                     """.trimIndent(),
                 )
             }
@@ -154,7 +154,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         private val Migration5To6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE expenses ADD COLUMN homeCurrencyCode TEXT NOT NULL DEFAULT '${FxContract.HomeCurrency.storageKey}'")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN homeCurrencyCode TEXT NOT NULL DEFAULT '${FxContract.LegacyHomeCurrencyFallback.storageKey}'")
                 db.execSQL("ALTER TABLE expenses ADD COLUMN fxStatus TEXT NOT NULL DEFAULT '${FxContract.StatusReady}'")
             }
         }

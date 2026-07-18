@@ -13,7 +13,10 @@ from typing import Protocol, TypeAlias
 
 from backend_manager.app_controller import AppController
 from backend_manager.config import ConfigError, MaintenanceManagerConfig, ManagerConfig
-from backend_manager.control_server import ControlServer, manager_window_url, request_existing_manager_window
+from backend_manager.control_server import (
+    ControlServer,
+    request_existing_manager_window,
+)
 from backend_manager.desktop_shell import open_app_window
 from backend_manager.instance_owner import ManagerInstance, claim_manager_instance
 from backend_manager.maintenance_gate import manager_maintenance_requested
@@ -22,6 +25,7 @@ from backend_manager.runtime import RuntimeControlError
 from backend_manager.runtime_factory import build_provider
 
 _UI_HTML = Path(__file__).resolve().parent / "ui.html"
+_PRODUCT_HTML = Path(__file__).resolve().parent / "product.html"
 ManagerEndpointConfig: TypeAlias = ManagerConfig | MaintenanceManagerConfig
 
 
@@ -39,10 +43,14 @@ class ManagerWindowSession:
         profile: Path,
         *,
         opener: Callable[..., _AppWindow | None] | None = None,
+        bootstrapper: Callable[[Path], str] | None = None,
+        bootstrap_canceller: Callable[[Path], None] | None = None,
     ) -> None:
         self._url = url
         self._profile = profile
         self._opener = opener or open_app_window
+        self._bootstrapper = bootstrapper
+        self._bootstrap_canceller = bootstrap_canceller
         self._windows: list[_AppWindow] = []
         self._lock = threading.Lock()
         self._closing = False
@@ -54,12 +62,27 @@ class ManagerWindowSession:
                 return False
             self._next_window_id += 1
             window_profile = self._profile / f"window-{self._next_window_id:04d}"
-            window = self._opener(self._url, profile=window_profile)
+            bootstrap_path = window_profile / "bootstrap.html"
+            launch_url = (
+                self._bootstrapper(bootstrap_path)
+                if self._bootstrapper is not None
+                else self._url
+            )
+            try:
+                window = self._opener(launch_url, profile=window_profile)
+            except BaseException:
+                self._cancel_bootstrap(bootstrap_path)
+                raise
             if window is None:
+                self._cancel_bootstrap(bootstrap_path)
                 return False
             self._windows = [existing for existing in self._windows if existing.is_open()]
             self._windows.append(window)
             return True
+
+    def _cancel_bootstrap(self, path: Path) -> None:
+        if self._bootstrapper is not None and self._bootstrap_canceller is not None:
+            self._bootstrap_canceller(path)
 
     def has_open_windows(self) -> bool:
         with self._lock:
@@ -117,6 +140,7 @@ def _bind_control_server(
             token=token,
             instance_secret=instance_secret,
             ui_html=_UI_HTML,
+            product_html=_PRODUCT_HTML,
             request_window=request_window,
         )
     except OSError:
@@ -127,6 +151,7 @@ def _bind_control_server(
             token=token,
             instance_secret=instance_secret,
             ui_html=_UI_HTML,
+            product_html=_PRODUCT_HTML,
             request_window=request_window,
         )
 
@@ -228,8 +253,10 @@ def run_owned_manager(
         instance.publish_port(actual_port)
         manager_url = config.manager_url_for_port(actual_port)
         windows = ManagerWindowSession(
-            manager_window_url(manager_url, instance.secret),
-            instance.root / f"edge-{instance.secret}",
+            manager_url,
+            instance.root / "edge-session",
+            bootstrapper=server.prepare_web_bootstrap,
+            bootstrap_canceller=server.cancel_web_bootstrap,
         )
         server.request_window = windows.open
         if source_mode:

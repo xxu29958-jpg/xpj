@@ -11,6 +11,7 @@ from app.models import Account, AuthToken, Device, Ledger, PairingCode
 from app.services.identity_service._auth import _role_for
 from app.services.identity_service._device import _create_auth_token, _create_device
 from app.services.identity_service._models import (
+    DESKTOP_PENDING_TOKEN_TTL_SECONDS,
     WEB_SESSION_TTL_SECONDS,
     PairingResult,
 )
@@ -99,30 +100,37 @@ def pair_device(
     # clients can silently rotate before expiry; 0 keeps the historical
     # "never expires" semantics for environments that opt out.
     platform_value = device.platform
+    activation_required = platform_value == "desktop"
     if platform_value == "web":
         token_expires_at: datetime | None = used_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS)
+    elif activation_required:
+        token_expires_at = used_at + timedelta(
+            seconds=DESKTOP_PENDING_TOKEN_TTL_SECONDS
+        )
     else:
         expiry = app_token_expiry_window(used_at)
         token_expires_at = expiry.expires_at
-    _revoke_same_platform_app_tokens(
-        db,
-        account_id=account.id,
-        ledger_id=ledger.ledger_id,
-        platform=platform_value,
-        revoked_at=used_at,
-    )
+    if not activation_required:
+        _revoke_same_platform_app_tokens(
+            db,
+            account_id=account.id,
+            ledger_id=ledger.ledger_id,
+            platform=platform_value,
+            revoked_at=used_at,
+        )
     token = _create_auth_token(
         db,
         account_id=account.id,
         device_id=device.id,
         ledger_id=ledger.ledger_id,
         scope="app",
+        activation_state="pending" if activation_required else "active",
         expires_at=token_expires_at,
     )
     db.commit()
     _clear_pairing_failures(db, remote_id)
     soft_refresh_after = None
-    if platform_value != "web":
+    if platform_value not in {"web", "desktop"}:
         soft_refresh_after = app_token_expiry_window(used_at).soft_refresh_after
     return PairingResult(
         session_token=token,
@@ -133,6 +141,10 @@ def pair_device(
         role=role,
         expires_at=token_expires_at,
         soft_refresh_after=soft_refresh_after,
+        activation_required=activation_required,
+        activation_expires_at=(
+            token_expires_at if activation_required else None
+        ),
     )
 
 

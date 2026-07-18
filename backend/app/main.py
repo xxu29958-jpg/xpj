@@ -32,6 +32,7 @@ from app.routes import (
     dashboard,
     debt_bills,
     debts,
+    desktop_product,
     devices,
     duplicates,
     exchange_rates,
@@ -65,7 +66,10 @@ from app.routes import (
     web_categories,
     web_dashboard,
     web_data_quality,
+    web_debt_actions,
+    web_debt_create,
     web_debt_goals,
+    web_debt_proposal_actions,
     web_debts,
     web_duplicates,
     web_expense_edit,
@@ -74,6 +78,8 @@ from app.routes import (
     web_goals,
     web_import_export,
     web_income_plans,
+    web_library,
+    web_manual_expense,
     web_media,
     web_merchants,
     web_pending,
@@ -151,8 +157,7 @@ def _assert_admin_api_gate_safe() -> None:
         missing.append("CLOUDFLARE_ACCESS_AUD")
     if missing:
         raise UnsafeAdminApiConfigurationError(
-            "ALLOW_PUBLIC_ADMIN_API=true requires Cloudflare Access to be "
-            "configured. Missing: " + ", ".join(missing)
+            "ALLOW_PUBLIC_ADMIN_API=true requires Cloudflare Access to be configured. Missing: " + ", ".join(missing)
         )
 
 
@@ -264,18 +269,13 @@ def _custom_openapi() -> dict:
         routes=app.routes,
     )
     components = schema.setdefault("components", {}).setdefault("schemas", {})
-    components["ErrorResponse"] = ErrorResponse.model_json_schema(
-        ref_template="#/components/schemas/{model}"
-    )
+    components["ErrorResponse"] = ErrorResponse.model_json_schema(ref_template="#/components/schemas/{model}")
     for path, path_item in schema.get("paths", {}).items():
         for operation in path_item.values():
             if not isinstance(operation, dict):
                 continue
             for parameter in operation.get("parameters", []):
-                if (
-                    parameter.get("in") == "header"
-                    and parameter.get("name") == "Idempotency-Key"
-                ):
+                if parameter.get("in") == "header" and parameter.get("name") == "Idempotency-Key":
                     parameter["required"] = True
             if _uses_project_error_envelope(path):
                 responses = operation.setdefault("responses", {})
@@ -315,6 +315,7 @@ app.include_router(budget_advisor.router)
 app.include_router(income_plans.router)
 app.include_router(goals.router)
 app.include_router(debts.router)
+app.include_router(desktop_product.router)
 app.include_router(debt_bills.router)
 app.include_router(repayment_drafts.router)
 app.include_router(dashboard.router)
@@ -344,6 +345,7 @@ app.include_router(web_dashboard.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_expense_items.router)
 app.include_router(web_expense_splits.router)
+app.include_router(web_manual_expense.router)
 app.include_router(web_media.router)
 app.include_router(web_pending.router)
 app.include_router(web_rules_routes.router)
@@ -353,8 +355,12 @@ app.include_router(web_income_plans.router)
 app.include_router(web_reports.router)
 app.include_router(web_goals.router)
 app.include_router(web_search.router)
+app.include_router(web_library.router)
 app.include_router(web_data_quality.router)
 app.include_router(web_debts.router)
+app.include_router(web_debt_create.router)
+app.include_router(web_debt_actions.router)
+app.include_router(web_debt_proposal_actions.router)
 app.include_router(web_debt_goals.router)
 app.include_router(web_repayment_drafts.router)
 app.include_router(web_recycle_bin.router)
@@ -418,11 +424,7 @@ def private_status(_auth: AuthContext = Depends(get_current_app_context)) -> Hea
     # 文件名/目录(本端点过公网 tunnel,不得泄露本机路径)。
     try:
         backup = backup_service.backup_health()
-        latest_backup_at = (
-            backup.latest.created_at.astimezone(UTC).isoformat()
-            if backup.latest is not None
-            else None
-        )
+        latest_backup_at = backup.latest.created_at.astimezone(UTC).isoformat() if backup.latest is not None else None
         backup_age_hours = backup.age_hours
         backup_stale = backup.stale
     except (OSError, RuntimeError):

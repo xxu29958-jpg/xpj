@@ -20,10 +20,10 @@ from app.routes.web_common import (
 )
 
 
-def _option(ledger_id: str, role: str) -> LedgerOption:
+def _option(ledger_id: str, role: str, *, name: str = "家庭账本") -> LedgerOption:
     return LedgerOption(
         ledger_id=ledger_id,
-        name="家庭账本",
+        name=name,
         role=role,
         is_default=True,
         pending_count=0,
@@ -34,19 +34,32 @@ def _option(ledger_id: str, role: str) -> LedgerOption:
 class _SessionRequest:
     """Minimal stand-in for a Request carrying a verified web session."""
 
-    def __init__(self, ledger_id: str, role: str) -> None:
-        auth = type("_Auth", (), {"ledger_id": ledger_id, "role": role})()
+    def __init__(self, ledger_id: str, role: str, *, ledger_name: str = "会话账本") -> None:
+        auth = type(
+            "_Auth",
+            (),
+            {"ledger_id": ledger_id, "ledger_name": ledger_name, "role": role},
+        )()
         self.state = type("_State", (), {"web_session_auth": auth})()
 
 
 def test_web_session_viewer_cannot_write_even_when_console_lists_owner() -> None:
-    options = [_option("L1", "owner")]  # owner-console perspective
-    request = _SessionRequest("L1", "viewer")  # paired viewer device
+    options = [
+        _option("L1", "owner", name="本地名称"),
+        _option("L2", "owner", name="不应公开的账本"),
+    ]
+    request = _SessionRequest(
+        "L1",
+        "viewer",
+        ledger_name="会话授权账本",
+    )
 
     selected = _resolve_selected_ledger_id(None, None, options, request=request)
 
     assert selected == "L1"
-    assert options[0].role == "viewer", "session role must override the console role"
+    assert [(option.ledger_id, option.name, option.role) for option in options] == [
+        ("L1", "会话授权账本", "viewer")
+    ]
     with pytest.raises(AppError) as exc:
         _require_selected_ledger_write(options, selected)
     assert exc.value.error == "permission_denied"
@@ -54,11 +67,12 @@ def test_web_session_viewer_cannot_write_even_when_console_lists_owner() -> None
 
 
 def test_web_session_member_may_write() -> None:
-    options = [_option("L1", "owner")]
+    options = [_option("L1", "owner"), _option("L2", "owner")]
     request = _SessionRequest("L1", "member")
 
     selected = _resolve_selected_ledger_id(None, None, options, request=request)
 
+    assert [option.ledger_id for option in options] == ["L1"]
     assert options[0].role == "member"
     _require_selected_ledger_write(options, selected)  # no raise
 

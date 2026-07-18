@@ -224,7 +224,10 @@ private fun ExpenseEditViewModel.currentBillSplitInviteRequest(): BillSplitInvit
     if (member == null) {
         return reject(UiText.res(R.string.expense_edit_bill_split_pick_member))
     }
-    val amountCents = parseAmountCents(_uiState.value.billSplitInviteAmountText)
+    val amountCents = parseAmountCents(
+        _uiState.value.billSplitInviteAmountText,
+        expense.homeCurrency,
+    )
     if (amountCents == null || amountCents <= 0L) {
         return reject(UiText.res(R.string.expense_edit_bill_split_amount_invalid))
     }

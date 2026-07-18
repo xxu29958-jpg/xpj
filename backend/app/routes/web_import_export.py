@@ -19,6 +19,8 @@ from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
+    _minor_amount_label,
+    _minor_amount_value,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
@@ -33,9 +35,36 @@ from app.services.csv_import_batch_service import (
     get_csv_import_batch,
     list_csv_import_rows,
 )
+from app.services.currency_common import home_currency_code
 from app.services.stats_service import export_confirmed_csv
 
 router = APIRouter(prefix="/web", tags=["web"])
+
+
+def _import_row_view(row) -> dict:
+    """Add an authoritative display projection without changing the CSV DTO.
+
+    Preview rows preserve the published legacy ``amount_yuan`` boundary, so a
+    foreign/original snapshot must be formatted from its own currency minor
+    units rather than from the server's current home-currency scale.
+    """
+
+    view = row.model_dump()
+    currency_code = (row.original_currency_code or home_currency_code()).upper()
+    amount_minor = (
+        row.original_amount_minor
+        if row.original_amount_minor is not None
+        else row.amount_cents
+    )
+    view.update(
+        {
+            "amount_currency_code": currency_code,
+            "amount_is_foreign": currency_code != home_currency_code(),
+            "amount_value": _minor_amount_value(amount_minor, currency_code),
+            "amount_label": _minor_amount_label(amount_minor, currency_code),
+        }
+    )
+    return view
 
 
 @router.get("/export.csv")
@@ -148,7 +177,7 @@ def web_import_batch_detail(
     ctx.update(
         {
             "batch": batch,
-            "rows": rows_page.items,
+            "rows": [_import_row_view(row) for row in rows_page.items],
             "page": rows_page.page,
             "page_size": rows_page.page_size,
             "total": rows_page.total,

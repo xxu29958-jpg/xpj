@@ -18,6 +18,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuthToken, Device, Expense
+from app.services.currency_common import (
+    home_currency_code,
+    minor_amount_major_number,
+)
 from app.services.expense_service import NOTIFICATION_DRAFT_SOURCE_PREFIX
 from app.services.spending_contract_service import (
     accounting_zone,
@@ -104,10 +108,14 @@ def trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
     for i in range(14):
         d = start + timedelta(days=i)
         label = d.strftime("%m-%d")
+        amount_minor = by_day.get(label, 0)
+        amount_major = minor_amount_major_number(amount_minor, home_currency_code())
         result.append({
             "d": label,
-            "amount_yuan": by_day.get(label, 0) / 100.0,
-            "amount_cents": by_day.get(label, 0),
+            "amount_cents": amount_minor,
+            # Compatibility projection: historically named ``amount_yuan``,
+            # now explicitly means home-currency major units.
+            "amount_yuan": amount_major,
         })
     return result
 
@@ -134,15 +142,21 @@ def confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
         key = when.astimezone(zone).date().isoformat()
         by_day[key]["amount_cents"] += int(expense.amount_cents)
         by_day[key]["count"] += 1
-    return [
-        {
-            "date": day,
-            "amount_cents": values["amount_cents"],
-            "amount_yuan": values["amount_cents"] / 100.0,
-            "count": values["count"],
-        }
-        for day, values in sorted(by_day.items())
-    ]
+    result: list[dict] = []
+    currency_code = home_currency_code()
+    for day, values in sorted(by_day.items()):
+        amount_minor = values["amount_cents"]
+        amount_major = minor_amount_major_number(amount_minor, currency_code)
+        result.append(
+            {
+                "date": day,
+                "amount_cents": amount_minor,
+                # Compatibility projection; see ``trend14_amounts``.
+                "amount_yuan": amount_major,
+                "count": values["count"],
+            }
+        )
+    return result
 
 
 def source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dict]:
@@ -215,6 +229,7 @@ def active_device_count(db: Session, ledger_id: str) -> int:
             .select_from(Device)
             .join(AuthToken, AuthToken.device_id == Device.id)
             .where(AuthToken.ledger_id == ledger_id)
+            .where(AuthToken.activation_state == "active")
             .where(AuthToken.revoked_at.is_(None))
             .where(Device.revoked_at.is_(None))
         )

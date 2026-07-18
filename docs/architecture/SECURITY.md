@@ -29,6 +29,9 @@ BootstrapAdmin 初始化时生成的 admin scope token，用于后续管理操�
 - `PairingCode` 只用于 `POST /api/auth/pair`，成功后返回 `session_token`，PairingCode 立即失效。
 - `PairingCode` 只保存 hash，消费时用原子条件更新保证一次性；同一来源短时间内失败过多会被限流。
 - `AuthToken` 用于 Android App 调用账单、图片、统计、规则等接口，通过 `Authorization: Bearer <session_token>` 传递。
+- `AuthToken.activation_state` 只有 `active` / `pending`。普通 Bearer
+  鉴权、Web cookie、Desktop bridge 以及写前 credential revalidation 都必须要求
+  `active`；`revoked_at IS NULL` 本身不代表凭证可用。
 - `UploadLink` 用于 iPhone 快捷指令上传截图，通过完整 URL `POST /u/<upload_key>?tz=...` 传递，不需要额外请求头。
 - `GET /api/settings/server` 只返回非敏感运行状态，不返回 Token、本机路径或数据库路径。
 - `/api/auth/check` 是 Android 校验 session token 的唯一接口。
@@ -37,6 +40,21 @@ BootstrapAdmin 初始化时生成的 admin scope token，用于后续管理操�
 - 旧版 `APP_TOKEN`、`UPLOAD_TOKEN`、`TENANTS_JSON` 里的 token 请求一律返回 `legacy_auth_removed`（401）。
 - 旧版静态 `ADMIN_TOKEN` 不再是运行时凭证；维护接口只接受数据库中保存 hash 的 admin scope token。
 - 凭证不写入代码、README、提交记录、日志或截图。
+- Desktop pairing / ledger switch 使用两阶段替换：prepare 只创建 5 分钟
+  pending B 且不撤销 A；Manager 必须先把 B 写入 WinCred recovery 位，再以 B
+  调用唯一的 activation surface。activation 在同一 PostgreSQL 事务中激活 B，
+  并撤销同设备旧 app token 及 Manager 通过 header 精确证明 possession 的
+  previous A。previous A 只做 hash 查找、不持久化明文；已撤销/过期/已清理 A
+  是 no-op，`B == A` fail closed。
+- 若本机 primary A 已丢失，activation 不会按设备显示名或客户端自报安装标识猜测
+  撤销未知服务端会话；这类旧设备必须由用户在 Owner Console 明确撤销。pending B
+  缺少到期时间、已过期或超过签发后 5 分钟上限时一律 fail closed。
+- Desktop activation 对同一仍 active 的 B 幂等。响应丢失、进程 crash 或主
+  WinCred 写失败后，recovery B 可重放并提升为 primary；primary 已保存后若只剩
+  重复 recovery 位清理失败，不得阻断有效主身份，后续操作继续重试清理。
+- Pending B 永远不能用于普通账务读取、写入、Desktop bridge 或 session refresh；
+  recovery 位写失败时 Manager 不激活 B，B 只能在短 TTL 后失效。后端只保存所有
+  token 的 SHA-256 hash，不保存 raw A/B。
 - 因为 UploadLink 的 `upload_key` 在 URL 路径中，公网运行必须使用 `run.bat` / `backend\scripts\start_backend.ps1` 启动后端，或手动给 Uvicorn 加 `--no-access-log`，避免访问日志记录 `/u/{upload_key}`。
 - 不要在 Cloudflare、反向代理、Windows 计划任务日志、故障截图或工单中记录完整 UploadLink URL。需要排查时只记录域名、时间、HTTP 状态、请求大小和响应错误码，`/u/<upload_key>` 必须打码。
 
@@ -112,6 +130,15 @@ api.我的域名.com -> http://127.0.0.1:8000
 - `__Host-session` cookie 只接受 `AuthToken.scope="app"` 且 `Device.platform="web"` 的 token；Android app token 放进 cookie 必须被拒绝且不得误撤销。
 - Web token 服务端 TTL 存在 `auth_tokens.expires_at`，固定 8 小时，不做滑动刷新；过期后服务端撤销 token 并要求重新 pairing。
 - `/web` 与 `/owner` 非安全方法必须同时通过同源来源头和 CSRF token。
+
+## Desktop 产品数据面
+
+`/desktop/*` 是本机 Desktop 产品窗口的数据面，不是任意 app token 的通用适配器：
+
+- 请求必须同时来自 loopback、携带 `X-Ticketbox-Desktop-Bridge: v1`，并使用 live `AuthToken.scope="app"`。
+- token 必须绑定 live `Device.platform="desktop"`；Android/Web token 和已撤销 token（包括仍在 rotation grace 内的 token）一律拒绝。
+- 每个 Desktop 写命令都必须在业务事务内获取共享身份生命周期锁，按 credential id + hash 权威复核 token、device、ledger membership 和当前 role。
+- 该锁必须覆盖权限判断、幂等声明、业务写入和首次 commit；并发撤销设备/token 或把成员降为 viewer 后，等待中的命令必须失败关闭，不能继续使用请求入口处的旧鉴权快照。
 
 ## Android 客户端
 

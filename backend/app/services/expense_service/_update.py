@@ -23,7 +23,11 @@ from app.services.duplicate_service import (
     mark_duplicate_status,
     revalidate_duplicate_references_to,
 )
-from app.services.exchange_rate_service import apply_currency_payload, refresh_currency_snapshot
+from app.services.exchange_rate_service import (
+    apply_currency_payload,
+    calculate_cny_cents,
+    refresh_currency_snapshot,
+)
 from app.services.expense_service._helpers import (
     EDITABLE_STATUSES,
     _clean_category,
@@ -165,6 +169,55 @@ def _claim_expense_for_update(
     return get_expense(db, expense_id, tenant_id)
 
 
+def _apply_update_currency(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense: Expense,
+    payload: ExpenseUpdateRequest,
+    updates: dict,
+    preserve_currency_snapshot: bool,
+) -> None:
+    frozen_snapshot = (
+        (
+            expense.home_currency_code,
+            expense.original_currency_code,
+            expense.exchange_rate_to_cny,
+            expense.exchange_rate_date,
+            expense.exchange_rate_source,
+            expense.fx_status,
+        )
+        if preserve_currency_snapshot
+        else None
+    )
+    apply_currency_payload(
+        db,
+        tenant_id=tenant_id,
+        expense=expense,
+        payload=payload,
+        amount_was_explicit="amount_cents" in updates,
+    )
+    if frozen_snapshot is None:
+        return
+    original_amount_minor = updates.get("original_amount_minor")
+    if original_amount_minor is None:
+        raise AppError("amount_invalid", status_code=422)
+    (
+        expense.home_currency_code,
+        expense.original_currency_code,
+        expense.exchange_rate_to_cny,
+        expense.exchange_rate_date,
+        expense.exchange_rate_source,
+        expense.fx_status,
+    ) = frozen_snapshot
+    expense.original_amount_minor = original_amount_minor
+    expense.amount_cents = calculate_cny_cents(
+        original_currency_code=expense.original_currency_code,
+        original_amount_minor=expense.original_amount_minor,
+        exchange_rate_to_cny=expense.exchange_rate_to_cny,
+    )
+
+
 def update_expense(
     db: Session,
     expense_id: int,
@@ -172,6 +225,7 @@ def update_expense(
     payload: ExpenseUpdateRequest,
     *,
     commit: bool = True,
+    preserve_currency_snapshot: bool = False,
 ) -> Expense:
     # ADR-0038: atomic UPDATE WHERE id, tenant_id, status, updated_at =
     # expected. Race-rejected at the DB layer (rowcount=0 → 404/409),
@@ -219,12 +273,13 @@ def update_expense(
         expense.value_score = updates["value_score"]
     if "regret_score" in updates:
         expense.regret_score = updates["regret_score"]
-    apply_currency_payload(
+    _apply_update_currency(
         db,
         tenant_id=tenant_id,
         expense=expense,
         payload=payload,
-        amount_was_explicit="amount_cents" in updates,
+        updates=updates,
+        preserve_currency_snapshot=preserve_currency_snapshot,
     )
     if expense.status == "confirmed":
         _ensure_expense_can_confirm(expense)

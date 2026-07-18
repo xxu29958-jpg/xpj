@@ -30,7 +30,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
@@ -54,16 +53,17 @@ import com.ticketbox.ui.screens.expense.ExpenseDateControl
 import com.ticketbox.ui.screens.expense.ExpenseDateControlActions
 import com.ticketbox.ui.screens.expense.ExpenseDateControlLabels
 import com.ticketbox.ui.screens.expense.ExpenseDateControlState
-import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
+import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldActions
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
+import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseEditTextField
 import com.ticketbox.ui.screens.expense.ExpenseEditTextFieldState
 
 data class ManualExpenseSheetState(
     val categories: List<String>,
     val saving: Boolean,
+    val homeCurrency: CurrencyCode,
     val recentMerchants: List<RecentMerchant> = emptyList(),
-    val initialCurrency: CurrencyCode = FxContract.HomeCurrency,
     val errorMessage: String? = null,
 )
 
@@ -79,7 +79,7 @@ fun ManualExpenseSheet(
     actions: ManualExpenseSheetActions,
 ) {
     var amountText by rememberSaveable { mutableStateOf("") }
-    var currency by rememberSaveable(state.initialCurrency) { mutableStateOf(state.initialCurrency) }
+    var currency by rememberSaveable(state.homeCurrency) { mutableStateOf(state.homeCurrency) }
     var merchant by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf(DEFAULT_EXPENSE_CATEGORIES.first()) }
     var note by rememberSaveable { mutableStateOf("") }
@@ -199,12 +199,13 @@ fun ManualExpenseSheet(
             compact = keyboardVisible,
         ) {
             ExpenseCurrencyFields(
-                    currency = currency,
-                    onCurrencyChange = {
-                        currency = it
-                },
+                currency = currency,
+                homeCurrency = state.homeCurrency,
                 amountText = amountText,
-                onAmountChange = { amountText = it },
+                actions = ExpenseCurrencyFieldActions(
+                    onCurrencyChange = { currency = it },
+                    onAmountChange = { amountText = it },
+                ),
                 options = ExpenseCurrencyFieldOptions(
                     enabled = !state.saving,
                     autoFocusAmount = false,

@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.PairRequestDto
+import com.ticketbox.domain.model.CurrencyCode
 import kotlinx.coroutines.CancellationException
 import java.time.Instant
 
@@ -30,6 +31,7 @@ internal class ExpenseBindingRepository(
                         deviceName = pairResponse.deviceName,
                         role = pairResponse.role,
                         boundAt = Instant.now().toString(),
+                        homeCurrency = CurrencyCode.requireSupported(pairResponse.homeCurrencyCode),
                     ),
                     cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
                     clearAvailableLedgers = true,

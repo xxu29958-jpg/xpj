@@ -162,7 +162,13 @@ fun BackgroundPreviewScreen(
                 text = stringResource(R.string.background_preview_edit_confirm_button),
                 icon = Icons.Filled.Check,
                 modifier = Modifier.fillMaxWidth(),
+                enabled = false,
                 onClick = {},
+            )
+            Text(
+                text = stringResource(R.string.background_preview_edit_sample_notice),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {

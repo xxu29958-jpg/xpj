@@ -170,11 +170,11 @@ private fun DebtGoalPickerContent(
 }
 
 @Composable
-private fun DebtPickerRow(
+internal fun DebtPickerRow(
     debt: Debt,
     selected: Boolean,
     currency: CurrencyDisplay,
-    onToggle: () -> Unit,
+    onToggle: (() -> Unit)?,
     showDivider: Boolean,
 ) {
     val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
@@ -184,7 +184,11 @@ private fun DebtPickerRow(
         onClick = onToggle,
         showDivider = showDivider,
     ) {
-        Checkbox(checked = selected, onCheckedChange = { onToggle() })
+        Checkbox(
+            checked = selected,
+            enabled = onToggle != null,
+            onCheckedChange = { onToggle?.invoke() },
+        )
         Spacer(Modifier.width(AppSpacing.smallGap))
         Column(
             modifier = Modifier.weight(1f),

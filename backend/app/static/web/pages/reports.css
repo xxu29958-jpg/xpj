@@ -175,6 +175,14 @@
     display: block;
 }
 
+@media (max-width: 560px) {
+    .kpi-strip,
+    .kpi-strip--fluid,
+    .kpi-strip--compact {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ───── Merchant ranking ───── */
 .merch-rank { display: flex; flex-direction: column; gap: 0; }
 .merch-row {

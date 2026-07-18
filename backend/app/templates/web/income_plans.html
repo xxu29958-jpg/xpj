@@ -1,161 +1,242 @@
 {% extends "base.html" %}
-{% block title %}收入记录 · 小票夹{% endblock %}
+{% block title %}收入 · 计划 · 小票夹{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">收入记录</h1>
-  <div class="page-sub">补录工资、奖金和接单到账；真正稳定的收入再设为每月固定。</div>
-</div>
+{% set income_type_labels = {
+  'salary': '工资',
+  'bonus': '奖金',
+  'freelance': '副业 / 接单',
+  'rental': '租金',
+  'other': '其他收入'
+} %}
 
-{% if message %}<div class="callout-info">{{ message }}</div>{% endif %}
-{% if error %}<div class="callout-info callout-info--danger">{{ error }}</div>{% endif %}
-{% if not can_write %}
-<div class="callout-info">只读角色可以查看收入记录，但不能添加或修改。</div>
-{% endif %}
-
-<div class="dt-card">
-  <div class="dt-eyebrow">截至今日已到账收入</div>
-  <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
-    <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ total_yuan }}</div>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">计划 / 收入</span>
+    <h1 class="page-title page-title--compact">收入</h1>
+    <p class="product-page-summary">补录工资、奖金和接单到账；真正稳定的收入再设为每月固定。</p>
   </div>
-  <div class="text-meta">只计入今天已经到账的本月收入；月末工资到发薪日才算进来。</div>
-</div>
+</header>
 
-{% if can_write %}
-<div class="dt-card">
-  <div class="dt-eyebrow">添加收入</div>
-  <form method="post" action="/web/income-plans/create" class="dt-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <div class="dt-form-row">
-      <label>名称</label>
-      <input class="dt-input" type="text" name="label" maxlength="64" required placeholder="例如：我的工资">
+{% if message %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="product-feedback product-feedback--error" role="alert">{{ error }}</div>{% endif %}
+{% if not can_write %}<div class="product-feedback">只读角色可以查看收入记录，但不能添加或修改。</div>{% endif %}
+
+<section class="product-panel product-panel--padded plan-income-hero">
+  <div>
+    <span class="product-eyebrow">本月至今已到账</span>
+    <div class="plan-income-value"><small>{{ home_currency_symbol }}</small>{{ total_yuan }}</div>
+  </div>
+  <p>只统计今天已经到账的本月收入；尚未到发薪日的固定收入不会提前计入。</p>
+</section>
+
+<div class="income-workspace{% if not can_write %} income-workspace--single{% endif %}">
+  {% if can_write %}
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">添加收入</div>
+        <div class="product-panel-subtitle">单笔到账和每月固定分别记录</div>
+      </div>
     </div>
-    <div class="dt-form-row">
-      <label>类型</label>
-      <select class="dt-input" name="source_type">
-        <option value="salary">工资</option>
-        <option value="bonus">奖金</option>
-        <option value="freelance">副业 / 接单</option>
-        <option value="rental">租金</option>
-        <option value="other">其它</option>
-      </select>
-    </div>
-    <div class="dt-form-row">
-      <label>入账方式</label>
-      <select class="dt-input" name="frequency">
-        <option value="one_time" selected>实际到账</option>
-        <option value="monthly">每月固定</option>
-      </select>
-    </div>
-    <div class="dt-form-row">
-      <label>到账月份（单笔收入填写）</label>
-      <div class="dt-inline-fields">
-        <select class="dt-input" name="income_month_year">
+    <form method="post" action="/web/income-plans/create" class="product-form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <label class="product-field">
+        <span>名称</span>
+        <input class="product-input" type="text" name="label" maxlength="64" required placeholder="例如：我的工资">
+      </label>
+      <label class="product-field">
+        <span>类型</span>
+        <select class="product-input" name="source_type">
+          <option value="salary">工资</option>
+          <option value="bonus">奖金</option>
+          <option value="freelance">副业 / 接单</option>
+          <option value="rental">租金</option>
+          <option value="other">其他收入</option>
+        </select>
+      </label>
+      <label class="product-field">
+        <span>入账方式</span>
+        <select class="product-input" name="frequency">
+          <option value="one_time" selected>单次到账</option>
+          <option value="monthly">每月固定</option>
+        </select>
+      </label>
+      <fieldset class="income-month-fields">
+        <legend>到账月份（单次到账）</legend>
+        <select class="product-input" name="income_month_year" aria-label="到账年份">
           {% for year in income_year_options %}
           <option value="{{ year }}" {% if year|string == income_default_year %}selected{% endif %}>{{ year }} 年</option>
           {% endfor %}
         </select>
-        <select class="dt-input" name="income_month_number">
+        <select class="product-input" name="income_month_number" aria-label="到账月份">
           {% for month in range(1, 13) %}
           <option value="{{ month }}" {% if month|string == income_default_month %}selected{% endif %}>{{ month }} 月</option>
           {% endfor %}
         </select>
+      </fieldset>
+      <label class="product-field">
+        <span>金额（{{ home_currency_code }}）</span>
+        <input class="product-input"
+               type="number"
+               name="amount_yuan"
+               step="{{ home_currency_input.amount_step }}"
+               min="0"
+               inputmode="{{ home_currency_input.inputmode }}"
+               placeholder="{{ home_currency_input.amount_example }}"
+               aria-describedby="income-amount-hint"
+               required>
+        <small id="income-amount-hint">{{ home_currency_input.amount_input_hint }}</small>
+      </label>
+      <label class="product-field">
+        <span>发薪日 / 到账日</span>
+        <input class="product-input" type="number" name="pay_day" min="1" max="31" required value="10">
+      </label>
+      <button class="product-button product-button--primary" type="submit">添加收入</button>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">在用收入</div>
+        <div class="product-panel-subtitle">{{ plans_active | length }} 条记录</div>
       </div>
     </div>
-    <div class="dt-form-row">
-      <label>金额（元）</label>
-      <input class="dt-input" type="number" name="amount_yuan" step="0.01" min="0" required>
+    {% if plans_active %}
+    <div class="product-table-wrap">
+      <table class="product-table">
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>类型</th>
+            <th>金额</th>
+            <th>入账方式</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for plan in plans_active %}
+          <tr>
+            <td><strong>{{ plan.label }}</strong></td>
+            <td>{{ income_type_labels.get(plan.source_type, '类型待确认') }}</td>
+            <td class="num">{{ home_amount_label(plan.amount_cents) }}</td>
+            <td>
+              {% if plan.frequency == 'one_time' %}
+              单次到账 · {{ income_month_label(plan.income_month) }} · {{ plan.pay_day }} 号
+              {% elif plan.frequency == 'monthly' %}
+              每月固定 · {{ plan.pay_day }} 号
+              {% else %}
+              入账方式待确认 · {{ plan.pay_day }} 号
+              {% endif %}
+            </td>
+            <td>
+              {% if can_write %}
+              <details class="product-disclosure">
+                <summary>编辑</summary>
+                <form method="post" action="/web/income-plans/{{ plan.public_id }}/edit" class="product-form-grid">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+                  <input type="hidden" name="expected_row_version" value="{{ plan.row_version }}">
+                  <label class="product-field"><span>名称</span>
+                    <input class="product-input" type="text" name="label" value="{{ plan.label }}" maxlength="64" required>
+                  </label>
+                  <label class="product-field"><span>类型</span>
+                    <select class="product-input" name="source_type">
+                      {% for value, text in income_type_labels.items() %}
+                      <option value="{{ value }}" {% if value == plan.source_type %}selected{% endif %}>{{ text }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label class="product-field"><span>入账方式</span>
+                    <select class="product-input" name="frequency">
+                      <option value="one_time" {% if plan.frequency == 'one_time' %}selected{% endif %}>单次到账</option>
+                      <option value="monthly" {% if plan.frequency == 'monthly' %}selected{% endif %}>每月固定</option>
+                    </select>
+                  </label>
+                  <fieldset class="income-month-fields">
+                    <legend>到账月份（单次到账）</legend>
+                    <select class="product-input" name="income_month_year" aria-label="编辑到账年份">
+                      {% for year in income_year_options %}
+                      <option value="{{ year }}" {% if plan.income_month and year|string == plan.income_month[:4] %}selected{% endif %}>{{ year }} 年</option>
+                      {% endfor %}
+                    </select>
+                    <select class="product-input" name="income_month_number" aria-label="编辑到账月份">
+                      {% for month in range(1, 13) %}
+                      <option value="{{ month }}" {% if plan.income_month and month == plan.income_month[5:]|int %}selected{% endif %}>{{ month }} 月</option>
+                      {% endfor %}
+                    </select>
+                  </fieldset>
+                  <label class="product-field"><span>金额（{{ home_currency_code }}）</span>
+                    <input class="product-input" type="number" name="amount_yuan" value="{{ home_amount_value(plan.amount_cents) }}"
+                           step="{{ home_currency_input.amount_step }}" min="0" required>
+                  </label>
+                  <label class="product-field"><span>发薪日 / 到账日</span>
+                    <input class="product-input" type="number" name="pay_day" value="{{ plan.pay_day }}" min="1" max="31" required>
+                  </label>
+                  <button class="product-button product-button--primary product-button--small" type="submit">保存修改</button>
+                </form>
+              </details>
+              <form method="post" action="/web/income-plans/{{ plan.public_id }}/archive" class="product-inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+                <input type="hidden" name="expected_row_version" value="{{ plan.row_version }}">
+                <button class="product-button product-button--small" type="submit">归档</button>
+              </form>
+              {% else %}
+              <span class="readonly-inline">只读</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    <div class="dt-form-row">
-      <label>发薪日 / 到账日（1-31）</label>
-      <input class="dt-input" type="number" name="pay_day" min="1" max="31" required value="10">
+    {% else %}
+    <div class="product-state">
+      <div class="product-state-title">还没有收入记录</div>
+      <div class="product-state-body">补录一笔已到账收入后，灵活可花金额会结合现有支出重新计算。</div>
     </div>
-    <div class="dt-actions">
-      <button class="dt-btn primary" type="submit">添加</button>
-    </div>
-  </form>
-</div>
-{% endif %}
-
-<div class="dt-card">
-  <div class="dt-eyebrow">在用</div>
-  {% if plans_active %}
-  <table class="dt-table">
-    <thead>
-      <tr>
-        <th>名称</th>
-        <th>类型</th>
-        <th class="amount">金额</th>
-        <th>入账方式 / 日期</th>
-        {% if can_write %}<th></th>{% endif %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for plan in plans_active %}
-      <tr>
-        <td>{{ plan.label }}</td>
-        <td>{{ plan.source_type }}</td>
-        <td class="amount">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
-        <td>
-          {% if plan.frequency == 'one_time' %}
-            实际到账 · {{ income_month_label(plan.income_month) }} · {{ plan.pay_day }} 号
-          {% else %}
-            每月固定 · {{ plan.pay_day }} 号
-          {% endif %}
-        </td>
-        {% if can_write %}
-        <td>
-          <form method="post" action="/web/income-plans/{{ plan.public_id }}/archive" class="dt-inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {# ADR-0038 PR-B: OCC token = plan updated_at at render time; a stale
-               archive (plan edited elsewhere since) fails the atomic UPDATE WHERE
-               and redirects with the 过期 message instead of flipping status. #}
-            <input type="hidden" name="expected_row_version" value="{{ plan.row_version }}">
-            <button class="dt-btn ghost" type="submit">归档</button>
-          </form>
-        </td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="text-meta">还没有收入记录。补录一笔工资或其它到账后，"本月可自由支配"会扣掉已有花销重新计算。</div>
-  {% endif %}
+    {% endif %}
+  </section>
 </div>
 
 {% if plans_archived %}
-<div class="dt-card">
-  <div class="dt-eyebrow">已归档</div>
-  <table class="dt-table">
-    <thead>
-      <tr>
-        <th>名称</th>
-        <th>类型</th>
-        <th class="amount">原金额</th>
-        {% if can_write %}<th></th>{% endif %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for plan in plans_archived %}
-      <tr>
-        <td class="text-muted">{{ plan.label }}</td>
-        <td class="text-muted">{{ plan.source_type }}</td>
-        <td class="amount text-muted">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
-        {% if can_write %}
-        <td>
-          <form method="post" action="/web/income-plans/{{ plan.public_id }}/restore" class="dt-inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="expected_row_version" value="{{ plan.row_version }}">
-            <button class="dt-btn ghost" type="submit">恢复</button>
-          </form>
-        </td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<section class="product-panel product-panel--padded">
+  <div class="product-panel-header">
+    <div>
+      <div class="product-panel-title">已归档收入</div>
+      <div class="product-panel-subtitle">{{ plans_archived | length }} 条历史记录</div>
+    </div>
+  </div>
+  <div class="product-table-wrap">
+    <table class="product-table">
+      <thead><tr><th>名称</th><th>类型</th><th>原金额</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for plan in plans_archived %}
+        <tr class="is-receded">
+          <td>{{ plan.label }}</td>
+          <td>{{ income_type_labels.get(plan.source_type, '类型待确认') }}</td>
+          <td class="num">{{ home_amount_label(plan.amount_cents) }}</td>
+          <td>
+            {% if can_write %}
+            <form method="post" action="/web/income-plans/{{ plan.public_id }}/restore" class="product-inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="expected_row_version" value="{{ plan.row_version }}">
+              <button class="product-button product-button--small" type="submit">恢复</button>
+            </form>
+            {% else %}
+            <span class="readonly-inline">只读</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% endif %}
-
 {% endblock %}

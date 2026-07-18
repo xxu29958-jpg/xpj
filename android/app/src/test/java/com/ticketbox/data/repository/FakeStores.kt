@@ -43,6 +43,7 @@ internal class FakeTicketboxSettingsStore(
     private var monthlyBudgetCents: Long? = null
     private var notificationPreferences: NotificationPreferences = NotificationPreferences()
     private var appSkinKey: String? = null
+    private val homeCurrencyCodeKeyFlow = MutableStateFlow<String?>(null)
     var onSaveIdentity: (() -> Unit)? = null
     var backgroundWriteFailure: Throwable? = null
 
@@ -135,6 +136,7 @@ internal class FakeTicketboxSettingsStore(
         deviceName = identity.deviceName
         role = identity.role
         boundAt = identity.boundAt
+        identity.homeCurrencyCode?.let { homeCurrencyCodeKeyFlow.value = it }
         onSaveIdentity?.invoke()
     }
 
@@ -177,6 +179,14 @@ internal class FakeTicketboxSettingsStore(
 
     override fun observeCurrencyCodeKey(): Flow<String?> = MutableStateFlow(null)
 
+    override fun homeCurrencyCodeKey(): String? = homeCurrencyCodeKeyFlow.value
+
+    override fun saveHomeCurrencyCodeKey(currencyKey: String) {
+        homeCurrencyCodeKeyFlow.value = currencyKey.trim().uppercase()
+    }
+
+    override fun observeHomeCurrencyCodeKey(): Flow<String?> = homeCurrencyCodeKeyFlow
+
     override fun saveServerUrl(serverUrl: String) {
         events += "saveServerUrl"
         this.serverUrl = serverUrl.trim().trimEnd('/')
@@ -200,6 +210,7 @@ internal class FakeTicketboxSettingsStore(
         boundAt = null
         lastConfirmedSyncAtByLedger.clear()
         lastUploadAt = null
+        homeCurrencyCodeKeyFlow.value = null
     }
 }
 

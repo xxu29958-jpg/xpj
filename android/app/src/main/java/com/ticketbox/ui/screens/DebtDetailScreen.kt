@@ -62,7 +62,7 @@ private const val DebtDetailFlashDismissMillis = 4000L
  * ADR-0049 §3 (slice 8c) 欠款详情 + 记账管理 —— [DebtRoute] 内的子页（与欠款列表互斥渲染，自带
  * [BackHandler]：返回回到列表，再返回才关 overlay，[[project_overlay_screen_needs_own_backhandler]]）。
  * 镜像 [DebtListScreen] 的生活流骨架（[AppScrollableContent] + secondary header + [AppGlassCard] +
- * [AppStatusBanner]）。记还款 / 调整 / 作废三类直接写只对 external/manual 欠款开放（[Debt.isDirectWritable]）；
+ * [AppStatusBanner]）。记还款 / 撤销误记 / 调整 / 作废只对 external/manual 欠款开放（[Debt.isDirectWritable]）；
  * 成员/拆账欠款显示走对方确认流程的提示而非按钮。统一动作面板（[DebtActionSheet]）按 [DebtAction] 渲染
  * 相应字段，写成功后 ViewModel 把折叠后的欠款换入本地态。
  */
@@ -95,7 +95,11 @@ fun DebtDetailScreen(
             if (debt?.isMember == true) proposalViewModel.refresh()
         },
         onSelectKind = viewModel::selectKind,
-        onOpenAction = viewModel::openAction,
+        onOpenAction = { action -> viewModel.openAction(action) },
+        onVoidRepayment = { publicId ->
+            viewModel.openAction(DebtAction.RepaymentVoid, publicId)
+        },
+        onLoadMoreRepayments = viewModel::loadMoreRepaymentHistory,
     )
     DebtDetailContent(
         state = state,
@@ -131,7 +135,9 @@ private fun DebtDetailEffects(
 ) {
     val debt = state.debt
     LaunchedEffect(debt?.publicId, debt?.isMember) {
-        if (debt != null && debt.isMember) proposalViewModel.load(debt.publicId)
+        if (debt != null && debt.isMember) {
+            proposalViewModel.load(debt.publicId, debt.homeCurrencyCode)
+        }
     }
     LaunchedEffect(proposalState.foldChangedAt) {
         if (proposalState.foldChangedAt > 0) viewModel.refresh()
@@ -326,21 +332,18 @@ private fun DebtActionForm(
 ) {
     val action = state.activeAction ?: return
     AppSheetScaffold(title = stringResource(debtActionTitleRes(action))) {
-        if (action != DebtAction.Void) {
-            AppAmountInput(
-                state = AppAmountInputState(
-                    label = stringResource(debtActionAmountLabelRes(action)),
-                    currency = currency.homeCurrency,
-                    value = state.amountInput,
-                    placeholder = stringResource(R.string.components_amount_input_placeholder),
-                    isError = state.validationError != null,
-                ),
-                actions = AppAmountInputActions(onValueChange = viewModel::updateAmount),
-                modifier = Modifier.fillMaxWidth(),
+        if (action == DebtAction.Repayment || action == DebtAction.Adjustment) {
+            DebtActionAmountInput(
+                action = action,
+                state = state,
+                currency = currency,
+                onAmountChange = { viewModel.updateActionInput(amount = it) },
             )
         }
         if (action == DebtAction.Adjustment) {
-            DebtAdjustmentSignChips(increase = state.adjustmentIncrease, onSelect = viewModel::setAdjustmentSign)
+            DebtAdjustmentSignChips(increase = state.adjustmentIncrease) {
+                viewModel.updateActionInput(adjustmentIncrease = it)
+            }
         }
         if (action != DebtAction.Repayment) {
             AppTextInput(
@@ -348,13 +351,15 @@ private fun DebtActionForm(
                     label = stringResource(R.string.debt_action_reason_label),
                     value = state.reasonInput,
                 ),
-                actions = AppTextInputActions(onValueChange = viewModel::updateReason),
+                actions = AppTextInputActions(onValueChange = { viewModel.updateActionInput(reason = it) }),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        if (action == DebtAction.Void) {
+        if (action == DebtAction.Void || action == DebtAction.RepaymentVoid) {
+            val warningRes = if (action == DebtAction.RepaymentVoid) R.string.debt_action_repayment_void_warning
+            else R.string.debt_action_void_warning
             Text(
-                stringResource(R.string.debt_action_void_warning),
+                stringResource(warningRes),
                 style = MaterialTheme.typography.bodySmall,
                 color = LocalStateTokens.current.warn.fg,
             )
@@ -379,6 +384,32 @@ private fun DebtActionForm(
             ),
         )
     }
+}
+
+@Composable
+private fun DebtActionAmountInput(
+    action: DebtAction,
+    state: DebtDetailUiState,
+    currency: CurrencyDisplay,
+    onAmountChange: (String) -> Unit,
+) {
+    AppAmountInput(
+        state = AppAmountInputState(
+            label = stringResource(
+                debtActionAmountLabelRes(action),
+                state.debt?.homeCurrencyCode ?: currency.homeCurrency.storageKey,
+            ),
+            currency = state.debt
+                ?.homeCurrencyCode
+                ?.let(com.ticketbox.domain.model.CurrencyCode::requireSupported)
+                ?: currency.homeCurrency,
+            value = state.amountInput,
+            placeholder = stringResource(R.string.components_amount_input_placeholder),
+            isError = state.validationError != null,
+        ),
+        actions = AppAmountInputActions(onValueChange = onAmountChange),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

@@ -37,19 +37,20 @@ def _android_copy() -> str:
 
 
 def test_recurring_copy_contract_across_web_owner_and_android() -> None:
-    # UI/UX 批 14: /web/stats 页删除,固定支出表是 /web/recurring 的严格子集,未迁移;
-    # 这套固定支出文案契约改由 recurring.html / android 守护(stats_web 已不存在)。
+    # Web 与 Android 可以按各自页面密度表达，但都必须同时说明：
+    # 候选需确认、正式记录只提醒/对比、不会自动入账。
     recurring_web = _read("backend/app/templates/web/recurring.html")
     owner_index = _read("backend/app/templates/owner/index.html")
     android_copy = _android_copy()
 
-    for surface in (recurring_web, android_copy):
-        assert RECURRING_HEADER_COPY in surface
+    assert "经你确认后用于到期提醒和金额波动对比，不会自动记账" in recurring_web
+    assert CANDIDATE_TITLE in recurring_web
+    assert "确认前不会进入提醒" in recurring_web
 
-    for surface in (recurring_web, android_copy):
-        assert FORMAL_COPY in surface
-        assert CANDIDATE_TITLE in surface
-        assert CANDIDATE_COPY in surface
+    assert RECURRING_HEADER_COPY in android_copy
+    assert FORMAL_COPY in android_copy
+    assert CANDIDATE_TITLE in android_copy
+    assert CANDIDATE_COPY in android_copy
 
     assert "正式固定支出只做提醒和对比，不会自动入账" in owner_index
     assert "不上传通知原文" in owner_index

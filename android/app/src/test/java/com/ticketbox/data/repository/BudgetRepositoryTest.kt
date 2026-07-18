@@ -4,9 +4,13 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.BudgetAdviceDto
+import com.ticketbox.data.remote.dto.BudgetAdviseRequestDto
+import com.ticketbox.data.remote.dto.BudgetAdviseResponseDto
 import com.ticketbox.data.remote.dto.BudgetCategoryDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
+import com.ticketbox.data.remote.dto.BudgetSuggestionDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.BudgetCategoryDraft
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
@@ -39,6 +43,15 @@ class BudgetRepositoryTest {
             assertEquals("Asia/Shanghai", api.monthlyBudgetCalls.single().timezone)
             assertEquals("owner", result.ledgerId)
             assertEquals("餐饮", result.categoryBudgets.single().category)
+
+            val advice = repository.requestBudgetAdvice(" 2026-05 ").getOrThrow()
+
+            assertEquals("2026-05", api.adviceCalls.single().month)
+            assertEquals("Asia/Shanghai", api.adviceCalls.single().timezone)
+            assertEquals("mock", advice.providerName)
+            assertEquals("餐饮", advice.advice?.suggestions?.single()?.category)
+            assertEquals(80_000L, advice.advice?.suggestions?.single()?.suggestedAmountCents)
+            assertEquals("advisor_ready", advice.reasonCode)
         }
     }
 
@@ -103,6 +116,15 @@ class BudgetRepositoryTest {
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
         assertTrue(api.updateBudgetCalls.isEmpty())
+
+        val advice = repository.requestBudgetAdvice("2026-05")
+
+        assertTrue(advice.isFailure)
+        assertEquals(
+            "permission_denied",
+            (advice.exceptionOrNull() as? RepositoryException)?.errorCode,
+        )
+        assertTrue(api.adviceCalls.isEmpty())
     }
 
     @Test
@@ -157,6 +179,8 @@ class BudgetRepositoryTest {
 
 private data class MonthlyBudgetCall(val month: String, val timezone: String?)
 
+private data class AdviceCall(val month: String, val timezone: String?)
+
 private data class UpdateBudgetCall(
     val month: String,
     val request: BudgetMonthlyUpdateRequestDto,
@@ -178,6 +202,7 @@ private class BudgetApiHandler : InvocationHandler {
     val tokens = mutableListOf<String?>()
     val monthlyBudgetCalls = mutableListOf<MonthlyBudgetCall>()
     val updateBudgetCalls = mutableListOf<UpdateBudgetCall>()
+    val adviceCalls = mutableListOf<AdviceCall>()
     var updateError: Throwable? = null
 
     fun service(): ApiService {
@@ -214,6 +239,28 @@ private class BudgetApiHandler : InvocationHandler {
                     timezone = values[2] as String?,
                 )
                 budgetDto(configured = true)
+            }
+            "budgetAdvise" -> {
+                val request = values[0] as BudgetAdviseRequestDto
+                adviceCalls += AdviceCall(
+                    month = request.month,
+                    timezone = request.timezone,
+                )
+                BudgetAdviseResponseDto(
+                    advice = BudgetAdviceDto(
+                        summary = "为弹性支出留出余量。",
+                        suggestions = listOf(
+                            BudgetSuggestionDto(
+                                category = "餐饮",
+                                suggestedAmountCents = 80_000,
+                                rationale = "近期支出稳定。",
+                            ),
+                        ),
+                        confidence = 0.8,
+                    ),
+                    providerName = "mock",
+                    reasonCode = "advisor_ready",
+                )
             }
             else -> error("Unexpected API call: ${method.name}")
         }

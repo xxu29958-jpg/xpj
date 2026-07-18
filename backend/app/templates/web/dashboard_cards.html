@@ -1,95 +1,64 @@
 {% extends "base.html" %}
-{% block title %}仪表盘卡片 — 小票夹{% endblock %}
+{% block title %}概览内容 · 洞察 · 小票夹{% endblock %}
+
 {% block content %}
-<div class="page-header-row">
-  <div>
-    <h1 class="page-title page-title--compact">仪表盘卡片</h1>
-    <p class="page-hint">调整当前账本在 /web 首页的卡片顺序和可见状态。拖动卡片可以排序，保存后生效。</p>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">洞察 / 概览 / 内容</span>
+    <h1 class="page-title page-title--compact">概览内容</h1>
+    <p class="product-page-summary">概览按“需处理、本月事实、计划状态”的任务顺序呈现；你可以选择显示哪些内容。</p>
   </div>
-  <a class="dt-btn" href="/web{{ q }}">返回仪表盘</a>
-</div>
+  <div class="product-page-actions">
+    <a class="product-button" href="/web/overview{{ q }}">返回概览</a>
+  </div>
+</header>
 
-{% if message %}
-<div class="dt-alert success">{{ message }}</div>
-{% endif %}
+{% if message %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
 
-<div class="dt-card dashboard-card-settings-card">
-  <form method="post" action="/web/dashboard/cards/save" class="dashboard-card-settings" id="dashboard-cards-form">
+<section class="product-panel product-panel--padded">
+  <form method="post" action="/web/dashboard/cards/save" class="layout-editor" id="dashboard-cards-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <div class="dashboard-card-settings-head">
-      <span>卡片</span>
+    <div class="layout-editor-head layout-editor-head--visibility" aria-hidden="true">
+      <span>模块</span>
       <span>显示</span>
-      <span>排序</span>
     </div>
-    <div data-drag-reorder id="dashboard-cards-list">
+    <div id="dashboard-cards-list" class="layout-editor-list">
     {% for item in dashboard_cards %}
-      <div class="dashboard-card-setting-row"
-           data-dashboard-card-row="{{ item.key }}"
-           data-reorder-key="{{ item.key }}"
-           draggable="{{ 'true' if can_write else 'false' }}">
+      <div class="layout-editor-row"
+           data-dashboard-card-row="{{ item.key }}">
         <input type="hidden" name="card_key" value="{{ item.key }}">
-        <div class="dashboard-card-setting-title">
-          <span class="dashboard-card-drag-handle" aria-hidden="true">⋮⋮</span>
-          <div>
-            <strong>{{ item.title }}</strong>
-            <span>{{ item.key }}</span>
-          </div>
+        <input type="hidden" name="card_position" value="{{ item.position }}">
+        <div class="layout-editor-title">
+          <strong>{{ item.title }}</strong>
         </div>
-        <label class="dashboard-card-switch">
-          <input
-            type="checkbox"
-            name="visible_key"
-            value="{{ item.key }}"
-            {% if item.visible %}checked{% endif %}
-            {% if not can_write %}disabled{% endif %}
-          >
+        <label class="product-check">
+          <input type="checkbox"
+                 name="visible_key"
+                 value="{{ item.key }}"
+                 {% if item.visible %}checked{% endif %}
+                 {% if not can_write %}disabled{% endif %}>
           <span>显示</span>
-        </label>
-        <label class="dashboard-card-position">
-          <span>顺序</span>
-          <input
-            type="number"
-            name="card_position"
-            value="{{ item.position }}"
-            min="0"
-            step="1"
-            {% if not can_write %}readonly{% endif %}
-            data-card-position
-          >
         </label>
       </div>
     {% endfor %}
     </div>
 
     {% if can_write %}
-    <div class="actions dashboard-card-actions">
-      <button type="submit" class="dt-btn primary">保存卡片</button>
+    <div class="product-page-actions">
+      <button type="submit" class="product-button product-button--primary">保存显示设置</button>
     </div>
     {% else %}
-    <p class="meta">只读角色可以查看当前布局，但不能保存修改。</p>
+    <p class="readonly-inline">只读角色可以查看当前布局，但不能保存修改。</p>
     {% endif %}
   </form>
 
   {% if can_write %}
-  <form method="post" action="/web/dashboard/cards/reset" class="dashboard-card-reset">
+  <form method="post" action="/web/dashboard/cards/reset" class="layout-reset">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <button type="submit" class="dt-btn">恢复默认卡片</button>
+    <button type="submit" class="product-button">恢复默认内容</button>
   </form>
   {% endif %}
-</div>
-
-<script>
-// v0.10 progressive enhancement: 拖排后 sync position 数字输入框，让现有 form POST 不变.
-(function () {
-  var list = document.getElementById('dashboard-cards-list');
-  if (!list) return;
-  list.addEventListener('drag-reorder-change', function () {
-    var rows = list.querySelectorAll('[data-reorder-key]');
-    rows.forEach(function (row, idx) {
-      var posInput = row.querySelector('[data-card-position]');
-      if (posInput) posInput.value = idx;
-    });
-  });
-})();
-</script>
+</section>
 {% endblock %}

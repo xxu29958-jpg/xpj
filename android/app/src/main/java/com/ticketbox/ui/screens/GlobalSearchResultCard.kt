@@ -80,7 +80,7 @@ internal fun SearchResultCard(
                 )
             }
             Text(
-                text = formatAmount(expense.amountCents),
+                text = formatAmount(expense.amountCents, expense.homeCurrency),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleMedium.tabularNum(),
                 fontWeight = AppTypography.amountMedium.weight,

@@ -1,8 +1,8 @@
 package com.ticketbox.ui.screens
 
 import com.ticketbox.domain.model.BillSplitSent
-import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.viewmodel.BillSplitSentLoadState
 import com.ticketbox.viewmodel.ExpenseEditUiState
@@ -86,6 +86,12 @@ internal class BillSplitRemainingCentsTest {
         publicId = publicId,
         status = status,
         amountCents = amountCents,
+        homeCurrency = CurrencyCode.CNY,
+        originalCurrency = CurrencyCode.CNY,
+        originalAmountMinor = amountCents,
+        exchangeRateToHome = null,
+        exchangeRateDate = null,
+        exchangeRateSource = null,
         merchantSnapshot = null,
         categorySuggestion = null,
         expenseTimeSnapshot = null,

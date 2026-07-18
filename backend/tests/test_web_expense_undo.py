@@ -87,8 +87,8 @@ def test_web_pending_renders_undo_banner_in_green_when_success_flash(
     assert "undo-banner" in body
     assert "撤销" in body
     # review P2 #1: the success flash renders green, not red.
-    assert "dt-alert success" in body
-    assert "dt-alert danger" not in body
+    assert "product-feedback--success" in body
+    assert "product-feedback--error" not in body
 
 
 def test_web_pending_undo_form_carries_csrf_token(
@@ -241,8 +241,8 @@ def test_web_undo_after_window_expires_flashes_red_failure(
     # not the success class.
     page = web_client.get(location)
     assert page.status_code == 200, page.text
-    assert "dt-alert danger" in page.text
-    assert "dt-alert success" not in page.text
+    assert "product-feedback--error" in page.text
+    assert "product-feedback--success" not in page.text
 
 
 def test_web_undo_for_pending_row_flashes_failure(

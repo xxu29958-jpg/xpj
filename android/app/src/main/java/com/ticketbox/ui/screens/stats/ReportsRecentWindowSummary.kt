@@ -191,11 +191,11 @@ private fun ReportsRecentWindowDayChart(
     points: List<StatsSpendChartPoint>,
     chartA11y: String,
 ) {
-    StatsSpendTrendChart(
+    AdaptiveStatsSpendTrendChart(
         points = points,
         contentDescription = chartA11y,
         height = LocalStatsTokens.current.chart.recentHeight,
-        showAllLabels = true,
+        maxWindows = 7,
     )
 }
 

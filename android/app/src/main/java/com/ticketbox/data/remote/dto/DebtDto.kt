@@ -173,6 +173,19 @@ data class RepaymentCreateRequestDto(
 )
 
 /**
+ * Body for `POST /api/debts/{id}/repayment-voids` — append a correction for one mistaken
+ * repayment without deleting the original fact (ADR-0049 §3.4). [repaymentPublicId] comes from
+ * [RepaymentCreateResponseDto]; [expectedRowVersion] is the current parent Debt OCC token.
+ */
+data class RepaymentVoidCreateRequestDto(
+    @param:Json(name = "repayment_public_id")
+    val repaymentPublicId: String,
+    val reason: String,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+)
+
+/**
  * Body for `POST /api/debts/{id}/adjustments` — record one signed principal-like correction
  * (ADR-0049 §3.3, slice 8c). [amountCents] is a signed home-currency delta (negative lowers
  * `remaining`, never below 0); [reason] is required. [expectedRowVersion] is the §2.1 stale-intent

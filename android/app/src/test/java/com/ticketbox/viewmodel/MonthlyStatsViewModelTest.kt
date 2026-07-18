@@ -85,6 +85,8 @@ class MonthlyStatsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(StatsSource.Backend, viewModel.uiState.value.statsSource)
+        assertEquals(DataQualityLoadState.Loaded, viewModel.uiState.value.dataQualityLoadState)
+        assertNotNull(viewModel.uiState.value.dataQuality)
     }
 
     @Test
@@ -139,6 +141,7 @@ class MonthlyStatsViewModelTest {
     fun statsSourceMarksLocalFallbackOnBackendFailure() = statsTest {
         val stats = FakeStatsActions()
         stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
+        stats.dataQualityResult = Result.failure(RuntimeException("quality offline"))
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
             recurringRepository = FakeStatsRecurringActions(),
@@ -181,6 +184,8 @@ class MonthlyStatsViewModelTest {
         assertEquals(StatsSource.LocalFallback, viewModel.uiState.value.statsSource)
         // 审计 8.4: a usable local fallback is data, not an error — no error card.
         assertNull(viewModel.uiState.value.statsLoadError)
+        assertEquals(DataQualityLoadState.Failed, viewModel.uiState.value.dataQualityLoadState)
+        assertNotNull(viewModel.uiState.value.dataQualityError)
     }
 
     @Test
@@ -379,6 +384,7 @@ private class FakeStatsActions : StatsActions {
     var monthListResult: Result<List<String>>? = null
     var tagList: List<String> = emptyList()
     var tagListResult: Result<List<String>>? = null
+    var dataQualityResult: Result<DataQualitySummary>? = null
     var monthlyStatsCalls = 0
 
     override fun observeActiveLedgerId(): Flow<String?> = ledgerFlow
@@ -410,7 +416,7 @@ private class FakeStatsActions : StatsActions {
     ): Result<List<Expense>> = Result.success(emptyList())
 
     override suspend fun dataQualitySummary(): Result<DataQualitySummary> =
-        Result.success(
+        dataQualityResult ?: Result.success(
             DataQualitySummary(
                 pendingTotal = 0,
                 missingAmount = 0,

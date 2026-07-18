@@ -1,4 +1,4 @@
-"""/web dashboard, dashboard data, and dashboard card settings routes."""
+"""/web Insights overview, data, and module settings routes."""
 
 from __future__ import annotations
 
@@ -15,13 +15,45 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _sidebar_counts,
     _web_redirect,
+    _with_ledger,
     templates,
 )
 from app.schemas import DashboardCardsUpdateRequest, DashboardCardUpdateRequest
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
 
 router = APIRouter(prefix="/web", tags=["web"])
+
+
+@router.get("/overview", response_class=HTMLResponse)
+def web_overview(
+    request: Request,
+    ledger_id: str | None = None,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Render the Insights overview without making it a generic app home."""
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    ctx = _base_ctx(
+        request,
+        options=options,
+        selected_ledger_id=selected_id,
+        page_title="账面概览",
+        sidebar_counts=_sidebar_counts(db, selected_id),
+    )
+    payload = _dashboard_data_payload(db, selected_id)
+    ctx["cards"] = payload["cards"]
+    ctx["trend14"] = payload["trend14"]
+    ctx["category_share"] = payload["category_share"]
+    ctx["dashboard_data_url"] = _with_ledger("/web/dashboard/data", selected_id)
+    ctx["has_any_expense"] = payload["has_any_expense"]
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context=ctx,
+    )
 
 
 @router.get("/dashboard/data", response_class=JSONResponse)
@@ -110,7 +142,7 @@ def web_dashboard_cards_save(
         visible_key=visible_key,
     )
     update_dashboard_cards(db, tenant_id=selected_id, surface="web", payload=payload)
-    return _web_redirect("/web/dashboard/cards", selected_id, msg="Dashboard 卡片已保存。")
+    return _web_redirect("/web/dashboard/cards", selected_id, msg="概览模块已保存。")
 
 
 @router.post("/dashboard/cards/reset", response_class=HTMLResponse)
@@ -129,4 +161,4 @@ def web_dashboard_cards_reset(
         surface="web",
         payload=DashboardCardsUpdateRequest(cards=[]),
     )
-    return _web_redirect("/web/dashboard/cards", selected_id, msg="已恢复默认卡片。")
+    return _web_redirect("/web/dashboard/cards", selected_id, msg="已恢复默认模块。")

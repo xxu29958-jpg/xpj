@@ -20,6 +20,7 @@ import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -140,6 +141,9 @@ internal class ExpenseRepositoryCore(
             else -> error.message ?: "操作失败。"
         }
     }
+
+    fun currentHomeCurrency(): CurrencyCode =
+        CurrencyCode.fromStorageKey(settingsStore.homeCurrencyCodeKey())
 
     suspend fun persistAuthCheck(
         check: AuthCheckDto,
@@ -424,13 +428,16 @@ internal class ExpenseRepositoryCore(
         clientRef: String,
     ): Expense {
         bound.requireStillActive()
-        val entity = draft.toLocalCreateEntity(bound.ledgerId, clientRef)
+        val homeCurrency = currentHomeCurrency()
+        val entity = draft.toLocalCreateEntity(bound.ledgerId, clientRef, homeCurrency)
         val rowId = expenseDao.insert(entity)
         onConfirmedCommitted(bound.ledgerId)
         outbox.enqueue(
             type = PendingMutationType.CreateExpense,
             targetId = expenseLocalTargetId(clientRef),
-            payloadJson = adapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
+            payloadJson = adapter.toJson(
+                draft.toManualCreateRequest(homeCurrency = homeCurrency, clientRef = clientRef),
+            ),
             expectedRowVersion = FIRST_WRITE_ROW_VERSION,
             idempotencyKey = null,
         )

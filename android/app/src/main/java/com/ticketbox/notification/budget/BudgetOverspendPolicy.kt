@@ -1,6 +1,7 @@
 package com.ticketbox.notification.budget
 
 import com.ticketbox.domain.model.BudgetMonthly
+import com.ticketbox.domain.model.CurrencyCode
 
 /**
  * 一条预算超支提醒的判定结果（轴 6 主动性 · 预算超支通知）。
@@ -15,6 +16,7 @@ data class BudgetOverspendDecision(
     val ledgerId: String,
     val month: String,
     val overspentCents: Long,
+    val homeCurrency: CurrencyCode,
 )
 
 /**
@@ -32,7 +34,11 @@ fun budgetOverspendSentKey(ledgerId: String, month: String): String = "v1:budget
  *   刻意只读服务端算好的字段、不在客户端重算（excluded / rollover / 汇率折算都在服务端口径里，
  *   本地重算必然分叉）。
  */
-fun evaluateBudgetOverspend(ledgerId: String, budget: BudgetMonthly): BudgetOverspendDecision? {
+fun evaluateBudgetOverspend(
+    ledgerId: String,
+    budget: BudgetMonthly,
+    homeCurrency: CurrencyCode,
+): BudgetOverspendDecision? {
     if (!budget.configured) return null
     if (budget.overspentAmountCents <= 0L) return null
     return BudgetOverspendDecision(
@@ -40,5 +46,6 @@ fun evaluateBudgetOverspend(ledgerId: String, budget: BudgetMonthly): BudgetOver
         ledgerId = ledgerId,
         month = budget.month,
         overspentCents = budget.overspentAmountCents,
+        homeCurrency = homeCurrency,
     )
 }

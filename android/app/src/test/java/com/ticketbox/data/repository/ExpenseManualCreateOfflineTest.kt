@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.ExpenseSourceValues
+import com.ticketbox.domain.model.CurrencyCode
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -138,7 +139,8 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         val repo = createRepo(ManualCreateApi(), dao, outbox)
         // The row was created locally (Room PK) and has since synced (serverId set).
         val roomPk = dao.insert(
-            draft.toLocalCreateEntity(activeLedger, "ref-x").copy(serverId = 77L, publicId = "server-pub-77"),
+            draft.toLocalCreateEntity(activeLedger, "ref-x", CurrencyCode.CNY)
+                .copy(serverId = 77L, publicId = "server-pub-77"),
         )
 
         val loaded = repo.fetchExpenseFromLocalCache(-roomPk).getOrThrow()
@@ -195,7 +197,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         val dao = FakeExpenseDao()
         val clientRef = "abc-123"
         // Seed the optimistic local row as the offline create would have.
-        dao.insert(draft.toLocalCreateEntity(activeLedger, clientRef))
+        dao.insert(draft.toLocalCreateEntity(activeLedger, clientRef, CurrencyCode.CNY))
         assertNull(dao.getConfirmed(activeLedger).single().serverId, "precondition: row has no server id")
 
         // Dispatch the CreateExpense replay with the write-back wired exactly as
@@ -209,7 +211,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
             },
         )
         val payload = moshi().adapter(ExpenseManualCreateRequestDto::class.java)
-            .toJson(draft.toManualCreateRequest(clientRef = clientRef))
+            .toJson(draft.toManualCreateRequest(CurrencyCode.CNY, clientRef = clientRef))
         val row = OutboxRow(
             id = 1L,
             serverUrl = "https://api.example.com",

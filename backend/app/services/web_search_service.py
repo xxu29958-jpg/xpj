@@ -27,6 +27,7 @@ class WebSearchResult:
     href: str
     badge: str
     amount_cents: int | None = None
+    currency_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +155,7 @@ def _search_expenses(
             href=f"/web/expenses/{expense.id}/edit?{urlencode({'ledger_id': tenant_id})}",
             badge=badge,
             amount_cents=expense.amount_cents,
+            currency_code=expense.home_currency_code,
         )
         for expense in rows
     ]

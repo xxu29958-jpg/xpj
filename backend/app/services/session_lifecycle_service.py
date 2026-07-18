@@ -140,6 +140,7 @@ def issue_auth_token(
     device_id: int,
     ledger_id: str,
     scope: str,
+    activation_state: str = "active",
     expires_at: datetime | None = None,
     token_value: str | None = None,
 ) -> str:
@@ -151,6 +152,7 @@ def issue_auth_token(
             device_id=device_id,
             ledger_id=ledger_id,
             scope=scope,
+            activation_state=activation_state,
             expires_at=expires_at,
         )
     )
@@ -260,7 +262,12 @@ def revoke_web_session_token(
     row = db.scalar(
         select(AuthToken).where(AuthToken.token_hash == hash_secret(token_value)).limit(1)
     )
-    if row is None or row.revoked_at is not None or row.scope != "app":
+    if (
+        row is None
+        or row.revoked_at is not None
+        or row.scope != "app"
+        or row.activation_state != "active"
+    ):
         return False
     device = db.get(Device, row.device_id)
     if device is None or (device.platform or "").strip().lower() != "web":
@@ -336,6 +343,7 @@ def rotate_app_token_for_ledger(
         .where(AuthToken.account_id == account_id)
         .where(AuthToken.device_id == device_id)
         .where(AuthToken.scope == "app")
+        .where(AuthToken.activation_state == "active")
         .where(AuthToken.revoked_at.is_(None))
         .values(revoked_at=rotated_at, grace_until=grace_until)
         .execution_options(synchronize_session=False)

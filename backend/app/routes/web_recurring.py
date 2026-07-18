@@ -14,6 +14,7 @@ from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
     _base_ctx,
+    _calendar_date_label,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
@@ -38,40 +39,69 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web/recurring", tags=["web"])
 
+_STATUS_FILTERS = {"active", "paused", "archived"}
+
+
+def _normalize_status_filter(status: str | None) -> str:
+    return status if status in _STATUS_FILTERS else ""
+
 
 def _status_label(status: str) -> str:
     return {
-        "active": "活跃",
-        "paused": "暂停",
-        "archived": "归档",
-    }.get(status, status)
+        "active": "进行中",
+        "paused": "已暂停",
+        "archived": "已归档",
+    }.get(status, "状态待确认")
+
+
+def _status_tone(status: str) -> str:
+    return {
+        "active": "success",
+        "paused": "warning",
+        "archived": "",
+    }.get(status, "")
 
 
 def _anomaly_label(status: str) -> str:
     return {
         "higher_than_average": "本月偏高",
-        "none": "正常",
-    }.get(status, status)
+        "none": "波动正常",
+    }.get(status, "需复核")
+
+
+def _frequency_label(frequency: str) -> str:
+    return {
+        "monthly": "每月",
+    }.get(frequency, "周期待确认")
+
+
+def _confidence_label(confidence: str) -> str:
+    return {
+        "high": "高",
+        "medium": "中",
+    }.get(confidence, "待核对")
 
 
 def _item_view(item, anomaly) -> dict:
     return {
         "public_id": item.public_id,
         "merchant": item.merchant_name,
-        "frequency": "每月" if item.frequency == "monthly" else item.frequency,
+        "frequency_label": _frequency_label(item.frequency),
         "baseline_amount_yuan": _amount_yuan(item.baseline_amount_cents),
         "last_amount_yuan": _amount_yuan(item.last_amount_cents),
         "occurrence_count": item.occurrence_count,
         "last_seen_at": to_iso(item.last_seen_at),
-        "next_expected_date": item.next_expected_date.isoformat() if item.next_expected_date else "",
+        "next_expected_label": _calendar_date_label(item.next_expected_date),
         "status": item.status,
         "status_label": _status_label(item.status),
+        "status_tone": _status_tone(item.status),
         # ADR-0041: OCC token (row_version) for the hidden pause/resume form
         # field. Without it parse_form_row_version_token sees "" → the user
         # always hits the "页面已过期" redirect and can never toggle from this page.
         "row_version": item.row_version,
         "updated_at": to_iso(item.updated_at),
         "confidence": item.confidence or "",
+        "confidence_label": _confidence_label(item.confidence or ""),
         "anomaly_status": anomaly.anomaly_status,
         "anomaly_label": _anomaly_label(anomaly.anomaly_status),
         "current_month_amount_yuan": _amount_yuan(anomaly.current_month_amount_cents),
@@ -81,13 +111,19 @@ def _item_view(item, anomaly) -> dict:
 
 
 def _candidate_view(candidate: dict) -> dict:
+    confidence = str(candidate.get("confidence") or "")
     return {
         "merchant": str(candidate.get("merchant") or ""),
         "amount_cents": int(candidate.get("amount_cents") or 0),
         "amount_yuan": _amount_yuan(int(candidate.get("amount_cents") or 0)),
         "occurrence_count": int(candidate.get("occurrence_count") or 0),
         "last_seen_at": to_iso(candidate.get("last_seen_at")),
-        "confidence": str(candidate.get("confidence") or ""),
+        "last_seen_label": _calendar_date_label(candidate.get("last_seen_at")),
+        # Raw value is retained only for the confirmation contract. Visible
+        # product copy always uses the closed-set label below.
+        "confidence": confidence,
+        "confidence_label": _confidence_label(confidence),
+        "confidence_tone": "success" if confidence == "high" else "",
         "reason": str(candidate.get("reason") or ""),
     }
 
@@ -101,7 +137,13 @@ def _render_recurring(
     status: str | None = None,
     flash_message: str | None = None,
 ) -> HTMLResponse:
-    items = list_recurring_items(db, tenant_id=selected_id, status=status or None, include_archived=True)
+    status_filter = _normalize_status_filter(status)
+    items = list_recurring_items(
+        db,
+        tenant_id=selected_id,
+        status=status_filter or None,
+        include_archived=True,
+    )
     # No explicit month: the service defaults to current_accounting_month
     # (Asia/Shanghai). current_month(None) here was UTC — in the 00:00-07:59
     # Beijing window on the 1st the whole page mis-binned into last month.
@@ -127,7 +169,7 @@ def _render_recurring(
         candidates_error = True
     ctx["candidates"] = [_candidate_view(candidate) for candidate in candidate_rows]
     ctx["candidates_error"] = candidates_error
-    ctx["status_filter"] = status or ""
+    ctx["status_filter"] = status_filter
     ctx["flash_message"] = flash_message
     return templates.TemplateResponse(request=request, name="recurring.html", context=ctx)
 

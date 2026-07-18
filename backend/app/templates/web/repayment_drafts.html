@@ -1,35 +1,119 @@
 {% extends "base.html" %}
-{% block title %}还款捕获 · 小票夹{% endblock %}
+{% block title %}还款待确认 · 小票夹{% endblock %}
+
 {% block content %}
-<h1 class="page-title page-title--compact">还款捕获</h1>
-<p class="page-hint">{{ intro }}</p>
+{% set _tone = {
+  'ok': 'product-status--success',
+  'warn': 'product-status--warning',
+  'danger': 'product-status--danger',
+  'info': 'product-status--info'
+} %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">往来 / 还款待确认</span>
+    <h1 class="page-title page-title--compact">还款待确认</h1>
+    <p class="product-page-summary">{{ intro }}</p>
+  </div>
+</header>
+
+{% if flash_message %}
+<div class="product-feedback" role="status">{{ flash_message }}</div>
+{% endif %}
+{% if form_error and not error_draft_public_id %}
+<div class="product-feedback product-feedback--danger" role="alert">{{ form_error }}</div>
+{% endif %}
+{% if not can_write %}
+<div class="product-feedback">只读角色可以查看还款记录，但不能确认或忽略待处理项。</div>
+{% endif %}
 
 {% if not rows %}
-<div class="dt-card dt-card--empty">
-  <div class="empty-headline">{{ empty_title }}</div>
-  <div class="empty-body">{{ empty_body }}</div>
+<div class="product-state">
+  <div class="product-state-title">{{ empty_title }}</div>
+  <div class="product-state-body">{{ empty_body }}</div>
 </div>
 {% else %}
-<div class="rd-list">
-  {% for r in rows %}
-  {# 只读审计行 (.dt-card--static 不抬升=不可点)：左来源/商户/捕获日/provenance|关联，右额+状态 pill。
-     dismissed 沉降 (.debt-card-sunk 淡出，永不红)。 #}
-  <div class="dt-card dt-card--static rd-row{% if r.recede %} debt-card-sunk{% endif %}">
-    <div class="rd-main">
-      <div class="rd-head">
-        <span class="rd-source">{{ r.source_label }}</span>
-        {% if r.merchant %}<span class="rd-merchant">{{ r.merchant }}</span>{% endif %}
-      </div>
-      <div class="rd-meta">{{ r.captured_label }}</div>
-      {% if r.provenance %}<div class="rd-provenance">{{ r.provenance }}</div>{% endif %}
-      {% if r.linked_line %}<div class="rd-linked">{{ r.linked_line }}</div>{% endif %}
-    </div>
-    <div class="rd-side">
-      <span class="rd-amount">{{ r.amount_label }}</span>
-      <span class="dt-pill {{ r.status_tone }}">{{ r.status_label }}</span>
-    </div>
+<section class="repayment-audit" aria-label="还款待确认与处理记录">
+  <div class="repayment-audit-head">
+    <span>捕获来源</span>
+    <span>对应欠款</span>
+    <span>捕获时间</span>
+    <span class="text-end">金额与状态</span>
   </div>
+  {% for r in rows %}
+  <article class="repayment-audit-row{% if r.recede %} is-receded{% endif %}">
+    <div>
+      <strong class="rd-source">{{ r.source_label }}</strong>
+      {% if r.merchant %}<div class="rd-merchant">{{ r.merchant }}</div>{% endif %}
+    </div>
+    <div>
+      {% if r.is_pending %}
+        {% if r.provenance %}<div class="rd-provenance">{{ r.provenance }}</div>{% endif %}
+        {% if can_write %}
+          {% if r.targets %}
+          <div class="product-form-grid">
+            <strong>这笔还款对应哪笔欠款？</strong>
+            {% if error_draft_public_id == r.public_id %}
+            <div id="repayment-error-{{ r.public_id }}"
+                 class="product-feedback product-feedback--danger"
+                 role="alert">{{ form_error }}</div>
+            {% endif %}
+            {% for choice in r.targets %}
+            <form method="post"
+                  action="/web/repayment-drafts/{{ r.public_id }}/confirm"
+                  class="product-form-grid">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="idempotency_key" value="{{ r.idempotency_key }}">
+              <input type="hidden" name="target_debt_public_id" value="{{ choice.public_id }}">
+              <input type="hidden" name="expected_row_version" value="{{ choice.row_version }}">
+              <span>
+                {% if choice.is_suggested %}<strong>建议 · </strong>{% endif %}
+                {{ choice.name }} · 还剩 {{ choice.remaining_label }}
+                {% if choice.is_selected %}<span class="text-meta">（刚才选择）</span>{% endif %}
+              </span>
+              <button class="product-button {% if choice.is_suggested %}product-button--primary{% else %}product-button--quiet{% endif %}"
+                      type="submit"
+                      {% if error_draft_public_id == r.public_id %}aria-describedby="repayment-error-{{ r.public_id }}"{% endif %}>
+                {% if choice.is_suggested %}确认{% else %}对应欠款{% endif %}
+              </button>
+            </form>
+            {% endfor %}
+          </div>
+          <form method="post"
+                action="/web/repayment-drafts/{{ r.public_id }}/dismiss"
+                class="product-form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <button class="product-button product-button--quiet" type="submit">忽略</button>
+          </form>
+          {% else %}
+          <div class="product-panel-subtitle">没有可对应的欠款。请先在「债务管理」里新建一笔外部欠款。</div>
+          <a class="product-state-action"
+             href="/web/debts/new?ledger_id={{ selected_ledger_id }}">新建外部欠款</a>
+          <form method="post"
+                action="/web/repayment-drafts/{{ r.public_id }}/dismiss"
+                class="product-form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <button class="product-button product-button--quiet" type="submit">忽略</button>
+          </form>
+          {% endif %}
+        {% else %}
+        <span class="text-meta">等待有写权限的成员处理</span>
+        {% endif %}
+      {% elif r.linked_line %}
+      <span class="rd-linked">{{ r.linked_line }}</span>
+      {% else %}
+      <span class="text-meta">未关联往来</span>
+      {% endif %}
+    </div>
+    <div class="rd-meta">{{ r.captured_label }}</div>
+    <div class="rd-side">
+      <strong class="rd-amount">{{ r.amount_label }}</strong>
+      <span class="product-status {{ _tone.get(r.status_tone, '') }}">{{ r.status_label }}</span>
+    </div>
+  </article>
   {% endfor %}
-</div>
+</section>
 {% endif %}
 {% endblock %}

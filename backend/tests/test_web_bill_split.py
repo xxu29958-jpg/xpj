@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -68,15 +70,21 @@ def _make_owner_expense(amount_cents: int = 4000) -> int:
 def test_web_inbox_renders_empty_state(web_client: TestClient) -> None:
     response = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
     assert response.status_code == 200, response.text[:300]
-    assert "拆账收件箱" in response.text
+    assert 'data-domain="obligations"' in response.text
+    assert '<span class="topbar-domain">往来</span>' in response.text
+    assert '<h1 class="page-title page-title--compact">收到的拆账</h1>' in response.text
     assert "还没有拆账邀请" in response.text
 
 
 def test_web_sent_renders_empty_state(web_client: TestClient) -> None:
     response = web_client.get("/web/bill-splits/sent?ledger_id=owner")
     assert response.status_code == 200
-    assert "已发出的拆账邀请" in response.text
-    assert "没有已发起" in response.text
+    assert 'data-domain="obligations"' in response.text
+    assert '<span class="topbar-domain">往来</span>' in response.text
+    assert '<h1 class="page-title page-title--compact">发出的拆账</h1>' in response.text
+    assert "还没有发出拆账" in response.text
+    assert 'href="/web/confirmed?ledger_id=owner"' in response.text
+    assert "手机 App 的已确认账单详情里发起" not in response.text
 
 
 def test_web_sent_lists_invitations(web_client: TestClient) -> None:
@@ -105,6 +113,30 @@ def test_web_sent_lists_invitations(web_client: TestClient) -> None:
     assert response.status_code == 200
     assert "Pizza" in response.text
     assert "B-web" in response.text  # receiver_display_name_snapshot
+
+
+def test_web_sent_treats_past_deadline_invitation_as_expired(
+    web_client: TestClient,
+) -> None:
+    receiver_id, _ = _seed_receiver(ledger_id="receiver_expiredw")
+    expense_id = _make_owner_expense()
+    with SessionLocal() as db:
+        inv = bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_id,
+            amount_cents=1500,
+        )
+        public_id = inv.public_id
+        inv.expires_at = now_utc() - timedelta(minutes=1)
+        db.commit()
+
+    response = web_client.get("/web/bill-splits/sent?ledger_id=owner")
+    assert response.status_code == 200
+    assert "已过期" in response.text
+    assert f'action="/web/bill-splits/{public_id}/cancel"' not in response.text
 
 
 def test_web_sent_omits_receiver_ledger_id(web_client: TestClient) -> None:
@@ -240,9 +272,7 @@ def test_web_inbox_dropdown_shows_ledger_name_and_local_time(
     dropdown must show the ledger NAME (option value keeps the id), and the
     snapshot times must render in the accounting timezone, not as the raw
     ``...+00:00`` UTC repr."""
-    sender_id, sender_ledger = _seed_receiver(
-        ledger_id="sender_namew", display="B-namew"
-    )
+    sender_id, sender_ledger = _seed_receiver(ledger_id="sender_namew", display="B-namew")
     expense_id = _seed_expense_in(sender_ledger)
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
@@ -263,9 +293,7 @@ def test_web_inbox_dropdown_shows_ledger_name_and_local_time(
     assert f'<option value="owner">{owner_ledger_name}</option>' in html
     assert '<option value="owner">owner</option>' not in html
     # Times: accounting-tz wall clock, not the raw aware-datetime repr.
-    expected_expiry = (
-        ensure_utc(snapshot_expires).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
-    )
+    expected_expiry = ensure_utc(snapshot_expires).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
     assert expected_expiry in html
     assert "+00:00" not in html
 
@@ -286,9 +314,7 @@ def test_web_sent_renders_local_time_not_utc_repr(web_client: TestClient) -> Non
 
     response = web_client.get("/web/bill-splits/sent?ledger_id=owner")
     assert response.status_code == 200
-    expected = (
-        ensure_utc(snapshot_time).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
-    )
+    expected = ensure_utc(snapshot_time).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
     assert expected in response.text
     assert "+00:00" not in response.text
 
@@ -296,10 +322,9 @@ def test_web_sent_renders_local_time_not_utc_repr(web_client: TestClient) -> Non
 # --- B16: row-craft (tabular amount + bsplit-table class) -----------------
 
 
-def test_web_bill_split_tables_use_bsplit_rowcraft_classes(web_client: TestClient) -> None:
-    """B16: both pages opt into the精装 row craft (bsplit-table) and keep the
-    amount column on the tabular ``.amount`` cell + the local-time ``.num``
-    columns (no raw UTC repr)."""
+def test_web_bill_split_tables_use_product_table_contract(web_client: TestClient) -> None:
+    """Both pages use the shared product table, tabular amount/time cells,
+    and no retired or inline presentation contract."""
     receiver_id, _ = _seed_receiver(ledger_id="receiver_rc", display="B-rc")
     expense_id = _make_owner_expense()
     with SessionLocal() as db:
@@ -314,9 +339,12 @@ def test_web_bill_split_tables_use_bsplit_rowcraft_classes(web_client: TestClien
 
     sent = web_client.get("/web/bill-splits/sent?ledger_id=owner")
     assert sent.status_code == 200
-    assert 'class="dt-table bsplit-table"' in sent.text
-    assert '<td class="amount">' in sent.text
+    assert 'class="product-table"' in sent.text
+    assert '<td class="num">' in sent.text
     assert '<td class="num">' in sent.text  # 到期 / 消费时间 列
+    assert 'class="dt-' not in sent.text
+    assert "bsplit-" not in sent.text
+    assert 'style="' not in sent.text
 
     # Inbox renders its table only when owner is the RECEIVER — a sent-only
     # seed leaves it on the empty state, so seed an inbound invitation too.
@@ -334,5 +362,8 @@ def test_web_bill_split_tables_use_bsplit_rowcraft_classes(web_client: TestClien
 
     inbox = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
     assert inbox.status_code == 200
-    assert 'class="dt-table bsplit-table"' in inbox.text
-    assert '<td class="amount">' in inbox.text
+    assert 'class="product-table"' in inbox.text
+    assert '<td class="num">' in inbox.text
+    assert 'class="dt-' not in inbox.text
+    assert "bsplit-" not in inbox.text
+    assert 'style="' not in inbox.text

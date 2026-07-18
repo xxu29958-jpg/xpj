@@ -10,29 +10,19 @@
     <string name="settings_root_connection_title_basic">账本连接</string>
     <string name="settings_root_connection_subtitle_advanced">连接状态、同步记录</string>
     <string name="settings_root_connection_subtitle_basic">检查连接、更新账本状态</string>
-    <string name="settings_root_page_title">设置</string>
-    <string name="settings_root_page_subtitle">账本、规则、同步和安全</string>
+    <string name="settings_root_page_title">空间与账户</string>
+    <string name="settings_root_page_subtitle">管理家庭账本、设备、数据与个性偏好</string>
     <string name="settings_root_account_identity_line">%1$s · %2$s · %3$s</string>
     <string name="settings_root_section_ledger_family">账本与家庭</string>
     <string name="settings_root_entry_offline_sync_title">离线同步</string>
     <string name="settings_root_entry_offline_sync_subtitle">离线改动的同步状态，处理冲突与失败</string>
-    <string name="settings_root_entry_background_tasks_title">后台任务</string>
-    <string name="settings_root_entry_background_tasks_subtitle">导入任务与处理进度</string>
+    <string name="settings_root_entry_background_tasks_title">任务进度</string>
+    <string name="settings_root_entry_background_tasks_subtitle">导入与批量操作记录</string>
     <string name="settings_root_entry_ledgers_title">账本</string>
     <string name="settings_root_entry_ledgers_subtitle">查看、切换、新建账本</string>
-    <string name="settings_root_section_bookkeeping_data">记账规则与数据</string>
-    <string name="settings_root_entry_category_rules_title">分类规则</string>
-    <string name="settings_root_entry_category_rules_subtitle">商家关键词和自动分类建议</string>
-    <string name="settings_root_entry_merchant_aliases_title">商家管理</string>
-    <string name="settings_root_entry_merchant_aliases_subtitle">维护商家目录和别名归一</string>
-    <string name="settings_root_entry_tag_management_title">标签管理</string>
-    <string name="settings_root_entry_tag_management_subtitle">重命名、合并、删除标签</string>
-    <string name="settings_root_entry_recycle_bin_title">回收站</string>
-    <string name="settings_root_entry_recycle_bin_subtitle">恢复已归档或短窗内可撤回的项目</string>
+    <string name="settings_root_section_data_privacy">数据与隐私</string>
     <string name="settings_root_entry_notifications_title">通知与提醒</string>
     <string name="settings_root_entry_notifications_subtitle">待确认、大额和固定支出提醒开关</string>
-    <string name="settings_root_entry_income_plans_title">收入记录</string>
-    <string name="settings_root_entry_income_plans_subtitle">工资、奖金、接单到账</string>
     <string name="settings_root_section_alerts_appearance">提醒与外观</string>
     <string name="settings_root_entry_family_members_title">家庭成员</string>
     <string name="settings_root_entry_family_members_subtitle">查看当前账本成员、角色和状态</string>
@@ -40,12 +30,8 @@
     <string name="settings_root_entry_my_devices_subtitle">查看并管理可访问本账本的设备</string>
     <string name="settings_root_entry_join_family_title">加入家庭账本</string>
     <string name="settings_root_entry_join_family_subtitle">粘贴一次性邀请，加入共享账本</string>
-    <string name="settings_root_entry_bill_splits_title">拆账</string>
-    <string name="settings_root_entry_bill_splits_subtitle">收到的拆账邀请与你发出的拆账</string>
     <string name="settings_root_entry_appearance_title">外观与主题</string>
     <string name="settings_root_entry_appearance_subtitle">主题皮肤、自定义背景、沉浸强度</string>
-    <string name="settings_root_entry_dashboard_cards_title">首页模块</string>
-    <string name="settings_root_entry_dashboard_cards_subtitle">调整今日与洞察的信息模块</string>
     <string name="settings_root_entry_data_export_title">数据与导出</string>
     <string name="settings_root_entry_data_export_subtitle">离线数据与表格导出说明</string>
     <string name="settings_root_section_connection_system">连接与系统</string>
@@ -56,7 +42,7 @@
     <string name="settings_root_entry_about_subtitle">版本与记录规则</string>
 
     <!-- 设置 二级页框架（SettingsComponents：SettingsPageFrame）：返回按钮 -->
-    <string name="settings_page_back_to_settings">返回设置</string>
+    <string name="settings_page_back_to_settings">返回</string>
 
     <!-- 账户概况（SettingsServerComponents：AccountStatusCard / AdvancedStatusCard / StatusPill），设置根屏与连接页共用 -->
     <string name="settings_account_default_account">我</string>

@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.Json
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -7,24 +8,25 @@ import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DeviceRenameRequestDto
-import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
-import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.ErrorDto
-import com.ticketbox.data.remote.dto.MyDeviceDto
-import com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto
-import com.ticketbox.data.remote.dto.PairingCodeResponseDto
-import com.ticketbox.data.remote.dto.RecycleBinItemDto
-import com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationCreateRequestDto
 import com.ticketbox.data.remote.dto.InvitationCreateResponseDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditDto
+import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
+import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
+import com.ticketbox.data.remote.dto.MyDeviceDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
+import com.ticketbox.data.remote.dto.PairingCodeCreateRequestDto
+import com.ticketbox.data.remote.dto.PairingCodeResponseDto
+import com.ticketbox.data.remote.dto.RecycleBinItemDto
+import com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto
 import com.ticketbox.domain.model.AccountDevice
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
@@ -86,6 +88,15 @@ class LedgerRepository(
     private val ledgerListAdapter by lazy {
         moshi.adapter<List<LedgerDto>>(ledgerListType)
     }
+    private val cachedLedgerListType by lazy {
+        Types.newParameterizedType(
+            List::class.java,
+            CachedLedgerDto::class.java,
+        )
+    }
+    private val cachedLedgerListAdapter by lazy {
+        moshi.adapter<List<CachedLedgerDto>>(cachedLedgerListType)
+    }
     private val switchLedgerMutex = Mutex()
 
     private fun api() = apiProvider.temporary(
@@ -124,7 +135,7 @@ class LedgerRepository(
         val raw = settingsStore.availableLedgersJson()?.takeIf { it.isNotBlank() }
             ?: return emptyList()
         return runCatching {
-            ledgerListAdapter.fromJson(raw)?.map { it.toSummary() } ?: emptyList()
+            cachedLedgerListAdapter.fromJson(raw)?.map { it.toSummary() } ?: emptyList()
         }.getOrElse { emptyList() }
     }
 
@@ -175,6 +186,7 @@ class LedgerRepository(
                         deviceName = response.deviceName,
                         role = response.ledger.role,
                         boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                        homeCurrency = CurrencyCode.requireSupported(response.ledger.homeCurrencyCode),
                     ),
                     cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
                 ),
@@ -431,6 +443,7 @@ class LedgerRepository(
                     deviceName = response.deviceName,
                     role = response.role,
                     boundAt = java.time.Instant.now().toString(),
+                    homeCurrency = CurrencyCode.requireSupported(response.homeCurrencyCode),
                 ),
                 cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
                 clearAvailableLedgers = true,
@@ -447,6 +460,7 @@ class LedgerRepository(
             name = response.ledgerName,
             role = response.role,
             isDefault = false,
+            homeCurrency = CurrencyCode.requireSupported(response.homeCurrencyCode),
             createdAt = null,
             archivedAt = null,
         )
@@ -537,6 +551,37 @@ private fun LedgerDto.toSummary(): LedgerSummary = LedgerSummary(
     name = name,
     role = role,
     isDefault = isDefault,
+    homeCurrency = CurrencyCode.requireSupported(homeCurrencyCode),
+    createdAt = createdAt,
+    archivedAt = archivedAt,
+)
+
+/**
+ * Disk-cache compatibility only. Network [LedgerDto] keeps home currency
+ * required by OpenAPI; rows written before that contract may omit the field and
+ * receive the one explicit legacy fallback. Unknown non-blank codes still fail.
+ */
+private data class CachedLedgerDto(
+    @param:Json(name = "ledger_id")
+    val ledgerId: String,
+    val name: String,
+    val role: String,
+    @param:Json(name = "is_default")
+    val isDefault: Boolean,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
+    @param:Json(name = "created_at")
+    val createdAt: String?,
+    @param:Json(name = "archived_at")
+    val archivedAt: String?,
+)
+
+private fun CachedLedgerDto.toSummary(): LedgerSummary = LedgerSummary(
+    ledgerId = ledgerId,
+    name = name,
+    role = role,
+    isDefault = isDefault,
+    homeCurrency = CurrencyCode.fromStorageKey(homeCurrencyCode),
     createdAt = createdAt,
     archivedAt = archivedAt,
 )

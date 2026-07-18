@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -18,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.SettingsUiState
@@ -39,6 +41,7 @@ private fun settingsRootAccountSummaryData(state: SettingsUiState): SettingsRoot
     val displayLedger = firstNotBlank(serverSettings?.ledgerName, state.ledgerName)
         ?: stringResource(R.string.settings_account_default_ledger)
     val displayDevice = firstNotBlank(serverSettings?.deviceName, state.deviceName)
+        ?.takeUnless(String::isTechnicalDeviceLabel)
         ?: stringResource(R.string.settings_account_default_device)
     val roleCode = firstNotBlank(serverSettings?.role, state.role)
     val displayRole = roleCode?.let { ledgerRoleLabelText(it) }
@@ -59,25 +62,29 @@ private fun SettingsRootAccountSummaryLayout(
     data: SettingsRootAccountSummaryData,
     onOpenConnection: () -> Unit,
 ) {
-    SettingsOpenPanel(
+    AppSolidCard(
         modifier = Modifier.clickable(onClick = onOpenConnection),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        SettingsRootAccountHeader(data.header)
-        Text(
-            text = data.identity,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = data.lastSync,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Column(
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        ) {
+            SettingsRootAccountHeader(data.header)
+            Text(
+                text = data.identity,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = data.lastSync,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -99,7 +106,7 @@ private fun SettingsRootAccountHeader(data: SettingsRootAccountHeaderData) {
             )
             Text(
                 text = data.ledger,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -130,6 +137,13 @@ private fun settingsRootLastSyncText(lastConfirmedSyncAt: String?): String = str
 
 private fun firstNotBlank(vararg values: String?): String? =
     values.firstOrNull { !it.isNullOrBlank() }
+
+private fun String.isTechnicalDeviceLabel(): Boolean {
+    val normalized = lowercase()
+    return normalized.contains("sdk_gphone") ||
+        normalized.contains("emulator") ||
+        normalized.startsWith("google sdk_")
+}
 
 private data class SettingsRootAccountSummaryData(
     val header: SettingsRootAccountHeaderData,

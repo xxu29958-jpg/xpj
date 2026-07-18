@@ -141,6 +141,7 @@ private fun BillSplitInviteAmountField(
         AppStatusBanner(
             message = UiText.res(R.string.expense_edit_bill_split_sheet_remaining_unknown),
             tone = MessageTone.Info,
+            announceUpdates = false,
         )
     }
 }

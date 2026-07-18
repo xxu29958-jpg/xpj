@@ -7,8 +7,8 @@ import com.squareup.moshi.Json
  *
  * Mirrors backend `RepaymentDraftResponse` / `RepaymentDraftListResponse` / the create/confirm/dismiss
  * request bodies in the committed OpenAPI snapshot (gated by `OpenApiContractGateTest`). Money is
- * home-currency minor units (cents); the capture is home-currency ONLY (CNY notifications carry no FX),
- * so there is no original-currency surface here. `status` / `home_currency_code` / the committed ids are
+ * CNY minor units; this capture protocol has no FX fields, so non-CNY home ledgers fail closed before
+ * this request is built. `status` / `home_currency_code` / the committed ids are
  * server-derived — never an editable local truth.
  */
 data class RepaymentDraftDto(

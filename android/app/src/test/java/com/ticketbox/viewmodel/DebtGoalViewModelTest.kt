@@ -1,10 +1,14 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
+import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtGoalLink
 import com.ticketbox.domain.model.DebtRepaymentEvaluation
 import com.ticketbox.domain.model.Goal
@@ -23,6 +27,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.ArrayDeque
 import java.util.TimeZone
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -647,13 +652,61 @@ class DebtGoalViewModelTest {
     )
 }
 
-private data class ReplaceCall(
+internal class FakeDebtGoalDebtActions(
+    private val listResult: Result<List<Debt>>,
+) : DebtActions {
+    override fun canModifyLedger(): Boolean = true
+    override suspend fun listDebts(): Result<List<Debt>> = listResult
+    override suspend fun getDebt(publicId: String): Result<Debt> =
+        Result.failure(UnsupportedOperationException())
+    override suspend fun createDebt(draft: DebtDraft): Result<Debt> =
+        Result.failure(UnsupportedOperationException())
+    override suspend fun parseDebtBillImage(
+        fileName: String,
+        contentType: String?,
+        bytes: ByteArray,
+    ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun recordRepayment(
+        publicId: String,
+        expectedRowVersion: Long,
+        amountCents: Long,
+    ): Result<com.ticketbox.domain.model.DebtRepaymentFact> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun recordAdjustment(
+        publicId: String,
+        expectedRowVersion: Long,
+        amountCents: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun voidDebt(
+        publicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun setDebtKind(
+        publicId: String,
+        expectedRowVersion: Long,
+        debtKind: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
+}
+
+internal data class ReplaceCall(
     val publicId: String,
     val expectedRowVersion: Long,
     val debtPublicIds: List<String>,
 )
 
-private class FakeReportsActions(
+internal class FakeReportsActions(
     private val canModify: Boolean = true,
     private val debtGoalsResult: Result<List<Goal>> = Result.success(emptyList()),
     private val goalResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
@@ -674,6 +727,10 @@ private class FakeReportsActions(
     /** When set, the NEXT (and subsequent) goal() return this instead of [goalResult] —
      * lets a test flip the detail re-fetch result between openDetail and a later refresh. */
     var goalResultOverride: Result<Goal>? = null
+    val goalResultsByPublicId = mutableMapOf<String, Result<Goal>>()
+    val goalGates = ArrayDeque<CompletableDeferred<Result<Goal>>>()
+    val replaceGates = ArrayDeque<CompletableDeferred<Result<Goal>>>()
+    val queuedReplaceResults = ArrayDeque<Result<Goal>>()
 
     /** The 8e-6c setDebtGoalTargetDate result — a var (not a ctor param) so the constructor stays
      * within the LongParameterList limit; tests set it before exercising the setter. */
@@ -689,7 +746,8 @@ private class FakeReportsActions(
 
     override suspend fun goal(publicId: String): Result<Goal> {
         goalCalls += publicId
-        return goalResultOverride ?: goalResult
+        val gate = goalGates.pollFirst()
+        return gate?.await() ?: goalResultsByPublicId[publicId] ?: goalResultOverride ?: goalResult
     }
 
     override suspend fun replaceDebtLinks(
@@ -698,7 +756,8 @@ private class FakeReportsActions(
         debtPublicIds: List<String>,
     ): Result<Goal> {
         replaceCalls += ReplaceCall(publicId, expectedRowVersion, debtPublicIds)
-        return replaceResult
+        val gate = replaceGates.pollFirst()
+        return gate?.await() ?: queuedReplaceResults.pollFirst() ?: replaceResult
     }
 
     override suspend fun acknowledgeDebtIntegrityReview(

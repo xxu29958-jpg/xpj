@@ -17,28 +17,29 @@ DashboardSurface = str
 class DashboardCardDefinition:
     key: str
     title: str
+    visible: bool = True
 
 
 DEFAULT_DASHBOARD_CARDS: dict[DashboardSurface, tuple[DashboardCardDefinition, ...]] = {
     "android": (
         DashboardCardDefinition("monthly_spend", "本月支出"),
         DashboardCardDefinition("budget", "预算"),
-        DashboardCardDefinition("reports", "趋势报表"),
+        DashboardCardDefinition("reports", "分析"),
         DashboardCardDefinition("goals", "目标"),
         DashboardCardDefinition("recurring", "固定支出"),
-        DashboardCardDefinition("pending", "待确认"),
-        DashboardCardDefinition("recent_uploads", "最近上传"),
+        DashboardCardDefinition("pending", "待整理"),
+        DashboardCardDefinition("recent_uploads", "最近新增"),
     ),
     "web": (
         DashboardCardDefinition("monthly_spend", "本月支出"),
         DashboardCardDefinition("budget", "预算"),
-        DashboardCardDefinition("reports", "报表"),
+        DashboardCardDefinition("reports", "分析"),
         DashboardCardDefinition("goals", "目标"),
         DashboardCardDefinition("recurring", "固定支出"),
-        DashboardCardDefinition("pending", "待确认"),
-        DashboardCardDefinition("recent_uploads", "最近上传"),
-        DashboardCardDefinition("backup_status", "备份状态"),
-        DashboardCardDefinition("device_status", "设备状态"),
+        DashboardCardDefinition("pending", "待整理"),
+        DashboardCardDefinition("recent_uploads", "最近新增"),
+        DashboardCardDefinition("backup_status", "备份状态", visible=False),
+        DashboardCardDefinition("device_status", "设备状态", visible=False),
     ),
 }
 
@@ -83,7 +84,7 @@ def _response(
             {
                 "key": definition.key,
                 "title": definition.title,
-                "visible": pref.visible if pref is not None else True,
+                "visible": pref.visible if pref is not None else definition.visible,
                 "position": pref.position if pref is not None else fallback_position,
                 "_default_position": default_position,
             }

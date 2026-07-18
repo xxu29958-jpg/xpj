@@ -49,8 +49,8 @@
     <string name="notification_action_open">去查看</string>
 
     <!-- NotificationPreferencesScreen：通知权限提示行 + 大额开关副标题。
-         副标题写明的 ¥500 与 TicketboxNotifier.LARGE_AMOUNT_THRESHOLD_CENTS=50000 同步改。
+         %1$s 由服务器 home currency + LARGE_AMOUNT_THRESHOLD_MINOR 格式化。
          （大额副标题原在 strings_settings_family.xml，本 PR 改值并随通知文案包迁入本文件。） -->
     <string name="notification_preferences_system_permission_hint">系统通知权限未开启，提醒不会展示。</string>
-    <string name="notification_preferences_reminder_large_amount_subtitle">金额达到 ¥500 时提醒，仍需手动确认。</string>
+    <string name="notification_preferences_reminder_large_amount_subtitle">金额达到 %1$s 时提醒，仍需手动确认。</string>
 </resources>

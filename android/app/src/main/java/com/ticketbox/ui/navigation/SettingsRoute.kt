@@ -8,8 +8,6 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.viewmodel.AppearanceViewModel
-import com.ticketbox.viewmodel.CategoryRulesViewModel
-import com.ticketbox.viewmodel.MerchantAliasViewModel
 import com.ticketbox.viewmodel.SettingsViewModel
 
 internal data class SettingsPreferenceControls(
@@ -21,34 +19,24 @@ internal data class SettingsPreferenceControls(
 
 @Composable
 internal fun SettingsRoute(
-    shellState: MainShellState,
     screenFactory: MainScreenFactory,
     preferenceControls: SettingsPreferenceControls,
     onBindingCleared: () -> Unit,
+    onClose: () -> Unit,
 ) {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = screenFactory.settingsViewModelFactory,
-    )
-    val categoryRulesViewModel: CategoryRulesViewModel = viewModel(
-        factory = screenFactory.categoryRulesViewModelFactory,
-    )
-    val merchantAliasViewModel: MerchantAliasViewModel = viewModel(
-        factory = screenFactory.merchantAliasViewModelFactory,
     )
     val appearanceViewModel: AppearanceViewModel = viewModel(
         factory = screenFactory.appearanceViewModelFactory,
     )
 
     val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
-    val rulesState by categoryRulesViewModel.uiState.collectAsStateWithLifecycle()
-    val merchantState by merchantAliasViewModel.uiState.collectAsStateWithLifecycle()
     val appearanceState by appearanceViewModel.uiState.collectAsStateWithLifecycle()
 
     SettingsDestinationHost(
         states = SettingsRouteStates(
             settings = settingsState,
-            rules = rulesState,
-            merchant = merchantState,
             appearance = appearanceState,
         ),
         chromeState = SettingsDestinationChromeState(
@@ -56,7 +44,7 @@ internal fun SettingsRoute(
             currentCurrency = preferenceControls.currentCurrency,
             showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
         ),
-        onSecondaryActiveChange = { shellState.settingsSecondaryActive = it },
+        navigation = SettingsDestinationNavigation(onCloseRoot = onClose),
         actions = SettingsRouteActions(
             onTestConnection = settingsViewModel::testConnection,
             onRunDiagnostics = settingsViewModel::runDiagnostics,
@@ -64,26 +52,6 @@ internal fun SettingsRoute(
             onSync = settingsViewModel::sync,
             onClearCache = settingsViewModel::clearLocalCache,
             onSaveNotificationPreferences = settingsViewModel::saveNotificationPreferences,
-            onCreateRule = categoryRulesViewModel::createCategoryRule,
-            onUpdateRule = categoryRulesViewModel::updateCategoryRule,
-            onToggleRule = categoryRulesViewModel::toggleCategoryRule,
-            onDeleteRule = categoryRulesViewModel::deleteCategoryRule,
-            onUndoRuleDelete = categoryRulesViewModel::undoDelete,
-            onDismissRuleUndo = categoryRulesViewModel::dismissUndo,
-            onCreateMerchantCatalog = merchantAliasViewModel::createMerchantCatalog,
-            onRenameMerchantCatalog = merchantAliasViewModel::renameMerchantCatalog,
-            onToggleMerchantCatalog = merchantAliasViewModel::toggleMerchantCatalog,
-            onMergeMerchantCatalog = merchantAliasViewModel::mergeMerchantCatalog,
-            onDeleteMerchantCatalog = merchantAliasViewModel::deleteMerchantCatalog,
-            onCreateMerchantAlias = merchantAliasViewModel::createMerchantAlias,
-            onToggleMerchantAlias = merchantAliasViewModel::toggleMerchantAlias,
-            onDeleteMerchantAlias = merchantAliasViewModel::deleteMerchantAlias,
-            onUndoMerchantAlias = merchantAliasViewModel::undoDelete,
-            onDismissMerchantAliasUndo = merchantAliasViewModel::dismissUndo,
-            onDismissMerchantCatalogMergeSuggestion = merchantAliasViewModel::consumeMergeSuggestion,
-            onPreviewApplyConfirmedRules = categoryRulesViewModel::previewApplyConfirmedRules,
-            onConfirmApplyConfirmedRules = categoryRulesViewModel::confirmApplyConfirmedRules,
-            onRollbackRuleApplication = categoryRulesViewModel::rollbackRuleApplication,
             onSkinChange = preferenceControls.onSkinChange,
             onCurrencyChange = preferenceControls.onCurrencyChange,
             onApplyBackgroundSettings = appearanceViewModel::applyBackgroundSettings,
@@ -95,15 +63,11 @@ internal fun SettingsRoute(
             onBindingCleared = onBindingCleared,
             onBindingChanged = settingsViewModel::refreshLocalBindingState,
             onLedgerSwitched = settingsViewModel::sync,
-            onDashboardCardsChanged = shellState::markDashboardCardsChanged,
         ),
         repositories = SettingsRouteRepositories(
             ledgerRepository = screenFactory.ledgerRepository,
             expenseRepository = screenFactory.repository,
-            reportsRepository = screenFactory.reportsRepository,
-            incomePlanRepository = screenFactory.incomePlanRepository,
             outboxRepository = screenFactory.outboxRepository,
-            tagRepository = screenFactory.tagRepository,
             activeLedgerId = screenFactory.ledgerRepository.activeLedgerId(),
         ),
     )

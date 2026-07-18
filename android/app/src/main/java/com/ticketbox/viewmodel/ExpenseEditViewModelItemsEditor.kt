@@ -88,10 +88,11 @@ fun ExpenseEditViewModel.acknowledgeItemsMismatch() {
  *  as text; the kind chip carries the sign). No-op until items have loaded. */
 fun ExpenseEditViewModel.openItemsEditor() {
     val items = _uiState.value.expenseItems ?: return
+    val currency = _uiState.value.expense?.homeCurrency ?: return
     val drafts = items.items.map { item ->
         EditableItem(
             name = item.name,
-            amountText = centsToYuanText(item.amountCents),
+            amountText = centsToYuanText(item.amountCents, currency),
             kind = item.kind,
         )
     }
@@ -145,11 +146,15 @@ fun ExpenseEditViewModel.saveItems() {
     // "¥12"…) used to silently become ¥0 via `parseAmountCents(...) ?: 0L` —
     // every other amount input in the app rejects loudly instead. Refuse to
     // save and keep the editor open.
-    if (draftRows.any { it.amountText.isNotBlank() && parseAmountCents(it.amountText) == null }) {
+    if (draftRows.any {
+            it.amountText.isNotBlank() &&
+                parseAmountCents(it.amountText, expense.homeCurrency) == null
+        }
+    ) {
         showItemsDanger(UiText.res(R.string.expense_edit_items_amount_unparsable))
         return
     }
-    val drafts = draftRows.map { it.toDomainDraft() }
+    val drafts = draftRows.map { it.toDomainDraft(expense.homeCurrency) }
     viewModelScope.launch {
         _uiState.update {
             it.copy(itemsSaving = true, itemsMessage = null, itemsMessageTone = MessageTone.Neutral)
@@ -194,8 +199,8 @@ private fun ExpenseEditViewModel.applyItemsSaveOutcome(outcome: ReplaceItemsOutc
     }
 }
 
-private fun EditableItem.toDomainDraft(): ExpenseItemDraft {
-    val magnitude = parseAmountCents(amountText) ?: 0L
+private fun EditableItem.toDomainDraft(currency: com.ticketbox.domain.model.CurrencyCode): ExpenseItemDraft {
+    val magnitude = parseAmountCents(amountText, currency) ?: 0L
     // ADR-0035: discount lines carry negative amount_cents; the editor takes
     // the magnitude and the kind chip decides the sign.
     val signed = if (kind == ExpenseItemKind.DISCOUNT) -abs(magnitude) else magnitude

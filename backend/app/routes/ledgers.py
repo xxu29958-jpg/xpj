@@ -38,13 +38,16 @@ from app.schemas import (
     LedgerResponse,
     LedgerSwitchResponse,
 )
+from app.services.currency_common import home_currency_code
+from app.services.desktop_session_service import prepare_desktop_ledger_switch
 from app.services.ledger_service import (
     LedgerSummary,
     create_ledger,
     list_ledgers_for_account,
     switch_ledger,
 )
-from app.tenants import AuthContext
+from app.services.time_service import to_iso
+from app.tenants import DEFAULT_TENANT_ID, AuthContext
 
 router = APIRouter(prefix="/api/ledgers", tags=["ledgers"])
 
@@ -55,6 +58,7 @@ def _to_response(summary: LedgerSummary) -> LedgerResponse:
         name=summary.name,
         role=summary.role,
         is_default=summary.is_default,
+        home_currency_code=home_currency_code(),
         created_at=summary.created_at,
         archived_at=summary.archived_at,
     )
@@ -114,9 +118,44 @@ def switch_ledger_endpoint(
             name=result.ledger_name,
             role=result.role,
             is_default=result.is_default,
+            home_currency_code=home_currency_code(),
             created_at=result.created_at,
             archived_at=result.archived_at,
         ),
         account_name=result.account_name,
         device_name=result.device_name,
+    )
+
+
+@router.post(
+    "/{ledger_id}/switch/prepare",
+    response_model=LedgerSwitchResponse,
+)
+def prepare_desktop_ledger_switch_endpoint(
+    ledger_id: str,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> LedgerSwitchResponse:
+    token, result = prepare_desktop_ledger_switch(
+        db,
+        auth=auth,
+        target_ledger_id=ledger_id,
+    )
+    return LedgerSwitchResponse(
+        session_token=token,
+        expires_at=to_iso(result.expires_at),
+        soft_refresh_after=None,
+        ledger=LedgerResponse(
+            ledger_id=result.ledger_id,
+            name=result.ledger_name,
+            role=result.role,
+            is_default=result.ledger_id == DEFAULT_TENANT_ID,
+            home_currency_code=home_currency_code(),
+            created_at=None,
+            archived_at=None,
+        ),
+        account_name=result.account_name,
+        device_name=result.device_name,
+        activation_required=True,
+        activation_expires_at=to_iso(result.expires_at),
     )

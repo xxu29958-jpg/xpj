@@ -2,127 +2,173 @@
 {% block title %}编辑账单 — 小票夹{% endblock %}
 {% block content %}
 {% set form_prefix = 'expense-' ~ expense.id %}
-<h1 class="page-title page-title--compact">编辑账单 #{{ expense.id }}</h1>
+<nav class="detail-breadcrumb" aria-label="面包屑">
+  <a class="page-back-link" href="{{ edit_back_url }}">{{ edit_back_label }}</a>
+  <span aria-hidden="true">/</span>
+  <span>账单 #{{ expense.id }}</span>
+</nav>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">账单详情</span>
+    <h1 class="page-title page-title--compact">{{ edit_page_title }}</h1>
+    <p class="product-page-summary">{{ edit_page_hint }}</p>
+  </div>
+  <div class="product-page-actions">
+    <a href="{{ edit_back_url }}" class="product-button">{{ edit_back_label }}</a>
+  </div>
+</header>
 
 {% if error %}
-<div class="dt-alert danger">⚠️ {{ error }}</div>
+<div class="product-feedback product-feedback--error" role="alert">{{ error }}</div>
 {% endif %}
 {% if message %}
-<div class="dt-alert success">{{ message }}</div>
+<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>
 {% endif %}
 
-<div class="dt-card">
-  <div class="edit-grid">
+<div class="detail-layout expense-detail-layout">
+  <aside class="detail-aside">
+    <section class="product-panel receipt-preview">
     {% if expense.has_image %}
-    <div class="edit-image receipt-image-shell" data-image-skeleton>
-      <div class="skeleton skeleton-block receipt-image-skeleton" aria-hidden="true"></div>
+    <div class="receipt-image-shell" data-image-skeleton>
+      <div class="receipt-loading" aria-hidden="true"></div>
       <a href="/web/expenses/{{ expense.id }}/image{{ q }}" target="_blank">
         <img src="/web/expenses/{{ expense.id }}/image{{ q }}" alt="小票图片" class="receipt-img" loading="lazy" decoding="async">
       </a>
     </div>
     {% elif expense.image_state == 'cleaned' %}
-    <div class="edit-image meta">图片已清理</div>
+    <div class="meta">图片已清理</div>
     {% else %}
-    <div class="edit-image meta">暂不预览</div>
+    <div class="meta">暂不预览</div>
     {% endif %}
+    </section>
+  </aside>
+  <section class="product-panel detail-section">
     <form method="post" action="/web/expenses/{{ expense.id }}/save" class="edit-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="original_currency" value="{{ expense.original_currency_code }}">
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
-      <div class="dt-form-row">
+      <input type="hidden" name="return_to" value="{{ edit_return_to }}">
+      <input type="hidden" name="return_month" value="{{ edit_return_month }}">
+      <input type="hidden" name="return_filter" value="{{ edit_return_filter }}">
+      <input type="hidden" name="return_page" value="{{ edit_return_page }}">
+      <input type="hidden" name="return_tag" value="{{ edit_return_tag }}">
+      <div class="product-field">
         <label for="{{ form_prefix }}-amount-yuan">金额 ({{ expense.original_currency_code }})</label>
-        <input id="{{ form_prefix }}-amount-yuan" type="text" name="amount_yuan" value="{{ expense.original_amount_value }}" placeholder="例如 12.34" inputmode="decimal" {% if not can_write %}disabled{% endif %}>
+        <input id="{{ form_prefix }}-amount-yuan"
+               type="number"
+               name="amount_yuan"
+               value="{{ expense.original_amount_value }}"
+               min="0"
+               step="{{ expense.original_currency_input.amount_step }}"
+               placeholder="{{ expense.original_currency_input.amount_example }}"
+               inputmode="{{ expense.original_currency_input.inputmode }}"
+               aria-describedby="{{ form_prefix }}-amount-hint"
+               {% if not can_write %}disabled{% endif %}>
+        <div class="meta" id="{{ form_prefix }}-amount-hint">{{ expense.original_currency_input.amount_input_hint }}</div>
         {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
       </div>
-      <div class="dt-form-row">
+      <div class="product-field">
         <label for="{{ form_prefix }}-merchant">商家</label>
         <input id="{{ form_prefix }}-merchant" type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200" placeholder="未填写商家" {% if not can_write %}disabled{% endif %}>
       </div>
-      <div class="dt-form-row">
+      <div class="product-field">
         <label for="{{ form_prefix }}-expense-time">消费时间</label>
         <input id="{{ form_prefix }}-expense-time" type="datetime-local" name="expense_time" value="{{ expense.expense_time_local }}" {% if not can_write %}disabled{% endif %}>
         <div class="meta">留空表示不修改时间。</div>
       </div>
-      <div class="dt-form-row">
+      <div class="product-field">
         <label for="{{ form_prefix }}-category">分类</label>
         <input id="{{ form_prefix }}-category" type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮" list="category-options" {% if not can_write %}disabled{% endif %}>
         <datalist id="category-options">
           {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
         </datalist>
       </div>
-      <div class="dt-form-row">
+      <div class="product-field">
         <label for="{{ form_prefix }}-tags">标签</label>
         <input id="{{ form_prefix }}-tags" type="text" name="tags" value="{{ expense.tags }}" maxlength="500" placeholder="用逗号分隔，例如 报销, 出差" {% if not can_write %}disabled{% endif %}>
       </div>
-      <div class="dt-form-row">
+      <div class="product-field">
         <label for="{{ form_prefix }}-note">备注</label>
         <textarea id="{{ form_prefix }}-note" name="note" rows="3" {% if not can_write %}disabled{% endif %}>{{ expense.note }}</textarea>
       </div>
-      <div class="dt-form-row">
+      <div class="product-field">
         <span class="meta">
           状态：
-          {% if expense.is_duplicate %}<span class="dt-pill warn">疑似重复</span>
-          {% elif expense.status == 'confirmed' %}<span class="dt-pill ok">已确认</span>
-          {% elif expense.status == 'rejected' %}<span class="dt-pill muted">已忽略</span>
-          {% elif expense.needs_amount %}<span class="dt-pill warn">缺金额</span>
-          {% elif expense.needs_merchant %}<span class="dt-pill muted">缺商家</span>
-          {% else %}<span class="dt-pill">待确认</span>{% endif %}
+          {% if expense.is_duplicate %}<span class="product-status product-status--warning">疑似重复</span>
+          {% elif expense.status == 'confirmed' %}<span class="product-status product-status--success">已确认</span>
+          {% elif expense.status == 'rejected' %}<span class="product-status">已忽略</span>
+          {% elif expense.needs_amount %}<span class="product-status product-status--warning">缺金额</span>
+          {% elif expense.needs_merchant %}<span class="product-status">缺商家</span>
+          {% else %}<span class="product-status">待确认</span>{% endif %}
           ｜来源：{{ expense.source_label }}
           ｜上传时间：{{ expense.created_at }}
         </span>
       </div>
       <div class="actions">
         {% if can_write %}
-        <button type="submit" class="dt-btn primary">保存</button>
+        <button type="submit" class="product-button product-button--primary">保存</button>
         {% if expense.status == 'pending' %}
-        <button type="submit" formaction="/web/expenses/{{ expense.id }}/confirm" class="dt-btn success">入账</button>
-        <button type="submit" formaction="/web/expenses/{{ expense.id }}/reject" class="dt-btn danger"
+        <button type="submit" formaction="/web/expenses/{{ expense.id }}/confirm" class="product-button">入账</button>
+        <button type="submit" formaction="/web/expenses/{{ expense.id }}/reject" class="product-button product-button--danger"
                 data-confirm="忽略这笔账单？">忽略</button>
         {% endif %}
         {% endif %}
-        <a href="/web/pending{{ q }}" class="dt-btn link">返回</a>
+        <a href="{{ edit_back_url }}" class="product-button product-button--quiet">{{ edit_back_label }}</a>
       </div>
     </form>
-  </div>
+  </section>
 </div>
 
 {# A8: 找家人分摊（拆账）—— 给已确认账单发起跨账本拆账邀请。仅当后端判定可发起
    （已确认 + 有金额 + 非收到的拆账 + 当前角色可写）时渲染。概念区分（对照 Android
    批 13）：拆账 = 发邀请到 TA 自己的账本；下方“家庭拆账”卡 = 只记在本账本的分摊。 #}
 {% if split_invite %}
-<div class="dt-card bsplit-invite-card">
-  <div class="card-header">
+<section class="product-panel detail-section split-invite-section">
+  <div class="product-panel-header">
     <div>
       <h2>找家人分摊</h2>
       <div class="meta">发一份拆账邀请到家人自己的账本；对方接受后会在 TA 的账本里生成一笔独立账单，不影响这笔账。要只在本账本内记录分摊，请用下方的“家庭拆账”。</div>
     </div>
   </div>
   {% if not split_invite.members %}
-  <div class="bsplit-invite-note">本账本暂时只有你一个成员，先邀请家人加入，才能发起拆账。</div>
+  <div class="product-feedback">本账本暂时只有你一个成员，先邀请家人加入，才能发起拆账。</div>
   {% else %}
-  <form method="post" action="/web/expenses/{{ expense.id }}/split-invite" class="bsplit-invite-form">
+  <form method="post" action="/web/expenses/{{ expense.id }}/split-invite" class="split-invite-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <div class="bsplit-invite-fields">
-      <label class="bsplit-invite-field">
-        <span class="bsplit-invite-label">分摊给</span>
-        <select name="receiver_account_id" required>
+    <div class="split-invite-fields">
+      <label class="product-field">
+        <span>分摊给</span>
+        <select class="product-input" name="receiver_account_id" required>
           {% for member in split_invite.members %}
           <option value="{{ member.account_id }}">{{ member.account_name }} · {% if member.role == 'owner' %}拥有者{% elif member.role == 'member' %}成员{% else %}只读{% endif %}</option>
           {% endfor %}
         </select>
       </label>
-      <label class="bsplit-invite-field bsplit-invite-field--amount">
-        <span class="bsplit-invite-label">分摊金额（{{ home_currency_symbol }}）</span>
-        <input type="text" name="amount_yuan" value="{{ split_invite.remaining_yuan }}" inputmode="decimal" placeholder="例如 12.34" required>
+      <label class="product-field">
+        <span>分摊金额（{{ split_invite.currency_code }}）</span>
+        <input class="product-input"
+               type="number"
+               name="amount_yuan"
+               value="{{ split_invite.remaining_value }}"
+               min="{{ split_invite.currency_input.positive_amount_min }}"
+               step="{{ split_invite.currency_input.amount_step }}"
+               inputmode="{{ split_invite.currency_input.inputmode }}"
+               placeholder="{{ split_invite.currency_input.amount_example }}"
+               aria-describedby="split-invite-amount-hint"
+               required>
+        <small id="split-invite-amount-hint">{{ split_invite.currency_input.amount_input_hint }}</small>
       </label>
-      <button type="submit" class="dt-btn primary">发起拆账</button>
+      <button type="submit" class="product-button product-button--primary">发起拆账</button>
     </div>
-    <div class="meta">本张账单还可分摊 {{ home_currency_symbol }}{{ split_invite.remaining_yuan }}。</div>
+    <div class="meta">本张账单还可分摊 {{ split_invite.remaining_label }}。</div>
   </form>
   {% endif %}
 
   {% if split_invite.sent_rows %}
-  <table class="dt-table dt-table--compact bsplit-invite-sent">
+  <div class="product-table-wrap split-invite-sent">
+  <table class="product-table">
     <thead>
       <tr>
         <th>已发给</th>
@@ -136,21 +182,23 @@
     {% for row in split_invite.sent_rows %}
       <tr>
         <td>{{ row.receiver_display_name or '—' }}</td>
-        <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+        <td class="amount">{{ row.amount_label }} <small>{{ row.currency_code }}</small></td>
         <td>
-          {% if row.status == 'invited' %}<span class="dt-pill">待处理</span>
-          {% elif row.status == 'accepted' %}<span class="dt-pill ok">已接受</span>
-          {% elif row.status == 'rejected' %}<span class="dt-pill muted">已拒绝</span>
-          {% elif row.status == 'cancelled' %}<span class="dt-pill muted">已撤回</span>
-          {% else %}<span class="dt-pill muted">已过期</span>{% endif %}
+          {% if row.status == 'invited' %}<span class="product-status product-status--warning">待处理</span>
+          {% elif row.status == 'accepted' %}<span class="product-status product-status--success">已接受</span>
+          {% elif row.status == 'rejected' %}<span class="product-status">已拒绝</span>
+          {% elif row.status == 'cancelled' %}<span class="product-status">已撤回</span>
+          {% elif row.status == 'expired' %}<span class="product-status">已过期</span>
+          {% else %}<span class="product-status">状态待确认</span>{% endif %}
         </td>
         <td class="num">{{ row.expires_at or '—' }}</td>
         <td>
           {% if row.is_cancellable %}
-          <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">
+          <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="product-inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="return_expense_id" value="{{ expense.id }}">
-            <button type="submit" class="dt-btn link" data-confirm="撤回这份拆账邀请？">撤回</button>
+            <button type="submit" class="product-button product-button--quiet" data-confirm="撤回这份拆账邀请？">撤回</button>
           </form>
           {% else %}
           <span class="meta">—</span>
@@ -160,42 +208,56 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% endif %}
-</div>
+</section>
 {% endif %}
 
-<div class="grid two-col detail-sections">
-  <div class="dt-card">
-    <div class="card-header">
+<div class="detail-layout detail-sections">
+  <section class="product-panel detail-section">
+    <div class="product-panel-header">
       <div>
         <h2>小票明细</h2>
         <div class="meta">只记录本张小票的商品行，不改变账单金额、统计或导出。</div>
       </div>
     </div>
     {% if items_error %}
-    <div class="dt-alert danger">⚠️ {{ items_error }}</div>
+    <div class="product-feedback product-feedback--error" role="alert">{{ items_error }}</div>
     {% endif %}
 
     {# ADR-0035: items_sum_status banner — mismatch_known 时提示用户确认或修正 #}
     {% if receipt_items.status == 'mismatch_known' %}
-    <div class="dt-alert warn">
-      ⚠️ 明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。检查明细，或如果原小票本身如此，点下面"原小票如此"确认。
+    <div class="product-feedback product-feedback--warning">
+      明细合计与账单金额差 {{ expense_currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }}。检查明细，或如果原小票本身如此，点下面"原小票如此"确认。
     </div>
     <form method="post" action="/web/expenses/{{ expense.id }}/items/acknowledge-mismatch" class="acknowledge-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
-      {% if can_write %}<button type="submit" class="dt-btn">原小票如此</button>{% endif %}
+      <input type="hidden" name="return_to" value="{{ edit_return_to }}">
+      <input type="hidden" name="return_month" value="{{ edit_return_month }}">
+      <input type="hidden" name="return_filter" value="{{ edit_return_filter }}">
+      <input type="hidden" name="return_page" value="{{ edit_return_page }}">
+      <input type="hidden" name="return_tag" value="{{ edit_return_tag }}">
+      {% if can_write %}<button type="submit" class="product-button">原小票如此</button>{% endif %}
     </form>
     {% elif receipt_items.status == 'mismatch_acknowledged' %}
-    <div class="dt-alert info">
-      已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异；后续编辑不再弹警告。
+    <div class="product-feedback">
+      已确认原小票合计与明细存在 {{ expense_currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异；后续编辑不再弹警告。
     </div>
     {% endif %}
 
     <form method="post" action="/web/expenses/{{ expense.id }}/items/save">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <table class="dt-table dt-table--compact edit-subtable">
+      <input type="hidden" name="return_to" value="{{ edit_return_to }}">
+      <input type="hidden" name="return_month" value="{{ edit_return_month }}">
+      <input type="hidden" name="return_filter" value="{{ edit_return_filter }}">
+      <input type="hidden" name="return_page" value="{{ edit_return_page }}">
+      <input type="hidden" name="return_tag" value="{{ edit_return_tag }}">
+      <div class="expense-lines-scroll" tabindex="0" role="region" aria-label="小票明细，可横向滚动">
+      <table class="product-table expense-lines-table expense-lines-table--items">
         <thead>
           <tr>
             <th class="th-w-110">类型</th>
@@ -210,7 +272,9 @@
         {% for item in receipt_items.rows %}
           <tr>
             <td>
-              <select name="item_kind" {% if not can_write %}disabled{% endif %}>
+              <select name="item_kind"
+                      aria-label="第 {{ loop.index }} 行明细类型"
+                      {% if not can_write %}disabled{% endif %}>
                 <option value="product" {% if item.kind == 'product' %}selected{% endif %}>商品</option>
                 <option value="discount" {% if item.kind == 'discount' %}selected{% endif %}>优惠/折扣</option>
                 <option value="tax" {% if item.kind == 'tax' %}selected{% endif %}>税</option>
@@ -218,49 +282,63 @@
               </select>
             </td>
             <td>
-              <input type="text" name="item_name" value="{{ item.name }}" maxlength="255" placeholder="商品或服务" {% if not can_write %}disabled{% endif %}>
+              <input type="text"
+                     name="item_name"
+                     value="{{ item.name }}"
+                     maxlength="255"
+                     placeholder="商品或服务"
+                     aria-label="第 {{ loop.index }} 行明细名称"
+                     {% if not can_write %}disabled{% endif %}>
               {% if item.is_ocr_draft %}<div class="meta">识别草稿</div>{% endif %}
             </td>
-            <td><input type="text" name="item_quantity" value="{{ item.quantity_text }}" maxlength="64" placeholder="1份" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="text" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" inputmode="decimal" placeholder="0.00" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="text" name="item_amount_yuan" value="{{ item.amount_yuan }}" inputmode="decimal" placeholder="0.00" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="text" name="item_category" value="{{ item.category }}" maxlength="64" placeholder="其他" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="text" name="item_quantity" value="{{ item.quantity_text }}" maxlength="64" placeholder="1份" aria-label="第 {{ loop.index }} 行明细数量" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="number" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" min="0" step="{{ expense_currency_input.amount_step }}" inputmode="{{ expense_currency_input.inputmode }}" placeholder="{{ expense_currency_input.amount_placeholder }}" aria-label="第 {{ loop.index }} 行明细单价（{{ expense_currency_input.currency_code }}，{{ expense_currency_input.amount_input_hint }}）" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="number" name="item_amount_yuan" value="{{ item.amount_yuan }}" min="0" step="{{ expense_currency_input.amount_step }}" inputmode="{{ expense_currency_input.inputmode }}" placeholder="{{ expense_currency_input.amount_placeholder }}" aria-label="第 {{ loop.index }} 行明细金额（{{ expense_currency_input.currency_code }}，{{ expense_currency_input.amount_input_hint }}）" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="text" name="item_category" value="{{ item.category }}" maxlength="64" placeholder="其他" aria-label="第 {{ loop.index }} 行明细分类" {% if not can_write %}disabled{% endif %}></td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
+      </div>
       {% if can_write %}
-      <div class="actions sub-actions">
-        <button type="submit" class="dt-btn">保存明细</button>
+      <div class="product-page-actions expense-sub-actions">
+        <button type="submit" class="product-button">保存明细</button>
       </div>
       {% else %}
       <div class="readonly-inline">只读角色，无法修改小票明细。</div>
       {% endif %}
     </form>
-  </div>
+  </section>
 
-  <div class="dt-card">
-    <div class="card-header">
+  <section class="product-panel detail-section">
+    <div class="product-panel-header">
       <div>
         <h2>家庭拆账</h2>
         <div class="meta">拆账只作为家庭分摊记录，不改变入账金额、统计或导出。</div>
       </div>
     </div>
     {% if splits_error %}
-    <div class="dt-alert danger">⚠️ {{ splits_error }}</div>
+    <div class="product-feedback product-feedback--error" role="alert">{{ splits_error }}</div>
     {% endif %}
     {% if split_rows.total_yuan %}
-    <div class="reconcile-line">
-      账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan or '0.00' }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
-      {% if split_rows.mismatch_yuan and split_rows.mismatch_yuan != '0.00' %}
-      · 差额 {{ home_currency_symbol }}{{ split_rows.mismatch_yuan }}
+    <div class="expense-reconcile">
+      账单 {{ expense_currency_input.currency_symbol }}{{ split_rows.parent_amount_yuan or expense_currency_input.amount_placeholder }} · 已拆 {{ expense_currency_input.currency_symbol }}{{ split_rows.total_yuan }}
+      {% if split_rows.mismatch_yuan and split_rows.mismatch_yuan != expense_currency_input.amount_placeholder %}
+      · 差额 {{ expense_currency_input.currency_symbol }}{{ split_rows.mismatch_yuan }}
       {% endif %}
     </div>
     {% endif %}
     <form method="post" action="/web/expenses/{{ expense.id }}/splits/save">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <table class="dt-table dt-table--compact edit-subtable">
+      <input type="hidden" name="return_to" value="{{ edit_return_to }}">
+      <input type="hidden" name="return_month" value="{{ edit_return_month }}">
+      <input type="hidden" name="return_filter" value="{{ edit_return_filter }}">
+      <input type="hidden" name="return_page" value="{{ edit_return_page }}">
+      <input type="hidden" name="return_tag" value="{{ edit_return_tag }}">
+      <div class="expense-lines-scroll" tabindex="0" role="region" aria-label="家庭拆账明细，可横向滚动">
+      <table class="product-table expense-lines-table expense-lines-table--splits">
         <thead>
           <tr>
             <th>成员</th>
@@ -272,7 +350,9 @@
         {% for split in split_rows.rows %}
           <tr>
             <td>
-              <select name="split_member_id" {% if not can_write %}disabled{% endif %}>
+              <select name="split_member_id"
+                      aria-label="第 {{ loop.index }} 行拆账成员"
+                      {% if not can_write %}disabled{% endif %}>
                 <option value="">选择成员</option>
                 {% if split.disabled %}
                 <option value="{{ split.member_id }}" selected>{{ split.account_name }}（已停用）</option>
@@ -284,20 +364,21 @@
                 {% endfor %}
               </select>
             </td>
-            <td><input type="text" name="split_amount_yuan" value="{{ split.amount_yuan }}" inputmode="decimal" placeholder="0.00" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="number" name="split_amount_yuan" value="{{ split.amount_yuan }}" min="0" step="{{ expense_currency_input.amount_step }}" inputmode="{{ expense_currency_input.inputmode }}" placeholder="{{ expense_currency_input.amount_placeholder }}" aria-label="第 {{ loop.index }} 行拆账金额（{{ expense_currency_input.currency_code }}，{{ expense_currency_input.amount_input_hint }}）" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" aria-label="第 {{ loop.index }} 行拆账备注" {% if not can_write %}disabled{% endif %}></td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
+      </div>
       {% if can_write %}
-      <div class="actions sub-actions">
-        <button type="submit" class="dt-btn">保存拆账</button>
+      <div class="product-page-actions expense-sub-actions">
+        <button type="submit" class="product-button">保存拆账</button>
       </div>
       {% else %}
       <div class="readonly-inline">只读角色，无法修改家庭拆账。</div>
       {% endif %}
     </form>
-  </div>
+  </section>
 </div>
 {% endblock %}

@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.RepaymentDraftDismissRequestDto
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.RepaymentDraftStatuses
 import com.ticketbox.domain.model.RepaymentNotificationDraft
@@ -65,13 +66,23 @@ class RepaymentDraftRepository(
         draft: RepaymentNotificationDraft,
         expectedLedgerId: String?,
         notificationKey: String?,
-    ): Result<RepaymentDraft> = errorHandler.safeCall {
+    ): Result<RepaymentDraft> {
+        val homeCurrency = runCatching {
+            CurrencyCode.fromStorageKey(settingsStore.homeCurrencyCodeKey())
+        }.getOrElse {
+            return Result.failure(RepositoryException(REPAYMENT_CAPTURE_CNY_ONLY))
+        }
+        if (homeCurrency != CurrencyCode.CNY) {
+            return Result.failure(RepositoryException(REPAYMENT_CAPTURE_CNY_ONLY))
+        }
+        return errorHandler.safeCall {
         // Bound to the ledger active at notification-post time (mirrors createNotificationDraft) — a
         // ledger switch before the IO completes is rejected rather than capturing into the wrong book.
-        ledgerRequestGuard.guardedCall(expectedLedgerId = expectedLedgerId) { api ->
-            // No idempotency key: the route is content+identity deduped server-side (notificationKey is
-            // the primary axis), and the capture is not part of the offline outbox.
-            api.createRepaymentDraft(draft.toCreateRequest(notificationKey)).toDomain()
+            ledgerRequestGuard.guardedCall(expectedLedgerId = expectedLedgerId) { api ->
+                // No idempotency key: the route is content+identity deduped server-side (notificationKey is
+                // the primary axis), and the capture is not part of the offline outbox.
+                api.createRepaymentDraft(draft.toCreateRequest(notificationKey)).toDomain()
+            }
         }
     }
 
@@ -118,3 +129,4 @@ class RepaymentDraftRepository(
 
 /** Shared viewer short-circuit copy (kept in sync with [RepaymentDraftInboxViewModel] expectations). */
 private const val REPAYMENT_DRAFT_VIEWER_READONLY = "当前角色为只读，无法修改账本。"
+private const val REPAYMENT_CAPTURE_CNY_ONLY = "当前账本本位币不支持人民币通知还款捕获。"

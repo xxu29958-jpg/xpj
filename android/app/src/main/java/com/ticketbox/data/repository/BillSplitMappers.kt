@@ -4,11 +4,18 @@ import com.ticketbox.data.remote.dto.BillSplitInboxDto
 import com.ticketbox.data.remote.dto.BillSplitSentDto
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
+import com.ticketbox.domain.model.CurrencyCode
 
 fun BillSplitSentDto.toDomain(): BillSplitSent = BillSplitSent(
     publicId = publicId,
     status = status,
     amountCents = amountCents,
+    homeCurrency = CurrencyCode.requireSupported(homeCurrencyCode),
+    originalCurrency = CurrencyCode.requireSupported(originalCurrencyCode),
+    originalAmountMinor = originalAmountMinor,
+    exchangeRateToHome = exchangeRateToHome,
+    exchangeRateDate = exchangeRateDate,
+    exchangeRateSource = exchangeRateSource,
     merchantSnapshot = merchantSnapshot,
     categorySuggestion = categorySuggestion,
     expenseTimeSnapshot = expenseTimeSnapshot,
@@ -27,6 +34,12 @@ fun BillSplitInboxDto.toDomain(): BillSplitInbox = BillSplitInbox(
     publicId = publicId,
     status = status,
     amountCents = amountCents,
+    homeCurrency = CurrencyCode.requireSupported(homeCurrencyCode),
+    originalCurrency = CurrencyCode.requireSupported(originalCurrencyCode),
+    originalAmountMinor = originalAmountMinor,
+    exchangeRateToHome = exchangeRateToHome,
+    exchangeRateDate = exchangeRateDate,
+    exchangeRateSource = exchangeRateSource,
     merchantSnapshot = merchantSnapshot,
     categorySuggestion = categorySuggestion,
     expenseTimeSnapshot = expenseTimeSnapshot,

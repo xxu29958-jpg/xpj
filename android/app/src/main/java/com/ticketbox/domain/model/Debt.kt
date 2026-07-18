@@ -35,6 +35,18 @@ data class DebtBillSuggestion(
             installmentPeriodMonths != null
 }
 
+/**
+ * One committed direct repayment returned by the backend together with the fold-after [debt].
+ *
+ * [publicId] is the immutable repayment fact id required by the append-only repayment-void route;
+ * it must never be reconstructed from the parent Debt or an amount.
+ */
+data class DebtRepaymentFact(
+    val publicId: String,
+    val amountCents: Long,
+    val debt: Debt,
+)
+
 data class Debt(
     val publicId: String,
     val ledgerId: String?,
@@ -103,7 +115,8 @@ data class Debt(
     val isBillSplit: Boolean get() = sourceType == DebtSourceTypes.BILL_SPLIT
 
     /**
-     * Whether direct fact writes (repayment / adjustment / void, ADR-0049 §3) are accepted on this
+     * Whether direct fact writes (repayment / repayment-void / adjustment / debt-void, ADR-0049 §3)
+     * are accepted on this
      * Debt. Mirrors the backend `guard_direct_fact_writable` (external + manual only); member /
      * bill_split obligations route through the affected-party proposal flow (§5.2, slice 8d), so the
      * detail screen hides the direct-write actions for them rather than showing a button that 409s.

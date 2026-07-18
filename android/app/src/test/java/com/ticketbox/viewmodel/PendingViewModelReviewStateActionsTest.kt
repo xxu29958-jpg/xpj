@@ -39,7 +39,8 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
             pending = listOf(ready, missingAmount, missingMerchant, suspected, missingCategory),
         )
         fake.confirmResponder = { id -> Result.success(ready.copy(id = id, status = "confirmed")) }
-        val vm = PendingViewModel(fake)
+        var dataChangeCount = 0
+        val vm = PendingViewModel(fake, onDataChanged = { dataChangeCount += 1 })
         advanceUntilIdle()
 
         vm.confirmReadyExpenses()
@@ -51,6 +52,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         assertEquals(0, state.bulkConfirm.failed)
         assertFalse(state.bulkConfirm.running)
         assertEquals(setOf(11L, 12L, 13L, 14L), state.items.map { it.id }.toSet())
+        assertEquals(1, dataChangeCount)
     }
 
     @Test

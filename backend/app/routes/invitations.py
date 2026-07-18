@@ -38,6 +38,7 @@ from app.schemas import (
     LedgerMemberRoleUpdateRequest,
     OwnerTransferResponse,
 )
+from app.services.currency_common import home_currency_code
 from app.services.invitation_service import (
     InvitationSummary,
     LedgerAuditSummary,
@@ -213,6 +214,7 @@ def accept_invitation_endpoint(
         ledger_name=result.ledger_name,
         device_name=result.device_name,
         role=result.role,
+        home_currency_code=home_currency_code(),
     )
 
 

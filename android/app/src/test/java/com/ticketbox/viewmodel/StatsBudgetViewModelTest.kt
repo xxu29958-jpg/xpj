@@ -4,7 +4,9 @@ import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetProgressStatus
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.LifestyleStats
@@ -117,7 +119,12 @@ private class FakeStatsBudgetActions(
 ) : BudgetActions {
     override fun canModifyLedger(): Boolean = true
 
+    override fun currentHomeCurrency(): CurrencyCode = CurrencyCode.CNY
+
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> = Result.success(budget.copy(month = month))
+
+    override suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult> =
+        Result.failure(UnsupportedOperationException())
 
     override suspend fun saveMonthlyBudget(
         month: String,

@@ -11,7 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ReportsInsightCardsTest {
-    private val currencyDisplay = CurrencyDisplay.Base
+    private val currencyDisplay = CurrencyDisplay.LegacyFallback
 
     @Test
     fun trendChartPointsKeepServerOrderAndClampInvalidValues() {

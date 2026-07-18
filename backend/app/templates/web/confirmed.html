@@ -1,114 +1,148 @@
 {% extends "base.html" %}
-{% block title %}已确认 · 小票夹{% endblock %}
+{% block title %}全部流水 · 小票夹{% endblock %}
 
-{# 类目 → 图标配色 class（方案B：食/购/行 分色；其余落 other） #}
 {% set _icmap = {'餐饮': 'food', '购物': 'shop', '交通': 'trans', '娱乐': 'fun', '居家': 'home', '居住': 'home', '医疗': 'health'} %}
 
 {% block content %}
-{# ── 月份 chip + 英雄月合计 ── #}
-<div class="ledger-hero">
-  <span class="lh-month">{{ selected_month }}</span>
-  {% set _t = ('%.2f' % month_total_amount_yuan).split('.') %}
-  <div class="lh-amt"><span class="cur">{{ home_currency_symbol }}</span><span class="int">{{ _t[0] }}</span><span class="dec">.{{ _t[1] }}</span></div>
-  <div class="lh-ctx">
-    <b>{{ month_total_count }}</b> 笔<span class="dot"></span>已确认支出
-    {%- if month_total_count > 0 %}<span class="dot"></span>笔均 <b>{{ home_currency_symbol }}{{ '%.0f' % (month_total_amount_yuan / month_total_count) }}</b>{% endif %}
-    {%- if by_day | length > 0 %}{% set _dm = (by_day | map(attribute='amount_yuan') | list | max) %}<span class="dot"></span>日峰 <b>{{ home_currency_symbol }}{{ '%.0f' % _dm }}</b>{% endif %}
+{% set _q = '?ledger_id=' ~ selected_ledger_id %}
+<header class="product-page-header task-header ledger-workbench-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水</span>
+    <h1 class="page-title" id="confirmed-title">全部流水</h1>
+  </div>
+  <div class="task-header__command">
+    <div class="task-header__amount"
+         aria-label="{{ selected_month }}已确认支出 {{ month_total_amount_segments.cur }}{{ month_total_amount_segments.int }}{{ month_total_amount_segments.dec }}">
+      <span class="cur">{{ month_total_amount_segments.cur }}</span>{{ month_total_amount_segments.int }}{% if month_total_amount_segments.dec %}<span class="dec">{{ month_total_amount_segments.dec }}</span>{% endif %}
+    </div>
+    <p class="task-header__status">
+      {{ selected_month }} · {{ month_total_count }} 笔
+      {% if month_total_count > 0 %}
+      · 笔均 {{ month_average_amount_label }}
+      {% endif %}
+    </p>
+    <div class="task-header__commands">
+      {% if can_write %}<a class="product-button product-button--primary" href="/web/expenses/new{{ _q }}">记一笔</a>{% endif %}
+      <a class="product-button" href="/web/search{{ _q }}">搜索</a>
+      <a class="product-button" href="/web/library{{ _q }}">资料库</a>
+    </div>
+  </div>
+</header>
+
+{% if tag %}
+<input type="hidden" name="tag" value="{{ tag }}">
+<div class="product-feedback">当前仅显示标签「{{ tag }}」。</div>
+{% endif %}
+{% if flash_message %}
+<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
+{% endif %}
+
+{% set _cats = [] %}
+{% for e in expenses %}
+  {% if e.category and e.category not in _cats %}
+    {% set _ = _cats.append(e.category) %}
+  {% endif %}
+{% endfor %}
+<div class="product-commandbar" aria-label="流水控制">
+  <div class="lfilter" data-ledger-filter aria-label="按分类筛选">
+    <button type="button" class="lf on" data-cat="" aria-pressed="true">全部</button>
+    {% for c in _cats %}
+    <button type="button" class="lf" data-cat="{{ c }}" aria-pressed="false">{{ c }}</button>
+    {% endfor %}
   </div>
 </div>
 
-{% set _q = '?ledger_id=' ~ selected_ledger_id %}
-{% if tag %}
-<input type="hidden" name="tag" value="{{ tag }}">
-<div class="callout-info">当前仅显示标签「{{ tag }}」。</div>
-{% endif %}
-{% if flash_message %}
-<div class="readonly-callout confirmed-flash">{{ flash_message }}</div>
-{% endif %}
-
-{# ── 类目筛选 tab（客户端即时过滤；增强自概念图的静态 tab，见 ledger-filter.js） ── #}
-{% set _cats = [] %}
-{% for e in expenses %}{% if e.category and e.category not in _cats %}{% set _ = _cats.append(e.category) %}{% endif %}{% endfor %}
-{% if _cats | length > 1 %}
-<div class="lfilter" data-ledger-filter>
-  <button type="button" class="lf on" data-cat="">全部</button>
-  {% for c in _cats %}<button type="button" class="lf" data-cat="{{ c }}">{{ c }}</button>{% endfor %}
-</div>
-{% endif %}
-
-{# ── 流水：按日分组 · 类目图标行制 ── #}
-<div class="dt-card ledger-stream">
+<section class="product-panel ledger-stream" aria-label="{{ selected_month }} 流水">
   {% set _groups = {} %}
   {% set _order = [] %}
   {% for e in expenses %}
     {% set _d = e.expense_time[:10] if e.expense_time else (e.created_at[:10] if e.created_at else '—') %}
-    {% if _d not in _groups %}{% set _ = _groups.update({_d: []}) %}{% set _ = _order.append(_d) %}{% endif %}
+    {% if _d not in _groups %}
+      {% set _ = _groups.update({_d: []}) %}
+      {% set _ = _order.append(_d) %}
+    {% endif %}
     {% set _ = _groups[_d].append(e) %}
   {% endfor %}
+
   {% if expenses | length == 0 %}
-  <div class="empty-cell">该月还没有已确认账单。</div>
+  <div class="product-state">
+    <div class="product-state-title">{{ selected_month }} 还没有已确认流水</div>
+    <div class="product-state-body">待处理账单确认后会按发生日期进入这里。</div>
+    <a class="product-state-action" href="/web/pending{{ _q }}">前往待我处理</a>
+  </div>
   {% else %}
     {% if can_write %}
     <div class="confirmed-batch-head">
-      <div class="checkbox" id="check-all" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择本页全部账单"></div>
-      <span>本页批处理</span>
-      <span class="hint">只会修改已入账账单的分类或标签</span>
+      <input class="checkbox"
+             id="check-all"
+             type="checkbox"
+             aria-label="选择本页全部账单">
+      <span>批量整理本页</span>
+      <span class="hint">可统一修改分类或标签</span>
     </div>
     {% endif %}
+
     {% for d in _order %}
     {% set _items = _groups[d] %}
     {% set _day_sum = _items | sum(attribute='amount_cents') %}
     <div class="lday">
-      <span class="lday-d">{{ d[5:7] }} 月 {{ d.split('-')[2] if '-' in d else d }} 日</span>
+      <span class="lday-d">{{ d }}</span>
       <span class="lday-n">{{ _items | length }} 笔</span>
-      <span class="lday-s">{{ home_currency_symbol }}{{ '%.2f' % (_day_sum / 100) }}</span>
+      <span class="lday-s">{{ home_amount_label(_day_sum) }}</span>
     </div>
       {% for e in _items %}
-      {# amount_label 已是带原币符号的完整串（FX 时是原币如 $12.34,本币时是 ¥X）;
-         只把末尾小数拆出来做灰显,不改符号、不强加 ¥。 #}
       {% set _ap = (e.amount_label or '未识别').rsplit('.', 1) %}
-      <a class="timeline-row lrow{% if can_write %} has-check{% endif %}" href="/web/expenses/{{ e.id }}/edit{{ _q }}" data-cat="{{ e.category or '' }}">
+      <div class="timeline-row lrow{% if can_write %} has-check{% endif %}"
+           data-cat="{{ e.category or '' }}">
         {% if can_write %}
-        <div class="lrow-sel" data-stop="true">
-          <div class="checkbox row-check" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择账单 #{{ e.id }}"></div>
+        <div class="lrow-sel">
+          <input class="checkbox row-check"
+                 type="checkbox"
+                 data-id="{{ e.id }}"
+                 data-row-version="{{ e.row_version }}"
+                 aria-label="选择账单 #{{ e.id }}">
         </div>
         {% endif %}
-        <div class="lrow-ic {{ _icmap.get(e.category, 'other') }}">{{ (e.category or '·')[:1] }}</div>
-        <div class="lrow-mid">
-          <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
-          <div class="lrow-meta">
-            <span class="num">{{ e.expense_time[11:16] if e.expense_time and ' ' in e.expense_time else '—' }}</span>
-            <span class="sep">·</span><span>{{ e.category or '未分类' }}</span>
+        <a class="timeline-row-detail"
+           href="/web/expenses/{{ e.id }}/edit{{ _q }}&return_to=confirmed&return_month={{ selected_month }}&return_page={{ page }}&return_tag={{ tag | urlencode }}">
+          <div class="lrow-ic {{ _icmap.get(e.category, 'other') }}" aria-hidden="true">{{ (e.category or '·')[:1] }}</div>
+          <div class="lrow-mid">
+            <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
+            <div class="lrow-meta">
+              <span class="num">{{ e.expense_time[11:16] if e.expense_time and ' ' in e.expense_time else '时间未填写' }}</span>
+              · {{ e.category or '未分类' }}
+            </div>
           </div>
-        </div>
-        <div class="lrow-amt">
-          <span class="amt-main">{% if _ap | length == 2 %}{{ _ap[0] }}<span class="d">.{{ _ap[1] }}</span>{% else %}{{ _ap[0] }}{% endif %}</span>
-          {% if e.fx_meta %}<span class="amt-fx">{{ e.fx_meta }}</span>{% endif %}
-        </div>
-      </a>
+          <div class="lrow-amt">
+            <span class="amt-main">
+              {% if _ap | length == 2 %}
+                {{ _ap[0] }}<span class="d">.{{ _ap[1] }}</span>
+              {% else %}
+                {{ _ap[0] }}
+              {% endif %}
+            </span>
+            {% if e.fx_meta %}<span class="amt-fx">{{ e.fx_meta }}</span>{% endif %}
+          </div>
+        </a>
+      </div>
       {% endfor %}
     {% endfor %}
   {% endif %}
 
   {% if total_pages > 1 %}
-  <div class="pager-row">
-    {% if page > 1 %}
-    <a class="dt-btn ghost" href="?{{ pager_query }}&page={{ page - 1 }}">‹ 上一页</a>
-    {% endif %}
-    <span class="pager-info">第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 条</span>
-    {% if page < total_pages %}
-    <a class="dt-btn ghost" href="?{{ pager_query }}&page={{ page + 1 }}">下一页 ›</a>
-    {% endif %}
-  </div>
+  {% include "product/_pagination.html" %}
   {% endif %}
-</div>
+</section>
 
-{# ── 本月概况（次要：日历热力 + 来源，下沉到流水之后） ── #}
-<div class="month-overview month-overview--secondary">
-  <div class="dt-card">
-    <div class="card-head">
-      <div class="card-title">日历视图</div>
-      <div class="card-sub">{{ selected_month }}</div>
+<details class="ledger-secondary-insights">
+  <summary>本月分布与来源</summary>
+  <section class="month-overview" aria-label="本月分布">
+  <div class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">发生日期</div>
+        <div class="product-panel-subtitle">{{ selected_month }} 的入账密度</div>
+      </div>
     </div>
     {% set _byday_map = {} %}
     {% for dd in by_day %}{% set _ = _byday_map.update({dd.date: dd}) %}{% endfor %}
@@ -117,59 +151,66 @@
       {% set _y = _yparts[0] | int %}
       {% set _m = _yparts[1] | int %}
       {% set _days_in_month = 31 %}
-      {% if _m in [4, 6, 9, 11] %}{% set _days_in_month = 30 %}
+      {% if _m in [4, 6, 9, 11] %}
+        {% set _days_in_month = 30 %}
       {% elif _m == 2 %}
         {% set _days_in_month = 29 if (_y % 4 == 0 and (_y % 100 != 0 or _y % 400 == 0)) else 28 %}
       {% endif %}
       {% set _max_amt = (by_day | map(attribute='amount_cents') | list | max) if by_day else 0 %}
-      <div class="heatmap">
+      <div class="heatmap" aria-label="日历热力图">
         <div class="head">一</div><div class="head">二</div><div class="head">三</div>
         <div class="head">四</div><div class="head">五</div><div class="head">六</div><div class="head">日</div>
         {% for i in range(1, _days_in_month + 1) %}
-        {% set _dstr = '%04d-%02d-%02d' % (_y, _m, i) %}
-        {% set _hit = _byday_map.get(_dstr) %}
-        {% set _ratio = ((_hit.amount_cents / _max_amt) if _hit and _max_amt else 0) %}
-        <div class="day {% if _hit %}has{% endif %}"
-             style="{% if _hit %}background:color-mix(in oklch, var(--brand-primary) {{ (_ratio * 60 + 14) | round | int }}%, var(--surface-sunken));color:{% if _ratio > 0.5 %}var(--surface-card){% else %}var(--text-default){% endif %}{% endif %}"
-             title="{{ _dstr }}{% if _hit %} · {{ home_currency_symbol }}{{ '%.2f' % _hit.amount_yuan }}{% endif %}">
-          {{ i }}
-        </div>
+          {% set _dstr = '%04d-%02d-%02d' % (_y, _m, i) %}
+          {% set _hit = _byday_map.get(_dstr) %}
+          {% set _ratio = ((_hit.amount_cents / _max_amt) if _hit and _max_amt else 0) %}
+          {% set _level = 4 if _ratio > 0.75 else 3 if _ratio > 0.5 else 2 if _ratio > 0.25 else 1 %}
+          <div class="day{% if _hit %} has level-{{ _level }}{% endif %}"
+               title="{{ _dstr }}{% if _hit %} · {{ home_amount_label(_hit.amount_cents) }}{% endif %}">
+            {{ i }}
+          </div>
         {% endfor %}
       </div>
     {% endif %}
   </div>
 
-  <div class="dt-card">
-    <div class="card-head">
-      <div class="card-title">来源</div>
-      <div class="card-sub">本月入账渠道</div>
+  <div class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">入账来源</div>
+        <div class="product-panel-subtitle">按本月笔数占比</div>
+      </div>
     </div>
-    {% for s in source_breakdown %}
-    <div class="source-row">
-      <div class="head">
+    <div class="source-list">
+      {% for s in source_breakdown %}
+      <div class="source-row">
         <span class="name">{{ s.label }}</span>
         <span class="num">{{ s.count }} 笔 · {{ s.percent }}%</span>
+        <progress max="100" value="{{ s.percent }}" aria-label="{{ s.label }}占 {{ s.percent }}%"></progress>
       </div>
-      <div class="bar"><div class="bar-fill" style="width:{{ s.percent }}%"></div></div>
+      {% else %}
+      <div class="text-muted">本月还没有可统计的来源。</div>
+      {% endfor %}
     </div>
-    {% else %}
-    <div class="source-empty">本月还没有已确认账单。</div>
-    {% endfor %}
   </div>
-</div>
+  </section>
+</details>
 
 {% if can_write and expenses | length > 0 %}
 <form id="bulk-form" method="post" action="/web/confirmed/batch-update" class="bulk-bar confirmed-bulk-bar" data-bulk>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="month" value="{{ month }}">
   <input type="hidden" name="tag" value="{{ tag }}">
   <input type="hidden" name="page" value="{{ page }}">
   <span class="count" data-bulk-count>0</span>
-  <span class="label">已选中</span>
-  <input class="bulk-field" name="category" maxlength="64" placeholder="分类" aria-label="批量修改分类">
-  <button class="dt-btn" type="submit" name="action" value="set_category">改分类</button>
+  <span class="label">笔已选</span>
+  <button class="product-button" type="button" data-bulk-clear>取消选择</button>
+  <div class="spacer"></div>
+  <input class="bulk-field" name="category" maxlength="64" placeholder="统一分类" aria-label="批量修改分类">
+  <button class="product-button" type="submit" name="action" value="set_category">应用分类</button>
   <input class="bulk-field" name="tags" maxlength="500" placeholder="标签，逗号分隔" aria-label="批量修改标签">
-  <button class="dt-btn primary" type="submit" name="action" value="set_tags">改标签</button>
+  <button class="product-button product-button--primary" type="submit" name="action" value="set_tags">应用标签</button>
 </form>
 {% endif %}
 {% endblock %}

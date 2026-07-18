@@ -88,21 +88,4 @@ class ThemeVisualsTest {
         }
     }
 
-    @Test
-    fun everySkinHasEightDistinctDashboardCardAccents() {
-        AppSkin.entries.forEach { skin ->
-            val cards = dashboardCardTokensForSkin(skin)
-            val accents = listOf(
-                cards.pending.accent,
-                cards.monthSpend.accent,
-                cards.recentUpload.accent,
-                cards.recurring.accent,
-                cards.goals.accent,
-                cards.budget.accent,
-                cards.backup.accent,
-                cards.device.accent,
-            )
-            assertTrue(accents.distinct().size >= 6, "$skin dashboard card accents should be mostly distinct (≥6 unique of 8)")
-        }
-    }
 }

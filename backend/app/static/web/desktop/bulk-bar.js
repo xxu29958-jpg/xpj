@@ -10,6 +10,77 @@
     const counter = form.querySelector("[data-bulk-count]");
     const all = document.getElementById("check-all");
     const checks = Array.from(document.querySelectorAll(".row-check"));
+    const clearButton = form.querySelector("[data-bulk-clear]");
+    const navigationRows = Array.from(
+      document.querySelectorAll(".exp-row-detail[href], .timeline-row-detail[href]")
+    );
+    let batchModeActive = false;
+    let navigationState = [];
+
+    function attributeState(element, name) {
+      return {
+        present: element.hasAttribute(name),
+        value: element.getAttribute(name)
+      };
+    }
+
+    function restoreAttribute(element, name, state) {
+      if (state.present) {
+        element.setAttribute(name, state.value);
+      } else {
+        element.removeAttribute(name);
+      }
+    }
+
+    // Product choice: a non-empty selection is an exclusive batch mode for
+    // these transaction queues. This is informed by conditional batch-action
+    // practice, not treated as a universal table rule. The checkbox stays
+    // operable while row-level navigation is suspended.
+    function setBatchNavigationMode(active) {
+      if (active === batchModeActive) return;
+      if (active) {
+        navigationState = navigationRows.map(function (row) {
+          return {
+            row: row,
+            tabIndex: attributeState(row, "tabindex"),
+            disabled: attributeState(row, "aria-disabled"),
+            current: attributeState(row, "aria-current")
+          };
+        });
+        navigationRows.forEach(function (row) {
+          row.setAttribute("aria-disabled", "true");
+          row.setAttribute("tabindex", "-1");
+          row.removeAttribute("aria-current");
+          const container = row.closest(".exp-row");
+          if (container) container.classList.remove("is-current");
+        });
+      } else {
+        navigationState.forEach(function (state) {
+          if (!document.contains(state.row)) return;
+          restoreAttribute(state.row, "tabindex", state.tabIndex);
+          restoreAttribute(state.row, "aria-disabled", state.disabled);
+          restoreAttribute(state.row, "aria-current", state.current);
+          const container = state.row.closest(".exp-row");
+          if (container) {
+            container.classList.toggle(
+              "is-current",
+              state.current.present && state.current.value === "true"
+            );
+          }
+        });
+        navigationState = [];
+      }
+      batchModeActive = active;
+    }
+
+    navigationRows.forEach(function (row) {
+      row.addEventListener("click", function (event) {
+        if (row.getAttribute("aria-disabled") !== "true") return;
+        if (event.target.closest && event.target.closest(".row-check")) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }, true);
+    });
 
     // 被类目筛选隐藏的行不参与批选/提交,否则"全选"会误改用户没看见的别类目账单。
     function isVisible(cb) {
@@ -19,7 +90,7 @@
 
     function selectedEntries() {
       const entries = [];
-      document.querySelectorAll(".row-check.checked").forEach(function (el) {
+      document.querySelectorAll(".row-check:checked").forEach(function (el) {
         if (!isVisible(el)) return;
         entries.push({
           id: el.getAttribute("data-id"),
@@ -34,14 +105,13 @@
       counter.textContent = String(entries.length);
       form.classList.toggle("on", entries.length > 0);
       checks.forEach(function (cb) {
-        const checked = cb.classList.contains("checked");
+        const checked = cb.checked;
         const row = cb.closest(".exp-row, .timeline-row");
-        cb.setAttribute("aria-checked", checked ? "true" : "false");
         if (row) {
           row.classList.toggle("selected", checked);
-          row.setAttribute("aria-selected", checked ? "true" : "false");
         }
       });
+      setBatchNavigationMode(entries.length > 0);
       // 同步隐藏 input
       form.querySelectorAll('input[name="expense_ids"]').forEach(function (n) { n.remove(); });
       form.querySelectorAll('input[name="expected_row_version"]').forEach(function (n) { n.remove(); });
@@ -52,65 +122,48 @@
         h.value = entry.id;
         form.appendChild(h);
 
-        if (entry.rowVersion) {
-          const token = document.createElement("input");
-          token.type = "hidden";
-          token.name = "expected_row_version";
-          token.value = entry.rowVersion;
-          form.appendChild(token);
-        }
+        const token = document.createElement("input");
+        token.type = "hidden";
+        token.name = "expected_row_version";
+        token.value = entry.rowVersion;
+        form.appendChild(token);
       });
       if (all) {
         const visibleCount = checks.filter(isVisible).length;
         const allChecked = visibleCount > 0 && entries.length === visibleCount;
-        all.classList.toggle("checked", allChecked);
-        all.setAttribute("aria-checked", allChecked ? "true" : (entries.length > 0 ? "mixed" : "false"));
+        all.checked = allChecked;
+        all.indeterminate = !allChecked && entries.length > 0;
       }
     }
 
     // 暴露给 ledger-filter.js:筛选改变可见行后重算计数 + 重建提交字段。
     app.refreshBulkBar = refresh;
 
-    function bindCheckbox(el, handler) {
-      el.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        handler(e);
-      });
-      el.addEventListener("keydown", function (e) {
-        if (e.key !== " " && e.key !== "Enter") return;
-        e.preventDefault();
-        e.stopPropagation();
-        handler(e);
-      });
-    }
-
     // 批10: shift-click 范围连选。记最近点击的行 index;按住 shift 点另一行时,把
     // 区间内的可见行全部设成被点行的新状态(剔除隐藏行,与 isVisible 一致)。
     let lastIndex = -1;
     checks.forEach(function (cb, index) {
-      bindCheckbox(cb, function (e) {
-        const turnOn = !cb.classList.contains("checked");
+      cb.addEventListener("click", function (e) {
+        e.stopPropagation();
+        const turnOn = cb.checked;
         if (e && e.shiftKey && lastIndex !== -1 && lastIndex !== index) {
           const lo = Math.min(lastIndex, index);
           const hi = Math.max(lastIndex, index);
           for (let i = lo; i <= hi; i++) {
             if (!isVisible(checks[i])) continue; // 只作用可见行
-            checks[i].classList.toggle("checked", turnOn);
+            checks[i].checked = turnOn;
           }
-        } else {
-          cb.classList.toggle("checked", turnOn);
         }
         lastIndex = index;
         refresh();
       });
     });
     if (all) {
-      bindCheckbox(all, function () {
-        const turnOn = !all.classList.contains("checked");
+      all.addEventListener("click", function () {
+        const turnOn = all.checked;
         checks.forEach(function (cb) {
           if (turnOn && !isVisible(cb)) return; // 全选只勾可见行
-          cb.classList.toggle("checked", turnOn);
+          cb.checked = turnOn;
         });
         refresh();
       });
@@ -155,6 +208,10 @@
       banner.className = "dt-alert" +
         (type === "success" ? " success" : type === "error" ? " danger" : "") +
         (undoItems && undoItems.length ? " undo-banner" : "");
+      const isError = type === "error";
+      banner.setAttribute("role", isError ? "alert" : "status");
+      banner.setAttribute("aria-live", isError ? "assertive" : "polite");
+      banner.setAttribute("aria-atomic", "true");
       banner.textContent = "";
       const text = document.createElement("span");
       text.textContent = message;
@@ -164,6 +221,7 @@
         undoForm.method = "post";
         undoForm.action = "/web/pending/batch-undo";
         undoForm.className = "undo-banner-action";
+        undoForm.setAttribute("aria-label", "撤销刚才的批量操作");
         const ledger = form.querySelector('input[name="ledger_id"]');
         if (ledger) {
           const ledgerInput = document.createElement("input");
@@ -189,6 +247,10 @@
         button.type = "submit";
         button.className = "dt-btn";
         button.textContent = "撤销 " + undoItems.length + " 条";
+        button.setAttribute(
+          "aria-label",
+          "撤销刚才处理的 " + undoItems.length + " 条流水"
+        );
         undoForm.appendChild(button);
         banner.appendChild(undoForm);
       }
@@ -210,11 +272,27 @@
       });
     }
 
-    function clearSelection() {
-      document.querySelectorAll(".row-check.checked").forEach(function (cb) {
-        cb.classList.remove("checked");
+    function clearSelection(focusTarget) {
+      document.querySelectorAll(".row-check:checked").forEach(function (cb) {
+        cb.checked = false;
       });
       refresh(); // 0 selected → hides the bar + rebuilds the hidden id fields
+      if (
+        focusTarget &&
+        document.contains(focusTarget) &&
+        typeof focusTarget.focus === "function"
+      ) {
+        focusTarget.focus({ preventScroll: true });
+      }
+    }
+
+    if (clearButton) {
+      clearButton.addEventListener("click", function () {
+        const focusTarget =
+          checks.find(function (cb) { return cb.checked && isVisible(cb); }) ||
+          checks.find(function (cb) { return cb.checked; });
+        clearSelection(focusTarget);
+      });
     }
 
     function applyBulkResult(data) {

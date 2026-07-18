@@ -1,9 +1,15 @@
 package com.ticketbox.ui.screens.stats
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -14,53 +20,37 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.DataQualitySummary
+import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.tabularNum
 
 @Composable
-internal fun PendingOverviewCard(summary: DataQualitySummary) {
-    if (summary.pendingTotal <= 0) {
-        return
-    }
-
+internal fun PendingOverviewCard(
+    summary: DataQualitySummary,
+    onRemediate: (DataQualityRemediation) -> Unit,
+) {
     val visibleMetrics = pendingOverviewMetrics(summary)
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(
-                    text = stringResource(R.string.stats_pending_overview_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                )
-                summary.oldestPendingAgeDays?.let { oldestDays ->
-                    Text(
-                        text = stringResource(R.string.stats_pending_overview_oldest, oldestDays),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-            }
-            Text(
-                text = summary.pendingTotal.toString(),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleLarge.tabularNum(),
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
-        }
+        PendingOverviewHeader(summary)
         visibleMetrics.forEach { metric ->
-            PendingOverviewLine(metric = metric)
+            PendingOverviewLine(
+                metric = metric,
+                onClick = { onRemediate(metric.primaryRemediation) },
+            )
+            metric.secondaryRemediation?.let { remediation ->
+                AppSecondaryButton(
+                    text = stringResource(R.string.stats_data_quality_open_uncategorized_transactions),
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = Icons.Default.ReceiptLong,
+                    onClick = { onRemediate(remediation) },
+                )
+            }
         }
         if (summary.pendingTotal > 0) {
             Text(
@@ -68,57 +58,162 @@ internal fun PendingOverviewCard(summary: DataQualitySummary) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+            AppSecondaryButton(
+                text = stringResource(R.string.stats_data_quality_open_inbox),
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = Icons.Default.Inbox,
+                onClick = { onRemediate(DataQualityRemediation.InboxAll) },
+            )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
 @Composable
-private fun PendingOverviewLine(metric: PendingOverviewMetric) {
+private fun PendingOverviewHeader(summary: DataQualitySummary) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
+        verticalAlignment = Alignment.Bottom,
     ) {
-        Text(
-            text = metric.label,
+        Column(
             modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        ) {
+            Text(
+                text = stringResource(R.string.stats_pending_overview_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
+            summary.oldestPendingAgeDays?.let { oldestDays ->
+                Text(
+                    text = stringResource(R.string.stats_pending_overview_oldest, oldestDays),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = stringResource(R.string.stats_pending_metric_pending_total),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Text(
+                text = summary.pendingTotal.toString(),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleLarge.tabularNum(),
+                fontWeight = AppTextHierarchy.heading.weight,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PendingOverviewLine(
+    metric: PendingOverviewMetric,
+    onClick: () -> Unit,
+) {
+    AppListRow(
+        onClick = onClick,
+        showDivider = false,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        ) {
+            Text(
+                text = stringResource(metric.labelRes),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(metric.primaryRemediation.destinationHintRes),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
         Text(
             text = metric.value.toString(),
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleSmall.tabularNum(),
             fontWeight = AppTextHierarchy.body.weight,
         )
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = stringResource(R.string.stats_data_quality_remediation_content_description),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.align(Alignment.CenterVertically),
+        )
     }
 }
 
-private data class PendingOverviewMetric(
-    val label: String,
+internal enum class DataQualityRemediation(
+    @param:StringRes val destinationHintRes: Int,
+) {
+    InboxAll(R.string.stats_data_quality_remediation_inbox_hint),
+    InboxReady(R.string.stats_data_quality_remediation_inbox_hint),
+    InboxMissingAmount(R.string.stats_data_quality_remediation_inbox_hint),
+    InboxMissingMerchant(R.string.stats_data_quality_remediation_inbox_hint),
+    InboxMissingCategory(R.string.stats_data_quality_remediation_inbox_hint),
+    InboxDuplicate(R.string.stats_data_quality_remediation_inbox_hint),
+    TransactionsMissingCategory(R.string.stats_data_quality_remediation_transactions_hint),
+    TransactionsConfirmedWithoutImage(R.string.stats_data_quality_remediation_transactions_hint),
+}
+
+internal data class PendingOverviewMetric(
+    @param:StringRes val labelRes: Int,
     val value: Int,
+    val primaryRemediation: DataQualityRemediation,
+    val secondaryRemediation: DataQualityRemediation? = null,
 )
 
-@Composable
-private fun pendingOverviewMetrics(summary: DataQualitySummary): List<PendingOverviewMetric> {
+internal fun pendingOverviewMetrics(summary: DataQualitySummary): List<PendingOverviewMetric> {
     val metrics = mutableListOf<PendingOverviewMetric>()
     if (summary.readyToConfirm > 0) {
-        metrics += PendingOverviewMetric(stringResource(R.string.stats_pending_metric_ready), summary.readyToConfirm)
+        metrics += PendingOverviewMetric(
+            R.string.stats_pending_metric_ready,
+            summary.readyToConfirm,
+            DataQualityRemediation.InboxReady,
+        )
     }
     if (summary.missingAmount > 0) {
-        metrics += PendingOverviewMetric(stringResource(R.string.stats_pending_metric_missing_amount), summary.missingAmount)
+        metrics += PendingOverviewMetric(
+            R.string.stats_pending_metric_missing_amount,
+            summary.missingAmount,
+            DataQualityRemediation.InboxMissingAmount,
+        )
     }
     if (summary.missingMerchant > 0) {
-        metrics += PendingOverviewMetric(stringResource(R.string.stats_pending_metric_missing_merchant), summary.missingMerchant)
+        metrics += PendingOverviewMetric(
+            R.string.stats_pending_metric_missing_merchant,
+            summary.missingMerchant,
+            DataQualityRemediation.InboxMissingMerchant,
+        )
     }
     if (summary.missingCategory > 0) {
-        metrics += PendingOverviewMetric(stringResource(R.string.stats_pending_metric_missing_category), summary.missingCategory)
+        metrics += PendingOverviewMetric(
+            R.string.stats_pending_metric_missing_category,
+            summary.missingCategory,
+            DataQualityRemediation.InboxMissingCategory,
+            DataQualityRemediation.TransactionsMissingCategory,
+        )
     }
     if (summary.suspectedDuplicates > 0) {
-        metrics += PendingOverviewMetric(stringResource(R.string.stats_pending_metric_duplicates), summary.suspectedDuplicates)
+        metrics += PendingOverviewMetric(
+            R.string.stats_pending_metric_duplicates,
+            summary.suspectedDuplicates,
+            DataQualityRemediation.InboxDuplicate,
+        )
+    }
+    if (summary.confirmedWithoutImage > 0) {
+        metrics += PendingOverviewMetric(
+            R.string.stats_pending_metric_confirmed_without_image,
+            summary.confirmedWithoutImage,
+            DataQualityRemediation.TransactionsConfirmedWithoutImage,
+        )
     }
     return metrics
 }

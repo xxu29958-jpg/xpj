@@ -7,29 +7,33 @@
     <string name="income_plan_topbar_back">返回</string>
     <string name="income_plan_fab_add">添加收入</string>
     <string name="income_plan_intro_body">补录工资、奖金和接单到账；真正稳定的收入再设为每月固定。</string>
-    <string name="income_plan_section_active">已记录</string>
-    <string name="income_plan_card_archive_action">归档</string>
+    <string name="income_plan_section_active">全部收入记录</string>
+    <string name="income_plan_card_edit_action">编辑收入记录</string>
+    <string name="income_plan_card_archive_action">归档收入记录</string>
     <string name="income_plan_section_archived">已归档</string>
     <string name="income_plan_card_restore_action">恢复</string>
-    <string name="income_plan_total_label">截至今日已到账收入</string>
-    <string name="income_plan_total_hint">只计入今天已经到账的本月收入；月末工资到发薪日才算进来。</string>
+    <string name="income_plan_total_label">本月预计收入</string>
+    <string name="income_plan_total_hint">计入每月固定收入与本月一次性收入；历史记录不会重复算进本月。</string>
     <string name="income_plan_card_payday">每月 %1$d 号</string>
     <string name="income_plan_card_one_time_day">%1$s · %2$d 号</string>
     <string name="income_plan_empty_title">还没有收入记录</string>
     <string name="income_plan_empty_body">先补一笔本月工资或其它到账，「本月可自由支配」才会扣掉已有花销重新算。</string>
     <string name="income_plan_sheet_title">添加收入</string>
+    <string name="income_plan_sheet_edit_title">编辑收入</string>
     <string name="income_plan_sheet_label_name">名称</string>
     <string name="income_plan_sheet_label_type">类型</string>
     <string name="income_plan_sheet_label_frequency">入账方式</string>
     <string name="income_plan_sheet_label_income_month">到账月份</string>
     <string name="income_plan_month_previous">上个月</string>
     <string name="income_plan_month_next">下个月</string>
-    <string name="income_plan_sheet_label_amount_monthly">金额（元 / 月）</string>
-    <string name="income_plan_sheet_label_amount_one_time">金额（元）</string>
+    <string name="income_plan_sheet_label_amount_monthly">金额（%1$s / 月）</string>
+    <string name="income_plan_sheet_label_amount_one_time">金额（%1$s）</string>
     <string name="income_plan_sheet_label_payday">发薪日 (1-31)</string>
     <string name="income_plan_sheet_label_arrival_day">到账日 (1-31)</string>
     <string name="income_plan_sheet_submitting">提交中…</string>
+    <string name="income_plan_sheet_updating">保存中…</string>
     <string name="income_plan_sheet_save">保存</string>
+    <string name="income_plan_sheet_update">保存修改</string>
     <string name="income_plan_source_salary">工资</string>
     <string name="income_plan_source_bonus">奖金</string>
     <string name="income_plan_source_freelance">副业 / 接单</string>
@@ -44,7 +48,7 @@
     <string name="global_search_header_subtitle">搜索待确认和已确认账单。</string>
     <string name="global_search_clear_action">清空</string>
     <string name="global_search_field_label">关键词</string>
-    <string name="global_search_field_placeholder">咖啡、地铁、房租</string>
+    <string name="global_search_field_placeholder">咖啡、12.50、USD 12.50</string>
     <string name="global_search_scope_all">全部 %1$d</string>
     <string name="global_search_scope_pending">待确认 %1$d</string>
     <string name="global_search_scope_confirmed">已确认 %1$d</string>
@@ -59,7 +63,7 @@
     <string name="global_search_filter_category_all">全部分类</string>
     <string name="global_search_filter_month_all">全部月份</string>
     <string name="global_search_filter_month_picker_description">选择月份</string>
-    <string name="global_search_filter_amount_hint">金额可精确匹配。</string>
+    <string name="global_search_filter_amount_hint">无代码金额按本位币精确匹配；外币请输入 USD 12.50、JPY 1200。</string>
     <string name="global_search_recent_title">最近搜索</string>
     <string name="global_search_recent_clear">清除</string>
     <string name="global_search_result_truncated">仅显示前 %1$d 条，可加筛选缩小范围。</string>
@@ -119,6 +123,10 @@
     <string name="income_plan_validation_error">请填写名称、合法金额、日期；单笔收入还要填到账月份。</string>
     <string name="income_plan_added">已添加收入</string>
     <string name="income_plan_add_failed">添加失败，请稍后重试。</string>
+    <string name="income_plan_updated">已保存收入修改</string>
+    <string name="income_plan_update_queued">修改已离线保存，联网后同步</string>
+    <string name="income_plan_update_failed">保存失败，请稍后重试。</string>
+    <string name="income_plan_edit_archived_first">请先恢复这条归档收入，再进行编辑。</string>
     <string name="income_plan_archived">已归档</string>
     <string name="income_plan_restored">已恢复</string>
 
@@ -144,10 +152,10 @@
     <string name="app_currency_switched">已切换为%1$s默认记账币种</string>
 
     <!-- IncomePlanScreen：二级页收口文案（短标签，避免说明书式段落） -->
-    <string name="income_plan_header_subtitle_compact">到账与固定收入</string>
+    <string name="income_plan_header_subtitle_compact">本月预计与历史记录</string>
     <string name="income_plan_add_action_short">添加</string>
-    <string name="income_plan_total_label_compact">本月到账</string>
-    <string name="income_plan_total_meta">已记录 %1$d 项</string>
+    <string name="income_plan_total_label_compact">本月预计收入</string>
+    <string name="income_plan_total_meta">本月有效 %1$d 项 · 历史记录 %2$d 条</string>
     <string name="income_plan_empty_body_compact">添加第一笔到账收入。</string>
     <string name="income_plan_sheet_name_placeholder">工资 / 奖金 / 接单</string>
     <string name="income_plan_sheet_day_placeholder">1-31</string>

@@ -10,7 +10,7 @@ class AppAdaptiveMetricGridTest {
     fun metricGridUsesSingleColumnAtPhoneWidth() {
         assertEquals(
             AppAdaptiveMetricGridMode.SingleColumn,
-            resolveAppAdaptiveMetricGridMode(AppAdaptiveBreakpoints.singleColumnMaxWidth),
+            resolveAppAdaptiveMetricGridMode(AppAdaptiveBreakpoints.mediumWidthMin - 1.dp),
         )
     }
 
@@ -18,7 +18,7 @@ class AppAdaptiveMetricGridTest {
     fun metricGridUsesTwoColumnsAbovePhoneWidth() {
         assertEquals(
             AppAdaptiveMetricGridMode.TwoColumn,
-            resolveAppAdaptiveMetricGridMode(AppAdaptiveBreakpoints.singleColumnMaxWidth + 1.dp),
+            resolveAppAdaptiveMetricGridMode(AppAdaptiveBreakpoints.mediumWidthMin),
         )
     }
 }

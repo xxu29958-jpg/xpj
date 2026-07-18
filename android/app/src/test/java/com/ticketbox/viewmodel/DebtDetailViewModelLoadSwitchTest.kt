@@ -1,6 +1,6 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtDetailActions
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -63,7 +63,7 @@ class DebtDetailViewModelLoadSwitchTest {
 
 private class SwitchingDebtActions(
     var getResult: Result<Debt>,
-) : DebtActions {
+) : DebtDetailActions {
     var getGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = true
@@ -75,6 +75,20 @@ private class SwitchingDebtActions(
         getGate?.await()
         return captured
     }
+
+    override suspend fun listRepaymentFacts(
+        publicId: String,
+        page: Int,
+    ): Result<com.ticketbox.domain.model.DebtRepaymentHistory> = Result.success(
+        com.ticketbox.domain.model.DebtRepaymentHistory(
+            debtPublicId = publicId,
+            homeCurrencyCode = "CNY",
+            items = emptyList(),
+            page = 1,
+            pageSize = 50,
+            total = 0,
+        ),
+    )
 
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(switchDebt("created"))
 
@@ -88,6 +102,14 @@ private class SwitchingDebtActions(
         publicId: String,
         expectedRowVersion: Long,
         amountCents: Long,
+    ): Result<com.ticketbox.domain.model.DebtRepaymentFact> =
+        Result.success(com.ticketbox.domain.model.DebtRepaymentFact("repayment", amountCents, switchDebt(publicId)))
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
     ): Result<Debt> = Result.success(switchDebt(publicId))
 
     override suspend fun recordAdjustment(

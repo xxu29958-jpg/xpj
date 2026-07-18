@@ -36,6 +36,7 @@ class LedgerRepositoryInvitationOverrideTest {
                     ledgerName = "家庭账本",
                     deviceName = "Pixel 9",
                     role = "member",
+                    homeCurrencyCode = "CNY",
                 ),
                 listLedgersResult = LedgerListResponseDto(
                     ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
@@ -117,6 +118,7 @@ class LedgerRepositoryInvitationOverrideTest {
                     ledgerName = "另一台账本",
                     deviceName = "Pixel 9",
                     role = "member",
+                    homeCurrencyCode = "CNY",
                 ),
             ),
         )
@@ -191,6 +193,7 @@ class LedgerRepositoryInvitationOverrideTest {
         name = name,
         role = role,
         isDefault = isDefault,
+        homeCurrencyCode = "CNY",
         createdAt = "2026-01-01T00:00:00Z",
         archivedAt = null,
     )

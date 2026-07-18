@@ -1,10 +1,91 @@
+{% set q = '?ledger_id=' ~ selected_ledger_id if selected_ledger_id else '' %}
+{% set _path = request.url.path %}
+{% set _role = selected_ledger_role or 'owner' %}
+
+{# Product ownership is explicit. Legacy route names remain transport contracts only. #}
+{% set _is_inbox_context = (
+  _path in ['/web', '/web/'] or '/pending' in _path or '/duplicates' in _path or
+  '/tasks' in _path or
+  ('/expenses/' in _path and edit_return_to in ['pending', 'duplicates'])
+) %}
+{% set _is_transactions_context = (
+  '/confirmed' in _path or '/search' in _path or '/categories' in _path or
+  '/merchants' in _path or '/tags' in _path or '/rules' in _path or
+  '/library' in _path or '/recycle-bin' in _path or
+  '/import' in _path or '/export' in _path or
+  ('/expenses/' in _path and edit_return_to == 'confirmed')
+) %}
+{% set _is_obligations_context = (
+  '/debts' in _path or '/receivables' in _path or '/bill-splits' in _path or
+  '/debt-goals' in _path or '/repayment-drafts' in _path
+) %}
+{% set _is_plans_context = (
+  '/budgets' in _path or
+  ('/goals' in _path and '/debt-goals' not in _path) or
+  '/income-plans' in _path or '/budget-advise' in _path or '/recurring' in _path
+) %}
+{% set _is_insights_context = (
+  '/overview' in _path or '/reports' in _path or '/data-quality' in _path or
+  '/dashboard/cards' in _path
+) %}
+{% set _domain = (
+  'inbox' if _is_inbox_context else
+  'transactions' if _is_transactions_context else
+  'obligations' if _is_obligations_context else
+  'plans' if _is_plans_context else
+  'insights' if _is_insights_context else
+  'workspace'
+) %}
+{% set _domain_label = {
+  'inbox': '收件',
+  'transactions': '流水',
+  'obligations': '往来',
+  'plans': '计划',
+  'insights': '洞察',
+  'workspace': '工作区'
+}.get(_domain, '工作区') %}
+{% set _has_domain_subnav = _domain != 'workspace' %}
+
+{% set _is_expense_detail = '/expenses/' in _path and '/edit' in _path %}
+{% set _is_debt_detail = _path.startswith('/web/debts/') %}
+{% set _is_import_detail = _path.startswith('/web/import/') %}
+{% set _is_category_detail = _path.startswith('/web/categories/') %}
+{% set _is_library_detail = (
+  _path in ['/web/categories', '/web/merchants', '/web/tags', '/web/rules'] or
+  _path.startswith('/web/tags') or _path.startswith('/web/rules') or
+  _path.startswith('/web/recycle-bin')
+) %}
+{% set _page_key = (
+  'expense-detail' if _is_expense_detail else
+  'debt-detail' if _is_debt_detail else
+  'import-detail' if _is_import_detail else
+  'category-detail' if _is_category_detail else
+  'library-detail' if _is_library_detail else
+  _domain
+) %}
+{% set _primary_paths = [
+  '/web/pending', '/web/confirmed', '/web/debts', '/web/budgets', '/web/overview'
+] %}
+{% set _page_level = (
+  'tertiary' if (
+    _is_expense_detail or _is_debt_detail or _is_import_detail or
+    _is_category_detail or _is_library_detail
+  ) else
+  'primary' if _path in _primary_paths else
+  'secondary'
+) %}
+
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}" data-home-currency="{{ home_currency_code }}" data-home-currency-symbol="{{ home_currency_symbol }}">
+<html lang="zh-CN"
+      data-theme="{{ ui_theme or 'paper' }}"
+      data-theme-sync="{{ 'server' if web_session_platform == 'desktop' else 'local' }}"
+      data-home-currency="{{ home_currency_code }}"
+      data-home-currency-symbol="{{ home_currency_symbol }}"
+      data-home-currency-minor-digits="{{ home_currency_input.minor_unit_digits }}">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <meta name="theme-color" content="#f8f7f4">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="小票夹">
@@ -12,117 +93,70 @@
   <link rel="apple-touch-icon" href="/static/web/icon.svg">
   <link rel="icon" type="image/svg+xml" href="/static/web/icon.svg">
   <title>{% block title %}小票夹 网页版{% endblock %}</title>
-  {# Token + 全局 reset (legacy 收尾) #}
+
   <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/web.css?v={{ asset_version }}">
-
-  {# Base & Shell #}
-  <link rel="stylesheet" href="/static/web/_base.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/_shell.css?v={{ asset_version }}">
-
-  {# Components #}
-  <link rel="stylesheet" href="/static/web/components/buttons.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/pills.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/toolbar.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/bulk-bar.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/alert.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/cards.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/tables.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/drawer.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/forms-input.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/forms-row.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/skeleton.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/empty-state.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/utilities.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/a11y.css?v={{ asset_version }}">
-
-  {# Page-scoped (TODO: 按 endpoint 条件加载,目前全量) #}
-  <link rel="stylesheet" href="/static/web/pages/dashboard.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/pending.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/confirmed.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/budgets.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/reports.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/duplicates.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/bill-splits.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/debts.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/debt_goals.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/repayment_drafts.css?v={{ asset_version }}">
-
-  {# 杂项(_misc.css 后续继续拆细) #}
-  <link rel="stylesheet" href="/static/web/_misc.css?v={{ asset_version }}">
-
+  <link rel="stylesheet" href="/static/web/product/shell.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/product/components.css?v={{ asset_version }}">
+  {% if _domain in ['inbox', 'transactions', 'obligations', 'plans', 'insights'] %}
+  <link rel="stylesheet" href="/static/web/product/domains/{{ _domain }}.css?v={{ asset_version }}">
+  {% endif %}
+  {% if _page_level == 'tertiary' %}
+  <link rel="stylesheet" href="/static/web/product/detail.css?v={{ asset_version }}">
+  {% endif %}
+  {% block page_styles %}{% endblock %}
   <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ asset_version }}">
+
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/pwa-register.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/core.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/theme.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/ledger-switcher.js?v={{ asset_version }}"></script>
-  <script defer src="/static/web/desktop/sparks.js?v={{ asset_version }}"></script>
+  {% if _is_inbox_context %}
   <script defer src="/static/web/desktop/receipt-skeletons.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/drawer.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/review-hotkeys.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/bulk-bar.js?v={{ asset_version }}"></script>
-  <script defer src="/static/web/desktop/ledger-filter.js?v={{ asset_version }}"></script>
-  <script defer src="/static/web/desktop/drag-reorder.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/split-layout.js?v={{ asset_version }}"></script>
-  {# issue #64 W1: ECharts vendor (~1.1MB) + the chart/report modules load per-page,
-     not globally, so non-report pages skip that payload. Pages with charts fill
-     page_scripts. It sits BEFORE desktop.js because desktop.js's deferred boot()
-     runs during the interactive phase (readyState != "loading") and calls the chart
-     init fns immediately — they must already be defined, i.e. their scripts must have
-     executed earlier in document order. Keep echarts first within a page's block
-     (the chart modules reference the global ``echarts``). #}
+  {% elif _is_expense_detail %}
+  <script defer src="/static/web/desktop/receipt-skeletons.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/desktop/split-layout.js?v={{ asset_version }}"></script>
+  {% elif _path == '/web/confirmed' %}
+  <script defer src="/static/web/desktop/bulk-bar.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/desktop/ledger-filter.js?v={{ asset_version }}"></script>
+  {% endif %}
   {% block page_scripts %}{% endblock %}
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
-<body class="desktop-shell-active">
-<a class="skip-link" href="#main-content">跳到主内容</a>
-{% set q = '?ledger_id=' ~ selected_ledger_id if selected_ledger_id else '' %}
-{% set _path = request.url.path %}
-{% set _role = selected_ledger_role or 'owner' %}
-<div class="app">
-  {% include "_sidebar_nav.html" %}
-  <div>
-    <div class="topbar">
-      <div class="crumb">
-        <span>小票夹</span>
-        <span class="sep">/</span>
-        <span>桌面账本</span>
-        <span class="sep">/</span>
-        <span class="current">{{ page_title or '仪表盘' }}</span>
-      </div>
-      <div class="grow"></div>
-      {% if show_month_picker %}
-        {% include "_month_picker.html" %}
-      {% endif %}
-      <a class="icon-btn" href="/web/tasks{{ q }}" title="后台任务" aria-label="后台任务">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <polyline points="12 7 12 12 15.5 14"/>
-        </svg>
-      </a>
-      <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换主题" title="切换主题（纸本 / 墨白 / 玄夜）">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-        </svg>
-      </button>
-      {% include "_ledger_switcher.html" %}
+<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
+  <a class="skip-link" href="#main-content">跳到主内容</a>
+  <div class="product-app">
+    {% include "_sidebar_nav.html" %}
+    <div class="product-workspace">
+      <header class="product-topbar">
+        <a class="topbar-brand" href="/web/pending{{ q }}" aria-label="小票夹待我处理">小票夹</a>
+        <div class="topbar-context" aria-label="当前位置">
+          <span class="topbar-domain">{{ _domain_label }}</span>
+          <span class="topbar-ledger">{{ selected_ledger_name }} · {{ home_currency_code }}</span>
+        </div>
+        <div class="topbar-spacer"></div>
+        {% if show_month_picker %}
+          {% include "_month_picker.html" %}
+        {% endif %}
+        {% include "_ledger_switcher.html" %}
+      </header>
+      <main class="content" id="main-content" tabindex="-1" data-page-level="{{ _page_level }}">
+        {% if _role == 'viewer' %}
+        <div class="readonly-callout" role="status">
+          当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。
+        </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </main>
     </div>
-    <main class="content" id="main-content" tabindex="-1">
-      {% if _role == 'viewer' %}
-      <div class="readonly-callout">
-        你在此账本是<strong>只读角色</strong>，仅能查看；新建、编辑、确认、忽略、导入和规则改写等操作已隐藏或禁用。
-      </div>
-      {% endif %}
-      {% block content %}{% endblock %}
-    </main>
+    <div class="drawer-host">
+      {% block drawer %}{% endblock %}
+    </div>
   </div>
-  <aside class="drawer-host">
-    {% block drawer %}{% endblock %}
-  </aside>
-</div>
 </body>
 </html>

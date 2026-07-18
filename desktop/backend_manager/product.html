@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>小票夹 · 收件</title>
+  <meta name="ticketbox-control-token" content="__CONTROL_TOKEN__">
+  <link rel="stylesheet" href="/product.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="titlebar">
+      <div class="brand">
+        <strong>小票夹</strong>
+        <span>桌面账务工作台</span>
+      </div>
+      <div class="connection" id="connection" data-state="checking" role="status">
+        <span class="connection-dot" aria-hidden="true"></span>
+        <span id="connectionText">正在连接本机账本</span>
+      </div>
+    </header>
+
+    <div class="workspace-frame">
+      <aside class="primary-rail" id="primaryRail" aria-label="小票夹桌面一级导航">
+        <p class="rail-label">账本工作区</p>
+        <nav class="workspace-nav" aria-label="业务域">
+          <button class="nav-item workspace-control is-current" type="button" data-workspace="inbox" data-shortcut="1" aria-label="收件" title="收件（Alt+1）" aria-current="page" aria-keyshortcuts="Alt+1">
+            <span class="nav-index">01</span><span class="nav-title">收件</span>
+          </button>
+          <button class="nav-item workspace-control" type="button" data-workspace="transactions" data-shortcut="2" aria-label="流水" title="流水（Alt+2）" aria-keyshortcuts="Alt+2">
+            <span class="nav-index">02</span><span class="nav-title">流水</span>
+          </button>
+          <button class="nav-item workspace-control" type="button" data-workspace="obligations" data-shortcut="3" aria-label="往来" title="往来（Alt+3）" aria-keyshortcuts="Alt+3">
+            <span class="nav-index">03</span><span class="nav-title">往来</span>
+          </button>
+          <button class="nav-item workspace-control" type="button" data-workspace="plans" data-shortcut="4" aria-label="计划" title="计划（Alt+4）" aria-keyshortcuts="Alt+4">
+            <span class="nav-index">04</span><span class="nav-title">计划</span>
+          </button>
+          <button class="nav-item workspace-control" type="button" data-workspace="insights" data-shortcut="5" aria-label="洞察" title="洞察（Alt+5）" aria-keyshortcuts="Alt+5">
+            <span class="nav-index">05</span><span class="nav-title">洞察</span>
+          </button>
+        </nav>
+        <div class="rail-footer">
+        <div class="shortcut-note">Alt 1–5 切换业务域<br>↑ ↓ 选择记录 · Ctrl R 刷新</div>
+          <a class="manage-link" id="manageLink" href="/">
+            <span>系统管理与备份</span><span>Alt 0</span>
+          </a>
+        </div>
+      </aside>
+
+      <main class="data-stage" id="dataStage">
+        <header class="workspace-header">
+          <div class="workspace-heading">
+            <p class="workspace-kicker" id="workspaceKicker">01 · 待整理记录</p>
+            <h1 class="workspace-title" id="workspaceTitle">收件</h1>
+            <p class="workspace-summary" id="workspaceSummary">整理待确认记录，选择一项即可补全、确认或忽略。</p>
+          </div>
+          <div class="header-actions">
+            <label>
+              <span class="visually-hidden">账本</span>
+              <select class="ledger-select" id="ledgerSelect" aria-label="选择账本" disabled>
+                <option>读取账本中</option>
+              </select>
+            </label>
+            <button class="refresh-button" id="refreshButton" type="button" aria-keyshortcuts="Control+R F5">刷新</button>
+            <button class="refresh-button" id="unpairButton" type="button" hidden>解除绑定</button>
+          </div>
+        </header>
+
+        <div class="table-toolbar">
+          <input class="search-input" id="searchInput" type="search" placeholder="筛选当前业务域（/）" aria-label="筛选当前业务域">
+          <span class="row-count" id="rowCount">等待数据</span>
+        </div>
+
+        <section class="workspace-view table-view" id="tableView" aria-label="当前业务域列表">
+          <div class="table-scroll" id="tableScroll">
+            <table class="data-table" aria-label="当前业务域数据表">
+              <caption class="visually-hidden">
+                使用方向键选择行；在紧凑窗口中，单击一行或聚焦后按 Enter 打开详情。
+              </caption>
+              <thead>
+                <tr>
+                  <th id="columnHeader1" scope="col">事项</th>
+                  <th id="columnHeader2" scope="col">说明</th>
+                  <th id="columnHeader3" scope="col">状态</th>
+                  <th id="columnHeader4" scope="col">金额</th>
+                  <th id="columnHeader5" scope="col">时间</th>
+                </tr>
+              </thead>
+              <tbody id="rowTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="workspace-view grouped-view" id="planView" hidden aria-label="计划分组">
+          <div class="grouped-scroll" id="planGroups"></div>
+        </section>
+
+        <section class="workspace-view insight-view" id="insightView" hidden aria-label="本月事实与数据质量">
+          <div class="insight-scroll">
+            <section class="insight-fact" id="insightFact" aria-labelledby="insightFactTitle"></section>
+            <section class="insight-section" aria-labelledby="attentionTitle">
+              <div class="section-heading">
+                <h2 id="attentionTitle">需要处理</h2>
+                <span id="attentionCount">0 项</span>
+              </div>
+              <div class="insight-records" id="attentionRecords"></div>
+            </section>
+            <section class="insight-section" aria-labelledby="qualityTitle">
+              <div class="section-heading">
+                <h2 id="qualityTitle">数据质量</h2>
+                <span id="qualityCount">0 项</span>
+              </div>
+              <div class="insight-records" id="qualityRecords"></div>
+            </section>
+          </div>
+        </section>
+
+        <footer class="stage-footer">
+          <span class="sync-note" id="syncNote">等待同步</span>
+          <span class="sync-note" id="roleNote">—</span>
+        </footer>
+
+        <section class="empty-panel" id="emptyPanel" hidden aria-live="polite">
+          <div class="state-card">
+            <h2 id="emptyTitle">当前没有数据</h2>
+            <p id="emptyDetail">当前没有需要显示的记录。</p>
+          </div>
+        </section>
+
+        <section
+          class="status-panel"
+          id="statusPanel"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <div class="state-card">
+            <h2 id="statusTitle">正在连接本机账本</h2>
+            <p id="statusDetail">业务数据就绪后会在当前窗口显示。</p>
+            <form class="pairing-form" id="pairingForm" hidden novalidate>
+              <label for="pairingCode">8 位绑定码</label>
+              <div class="pairing-row">
+                <input id="pairingCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" pattern="[0-9]{8}" aria-describedby="pairingFeedback">
+                <button type="submit">连接账本</button>
+              </div>
+              <p id="pairingFeedback" role="status" aria-live="polite"></p>
+            </form>
+            <a class="state-action" id="statusAction" href="/" hidden>打开系统管理</a>
+          </div>
+        </section>
+      </main>
+
+      <aside
+        class="inspector"
+        id="inspector"
+        data-open="false"
+        aria-label="当前记录详情"
+        aria-labelledby="inspectorTitle"
+        aria-describedby="inspectorSubtitle"
+        tabindex="-1"
+      >
+        <header class="inspector-header">
+          <div class="inspector-heading">
+            <p class="inspector-kicker" id="inspectorKicker">详情 · 尚未选择</p>
+            <h2 class="inspector-title" id="inspectorTitle">选择一项</h2>
+            <p class="inspector-subtitle" id="inspectorSubtitle">选择一项后，这里会显示详细信息。</p>
+          </div>
+          <button
+            class="inspector-close"
+            id="inspectorCloseButton"
+            type="button"
+            aria-label="关闭当前行详情"
+            title="关闭详情（Esc）"
+          >关闭</button>
+        </header>
+        <div class="inspector-body">
+          <p class="inspector-value" id="inspectorValue">—</p>
+          <dl class="field-list" id="fieldList"></dl>
+          <form class="inbox-command" id="inboxCommand" hidden novalidate>
+            <fieldset id="commandFields">
+              <legend>处理当前收件</legend>
+              <label class="command-field">
+                <span id="commandAmountLabel">金额</span>
+                <input class="command-input" id="commandAmount" inputmode="decimal" autocomplete="off" aria-labelledby="commandAmountLabel">
+              </label>
+              <label class="command-field">
+                <span>商家</span>
+                <input class="command-input" id="commandMerchant" maxlength="255" autocomplete="off" aria-label="收件商家">
+              </label>
+              <label class="command-field">
+                <span>分类</span>
+                <input class="command-input" id="commandCategory" maxlength="64" autocomplete="off" aria-label="收件分类">
+              </label>
+              <p class="command-feedback" id="commandFeedback" role="status" aria-live="polite"></p>
+              <div class="command-actions">
+                <button class="command-button" id="saveCommand" data-action="save" type="submit">保存</button>
+                <button class="command-button" id="confirmCommand" data-action="confirm" type="button">确认入账</button>
+                <button class="command-button" id="ignoreCommand" data-action="ignore" type="button">忽略此收件</button>
+              </div>
+            </fieldset>
+          </form>
+        </div>
+        <footer class="inspector-footer" id="inspectorFooter">
+          选择待整理记录后，可直接修改、保存、确认入账或忽略。
+        </footer>
+      </aside>
+    </div>
+  </div>
+
+  <dialog class="confirm-dialog" id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmDetail">
+    <form method="dialog">
+      <p class="confirm-kicker">请确认影响范围</p>
+      <h2 id="confirmTitle">确认操作</h2>
+      <p id="confirmDetail">请确认是否继续。</p>
+      <div class="confirm-actions">
+        <button class="command-button" id="confirmCancelButton" type="submit" value="cancel">取消</button>
+        <button class="command-button" id="confirmActionButton" type="submit" value="confirm">继续</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/product.js" defer></script>
+</body>
+</html>

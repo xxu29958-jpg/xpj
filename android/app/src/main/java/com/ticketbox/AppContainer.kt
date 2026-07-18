@@ -253,6 +253,7 @@ class AppContainer(context: Context) {
     val ruleRepository = repositories.ruleRepository
     val merchantRepository = repositories.merchantRepository
     val tagRepository = repositories.tagRepository
+    val categoryPreferenceRepository = repositories.categoryPreferenceRepository
 
     init {
         // 触发接缝注入（var 而非构造参数：facade 构造已 12 参，加参会让 detekt

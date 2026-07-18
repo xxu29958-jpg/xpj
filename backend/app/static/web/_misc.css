@@ -108,8 +108,8 @@
 
 /* legacy .transaction-table shell 覆盖已删除 —— 8 个模板共 17 处引用已全迁到 .dt-table
    (components/tables.css). .dt-table--compact 变体在 tables.css 内提供。
-   选中行(aria-selected) 覆盖保留给 .exp-row(pending 页): */
-.exp-row[aria-selected="true"] {
+   当前抽屉行覆盖保留给 .exp-row(pending 页): */
+.exp-row[aria-current="true"] {
     background: var(--brand-primary-bg);
     box-shadow: inset 3px 0 0 0 var(--brand-primary);
 }

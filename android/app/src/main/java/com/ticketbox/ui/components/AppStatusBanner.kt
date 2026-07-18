@@ -10,6 +10,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -31,6 +34,10 @@ import com.ticketbox.ui.design.StateTone
  * already looking instead of at the bottom of a scrollable page. Renders nothing
  * for a null / blank message.
  *
+ * Status updates use a polite accessibility live region by default. Callers
+ * rendering persistent explanatory copy must set [announceUpdates] to false so
+ * static information is not announced as an operation result.
+ *
  * Geometry follows the `.dt-alert` rule (`padding: --space-4 --space-5`,
  * `border: 1px`, `border-radius: --radius-sm`, caption type) expressed through
  * Android design tokens.
@@ -40,14 +47,22 @@ fun AppStatusBanner(
     message: UiText?,
     tone: MessageTone,
     modifier: Modifier = Modifier,
+    announceUpdates: Boolean = true,
 ) {
     val text = message?.asString()?.takeIf { it.isNotBlank() } ?: return
     val palette = LocalStateTokens.current.forTone(tone)
+    val statusModifier = if (announceUpdates) {
+        modifier.semantics {
+            liveRegion = LiveRegionMode.Polite
+        }
+    } else {
+        modifier
+    }
     Text(
         text = text,
         color = palette.fg,
         style = MaterialTheme.typography.bodySmall,
-        modifier = modifier
+        modifier = statusModifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.small))
             .background(palette.bg)

@@ -1,0 +1,176 @@
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="__TOKENS_CSS_URI__">
+  <link rel="stylesheet" href="__CONFIRM_MODAL_CSS_URI__">
+</head>
+<body>
+  <form id="destructive-form"
+        action="https://example.invalid/default-route"
+        method="post"
+        data-confirm="删除后无法恢复，是否继续？"
+        data-confirm-variant="danger">
+    <button id="destructive-trigger"
+            type="submit"
+            name="action"
+            value="delete"
+            formaction="https://example.invalid/permanent-delete">永久删除</button>
+  </form>
+  <button id="override-trigger"
+          type="button"
+          class="btn-danger"
+          data-confirm-variant="default"
+          data-confirm="将规则应用到待确认账单。"
+          data-confirm-action="应用规则"
+          data-confirm-title="应用这条规则？">继续</button>
+  <button id="class-danger-trigger"
+          type="button"
+          class="product-button product-button--danger"
+          data-confirm="清空后无法恢复。">清空日志</button>
+  <script>
+    let csrfSubmitEvents = 0;
+    document.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (form.id !== "destructive-form") return;
+      csrfSubmitEvents += 1;
+      if (!form.querySelector('input[name="csrf_token"]')) {
+        const field = document.createElement("input");
+        field.type = "hidden";
+        field.name = "csrf_token";
+        field.value = "edge-contract-token";
+        form.appendChild(field);
+      }
+    }, true);
+  </script>
+  <script src="__CONFIRM_MODAL_URI__"></script>
+  <script>
+    (async () => {
+      const wait = () => new Promise((resolve) => setTimeout(resolve, 20));
+      const form = document.getElementById("destructive-form");
+      const trigger = document.getElementById("destructive-trigger");
+      const override = document.getElementById("override-trigger");
+      const classDanger = document.getElementById("class-danger-trigger");
+      const submissions = [];
+      let overrideAccepted = 0;
+
+      form.addEventListener("submit", (event) => {
+        if (event.defaultPrevented) return;
+        event.preventDefault();
+        submissions.push({
+          name: event.submitter && event.submitter.name,
+          value: event.submitter && event.submitter.value,
+          formAction: event.submitter && event.submitter.formAction,
+          csrfToken: form.querySelector('input[name="csrf_token"]')?.value || ""
+        });
+      });
+      override.addEventListener("click", (event) => {
+        if (!event.defaultPrevented) overrideAccepted += 1;
+      });
+
+      trigger.focus();
+      trigger.click();
+      await wait();
+      const dialog = document.getElementById("tb-confirm-modal");
+      const title = dialog.querySelector(".tb-confirm-title");
+      const message = dialog.querySelector(".tb-confirm-message");
+      const cancel = dialog.querySelector(".tb-confirm-cancel");
+      const confirm = dialog.querySelector(".tb-confirm-ok");
+      const derived = {
+        labelledBy: dialog.getAttribute("aria-labelledby"),
+        describedBy: dialog.getAttribute("aria-describedby"),
+        ariaModal: dialog.getAttribute("aria-modal"),
+        role: dialog.getAttribute("role"),
+        titleId: title.id,
+        messageId: message.id,
+        title: title.textContent,
+        action: confirm.textContent,
+        titleVisible: title.getBoundingClientRect().height > 0,
+        safestFocus: document.activeElement === cancel,
+        dangerClass: dialog.classList.contains("is-danger"),
+        dangerVisual: getComputedStyle(confirm).backgroundColor !== getComputedStyle(cancel).backgroundColor
+      };
+      cancel.click();
+      await wait();
+      const cancelRestoredFocus = document.activeElement === trigger;
+
+      trigger.click();
+      await wait();
+      confirm.click();
+      await wait();
+      const confirmed = {
+        submissions: submissions.slice(),
+        restoredFocus: document.activeElement === trigger
+      };
+
+      override.focus();
+      override.click();
+      await wait();
+      const overridden = {
+        role: dialog.getAttribute("role"),
+        title: title.textContent,
+        action: confirm.textContent,
+        primaryFocus: document.activeElement === confirm,
+        dangerClass: dialog.classList.contains("is-danger")
+      };
+      cancel.click();
+      await wait();
+      const overrideCancelRestoredFocus = document.activeElement === override;
+
+      override.click();
+      await wait();
+      const cancelEvent = new Event("cancel", {cancelable: true});
+      const escapeWasNotBlocked = dialog.dispatchEvent(cancelEvent);
+      if (escapeWasNotBlocked) dialog.close();
+      await wait();
+      const escapeRestoredFocus = document.activeElement === override;
+
+      classDanger.focus();
+      classDanger.click();
+      await wait();
+      const classDerivedDanger = {
+        role: dialog.getAttribute("role"),
+        safestFocus: document.activeElement === cancel,
+        dangerClass: dialog.classList.contains("is-danger")
+      };
+      cancel.click();
+      await wait();
+      const classDangerRestoredFocus = document.activeElement === classDanger;
+
+      form.requestSubmit = undefined;
+      trigger.focus();
+      trigger.click();
+      await wait();
+      confirm.click();
+      await wait();
+      const legacyConfirmed = {
+        submission: submissions[1],
+        restoredFocus: document.activeElement === trigger
+      };
+
+      dialog.showModal = undefined;
+      let fallbackMessage = "";
+      window.confirm = (text) => {
+        fallbackMessage = text;
+        return true;
+      };
+      override.click();
+      await wait();
+      window.__webConsumerProbe = {
+        derived,
+        cancelRestoredFocus,
+        confirmed,
+        overridden,
+        overrideCancelRestoredFocus,
+        escapeWasNotBlocked,
+        escapeRestoredFocus,
+        classDerivedDanger,
+        classDangerRestoredFocus,
+        legacyConfirmed,
+        fallbackMessage,
+        overrideAccepted,
+        csrfSubmitEvents
+      };
+    })();
+  </script>
+</body>
+</html>

@@ -218,15 +218,18 @@ fun ExpenseEntity.toDomain(): Expense {
  *  DTO has no OCC-token field by construction. [clientRef] (issue #65 slice 4)
  *  is the device-unique idempotency ref the offline-aware create path mints and
  *  reuses on outbox replay; the online quick-add path leaves it null. */
-fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManualCreateRequestDto {
+fun ExpenseDraft.toManualCreateRequest(
+    homeCurrency: CurrencyCode,
+    clientRef: String? = null,
+): ExpenseManualCreateRequestDto {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
     val submittedCurrency = originalCurrencyCode
-        ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
+        ?: if (submittedOriginalMinor != null) homeCurrency else null
     return ExpenseManualCreateRequestDto(
         originalCurrency = submittedCurrency?.storageKey,
         originalAmount = minorToMajorText(
             submittedOriginalMinor,
-            submittedCurrency ?: FxContract.HomeCurrency,
+            submittedCurrency ?: homeCurrency,
         ),
         spentAt = expenseTime,
         merchant = merchant,
@@ -254,21 +257,27 @@ fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManual
  * Mirrors [toManualCreateRequest] for the FX-derived amount fields so the
  * optimistic row matches what the server will return.
  */
-fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): ExpenseEntity {
+fun ExpenseDraft.toLocalCreateEntity(
+    ledgerId: String,
+    clientRef: String,
+    homeCurrency: CurrencyCode,
+): ExpenseEntity {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
-    val submittedCurrency = originalCurrencyCode ?: FxContract.HomeCurrency
+    val submittedCurrency = originalCurrencyCode ?: homeCurrency
+    val optimisticHomeMinor = amountCents
+        ?: submittedOriginalMinor?.takeIf { submittedCurrency == homeCurrency }
     return ExpenseEntity(
         ledgerId = ledgerId,
         serverId = null,
         publicId = "local-$clientRef",
-        amountCents = amountCents ?: submittedOriginalMinor,
-        homeCurrencyCode = FxContract.HomeCurrency.storageKey,
+        amountCents = optimisticHomeMinor,
+        homeCurrencyCode = homeCurrency.storageKey,
         originalCurrencyCode = submittedCurrency.storageKey,
         originalAmountMinor = submittedOriginalMinor,
         exchangeRateToCny = null,
         exchangeRateDate = null,
         exchangeRateSource = null,
-        fxStatus = FxContract.StatusReady,
+        fxStatus = if (submittedCurrency == homeCurrency) FxContract.StatusReady else FxContract.StatusPending,
         merchant = merchant.cleanOptional(),
         category = normalizeExpenseCategory(category),
         note = note.cleanOptional(),
@@ -295,11 +304,15 @@ fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): Expen
 fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
     val submittedCurrency = originalCurrencyCode
-        ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
-    val submittedAmountText = minorToMajorText(
-        submittedOriginalMinor,
-        submittedCurrency ?: FxContract.HomeCurrency,
-    )
+        ?: baseline?.originalCurrencyCode
+    val submittedAmountText = submittedOriginalMinor?.let { amountMinor ->
+        minorToMajorText(
+            amountMinor,
+            requireNotNull(submittedCurrency ?: baseline?.homeCurrency) {
+                "Currency is required whenever an amount is submitted."
+            },
+        )
+    }
     val isCreate = baseline == null
     val currencyChanged = baseline != null && submittedCurrency != baseline.originalCurrencyCode
     val amountChanged = baseline != null && submittedOriginalMinor != baseline.originalAmountMinor
@@ -323,10 +336,13 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     )
 }
 
-fun NotificationDraft.toRequest(notificationKey: String? = null): NotificationDraftRequestDto = NotificationDraftRequestDto(
+fun NotificationDraft.toRequest(
+    homeCurrency: CurrencyCode,
+    notificationKey: String? = null,
+): NotificationDraftRequestDto = NotificationDraftRequestDto(
     source = source.apiValue,
-    originalCurrency = FxContract.HomeCurrency.storageKey,
-    originalAmount = minorToMajorText(amountCents, FxContract.HomeCurrency),
+    originalCurrency = homeCurrency.storageKey,
+    originalAmount = minorToMajorText(amountCents, homeCurrency),
     spentAt = expenseTime,
     merchant = merchant?.trim()?.takeIf { it.isNotBlank() },
     category = normalizeExpenseCategory(category),
@@ -524,9 +540,8 @@ internal fun String?.cleanOptional(): String? = this?.trim()?.takeIf { it.isNotB
 
 private fun minorToMajorText(amountMinor: Long?, currency: CurrencyCode): String? {
     if (amountMinor == null) return null
-    return if (currency.noFractionDigits) {
-        amountMinor.toString()
-    } else {
-        BigDecimal(amountMinor).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
-    }
+    return BigDecimal(amountMinor)
+        .movePointLeft(currency.minorUnitDigits)
+        .setScale(currency.minorUnitDigits, RoundingMode.UNNECESSARY)
+        .toPlainString()
 }

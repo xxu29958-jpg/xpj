@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_expense_helpers import _edit_page_or_flash_redirect, split_replace_payload
+from app.routes._web_expense_helpers import (
+    _edit_page_or_flash_redirect,
+    split_replace_payload,
+)
+from app.routes._web_expense_return_context import edit_context_params
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -18,6 +22,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
 )
 from app.schemas import ExpenseSplitReplaceRequest
+from app.services.expense_service import get_expense
 from app.services.expense_split_service import replace_expense_splits
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -32,6 +37,11 @@ def web_splits_save(
     split_note: list[str] = Form(default=[]),
     expected_row_version: str = Form(default=""),
     ledger_id: str = Form(default=""),
+    return_to: str = Form(default=""),
+    return_month: str = Form(default=""),
+    return_filter: str = Form(default=""),
+    return_page: str = Form(default=""),
+    return_tag: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -45,8 +55,10 @@ def web_splits_save(
         error = "页面已过期，请刷新后重新保存拆账。"
     try:
         if error is None:
+            expense = get_expense(db, expense_id, selected_id)
             payload = split_replace_payload(
                 expected_row_version=parsed_row_version,
+                currency_code=expense.home_currency_code,
                 split_member_id=split_member_id,
                 split_amount_yuan=split_amount_yuan,
                 split_note=split_note,
@@ -68,7 +80,24 @@ def web_splits_save(
         # codex follow-up on audit P2 #6: the re-read shares the main form's
         # vanished-row guard (flash to /web/confirmed, mirroring the GET).
         return _edit_page_or_flash_redirect(
-            db, request, options, selected_id, expense_id, error,
-            "/web/confirmed", error_key="splits_error",
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            error,
+            "/web/confirmed",
+            error_key="splits_error",
         )
-    return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id, msg="拆账已保存。")
+    return _web_redirect(
+        f"/web/expenses/{expense_id}/edit",
+        selected_id,
+        msg="拆账已保存。",
+        **edit_context_params(
+            return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+        ),
+    )

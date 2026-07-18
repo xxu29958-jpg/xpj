@@ -17,6 +17,8 @@ internal fun ledgerBillSplitActions(repository: LedgerRepository): BillSplitLedg
 private class ExpenseRepositoryBillSplitActions(
     private val repository: ExpenseRepository,
 ) : BillSplitActions {
+    override fun canModifyLedger(): Boolean = repository.canModifyLedger()
+
     override suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> =
         repository.fetchBillSplitInbox()
 

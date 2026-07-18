@@ -30,24 +30,77 @@
     return "save";
   }
 
+  function responsePath(response) {
+    try {
+      return new URL(response.url || "", window.location.href).pathname;
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function isSessionResponse(response) {
+    return responsePath(response).indexOf("/web/auth/") === 0;
+  }
+
+  function sessionLoginUrl(response) {
+    try {
+      const target = new URL(response.url || "", window.location.href);
+      if (target.origin === window.location.origin) return target.href;
+    } catch (_error) {
+      // Fall through to the fixed same-origin login route.
+    }
+    return "/web/auth/login";
+  }
+
+  function isHtmlResponse(response) {
+    const headers = response && response.headers;
+    const contentType =
+      headers && typeof headers.get === "function"
+        ? headers.get("content-type") || ""
+        : "";
+    return contentType.toLowerCase().indexOf("text/html") === 0;
+  }
+
+  function htmlHas(html, selector) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    return Boolean(template.content.querySelector(selector));
+  }
+
   app.initDrawer = function initDrawer() {
     const drawer = document.getElementById("drawer");
     const scrim = document.getElementById("drawer-scrim");
     if (!drawer || !scrim) return;
 
+    const focusableSelector = [
+      'a[href]:not([tabindex="-1"]):not([hidden])',
+      'button:not([disabled]):not([tabindex="-1"]):not([hidden])',
+      'input:not([type="hidden"]):not([disabled]):not([tabindex="-1"]):not([hidden])',
+      'select:not([disabled]):not([tabindex="-1"]):not([hidden])',
+      'textarea:not([disabled]):not([tabindex="-1"]):not([hidden])',
+      '[contenteditable="true"]:not([tabindex="-1"]):not([hidden])',
+      '[tabindex]:not([tabindex="-1"]):not([hidden])'
+    ].join(", ");
     let currentRow = null;
     let restoreFocusTo = null;
+    let backgroundState = [];
 
     function close() {
       drawer.classList.remove("on");
       scrim.classList.remove("on");
+      drawer.setAttribute("aria-hidden", "true");
+      markCurrent(null);
       drawer.innerHTML = "";
       currentRow = null;
+      unlockBackground();
       restoreFocus();
     }
 
     function rememberFocus(row) {
-      if (drawer.classList.contains("on")) return;
+      if (drawer.classList.contains("on")) {
+        if (!restoreFocusTo || !document.contains(restoreFocusTo)) restoreFocusTo = row;
+        return;
+      }
       const active = document.activeElement;
       restoreFocusTo =
         active && active !== document.body && document.contains(active)
@@ -63,14 +116,129 @@
       }
     }
 
+    function focusableElements() {
+      return Array.from(drawer.querySelectorAll(focusableSelector)).filter(function (element) {
+        return (
+          element.getClientRects().length > 0 &&
+          !element.closest('[aria-hidden="true"], [inert]')
+        );
+      });
+    }
+
     function focusDrawer() {
-      const target = drawer.querySelector(
-        "[data-drawer-close], input:not([type=hidden]):not([disabled]), " +
-        "textarea:not([disabled]), select:not([disabled]), button:not([disabled]), a[href]"
-      ) || drawer;
+      const elements = focusableElements();
+      const target = elements[0] || drawer;
       if (target && typeof target.focus === "function") {
         target.focus({ preventScroll: true });
       }
+    }
+
+    function activateDrawer(row) {
+      drawer.classList.add("on");
+      scrim.classList.add("on");
+      drawer.setAttribute("aria-hidden", "false");
+      lockBackground();
+      markCurrent(row);
+      focusDrawer();
+    }
+
+    function renderSessionExpired(response) {
+      drawer.replaceChildren();
+      const state = document.createElement("section");
+      state.className = "product-state";
+      state.setAttribute("role", "alert");
+      state.setAttribute("data-drawer-session-expired", "true");
+
+      const title = document.createElement("div");
+      title.className = "product-state-title";
+      title.textContent = "登录已过期";
+      const body = document.createElement("div");
+      body.className = "product-state-body";
+      body.textContent = "当前操作没有提交，重新登录后再继续处理。";
+      const login = document.createElement("a");
+      login.className = "product-state-action";
+      login.href = sessionLoginUrl(response);
+      login.textContent = "重新登录";
+
+      state.append(title, body, login);
+      drawer.appendChild(state);
+      activateDrawer(currentRow);
+    }
+
+    function renderUnexpectedResponse(form) {
+      if (form) setDrawerBusy(form, false);
+      let alert = drawer.querySelector("[data-drawer-response-error]");
+      if (!alert) {
+        alert = document.createElement("div");
+        alert.className = "product-feedback product-feedback--danger";
+        alert.setAttribute("role", "alert");
+        alert.setAttribute("data-drawer-response-error", "true");
+        drawer.prepend(alert);
+      }
+      alert.textContent = "服务器没有确认这次操作，列表保持不变。请重新登录或刷新后重试。";
+      alert.setAttribute("tabindex", "-1");
+      alert.focus({ preventScroll: true });
+    }
+
+    function trapFocus(event) {
+      const elements = focusableElements();
+      if (elements.length === 0) {
+        event.preventDefault();
+        drawer.focus({ preventScroll: true });
+        return;
+      }
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !drawer.contains(active))) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+      } else if (!event.shiftKey && (active === last || !drawer.contains(active))) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
+    }
+
+    function hasExternalModal() {
+      return Array.from(document.querySelectorAll("dialog[open]")).some(function (dialog) {
+        return !drawer.contains(dialog);
+      });
+    }
+
+    function lockBackground() {
+      if (backgroundState.length > 0) return;
+      const host = drawer.closest(".drawer-host");
+      if (!host) return;
+      let branch = host;
+      while (branch && branch !== document.body) {
+        const parent = branch.parentElement;
+        if (!parent) break;
+        Array.from(parent.children).forEach(function (element) {
+          // Native dialogs may be opened from a drawer action. Keep them out of
+          // the background set so their own modal focus handling remains usable.
+          if (element === branch || element.tagName === "DIALOG") return;
+          backgroundState.push({
+            element: element,
+            hadInert: element.hasAttribute("inert"),
+            ariaHidden: element.getAttribute("aria-hidden")
+          });
+          element.setAttribute("inert", "");
+          element.setAttribute("aria-hidden", "true");
+        });
+        branch = parent;
+      }
+    }
+
+    function unlockBackground() {
+      backgroundState.forEach(function (state) {
+        if (!state.hadInert) state.element.removeAttribute("inert");
+        if (state.ariaHidden === null) {
+          state.element.removeAttribute("aria-hidden");
+        } else {
+          state.element.setAttribute("aria-hidden", state.ariaHidden);
+        }
+      });
+      backgroundState = [];
     }
 
     function bindFragment() {
@@ -85,20 +253,35 @@
     // fetch error fall back to the row's full-page edit link (unchanged
     // behaviour for the open action).
     function openRow(row) {
-      if (!row) return;
+      if (!row || row.getAttribute("aria-disabled") === "true") return;
       const url = row.getAttribute("data-fragment-url");
       if (!url) return;
       rememberFocus(row);
       currentRow = row;
       fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
-        .then(function (res) { return res.text(); })
-        .then(function (html) {
-          drawer.innerHTML = html;
-          drawer.classList.add("on");
-          scrim.classList.add("on");
-          markSelected(row);
+        .then(function (res) {
+          return res.text().then(function (body) {
+            return { response: res, body: body };
+          });
+        })
+        .then(function (result) {
+          const res = result.response;
+          const body = result.body;
+          if (isSessionResponse(res)) {
+            renderSessionExpired(res);
+            return;
+          }
+          if (
+            !res.ok ||
+            res.redirected ||
+            !isHtmlResponse(res) ||
+            !htmlHas(body, '[data-drawer-fragment="expense-edit"]')
+          ) {
+            throw new Error("invalid drawer response");
+          }
+          drawer.innerHTML = body;
+          activateDrawer(row);
           bindFragment();
-          focusDrawer();
         })
         .catch(function () {
           window.location.href = row.getAttribute("href");
@@ -111,16 +294,45 @@
       if (!currentRow) { close(); return; }
       const url = currentRow.getAttribute("data-fragment-url");
       fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
-        .then(function (res) { return res.text(); })
-        .then(function (html) { drawer.innerHTML = html; bindFragment(); focusDrawer(); })
+        .then(function (res) {
+          return res.text().then(function (body) {
+            return { response: res, body: body };
+          });
+        })
+        .then(function (result) {
+          const res = result.response;
+          const body = result.body;
+          if (isSessionResponse(res)) {
+            renderSessionExpired(res);
+            return;
+          }
+          if (
+            !res.ok ||
+            res.redirected ||
+            !isHtmlResponse(res) ||
+            !htmlHas(body, '[data-drawer-fragment="expense-edit"]')
+          ) {
+            renderUnexpectedResponse(null);
+            return;
+          }
+          drawer.innerHTML = body;
+          bindFragment();
+          focusDrawer();
+        })
         .catch(function () { /* leave the drawer as-is; the row is unchanged */ });
     }
 
-    function markSelected(row) {
-      document.querySelectorAll('.exp-row[aria-selected="true"]').forEach(function (r) {
-        if (r !== row) r.setAttribute("aria-selected", "false");
+    function markCurrent(row) {
+      document.querySelectorAll(".exp-row-detail[aria-current]").forEach(function (candidate) {
+        if (candidate !== row) candidate.removeAttribute("aria-current");
+        const container = candidate.closest(".exp-row");
+        if (container && candidate !== row) container.classList.remove("is-current");
       });
-      if (row) row.setAttribute("aria-selected", "true");
+      if (row) {
+        row.setAttribute("aria-current", "true");
+        const container = row.closest(".exp-row");
+        if (container) container.classList.add("is-current");
+      }
     }
 
     // 批10: confirm/忽略 removes the row from the table; decrement the visible
@@ -129,21 +341,24 @@
     function removeCurrentRow() {
       if (!currentRow) return null;
       const next = nextRow(currentRow);
-      if (currentRow.parentNode) currentRow.parentNode.removeChild(currentRow);
+      const container = currentRow.closest(".exp-row");
+      if (container && container.parentNode) container.parentNode.removeChild(container);
       decrementCounts();
       currentRow = null;
       return next;
     }
 
     function nextRow(row) {
-      let el = row.nextElementSibling;
+      const container = row.closest(".exp-row");
+      if (!container) return null;
+      let el = container.nextElementSibling;
       while (el && !el.classList.contains("exp-row")) el = el.nextElementSibling;
-      if (el) return el;
+      if (el) return el.querySelector(".exp-row-detail[data-fragment-url]");
       // No following row: fall back to the previous one so the reviewer keeps
       // moving instead of dead-ending.
-      el = row.previousElementSibling;
+      el = container.previousElementSibling;
       while (el && !el.classList.contains("exp-row")) el = el.previousElementSibling;
-      return el;
+      return el ? el.querySelector(".exp-row-detail[data-fragment-url]") : null;
     }
 
     function decrementCounts() {
@@ -199,15 +414,33 @@
       // present. Same-origin source + token satisfies the /web CSRF gate.
       fetch(actionUrl, { method: "POST", credentials: "same-origin", body: body })
         .then(function (res) {
-          if (res.ok) {
-            onMutationOk(kind);
-            return undefined;
-          }
-          // Error: server returns the drawer fragment with the inline error.
           return res.text().then(function (html) {
-            drawer.innerHTML = html;
-            bindFragment();
-            focusDrawer();
+            if (isSessionResponse(res)) {
+              renderSessionExpired(res);
+              return;
+            }
+            if (
+              res.ok &&
+              !res.redirected &&
+              isHtmlResponse(res) &&
+              htmlHas(html, '[data-drawer-ok="' + kind + '"]')
+            ) {
+              onMutationOk(kind);
+              return;
+            }
+            // Error: server returns the drawer fragment with the inline error.
+            if (
+              !res.ok &&
+              !res.redirected &&
+              isHtmlResponse(res) &&
+              htmlHas(html, '[data-drawer-fragment="expense-edit"]')
+            ) {
+              drawer.innerHTML = html;
+              bindFragment();
+              focusDrawer();
+              return;
+            }
+            renderUnexpectedResponse(form);
           });
         })
         .catch(function () {
@@ -246,11 +479,22 @@
 
     scrim.addEventListener("click", close);
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && drawer.classList.contains("on")) close();
+      if (!drawer.classList.contains("on") || hasExternalModal()) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      } else if (e.key === "Tab") {
+        trapFocus(e);
+      }
     });
 
-    document.querySelectorAll(".exp-row[data-fragment-url]").forEach(function (row) {
+    document.querySelectorAll(".exp-row-detail[data-fragment-url]").forEach(function (row) {
       row.addEventListener("click", function (e) {
+        if (row.getAttribute("aria-disabled") === "true") {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         // 点 checkbox / 表单元素时不打开抽屉
         const tag = (e.target.tagName || "").toLowerCase();
         if (tag === "input" || tag === "button") return;

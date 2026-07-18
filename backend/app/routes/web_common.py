@@ -10,7 +10,8 @@ formatting.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
@@ -20,21 +21,39 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
+from app.fx_constants import FX_STATUS_PENDING
 from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
 from app.services import backup_service, bill_split_service, web_stats_service
 from app.services import owner_console_service as owner_svc
 from app.services.budget_service import get_monthly_budget
+from app.services.currency_common import (
+    currency_input_metadata,
+    currency_symbol,
+    major_amount_to_minor,
+    minor_amount_label,
+    minor_amount_major_number,
+    minor_amount_value,
+    minor_unit_digits,
+)
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.exchange_rate_service import home_currency_code
-from app.services.expense_service import list_pending
+from app.services.expense_service import ledger_has_any_expense, list_pending
 from app.services.goal_service import list_goals
+from app.services.identity_service import (
+    WEB_SESSION_TTL_SECONDS,
+    lock_and_revalidate_web_session_principal,
+)
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items
 from app.services.spending_contract_service import accounting_zone
 from app.services.stats_service import monthly_stats
-from app.services.time_service import current_month, ensure_utc, now_utc
+from app.services.time_service import (
+    current_month,
+    ensure_utc,
+    now_utc,
+    parse_month_label,
+)
 from app.services.time_service import to_iso as _datetime_to_iso
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
@@ -46,6 +65,8 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[c
 # filter the template would emit Python's ``str(datetime)`` (no T
 # separator, no Z), which ``parse_form_row_version_token`` rejects.
 templates.env.filters["to_iso"] = _datetime_to_iso
+
+_SAFE_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
 
 def parse_form_row_version_token(value: str) -> int | None:
@@ -116,15 +137,39 @@ def _list_ledger_options(db: Session) -> list[LedgerOption]:
     ]
 
 
-def _stamp_session_role(options: list[LedgerOption] | None, session_auth) -> None:
-    """Override the matching ledger option's role with the Web session's role
-    (ENGINEERING_RULES §14: a session's role gates writes, not the owner console)."""
+def _project_session_ledger_options(
+    options: list[LedgerOption] | None,
+    session_auth,
+) -> None:
+    """Project the ledger selector to the single ledger authorized by a Web session.
+
+    ``_list_ledger_options`` is deliberately the loopback Owner Console read
+    surface, so it can contain every ledger visible to the local owner account.
+    A public Web session is a different principal: exposing those rows in the
+    rendered selector would disclose unrelated ledger ids and names even though
+    the middleware correctly blocks cross-ledger data reads.
+
+    Mutate the caller-owned list in place because every /web route resolves the
+    selected ledger before passing that same list to ``_base_ctx``.  Rebuild the
+    option from the authenticated context so both the visible name and role come
+    from the session-bound ledger, never from the local owner's projection.
+    """
     if options is None:
         return
-    for opt in options:
-        if opt.ledger_id == session_auth.ledger_id:
-            opt.role = session_auth.role
-            return
+    matched = next(
+        (opt for opt in options if opt.ledger_id == session_auth.ledger_id),
+        None,
+    )
+    options[:] = [
+        LedgerOption(
+            ledger_id=session_auth.ledger_id,
+            name=session_auth.ledger_name,
+            role=session_auth.role,
+            is_default=matched.is_default if matched is not None else False,
+            pending_count=matched.pending_count if matched is not None else 0,
+            confirmed_count=matched.confirmed_count if matched is not None else 0,
+        )
+    ]
 
 
 def _resolve_selected_ledger_id(
@@ -146,14 +191,27 @@ def _resolve_selected_ledger_id(
     ``?ledger_id=`` query — the middleware has already rejected a query
     that disagreed with the session, so by the time we get here a stale
     or absent query just defers to the session ledger.
+
+    Unsafe methods additionally revalidate that middleware snapshot under the
+    shared identity-lifecycle transaction lock. This happens inside the route
+    function, after request-body parsing, and keeps the lock through the
+    command's first commit/rollback.
     """
     if request is not None:
         session_auth = getattr(request.state, "web_session_auth", None)
         if session_auth is not None:
-            # ENGINEERING_RULES §14: a Web session's role is the paired device's
-            # role on its ledger, NOT the owner-console role — stamp it on so the
-            # write-gate + rendered role reflect the session (viewer stays RO).
-            _stamp_session_role(options, session_auth)
+            if getattr(request, "method", "GET").upper() not in _SAFE_HTTP_METHODS:
+                session_auth = lock_and_revalidate_web_session_principal(
+                    db,
+                    session_auth,
+                    platform=getattr(request.state, "web_session_platform", ""),
+                    ttl_seconds=WEB_SESSION_TTL_SECONDS,
+                )
+                request.state.web_session_auth = session_auth
+            # ENGINEERING_RULES §14: a Web session is bound to one ledger. Keep
+            # the Owner Console's other ledger ids/names out of the HTML context,
+            # and use the paired principal's role for both rendering and writes.
+            _project_session_ledger_options(options, session_auth)
             return session_auth.ledger_id
 
     opts = options if options is not None else _list_ledger_options(db)
@@ -237,12 +295,7 @@ def _safe_same_site_redirect_path(
 
     path = parsed.path or ""
     decoded_path = unquote(path)
-    if (
-        not path.startswith("/")
-        or decoded_path.startswith("//")
-        or "\\" in decoded_path
-        or ":" in decoded_path
-    ):
+    if not path.startswith("/") or decoded_path.startswith("//") or "\\" in decoded_path or ":" in decoded_path:
         return fallback
     if any(decoded_path.startswith(root + "//") for root in allowed_roots):
         return fallback
@@ -278,6 +331,7 @@ def _base_ctx(
 ) -> dict:
     selected = _selected_option(options, selected_ledger_id)
     pending_count, suspected_count = sidebar_counts or (0, 0)
+    home_code = home_currency_code()
     return {
         "backend_version": BACKEND_VERSION,
         "asset_version": STATIC_ASSET_VERSION,
@@ -289,14 +343,17 @@ def _base_ctx(
         "selected_ledger_is_default": selected.is_default,
         "is_viewer": selected.role == "viewer",
         "can_write": selected.role in ("owner", "member"),
+        "has_web_session": (getattr(request.state, "web_session_auth", None) is not None),
+        "web_session_platform": getattr(request.state, "web_session_platform", None),
         "page_title": page_title,
         "ui_theme": _read_ui_theme(request),
         "show_month_picker": show_month_picker,
         "selected_month": selected_month,
         "pending_count": pending_count,
         "suspected_duplicate_count": suspected_count,
-        "home_currency_code": home_currency_code(),
-        "home_currency_symbol": _currency_symbol(home_currency_code()),
+        "home_currency_code": home_code,
+        "home_currency_symbol": _currency_symbol(home_code),
+        "home_currency_input": _currency_input_view(home_code),
     }
 
 
@@ -304,9 +361,35 @@ def _base_ctx(
 
 
 def _amount_yuan(amount_cents: int | None) -> str:
-    if amount_cents is None:
+    """Legacy Web projection name for a home-currency major-unit value.
+
+    ``*_yuan`` keys are kept for template/JSON compatibility, but their value
+    is currency-neutral and follows the configured home currency's minor digits.
+    New projections should prefer ``*_major`` or ``*_value`` names.
+    """
+
+    return _minor_amount_value(amount_cents, home_currency_code())
+
+
+def _month_display_label(value: str | None, *, fallback: str = "所选月份") -> str:
+    parsed = parse_month_label(value)
+    if parsed is None:
+        return fallback
+    year, month = parsed
+    return f"{year} 年 {month} 月"
+
+
+def _calendar_date_label(value: date | datetime | None) -> str:
+    if value is None:
         return ""
-    return f"{amount_cents / 100:.2f}"
+    if isinstance(value, datetime):
+        normalized = ensure_utc(value)
+        if normalized is None:
+            return ""
+        calendar_date = normalized.astimezone(accounting_zone()).date()
+    else:
+        calendar_date = value
+    return f"{calendar_date.year} 年 {calendar_date.month} 月 {calendar_date.day} 日"
 
 
 def _expense_time_local_input(value) -> str:
@@ -327,27 +410,72 @@ def _expense_time_local_input(value) -> str:
 
 
 def _currency_symbol(currency_code: str | None) -> str:
-    code = (currency_code or home_currency_code()).upper()
-    return CURRENCY_SYMBOLS.get(code, f"{code} ")
+    return currency_symbol(currency_code or home_currency_code())
+
+
+def _currency_input_view(currency_code: str | None) -> dict[str, object]:
+    """Currency-neutral major-unit input metadata for HTML number fields."""
+    return currency_input_metadata(currency_code or home_currency_code())
 
 
 def _minor_amount_label(amount_minor: int | None, currency_code: str | None) -> str:
-    if amount_minor is None:
-        return ""
-    code = (currency_code or home_currency_code()).upper()
-    symbol = _currency_symbol(code)
-    if code in NO_FRACTION_CURRENCY_CODES:
-        return f"{symbol}{amount_minor:,}"
-    return f"{symbol}{amount_minor / 100:,.2f}"
+    return minor_amount_label(amount_minor, currency_code or home_currency_code())
 
 
 def _minor_amount_value(amount_minor: int | None, currency_code: str | None) -> str:
-    if amount_minor is None:
-        return ""
+    return minor_amount_value(amount_minor, currency_code or home_currency_code())
+
+
+def _minor_amount_number(
+    amount_minor: int | None,
+    currency_code: str | None,
+) -> int | float | None:
+    return minor_amount_major_number(amount_minor, currency_code or home_currency_code())
+
+
+def _parse_major_amount(
+    raw: str,
+    *,
+    label: str,
+    currency_code: str | None = None,
+    allow_negative: bool = False,
+    required: bool = False,
+    empty_value: int | None = None,
+) -> int | None:
+    """Parse an HTML major-unit amount with currency-derived fraction digits."""
+
+    text = (raw or "").strip()
+    if not text:
+        if required:
+            raise AppError("invalid_request", f"请填写{label}。", status_code=422)
+        return empty_value
+    try:
+        amount = Decimal(text)
+    except InvalidOperation as exc:
+        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
+    if not amount.is_finite():
+        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422)
+    if amount < 0 and not allow_negative:
+        raise AppError("invalid_request", f"{label}不能为负数。", status_code=422)
     code = (currency_code or home_currency_code()).upper()
-    if code in NO_FRACTION_CURRENCY_CODES:
-        return str(amount_minor)
-    return f"{amount_minor / 100:.2f}"
+    digits = minor_unit_digits(code)
+    quantum = Decimal(1).scaleb(-digits)
+    try:
+        exactly_representable = amount == amount.quantize(quantum)
+    except InvalidOperation:
+        exactly_representable = False
+    if not exactly_representable:
+        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
+        raise AppError(
+            "invalid_request",
+            f"{label}按 {code} {detail}。",
+            status_code=422,
+        )
+    return major_amount_to_minor(
+        amount,
+        code,
+        allow_negative=allow_negative,
+    )
 
 
 def _home_amount_label(amount_cents: int | None, currency_code: str | None) -> str:
@@ -365,13 +493,33 @@ def _amount_segments(amount_cents: int | None, currency_code: str | None) -> dic
     drops the three pieces into spans.
     """
     code = (currency_code or home_currency_code()).upper()
-    symbol = _currency_symbol(code)
-    cents = amount_cents or 0
-    if code in NO_FRACTION_CURRENCY_CODES:
-        return {"cur": symbol, "int": f"{cents:,}", "dec": ""}
-    sign = "-" if cents < 0 else ""
-    whole, frac = divmod(abs(cents), 100)
-    return {"cur": symbol, "int": f"{sign}{whole:,}", "dec": f".{frac:02d}"}
+    digits = minor_unit_digits(code)
+    amount = int(amount_cents or 0)
+    scale = 10**digits
+    sign = "-" if amount < 0 else ""
+    whole, fraction = divmod(abs(amount), scale)
+    decimal = "" if digits == 0 else f".{fraction:0{digits}d}"
+    return {"cur": _currency_symbol(code), "int": f"{sign}{whole:,}", "dec": decimal}
+
+
+def _home_amount_value(
+    amount_minor: int | None,
+    currency_code: str | None = None,
+) -> str:
+    return _minor_amount_value(amount_minor, currency_code or home_currency_code())
+
+
+def _home_amount_label_value(
+    amount_minor: int | None,
+    currency_code: str | None = None,
+) -> str:
+    return _minor_amount_label(amount_minor, currency_code or home_currency_code())
+
+
+# Direct-template consumers (search/rules/import-batch/report aggregates) receive
+# raw minor-unit columns. Keep their formatting on the same authority as route VMs.
+templates.env.globals["home_amount_value"] = _home_amount_value
+templates.env.globals["home_amount_label"] = _home_amount_label_value
 
 
 def _expense_amount_labels(expense) -> tuple[str, str | None]:
@@ -390,14 +538,11 @@ def _expense_amount_labels(expense) -> tuple[str, str | None]:
     rate_date = getattr(expense, "exchange_rate_date", None)
     date_text = rate_date.isoformat() if hasattr(rate_date, "isoformat") else (str(rate_date) if rate_date else "")
     if getattr(expense, "fx_status", "") == FX_STATUS_PENDING or amount_cents is None:
-        return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
+        return primary, f"{original_code} · 汇率待同步{(' · ' + date_text) if date_text else ''}"
     rate = getattr(expense, "exchange_rate_to_cny", None)
     if rate is None:
-        return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
-    meta = (
-        f"≈ {_home_amount_label(amount_cents, home_code)} · "
-        f"汇率 1 {original_code} = {rate} {home_code}"
-    )
+        return primary, f"{original_code} · 汇率待同步{(' · ' + date_text) if date_text else ''}"
+    meta = f"{original_code} · ≈ {_home_amount_label(amount_cents, home_code)} · 汇率 1 {original_code} = {rate} {home_code}"
     if date_text:
         meta += f" · {date_text}"
     return primary, meta
@@ -405,17 +550,34 @@ def _expense_amount_labels(expense) -> tuple[str, str | None]:
 
 def _trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
     """14-day trend. Delegates to web_stats_service."""
-    return web_stats_service.trend14_amounts(db, ledger_id)
+    return [_home_major_projection(row) for row in web_stats_service.trend14_amounts(db, ledger_id)]
 
 
 def _confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
     """Per-day confirmed totals in month. Delegates to web_stats_service."""
-    return web_stats_service.confirmed_by_day(db, ledger_id, month)
+    return [
+        _home_major_projection(row)
+        for row in web_stats_service.confirmed_by_day(db, ledger_id, month)
+    ]
 
 
 def _confirmed_source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dict]:
     """Source breakdown. Delegates to web_stats_service."""
     return web_stats_service.source_breakdown(db, ledger_id, month)
+
+
+def _home_major_projection(row: dict) -> dict:
+    """Attach currency-neutral major-unit fields to a raw minor-unit row."""
+
+    amount_minor = int(row.get("amount_cents") or 0)
+    amount_major = _minor_amount_number(amount_minor, home_currency_code())
+    return {
+        **row,
+        "amount_major": amount_major,
+        "amount_value": _amount_yuan(amount_minor),
+        # Legacy JS/template compatibility; no longer semantically fixed yuan.
+        "amount_yuan": amount_major,
+    }
 
 
 def _expense_view(expense) -> dict:
@@ -445,6 +607,8 @@ def _expense_view(expense) -> dict:
         "amount_cents": expense.amount_cents,
         "home_currency_code": home_code,
         "original_currency_code": original_code,
+        "home_currency_input": _currency_input_view(home_code),
+        "original_currency_input": _currency_input_view(original_code),
         "original_amount_minor": original_minor,
         "original_amount_value": _minor_amount_value(original_minor, original_code)
         or _amount_yuan(expense.amount_cents),
@@ -503,7 +667,7 @@ def _budget_top_rows(budget) -> list[dict]:
     no new aggregation): per category we have the limit (``amount_cents``),
     used (``spent_amount_cents``) and overspend. ``percent`` is used/limit
     capped at 100 for the bar width; ``overspent_yuan`` carries the
-    over-the-limit amount so the template/JS can show「超 ¥X」. Sorted by spend
+    over-the-limit amount so the template/JS can show a currency-aware excess. Sorted by spend
     desc so the most-used categories surface first, top 3."""
     rows = sorted(
         budget.category_budgets,
@@ -552,9 +716,7 @@ def _goals_top_rows(goals) -> list[dict]:
 
 def _dashboard_budget_goals_block(budget, goals) -> dict:
     """budget/goals 两卡的 ctx 片段(从 ``_dashboard_cards`` 拆出守 80 行债线)。"""
-    goal_risk_count = sum(
-        1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"}
-    )
+    goal_risk_count = sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"})
     return {
         "budget_configured": budget.configured,
         "budget_total_yuan": _amount_yuan(int(budget.total_amount_cents)),
@@ -573,9 +735,7 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     pending_count = len(pending_rows)
     needs_amount = sum(1 for e in pending_rows if e.amount_cents is None)
     needs_merchant = sum(1 for e in pending_rows if not (e.merchant or "").strip())
-    suspected = sum(
-        1 for e in pending_rows if (getattr(e, "duplicate_status", None) or "") == "suspected"
-    )
+    suspected = sum(1 for e in pending_rows if (getattr(e, "duplicate_status", None) or "") == "suspected")
     month = current_month("Asia/Shanghai")
     stats = monthly_stats(db, month, ledger_id)
     prev_month = _previous_month_string(month)
@@ -646,15 +806,22 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
 def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
     month = current_month("Asia/Shanghai")
     stats = monthly_stats(db, month, selected_id, timezone_name="Asia/Shanghai")
-    return [
-        {
-            "name": item["category"],
-            "amount_yuan": int(item["amount_cents"]) / 100.0,
-            "amount_cents": int(item["amount_cents"]),
-            "count": int(item["count"]),
-        }
-        for item in stats.get("by_category", [])[:6]
-    ]
+    rows = []
+    for item in stats.get("by_category", [])[:6]:
+        amount_minor = int(item["amount_cents"])
+        amount_major = _minor_amount_number(amount_minor, home_currency_code())
+        rows.append(
+            {
+                "name": item["category"],
+                "amount_major": amount_major,
+                "amount_value": _amount_yuan(amount_minor),
+                # Legacy dashboard/chart key; value now follows home-currency digits.
+                "amount_yuan": amount_major,
+                "amount_cents": amount_minor,
+                "count": int(item["count"]),
+            }
+        )
+    return rows
 
 
 def _dashboard_data_payload(db: Session, selected_id: str) -> dict:
@@ -662,6 +829,7 @@ def _dashboard_data_payload(db: Session, selected_id: str) -> dict:
     return {
         "selected_ledger_id": selected_id,
         "month": cards["month"],
+        "has_any_expense": ledger_has_any_expense(db, selected_id),
         "cards": cards,
         "visible_layout": [item for item in cards["layout"] if item["visible"]],
         "trend14": _trend14_amounts(db, selected_id),

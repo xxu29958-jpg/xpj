@@ -1,9 +1,11 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
+import java.lang.reflect.Proxy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -18,7 +20,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import java.lang.reflect.Proxy
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CreateSpendingGoalViewModelTest {
@@ -115,6 +116,7 @@ private class RecordingSpendingReportsActions(
     ) { _, method, args ->
         when (method.name) {
             "canModifyLedger" -> canModify
+            "currentHomeCurrency" -> CurrencyCode.CNY
             "createGoal",
             method.name.takeIf { it.startsWith("createGoal-") },
             -> {

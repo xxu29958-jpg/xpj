@@ -85,8 +85,8 @@ def test_web_selected_ledger_reports_isolated(web_client: TestClient) -> None:
     assert resp_owner.status_code == 200
     assert resp_tester.status_code == 200
     # Both render but with their own scope; basic smoke
-    assert "动态报表" in resp_owner.text
-    assert "动态报表" in resp_tester.text
+    assert '<h1 class="page-title">分析</h1>' in resp_owner.text
+    assert '<h1 class="page-title">分析</h1>' in resp_tester.text
 
 
 def test_web_reject_keeps_selected_ledger(web_client: TestClient, *, identity) -> None:

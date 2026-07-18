@@ -21,8 +21,51 @@
       "";
   };
 
+  app.homeCurrencyCode = function homeCurrencyCode() {
+    return document.documentElement.getAttribute("data-home-currency") || "";
+  };
+
+  app.homeCurrencyMinorDigits = function homeCurrencyMinorDigits() {
+    const raw = document.documentElement.getAttribute("data-home-currency-minor-digits");
+    const parsed = Number.parseInt(raw == null ? "" : raw, 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : 2;
+  };
+
   app.homeMoney = function homeMoney(value) {
     return app.homeCurrencySymbol() + app.escapeHtml(value);
+  };
+
+  app.homeMajorNumber = function homeMajorNumber(value) {
+    const amount = Number(value || 0);
+    const digits = app.homeCurrencyMinorDigits();
+    return new Intl.NumberFormat("zh-CN", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+      useGrouping: true,
+    }).format(Number.isFinite(amount) ? amount : 0);
+  };
+
+  app.homeMinorToMajor = function homeMinorToMajor(value) {
+    const amount = Number(value || 0);
+    const scale = 10 ** app.homeCurrencyMinorDigits();
+    return (Number.isFinite(amount) ? amount : 0) / scale;
+  };
+
+  app.homeMoneyMinor = function homeMoneyMinor(value) {
+    return app.homeCurrencySymbol() + app.homeMajorNumber(app.homeMinorToMajor(value));
+  };
+
+  app.homeMoneyMajor = function homeMoneyMajor(value) {
+    return app.homeCurrencySymbol() + app.homeMajorNumber(value);
+  };
+
+  app.homeCompactMoneyMajor = function homeCompactMoneyMajor(value) {
+    const amount = Number(value || 0);
+    const formatted = new Intl.NumberFormat("zh-CN", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(Number.isFinite(amount) ? amount : 0);
+    return app.homeCurrencySymbol() + formatted;
   };
 
   app.dashboardUrl = function dashboardUrl(path, ledgerId, extra) {
@@ -33,9 +76,10 @@
   };
 
   app.moneyParts = function moneyParts(value) {
-    const raw = String(value || "0.00");
+    const digits = app.homeCurrencyMinorDigits();
+    const raw = String(value == null || value === "" ? app.homeMajorNumber(0) : value);
     const parts = raw.split(".");
-    return [parts[0] || "0", parts[1] || "00"];
+    return [parts[0] || "0", digits > 0 ? (parts[1] || "0".repeat(digits)) : ""];
   };
 
   app.readVar = function readVar(name) {

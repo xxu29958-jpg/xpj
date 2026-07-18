@@ -151,14 +151,50 @@ def _refresh_upload_link_activity(
 
 def authenticate_session_token(db: Session, token_value: str, allowed_scopes: set[str]) -> AuthContext:
     token_hash = hash_secret(token_value)
-    token = db.scalar(
-        select(AuthToken).where(AuthToken.token_hash == token_hash).limit(1)
-    )
-    if token is None or token.scope not in allowed_scopes:
+    token = db.scalar(select(AuthToken).where(AuthToken.token_hash == token_hash).limit(1))
+    if (
+        token is None
+        or token.scope not in allowed_scopes
+        or token.activation_state != "active"
+    ):
         raise AppError("invalid_token", status_code=401)
     now = now_utc()
     if not _token_revocation_allows_grace(token, now=now):
         raise AppError("invalid_token", status_code=401)
+    expires_at = ensure_utc(token.expires_at)
+    if expires_at is not None and expires_at <= now:
+        token.revoked_at = now
+        token.grace_until = None
+        db.commit()
+        raise AppError("invalid_token", status_code=401)
+    return _context_from_token(db, token)
+
+
+def authenticate_desktop_session_token(db: Session, token_value: str) -> AuthContext:
+    """Authenticate the app bearer used by the loopback Desktop Web bridge.
+
+    The bridge is a distinct principal entry point: accepting an arbitrary app
+    token would let an Android or browser credential cross into the Desktop
+    adapter.  Require the token to be live, app-scoped, and bound to an
+    explicitly paired ``platform=desktop`` device.  Unlike ordinary app-token
+    refresh overlap, a revoked Desktop bridge token is never accepted during a
+    grace window.
+    """
+    token_hash = hash_secret(token_value)
+    token = db.scalar(
+        select(AuthToken)
+        .join(Device, Device.id == AuthToken.device_id)
+        .where(AuthToken.token_hash == token_hash)
+        .where(AuthToken.revoked_at.is_(None))
+        .where(AuthToken.scope == "app")
+        .where(AuthToken.activation_state == "active")
+        .where(Device.platform == "desktop")
+        .limit(1)
+    )
+    if token is None:
+        raise AppError("invalid_token", status_code=401)
+
+    now = now_utc()
     expires_at = ensure_utc(token.expires_at)
     if expires_at is not None and expires_at <= now:
         token.revoked_at = now
@@ -182,6 +218,7 @@ def authenticate_web_session_token(
         .where(AuthToken.token_hash == token_hash)
         .where(AuthToken.revoked_at.is_(None))
         .where(AuthToken.scope == "app")
+        .where(AuthToken.activation_state == "active")
         .where(Device.platform == "web")
         .limit(1)
     )

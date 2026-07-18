@@ -88,7 +88,9 @@ EXEMPT_FILES = (
 # 2026-06-28 lowered 116→115 when stats LifestyleCard dividers migrated to
 # AppAlpha tiers while adding value/regret rankings.
 # 2026-07-06 lowered 115->112 during Android UX semantics cleanup.
-BASELINE = 112
+# 2026-07-18 lowered 112→97 after the product IA refactor removed or migrated
+# fifteen presentation literals; this pins the newly measured floor.
+BASELINE = 97
 
 # ``.copy(alpha = <number>)`` — number is a decimal/int float literal (optional
 # trailing ``f``). Identifier args (AppAlpha.heavy / resolvedAlpha) are NOT

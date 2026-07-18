@@ -33,7 +33,7 @@
           textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: "'Noto Sans SC', Inter" },
           formatter: function (p) {
             return '<div style="font-size:12px"><b>' + p.name + "</b><br/>" +
-                   app.homeMoney((p.value || 0).toLocaleString()) + " · " + p.percent + "%</div>";
+                   app.homeMoneyMajor(p.value || 0) + " · " + p.percent + "%</div>";
           },
         },
         legend: { show: false },
@@ -51,7 +51,7 @@
               show: true, position: "center", color: ink,
               fontFamily: "Newsreader, 'Source Han Serif SC', serif", fontSize: 22,
               formatter: function (p) {
-                return "{n|" + p.name + "}\n{v|" + app.homeCurrencySymbol() + Math.round(p.value || 0).toLocaleString() +
+                return "{n|" + p.name + "}\n{v|" + app.homeMoneyMajor(p.value || 0) +
                        "}\n{p|" + p.percent + "%}";
               },
               rich: {
@@ -61,12 +61,12 @@
               },
             },
           },
-          // Reads the dashboard category_share payload shape (name / amount_yuan).
-          // Yuan, not cents: tooltip and the center label print the value as-is.
+          // Geometry reads the currency-neutral major-unit projection. Exact
+          // labels are formatted with the configured home-currency digits.
           data: data.slice(0, 6).map(function (d, i) {
             return {
               name: d.name,
-              value: d.amount_yuan,
+              value: d.amount_major == null ? d.amount_yuan : d.amount_major,
               itemStyle: { color: palette[i % palette.length] },
             };
           }),

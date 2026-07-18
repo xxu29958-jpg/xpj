@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="transactions_library_title">资料库</string>
+    <string name="transactions_library_subtitle">统一维护交易使用的分类、商家、标签、自动规则与已移除数据</string>
+    <string name="transactions_library_back_to_transactions">交易</string>
+    <string name="transactions_library_back_to_library">资料库</string>
+    <string name="transactions_library_group_vocabulary">交易字典</string>
+    <string name="transactions_library_group_automation">自动化</string>
+    <string name="transactions_library_group_lifecycle">数据生命周期</string>
+    <string name="transactions_library_categories_title">分类</string>
+    <string name="transactions_library_categories_subtitle">查看内置分类，管理账本中的自定义分类</string>
+    <string name="transactions_library_merchants_title">商家</string>
+    <string name="transactions_library_merchants_subtitle">归一商家名称，维护别名与合并关系</string>
+    <string name="transactions_library_tags_title">标签</string>
+    <string name="transactions_library_tags_subtitle">整理跨交易使用的标签与合并关系</string>
+    <string name="transactions_library_rules_title">自动规则</string>
+    <string name="transactions_library_rules_subtitle">用商家关键词自动建议分类</string>
+    <string name="transactions_library_recycle_bin_title">回收站</string>
+    <string name="transactions_library_recycle_bin_subtitle">查看当前账本中仍可恢复的已移除数据</string>
+
+    <string name="category_directory_title">分类</string>
+    <string name="category_directory_subtitle">%1$d 个内置分类 · %2$d 个自定义分类</string>
+    <string name="category_directory_intro_title">分类是交易的稳定语义</string>
+    <string name="category_directory_intro_body">内置分类保证基础口径一致；在交易中使用新名称后，会自动加入当前账本的自定义分类。</string>
+    <string name="category_directory_readonly">当前账本为只读角色，可以查看分类但不能移除。</string>
+    <string name="category_directory_default_title">内置分类</string>
+    <string name="category_directory_default_body">跨账本保持一致，不可删除。</string>
+    <string name="category_directory_custom_title">自定义分类</string>
+    <string name="category_directory_custom_empty">还没有自定义分类。在新增或编辑交易时使用新分类，它会自动出现在这里。</string>
+    <string name="category_directory_usage_count">已用于 %1$d 笔交易</string>
+    <string name="category_directory_delete_description">移除分类“%1$s”</string>
+    <string name="category_directory_delete_title">移除“%1$s”？</string>
+    <string name="category_directory_delete_body">它会从分类选项中隐藏，已有交易不会被删除；如仍被规则、预算或目标使用，需要先处理这些关联。</string>
+    <string name="category_directory_delete_confirm">移除分类</string>
+    <string name="category_directory_deleted">已将“%1$s”移到回收站</string>
+    <string name="category_directory_load_failed">暂时无法读取自定义分类。</string>
+    <string name="category_directory_delete_failed">暂时无法移除这个分类。</string>
+    <string name="category_directory_retry">重新加载</string>
+</resources>

@@ -80,9 +80,7 @@ def _matches_filter(view: dict, filter_key: str) -> bool:
     return True
 
 
-def _resolve_single_undo(
-    db: Session, *, selected_id: str, undo: str | None
-) -> tuple[int | None, int | None]:
+def _resolve_single_undo(db: Session, *, selected_id: str, undo: str | None) -> tuple[int | None, int | None]:
     # ADR-0038/0041: a stale or cross-ledger query param only disables the
     # affordance. The POST route remains the source of truth.
     if not undo or not undo.isdigit():
@@ -147,7 +145,7 @@ def web_pending(
         request,
         options=options,
         selected_ledger_id=selected_id,
-        page_title="待确认",
+        page_title="收件箱",
         sidebar_counts=(pending_total, suspected_total),
     )
     ctx["expenses"] = items
@@ -169,14 +167,10 @@ def web_pending(
     # bookmark replay) won't render a misleading "可撤销" banner — the route
     # itself is the source of truth (atomic UPDATE WHERE tenant_id, status), but
     # the page also stops lying.
-    undo_expense_id, undo_expected_row_version = _resolve_single_undo(
-        db, selected_id=selected_id, undo=undo
-    )
+    undo_expense_id, undo_expected_row_version = _resolve_single_undo(db, selected_id=selected_id, undo=undo)
     ctx["undo_expense_id"] = undo_expense_id
     ctx["undo_expected_row_version"] = undo_expected_row_version
-    ctx["undo_items"] = _resolve_batch_undo_items(
-        db, selected_id=selected_id, undo_ids=undo_id, undo_tokens=undo_rv
-    )
+    ctx["undo_items"] = _resolve_batch_undo_items(db, selected_id=selected_id, undo_ids=undo_id, undo_tokens=undo_rv)
     ctx["needs_amount_count"] = sum(1 for it in raw_items if it["needs_amount"])
     ctx["needs_merchant_count"] = sum(1 for it in raw_items if it["needs_merchant"])
     ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))
@@ -184,10 +178,7 @@ def web_pending(
     ctx["ready_count"] = sum(
         1
         for it in raw_items
-        if not it["needs_amount"]
-        and not it["needs_merchant"]
-        and not _needs_category(it)
-        and not it["is_duplicate"]
+        if not it["needs_amount"] and not it["needs_merchant"] and not _needs_category(it) and not it["is_duplicate"]
     )
     return templates.TemplateResponse(request=request, name="pending.html", context=ctx)
 
@@ -267,17 +258,59 @@ def _bulk_fragment_json(action: str, result: BulkResult) -> JSONResponse:
     return JSONResponse(body)
 
 
-def _bulk_error_json(message: str) -> JSONResponse:
-    return JSONResponse({"removed_ids": [], "message": message, "flash_type": "error"})
+def _bulk_error_json(message: str, *, status_code: int = 200) -> JSONResponse:
+    return JSONResponse(
+        {"removed_ids": [], "message": message, "flash_type": "error"},
+        status_code=status_code,
+    )
 
 
-def _bulk_no_selection(
-    selected_id: str, *, filter: str, fragment: bool
-) -> Response:
+def _bulk_no_selection(selected_id: str, *, filter: str, fragment: bool) -> Response:
     msg = "请先勾选账单。"
     if fragment:
         return _bulk_error_json(msg)
     return _pending_redirect(selected_id, filter=filter, msg=msg)
+
+
+def _parse_bulk_snapshot(
+    expense_ids: list[int],
+    expected_row_versions: list[str],
+) -> tuple[list[int], dict[int, int]] | None:
+    if len(expense_ids) != len(expected_row_versions):
+        return None
+
+    unique_expense_ids: list[int] = []
+    expected_by_id: dict[int, int] = {}
+    for expense_id, raw_token in zip(expense_ids, expected_row_versions, strict=True):
+        parsed = parse_form_row_version_token(raw_token)
+        if parsed is None or parsed <= 0:
+            return None
+        previous = expected_by_id.get(expense_id)
+        if previous is not None:
+            if previous != parsed:
+                return None
+            continue
+        unique_expense_ids.append(expense_id)
+        expected_by_id[expense_id] = parsed
+    return unique_expense_ids, expected_by_id
+
+
+def _bulk_invalid_snapshot(
+    selected_id: str,
+    *,
+    filter: str,
+    fragment: bool,
+) -> Response:
+    msg = "页面已过期，请刷新后重新操作。"
+    if fragment:
+        return _bulk_error_json(msg, status_code=409)
+    return _web_redirect(
+        "/web/pending",
+        selected_id,
+        filter=filter or "all",
+        msg=msg,
+        flash_type="error",
+    )
 
 
 def _reject_pending_rows(
@@ -285,9 +318,14 @@ def _reject_pending_rows(
     *,
     selected_id: str,
     expense_ids: list[int],
+    expected_row_version_by_id: dict[int, int],
 ) -> BulkResult:
     return apply_review_bulk(
-        db, tenant_id=selected_id, action="reject", expense_ids=expense_ids
+        db,
+        tenant_id=selected_id,
+        action="reject",
+        expense_ids=expense_ids,
+        expected_row_version_by_id=expected_row_version_by_id,
     )
 
 
@@ -296,6 +334,7 @@ def web_pending_batch_reject(
     request: Request,
     ledger_id: str = Form(default=""),
     expense_ids: list[int] = Form(default=[]),
+    expected_row_version: list[str] = Form(default=[]),
     filter: str = Form(default="all"),
     # issue #64 W3: fetch+partial path. ``fragment=1`` (only the JS bulk bar adds
     # it) swaps the full-page redirect for a JSON {removed_ids, message,
@@ -312,7 +351,21 @@ def web_pending_batch_reject(
     if not expense_ids:
         return _bulk_no_selection(selected_id, filter=filter, fragment=bool(fragment))
 
-    result = _reject_pending_rows(db, selected_id=selected_id, expense_ids=expense_ids)
+    snapshot = _parse_bulk_snapshot(expense_ids, expected_row_version)
+    if snapshot is None:
+        return _bulk_invalid_snapshot(
+            selected_id,
+            filter=filter,
+            fragment=bool(fragment),
+        )
+    unique_expense_ids, expected_by_id = snapshot
+
+    result = _reject_pending_rows(
+        db,
+        selected_id=selected_id,
+        expense_ids=unique_expense_ids,
+        expected_row_version_by_id=expected_by_id,
+    )
     if fragment:
         return _bulk_fragment_json("reject", result)
     return _pending_redirect_with_batch_undo(
@@ -333,9 +386,7 @@ def web_pending_batch_undo(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     if not expense_ids:
-        return _web_redirect(
-            "/web/pending", selected_id, msg="没有可撤销的账单。", flash_type="error"
-        )
+        return _web_redirect("/web/pending", selected_id, msg="没有可撤销的账单。", flash_type="error")
     if len(expense_ids) != len(expected_row_version):
         return _web_redirect(
             "/web/pending",
@@ -378,6 +429,7 @@ def web_review_bulk(
     action: str = Form(...),
     ledger_id: str = Form(default=""),
     expense_ids: list[int] = Form(default=[]),
+    expected_row_version: list[str] = Form(default=[]),
     category: str = Form(default=""),
     merchant: str = Form(default=""),
     filter: str = Form(default="all"),
@@ -401,12 +453,22 @@ def web_review_bulk(
     if not expense_ids:
         return _bulk_no_selection(selected_id, filter=filter, fragment=fragment_removal)
 
+    snapshot = _parse_bulk_snapshot(expense_ids, expected_row_version)
+    if snapshot is None:
+        return _bulk_invalid_snapshot(
+            selected_id,
+            filter=filter,
+            fragment=fragment_removal,
+        )
+    unique_expense_ids, expected_by_id = snapshot
+
     try:
         result = apply_review_bulk(
             db,
             tenant_id=selected_id,
             action=action_clean,
-            expense_ids=expense_ids,
+            expense_ids=unique_expense_ids,
+            expected_row_version_by_id=expected_by_id,
             category=category,
             merchant=merchant,
         )

@@ -49,6 +49,7 @@ class PendingScreenModelsTest {
             PendingPrimaryReviewAction.QuickCategory,
             pendingPrimaryReviewAction(pendingExpense(category = "")),
         )
+        assertUncategorizedTokensEnterQuickCategory()
         assertEquals(
             PendingPrimaryReviewAction.QuickMerchant,
             pendingPrimaryReviewAction(pendingExpense(merchant = "")),
@@ -56,6 +57,56 @@ class PendingScreenModelsTest {
         assertEquals(
             PendingPrimaryReviewAction.Confirm,
             pendingPrimaryReviewAction(pendingExpense()),
+        )
+        assertMerchantReviewClassification()
+    }
+
+    private fun assertUncategorizedTokensEnterQuickCategory() {
+        listOf("未分类", "未分類", " none ", "NULL").forEach { category ->
+            val expense = pendingExpense(category = category)
+            assertEquals(
+                PendingPrimaryReviewAction.QuickCategory,
+                pendingPrimaryReviewAction(expense),
+            )
+            assertEquals(
+                listOf(expense),
+                applyNeedsReviewFilter(listOf(expense), NeedsReviewFilter.NeedsCategory),
+            )
+        }
+    }
+
+    private fun assertMerchantReviewClassification() {
+        listOf(
+            "12:34",
+            "2026-07-17 12:34",
+            "2026年7月17日 周五",
+            "123456",
+            "18:04 0",
+            "18:02 0.00",
+            "——",
+            "A",
+        ).forEach { merchant ->
+            assertEquals(
+                PendingPrimaryReviewAction.QuickMerchant,
+                pendingPrimaryReviewAction(pendingExpense(merchant = merchant)),
+                "OCR noise must enter the existing QuickMerchant flow: $merchant",
+            )
+            assertEquals(null, pendingMerchantPresentation(pendingExpense(merchant = merchant)).primaryText)
+        }
+        listOf("苏宁", "7-Eleven", "3M", "85度C", " 星巴克咖啡 ").forEach { merchant ->
+            assertEquals(
+                merchant.trim(),
+                pendingMerchantPresentation(pendingExpense(merchant = merchant)).primaryText,
+            )
+        }
+        val invalidMerchant = pendingExpense(merchant = "12:34")
+        assertEquals(
+            listOf(invalidMerchant),
+            applyNeedsReviewFilter(listOf(invalidMerchant), NeedsReviewFilter.NeedsMerchant),
+        )
+        assertEquals(
+            emptyList(),
+            applyNeedsReviewFilter(listOf(invalidMerchant), NeedsReviewFilter.ReadyToConfirm),
         )
     }
 

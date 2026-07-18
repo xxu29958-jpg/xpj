@@ -166,9 +166,7 @@ def test_handler_reports_progress_through_chunks(*, identity) -> None:
     def chunked(db, task, payload):
         total = 5
         for i in range(total):
-            bgtasks.update_progress(
-                db, task.id, current=i + 1, total=total, message=f"row {i + 1}"
-            )
+            bgtasks.update_progress(db, task.id, current=i + 1, total=total, message=f"row {i + 1}")
 
     bgtasks.register_handler("test_chunked", chunked)
     with SessionLocal() as db:
@@ -241,9 +239,7 @@ def test_request_cancellation_idempotent_on_terminal_task(*, identity) -> None:
 
     with SessionLocal() as db:
         # cancel should not flip status from completed
-        row = bgtasks.request_cancellation(
-            db, public_id, account_id=_owner_account_id(), tenant_id="owner"
-        )
+        row = bgtasks.request_cancellation(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
         assert row.status == "completed"
         assert row.cancellation_requested_at is None
 
@@ -270,7 +266,7 @@ def test_account_isolation_get(*, identity) -> None:
     assert exc.value.error == "task_not_found"
 
 
-def test_list_recent_tasks_account_scoped(*, identity) -> None:
+def test_list_recent_tasks_account_scoped(web_client: TestClient, *, identity) -> None:
     bgtasks.register_handler("test_iso2", lambda db, t, p: None)
     with SessionLocal() as db:
         bgtasks.enqueue(
@@ -291,6 +287,38 @@ def test_list_recent_tasks_account_scoped(*, identity) -> None:
         mine = bgtasks.list_recent_tasks(db, account_id=_owner_account_id(), tenant_id="owner")
         assert len(mine) == 1
         assert mine[0].initiated_by_account_id == _owner_account_id()
+        db.add(
+            BackgroundTask(
+                tenant_id="owner",
+                task_type="internal_unmapped_task",
+                initiated_by_account_id=_owner_account_id(),
+                status="running",
+                progress_current=2,
+                progress_total=5,
+                progress_message="正在整理",
+            )
+        )
+        db.commit()
+
+    rendered = web_client.get("/web/tasks?ledger_id=owner")
+    assert rendered.status_code == 200
+    body = rendered.text
+    assert "收件 / 处理中" in body
+    assert 'data-domain="inbox"' in body
+    assert '<span class="topbar-domain">收件</span>' in body
+    assert '<h1 class="page-title page-title--compact">处理中</h1>' in body
+    assert 'href="/web/tasks?ledger_id=owner" aria-current="page">处理中</a>' in body
+    assert "topbar-title" not in body
+    assert "其他批量操作" in body
+    assert "internal_unmapped_task" not in body
+    assert "test_iso2" not in body
+    assert 'value="2"' in body
+    assert 'max="5"' in body
+    assert 'action="/web/tasks/' in body
+    assert 'name="csrf_token"' in body
+    assert "dt-card" not in body
+    assert 'class="dt-' not in body
+    assert 'style="' not in body
 
 
 def test_list_recent_tasks_tenant_scoped(*, identity) -> None:

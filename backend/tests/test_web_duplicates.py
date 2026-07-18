@@ -11,6 +11,10 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import Expense
 from app.routes.web_app import _require_local as _web_require_local
+from app.routes.web_duplicates import (
+    _duplicate_expense_view,
+    _duplicate_reason_label,
+)
 
 
 @pytest.fixture()
@@ -64,7 +68,77 @@ def test_web_duplicates_renders_pair(web_client: TestClient, *, identity) -> Non
     body = resp.text
     assert f"#{second}" in body
     assert f"#{first}" in body
-    assert "保留两条" in body
+    assert "不是重复，保留两条" in body
+    assert "<h2>参考记录</h2>" in body
+    assert "<h2>当前待核对记录</h2>" in body
+    assert body.count("待确认") >= 2
+    assert "两张图片完全一致" in body
+    assert "忽略参考记录" in body
+    assert "忽略当前记录" in body
+    assert "原账单" not in body
+    assert "新草稿" not in body
+    assert 'data-domain="inbox"' in body
+    assert 'class="duplicate-compare"' in body
+    assert 'name="csrf_token"' in body
+    assert "dt-card" not in body
+    assert 'class="dt-' not in body
+    assert 'style="' not in body
+
+
+def test_web_duplicates_renders_each_record_actual_status(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    first, _ = _seed_duplicate_pair(web_client, identity=identity)
+    with SessionLocal() as db:
+        original = db.scalar(select(Expense).where(Expense.id == first))
+        assert original is not None
+        original.status = "confirmed"
+        db.commit()
+
+    body = web_client.get("/web/duplicates?ledger_id=owner").text
+    reference = body.split("<h2>参考记录</h2>", maxsplit=1)[1].split(
+        '<article class="duplicate-record duplicate-record--draft">',
+        maxsplit=1,
+    )[0]
+    current = body.split(
+        '<article class="duplicate-record duplicate-record--draft">',
+        maxsplit=1,
+    )[1]
+    assert "已入账" in reference
+    assert "待确认" in current
+
+
+def test_web_duplicates_unknown_status_and_reason_use_product_fallbacks() -> None:
+    expense = type(
+        "ExpenseStub",
+        (),
+        {
+            "amount_cents": 100,
+            "home_currency_code": "CNY",
+            "original_currency_code": "CNY",
+            "original_amount_minor": None,
+            "image_path": None,
+            "image_deleted_at": None,
+            "source": "",
+            "merchant": "",
+            "category": "",
+            "note": "",
+            "tags": "",
+            "status": "future_status",
+            "expense_time": None,
+            "updated_at": None,
+            "row_version": 1,
+            "created_at": None,
+            "duplicate_status": "suspected",
+            "id": 1,
+        },
+    )()
+    view = _duplicate_expense_view(expense)
+    assert view["status_label"] == "状态待确认"
+    assert view["status_tone"] == ""
+    assert _duplicate_reason_label("future_reason_code") == "多项账单信息相似"
 
 
 # ── Loopback gate + secret leak ────────────────────────────────────────────

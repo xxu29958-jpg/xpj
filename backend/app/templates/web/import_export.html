@@ -1,48 +1,108 @@
 {% extends "base.html" %}
-{% block title %}导入 / 导出 — 小票夹{% endblock %}
+{% block title %}导入导出 · 流水 · 小票夹{% endblock %}
+
 {% block content %}
-<h1 class="page-title page-title--compact">导入 / 导出</h1>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水 / 导入导出</span>
+    <h1 class="page-title page-title--compact">导入与导出</h1>
+    <p class="product-page-summary">
+      CSV 导入会先生成可核对的批次，再写入“待我处理”；导出只包含当前账本中已经入账的流水。
+    </p>
+  </div>
+</header>
 
 {% if flash_message %}
-<div class="dt-alert success">{{ flash_message }}</div>
+<div class="product-feedback product-feedback--warning" role="alert">
+  <span>{{ flash_message }}</span>
+</div>
 {% endif %}
 
-<section class="dt-card">
-  <h2>导出 CSV</h2>
-  <p class="meta">
-    下载当前账本的<b>已确认</b>账单（UTF-8 含 BOM，可直接用 Excel 打开）。
-  </p>
-  <form method="get" action="/web/export.csv" class="form-inline">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <label>月份（可选）
-      <input type="month" name="month">
-    </label>
-    <label>分类（可选）
-      <input type="text" name="category" placeholder="如：餐饮">
-    </label>
-    <button type="submit" class="dt-btn primary">下载 CSV</button>
-  </form>
-</section>
+<div class="import-export-workspace">
+  <section class="product-panel product-panel--padded import-export-panel import-export-panel--primary">
+    <div class="product-panel-header">
+      <div>
+        <span class="product-eyebrow">带入流水</span>
+        <h2 class="product-panel-title">导入 CSV</h2>
+        <p class="product-panel-subtitle">先检查列和错误行，确认后再分批写入收件队列。</p>
+      </div>
+      <span class="product-status">每批最多 {{ max_rows }} 行</span>
+    </div>
 
-<section class="dt-card">
-  <h2>导入 CSV</h2>
-  {% if can_write %}
-  <p class="meta">
-    支持的列：<code>amount_yuan</code>（必填，可换成 <code>amount_cents</code>）、
-    <code>merchant</code>、<code>category</code>、<code>note</code>、
-    <code>expense_time</code>（ISO，可选）、<code>tags</code>。
-    单批最多 {{ max_rows }} 行；上传后先生成批次预览，再分批导入到<a href="/web/pending{{ q }}">「待确认」</a>队列复核。
-  </p>
-  <form method="post" action="/web/import/preview" enctype="multipart/form-data" class="dt-form-grid">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <label>选择 CSV 文件
-      <input type="file" name="csv_file" accept=".csv,text/csv" required>
-    </label>
-    <button type="submit" class="dt-btn">上传并预览</button>
-  </form>
-  {% else %}
-  <p class="readonly-inline">只读角色无法导入。</p>
-  {% endif %}
-</section>
+    {% if can_write %}
+    <form method="post"
+          action="/web/import/preview"
+          enctype="multipart/form-data"
+          class="product-form-grid import-upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <label class="product-field import-file-field">
+        <span>CSV 文件</span>
+        <input class="product-input"
+               type="file"
+               name="csv_file"
+               accept=".csv,text/csv"
+               required>
+      </label>
+      <button type="submit" class="product-button product-button--primary">上传并查看预览</button>
+    </form>
+
+    <details class="import-schema">
+      <summary>查看支持的列</summary>
+      <div class="import-schema-body">
+        <p>
+          <code>amount_yuan</code> 是为兼容旧文件保留的发布契约：始终按两位小数解析并乘以
+          100，不随当前本位币变化。
+        </p>
+        <p>
+          <code>amount_cents</code> 表示当前本位币的最小单位。外币记录必须同时提供
+          <code>original_currency_code</code> 与 <code>original_amount_minor</code>；
+          缺少原币金额时会拒绝导入，不会猜测单位。
+        </p>
+        <p>
+          可选列包括 <code>merchant</code>、<code>category</code>、<code>note</code>、
+          <code>expense_time</code> 和 <code>tags</code>；文件需使用 UTF-8 编码。
+        </p>
+      </div>
+    </details>
+    {% else %}
+    <div class="product-state">
+      <div class="product-state-title">当前账本为只读</div>
+      <div class="product-state-body">你仍可查看既有批次和导出流水，但不能上传新的 CSV。</div>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="product-panel product-panel--padded import-export-panel">
+    <div class="product-panel-header">
+      <div>
+        <span class="product-eyebrow">带走账本</span>
+        <h2 class="product-panel-title">导出 CSV</h2>
+        <p class="product-panel-subtitle">按月份、分类或标签筛选当前账本的已入账流水。</p>
+      </div>
+      <span class="product-status product-status--success">Excel 可直接打开</span>
+    </div>
+
+    <form method="get" action="/web/export.csv" class="product-form-grid export-filter-form">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <label class="product-field">
+        <span>月份</span>
+        <input class="product-input" type="month" name="month">
+      </label>
+      <label class="product-field">
+        <span>分类</span>
+        <input class="product-input" type="text" name="category" placeholder="例如：餐饮">
+      </label>
+      <label class="product-field">
+        <span>标签</span>
+        <input class="product-input" type="text" name="tag" placeholder="例如：报销">
+      </label>
+      <div class="product-field export-submit-field">
+        <span>文件范围</span>
+        <button type="submit" class="product-button product-button--primary">下载 CSV</button>
+      </div>
+    </form>
+    <p class="import-export-note">文件使用 UTF-8 编码并带 BOM；未填写筛选条件时导出全部已入账流水。</p>
+  </section>
+</div>
 {% endblock %}

@@ -30,8 +30,8 @@ from app.services.ledger_service import find_owner_account_id_for_ledger
 router = APIRouter(prefix="/web", tags=["web"])
 
 # Map the machine ``task_type`` string to a 生活化 Chinese label for the /web
-# tasks list. Unknown types fall back to the raw string so a new task type is
-# still legible (and visibly un-labelled) rather than hidden. The background
+# tasks list. Unknown types use a neutral product label so implementation names
+# never leak into the ordinary user-facing table. The background
 # task framework currently has no live producers (the v1 cut-over handler was
 # retired with the PostgreSQL migration), so this is a small forward-looking map
 # keyed by the producers the model documents.
@@ -42,7 +42,7 @@ _TASK_TYPE_LABELS: dict[str, str] = {
 
 
 def _task_type_label(task_type: str) -> str:
-    return _TASK_TYPE_LABELS.get(task_type, task_type)
+    return _TASK_TYPE_LABELS.get(task_type, "其他批量操作")
 
 
 def _resolve_account_id(db: Session, request: Request, ledger_id: str) -> int:
@@ -81,7 +81,6 @@ def web_tasks(
                 result_summary = None
         rows.append({
             "public_id": task.public_id,
-            "task_type": task.task_type,
             "task_type_label": _task_type_label(task.task_type),
             "status": task.status,
             "progress_current": task.progress_current,
@@ -103,7 +102,7 @@ def web_tasks(
         request,
         options=options,
         selected_ledger_id=selected_id,
-        page_title="后台任务",
+        page_title="处理中",
     )
     ctx["task_rows"] = rows
     ctx["active_task_count"] = len(active)

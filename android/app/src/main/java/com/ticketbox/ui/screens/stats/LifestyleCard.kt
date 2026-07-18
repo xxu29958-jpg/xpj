@@ -43,27 +43,28 @@ internal fun LifestyleCard(lifestyle: LifestyleStats) {
     val hasMerchants = lifestyle.frequentMerchants.isNotEmpty()
     val hasValueRegret = lifestyle.bestValueExpenses.isNotEmpty() || lifestyle.mostRegrettedExpenses.isNotEmpty()
 
-    StatsInsightSurface {
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            LifestyleHeader(lifestyle = lifestyle, currencyDisplay = currencyDisplay)
-            if (hasSignals) {
-                LifestyleSignalSection(lifestyle = lifestyle, currencyDisplay = currencyDisplay)
-            }
-            if (hasSignals && (hasMerchants || hasValueRegret)) {
-                HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
-            }
-            if (hasMerchants) {
-                FrequentMerchantsSection(lifestyle.frequentMerchants)
-            }
-            if (hasMerchants && hasValueRegret) {
-                HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
-            }
-            if (hasValueRegret) {
-                ValueRegretSections(
-                    bestValueExpenses = lifestyle.bestValueExpenses,
-                    mostRegrettedExpenses = lifestyle.mostRegrettedExpenses,
-                )
-            }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        LifestyleHeader(lifestyle = lifestyle, currencyDisplay = currencyDisplay)
+        if (hasSignals) {
+            LifestyleSignalSection(lifestyle = lifestyle, currencyDisplay = currencyDisplay)
+        }
+        if (hasSignals && (hasMerchants || hasValueRegret)) {
+            HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
+        }
+        if (hasMerchants) {
+            FrequentMerchantsSection(lifestyle.frequentMerchants)
+        }
+        if (hasMerchants && hasValueRegret) {
+            HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
+        }
+        if (hasValueRegret) {
+            ValueRegretSections(
+                bestValueExpenses = lifestyle.bestValueExpenses,
+                mostRegrettedExpenses = lifestyle.mostRegrettedExpenses,
+            )
         }
     }
 }

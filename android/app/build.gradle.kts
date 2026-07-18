@@ -335,6 +335,8 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material3.adaptive)
+    implementation(libs.androidx.compose.material3.adaptive.layout)
     implementation(libs.androidx.compose.material.icons.extended)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
@@ -386,9 +388,9 @@ dependencies {
     // unblocked by aligning kotlinx-serialization to 1.10.0 (configurations
     // force above). Test-only artifact of the adopted Room library (same 2.8.4).
     androidTestImplementation(libs.androidx.room.testing)
-    // The androidTest APK gets its own merged manifest; keep the startup provider
-    // class available there too, otherwise connected tests crash when Android
-    // binds androidx.startup.InitializationProvider in the test process.
+    // Keep the instrumentation graph on the target's Startup version. AGP owns
+    // the target/test APK de-duplication; the androidTest manifest removes the
+    // provider that must not start in the separate test process.
     androidTestImplementation(libs.androidx.startup.runtime)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

@@ -1,13 +1,13 @@
 """/web/duplicates side-by-side review (v0.4-alpha3 slice 2 / PR18).
 
-Lists every pending expense currently flagged as a suspected duplicate
-together with the row it duplicates, so the user can resolve the pair
-in a single click:
+Lists every non-rejected expense currently flagged as a suspected duplicate
+together with its referenced comparison row, so the user can resolve the pair
+in a single click. Either row may still be pending or already confirmed:
 
-* **保留两条** — calls ``mark_expense_not_duplicate`` (records the ignore
+* **不是重复，保留两条** — calls ``mark_expense_not_duplicate`` (records the ignore
   pair so it never re-fires for the same kind).
-* **忽略新草稿** — rejects the suspected row (draft not booked, restorable).
-* **忽略原账单** — rejects the original row instead, then clears the
+* **忽略当前记录** — rejects the suspected row (restorable).
+* **忽略参考记录** — rejects the referenced row instead, then clears the
   suspected flag on the kept row so it stops blocking review.
 
 All actions stay loopback-only via ``LocalOnly`` and respect ledger
@@ -52,6 +52,33 @@ if TYPE_CHECKING:
     from app.models import Expense
 
 router = APIRouter(prefix="/web", tags=["web"])
+
+_EXPENSE_STATUS_UI = {
+    "pending": ("待确认", "warning"),
+    "confirmed": ("已入账", "success"),
+    "rejected": ("已忽略", ""),
+}
+
+
+def _duplicate_expense_view(expense) -> dict:
+    view = _expense_view(expense)
+    status_label, status_tone = _EXPENSE_STATUS_UI.get(
+        str(view.get("status") or ""),
+        ("状态待确认", ""),
+    )
+    view["status_label"] = status_label
+    view["status_tone"] = status_tone
+    return view
+
+
+def _duplicate_reason_label(reason: str) -> str:
+    if "感知" in reason and "hash" in reason:
+        return "两张图片内容高度相似"
+    if "hash" in reason or "完全一致" in reason:
+        return "两张图片完全一致"
+    if "金额" in reason and "时间" in reason:
+        return "金额、商家和消费时间接近"
+    return "多项账单信息相似"
 
 
 def _load_pair(db: Session, *, tenant_id: str, expense_id: int) -> tuple[Expense, Expense | None]:
@@ -101,8 +128,8 @@ def web_duplicates(
             score = 0.72
         else:
             score = 0.7
-        current_view = _expense_view(row)
-        original_view = _expense_view(original) if original is not None else None
+        current_view = _duplicate_expense_view(row)
+        original_view = _duplicate_expense_view(original) if original is not None else None
         diff_fields: list[str] = []
         if original_view:
             if current_view.get("merchant") != original_view.get("merchant"):
@@ -115,7 +142,7 @@ def web_duplicates(
             {
                 "current": current_view,
                 "original": original_view,
-                "reason": reason,
+                "reason_label": _duplicate_reason_label(reason),
                 "score": score,
                 "score_pct": int(round(score * 100)),
                 "confidence_tier": "high" if score >= 0.9 else "mid",
@@ -170,7 +197,7 @@ def web_duplicate_keep(
         mark_expense_not_duplicate(
             db, expense_id, selected_id, expected_row_version=parsed
         )
-        msg = "已标记为「不是重复」。"
+        msg = "已按两条独立记录保留。"
     except AppError as exc:
         error_msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
         msg = error_msg
@@ -200,7 +227,7 @@ def web_duplicate_reject_current(
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     try:
         reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
-        msg = "已忽略当前账单。"
+        msg = "已忽略当前记录。"
     except AppError as exc:
         msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
     return _web_redirect("/web/duplicates", selected_id, msg=msg)
@@ -221,7 +248,7 @@ def web_duplicate_reject_original(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
-    msg = "已忽略被复制的那条，并保留当前账单。"
+    msg = "已忽略参考记录，并保留当前记录。"
     try:
         current, original = _load_pair(db, tenant_id=selected_id, expense_id=expense_id)
         if original is None:

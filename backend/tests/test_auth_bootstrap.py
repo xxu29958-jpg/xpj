@@ -315,6 +315,7 @@ def test_owner_can_create_pairing_code_and_android_can_pair_once(
     assert payload["ledger_name"] == "我的小票夹"
     assert payload["device_name"] == "小米 15 Pro"
     assert payload["role"] == "owner"
+    assert payload["home_currency_code"] == "CNY"
 
     check = client.get(
         "/api/auth/check",

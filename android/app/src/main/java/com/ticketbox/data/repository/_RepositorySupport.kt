@@ -86,7 +86,7 @@ private val backendErrorUserMessages = mapOf(
     "exchange_rate_required" to "请先填写这一天的汇率。",
     "exchange_rate_pending" to "汇率还没同步完成，稍后再确认。",
     "exchange_rate_invalid" to "汇率格式不正确。",
-    "exchange_rate_base_currency" to "人民币是基准币种，不需要维护汇率。",
+    "exchange_rate_base_currency" to "账本本位币不需要维护汇率。",
     "image_not_found" to "图片不存在。",
     "rule_not_found" to "分类规则不存在。",
     "rule_in_use" to "分类规则仍在使用，不能删除。",

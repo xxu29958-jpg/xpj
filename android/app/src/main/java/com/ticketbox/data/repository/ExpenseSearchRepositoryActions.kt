@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import kotlinx.coroutines.flow.Flow
 
@@ -9,6 +10,8 @@ internal class ExpenseSearchRepositoryActions(
     private val pendingActions: PendingReviewActions,
     private val settingsStore: TicketboxSettingsStore,
 ) : GlobalSearchActions {
+    override val currentHomeCurrency: CurrencyCode get() = core.currentHomeCurrency()
+
     override fun observeActiveLedgerId(): Flow<String?> = core.observeActiveLedgerId()
 
     override fun observeConfirmed(): Flow<List<Expense>> = core.observeConfirmed()

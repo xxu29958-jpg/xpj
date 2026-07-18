@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.GlobalSearchActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
@@ -33,27 +34,61 @@ class GlobalSearchViewModelFilterRecentTest {
     }
 
     @Test
-    fun numericQueryAlsoMatchesExactAmountAcrossBuckets() = searchTest {
+    fun moneyQueryUsesHomeCurrencyOrAnExplicitForeignIsoCode() = searchTest {
         val fake = FakeGlobalSearchActions(
             pending = listOf(expense(id = 1, status = "pending", merchant = "无关", amountCents = 1250L)),
             confirmed = listOf(
-                // home-leg ¥12.50 match
                 expense(id = 2, status = "confirmed", merchant = "无关", amountCents = 1250L),
-                // original foreign-leg 1250 minor match (home amount differs)
                 expense(id = 3, status = "confirmed", merchant = "无关", amountCents = 9900L)
-                    .copy(originalAmountMinor = 1250L),
-                // not 12.50 — must NOT match
+                    .copy(
+                        originalCurrencyCode = CurrencyCode.USD,
+                        originalAmountMinor = 1250L,
+                    ),
                 expense(id = 4, status = "confirmed", merchant = "无关", amountCents = 800L),
             ),
         )
         val vm = GlobalSearchViewModel(fake)
         advanceUntilIdle()
 
+        // A bare amount is the server-authoritative CNY home leg only.
+        vm.setQuery("12.50")
+        advanceUntilIdle()
+        assertEquals(setOf(1L, 2L), vm.uiState.value.results.map { it.expense.id }.toSet())
+
+        // A foreign original leg requires an explicit ISO code.
+        vm.setQuery("USD 12.50")
+        advanceUntilIdle()
+        assertEquals(setOf(3L), vm.uiState.value.results.map { it.expense.id }.toSet())
+
+        // A shared symbol must never guess CNY versus JPY.
         vm.setQuery("¥12.50")
         advanceUntilIdle()
+        assertTrue(vm.uiState.value.results.isEmpty())
+    }
 
-        val ids = vm.uiState.value.results.map { it.expense.id }.toSet()
-        assertEquals(setOf(1L, 2L, 3L), ids)
+    @Test
+    fun bareJpySearchUsesZeroDecimalHomeExponent() = searchTest {
+        val fake = FakeGlobalSearchActions(
+            confirmed = listOf(
+                expense(id = 5, status = "confirmed", merchant = "无关", amountCents = 1_200L)
+                    .copy(
+                        homeAmountCents = 1_200L,
+                        homeCurrency = CurrencyCode.JPY,
+                    ),
+            ),
+        ).apply {
+            currentHomeCurrency = CurrencyCode.JPY
+        }
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("1200")
+        advanceUntilIdle()
+        assertEquals(listOf(5L), vm.uiState.value.results.map { it.expense.id })
+
+        vm.setQuery("1200.0")
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.results.isEmpty())
     }
 
     @Test

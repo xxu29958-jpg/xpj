@@ -37,6 +37,7 @@ internal class ExpenseLedgerRepositoryActions(
         tag: String?,
     ): Result<List<Expense>> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
+        val homeCurrency = core.currentHomeCurrency()
         core.syncConfirmedFromService(
             service = bound.service,
             request = ConfirmedSyncRequest(
@@ -81,13 +82,14 @@ internal class ExpenseLedgerRepositoryActions(
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = core.errorHandler.safeCall {
         require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
         val bound = core.ledgerRequestGuard.bind()
+        val homeCurrency = core.currentHomeCurrency()
         val outbox = core.outbox
         val adapter = core.manualCreateAdapter
         if (outbox == null || adapter == null) {
             // No offline wiring (pre-slice-4 tests) — direct-only create with no
             // client_ref; any failure surfaces as Result.failure.
             val created = core.cacheIfConfirmed(
-                bound.call { it.createManualExpense(draft.toManualCreateRequest()) },
+                bound.call { it.createManualExpense(draft.toManualCreateRequest(homeCurrency)) },
                 bound.ledgerId,
             )
             return@safeCall created.toDomain()
@@ -100,7 +102,11 @@ internal class ExpenseLedgerRepositoryActions(
         val clientRef = UUID.randomUUID().toString()
         try {
             val created = core.cacheIfConfirmed(
-                bound.call { it.createManualExpense(draft.toManualCreateRequest(clientRef = clientRef)) },
+                bound.call {
+                    it.createManualExpense(
+                        draft.toManualCreateRequest(homeCurrency, clientRef = clientRef),
+                    )
+                },
                 bound.ledgerId,
             )
             created.toDomain()

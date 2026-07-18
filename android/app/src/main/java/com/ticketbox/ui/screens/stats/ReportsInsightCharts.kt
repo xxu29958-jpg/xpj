@@ -45,7 +45,6 @@ internal fun ReportsTrendFlowChart(points: List<ReportTrendChartPoint>) {
             StatsSpendChartPoint(label = point.label, amountCents = point.amountCents)
         }
     }
-    val visibleChartPoints = rememberSpendWindowChartPoints(points = chartPoints, maxWindows = 7)
     val trendA11yData = remember(points, currencyDisplay) { trendChartA11y(points, currencyDisplay) }
     val trendA11y = if (trendA11yData.zeroBuckets > 0) {
         stringResource(R.string.stats_reports_chart_a11y_with_zeros, trendA11yData.listed, trendA11yData.zeroBuckets)
@@ -62,9 +61,10 @@ internal fun ReportsTrendFlowChart(points: List<ReportTrendChartPoint>) {
         if (summary.shouldUseDominanceBreakdown) {
             ReportsTrendDominanceBreakdown(summary = summary)
         } else {
-            StatsSpendTrendChart(
-                points = visibleChartPoints,
+            AdaptiveStatsSpendTrendChart(
+                points = chartPoints,
                 contentDescription = trendA11y,
+                maxWindows = 7,
             )
         }
     }

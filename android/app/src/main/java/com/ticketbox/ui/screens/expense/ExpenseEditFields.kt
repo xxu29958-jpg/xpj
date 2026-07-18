@@ -37,7 +37,6 @@ import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.AppTextHierarchy
 
 internal data class EditDraftPreviewState(
@@ -115,7 +114,6 @@ private fun EditDraftPreviewDetails(
     modifier: Modifier = Modifier,
 ) {
     val expense = state.expense
-    val currencyDisplay = LocalCurrencyDisplay.current
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -133,12 +131,15 @@ private fun EditDraftPreviewDetails(
         )
         AppAmountText(
             modifier = Modifier.fillMaxWidth(),
-            text = formatExpensePrimaryAmount(expense, currencyDisplay),
+            text = formatExpensePrimaryAmount(expense),
             color = MaterialTheme.colorScheme.onSurface,
             role = AppAmountRole.Medium,
             minFontSize = 18.sp,
         )
-        formatExpenseExchangeMeta(expense)?.let { meta ->
+        formatExpenseExchangeMeta(
+            expense = expense,
+            pendingRateLabel = stringResource(R.string.expense_exchange_rate_pending_label),
+        )?.let { meta ->
             Text(
                 text = meta,
                 style = MaterialTheme.typography.bodySmall,

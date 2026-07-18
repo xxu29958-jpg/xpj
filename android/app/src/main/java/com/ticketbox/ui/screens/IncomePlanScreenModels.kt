@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.viewmodel.IncomePlanLoadState
+import com.ticketbox.viewmodel.IncomePlanUiState
 
 internal enum class IncomePlanBodyState {
     Loading,
@@ -33,3 +34,6 @@ internal fun incomePlanInlineMessage(
 
 internal fun incomePlanShowsSummary(bodyState: IncomePlanBodyState): Boolean =
     bodyState == IncomePlanBodyState.Content || bodyState == IncomePlanBodyState.Empty
+
+internal fun incomePlanSubmitEnabled(state: IncomePlanUiState): Boolean =
+    !state.isSubmitting && state.addDraft.isValid

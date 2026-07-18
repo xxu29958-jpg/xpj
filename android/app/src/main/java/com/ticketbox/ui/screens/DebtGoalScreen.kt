@@ -56,7 +56,7 @@ private const val DebtGoalFlashDismissMillis = 4000L
 /**
  * ADR-0049 §6 (slice 7) 还债目标：列表 → 详情（同一 overlay 内）。详情展示评估状态 +
  * 关联欠款（未结清 / 已结清 / 已作废），并在 needs_review 时给出 §6/F13 复核两出口
- * （移除作废欠款 / 保留存档）。本切片只读 + 复核，创建还债目标随后续债务管理界面落地。
+ * （移除作废欠款 / 保留存档），并可在详情中完整替换关联欠款集合。
  *
  * 复用共享骨架（[AppScrollableContent] + secondary header +
  * [AppStatusBanner]），三端 token 同步走 MaterialTheme + AppSpacing。屏接 VM（与
@@ -73,7 +73,11 @@ fun DebtGoalScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val handleBack = {
-        if (state.selectedGoal != null) viewModel.closeDetail() else onBack()
+        when {
+            state.linkEditorOpen -> viewModel.linkEditor.close()
+            state.selectedGoal != null -> viewModel.closeDetail()
+            else -> onBack()
+        }
     }
 
     LaunchedEffect(state.flashMessage) {
@@ -121,6 +125,15 @@ private fun DebtGoalScreenBody(
     callbacks: DebtGoalScreenBodyCallbacks,
 ) {
     val selected = state.selectedGoal
+    if (state.linkEditorOpen) {
+        DebtGoalLinkEditorScreen(
+            state = state,
+            currency = currency,
+            viewModel = viewModel,
+            onBack = callbacks.handleBack,
+        )
+        return
+    }
     val createAction: (@Composable () -> Unit)? =
         if (selected == null && state.canModify) {
             {
@@ -364,6 +377,12 @@ private fun LazyListScope.debtGoalDetailSection(
             title = stringResource(R.string.debt_goal_detail_links_title),
             subtitle = stringResource(R.string.debt_goal_detail_links_subtitle),
         ) {
+            if (state.canModify) {
+                DebtGoalLinkEditAction(
+                    enabled = !state.isSubmitting,
+                    onClick = viewModel.linkEditor::open,
+                )
+            }
             if (isPureExternal) {
                 DebtPlanSortToggle(mode = callbacks.sortMode, onModeChange = callbacks.onSortModeChange)
             }
@@ -378,6 +397,19 @@ private fun LazyListScope.debtGoalDetailSection(
             onClick = onOpenLinkedDebt,
             showDivider = index < links.lastIndex,
         )
+    }
+}
+
+@Composable
+private fun DebtGoalLinkEditAction(enabled: Boolean, onClick: () -> Unit) {
+    AppAdaptiveTrailingActionRow { actionModifier ->
+        OutlinedButton(
+            modifier = actionModifier,
+            onClick = onClick,
+            enabled = enabled,
+        ) {
+            Text(stringResource(R.string.debt_goal_link_editor_action))
+        }
     }
 }
 
@@ -487,7 +519,8 @@ private fun DebtGoalIntegrityActions(
         }
         // not_evaluable with a non-voided link to keep: link-replace removes the voided one.
         canRemoveVoided -> AppAdaptiveTrailingActionRow { actionModifier -> removeAction(actionModifier) }
-        // every link voided: no valid replacement set + no Debt picker this slice → archive.
+        // Every link voided: archive is the direct review-card exit; the link section also
+        // exposes the full picker when the user wants to repair the goal instead.
         else -> AppAdaptiveTrailingActionRow { actionModifier -> archiveAction(actionModifier) }
     }
 }

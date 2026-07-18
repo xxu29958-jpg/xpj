@@ -79,7 +79,7 @@ class ExpenseMappersTest {
             tags = null,
             valueScore = null,
             regretScore = null,
-        ).toManualCreateRequest()
+        ).toManualCreateRequest(CurrencyCode.CNY)
 
         assertEquals("JPY", request.originalCurrency)
         assertEquals("1200", request.originalAmount)
@@ -231,7 +231,7 @@ class ExpenseMappersTest {
 
     @Test
     fun categoryOnlyDraftDoesNotSubmitSyntheticCurrencyFields() {
-        val request = ExpenseDraft(
+        val draft = ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = null,
             originalAmountMinor = null,
@@ -242,11 +242,24 @@ class ExpenseMappersTest {
             tags = null,
             valueScore = null,
             regretScore = null,
-        ).toManualCreateRequest()
+        )
+        val request = draft.toManualCreateRequest(CurrencyCode.CNY)
 
         assertEquals(null, request.originalCurrency)
         assertEquals(null, request.originalAmount)
         assertEquals("交通", request.category)
+
+        val cnyHomeRequest = draft.copy(amountCents = 1).toManualCreateRequest(CurrencyCode.CNY)
+        assertEquals("CNY", cnyHomeRequest.originalCurrency)
+        assertEquals("0.01", cnyHomeRequest.originalAmount)
+
+        val jpyHomeRequest = draft.copy(amountCents = 1200).toManualCreateRequest(CurrencyCode.JPY)
+        assertEquals("JPY", jpyHomeRequest.originalCurrency)
+        assertEquals("1200", jpyHomeRequest.originalAmount)
+
+        val krwHomeRequest = draft.copy(amountCents = 1200).toManualCreateRequest(CurrencyCode.KRW)
+        assertEquals("KRW", krwHomeRequest.originalCurrency)
+        assertEquals("1200", krwHomeRequest.originalAmount)
     }
 
     @Test

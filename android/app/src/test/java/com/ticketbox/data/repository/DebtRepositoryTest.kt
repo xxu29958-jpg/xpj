@@ -17,6 +17,11 @@ import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentCreateResponseDto
+import com.ticketbox.data.remote.dto.RepaymentFactDto
+import com.ticketbox.data.remote.dto.RepaymentFactListResponseDto
+import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentVoidFactDto
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
@@ -51,6 +56,44 @@ class DebtRepositoryTest {
         assertEquals("d1", debts.single().publicId)
         assertEquals(4_200L, debts.single().remainingAmountCents)
         assertTrue(debts.single().isExternal)
+    }
+
+    @Test
+    fun listPayablesUsesViewerPersonalEndpoint() = runTest {
+        val handler = DebtApiHandler().apply {
+            debtsResult = DebtListResponseDto(items = listOf(debtDto(publicId = "raw-ledger-row")))
+            payablesResult = DebtListResponseDto(items = listOf(debtDto(publicId = "viewer-payable")))
+        }
+
+        val payables = repository(handler).listPayables().getOrThrow()
+
+        assertEquals(listOf("viewer-payable"), payables.map { it.publicId })
+    }
+
+    @Test
+    fun listRepaymentFactsIsBoundedViewerReadableAndPreservesVoidAudit() = runTest {
+        val handler = DebtApiHandler().apply {
+            repaymentFactsResult = repaymentHistoryDto(page = 3)
+        }
+
+        val history = repository(handler, viewerSettingsStore())
+            .listRepaymentFacts("d1", page = 3)
+            .getOrThrow()
+
+        val call = handler.repaymentHistoryCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals(3, call.page)
+        assertEquals(50, call.pageSize)
+        assertEquals("d1", history.debtPublicId)
+        assertEquals(
+            listOf("repayment-active", "repayment-voided"),
+            history.items.map { it.publicId },
+        )
+        assertTrue(history.items.first().isActive)
+        val voided = history.items.last()
+        assertTrue(voided.isVoided)
+        assertEquals("重复记了一次", voided.voidFact?.reason)
+        assertEquals("2026-07-18T01:05:00Z", voided.voidFact?.createdAt)
     }
 
     @Test
@@ -192,13 +235,25 @@ class DebtRepositoryTest {
         assertEquals(1_200L, debt.remainingAmountCents)
     }
 
-    // ── ADR-0049 ⑤c (slice ⑤c-2) cross-ledger receivables ──────────────────
+    // ── Viewer-personal same-ledger + cross-ledger receivables ─────────────
 
     @Test
-    fun listReceivablesMapsCrossLedgerMemberRows() = runTest {
+    fun listReceivablesMapsMixedPersonalRows() = runTest {
         val handler = DebtApiHandler().apply {
             receivablesResult = DebtListResponseDto(
                 items = listOf(
+                    debtDto(publicId = "external-local", remaining = 8_000L).copy(
+                        direction = DebtDirections.OWED_TO_ME,
+                        counterpartyLabel = "阿禾",
+                    ),
+                    debtDto(publicId = "member-local", remaining = 7_000L).copy(
+                        direction = DebtDirections.OWED_TO_ME,
+                        counterpartyType = DebtCounterpartyTypes.MEMBER,
+                        counterpartyAccountId = 8L,
+                        counterpartyLabel = "小李",
+                        sourceType = DebtSourceTypes.BILL_SPLIT,
+                        viewerIsDebtor = false,
+                    ),
                     debtDto(publicId = "r1", remaining = 6_000L).copy(
                         counterpartyType = DebtCounterpartyTypes.MEMBER,
                         counterpartyAccountId = 7L,
@@ -213,12 +268,15 @@ class DebtRepositoryTest {
 
         val receivables = repository(handler).listReceivables().getOrThrow()
 
-        assertEquals(1, receivables.size)
-        val row = receivables.single()
+        assertEquals(
+            listOf("external-local", "member-local", "r1"),
+            receivables.map { it.publicId },
+        )
+        assertTrue(receivables.first().isExternal)
+        assertEquals("owner", receivables.first().ledgerId)
+        val row = receivables.last()
         assertEquals("r1", row.publicId)
         assertEquals(6_000L, row.remainingAmountCents)
-        // ⑤c contract: every row is a member receivable on the creditor side, ledger redacted (§5.2),
-        // counterparty_label = the debtor's name.
         assertTrue(row.isMember)
         assertEquals(false, row.viewerIsDebtor)
         assertNull(row.ledgerId)
@@ -244,9 +302,15 @@ class DebtRepositoryTest {
 
     @Test
     fun recordRepaymentSendsAmountVersionKeyAndRefolds() = runTest {
-        val handler = DebtApiHandler().apply { writeResult = debtDto(publicId = "d1", remaining = 40_000L) }
+        val handler = DebtApiHandler().apply {
+            repaymentResult = repaymentResponseDto(
+                publicId = "d1",
+                repaymentPublicId = "repayment-7",
+                remaining = 40_000L,
+            )
+        }
 
-        val updated = repository(handler).recordRepayment(
+        val recorded = repository(handler).recordRepayment(
             publicId = "d1",
             expectedRowVersion = 3L,
             amountCents = 10_000L,
@@ -257,8 +321,10 @@ class DebtRepositoryTest {
         assertEquals(10_000L, call.request.amountCents)
         assertEquals(3L, call.request.expectedRowVersion)
         assertTrue(!call.idempotencyKey.isNullOrBlank())
-        // The fold-after Debt from the response is swapped in (remaining dropped to 40_000).
-        assertEquals(40_000L, updated.remainingAmountCents)
+        assertEquals("repayment-7", recorded.publicId)
+        assertEquals(10_000L, recorded.amountCents)
+        // The fold-after Debt from the response is preserved beside the repayment fact id.
+        assertEquals(40_000L, recorded.debt.remainingAmountCents)
     }
 
     @Test
@@ -294,6 +360,50 @@ class DebtRepositoryTest {
         val keys = handler.repaymentCalls.mapNotNull { it.idempotencyKey }
         assertEquals(2, keys.size)
         assertEquals(2, keys.toSet().size)
+    }
+
+    @Test
+    fun voidRepaymentSendsFactIdTrimmedReasonCurrentVersionAndKey() = runTest {
+        val handler = DebtApiHandler().apply {
+            writeResult = debtDto(publicId = "d1", remaining = 50_000L).copy(rowVersion = 5L)
+        }
+
+        val updated = repository(handler).voidRepayment(
+            publicId = "d1",
+            repaymentPublicId = "repayment-7",
+            expectedRowVersion = 4L,
+            reason = "  金额记错了  ",
+        ).getOrThrow()
+
+        val call = handler.repaymentVoidCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals("repayment-7", call.request.repaymentPublicId)
+        assertEquals("金额记错了", call.request.reason)
+        assertEquals(4L, call.request.expectedRowVersion)
+        assertTrue(!call.idempotencyKey.isNullOrBlank())
+        assertEquals(5L, updated.rowVersion)
+    }
+
+    @Test
+    fun voidRepaymentRejectsBlankReasonBeforeApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler).voidRepayment("d1", "repayment-7", 4L, "   ")
+
+        assertTrue(result.isFailure)
+        assertTrue(handler.repaymentVoidCalls.isEmpty())
+    }
+
+    @Test
+    fun voidRepaymentViewerShortCircuitsWithoutApiCall() = runTest {
+        val handler = DebtApiHandler()
+
+        val result = repository(handler, viewerSettingsStore())
+            .voidRepayment("d1", "repayment-7", 4L, "记错了")
+
+        assertTrue(result.isFailure)
+        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertTrue(handler.repaymentVoidCalls.isEmpty())
     }
 
     @Test
@@ -708,12 +818,69 @@ private fun debtDto(
     isForgiven = isForgiven,
 )
 
+private fun repaymentResponseDto(
+    publicId: String,
+    repaymentPublicId: String,
+    remaining: Long,
+): RepaymentCreateResponseDto = RepaymentCreateResponseDto(
+    publicId = publicId,
+    ledgerId = "owner",
+    direction = DebtDirections.I_OWE,
+    counterpartyType = DebtCounterpartyTypes.EXTERNAL,
+    counterpartyLabel = "房东",
+    principalAmountCents = 50_000L,
+    remainingAmountCents = remaining,
+    paidAmountCents = 50_000L - remaining,
+    status = DebtLinkStatuses.OPEN,
+    sourceType = DebtSourceTypes.MANUAL,
+    homeCurrencyCode = "CNY",
+    createdAt = "2026-06-15T00:00:00Z",
+    updatedAt = "2026-06-15T00:01:00Z",
+    rowVersion = 2L,
+    repaymentPublicId = repaymentPublicId,
+)
+
+private fun repaymentHistoryDto(page: Int = 1): RepaymentFactListResponseDto = RepaymentFactListResponseDto(
+    debtPublicId = "d1",
+    homeCurrencyCode = "CNY",
+    items = listOf(
+        RepaymentFactDto(
+            publicId = "repayment-active",
+            amountCents = 10_000L,
+            paidAt = "2026-07-18T02:00:00Z",
+            createdAt = "2026-07-18T02:00:01Z",
+            status = "active",
+        ),
+        RepaymentFactDto(
+            publicId = "repayment-voided",
+            amountCents = 3_000L,
+            paidAt = "2026-07-18T01:00:00Z",
+            createdAt = "2026-07-18T01:00:01Z",
+            status = "voided",
+            voidFact = RepaymentVoidFactDto(
+                publicId = "void-1",
+                reason = "重复记了一次",
+                createdAt = "2026-07-18T01:05:00Z",
+            ),
+        ),
+    ),
+    page = page,
+    pageSize = 50,
+    total = 2,
+)
+
 private class DebtApiFactory(private val handler: DebtApiHandler) : ApiServiceFactory {
     override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = handler.service()
 }
 
 private data class CreateDebtCall(val request: DebtCreateRequestDto, val idempotencyKey: String?)
 private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
+private data class RepaymentHistoryCall(val publicId: String, val page: Int, val pageSize: Int)
+private data class RepaymentVoidCall(
+    val publicId: String,
+    val request: RepaymentVoidCreateRequestDto,
+    val idempotencyKey: String?,
+)
 private data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)
 private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
 private data class SetKindCall(val publicId: String, val request: DebtKindSetRequestDto, val idempotencyKey: String?)
@@ -748,6 +915,8 @@ private class DebtApiHandler : InvocationHandler {
     val createCalls = mutableListOf<CreateDebtCall>()
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
     val repaymentCalls = mutableListOf<RepaymentCall>()
+    val repaymentHistoryCalls = mutableListOf<RepaymentHistoryCall>()
+    val repaymentVoidCalls = mutableListOf<RepaymentVoidCall>()
     val adjustmentCalls = mutableListOf<AdjustmentCall>()
     val voidCalls = mutableListOf<VoidCall>()
     // ADR-0049 §7.0 / 8e-6e debt_kind correction-setter route recording.
@@ -763,13 +932,17 @@ private class DebtApiHandler : InvocationHandler {
     var forgiveResult: DebtDto? = null
     var debtsResult: DebtListResponseDto? = null
     var debtsError: Throwable? = null
-    // ADR-0049 ⑤c (slice ⑤c-2) cross-ledger receivables read.
+    var payablesResult: DebtListResponseDto? = null
+    var payablesError: Throwable? = null
+    // Viewer-personal same-ledger + cross-ledger receivables read.
     var receivablesResult: DebtListResponseDto? = null
     var receivablesError: Throwable? = null
     var parseBillResult: DebtBillParseResponseDto? = null
     // Fold-after Debt returned by getDebt / the write routes (defaults to a fresh sample).
     var debtResult: DebtDto? = null
     var writeResult: DebtDto? = null
+    var repaymentResult: RepaymentCreateResponseDto? = null
+    var repaymentFactsResult: RepaymentFactListResponseDto? = null
     var proposalsResult: MemberRepaymentProposalListResponseDto? = null
     var proposalResult: MemberRepaymentProposalDto? = null
     // Fold-after Debt returned by the confirm route (a DebtResponse, like the slice-2 fact writes).
@@ -780,6 +953,22 @@ private class DebtApiHandler : InvocationHandler {
         arrayOf(ApiService::class.java),
         this,
     ) as ApiService
+
+    private fun debtListResult(methodName: String): DebtListResponseDto? = when (methodName) {
+        "debts" -> {
+            debtsError?.let { throw it }
+            debtsResult ?: DebtListResponseDto(items = listOf(debtDto()))
+        }
+        "debtPayables" -> {
+            payablesError?.let { throw it }
+            payablesResult ?: DebtListResponseDto(items = listOf(debtDto()))
+        }
+        "debtReceivables" -> {
+            receivablesError?.let { throw it }
+            receivablesResult ?: DebtListResponseDto(items = listOf(debtDto()))
+        }
+        else -> null
+    }
 
     override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
         if (method.declaringClass == Any::class.java) {
@@ -792,16 +981,17 @@ private class DebtApiHandler : InvocationHandler {
         }
         // Suspend methods arrive with a trailing Continuation; real params are the leading ones.
         val values = args.orEmpty()
+        debtListResult(method.name)?.let { return it }
         return when (method.name) {
-            "debts" -> {
-                debtsError?.let { throw it }
-                debtsResult ?: DebtListResponseDto(items = listOf(debtDto()))
-            }
-            "debtReceivables" -> {
-                receivablesError?.let { throw it }
-                receivablesResult ?: DebtListResponseDto(items = listOf(debtDto()))
-            }
             "debt" -> debtResult ?: debtDto(publicId = values[0] as String)
+            "debtRepayments" -> {
+                repaymentHistoryCalls += RepaymentHistoryCall(
+                    publicId = values[0] as String,
+                    page = values[1] as Int,
+                    pageSize = values[2] as Int,
+                )
+                repaymentFactsResult ?: repaymentHistoryDto()
+            }
             "createDebt" -> {
                 createCalls += CreateDebtCall(
                     request = values[0] as DebtCreateRequestDto,
@@ -812,14 +1002,6 @@ private class DebtApiHandler : InvocationHandler {
             "parseDebtBill" -> {
                 parseBillCalls += values[0] as MultipartBody.Part
                 parseBillResult ?: DebtBillParseResponseDto()
-            }
-            "recordDebtRepayment" -> {
-                repaymentCalls += RepaymentCall(
-                    publicId = values[0] as String,
-                    request = values[1] as RepaymentCreateRequestDto,
-                    idempotencyKey = values[2] as String?,
-                )
-                writeResult ?: debtDto(publicId = values[0] as String)
             }
             "recordDebtAdjustment" -> {
                 adjustmentCalls += AdjustmentCall(
@@ -885,6 +1067,26 @@ private class DebtApiHandler : InvocationHandler {
     }
 
     private fun debtFactWriteCall(name: String, values: Array<out Any?>): Any? = when (name) {
+        "recordDebtRepayment" -> {
+            repaymentCalls += RepaymentCall(
+                publicId = values[0] as String,
+                request = values[1] as RepaymentCreateRequestDto,
+                idempotencyKey = values[2] as String?,
+            )
+            repaymentResult ?: repaymentResponseDto(
+                publicId = values[0] as String,
+                repaymentPublicId = "repayment-default",
+                remaining = 30_000L,
+            )
+        }
+        "voidDebtRepayment" -> {
+            repaymentVoidCalls += RepaymentVoidCall(
+                publicId = values[0] as String,
+                request = values[1] as RepaymentVoidCreateRequestDto,
+                idempotencyKey = values[2] as String?,
+            )
+            writeResult ?: debtDto(publicId = values[0] as String)
+        }
         "forgiveDebt" -> {
             forgiveCalls += ForgiveCall(
                 publicId = values[0] as String,

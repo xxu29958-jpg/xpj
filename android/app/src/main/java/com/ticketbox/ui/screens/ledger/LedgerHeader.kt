@@ -1,234 +1,90 @@
 package com.ticketbox.ui.screens.ledger
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.formatAmount
-import com.ticketbox.ui.design.AppAmountRole
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.LocalCurrencyCode
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.LedgerUiState
 
-private object LedgerHeaderLayout {
-    val KpiStackBreakpoint = 320.dp
-}
-
+/**
+ * Compact ledger header: one product identity row and one factual summary row.
+ * The transaction register remains the visual center of the screen.
+ */
 @Composable
 internal fun LedgerHeader(
     state: LedgerUiState,
-    onManualAdd: () -> Unit,
 ) {
     val summary = state.summary
-    val statusEvidence = ledgerSyncEvidence(state)
-    val statusText = ledgerHeaderStatusText(state, statusEvidence)
-    Column(
+    val statusText = ledgerHeaderStatusText(state, ledgerSyncEvidence(state))
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = AppSpacing.smallGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            .padding(vertical = AppSpacing.miniGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(
-                    text = stringResource(R.string.ledger_header_eyebrow),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = AppTextHierarchy.body.weight,
-                )
-                Text(
-                    text = stringResource(R.string.ledger_header_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                    maxLines = 1,
-                )
-            }
-            LedgerStatusPill(text = statusText, active = statusEvidence == LedgerSyncEvidence.Refreshing)
-        }
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val stackKpis = maxWidth < LedgerHeaderLayout.KpiStackBreakpoint
-            if (stackKpis) {
-                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                    LedgerKpiCell(
-                        label = stringResource(R.string.ledger_header_total_current_list),
-                        value = formatAmount(summary.totalAmountCents),
-                        modifier = Modifier.fillMaxWidth(),
-                        emphasized = true,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                        verticalAlignment = Alignment.Bottom,
-                    ) {
-                        LedgerKpiCell(
-                            label = stringResource(R.string.ledger_header_count_label),
-                            value = stringResource(R.string.ledger_header_count_value, summary.itemCount),
-                            modifier = Modifier.weight(1f),
-                        )
-                        LedgerAddButton(readOnly = state.readOnly, onManualAdd = onManualAdd)
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                    verticalAlignment = Alignment.Bottom,
-                ) {
-                    LedgerKpiCell(
-                        label = stringResource(R.string.ledger_header_total_current_list),
-                        value = formatAmount(summary.totalAmountCents),
-                        modifier = Modifier.weight(1.35f),
-                        emphasized = true,
-                    )
-                    LedgerKpiCell(
-                        label = stringResource(R.string.ledger_header_count_label),
-                        value = stringResource(R.string.ledger_header_count_value, summary.itemCount),
-                        modifier = Modifier.weight(0.78f),
-                    )
-                    LedgerAddButton(readOnly = state.readOnly, onManualAdd = onManualAdd)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ledgerHeaderStatusText(state: LedgerUiState, evidence: LedgerSyncEvidence): String {
-    return when (evidence) {
-        LedgerSyncEvidence.Refreshing -> stringResource(R.string.ledger_header_status_syncing)
-        LedgerSyncEvidence.BackendSynced -> state.lastSyncAt?.let {
-            stringResource(R.string.ledger_header_status_synced, ledgerSyncClock(it))
-        } ?: stringResource(R.string.components_data_authority_backend_title)
-        LedgerSyncEvidence.LocalCache -> stringResource(R.string.ledger_header_status_offline)
-    }
-}
-
-@Composable
-private fun LedgerAddButton(readOnly: Boolean, onManualAdd: () -> Unit) {
-    if (readOnly) return
-    Button(
-        modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
-        onClick = onManualAdd,
-        contentPadding = PaddingValues(horizontal = AppSpacing.cardPaddingTight, vertical = 0.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ),
-    ) {
-        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
-        Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
-        Text(stringResource(R.string.ledger_header_add_button))
-    }
-}
-
-@Composable
-private fun LedgerKpiCell(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-    emphasized: Boolean = false,
-) {
-    Column(
-        modifier = modifier
-            .padding(vertical = AppSpacing.smallGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (emphasized) {
-            AppAmountText(
-                modifier = Modifier.fillMaxWidth(),
-                text = value,
-                color = MaterialTheme.colorScheme.onSurface,
-                role = AppAmountRole.Medium,
-                minFontSize = 16.sp,
-            )
-        } else {
             Text(
-                text = value,
+                text = stringResource(R.string.ledger_header_title),
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleMedium.tabularNum(),
-                fontWeight = AppTextHierarchy.heading.weight,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = statusText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        ) {
+            Text(
+                text = formatAmount(summary.totalAmountCents, LocalCurrencyCode.current),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                ).tabularNum(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(R.string.ledger_header_count_value, summary.itemCount),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall.tabularNum(),
+            )
+        }
     }
 }
 
 @Composable
-private fun LedgerStatusPill(text: String, active: Boolean) {
-    val visuals = LocalThemeVisuals.current
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(AppRadius.pill))
-            .background(
-                if (active) {
-                    visuals.primary.copy(alpha = 0.14f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
-                },
-            )
-            .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.smallGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Sync,
-            contentDescription = null,
-            tint = if (active) visuals.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(14.dp),
-        )
-        Text(
-            text = text,
-            color = if (active) visuals.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+private fun ledgerHeaderStatusText(
+    state: LedgerUiState,
+    evidence: LedgerSyncEvidence,
+): String = when (evidence) {
+    LedgerSyncEvidence.Refreshing -> stringResource(R.string.ledger_header_status_syncing)
+    LedgerSyncEvidence.BackendSynced -> state.lastSyncAt?.let {
+        stringResource(R.string.ledger_header_status_synced, ledgerSyncClock(it))
+    } ?: stringResource(R.string.components_data_authority_backend_title)
+    LedgerSyncEvidence.LocalCache -> stringResource(R.string.ledger_header_status_offline)
 }

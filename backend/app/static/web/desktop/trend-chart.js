@@ -14,14 +14,19 @@
     const chart = echarts.init(el, null, { renderer: "canvas" });
     function build() {
       const labels = series.map(function (s) { return s.month.slice(5) + "月"; });
-      const amounts = series.map(function (s) { return Math.round(s.amount_yuan); });
-      const budgets = series.map(function (s) { return Math.round(s.budget_yuan); });
+      const amounts = series.map(function (s) {
+        return Number(s.amount_major == null ? s.amount_yuan : s.amount_major) || 0;
+      });
+      const budgets = series.map(function (s) {
+        return Number(s.budget_major == null ? s.budget_yuan : s.budget_major) || 0;
+      });
       const ink = app.readVar("--text-default");
       const ink3 = app.readVar("--text-meta");
       const ink4 = app.readVar("--text-faint");
       const accent = app.readVar("--brand-primary");
       const hairline = app.readVar("--border-card");
       return {
+        aria: { enabled: true },
         animation: false,
         grid: { left: 12, right: 12, top: 16, bottom: 28, containLabel: true },
         tooltip: {
@@ -38,7 +43,7 @@
                 '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' +
                 p.color + ';margin-right:6px;vertical-align:1px"></span>' + p.seriesName + "</span>" +
                 '<b style="font-variant-numeric:tabular-nums">' +
-                app.homeMoney((p.value || 0).toLocaleString()) + "</b></div>";
+                app.homeMoneyMajor(p.value || 0) + "</b></div>";
             }).join("");
           },
         },
@@ -57,7 +62,7 @@
           splitLine: { lineStyle: { color: hairline } },
           axisLabel: {
             color: ink4, fontFamily: "Inter", fontSize: 11,
-            formatter: function (v) { return v >= 1000 ? (v / 1000) + "k" : v; },
+            formatter: function (v) { return app.homeCompactMoneyMajor(v); },
           },
         },
         series: [

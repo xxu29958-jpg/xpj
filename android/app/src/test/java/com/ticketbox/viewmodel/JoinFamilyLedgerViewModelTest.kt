@@ -65,6 +65,7 @@ class JoinFamilyLedgerViewModelTest {
                     ledgerName = "家庭账本",
                     deviceName = "Pixel 9",
                     role = "member",
+                    homeCurrencyCode = "CNY",
                 ),
             ))
             val (viewModel, store, tokenStore) = unboundHarness(api)

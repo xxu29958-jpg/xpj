@@ -21,6 +21,7 @@ fun TagManagementScreen(
     readOnly: Boolean,
     onBack: () -> Unit,
     onTagsChanged: () -> Unit = {},
+    chrome: ManagementPageChrome = ManagementPageChrome(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var renaming by remember { mutableStateOf<ManagedTag?>(null) }
@@ -91,6 +92,7 @@ fun TagManagementScreen(
             onUndo = viewModel::undo,
             onDismissUndo = viewModel::dismissUndo,
         ),
+        chrome = chrome,
     )
 }
 
@@ -106,6 +108,7 @@ private fun TagManagementPageContent(
     state: TagManagementUiState,
     readOnly: Boolean,
     actions: TagManagementPageActions,
+    chrome: ManagementPageChrome,
 ) {
     val bodyState = remember(state.tags, state.loading, state.loadFailed) {
         tagManagementBodyState(
@@ -114,9 +117,12 @@ private fun TagManagementPageContent(
             loadFailed = state.loadFailed,
         )
     }
-    SettingsPageFrame(
-        title = stringResource(R.string.tag_management_page_title),
-        subtitle = tagSummary(state.tags, bodyState),
+    ManagementPageFrame(
+        header = ManagementPageHeader(
+            title = stringResource(R.string.tag_management_page_title),
+            subtitle = tagSummary(state.tags, bodyState),
+            chrome = chrome,
+        ),
         onBack = actions.onBack,
         status = {
             if (bodyState != TagManagementBodyState.LoadFailed) {
@@ -138,7 +144,7 @@ private fun TagManagementPageContent(
             )
         }
         if (bodyState == TagManagementBodyState.Content || bodyState == TagManagementBodyState.Empty) {
-            TagOverviewSection(tags = state.tags)
+            TagSemanticsNote()
         }
         TagListSection(
             state = TagListState(

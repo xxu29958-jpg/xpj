@@ -12,6 +12,7 @@ from app.routes._web_expense_helpers import (
     _edit_page_or_flash_redirect,
     item_replace_payload,
 )
+from app.routes._web_expense_return_context import edit_context_params
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -21,6 +22,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
 )
 from app.schemas import ExpenseItemReplaceRequest
+from app.services.expense_service import get_expense
 from app.services.receipt_item_service import (
     acknowledge_items_sum_mismatch,
     replace_expense_items,
@@ -41,6 +43,11 @@ def web_items_save(
     item_category: list[str] = Form(default=[]),
     expected_row_version: str = Form(default=""),
     ledger_id: str = Form(default=""),
+    return_to: str = Form(default=""),
+    return_month: str = Form(default=""),
+    return_filter: str = Form(default=""),
+    return_page: str = Form(default=""),
+    return_tag: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -54,8 +61,10 @@ def web_items_save(
         error = "页面已过期，请刷新后重新保存明细。"
     try:
         if error is None:
+            expense = get_expense(db, expense_id, selected_id)
             payload = item_replace_payload(
                 expected_row_version=parsed_row_version,
+                currency_code=expense.home_currency_code,
                 item_name=item_name,
                 item_kind=item_kind,
                 item_quantity=item_quantity,
@@ -74,10 +83,27 @@ def web_items_save(
         # codex follow-up on audit P2 #6: the re-read shares the main form's
         # vanished-row guard (flash to /web/confirmed, mirroring the GET).
         return _edit_page_or_flash_redirect(
-            db, request, options, selected_id, expense_id, error,
-            "/web/confirmed", error_key="items_error",
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            error,
+            "/web/confirmed",
+            error_key="items_error",
         )
-    return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id, msg="明细已保存。")
+    return _web_redirect(
+        f"/web/expenses/{expense_id}/edit",
+        selected_id,
+        msg="明细已保存。",
+        **edit_context_params(
+            return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+        ),
+    )
 
 
 @router.post(
@@ -89,6 +115,11 @@ def web_items_acknowledge_mismatch(
     request: Request,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    return_to: str = Form(default=""),
+    return_month: str = Form(default=""),
+    return_filter: str = Form(default=""),
+    return_page: str = Form(default=""),
+    return_tag: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -102,24 +133,40 @@ def web_items_acknowledge_mismatch(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _edit_page_or_flash_redirect(
-            db, request, options, selected_id, expense_id,
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
             "页面已过期，请刷新后重新确认。",
-            "/web/confirmed", error_key="items_error",
+            "/web/confirmed",
+            error_key="items_error",
         )
     error: str | None = None
     try:
-        acknowledge_items_sum_mismatch(
-            db, expense_id, selected_id, expected_row_version=parsed
-        )
+        acknowledge_items_sum_mismatch(db, expense_id, selected_id, expected_row_version=parsed)
     except AppError as exc:
-        error = (
-            "账单已在其它端被修改，请刷新后重新确认。"
-            if exc.error == "state_conflict"
-            else exc.message
-        )
+        error = "账单已在其它端被修改，请刷新后重新确认。" if exc.error == "state_conflict" else exc.message
     if error is not None:
         return _edit_page_or_flash_redirect(
-            db, request, options, selected_id, expense_id, error,
-            "/web/confirmed", error_key="items_error",
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            error,
+            "/web/confirmed",
+            error_key="items_error",
         )
-    return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id, msg="已确认原小票如此。")
+    return _web_redirect(
+        f"/web/expenses/{expense_id}/edit",
+        selected_id,
+        msg="已确认原小票如此。",
+        **edit_context_params(
+            return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+        ),
+    )

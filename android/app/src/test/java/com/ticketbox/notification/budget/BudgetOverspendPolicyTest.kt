@@ -1,6 +1,7 @@
 package com.ticketbox.notification.budget
 
 import com.ticketbox.domain.model.BudgetMonthly
+import com.ticketbox.domain.model.CurrencyCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -13,7 +14,11 @@ class BudgetOverspendPolicyTest {
 
     @Test
     fun overspentConfiguredBudgetYieldsDecisionWithServerAmount() {
-        val decision = evaluateBudgetOverspend("ledger-1", budgetOf(overspentCents = 12_345L))
+        val decision = evaluateBudgetOverspend(
+            "ledger-1",
+            budgetOf(overspentCents = 12_345L),
+            CurrencyCode.CNY,
+        )
         assertEquals("v1:budget:ledger-1:2026-06", decision?.key)
         assertEquals("ledger-1", decision?.ledgerId)
         assertEquals("2026-06", decision?.month)
@@ -23,18 +28,24 @@ class BudgetOverspendPolicyTest {
     @Test
     fun unconfiguredBudgetYieldsNullEvenIfOverspentFieldIsPositive() {
         // 防御：未配置预算就没有超支概念——即使响应里 overspent 字段异常带值也不提醒。
-        assertNull(evaluateBudgetOverspend("ledger-1", budgetOf(configured = false, overspentCents = 500L)))
+        assertNull(
+            evaluateBudgetOverspend(
+                "ledger-1",
+                budgetOf(configured = false, overspentCents = 500L),
+                CurrencyCode.CNY,
+            ),
+        )
     }
 
     @Test
     fun zeroOverspendYieldsNull() {
-        assertNull(evaluateBudgetOverspend("ledger-1", budgetOf(overspentCents = 0L)))
+        assertNull(evaluateBudgetOverspend("ledger-1", budgetOf(overspentCents = 0L), CurrencyCode.CNY))
     }
 
     @Test
     fun negativeOverspendYieldsNull() {
         // 服务端口径 overspent = max(-remaining, 0) 不会为负；负值按防御处理不提醒。
-        assertNull(evaluateBudgetOverspend("ledger-1", budgetOf(overspentCents = -1L)))
+        assertNull(evaluateBudgetOverspend("ledger-1", budgetOf(overspentCents = -1L), CurrencyCode.CNY))
     }
 
     @Test

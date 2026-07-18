@@ -173,7 +173,6 @@ fun AppearanceScreen(
         }
         CurrencySection(
             currentCurrency = preferences.currentCurrency,
-            onCurrencyChange = actions.preferences.onCurrencyChange,
         )
         SettingsSection(title = stringResource(R.string.appearance_section_background_title), icon = Icons.Filled.Image) {
             SettingsOpenPanel(

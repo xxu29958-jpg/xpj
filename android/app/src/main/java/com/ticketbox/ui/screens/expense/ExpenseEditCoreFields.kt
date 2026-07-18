@@ -19,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseSourceValues
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
@@ -44,6 +43,12 @@ internal data class ExpenseCurrencyFieldOptions(
 )
 
 @Immutable
+internal data class ExpenseCurrencyFieldActions(
+    val onCurrencyChange: (CurrencyCode) -> Unit,
+    val onAmountChange: (String) -> Unit,
+)
+
+@Immutable
 internal data class ExpenseEditTextFieldState(
     val label: String,
     val value: String,
@@ -57,9 +62,9 @@ internal data class ExpenseEditTextFieldState(
 @Composable
 internal fun ExpenseCurrencyFields(
     currency: CurrencyCode,
-    onCurrencyChange: (CurrencyCode) -> Unit,
+    homeCurrency: CurrencyCode,
     amountText: String,
-    onAmountChange: (String) -> Unit,
+    actions: ExpenseCurrencyFieldActions,
     options: ExpenseCurrencyFieldOptions = ExpenseCurrencyFieldOptions(),
 ) {
     // The manual-entry sheet can opt into immediate amount entry, while existing
@@ -89,7 +94,7 @@ internal fun ExpenseCurrencyFields(
             ),
             actions = AppAmountInputActions(
                 onValueChange = { raw ->
-                    onAmountChange(sanitizeMinorAmountInput(raw, currency))
+                    actions.onAmountChange(sanitizeMinorAmountInput(raw))
                 },
                 onFocusChanged = { options.onAmountFocusChanged(it.isFocused) },
             ),
@@ -100,14 +105,15 @@ internal fun ExpenseCurrencyFields(
         )
         ExpenseCurrencySelector(
             currency = currency,
+            homeCurrency = homeCurrency,
             enabled = options.enabled,
             onCurrencySelect = { code ->
-                onCurrencyChange(code)
-                onAmountChange(sanitizeMinorAmountInput(amountText, code))
+                actions.onCurrencyChange(code)
+                actions.onAmountChange(sanitizeMinorAmountInput(amountText))
             },
         )
         options.statusText?.let { AmountStatusText(it) }
-        if (options.showFxHint && currency != FxContract.HomeCurrency) {
+        if (options.showFxHint && currency != homeCurrency) {
             Text(
                 text = stringResource(R.string.expense_edit_fx_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

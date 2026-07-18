@@ -50,6 +50,7 @@ import kotlinx.coroutines.delay
 fun MerchantAliasesScreen(
     state: MerchantAliasesScreenState,
     actions: MerchantAliasesScreenActions,
+    chrome: ManagementPageChrome = ManagementPageChrome(),
 ) {
     var catalogName by remember { mutableStateOf("") }
     var canonicalMerchant by remember { mutableStateOf("") }
@@ -137,9 +138,12 @@ fun MerchantAliasesScreen(
         )
     }
 
-    SettingsPageFrame(
-        title = stringResource(R.string.merchant_aliases_page_title),
-        subtitle = merchantAliasSummary(state.catalog, state.aliases),
+    ManagementPageFrame(
+        header = ManagementPageHeader(
+            title = stringResource(R.string.merchant_aliases_page_title),
+            subtitle = merchantAliasSummary(state.catalog, state.aliases),
+            chrome = chrome,
+        ),
         onBack = actions.onBack,
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {

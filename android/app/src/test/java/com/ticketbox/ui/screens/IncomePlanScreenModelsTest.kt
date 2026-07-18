@@ -1,7 +1,9 @@
 package com.ticketbox.ui.screens
 
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.viewmodel.IncomePlanDraftUi
 import com.ticketbox.viewmodel.IncomePlanLoadState
+import com.ticketbox.viewmodel.IncomePlanUiState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -39,5 +41,41 @@ class IncomePlanScreenModelsTest {
         assertEquals(error, incomePlanInlineMessage(IncomePlanBodyState.Empty, error))
         assertTrue(incomePlanShowsSummary(IncomePlanBodyState.Empty))
         assertFalse(incomePlanShowsSummary(IncomePlanBodyState.Loading))
+    }
+
+    @Test
+    fun addIncomeSaveRequiresNameAndAmountBeforeSubmit() {
+        assertFalse(incomePlanSubmitEnabled(IncomePlanUiState()))
+        assertFalse(
+            incomePlanSubmitEnabled(
+                IncomePlanUiState(addDraft = IncomePlanDraftUi(label = "工资")),
+            ),
+        )
+        assertFalse(
+            incomePlanSubmitEnabled(
+                IncomePlanUiState(addDraft = IncomePlanDraftUi(amountYuanInput = "8000")),
+            ),
+        )
+        assertTrue(
+            incomePlanSubmitEnabled(
+                IncomePlanUiState(
+                    addDraft = IncomePlanDraftUi(
+                        label = "工资",
+                        amountYuanInput = "8000",
+                    ),
+                ),
+            ),
+        )
+        assertFalse(
+            incomePlanSubmitEnabled(
+                IncomePlanUiState(
+                    addDraft = IncomePlanDraftUi(
+                        label = "工资",
+                        amountYuanInput = "8000",
+                    ),
+                    isSubmitting = true,
+                ),
+            ),
+        )
     }
 }

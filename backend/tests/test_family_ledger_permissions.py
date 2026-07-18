@@ -32,6 +32,7 @@ def _create_family_ledger(client: TestClient, name: str = "家庭账本", *, ide
 def _switch_to(client: TestClient, ledger_id: str, headers: dict[str, str]) -> str:
     resp = client.post(f"/api/ledgers/{ledger_id}/switch", headers=headers)
     assert resp.status_code == 200, resp.json()
+    assert resp.json()["ledger"]["home_currency_code"] == "CNY"
     return resp.json()["session_token"]
 
 
@@ -229,6 +230,7 @@ def test_accept_invitation_issues_app_token_and_membership(client: TestClient, *
         },
     )
     assert resp.status_code == 200, resp.json()
+    assert resp.json()["home_currency_code"] == "CNY"
     body = resp.json()
     assert body["role"] == "member"
     assert body["ledger_id"] == family_id

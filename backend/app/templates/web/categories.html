@@ -1,30 +1,88 @@
 {% extends "base.html" %}
-{% block title %}分类账本 — 小票夹{% endblock %}
+{% block title %}分类 — 小票夹{% endblock %}
 {% block content %}
-<h1 class="page-title page-title--compact">分类账本</h1>
-<p class="meta">
-  按分类汇总当月（{{ target_month }}）已确认账单，并展示各分类下未处理的待确认条数。
-  共 {{ rule_count }} 条<a href="/web/rules{{ q }}">分类规则</a>。
-  {% if uncategorized_pending %}
-  当前还有 <a href="/web/categories/uncategorized{{ q }}"><b>{{ uncategorized_pending }}</b> 条</a>未分类的待确认账单{% if can_write %}待整理{% else %}可查看{% endif %}。
-  {% endif %}
-</p>
+<nav class="detail-breadcrumb" aria-label="面包屑">
+  <a class="page-back-link" href="/web/library{{ q }}">资料库</a>
+  <span aria-hidden="true">/</span>
+  <span>分类</span>
+</nav>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">资料库 / 分类</span>
+    <h1 class="page-title page-title--compact">分类</h1>
+    <p class="product-page-summary">
+      汇总 {{ target_month }} 已确认流水，同时定位待整理的未分类记录。当前有 {{ rule_count }} 条分类规则。
+      {% if uncategorized_pending %}
+      另有 <a href="/web/categories/uncategorized{{ q }}">{{ uncategorized_pending }} 条未分类记录</a>。
+      {% endif %}
+    </p>
+  </div>
+</header>
 
 {% if flash_message %}
-<div class="dt-alert success">{{ flash_message }}</div>
+<div class="product-feedback product-feedback--success">{{ flash_message }}</div>
+{% endif %}
+{% if flash_error %}
+<div class="product-feedback product-feedback--error" role="alert">{{ flash_error }}</div>
 {% endif %}
 
-<section class="dt-card">
-  <h2>当月分类汇总</h2>
+<section class="product-panel product-panel--padded">
+  <div class="product-panel-header">
+    <div>
+      <div class="product-panel-title">自定义分类</div>
+      <div class="product-panel-subtitle">隐藏分类只影响今后的选项，历史流水不会改名或删除。</div>
+    </div>
+    <a class="product-button product-button--small" href="/web/recycle-bin{{ q }}">查看回收站</a>
+  </div>
+  {% if category_preferences %}
+  <div class="product-table-wrap">
+    <table class="product-table">
+      <thead><tr><th>分类</th><th class="num">历史使用</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for item in category_preferences %}
+        <tr>
+          <td><strong>{{ item.name }}</strong><div class="meta">自定义分类</div></td>
+          <td class="num">{{ item.usage_count }} 笔</td>
+          <td>
+          {% if can_write %}
+            <form method="post" action="/web/categories/preferences/{{ item.public_id }}/delete" class="product-inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+              <button type="submit" class="product-button product-button--small">隐藏分类</button>
+            </form>
+          {% else %}<span class="readonly-inline">只读</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="product-state">
+    <div class="product-state-title">还没有自定义分类</div>
+    <div class="product-state-body">在记账或整理流水时使用的新分类会出现在这里；默认分类始终保留。</div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="product-panel product-panel--padded">
+  <div class="product-panel-header">
+    <div>
+      <div class="product-panel-title">当月分类汇总</div>
+      <div class="product-panel-subtitle">金额、确认数量与待处理数量</div>
+    </div>
+  </div>
   <form method="get" action="/web/categories" class="form-inline">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <label>月份
       <input type="month" name="month" value="{{ target_month }}" aria-label="选择分类月份">
     </label>
-    <button type="submit" class="dt-btn">查询</button>
+    <button type="submit" class="product-button">查询</button>
   </form>
   {% if categories_rows %}
-  <table class="dt-table">
+  <div class="product-table-wrap">
+  <table class="product-table">
     <thead>
       <tr>
         <th>分类</th>
@@ -39,7 +97,7 @@
       <tr>
         <td>
           {{ row.category }}
-          {% if row.is_uncategorized %}<span class="dt-pill warn">未分类</span>{% endif %}
+          {% if row.is_uncategorized %}<span class="product-status product-status--warning">未分类</span>{% endif %}
         </td>
         <td class="num">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
         <td class="num">{{ row.confirmed_count }}</td>
@@ -55,6 +113,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <div class="meta">本月还没有已确认账单。</div>
   {% endif %}

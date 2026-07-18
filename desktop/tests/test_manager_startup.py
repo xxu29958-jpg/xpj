@@ -65,6 +65,12 @@ class FakeWindow:
         return True
 
 
+def _fake_bootstrap(path: Path) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("<!doctype html><title>bootstrap</title>", encoding="utf-8")
+    return path.as_uri()
+
+
 class FakeRuntime:
     def __init__(self) -> None:
         self.fail_start = False
@@ -105,8 +111,10 @@ class FakeRuntime:
 
 def test_window_session_gives_every_tracked_edge_process_its_own_profile(tmp_path: Path) -> None:
     profiles: list[Path] = []
+    urls: list[str] = []
 
-    def open_window(_url: str, *, profile: Path) -> FakeWindow:
+    def open_window(url: str, *, profile: Path) -> FakeWindow:
+        urls.append(url)
         profiles.append(profile)
         return FakeWindow()
 
@@ -115,6 +123,7 @@ def test_window_session_gives_every_tracked_edge_process_its_own_profile(tmp_pat
         "http://127.0.0.1:8799/",
         profile_root,
         opener=open_window,
+        bootstrapper=_fake_bootstrap,
     )
 
     assert windows.open() is True
@@ -123,7 +132,50 @@ def test_window_session_gives_every_tracked_edge_process_its_own_profile(tmp_pat
         profile_root / "window-0001",
         profile_root / "window-0002",
     ]
+    assert urls == [
+        (profile_root / "window-0001" / "bootstrap.html").as_uri(),
+        (profile_root / "window-0002" / "bootstrap.html").as_uri(),
+    ]
+    assert all("instance-secret" not in url for url in urls)
+    assert all("instance-secret" not in str(profile) for profile in profiles)
     assert windows.close_all() is True
+
+
+@pytest.mark.parametrize("failure_mode", ["none", "raise"])
+def test_window_session_cancels_bootstrap_when_edge_launch_fails(
+    tmp_path: Path,
+    failure_mode: str,
+) -> None:
+    cancelled: list[Path] = []
+
+    def open_window(_url: str, *, profile: Path):
+        assert (profile / "bootstrap.html").exists()
+        if failure_mode == "raise":
+            raise RuntimeError("synthetic Edge launch failure")
+        return None
+
+    def cancel(path: Path) -> None:
+        cancelled.append(path)
+        path.unlink()
+
+    profile_root = tmp_path / "edge-session"
+    windows = ManagerWindowSession(
+        "http://127.0.0.1:8799/",
+        profile_root,
+        opener=open_window,
+        bootstrapper=_fake_bootstrap,
+        bootstrap_canceller=cancel,
+    )
+
+    if failure_mode == "raise":
+        with pytest.raises(RuntimeError, match="synthetic Edge launch failure"):
+            windows.open()
+    else:
+        assert windows.open() is False
+
+    bootstrap_path = profile_root / "window-0001" / "bootstrap.html"
+    assert cancelled == [bootstrap_path]
+    assert not bootstrap_path.exists()
 
 
 def _config() -> ManagerConfig:
@@ -183,6 +235,12 @@ def test_control_server_binds_before_source_start_and_all_exits_close_owned_runt
 
         def server_close(self) -> None:
             events.append("control-close")
+
+        def prepare_web_bootstrap(self, path: Path) -> str:
+            return _fake_bootstrap(path)
+
+        def cancel_web_bootstrap(self, path: Path) -> None:
+            path.unlink(missing_ok=True)
 
     provider = Provider()
     monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: False)
@@ -505,6 +563,12 @@ def test_last_visible_window_closes_manager_host(monkeypatch) -> None:
         def server_close(self) -> None:
             events.append("server-close")
 
+        def prepare_web_bootstrap(self, path: Path) -> str:
+            return _fake_bootstrap(path)
+
+        def cancel_web_bootstrap(self, path: Path) -> None:
+            path.unlink(missing_ok=True)
+
     monkeypatch.setattr("backend_manager.manager_startup.ControlServer", Server)
     monkeypatch.setattr(
         "backend_manager.manager_startup.open_app_window",
@@ -541,6 +605,12 @@ def test_external_maintenance_closes_edge_before_manager_server(monkeypatch) -> 
 
         def server_close(self) -> None:
             events.append("server-close")
+
+        def prepare_web_bootstrap(self, path: Path) -> str:
+            return _fake_bootstrap(path)
+
+        def cancel_web_bootstrap(self, path: Path) -> None:
+            path.unlink(missing_ok=True)
 
     monkeypatch.setattr("backend_manager.manager_startup.ControlServer", Server)
     monkeypatch.setattr(
@@ -582,6 +652,12 @@ def test_foreign_user_port_squatter_falls_back_without_opening_attacker_ui(monke
         def server_close(self) -> None:
             pass
 
+        def prepare_web_bootstrap(self, path: Path) -> str:
+            return _fake_bootstrap(path)
+
+        def cancel_web_bootstrap(self, path: Path) -> None:
+            path.unlink(missing_ok=True)
+
     monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: False)
     monkeypatch.setattr("backend_manager.__main__.load_config", lambda: config)
     monkeypatch.setattr(
@@ -598,4 +674,6 @@ def test_foreign_user_port_squatter_falls_back_without_opening_attacker_ui(monke
     assert main([]) == 0
 
     assert bind_ports == [8799, 0]
-    assert opened == ["http://127.0.0.1:49152/?instance=instance-secret"]
+    assert len(opened) == 1
+    assert opened[0].startswith("file:///")
+    assert "instance-secret" not in opened[0]

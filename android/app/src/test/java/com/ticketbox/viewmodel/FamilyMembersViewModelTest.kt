@@ -240,6 +240,7 @@ class FamilyMembersViewModelTest {
         name = "Family",
         role = LEDGER_ROLE_MEMBER,
         isDefault = false,
+        homeCurrencyCode = "CNY",
         createdAt = "2026-01-01T00:00:00Z",
         archivedAt = null,
     )

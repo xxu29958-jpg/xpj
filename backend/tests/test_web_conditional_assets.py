@@ -35,7 +35,7 @@ def test_non_chart_pages_do_not_load_echarts(web_client: TestClient) -> None:
 
 
 def test_dashboard_loads_echarts_and_category_donut_only(web_client: TestClient) -> None:
-    resp = web_client.get("/web")
+    resp = web_client.get("/web/overview")
     assert resp.status_code == 200
     assert _ECHARTS in resp.text
     assert _CATEGORY_DONUT in resp.text

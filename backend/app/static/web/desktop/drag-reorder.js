@@ -9,14 +9,24 @@
       if (container.getAttribute("data-drag-reorder-bound") === "1") return;
       container.setAttribute("data-drag-reorder-bound", "1");
 
-      function rowsArr() {
-        return Array.from(container.querySelectorAll('[draggable="true"][data-reorder-key]'));
+      function orderedRows() {
+        return Array.from(container.querySelectorAll("[data-reorder-key]"));
+      }
+      function syncPositionInputs() {
+        orderedRows().forEach(function (row, index) {
+          const input = row.querySelector("[data-reorder-position]");
+          if (input) input.value = String(index);
+        });
       }
       function emit() {
-        const order = rowsArr().map(function (el) { return el.getAttribute("data-reorder-key"); });
+        syncPositionInputs();
+        const order = orderedRows().map(function (el) {
+          return el.getAttribute("data-reorder-key");
+        });
         container.dispatchEvent(new CustomEvent("drag-reorder-change", { detail: { order: order } }));
       }
 
+      syncPositionInputs();
       let dragged = null;
       container.addEventListener("dragstart", function (e) {
         const t = e.target.closest('[draggable="true"][data-reorder-key]');
@@ -39,6 +49,7 @@
         } else if (after !== dragged) {
           container.insertBefore(dragged, after);
         }
+        syncPositionInputs();
       });
       container.addEventListener("drop", function (e) {
         if (!dragged) return;

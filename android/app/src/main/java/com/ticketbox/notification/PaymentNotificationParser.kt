@@ -2,6 +2,7 @@ package com.ticketbox.notification
 
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.NotificationDraftSource
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentNotificationDraft
 import java.math.BigDecimal
@@ -10,6 +11,7 @@ import java.time.Instant
 
 data class PaymentNotificationSnapshot(
     val packageName: String,
+    val homeCurrency: CurrencyCode,
     val title: String?,
     val text: String?,
     val bigText: String?,
@@ -62,6 +64,10 @@ object PaymentNotificationParser {
     private enum class NotificationKind { REPAYMENT, EXPENSE }
 
     fun parse(snapshot: PaymentNotificationSnapshot): PaymentNotificationResult? {
+        // The allowlisted notification grammar recognizes only explicit CNY/RMB/元
+        // amounts and carries no FX snapshot. A non-CNY ledger must fail closed:
+        // treating that source amount as home minor units would corrupt money.
+        if (snapshot.homeCurrency != CurrencyCode.CNY) return null
         // 隐私 + 洁癖：**先按包名过滤**。非白名单（微信 / 支付宝 / 京东 / 美团 / 短信）的通知，连正文都不
         // 读——否则下面的 income/expense/还款正则会扫**每一条通知（任何 App）的正文内容**才决定丢弃。
         // 候选判定单列成 [isCandidatePackage]，可单测、把白名单文档化。

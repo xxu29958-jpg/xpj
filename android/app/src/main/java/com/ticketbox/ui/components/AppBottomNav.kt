@@ -1,33 +1,29 @@
 package com.ticketbox.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -38,52 +34,103 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.ticketbox.ui.design.AppMotion
-import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 
-data class AppBottomNavItem(
+data class AppPrimaryNavItem(
     val key: String,
     val label: String,
     val icon: ImageVector,
 )
 
+/**
+ * Primary navigation adapts to the available app window, not a device model.
+ *
+ * Compact-width windows use [AppBottomNav]. Medium and larger windows use this
+ * Material 3 rail so split-screen, foldables, tablets, and desktop windowing do
+ * not retain a phone-only bottom bar.
+ */
 @Composable
-fun AppBottomNav(
-    items: List<AppBottomNavItem>,
+fun AppNavigationRail(
+    items: List<AppPrimaryNavItem>,
     selectedKey: String,
-    onSelect: (AppBottomNavItem) -> Unit,
+    onSelect: (AppPrimaryNavItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val visuals = LocalThemeVisuals.current
     val haptics = rememberAppHaptics()
-    Box(
+    Surface(
+        modifier = modifier.fillMaxHeight(),
+        color = visuals.surfaceNav,
+    ) {
+        Row {
+            NavigationRail(
+                modifier = Modifier.fillMaxHeight(),
+                containerColor = Color.Transparent,
+            ) {
+                items.forEach { item ->
+                    val selected = item.key == selectedKey
+                    NavigationRailItem(
+                        selected = selected,
+                        onClick = {
+                            if (!selected) haptics.tick()
+                            onSelect(item)
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = item.label,
+                            )
+                        },
+                        label = {
+                            Text(
+                                text = item.label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        alwaysShowLabel = true,
+                    )
+                }
+            }
+            VerticalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.opaque),
+            )
+        }
+    }
+}
+
+@Composable
+fun AppBottomNav(
+    items: List<AppPrimaryNavItem>,
+    selectedKey: String,
+    onSelect: (AppPrimaryNavItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val visuals = LocalThemeVisuals.current
+    val haptics = rememberAppHaptics()
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(
-                start = AppBottomNavLayout.OuterHorizontalPadding,
-                end = AppBottomNavLayout.OuterHorizontalPadding,
-                top = AppSpacing.smallGap,
-                bottom = AppSpacing.smallGap,
-            ),
+            .navigationBarsPadding(),
+        color = visuals.surfaceNav,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
-        Surface(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(AppRadius.bottomBar),
-            color = visuals.solidCard.copy(alpha = 0.995f),
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp,
         ) {
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.opaque),
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal = AppBottomNavLayout.InnerHorizontalPadding,
-                        vertical = AppBottomNavLayout.InnerVerticalPadding,
+                        horizontal = AppSpacing.miniGap,
+                        vertical = AppSpacing.miniGap,
                     ),
                 horizontalArrangement = Arrangement.Center,
             ) {
@@ -92,10 +139,9 @@ fun AppBottomNav(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(AppBottomNavLayout.ItemHeight)
-                            .clip(RoundedCornerShape(AppRadius.large))
+                            .heightIn(min = AppBottomNavLayout.ItemMinHeight)
                             .semantics {
-                                role = Role.Tab
+                                role = Role.Button
                                 this.selected = selected
                                 contentDescription = item.label
                             }
@@ -118,65 +164,46 @@ fun AppBottomNav(
 
 @Composable
 private fun AppBottomNavItemView(
-    item: AppBottomNavItem,
+    item: AppPrimaryNavItem,
     selected: Boolean,
 ) {
-    val visuals = LocalThemeVisuals.current
-    val background by animateColorAsState(
-        targetValue = if (selected) visuals.primary.copy(alpha = 0.90f) else Color.Transparent,
-        label = "appBottomNavBackground",
-    )
-    val content by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        label = "appBottomNavContent",
-    )
-
-    Row(
-        modifier = Modifier
-            .then(if (selected) Modifier.wrapContentWidth() else Modifier.fillMaxWidth())
-            .height(AppBottomNavLayout.PillHeight)
-            .clip(RoundedCornerShape(AppRadius.large))
-            .background(background)
-            .padding(
-                horizontal = AppBottomNavLayout.PillHorizontalPadding,
-                vertical = AppBottomNavLayout.PillVerticalPadding,
-            ),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
+    val content = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(AppBottomNavLayout.ItemGap, Alignment.CenterVertically),
     ) {
+        Box(
+            modifier = Modifier
+                .size(
+                    width = AppBottomNavLayout.IndicatorWidth,
+                    height = AppBottomNavLayout.IndicatorHeight,
+                )
+                .background(
+                    color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    shape = CircleShape,
+                ),
+        )
         Icon(
             imageVector = item.icon,
             contentDescription = null,
             tint = content,
             modifier = Modifier.size(AppBottomNavLayout.IconSize),
         )
-        AnimatedVisibility(
-            visible = selected,
-            enter = fadeIn(tween(AppMotion.fastMillis)) + expandHorizontally(tween(AppMotion.fastMillis)),
-            exit = fadeOut(tween(AppMotion.fastMillis)) + shrinkHorizontally(tween(AppMotion.fastMillis)),
-        ) {
-            Text(
-                text = item.label,
-                color = content,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                ),
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            text = item.label,
+            color = content,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected) AppTextHierarchy.body.weight else AppTextHierarchy.caption.weight,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
 private object AppBottomNavLayout {
-    val OuterHorizontalPadding: Dp = 12.dp
-    val InnerHorizontalPadding: Dp = 4.dp
-    val InnerVerticalPadding: Dp = 6.dp
-    val ItemHeight: Dp = 48.dp
-    val PillHeight: Dp = 40.dp
-    val PillHorizontalPadding: Dp = 5.dp
-    val PillVerticalPadding: Dp = 6.dp
-    val IconSize: Dp = 16.dp
+    val ItemMinHeight: Dp = AppSpacing.controlMinHeight
+    val IndicatorWidth: Dp = 18.dp
+    val IndicatorHeight: Dp = 2.dp
+    val ItemGap: Dp = 3.dp
+    val IconSize: Dp = 18.dp
 }

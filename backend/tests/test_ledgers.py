@@ -78,6 +78,7 @@ def test_list_ledgers_returns_active_memberships(client: TestClient, *, identity
         assert isinstance(row["ledger_id"], str)
         assert row["ledger_id"]
         assert row["role"] in {"owner", "member"}
+        assert row["home_currency_code"] == "CNY"
 
 
 def test_list_ledgers_requires_app_token(client: TestClient) -> None:
@@ -96,6 +97,7 @@ def test_create_ledger_with_admin_token_adds_membership(client: TestClient, *, i
     assert body["name"] == "家庭账本"
     assert body["role"] == "owner"
     assert body["is_default"] is False
+    assert body["home_currency_code"] == "CNY"
     new_id = body["ledger_id"]
     assert new_id.startswith("ledger_")
 
@@ -175,6 +177,7 @@ def test_switch_ledger_rotates_token_and_revokes_old(client: TestClient, *, iden
     assert body["ledger"]["ledger_id"] == target_id
     assert body["ledger"]["name"] == "家庭账本"
     assert body["ledger"]["is_default"] is False
+    assert body["ledger"]["home_currency_code"] == "CNY"
 
     # Old token is revoked: subsequent calls fail with 401.
     old = client.get("/api/expenses/pending", headers=identity.app_headers)

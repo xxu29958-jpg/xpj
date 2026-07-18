@@ -200,7 +200,7 @@
 
 {% if budget_status %}
 <div class="card">
-  <h2>预算状态 · {{ budget_status.ledger_name }}</h2>
+  <h2>预算状态 · {{ budget_status.ledger_name }} · {{ home_currency_code }}</h2>
   <div class="stat-grid">
     <div class="stat">
       <div class="num">{% if budget_status.configured %}{{ home_currency_symbol }}{{ budget_status.total_amount_yuan }}{% else %}未配置{% endif %}</div>

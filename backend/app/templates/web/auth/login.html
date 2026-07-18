@@ -2,54 +2,97 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <title>小票夹 网页版 — 输入绑定码</title>
+  <title>连接账本 · 小票夹</title>
+  <link rel="icon" type="image/svg+xml" href="/static/web/icon.svg">
   <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
 </head>
-<body>
-  <main class="card">
-    <h1>小票夹</h1>
-    <p class="hint">向账本所有者索取 8 位绑定码后，在此输入。</p>
+<body class="access-page">
+  <header class="access-header">
+    <div class="access-brand" aria-label="小票夹">
+      <img class="access-brand-mark" src="/static/web/icon.svg" alt="" aria-hidden="true">
+      <span>
+        <strong>小票夹</strong>
+        <small>私人账本</small>
+      </span>
+    </div>
+  </header>
 
-    {% if error_message %}
-    <div class="error" role="alert">{{ error_message }}</div>
-    {% endif %}
+  <main class="access-layout">
+    <section class="access-intro" aria-labelledby="access-title">
+      <span class="access-eyebrow">安全连接</span>
+      <h1 id="access-title">连接到你的账本</h1>
+      <p>
+        使用账本所有者提供的 8 位绑定码。这台浏览器连接成功后，
+        只会看到这次连接的账本，以及角色允许的操作。
+      </p>
+      <div class="access-assurance" aria-label="连接说明">
+        <div>
+          <strong>一次一台设备</strong>
+          <span>每位成员、每台浏览器分别连接。</span>
+        </div>
+        <div>
+          <strong>权限跟随账本</strong>
+          <span>只读、成员与拥有者各自保留明确边界。</span>
+        </div>
+      </div>
+    </section>
 
-    <form method="post" action="/web/auth/login" autocomplete="off">
-      {{ csrf_field|safe }}
-      <input type="hidden" name="next" value="{{ next_url }}">
+    <section class="access-form-panel" aria-labelledby="binding-title">
+      <div>
+        <span class="access-eyebrow">浏览器连接</span>
+        <h2 id="binding-title">使用绑定码</h2>
+        <p class="access-form-hint">绑定码仅可使用一次，有效期由账本所有者设置。</p>
+      </div>
 
-      <label for="pairing_code">绑定码（8 位数字）</label>
-      <input
-        id="pairing_code"
-        name="pairing_code"
-        type="text"
-        inputmode="numeric"
-        pattern="[0-9]{8}"
-        maxlength="8"
-        autofocus
-        required
-      >
+      {% if error_message %}
+      <div class="access-error" role="alert">{{ error_message }}</div>
+      {% endif %}
 
-      <label for="device_name">浏览器名称（可选）</label>
-      <input
-        id="device_name"
-        name="device_name"
-        type="text"
-        placeholder="例如：客厅 iPad"
-        maxlength="120"
-      >
+      <form method="post" action="/web/auth/login" autocomplete="off">
+        {{ csrf_field|safe }}
+        <input type="hidden" name="next" value="{{ next_url }}">
 
-      <button type="submit">登录</button>
-    </form>
+        <div class="access-field">
+          <label for="pairing_code">8 位绑定码</label>
+          <input
+            id="pairing_code"
+            class="access-code-input"
+            name="pairing_code"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            pattern="[0-9]{8}"
+            maxlength="8"
+            spellcheck="false"
+            autofocus
+            required
+          >
+          <span>输入账本所有者刚刚生成的数字码。</span>
+        </div>
 
-    <p class="foot">
-      绑定码一次性使用，每位家庭成员需要单独的码。<br>
-      旧版静态 token 已废弃；不要在此输入旧的 APP_TOKEN。
-    </p>
+        <div class="access-field">
+          <label for="device_name">这台浏览器的名称</label>
+          <input
+            id="device_name"
+            name="device_name"
+            type="text"
+            placeholder="例如：家里的电脑"
+            maxlength="120"
+          >
+          <span>可选，用于之后辨认和管理已连接设备。</span>
+        </div>
+
+        <button type="submit">连接并继续</button>
+      </form>
+    </section>
   </main>
+
+  <footer class="access-footer">
+    绑定码不会代替你的账本权限；连接失效后，需要由账本所有者重新生成。
+  </footer>
 </body>
 </html>

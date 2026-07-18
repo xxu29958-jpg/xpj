@@ -14,6 +14,13 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember, RecurringItem
 from app.routes.web_app import _require_local as _web_require_local
+from app.routes.web_recurring import (
+    _anomaly_label,
+    _confidence_label,
+    _frequency_label,
+    _normalize_status_filter,
+    _status_label,
+)
 
 
 @pytest.fixture()
@@ -86,6 +93,22 @@ def test_web_recurring_renders_candidates(web_client: TestClient) -> None:
     assert "ChatGPT Plus" in response.text
     assert "候选" in response.text
     assert "确认" in response.text
+    assert "2026 年 5 月 5 日" in response.text
+    assert re.search(
+        r'href="/web/recurring\?ledger_id=owner" aria-current="page">全部</a>',
+        response.text,
+    )
+    assert 'class="recurring-metrics"' in response.text
+    assert 'name="csrf_token"' in response.text
+    assert 'class="dt-' not in response.text
+    assert 'style="' not in response.text
+
+    active = web_client.get("/web/recurring?ledger_id=owner&status=active")
+    assert re.search(
+        r'href="/web/recurring\?ledger_id=owner&amp;status=active"'
+        r' aria-current="page">进行中</a>',
+        active.text,
+    )
 
 
 def test_web_recurring_candidate_insight_failure_degrades(
@@ -104,7 +127,15 @@ def test_web_recurring_candidate_insight_failure_degrades(
     resp = web_client.get("/web/recurring?ledger_id=owner")
 
     assert resp.status_code == 200
-    assert "固定支出候选分析暂时不可用" in resp.text
+    assert "候选分析暂时不可用" in resp.text
+
+
+def test_web_recurring_unknown_enums_use_product_fallbacks() -> None:
+    assert _status_label("future_status") == "状态待确认"
+    assert _anomaly_label("future_anomaly") == "需复核"
+    assert _frequency_label("weekly") == "周期待确认"
+    assert _confidence_label("future_confidence") == "待核对"
+    assert _normalize_status_filter("future_status") == ""
 
 
 def test_web_recurring_confirm_pause_resume_archive(web_client: TestClient) -> None:
@@ -149,13 +180,14 @@ def test_web_recurring_confirm_pause_resume_archive(web_client: TestClient) -> N
 
 
 def test_web_recurring_distinguishes_formal_recurring_from_candidates(web_client: TestClient) -> None:
-    # UI/UX 批 14: /web/stats 页删除,固定支出表是 /web/recurring 的严格子集,未迁移;
-    # 「正式 vs 候选」区分改在 /web/recurring 页守护(dashboard 摘要不变)。
+    # 候选与正式记录在同一页面保持清晰分区：确认前只出现在候选区，
+    # 确认后进入正式记录区。
     _seed_candidate()
-    before = web_client.get("/web")
+    before = web_client.get("/web/recurring?ledger_id=owner")
     assert before.status_code == 200
     assert "正式固定支出" in before.text
-    assert "1 个候选未确认" in before.text
+    assert "固定支出候选（未确认）" in before.text
+    assert "这个状态下还没有固定支出" in before.text
 
     _confirm_candidate(web_client)
 
@@ -164,7 +196,7 @@ def test_web_recurring_distinguishes_formal_recurring_from_candidates(web_client
     assert "正式固定支出" in recurring.text
     assert "固定支出候选（未确认）" in recurring.text
     assert "ChatGPT Plus" in recurring.text
-    assert "只做提醒和对比，不会自动入账" in recurring.text
+    assert "用于到期提醒和金额波动对比，不会自动记账" in recurring.text
 
 
 def test_web_recurring_viewer_read_only(web_client: TestClient) -> None:

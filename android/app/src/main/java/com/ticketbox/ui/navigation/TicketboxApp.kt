@@ -22,13 +22,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ticketbox.BuildConfig
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.security.BiometricAuthManager
@@ -77,7 +75,6 @@ internal fun TicketboxApp(
     TicketboxTheme(
         skin = appState.skin,
         currency = appState.currency,
-        currencyDisplay = appState.currencyDisplay,
     ) {
         TicketboxContent(
             appState = appState,
@@ -146,7 +143,6 @@ private fun TicketboxContent(
         chrome = MainShellChrome(
             currentSkin = appState.skin,
             currentCurrency = appState.currency,
-            backgroundSettings = appState.backgroundSettings,
         ),
         startup = MainShellStartup(
             message = appState.authMessage,
@@ -250,7 +246,6 @@ private fun MainShell(
 
     LaunchRequestEffect(launchConsumer.request, shellState, launchConsumer.onHandled)
 
-    val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val screenFactory = remember(
         dependencies.repositories,
@@ -270,30 +265,23 @@ private fun MainShell(
 
     StartupMessageSnackbarEffect(startup.message, snackbarHostState, startup.onMessageShown)
 
-    ImmersiveBackgroundScaffold(
-        backgroundSettings = chrome.backgroundSettings,
-        currentSkin = chrome.currentSkin,
-        surfaceRole = shellState.surfaceRole(currentBackStackEntry?.destination?.route),
-    ) {
-        ShellBodyWithBanner(localUnlockDisabled = startup.localUnlockDisabled) {
-            MainNavGraph(
-                runtime = MainNavigationRuntime(
-                    navController = navController,
-                    shellState = shellState,
-                    screenFactory = screenFactory,
-                ),
-                snackbarHostState = snackbarHostState,
-                preferenceControls = preferenceControls,
-                onBindingCleared = actions.onBindingCleared,
-            )
-        }
+    ShellBodyWithBanner(localUnlockDisabled = startup.localUnlockDisabled) {
+        MainNavGraph(
+            runtime = MainNavigationRuntime(
+                navController = navController,
+                shellState = shellState,
+                screenFactory = screenFactory,
+            ),
+            snackbarHostState = snackbarHostState,
+            preferenceControls = preferenceControls,
+            onBindingCleared = actions.onBindingCleared,
+        )
     }
 }
 
 private data class MainShellChrome(
     val currentSkin: AppSkin,
     val currentCurrency: com.ticketbox.domain.model.CurrencyCode,
-    val backgroundSettings: BackgroundSettings,
 )
 
 private data class MainShellStartup(
@@ -341,6 +329,7 @@ private fun ShellBodyWithBanner(
             AppStatusBanner(
                 message = UiText.res(R.string.app_local_unlock_disabled_banner),
                 tone = MessageTone.Info,
+                announceUpdates = false,
                 modifier = Modifier
                     .statusBarsPadding()
                     .padding(
@@ -404,7 +393,7 @@ private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: Main
     when (request) {
         is LaunchIntentRequest.ShareImages -> {
             shellState.launchAction.post(LaunchAction.UploadSharedImages(request.uris))
-            shellState.selectBottomTab(BottomTab.Pending.key)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)
         }
         is LaunchIntentRequest.Navigate -> dispatchShortcutNavigation(request.target, shellState)
     }
@@ -414,13 +403,13 @@ private fun dispatchShortcutNavigation(target: ShortcutTarget, shellState: MainS
     when (target) {
         ShortcutTarget.UploadReceipt -> {
             shellState.launchAction.post(LaunchAction.OpenImagePicker)
-            shellState.selectBottomTab(BottomTab.Pending.key)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)
         }
         ShortcutTarget.ReviewPending ->
-            shellState.selectBottomTab(BottomTab.Pending.key)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)
         ShortcutTarget.ManualEntry -> {
             shellState.launchAction.post(LaunchAction.OpenManualEntry)
-            shellState.selectBottomTab(BottomTab.Ledger.key)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Transactions)
         }
     }
 }

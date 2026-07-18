@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -536,9 +535,12 @@ private fun RecurringStatusChips(item: RecurringItem) {
     ) {
         StatusChip(item.status)
         if (item.anomalyStatus == "higher_than_average") {
-            AssistChip(
-                onClick = {},
-                label = { Text(stringResource(R.string.recurring_item_anomaly_higher, item.amountDeltaPercent ?: 0)) },
+            StatusPill(
+                text = stringResource(
+                    R.string.recurring_item_anomaly_higher,
+                    item.amountDeltaPercent ?: 0,
+                ),
+                tone = LocalStateTokens.current.warn,
             )
         }
     }

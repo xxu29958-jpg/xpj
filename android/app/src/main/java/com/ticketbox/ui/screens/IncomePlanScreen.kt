@@ -17,8 +17,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -117,7 +118,7 @@ fun IncomePlanScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var showAddSheet by rememberSaveable { mutableStateOf(false) }
+    var showEditorSheet by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val bodyState = incomePlanBodyState(
         loadState = state.loadState,
@@ -132,12 +133,11 @@ fun IncomePlanScreen(
         viewModel.dismissFlash()
     }
 
-    // 成功才关抽屉：只在 create() 真正成功(addSucceeded)时收起，失败保留抽屉让 validationError 可见
-    // （修「乐观关闭」——旧逻辑在 onSubmit 里按本地 addDraft.isValid 关闭、无视网络结果）。resetDraft()
-    // 一并清掉一次性信号 + 草稿；effect 体全程非挂起，关闭被打断也不会把 addSucceeded 卡在 true。
-    LaunchedEffect(state.addSucceeded) {
-        if (!state.addSucceeded) return@LaunchedEffect
-        showAddSheet = false
+    // Create and edit both close only after the repository confirms synced or durably queued.
+    // Failures leave the editor open with the submitted values and inline error intact.
+    LaunchedEffect(state.addSucceeded, state.editSucceeded) {
+        if (!state.addSucceeded && !state.editSucceeded) return@LaunchedEffect
+        showEditorSheet = false
         viewModel.resetDraft()
     }
 
@@ -166,7 +166,7 @@ fun IncomePlanScreen(
                         leadingIcon = Icons.Default.Add,
                         onClick = {
                             viewModel.resetDraft()
-                            showAddSheet = true
+                            showEditorSheet = true
                         },
                     )
                 }
@@ -176,7 +176,16 @@ fun IncomePlanScreen(
         // 反馈横幅落在页头下方（/web flash 同位）：只在有消息时占位，避免空 item
         // 在 spacedBy 下留出幽灵间距。flashMessage→Success / error→Danger。
         state.flashMessage?.let { msg ->
-            item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
+            item { AppStatusBanner(message = msg, tone = state.flashTone) }
+        }
+        if (!state.canModify) {
+            item {
+                AppStatusBanner(
+                    message = UiText.res(R.string.common_readonly_ledger),
+                    tone = MessageTone.Info,
+                    announceUpdates = false,
+                )
+            }
         }
         incomePlanInlineMessage(bodyState = bodyState, message = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
@@ -184,8 +193,9 @@ fun IncomePlanScreen(
         if (incomePlanShowsSummary(bodyState)) {
             item {
                 IncomeTotalSummary(
-                    totalCents = state.totalActiveAmountCents,
-                    activeCount = state.activePlans.size,
+                    totalCents = state.currentMonthSummary.expectedAmountCents,
+                    effectiveCount = state.currentMonthSummary.effectivePlanCount,
+                    historicalRecordCount = state.currentMonthSummary.historicalRecordCount,
                     currency = currency,
                 )
             }
@@ -200,21 +210,29 @@ fun IncomePlanScreen(
                 )
             }
             IncomePlanBodyState.Empty,
-            IncomePlanBodyState.Content -> incomePlanSections(state = state, currency = currency, viewModel = viewModel)
+            IncomePlanBodyState.Content -> incomePlanSections(
+                state = state,
+                currency = currency,
+                viewModel = viewModel,
+                onEdit = { plan ->
+                    if (viewModel.beginEdit(plan)) {
+                        showEditorSheet = true
+                    }
+                },
+            )
         }
     }
 
-    if (showAddSheet) {
+    if (showEditorSheet) {
         ModalBottomSheet(
             onDismissRequest = {
-                showAddSheet = false
+                showEditorSheet = false
                 viewModel.resetDraft()
             },
             sheetState = sheetState,
         ) {
             AddIncomePlanSheet(
                 state = state,
-                currency = currency,
                 actions = AddIncomePlanSheetActions(
                     onLabel = viewModel::updateDraftLabel,
                     onSourceType = viewModel::updateDraftSource,
@@ -225,7 +243,7 @@ fun IncomePlanScreen(
                     onPayDay = viewModel::updateDraftPayDay,
                     onSubmit = { viewModel.submitDraft() },
                     onCancel = {
-                        showAddSheet = false
+                        showEditorSheet = false
                         viewModel.resetDraft()
                     },
                 ),
@@ -271,6 +289,7 @@ private fun LazyListScope.incomePlanSections(
     state: IncomePlanUiState,
     currency: CurrencyDisplay,
     viewModel: IncomePlanViewModel,
+    onEdit: (IncomePlan) -> Unit,
 ) {
     item(key = "income-plan-active") {
         AppListStateContent(
@@ -288,10 +307,17 @@ private fun LazyListScope.incomePlanSections(
                     plan = plan,
                     currency = currency,
                     canModify = state.canModify,
-                    action = IncomePlanRowAction(
-                        icon = Icons.Default.DeleteOutline,
-                        description = stringResource(R.string.income_plan_card_archive_action),
-                        onClick = { viewModel.archive(plan.publicId, plan.rowVersion) },
+                    actions = listOf(
+                        IncomePlanRowAction(
+                            icon = Icons.Outlined.Edit,
+                            description = stringResource(R.string.income_plan_card_edit_action),
+                            onClick = { onEdit(plan) },
+                        ),
+                        IncomePlanRowAction(
+                            icon = Icons.Outlined.Archive,
+                            description = stringResource(R.string.income_plan_card_archive_action),
+                            onClick = { viewModel.setArchived(plan.publicId, plan.rowVersion, archived = true) },
+                        ),
                     ),
                 )
             }
@@ -305,10 +331,12 @@ private fun LazyListScope.incomePlanSections(
                 plan = plan,
                 currency = currency,
                 canModify = state.canModify,
-                action = IncomePlanRowAction(
-                    icon = Icons.Default.Restore,
-                    description = stringResource(R.string.income_plan_card_restore_action),
-                    onClick = { viewModel.restore(plan.publicId, plan.rowVersion) },
+                actions = listOf(
+                    IncomePlanRowAction(
+                        icon = Icons.Default.Restore,
+                        description = stringResource(R.string.income_plan_card_restore_action),
+                        onClick = { viewModel.setArchived(plan.publicId, plan.rowVersion, archived = false) },
+                    ),
                 ),
                 dimmed = true,
             )
@@ -356,7 +384,12 @@ private fun SectionEyebrow(text: String) {
 }
 
 @Composable
-private fun IncomeTotalSummary(totalCents: Long, activeCount: Int, currency: CurrencyDisplay) {
+private fun IncomeTotalSummary(
+    totalCents: Long,
+    effectiveCount: Int,
+    historicalRecordCount: Int,
+    currency: CurrencyDisplay,
+) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             stringResource(R.string.income_plan_total_label_compact),
@@ -371,7 +404,11 @@ private fun IncomeTotalSummary(totalCents: Long, activeCount: Int, currency: Cur
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
         Text(
-            stringResource(R.string.income_plan_total_meta, activeCount),
+            stringResource(
+                R.string.income_plan_total_meta,
+                effectiveCount,
+                historicalRecordCount,
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -385,7 +422,7 @@ private fun IncomePlanRow(
     plan: IncomePlan,
     currency: CurrencyDisplay,
     canModify: Boolean,
-    action: IncomePlanRowAction,
+    actions: List<IncomePlanRowAction>,
     dimmed: Boolean = false,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -406,8 +443,10 @@ private fun IncomePlanRow(
             )
             if (canModify) {
                 Spacer(Modifier.width(AppSpacing.smallGap))
-                IconButton(onClick = action.onClick) {
-                    Icon(action.icon, contentDescription = action.description)
+                actions.forEach { action ->
+                    IconButton(onClick = action.onClick) {
+                        Icon(action.icon, contentDescription = action.description)
+                    }
                 }
             }
         }
@@ -459,11 +498,16 @@ private fun IncomePlanRowSummary(
 @Composable
 private fun AddIncomePlanSheet(
     state: IncomePlanUiState,
-    currency: CurrencyDisplay,
     actions: AddIncomePlanSheetActions,
 ) {
     val draft = state.addDraft
-    AppSheetScaffold(title = stringResource(R.string.income_plan_sheet_title)) {
+    val isEditing = state.editingPlan != null
+    AppSheetScaffold(
+        title = stringResource(
+            if (isEditing) R.string.income_plan_sheet_edit_title
+            else R.string.income_plan_sheet_title,
+        ),
+    ) {
         AppTextInput(
             state = AppTextInputState(
                 label = stringResource(R.string.income_plan_sheet_label_name),
@@ -526,11 +570,17 @@ private fun AddIncomePlanSheet(
         AppAmountInput(
             state = AppAmountInputState(
                 label = if (draft.frequency == IncomeFrequency.ONE_TIME) {
-                    stringResource(R.string.income_plan_sheet_label_amount_one_time)
+                    stringResource(
+                        R.string.income_plan_sheet_label_amount_one_time,
+                        draft.homeCurrency.storageKey,
+                    )
                 } else {
-                    stringResource(R.string.income_plan_sheet_label_amount_monthly)
+                    stringResource(
+                        R.string.income_plan_sheet_label_amount_monthly,
+                        draft.homeCurrency.storageKey,
+                    )
                 },
-                currency = currency.homeCurrency,
+                currency = draft.homeCurrency,
                 value = draft.amountYuanInput,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
                 enabled = !state.isSubmitting,
@@ -568,12 +618,18 @@ private fun AddIncomePlanSheet(
         AppSheetActionRow(
             primary = AppAction(
                 text = if (state.isSubmitting) {
-                    stringResource(R.string.income_plan_sheet_submitting)
+                    stringResource(
+                        if (isEditing) R.string.income_plan_sheet_updating
+                        else R.string.income_plan_sheet_submitting,
+                    )
                 } else {
-                    stringResource(R.string.income_plan_sheet_save)
+                    stringResource(
+                        if (isEditing) R.string.income_plan_sheet_update
+                        else R.string.income_plan_sheet_save,
+                    )
                 },
                 onClick = actions.onSubmit,
-                enabled = !state.isSubmitting,
+                enabled = incomePlanSubmitEnabled(state),
             ),
             secondary = AppAction(
                 text = stringResource(R.string.common_cancel),

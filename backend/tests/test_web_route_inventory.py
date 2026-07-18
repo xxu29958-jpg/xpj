@@ -33,9 +33,9 @@ tests below assert:
    whenever a new route is added).
 2. No duplicate ``(method, path)`` pair is registered; FastAPI would otherwise
    silently let the first endpoint win.
-3. Every ``writer-only`` route endpoint itself references
-   ``_require_selected_ledger_write`` (so the classification doesn't drift
-   away from the code).
+3. Every ``writer-only`` route endpoint, or a local helper it directly calls,
+   references ``_require_selected_ledger_write`` (so the classification
+   doesn't drift away from the code while route adapters remain small).
 
 Adding a route without classifying it = pytest red, which is the entire
 point.
@@ -43,9 +43,12 @@ point.
 
 from __future__ import annotations
 
+import ast
 import inspect
+import textwrap
 from collections import Counter
 from collections.abc import Callable
+from pathlib import Path
 from typing import Literal
 
 import pytest
@@ -84,26 +87,65 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/budget-advise"): "owner-live-provider",
     ("GET", "/web/income-plans"): "local-only-rendering",
     ("POST", "/web/income-plans/create"): "writer-only",
+    ("POST", "/web/income-plans/{public_id}/edit"): "writer-only",
     ("POST", "/web/income-plans/{public_id}/archive"): "writer-only",
     ("POST", "/web/income-plans/{public_id}/restore"): "writer-only",
     # Categories
     ("GET", "/web/categories"): "local-only-rendering",
     ("GET", "/web/categories/uncategorized"): "local-only-rendering",
+    ("POST", "/web/categories/preferences/{public_id}/delete"): "writer-only",
     ("POST", "/web/categories/uncategorized/bulk-set"): "writer-only",
     # Dashboard
     ("GET", "/web/dashboard/data"): "local-only-rendering",
     ("GET", "/web/dashboard/cards"): "local-only-rendering",
+    ("GET", "/web/overview"): "local-only-rendering",
     ("POST", "/web/dashboard/cards/save"): "writer-only",
     ("POST", "/web/dashboard/cards/reset"): "writer-only",
     # Data quality
     ("GET", "/web/data-quality"): "local-only-rendering",
-    # Debts (ADR-0049 债务域 web 面 slice 1 列表 + slice 2a 只读详情)
+    # Debts: personal list/detail plus external/manual fact commands.
     ("GET", "/web/debts"): "local-only-rendering",
+    ("GET", "/web/debts/new"): "local-only-rendering",
     ("GET", "/web/debts/{public_id}"): "local-only-rendering",
-    # Debt goals (ADR-0049 债务域 web 面 slice 4 还债目标进度只读)
+    ("POST", "/web/debts"): "writer-only",
+    ("POST", "/web/debts/{public_id}/adjustments"): "writer-only",
+    ("POST", "/web/debts/{public_id}/forgive"): "writer-only",
+    ("POST", "/web/debts/{public_id}/kind"): "writer-only",
+    ("POST", "/web/debts/{public_id}/repayment-proposals"): "writer-only",
+    (
+        "POST",
+        "/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm",
+    ): "writer-only",
+    (
+        "POST",
+        "/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject",
+    ): "writer-only",
+    (
+        "POST",
+        "/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw",
+    ): "writer-only",
+    ("POST", "/web/debts/{public_id}/repayment-voids"): "writer-only",
+    ("POST", "/web/debts/{public_id}/repayments"): "writer-only",
+    ("POST", "/web/debts/{public_id}/void"): "writer-only",
+    # Debt goals: full create/edit/review/archive lifecycle.
     ("GET", "/web/debt-goals"): "local-only-rendering",
-    # Repayment drafts (ADR-0049 债务域 web 面 slice 3 还款捕获审计只读, account-scoped)
+    ("POST", "/web/debt-goals/create"): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/archive"): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/links"): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/restore"): "writer-only",
+    (
+        "POST",
+        "/web/debt-goals/{public_id}/review/acknowledge",
+    ): "writer-only",
+    (
+        "POST",
+        "/web/debt-goals/{public_id}/review/remove-voided",
+    ): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/target-date"): "writer-only",
+    # Repayment drafts: account-scoped capture, confirm, and dismiss lifecycle.
     ("GET", "/web/repayment-drafts"): "local-only-rendering",
+    ("POST", "/web/repayment-drafts/{public_id}/confirm"): "writer-only",
+    ("POST", "/web/repayment-drafts/{public_id}/dismiss"): "writer-only",
     # Receivables (ADR-0049 债务域 web 面 ⑤c-3 欠我的/应收只读, account-scoped cross-ledger)
     ("GET", "/web/receivables"): "local-only-rendering",
     # Duplicates
@@ -111,7 +153,9 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/duplicates/{expense_id}/keep"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-current"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-original"): "writer-only",
-    # Expense edit (pending + confirmed both land here)
+    # Manual expense creation plus pending/confirmed edit.
+    ("GET", "/web/expenses/new"): "local-only-rendering",
+    ("POST", "/web/expenses/new"): "writer-only",
     ("GET", "/web/expenses/{expense_id}/edit"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/confirm"): "writer-only",
@@ -148,6 +192,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/goals"): "local-only-rendering",
     ("POST", "/web/goals/create"): "writer-only",
     ("POST", "/web/goals/{public_id}/archive"): "writer-only",
+    ("POST", "/web/goals/{public_id}/edit"): "writer-only",
     # CSV import
     ("GET", "/web/import"): "local-only-rendering",
     ("POST", "/web/import/preview"): "writer-only",
@@ -155,6 +200,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/import/{public_id}/apply"): "writer-only",
     ("GET", "/web/import/{public_id}/errors.csv"): "local-only-rendering",
     ("POST", "/web/import/confirm"): "writer-only",
+    # Transactions library
+    ("GET", "/web/library"): "local-only-rendering",
     # Merchants
     ("GET", "/web/merchants"): "local-only-rendering",
     ("POST", "/web/merchants/catalog/create"): "writer-only",
@@ -237,17 +284,11 @@ def _enumerate_web_route_counts() -> Counter[tuple[str, str]]:
 
 
 def _writer_only_paths() -> list[tuple[str, str]]:
-    return [
-        key for key, kind in _WEB_ROUTE_CLASSIFICATION.items()
-        if kind == "writer-only"
-    ]
+    return [key for key, kind in _WEB_ROUTE_CLASSIFICATION.items() if kind == "writer-only"]
 
 
 def _owner_live_provider_paths() -> list[tuple[str, str]]:
-    return [
-        key for key, kind in _WEB_ROUTE_CLASSIFICATION.items()
-        if kind == "owner-live-provider"
-    ]
+    return [key for key, kind in _WEB_ROUTE_CLASSIFICATION.items() if kind == "owner-live-provider"]
 
 
 def _route_endpoint(method: str, path: str) -> Callable[..., object] | None:
@@ -259,6 +300,35 @@ def _route_endpoint(method: str, path: str) -> Callable[..., object] | None:
         if method in (route.methods or ()):
             return route.endpoint
     return None
+
+
+def _uses_writer_guard(
+    function: Callable[..., object],
+    *,
+    visited: set[Callable[..., object]] | None = None,
+) -> bool:
+    """Follow local function calls until the selected-ledger guard is found."""
+    seen = visited if visited is not None else set()
+    if function in seen:
+        return False
+    seen.add(function)
+    source = inspect.getsource(function)
+    if "_require_selected_ledger_write(" in source:
+        return True
+
+    tree = ast.parse(textwrap.dedent(source))
+    called_names = {
+        node.func.id for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    for name in called_names:
+        helper = function.__globals__.get(name)
+        if not inspect.isfunction(helper):
+            continue
+        if helper.__module__ != function.__module__:
+            continue
+        if _uses_writer_guard(helper, visited=seen):
+            return True
+    return False
 
 
 def test_every_web_route_is_classified() -> None:
@@ -273,13 +343,9 @@ def test_every_web_route_is_classified() -> None:
     missing_in_table = sorted(live - classified)
     stale_in_table = sorted(classified - live)
     assert not missing_in_table, (
-        "/web routes registered on the app but not classified in "
-        f"_WEB_ROUTE_CLASSIFICATION: {missing_in_table}"
+        f"/web routes registered on the app but not classified in _WEB_ROUTE_CLASSIFICATION: {missing_in_table}"
     )
-    assert not stale_in_table, (
-        f"_WEB_ROUTE_CLASSIFICATION lists routes that no longer exist: "
-        f"{stale_in_table}"
-    )
+    assert not stale_in_table, f"_WEB_ROUTE_CLASSIFICATION lists routes that no longer exist: {stale_in_table}"
 
 
 def test_web_routes_are_not_registered_twice() -> None:
@@ -288,23 +354,33 @@ def test_web_routes_are_not_registered_twice() -> None:
     assert not duplicates, f"duplicate /web route registrations: {duplicates}"
 
 
+def test_repayment_drafts_inventory_is_owned_by_obligations_domain() -> None:
+    template = (Path(__file__).parents[1] / "app" / "templates" / "web" / "_sidebar_nav.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "{% set is_inbox = is_root or is_pending or is_duplicates or is_tasks %}" in template
+    assert (
+        "{% set is_obligations = is_bill_split_inbox or is_bill_split_sent or "
+        "is_debts or is_receivables or is_debt_goals or is_repayment_drafts %}" in template
+    )
+    assert template.count('href="/web/repayment-drafts{{ q }}"') == 2
+
+
 @pytest.mark.parametrize("method,path", _writer_only_paths())
 def test_writer_only_routes_actually_check_writer(method: str, path: str) -> None:
-    """``writer-only`` classification must be backed by endpoint code."""
+    """``writer-only`` classification must be backed by its local call chain."""
     endpoint = _route_endpoint(method, path)
     assert endpoint is not None, f"endpoint not found: {method} {path}"
-    source = inspect.getsource(endpoint)
-    assert "_require_selected_ledger_write(" in source, (
+    assert _uses_writer_guard(endpoint), (
         f"{method} {path} is classified as writer-only but its handler "
-        f"({endpoint.__module__}.{endpoint.__name__}) does not reference "
-        "_require_selected_ledger_write directly."
+        f"({endpoint.__module__}.{endpoint.__name__}) does not reach "
+        "_require_selected_ledger_write through its local call chain."
     )
 
 
 @pytest.mark.parametrize("method,path", _owner_live_provider_paths())
-def test_owner_live_provider_routes_use_shared_advisor_runner(
-    method: str, path: str
-) -> None:
+def test_owner_live_provider_routes_use_shared_advisor_runner(method: str, path: str) -> None:
     endpoint = _route_endpoint(method, path)
     assert endpoint is not None, f"endpoint not found: {method} {path}"
     source = inspect.getsource(endpoint)

@@ -217,6 +217,11 @@ def test_web_recycle_bin_lists_and_restores_income(
     assert "回收站" in body
     assert "网页回收收入" in body
     assert f'value="{row_version}"' in body
+    assert 'data-domain="transactions"' in body
+    assert 'data-page="library-detail" data-page-level="tertiary"' in body
+    assert 'name="csrf_token"' in body
+    assert "dt-card" not in body
+    assert 'class="dt-' not in body
 
     restore_response = web_client.post(
         "/web/recycle-bin/restore",

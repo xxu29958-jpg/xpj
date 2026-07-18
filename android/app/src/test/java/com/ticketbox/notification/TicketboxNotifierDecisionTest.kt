@@ -11,11 +11,10 @@ import kotlin.test.assertEquals
 class TicketboxNotifierDecisionTest {
 
     @Test
-    fun thresholdIsFiveHundredYuanLiteral() {
+    fun thresholdIsExplicitHomeCurrencyMinorAmount() {
         // 字面量钉:其余测试都引用常量(常量变测试输入跟着变,自指不咬),
-        // 这里钉死数值本身——阈值改动必须同步「金额达到 ¥500 时提醒」副标题
-        // 文案,本测试强制这次同步在同一个 diff 里发生。
-        assertEquals(50_000L, LARGE_AMOUNT_THRESHOLD_CENTS)
+        // 这里钉死数值本身；设置页再按服务器 home currency 格式化它。
+        assertEquals(50_000L, LARGE_AMOUNT_THRESHOLD_MINOR)
     }
 
     @Test
@@ -39,7 +38,7 @@ class TicketboxNotifierDecisionTest {
             decideDraftNotification(
                 pendingEnabled = true,
                 largeEnabled = false,
-                amountCents = LARGE_AMOUNT_THRESHOLD_CENTS + 1,
+                amountCents = LARGE_AMOUNT_THRESHOLD_MINOR + 1,
                 notificationsAllowed = true,
             ),
         )
@@ -47,13 +46,13 @@ class TicketboxNotifierDecisionTest {
 
     @Test
     fun largeToggleAtExactThresholdYieldsLarge() {
-        // 钉死 >= 边界：恰好 50_000 分（¥500）即触发大额。
+        // 钉死 >= 边界：恰好 50_000 个本位币最小单位即触发大额。
         assertEquals(
             DraftNotificationDecision.LARGE,
             decideDraftNotification(
                 pendingEnabled = false,
                 largeEnabled = true,
-                amountCents = LARGE_AMOUNT_THRESHOLD_CENTS,
+                amountCents = LARGE_AMOUNT_THRESHOLD_MINOR,
                 notificationsAllowed = true,
             ),
         )
@@ -66,7 +65,7 @@ class TicketboxNotifierDecisionTest {
             decideDraftNotification(
                 pendingEnabled = true,
                 largeEnabled = true,
-                amountCents = LARGE_AMOUNT_THRESHOLD_CENTS - 1,
+                amountCents = LARGE_AMOUNT_THRESHOLD_MINOR - 1,
                 notificationsAllowed = true,
             ),
         )
@@ -80,7 +79,7 @@ class TicketboxNotifierDecisionTest {
             decideDraftNotification(
                 pendingEnabled = false,
                 largeEnabled = true,
-                amountCents = LARGE_AMOUNT_THRESHOLD_CENTS - 1,
+                amountCents = LARGE_AMOUNT_THRESHOLD_MINOR - 1,
                 notificationsAllowed = true,
             ),
         )
@@ -93,7 +92,7 @@ class TicketboxNotifierDecisionTest {
             decideDraftNotification(
                 pendingEnabled = true,
                 largeEnabled = true,
-                amountCents = LARGE_AMOUNT_THRESHOLD_CENTS + 1,
+                amountCents = LARGE_AMOUNT_THRESHOLD_MINOR + 1,
                 notificationsAllowed = false,
             ),
         )
@@ -108,7 +107,7 @@ class TicketboxNotifierDecisionTest {
             decideDraftNotification(
                 pendingEnabled = true,
                 largeEnabled = true,
-                amountCents = LARGE_AMOUNT_THRESHOLD_CENTS,
+                amountCents = LARGE_AMOUNT_THRESHOLD_MINOR,
                 notificationsAllowed = true,
             ),
         )

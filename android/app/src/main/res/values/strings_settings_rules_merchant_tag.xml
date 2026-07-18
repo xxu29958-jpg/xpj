@@ -149,40 +149,6 @@
     <string name="merchant_aliases_card_action_delete">删除</string>
     <string name="merchant_aliases_actions_content_description">别名操作</string>
 
-    <!-- DashboardCardsScreen：设置→首页卡片 屏 -->
-    <string name="dashboard_cards_page_title">首页模块</string>
-    <string name="dashboard_cards_page_subtitle_readonly">当前角色为只读，只能查看模块顺序。</string>
-    <string name="dashboard_cards_page_subtitle_default">调整今日与洞察的信息模块顺序和显隐。</string>
-    <string name="dashboard_cards_section_overview">展示概况</string>
-    <string name="dashboard_cards_overview_visible_label">显示中</string>
-    <string name="dashboard_cards_overview_visible_caption">共 %1$d 个模块</string>
-    <string name="dashboard_cards_overview_hidden_label">已隐藏</string>
-    <string name="dashboard_cards_overview_hidden_caption">不进入首页</string>
-    <string name="dashboard_cards_overview_first_visible">首个模块：%1$s</string>
-    <string name="dashboard_cards_overview_none_visible">当前没有模块显示在首页。</string>
-    <string name="dashboard_cards_section_order">卡片顺序</string>
-    <string name="dashboard_cards_loading_title">正在同步首页模块</string>
-    <string name="dashboard_cards_loading_body">同步完成后显示模块顺序和显隐。</string>
-    <string name="dashboard_cards_empty_title">暂时没有模块配置</string>
-    <string name="dashboard_cards_empty_body">刷新后仍为空时，可以恢复默认模块。</string>
-    <string name="dashboard_cards_readonly_hint">当前角色为只读，无法修改账本展示偏好。</string>
-    <string name="dashboard_cards_unsaved_hint">有未保存调整，保存后首页与洞察会同步更新。</string>
-    <string name="dashboard_cards_reset_content_description">恢复默认首页模块</string>
-    <string name="dashboard_cards_reset_button">恢复默认</string>
-    <string name="dashboard_cards_save_content_description">保存首页模块设置</string>
-    <string name="dashboard_cards_save_busy">保存中…</string>
-    <string name="dashboard_cards_save_button">保存</string>
-    <string name="dashboard_cards_move_up_content_description">上移%1$s</string>
-    <string name="dashboard_cards_move_down_content_description">下移%1$s</string>
-    <string name="dashboard_cards_toggle_content_description">显示或隐藏%1$s</string>
-    <string name="dashboard_cards_card_visible">已显示</string>
-    <string name="dashboard_cards_card_hidden">已隐藏</string>
-    <string name="dashboard_cards_load_failed">首页模块暂时打不开。</string>
-    <string name="dashboard_cards_saved">首页模块已保存。</string>
-    <string name="dashboard_cards_save_failed">保存失败，请稍后再试。</string>
-    <string name="dashboard_cards_reset_done">已恢复默认模块。</string>
-    <string name="dashboard_cards_reset_failed">恢复默认失败，请稍后再试。</string>
-
     <!-- TagManagementScreen：设置→标签管理 屏（ADR-0043 slice C） -->
     <string name="tag_management_page_title">标签管理</string>
     <string name="tag_management_undo_processed">已处理「%1$s」</string>
@@ -197,7 +163,8 @@
     <string name="tag_management_overview_unused_label">未使用</string>
     <string name="tag_management_overview_unused_caption">可整理</string>
     <string name="tag_management_overview_body">重命名、合并和删除会更新当前账本；删除和合并成功后可撤销。</string>
-    <string name="tag_management_section_all">标签列表</string>
+    <string name="tag_management_section_all">全部标签</string>
+    <string name="tag_management_semantics_note">新标签在账单编辑页创建；这里只用于整理与筛选，不会改变分类或入账事实。</string>
     <string name="tag_management_loading_title">正在读取标签</string>
     <string name="tag_management_loading_body">会从当前账本同步最新标签。</string>
     <string name="tag_management_list_empty">记账时给账单添加标签后，这里就能统一整理它们。</string>

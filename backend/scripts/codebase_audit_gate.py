@@ -123,20 +123,20 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 77,
-    "mutate_token_exempted": 122,
+    "mutate_token_carriers": 96,
+    "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
-    "mutate_token_reason_batch_db_write": 19,
-    "mutate_token_reason_create_row": 32,
+    "mutate_token_reason_batch_db_write": 17,
+    "mutate_token_reason_create_row": 36,
     "mutate_token_reason_enqueue_task": 0,
     "mutate_token_reason_external_side_effect": 4,
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 4,
-    "mutate_token_reason_session_rotation": 5,
-    "mutate_token_reason_terminal_flag_flip": 28,
+    "mutate_token_reason_session_rotation": 7,
+    "mutate_token_reason_terminal_flag_flip": 31,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2614,
+    "backend_pytest_count": 2819,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 
@@ -149,17 +149,26 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
 # baseline/actual reductions. ``backend_pytest_count`` is strict-only, while
 # the release-critical installer behavior suite is also a monotonic floor.
-BASELINE_RATCHET_UP: frozenset[str] = frozenset({
-    "installer_pytest_count",
-    "mutate_token_carriers",
-})
+BASELINE_RATCHET_UP: frozenset[str] = frozenset(
+    {
+        "installer_pytest_count",
+        "mutate_token_carriers",
+    }
+)
 
-# DOWN-only keys may shrink as routes graduate; they must not grow back.
-# New ALLOWLIST routes need explicit ADR pointers per v1.3 PR-2.
-BASELINE_RATCHET_DOWN: frozenset[str] = frozenset({
-    "mutate_token_exempted",
-})
-_ADR_0049_EXEMPTED_GRANDFATHER = (121, 122)  # ADR-0053 web merchant catalog adds one create-row exemption (POST /web/merchants/catalog/create) while hide/delete carry OCC tokens. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop.
+# No aggregate counter is DOWN-only. ``mutate_token_exempted`` is not a debt
+# count: legitimate create-row, append-only, terminal-state, and credential
+# lifecycle routes cannot carry a prior row version and therefore belong in the
+# route-keyed ALLOWLIST. Product expansion can increase that total without
+# weakening OCC. Safety is enforced at stronger boundaries instead:
+# carrier coverage cannot fall, every mutate route must be a carrier or have a
+# validated route-keyed exemption, every exemption declares reason/tables/risk,
+# totals and per-reason distribution remain strict-equality baselines, and
+# ``_audit_mutate_token_allowlist_delta.py`` compares the complete route and
+# metadata mapping against the exact Git base. Treating the raw total as
+# DOWN-only required count-based grandfather holes that could not prove which
+# routes changed.
+BASELINE_RATCHET_DOWN: frozenset[str] = frozenset()
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -272,9 +281,6 @@ def _compute_ratchet_findings(
             bootstrapped.append(key)
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
-        adr_0049_exempt = key == "mutate_token_exempted" and (
-            base_val, current_val
-        ) == _ADR_0049_EXEMPTED_GRANDFATHER
         if key in BASELINE_RATCHET_UP and current_val < base_val:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
@@ -282,7 +288,7 @@ def _compute_ratchet_findings(
                 f"accumulate, not vanish. Strict equality alone misses this when "
                 f"actuals dropped in lockstep — this layer catches it."
             )
-        elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not adr_0049_exempt:
+        elif key in BASELINE_RATCHET_DOWN and current_val > base_val:
             movement_violations.append(
                 f"  - {key} (DOWN-only): base={base_val}, current={current_val} "
                 f"(rose by {current_val - base_val}). Exemptions should drain as "
@@ -420,9 +426,7 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     missing, mismatches, extras = _compute_strict_equality_findings(counts)
 
     base_readable, base_baseline = _read_base_strict_baseline()
-    base_unreadable_but_required = (
-        not base_readable and _strict_baseline_base_is_required()
-    )
+    base_unreadable_but_required = not base_readable and _strict_baseline_base_is_required()
     bootstrapped: list[str] = []
     movement_violations: list[str] = []
     removed_keys: list[str] = []
@@ -434,10 +438,7 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     _print_ratchet_failures(movement_violations, removed_keys, base_unreadable_but_required)
     _print_info_lines(base_readable, bootstrapped)
 
-    fail = bool(
-        missing or mismatches or extras
-        or movement_violations or removed_keys or base_unreadable_but_required
-    )
+    fail = bool(missing or mismatches or extras or movement_violations or removed_keys or base_unreadable_but_required)
     if not fail:
         _print_ok_line(base_readable, bootstrapped)
     print()

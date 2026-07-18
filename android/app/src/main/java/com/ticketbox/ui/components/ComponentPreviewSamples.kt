@@ -6,13 +6,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,18 +37,18 @@ private fun AppVisualComponentsPreview() {
                 title = "待确认账单",
                 subtitle = "截图上传后不会自动入账",
             )
-            AppHeroCard {
+            AppContentCard {
                 Column(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
                         text = "等待你确认",
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         text = "0 张",
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = AppTextHierarchy.heading.weight,
                     )
@@ -111,17 +111,19 @@ private fun AppVisualComponentsPreview() {
                 onClick = {},
             )
             AppBottomNav(
-                // 对齐生产主底栏(MainShellState.BottomTab): 待确认/账本/洞察/设置。
-                // 标签走 stringResource(同生产 toBottomNavItem),避免硬编码中文(ADR-0044)。
-                // 选中 pending(居中、3 字最长标签)正是胶囊自适应宽度修复的关键场景。
+                // 对齐生产五域主底栏：所有标签常显，账户与设置不占任务域位置。
                 items = listOf(
-                    AppBottomNavItem("today", stringResource(R.string.nav_tab_today), Icons.Filled.Today),
-                    AppBottomNavItem("pending", stringResource(R.string.nav_tab_pending), Icons.Filled.CheckCircle),
-                    AppBottomNavItem("ledger", stringResource(R.string.nav_tab_ledger), Icons.AutoMirrored.Filled.ReceiptLong),
-                    AppBottomNavItem("insights", stringResource(R.string.nav_tab_insights), Icons.Filled.Insights),
-                    AppBottomNavItem("settings", stringResource(R.string.nav_tab_settings), Icons.Filled.Settings),
+                    AppPrimaryNavItem("inbox", stringResource(R.string.nav_domain_inbox), Icons.Filled.Inbox),
+                    AppPrimaryNavItem(
+                        "transactions",
+                        stringResource(R.string.nav_domain_transactions),
+                        Icons.AutoMirrored.Filled.ReceiptLong,
+                    ),
+                    AppPrimaryNavItem("obligations", stringResource(R.string.nav_domain_obligations), Icons.Filled.People),
+                    AppPrimaryNavItem("plans", stringResource(R.string.nav_domain_plans), Icons.AutoMirrored.Filled.EventNote),
+                    AppPrimaryNavItem("insights", stringResource(R.string.nav_domain_insights), Icons.Filled.Insights),
                 ),
-                selectedKey = "today",
+                selectedKey = "inbox",
                 onSelect = {},
             )
         }

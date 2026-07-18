@@ -7,44 +7,69 @@ import java.time.ZoneId
 // facets and recent-search folding. Split from ExpenseFilters.kt to keep both
 // files inside the detekt functions-per-file budget.
 
-/** Currency symbols / grouping marks a user may type before an amount in the
- *  global-search box ("¥12.50", "￥12", "1,280"). Stripped before parsing. */
-private val SEARCH_AMOUNT_NOISE_REGEX = Regex("[¥￥$＄,，\\s]")
+private val EXPLICIT_CURRENCY_AMOUNT_REGEX = Regex("""^([A-Za-z]{3})\s+(.+)$""")
+private val SEARCH_MAJOR_AMOUNT_REGEX =
+    Regex("""^(?:\d+|\d{1,3}(?:[,，]\d{3})+)(?:\.(\d+))?$""")
 
 /**
- * Parse a global-search query into an exact `amount_cents` value, or null when
- * the query is not a clean money amount. Money discipline: yuan → cents via
- * [BigDecimal] (never float), reusing the project's "× 100 in one place" rule.
- *
- * A query qualifies only when, after stripping a leading currency symbol /
- * grouping marks, what remains is a non-negative decimal with **at most two**
- * fractional digits ("12", "12.5", "¥12.50", "128"). More than two fraction
- * digits ("12.345") or any non-numeric residue yields null so the term falls
- * back to pure text matching rather than silently rounding to a cent value the
- * user never typed.
+ * An exact amount-search term. Currency is always explicit in the parsed
+ * result: either the caller's server-authoritative home currency, or an ISO
+ * code typed by the user.
  */
-fun parseSearchAmountCents(query: String): Long? {
-    val cleaned = query.trim().replace(SEARCH_AMOUNT_NOISE_REGEX, "")
-    if (cleaned.isBlank()) return null
-    val fractionDigits = cleaned.substringAfter('.', "").length
-    if (fractionDigits > 2) return null
-    return runCatching {
-        val decimal = BigDecimal(cleaned)
-        if (decimal.signum() < 0) return null
-        decimal.movePointRight(2).longValueExact()
-    }.getOrNull()
+data class SearchMoneyAmount(
+    val currency: CurrencyCode,
+    val amountMinor: Long,
+)
+
+/**
+ * Parse a global-search query into an exact currency + minor-unit value.
+ *
+ * A bare numeric term uses [homeCurrency]. A foreign amount must use the
+ * unambiguous `USD 12.50` / `JPY 1200` syntax. Symbols and locale are never
+ * used to guess currency because `¥` is shared by CNY and JPY. Fraction digits
+ * are checked against the selected currency before [BigDecimal] performs an
+ * exact, no-rounding conversion.
+ */
+fun parseSearchMoneyAmount(
+    query: String,
+    homeCurrency: CurrencyCode,
+): SearchMoneyAmount? {
+    val term = query.trim()
+    if (term.isBlank()) return null
+    val explicit = EXPLICIT_CURRENCY_AMOUNT_REGEX.matchEntire(term)
+    val currency = if (explicit == null) {
+        homeCurrency
+    } else {
+        runCatching { CurrencyCode.requireSupported(explicit.groupValues[1]) }.getOrNull()
+            ?: return null
+    }
+    val amountText = explicit?.groupValues?.get(2) ?: term
+    val amountMatch = SEARCH_MAJOR_AMOUNT_REGEX.matchEntire(amountText) ?: return null
+    val fractionDigits = amountMatch.groupValues[1].length
+    if (fractionDigits > currency.minorUnitDigits) return null
+    val normalized = amountText.replace(",", "").replace("，", "")
+    val amountMinor = runCatching {
+        BigDecimal(normalized)
+            .movePointRight(currency.minorUnitDigits)
+            .longValueExact()
+    }.getOrNull() ?: return null
+    return SearchMoneyAmount(currency = currency, amountMinor = amountMinor)
 }
 
 /**
- * True when [expense] matches the parsed search amount on any currency leg —
- * the home/base `amount_cents` or the original foreign minor amount — so a
- * search for "12.50" finds a ¥12.50 row regardless of which leg the user
- * remembers. Pure cents-vs-cents integer compare.
+ * Match only a leg carrying the query's explicit currency. This prevents the
+ * same integer minor value from being treated as interchangeable across CNY,
+ * JPY, USD, and other currencies.
  */
-fun expenseMatchesAmountCents(expense: Expense, amountCents: Long): Boolean =
-    expense.amountCents == amountCents ||
-        expense.homeAmountCents == amountCents ||
-        expense.originalAmountMinor == amountCents
+fun expenseMatchesSearchAmount(expense: Expense, amount: SearchMoneyAmount): Boolean {
+    val homeMatches =
+        expense.homeCurrency == amount.currency &&
+            (expense.homeAmountCents ?: expense.amountCents) == amount.amountMinor
+    val originalMatches =
+        expense.originalCurrencyCode == amount.currency &&
+            expense.originalAmountMinor == amount.amountMinor
+    return homeMatches || originalMatches
+}
 
 /**
  * Distinct ``yyyy-MM`` ledger months present in [expenses], newest first —

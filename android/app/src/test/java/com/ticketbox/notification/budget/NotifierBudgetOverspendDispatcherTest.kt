@@ -1,5 +1,6 @@
 package com.ticketbox.notification.budget
 
+import com.ticketbox.domain.model.CurrencyCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -15,6 +16,7 @@ class NotifierBudgetOverspendDispatcherTest {
         ledgerId = "ledger-1",
         month = "2026-06",
         overspentCents = overspentCents,
+        homeCurrency = CurrencyCode.JPY,
     )
 
     @Test
@@ -28,8 +30,8 @@ class NotifierBudgetOverspendDispatcherTest {
         }
         val outcome = dispatcher.dispatch(decisionOf(overspentCents = 1_234_56L))
         assertEquals(BudgetOverspendDispatchOutcome.SENT, outcome)
-        // 千分位 + 两位小数的本位币串：1_234_56 分 = ¥1,234.56。
-        assertEquals("¥1,234.56", capturedAmount)
+        // Server-authoritative JPY has zero fractional digits; do not reinterpret as CNY cents.
+        assertEquals("¥123,456", capturedAmount)
         assertEquals("v1:budget:ledger-1:2026-06", capturedTag)
     }
 

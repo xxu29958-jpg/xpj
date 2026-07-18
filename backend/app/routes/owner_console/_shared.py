@@ -17,9 +17,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.fx_constants import CURRENCY_SYMBOLS, DEFAULT_HOME_CURRENCY_CODE
 from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
+from app.services.currency_common import (
+    currency_input_metadata,
+    currency_symbol,
+    home_currency_code,
+)
 from app.services.installation_health_service import owner_recovery_message
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
@@ -99,7 +103,7 @@ def _base(request: Request, db: Session) -> dict:
     """Common template context injected into every page."""
     cfg = get_settings()
     upload_status = "ok" if cfg.upload_dir.is_dir() else "missing"
-    home_currency = (cfg.fx_home_currency_code or DEFAULT_HOME_CURRENCY_CODE).upper()
+    home_currency = home_currency_code()
     return {
         "backend_version": BACKEND_VERSION,
         "asset_version": STATIC_ASSET_VERSION,
@@ -107,5 +111,6 @@ def _base(request: Request, db: Session) -> dict:
         "ui_theme": _read_ui_theme(request),
         "owner_recovery_message": owner_recovery_message(cfg.owner_recovery_channel),
         "home_currency_code": home_currency,
-        "home_currency_symbol": CURRENCY_SYMBOLS.get(home_currency, f"{home_currency} "),
+        "home_currency_symbol": currency_symbol(home_currency),
+        "home_currency_input": currency_input_metadata(home_currency),
     }

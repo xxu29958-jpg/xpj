@@ -11,12 +11,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.CallSplit
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
@@ -66,11 +63,8 @@ internal data class LedgerToolsSheetActions(
     val onViewModeChange: (LedgerViewMode) -> Unit,
     val onSync: () -> Unit,
     val onExportCsv: () -> Unit,
-    val onOpenBillSplit: () -> Unit,
-    val onOpenDebts: () -> Unit,
-    val onOpenReceivables: () -> Unit,
-    val onOpenRepaymentDrafts: () -> Unit,
     val onOpenGlobalSearch: () -> Unit,
+    val onOpenLibrary: () -> Unit,
     val onDismiss: () -> Unit,
 )
 
@@ -85,12 +79,16 @@ internal fun LedgerToolsSheet(
         title = stringResource(R.string.ledger_tools_title),
         subtitle = stringResource(R.string.ledger_tools_subtitle),
     ) {
+        LedgerSearchTools(
+            query = ledger.query,
+            onQueryChange = actions.onQueryChange,
+            onOpenGlobalSearch = actions.onOpenGlobalSearch,
+        )
+        LedgerToolDivider()
         LedgerFilterTools(
             state = ledger,
             onCategoryChange = actions.onCategoryChange,
             onTagChange = actions.onTagChange,
-            onQueryChange = actions.onQueryChange,
-            onOpenGlobalSearch = actions.onOpenGlobalSearch,
         )
         LedgerToolDivider()
         LedgerViewTools(
@@ -103,13 +101,7 @@ internal fun LedgerToolsSheet(
             canExport = state.canExport,
             onSync = actions.onSync,
             onExportCsv = actions.onExportCsv,
-        )
-        LedgerToolDivider()
-        LedgerRelationshipTools(
-            onOpenBillSplit = actions.onOpenBillSplit,
-            onOpenDebts = actions.onOpenDebts,
-            onOpenReceivables = actions.onOpenReceivables,
-            onOpenRepaymentDrafts = actions.onOpenRepaymentDrafts,
+            onOpenLibrary = actions.onOpenLibrary,
         )
         LedgerToolsFooter(
             hasUserFilters = hasUserFilters,
@@ -175,26 +167,8 @@ private fun LedgerFilterTools(
     state: LedgerUiState,
     onCategoryChange: (String) -> Unit,
     onTagChange: (String) -> Unit,
-    onQueryChange: (String) -> Unit,
-    onOpenGlobalSearch: () -> Unit,
 ) {
     LedgerToolSection(title = stringResource(R.string.ledger_tools_filter_title)) {
-        AppTextInput(
-            state = AppTextInputState(
-                label = stringResource(R.string.ledger_tools_search_label),
-                value = state.query,
-                placeholder = stringResource(R.string.ledger_tools_search_placeholder),
-            ),
-            actions = AppTextInputActions(onValueChange = onQueryChange),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        LedgerInlineButton(
-            text = stringResource(R.string.ledger_tools_global_search),
-            modifier = Modifier.fillMaxWidth(),
-            enabled = true,
-            onClick = onOpenGlobalSearch,
-            icon = Icons.Default.Search,
-        )
         val categoryOptions = if (state.categoryFilter.isNotBlank() && state.categoryFilter !in state.categories) {
             listOf(state.categoryFilter) + state.categories
         } else {
@@ -229,13 +203,47 @@ private fun LedgerFilterTools(
 }
 
 @Composable
+private fun LedgerSearchTools(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onOpenGlobalSearch: () -> Unit,
+) {
+    LedgerToolSection(title = stringResource(R.string.ledger_tools_search_title)) {
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.ledger_tools_search_label),
+                value = query,
+                placeholder = stringResource(R.string.ledger_tools_search_placeholder),
+            ),
+            actions = AppTextInputActions(onValueChange = onQueryChange),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        LedgerInlineButton(
+            text = stringResource(R.string.ledger_tools_global_search),
+            modifier = Modifier.fillMaxWidth(),
+            enabled = true,
+            onClick = onOpenGlobalSearch,
+            icon = Icons.Default.Search,
+        )
+    }
+}
+
+@Composable
 private fun LedgerDataTools(
     state: LedgerUiState,
     canExport: Boolean,
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
+    onOpenLibrary: () -> Unit,
 ) {
     LedgerToolSection(title = stringResource(R.string.ledger_tools_actions_title)) {
+        LedgerInlineButton(
+            text = stringResource(R.string.ledger_tools_library),
+            modifier = Modifier.fillMaxWidth(),
+            enabled = true,
+            onClick = onOpenLibrary,
+            icon = Icons.Default.Category,
+        )
         AppAdaptiveEqualControlRow(
             leading = { actionModifier ->
                 LedgerInlineButton(
@@ -308,51 +316,6 @@ private fun LedgerToolsFooter(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-    }
-}
-
-@Composable
-private fun LedgerRelationshipTools(
-    onOpenBillSplit: () -> Unit,
-    onOpenDebts: () -> Unit,
-    onOpenReceivables: () -> Unit,
-    onOpenRepaymentDrafts: () -> Unit,
-) {
-    LedgerToolSection(title = stringResource(R.string.ledger_tools_relationship_title)) {
-        LedgerInlineButton(
-            text = stringResource(R.string.ledger_tools_bill_split),
-            modifier = Modifier.fillMaxWidth(),
-            enabled = true,
-            onClick = onOpenBillSplit,
-            icon = Icons.AutoMirrored.Filled.CallSplit,
-        )
-        AppAdaptiveEqualControlRow(
-            leading = { actionModifier ->
-                LedgerInlineButton(
-                    text = stringResource(R.string.ledger_tools_debts),
-                    modifier = actionModifier,
-                    enabled = true,
-                    onClick = onOpenDebts,
-                    icon = Icons.Default.AccountBalanceWallet,
-                )
-            },
-            trailing = { actionModifier ->
-                LedgerInlineButton(
-                    text = stringResource(R.string.ledger_tools_receivables),
-                    modifier = actionModifier,
-                    enabled = true,
-                    onClick = onOpenReceivables,
-                    icon = Icons.Default.Payments,
-                )
-            },
-        )
-        LedgerInlineButton(
-            text = stringResource(R.string.ledger_tools_repayment_drafts),
-            modifier = Modifier.fillMaxWidth(),
-            enabled = true,
-            onClick = onOpenRepaymentDrafts,
-            icon = Icons.AutoMirrored.Filled.ReceiptLong,
-        )
     }
 }
 

@@ -3,32 +3,42 @@ package com.ticketbox.ui.components
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class FormattersTest {
     @Test
     fun parsesYuanInputToCents() {
-        assertEquals(3680, parseAmountCents("36.80"))
-        assertEquals(3681, parseAmountCents("36.805"))
-        assertNull(parseAmountCents("abc"))
+        assertEquals(3680, parseAmountCents("36.80", CurrencyCode.CNY))
+        assertNull(parseAmountCents("36.805", CurrencyCode.CNY))
+        assertNull(parseAmountCents("1.005", CurrencyCode.CNY))
+        assertNull(parseAmountCents("abc", CurrencyCode.CNY))
+        assertNull(parseAmountCents("-1", CurrencyCode.CNY))
+        assertEquals(-100, parseAmountCents("-1", CurrencyCode.CNY, allowNegative = true))
     }
 
     @Test
     fun formatsCentsForTextInput() {
-        assertEquals("36.80", formatAmountInput(3680))
-        assertEquals("", formatAmountInput(null))
+        assertEquals("36.80", formatAmountInput(3680, CurrencyCode.CNY))
+        assertEquals("3680", formatAmountInput(3680, CurrencyCode.JPY))
+        assertEquals("", formatAmountInput(null, CurrencyCode.CNY))
     }
 
     @Test
     fun parsesAndFormatsOriginalCurrencyMinorUnits() {
+        assertEquals(CurrencyCode.CNY, CurrencyCode.fromStorageKey(null))
+        assertFailsWith<IllegalArgumentException> { CurrencyCode.fromStorageKey("ZZZ") }
         assertEquals(12345, parseMinorAmount("123.45", CurrencyCode.USD))
         assertEquals(1200, parseMinorAmount("1200", CurrencyCode.JPY))
+        assertNull(parseMinorAmount("1200.5", CurrencyCode.JPY))
+        assertNull(parseMinorAmount("1200.5", CurrencyCode.KRW))
+        assertNull(parseMinorAmount("12.345", CurrencyCode.CNY))
         assertNull(parseMinorAmount("-1", CurrencyCode.USD))
         assertEquals("$123.45", formatMinorAmount(12345, CurrencyCode.USD))
         assertEquals("¥1,200", formatMinorAmount(1200, CurrencyCode.JPY))
@@ -36,10 +46,11 @@ class FormattersTest {
 
     @Test
     fun sanitizesAmountInputPerCurrencyMinorUnit() {
-        assertEquals("123.45", sanitizeMinorAmountInput(" ¥123.45abc ", CurrencyCode.CNY))
-        assertEquals("12.34", sanitizeMinorAmountInput("12..34", CurrencyCode.USD))
-        assertEquals("123", sanitizeMinorAmountInput("123.45", CurrencyCode.JPY))
-        assertEquals("123456", sanitizeMinorAmountInput("123456789", CurrencyCode.CNY, maxLength = 6))
+        assertEquals("123.45", sanitizeMinorAmountInput(" ¥123.45abc "))
+        assertEquals("12.34", sanitizeMinorAmountInput("12..34"))
+        assertEquals("123.45", sanitizeMinorAmountInput("123.45"))
+        assertEquals("12.345", sanitizeMinorAmountInput("12.345"))
+        assertEquals("123456", sanitizeMinorAmountInput("123456789", maxLength = 6))
     }
 
     @Test
@@ -49,6 +60,9 @@ class FormattersTest {
         // JPY / KRW 等无小数币种：amountCents 已等于 major unit，直接整数显示
         assertEquals("¥12,345", formatAmount(12345, CurrencyCode.JPY))
         assertEquals("₩12,345", formatAmount(12345, CurrencyCode.KRW))
+        assertEquals("-¥123.45", formatAmount(-12345, CurrencyCode.CNY))
+        assertEquals("-¥12,345", formatAmount(-12345, CurrencyCode.JPY))
+        assertEquals("-₩12,345", formatAmount(-12345, CurrencyCode.KRW))
         assertEquals("待填写金额", formatAmount(null, CurrencyCode.USD))
     }
 
@@ -58,7 +72,7 @@ class FormattersTest {
             "¥3,883.67",
             formatDisplayAmount(
                 amountCents = 388367,
-                display = CurrencyDisplay.Base,
+                display = CurrencyDisplay.LegacyFallback,
             ),
         )
         assertEquals(
@@ -89,24 +103,20 @@ class FormattersTest {
             ),
         )
 
-        assertEquals("$123.45", formatExpensePrimaryAmount(expense))
+        assertEquals("$123.45 USD", formatExpensePrimaryAmount(expense))
         assertEquals(
             "≈ ¥879.38 · 汇率 1 USD = 7.12340000 CNY · 2026-05-04",
-            formatExpenseExchangeMeta(expense),
+            formatExpenseExchangeMeta(expense, PENDING_RATE_LABEL),
         )
     }
 
     @Test
-    fun formatsCnyExpenseWithSelectedDisplayCurrency() {
+    fun frozenExpenseCurrencyIgnoresActiveDisplayCurrency() {
         val expense = formatterExpense(FormatterExpenseFixture(amountCents = 3680))
 
-        assertEquals(
-            "¥36.80",
-            formatExpensePrimaryAmount(
-                expense = expense,
-                display = CurrencyDisplay.Base,
-            ),
-        )
+        val unrelatedActiveDisplay = CurrencyDisplay(homeCurrency = CurrencyCode.JPY)
+        assertEquals(CurrencyCode.JPY, unrelatedActiveDisplay.homeCurrency)
+        assertEquals("¥36.80", formatExpensePrimaryAmount(expense))
     }
 
     @Test
@@ -121,14 +131,8 @@ class FormattersTest {
             ),
         )
 
-        assertEquals(
-            "¥12,345",
-            formatExpensePrimaryAmount(
-                expense = expense,
-                display = CurrencyDisplay(homeCurrency = CurrencyCode.JPY),
-            ),
-        )
-        assertNull(formatExpenseExchangeMeta(expense))
+        assertEquals("¥12,345", formatExpensePrimaryAmount(expense))
+        assertNull(formatExpenseExchangeMeta(expense, PENDING_RATE_LABEL))
     }
 
     @Test
@@ -144,10 +148,10 @@ class FormattersTest {
             ),
         )
 
-        assertEquals("$123.45", formatExpensePrimaryAmount(expense))
+        assertEquals("$123.45 USD", formatExpensePrimaryAmount(expense))
         assertEquals(
             "≈ ¥18,518 · 汇率 1 USD = 150.00000000 JPY · 2026-05-04",
-            formatExpenseExchangeMeta(expense),
+            formatExpenseExchangeMeta(expense, PENDING_RATE_LABEL),
         )
     }
 
@@ -164,8 +168,11 @@ class FormattersTest {
             ),
         )
 
-        assertEquals("$123.45", formatExpensePrimaryAmount(expense))
-        assertEquals("汇率待同步 · 2026-05-04", formatExpenseExchangeMeta(expense))
+        assertEquals("$123.45 USD", formatExpensePrimaryAmount(expense))
+        assertEquals(
+            "USD → CNY · 汇率待同步 · 2026-05-04",
+            formatExpenseExchangeMeta(expense, PENDING_RATE_LABEL),
+        )
     }
 
     @Test
@@ -241,6 +248,8 @@ class FormattersTest {
         assertTrue(8000 / sampleSize <= 2048)
     }
 }
+
+private const val PENDING_RATE_LABEL = "汇率待同步"
 
 private data class FormatterExpenseFixture(
     val amountCents: Long?,

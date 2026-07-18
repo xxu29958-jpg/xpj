@@ -11,9 +11,13 @@ import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
+import com.ticketbox.domain.model.DebtRepaymentFact
+import com.ticketbox.domain.model.DebtRepaymentHistory
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
@@ -22,22 +26,48 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 
-/**
- * ADR-0049 §2 (slice 8) Debt entity repository: list the active ledger's debts and create
- * external/manual ones. Direct-only online (no outbox) — a debt create is not part of the
- * offline outbox surface. Failure semantics follow the rest of the repository layer: every
- * suspend method returns `Result<T>`; viewer role short-circuits the write before the network.
- */
-interface DebtActions {
+/** Narrow viewer-personal payable read used by the obligations list. */
+interface PayablesActions {
+    suspend fun listPayables(): Result<List<Debt>>
+}
+
+/** Shared external/manual create surface used by Debt list and detail workflows. */
+interface DebtCreationActions {
     fun canModifyLedger(): Boolean
-    suspend fun listDebts(): Result<List<Debt>>
-    suspend fun getDebt(publicId: String): Result<Debt>
+    fun currentHomeCurrency(): CurrencyCode = CurrencyCode.LegacyFallback
     suspend fun createDebt(draft: DebtDraft): Result<Debt>
     suspend fun parseDebtBillImage(fileName: String, contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
+}
+
+/**
+ * Dependencies used by the payable list and its create sheet. The server-authoritative viewer
+ * lens prevents clients from inferring the current account from owner-relative [Debt.direction].
+ */
+interface DebtListActions : DebtCreationActions, PayablesActions
+
+/**
+ * ADR-0049 §2 (slice 8) full Debt entity repository. [listDebts] intentionally remains the raw
+ * active-ledger list for selectors and detail workflows; product-facing payable UI uses
+ * [PayablesActions.listPayables]. Direct-only online writes return `Result<T>`, and viewer role
+ * short-circuits writes before the network.
+ */
+interface DebtActions : DebtCreationActions {
+    suspend fun listDebts(): Result<List<Debt>>
+    suspend fun getDebt(publicId: String): Result<Debt>
     // ADR-0049 §3 (slice 8c) direct fact writes on an external/manual Debt. [expectedRowVersion]
     // is the §2.1 OCC carrier (the local Debt's row_version); the response is the fold-after Debt
     // (status / remaining / paid / a fresh row_version) the detail screen swaps in.
-    suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt>
+    suspend fun recordRepayment(
+        publicId: String,
+        expectedRowVersion: Long,
+        amountCents: Long,
+    ): Result<DebtRepaymentFact>
+    suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt>
     suspend fun recordAdjustment(
         publicId: String,
         expectedRowVersion: Long,
@@ -53,16 +83,25 @@ interface DebtActions {
     suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt>
 }
 
+/** Canonical repayment history read surface, separated from debt writes and list flows. */
+interface DebtRepaymentHistoryActions {
+    suspend fun listRepaymentFacts(publicId: String, page: Int): Result<DebtRepaymentHistory>
+}
+
+/** Dependencies required by the debt detail task path. */
+interface DebtDetailActions : DebtActions, DebtRepaymentHistoryActions
+
 /**
- * ADR-0049 P3b / ⑤c (slice ⑤c-2) the creditor-discovery read surface, split from [DebtActions] so
- * the read-only receivables ViewModel depends only on this one method (and its test fake stays
- * tiny). ACCOUNT-scoped (cross-ledger), NOT ledger-scoped: it lists the member Debts this account is
- * the creditor of that live in OTHER ledgers (a bill_split Debt is owned by the debtor's ledger), so
- * the ledger-scoped [DebtActions.listDebts] can never surface them. Read-only — no viewer guard.
+ * Viewer-personal receivable read surface, split from [DebtActions] so the read-only ViewModel
+ * depends only on this one method. The server combines selected-ledger owner/member rows with
+ * privacy-redacted cross-ledger member creditor discovery and de-duplicates by public id.
  */
 interface ReceivablesActions {
     suspend fun listReceivables(): Result<List<Debt>>
 }
+
+/** Both viewer-personal Debt list projections, implemented by one narrow network reader. */
+interface PersonalDebtLensActions : PayablesActions, ReceivablesActions
 
 /**
  * ADR-0049 §3.2 (slice 8d) member repayment-proposal operations, split from [DebtActions] so the
@@ -75,6 +114,7 @@ interface ReceivablesActions {
  */
 interface DebtProposalActions {
     fun canModifyLedger(): Boolean
+    fun currentHomeCurrency(): CurrencyCode = CurrencyCode.LegacyFallback
     suspend fun listRepaymentProposals(debtPublicId: String): Result<List<MemberRepaymentProposal>>
     suspend fun proposeRepayment(
         debtPublicId: String,
@@ -114,7 +154,14 @@ class DebtRepository(
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(
         apiClient, settingsStore, tokenStore,
     ),
-) : DebtActions, ReceivablesActions {
+    private val repaymentHistoryActions: DebtRepaymentHistoryActions =
+        NetworkDebtRepaymentHistoryActions(settingsStore, tokenStore, apiProvider),
+    private val personalDebtLensActions: PersonalDebtLensActions =
+        NetworkPersonalDebtLensActions(settingsStore, tokenStore, apiProvider),
+) : DebtDetailActions,
+    DebtListActions,
+    DebtRepaymentHistoryActions by repaymentHistoryActions,
+    PersonalDebtLensActions by personalDebtLensActions {
     private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
@@ -129,6 +176,9 @@ class DebtRepository(
         ),
     )
 
+    override fun currentHomeCurrency(): CurrencyCode =
+        CurrencyCode.fromStorageKey(settingsStore.homeCurrencyCodeKey())
+
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
     override suspend fun listDebts(): Result<List<Debt>> =
@@ -141,16 +191,6 @@ class DebtRepository(
     override suspend fun getDebt(publicId: String): Result<Debt> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api -> api.debt(publicId).toDomain() }
-        }
-
-    // ADR-0049 P3b / ⑤c (slice ⑤c-2): the cross-ledger member receivables this account is the
-    // creditor of. Account-scoped — same ledger token transport, but the server keys on the
-    // account, so the active ledger does not change the result (no per-ledger stale-clear needed).
-    override suspend fun listReceivables(): Result<List<Debt>> =
-        errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.debtReceivables().items.map { it.toDomain() }
-            }
         }
 
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
@@ -195,7 +235,7 @@ class DebtRepository(
         publicId: String,
         expectedRowVersion: Long,
         amountCents: Long,
-    ): Result<Debt> {
+    ): Result<DebtRepaymentFact> {
         if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
         if (amountCents <= 0L) return Result.failure(RepositoryException("还款金额必须大于 0。"))
         return errorHandler.safeCall {
@@ -207,6 +247,30 @@ class DebtRepository(
                         expectedRowVersion = expectedRowVersion,
                     ),
                     // ADR-0042: single-use key — direct-only path, no offline replay.
+                    idempotencyKey = UUID.randomUUID().toString(),
+                ).toDomain(amountCents)
+            }
+        }
+    }
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> {
+        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
+        val cleanReason = reason.trim()
+        if (cleanReason.isEmpty()) return Result.failure(RepositoryException("请填写撤销原因。"))
+        return errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.voidDebtRepayment(
+                    publicId = publicId,
+                    request = RepaymentVoidCreateRequestDto(
+                        repaymentPublicId = repaymentPublicId,
+                        reason = cleanReason,
+                        expectedRowVersion = expectedRowVersion,
+                    ),
                     idempotencyKey = UUID.randomUUID().toString(),
                 ).toDomain()
             }
@@ -404,10 +468,40 @@ class DebtRepository(
     }
 }
 
+private class NetworkDebtRepaymentHistoryActions(
+    settingsStore: TicketboxSettingsStore,
+    tokenStore: SessionTokenStore,
+    apiProvider: ApiServiceProvider,
+) : DebtRepaymentHistoryActions {
+    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    private val errorHandler = NetworkErrorHandler(
+        settingsStore = settingsStore,
+        context = "Debt repayment history",
+        statusMessages = mapOf(
+            403 to "当前账号无法查看这笔欠款的还款记录。",
+            404 to "没有找到这笔欠款。",
+        ),
+    )
+
+    override suspend fun listRepaymentFacts(
+        publicId: String,
+        page: Int,
+    ): Result<DebtRepaymentHistory> = errorHandler.safeCall {
+        ledgerRequestGuard.guardedCall { api ->
+            api.debtRepayments(
+                publicId = publicId,
+                page = page,
+                pageSize = REPAYMENT_HISTORY_PAGE_SIZE,
+            ).toDomain()
+        }
+    }
+}
+
 /** Shared viewer short-circuit copy (kept in sync with [DebtListViewModel] expectations). */
 private const val DEBT_VIEWER_READONLY = "当前角色为只读，无法修改账本。"
 
 private const val DEBT_COUNTERPARTY_LABEL_MAX = 255
+private const val REPAYMENT_HISTORY_PAGE_SIZE = 50
 
 private fun DebtDraft.validated(): Result<DebtDraft> = runCatching {
     val cleanLabel = counterpartyLabel.trim()

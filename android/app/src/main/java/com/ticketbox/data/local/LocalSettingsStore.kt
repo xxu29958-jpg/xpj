@@ -27,16 +27,21 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     // 币种偏好 hot flow，与 ledger id 同理：磁盘初值保证首订阅者不会错过当前值。
     private val currencyCodeFlow = MutableStateFlow(prefs.getString(KEY_CURRENCY_CODE, null))
+    private val homeCurrencyCodeFlow = MutableStateFlow(prefs.getString(KEY_HOME_CURRENCY_CODE, null))
 
     override fun observeActiveLedgerId(): Flow<String?> = activeLedgerIdFlow
 
     override fun observeCurrencyCodeKey(): Flow<String?> = currencyCodeFlow
+
+    override fun observeHomeCurrencyCodeKey(): Flow<String?> = homeCurrencyCodeFlow
 
     override fun serverUrl(): String? = prefs.getString(KEY_SERVER_URL, null)
 
     override fun appSkinKey(): String? = prefs.getString(KEY_APP_SKIN, null)
 
     override fun currencyCodeKey(): String? = prefs.getString(KEY_CURRENCY_CODE, null)
+
+    override fun homeCurrencyCodeKey(): String? = prefs.getString(KEY_HOME_CURRENCY_CODE, null)
 
     override fun monthlyBudgetCents(): Long? {
         val value = prefs.getLong(KEY_MONTHLY_BUDGET_CENTS, NO_BUDGET)
@@ -134,8 +139,10 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
             putString(KEY_DEVICE_NAME, identity.deviceName)
             putString(KEY_ROLE, identity.role)
             putString(KEY_BOUND_AT, identity.boundAt)
+            identity.homeCurrencyCode?.let { putString(KEY_HOME_CURRENCY_CODE, it) }
         }
         activeLedgerIdFlow.value = identity.ledgerId
+        identity.homeCurrencyCode?.let { homeCurrencyCodeFlow.value = it }
     }
 
     override fun saveLastConfirmedSyncAt(value: String) {
@@ -222,6 +229,15 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         currencyCodeFlow.value = sanitized
     }
 
+    override fun saveHomeCurrencyCodeKey(currencyKey: String) {
+        val sanitized = currencyKey.trim().uppercase()
+        require(sanitized.isNotBlank()) { "Home currency code must not be blank." }
+        prefs.edit {
+            putString(KEY_HOME_CURRENCY_CODE, sanitized)
+        }
+        homeCurrencyCodeFlow.value = sanitized
+    }
+
     override fun saveServerUrl(serverUrl: String) {
         prefs.edit {
             putString(KEY_SERVER_URL, serverUrl.trim().trimEnd('/'))
@@ -275,6 +291,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
         activeLedgerIdFlow.value = null
         currencyCodeFlow.value = null
+        homeCurrencyCodeFlow.value = null
     }
 
     override suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
@@ -328,6 +345,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_RECENT_SEARCHES = "recent_searches"
         const val KEY_APP_SKIN = "app_skin"
         const val KEY_CURRENCY_CODE = "currency_code"
+        const val KEY_HOME_CURRENCY_CODE = "home_currency_code"
         const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
         const val KEY_ACCOUNT_NAME = "account_name"
         const val KEY_LEDGER_NAME = "ledger_name"

@@ -26,6 +26,18 @@ data class BillSplitSentDto(
     val status: String,
     @param:Json(name = "amount_cents")
     val amountCents: Long,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
+    @param:Json(name = "original_currency_code")
+    val originalCurrencyCode: String,
+    @param:Json(name = "original_amount_minor")
+    val originalAmountMinor: Long?,
+    @param:Json(name = "exchange_rate_to_cny")
+    val exchangeRateToHome: String?,
+    @param:Json(name = "exchange_rate_date")
+    val exchangeRateDate: String?,
+    @param:Json(name = "exchange_rate_source")
+    val exchangeRateSource: String?,
     @param:Json(name = "merchant_snapshot")
     val merchantSnapshot: String?,
     @param:Json(name = "category_suggestion")
@@ -59,6 +71,18 @@ data class BillSplitInboxDto(
     val status: String,
     @param:Json(name = "amount_cents")
     val amountCents: Long,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
+    @param:Json(name = "original_currency_code")
+    val originalCurrencyCode: String,
+    @param:Json(name = "original_amount_minor")
+    val originalAmountMinor: Long?,
+    @param:Json(name = "exchange_rate_to_cny")
+    val exchangeRateToHome: String?,
+    @param:Json(name = "exchange_rate_date")
+    val exchangeRateDate: String?,
+    @param:Json(name = "exchange_rate_source")
+    val exchangeRateSource: String?,
     @param:Json(name = "merchant_snapshot")
     val merchantSnapshot: String?,
     @param:Json(name = "category_suggestion")

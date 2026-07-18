@@ -49,6 +49,37 @@
             rgba(0,0,0,0.06) 5px, rgba(0,0,0,0.06) 6px),
         linear-gradient(180deg, var(--surface-card) 0 8px, transparent 8px);
 }
+.exp-thumb img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+.exp-thumb-label {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: var(--space-1);
+    color: var(--text-meta);
+    background: var(--surface-sunken);
+    font-size: var(--type-meta-size);
+    text-align: center;
+}
+.exp-thumb-receipt.is-loaded .exp-thumb-label {
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    width: var(--space-1);
+    height: var(--space-1);
+    overflow: hidden;
+    white-space: nowrap;
+}
+.exp-thumb-receipt.is-failed {
+    background-image: none;
+}
+.exp-thumb-state.is-cleaned .exp-thumb-label {
+    color: var(--text-muted);
+}
 .exp-thumb-alipay {
     background:
         linear-gradient(180deg, var(--state-info-bg) 0 14px, transparent 14px),
