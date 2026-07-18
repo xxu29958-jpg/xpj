@@ -342,11 +342,23 @@ def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Pa
     )
 
     assert window is not None
-    assert window.is_open()
-    time.sleep(0.75)
-    assert window.is_open(), "Edge launcher exited before the visible app window"
-    window.process.wait(timeout=10)
-    assert window.is_open() is False
+    assert window.job is not None
+    try:
+        visible_deadline = time.monotonic() + 10
+        while (
+            time.monotonic() < visible_deadline
+            and not window.job.has_visible_top_level_window()
+        ):
+            time.sleep(0.05)
+        assert window.job.has_visible_top_level_window(), "Edge app window never became visible"
+        assert window.is_open()
+
+        closed_deadline = time.monotonic() + 10
+        while time.monotonic() < closed_deadline and window.is_open():
+            time.sleep(0.05)
+        assert window.is_open() is False
+    finally:
+        window.close()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")

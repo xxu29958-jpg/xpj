@@ -5,7 +5,8 @@ from __future__ import annotations
 import contextlib
 import os
 import subprocess
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from backend_manager.process import WindowsKillOnCloseJob, spawn_windows_job_process
@@ -14,6 +15,7 @@ from backend_manager.windows_user_security import require_local_fixed_regular_fi
 
 _CREATE_NO_WINDOW = 0x08000000
 _EDGE_APP_PATH = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"
+_EDGE_VISIBLE_WINDOW_STARTUP_GRACE_SECONDS = 10.0
 
 
 def open_in_browser(url: str) -> bool:
@@ -67,25 +69,54 @@ def discover_edge_executable() -> str | None:
 
 @dataclass
 class EdgeAppWindow:
-    """One dedicated Edge browser process owned by the Manager session."""
+    """One visible Edge app window and its Job-owned browser process tree."""
 
     process: subprocess.Popen
     job: WindowsKillOnCloseJob | None = None
+    _started_at: float = field(default_factory=time.monotonic, repr=False)
+    _visible_window_observed: bool = field(default=False, init=False, repr=False)
+    _closed: bool = field(default=False, init=False, repr=False)
 
     def is_open(self) -> bool:
-        if self.process.poll() is None:
+        if self._closed:
+            return False
+        if self.process.poll() is not None:
+            self._closed = True
+            self._close_job()
+            return False
+        if self.job is None:
             return True
+        try:
+            visible = self.job.has_visible_top_level_window()
+        except OSError:
+            return True
+        if visible:
+            self._visible_window_observed = True
+            return True
+        if (
+            not self._visible_window_observed
+            and time.monotonic() - self._started_at
+            < _EDGE_VISIBLE_WINDOW_STARTUP_GRACE_SECONDS
+        ):
+            return True
+        self._closed = True
         self._close_job()
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            self.process.wait(timeout=0.5)
         return False
 
     def close(self, *, timeout: float = 5.0) -> bool:
+        if self._closed:
+            return True
         if self.process.poll() is not None:
+            self._closed = True
             self._close_job()
             return True
         if self.job is not None:
             self._close_job()
             try:
                 self.process.wait(timeout=timeout)
+                self._closed = True
                 return True
             except subprocess.TimeoutExpired:
                 pass
@@ -100,7 +131,8 @@ class EdgeAppWindow:
             self.process.kill()
         with contextlib.suppress(OSError, subprocess.TimeoutExpired):
             self.process.wait(timeout=timeout)
-        return self.process.poll() is not None
+        self._closed = self.process.poll() is not None
+        return self._closed
 
     def _close_job(self) -> None:
         job, self.job = self.job, None
