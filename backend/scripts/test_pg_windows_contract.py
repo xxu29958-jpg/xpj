@@ -9,7 +9,7 @@ import os
 import re
 import sys
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -33,6 +33,8 @@ _CONSUMER_LEASE_TIMEOUT_MS = 300_000
 _CONSUMER_LEASE_LOCK_OFFSET = 1 << 30
 _PARENT_WATCHDOG_LOCK = threading.Lock()
 _PARENT_WATCHDOG_STARTED = False
+WINDOWS_PARENT_AUTHORITY_PID_ENV = "XPJ_TEST_PARENT_AUTHORITY_PID"
+WINDOWS_PARENT_AUTHORITY_CREATED_ENV = "XPJ_TEST_PARENT_AUTHORITY_CREATED"
 
 
 def _windows_kernel32() -> object:
@@ -66,6 +68,8 @@ def _windows_process_kernel32() -> object:
         ctypes.POINTER(wintypes.FILETIME),
     ]
     kernel32.GetProcessTimes.restype = wintypes.BOOL
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
     kernel32.WaitForMultipleObjects.argtypes = [
         wintypes.DWORD,
         ctypes.POINTER(wintypes.HANDLE),
@@ -154,34 +158,68 @@ def _windows_process_created_filetime(kernel32: object, handle: object) -> int:
     return (created.dwHighDateTime << 32) | created.dwLowDateTime
 
 
-def _windows_parent_process_handles(kernel32: object) -> list[object]:
-    younger_created = _windows_process_created_filetime(
+def _windows_parent_process_handle(kernel32: object) -> object:
+    child_created = _windows_process_created_filetime(
         kernel32,
         kernel32.GetCurrentProcess(),
     )
-    parent_handles: list[object] = []
-    for index, parent_id in enumerate(_windows_parent_process_chain()[:64]):
-        parent_handle = kernel32.OpenProcess(
-            0x00100000 | 0x00001000,
-            False,
-            parent_id,
-        )
-        if not parent_handle:
-            if index == 0:
-                raise RuntimeError("Disposable test process parent is already unavailable")
-            break
+    raw_parent_id = os.environ.get(WINDOWS_PARENT_AUTHORITY_PID_ENV, "").strip()
+    raw_parent_created = os.environ.get(
+        WINDOWS_PARENT_AUTHORITY_CREATED_ENV,
+        "",
+    ).strip()
+    if bool(raw_parent_id) != bool(raw_parent_created):
+        raise RuntimeError("Disposable test process parent authority is incomplete")
+    if raw_parent_id:
         try:
-            parent_created = _windows_process_created_filetime(kernel32, parent_handle)
-            if parent_created >= younger_created:
-                raise RuntimeError("Disposable test process parent generation was reused")
-        except (OSError, RuntimeError):
-            kernel32.CloseHandle(parent_handle)
-            for opened_handle in parent_handles:
-                kernel32.CloseHandle(opened_handle)
-            raise
-        parent_handles.append(parent_handle)
-        younger_created = parent_created
-    return parent_handles
+            parent_id = int(raw_parent_id)
+            expected_parent_created = int(raw_parent_created)
+        except ValueError as exc:
+            raise RuntimeError(
+                "Disposable test process parent authority is malformed"
+            ) from exc
+        if parent_id <= 0 or expected_parent_created <= 0:
+            raise RuntimeError("Disposable test process parent authority is malformed")
+    else:
+        parent_id = _windows_parent_process_chain()[0]
+        expected_parent_created = None
+    parent_handle = kernel32.OpenProcess(
+        0x00100000 | 0x00001000,
+        False,
+        parent_id,
+    )
+    if not parent_handle:
+        raise RuntimeError("Disposable test process parent is already unavailable")
+    try:
+        parent_created = _windows_process_created_filetime(kernel32, parent_handle)
+    except OSError:
+        kernel32.CloseHandle(parent_handle)
+        raise
+    if (
+        parent_created >= child_created
+        or (
+            expected_parent_created is not None
+            and parent_created != expected_parent_created
+        )
+    ):
+        kernel32.CloseHandle(parent_handle)
+        raise RuntimeError("Disposable test process parent generation was reused")
+    return parent_handle
+
+
+def bind_windows_child_authority(
+    environment: MutableMapping[str, str],
+) -> None:
+    """Bind descendants to this exact process generation, across launcher wrappers."""
+    if os.name != "nt":
+        return
+    kernel32 = _windows_process_kernel32()
+    created = _windows_process_created_filetime(
+        kernel32,
+        kernel32.GetCurrentProcess(),
+    )
+    environment[WINDOWS_PARENT_AUTHORITY_PID_ENV] = str(os.getpid())
+    environment[WINDOWS_PARENT_AUTHORITY_CREATED_ENV] = str(created)
 
 
 def _abort_disposable_test_process(message: str) -> None:
@@ -201,28 +239,21 @@ def _abort_disposable_test_process(message: str) -> None:
         os._exit(_AUTHORITY_LOST_EXIT_CODE)
 
 
-def _watch_windows_parent_handles(
+def _watch_windows_parent_handle(
     kernel32: object,
-    parent_handles: list[object],
+    parent_handle: object,
     *,
     label: str,
     abort_process: Callable[[str], None],
 ) -> None:
-    from ctypes import wintypes
-
-    handle_array = (wintypes.HANDLE * len(parent_handles))(*parent_handles)
-    result = kernel32.WaitForMultipleObjects(
-        len(parent_handles),
-        handle_array,
-        False,
-        0xFFFFFFFF,
-    )
-    for parent_handle in parent_handles:
+    try:
+        result = kernel32.WaitForSingleObject(parent_handle, 0xFFFFFFFF)
+    finally:
         kernel32.CloseHandle(parent_handle)
-    if 0 <= result < len(parent_handles):
-        abort_process(f"Lost {label} ancestor process; aborting this disposable test process.")
+    if result == 0:
+        abort_process(f"Lost {label} parent process; aborting this disposable test process.")
         return
-    abort_process(f"Cannot monitor {label} ancestor process; aborting this disposable test process.")
+    abort_process(f"Cannot monitor {label} parent process; aborting this disposable test process.")
 
 
 def start_windows_parent_watchdog(
@@ -230,7 +261,7 @@ def start_windows_parent_watchdog(
     label: str,
     abort_process: Callable[[str], None] | None = None,
 ) -> None:
-    """Exit a disposable Windows process when any captured ancestor generation dies."""
+    """Exit a disposable Windows process when its exact direct-parent generation dies."""
 
     global _PARENT_WATCHDOG_STARTED
 
@@ -240,19 +271,25 @@ def start_windows_parent_watchdog(
         if _PARENT_WATCHDOG_STARTED:
             return
         kernel32 = _windows_process_kernel32()
-        parent_handles = _windows_parent_process_handles(kernel32)
+        parent_handle = _windows_parent_process_handle(kernel32)
         abort = abort_process or _abort_disposable_test_process
-        threading.Thread(
-            target=_watch_windows_parent_handles,
+        watchdog = threading.Thread(
+            target=_watch_windows_parent_handle,
             kwargs={
                 "kernel32": kernel32,
-                "parent_handles": parent_handles,
+                "parent_handle": parent_handle,
                 "label": label,
                 "abort_process": abort,
             },
             name=f"{label}-parent-watchdog",
             daemon=True,
-        ).start()
+        )
+        try:
+            watchdog.start()
+        except RuntimeError:
+            kernel32.CloseHandle(parent_handle)
+            raise
+        bind_windows_child_authority(os.environ)
         _PARENT_WATCHDOG_STARTED = True
 
 

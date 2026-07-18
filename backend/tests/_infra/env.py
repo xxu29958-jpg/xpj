@@ -15,6 +15,7 @@ import os
 import secrets
 from pathlib import Path
 
+from scripts.pytest_execution_contract import application_config_environment_keys
 from scripts.test_pg_contract import configured_test_database_url
 from tests._infra.worker_db import new_worker_run_uid, worker_database_url
 
@@ -32,6 +33,9 @@ TEST_RUNTIME_ROOT = BACKEND_ROOT / ".pytest-runtime"
 TEST_DATA_DIR = TEST_RUNTIME_ROOT / TEST_RUN_ID
 TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / f"pytest_test_{TEST_RUN_ID}"
 TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
+
+for _application_environment_key in application_config_environment_keys():
+    os.environ.pop(_application_environment_key, None)
 
 
 # Lane (PG-only — debt #4, building on ADR-0041). PostgreSQL is the only lane:
@@ -60,6 +64,11 @@ os.environ.update(
         "GENERATE_THUMBNAIL": "true",
         "DELETE_IMAGE_AFTER_DAYS": "0",
         "OCR_PROVIDER": "empty",
+        "ENABLE_HTTP_BOOTSTRAP": "false",
+        "HTTP_BOOTSTRAP_SECRET": "",
+        "ENABLE_API_DOCS": "false",
+        "ALLOW_PUBLIC_ADMIN_API": "false",
+        "CLOUDFLARE_ACCESS_REQUIRED": "false",
         # Batch 1 public surface hardening defaults disabled in tests
         # (default lane fires multiple uploads through the same upload
         # link in quick succession). Dedicated throttle / quota tests

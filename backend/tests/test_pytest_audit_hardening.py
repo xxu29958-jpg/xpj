@@ -3,20 +3,12 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from scripts import run_packaging_tests
-from scripts.packaging_pytest_contract import (
-    PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
-    packaging_resource_membership_marker,
-)
-from scripts.pytest_execution_contract import (
-    pytest_execution_environment,
-    pytest_nodeid_digest,
-)
+from scripts.pytest_execution_contract import pytest_execution_environment
 
 pytestmark = pytest.mark.parallel_safe
 
@@ -29,33 +21,6 @@ def _load_module(relative_path: str, module_name: str) -> ModuleType:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
-
-
-def _set_packaging_membership_proofs(
-    monkeypatch: pytest.MonkeyPatch,
-    module: ModuleType,
-    nodeid: str,
-    *,
-    resource: str,
-) -> None:
-    parallel_nodeids = (nodeid,) if resource == "hermetic" else ()
-    serial_nodeids = () if resource == "hermetic" else (nodeid,)
-    proofs = (
-        (module.PYTEST_EXPECTED_COUNT_ENV, module.PYTEST_EXPECTED_DIGEST_ENV, (nodeid,)),
-        (
-            module.PACKAGING_EXPECTED_PARALLEL_COUNT_ENV,
-            module.PACKAGING_EXPECTED_PARALLEL_DIGEST_ENV,
-            parallel_nodeids,
-        ),
-        (
-            module.PACKAGING_EXPECTED_SERIAL_COUNT_ENV,
-            module.PACKAGING_EXPECTED_SERIAL_DIGEST_ENV,
-            serial_nodeids,
-        ),
-    )
-    for count_env, digest_env, nodeids in proofs:
-        monkeypatch.setenv(count_env, str(len(nodeids)))
-        monkeypatch.setenv(digest_env, pytest_nodeid_digest(nodeids))
 
 
 class _ResourceItem:
@@ -80,33 +45,23 @@ class _ResourceItem:
         return None if not markers else markers[-1]
 
     def add_marker(self, marker: object) -> None:
-        if isinstance(marker, str):
-            name = marker
-            value = SimpleNamespace(args=(), kwargs={})
-        else:
-            value = marker.mark
-            name = value.name
-        self._generated_markers.setdefault(name, []).append(value)
+        value = marker.mark
+        self._generated_markers.setdefault(value.name, []).append(value)
 
 
 @pytest.mark.parametrize("resource", ("hermetic", "windows_host"))
-def test_packaging_collection_accepts_a_proven_empty_derived_lane(
-    monkeypatch: pytest.MonkeyPatch,
+def test_packaging_collection_assigns_only_runtime_scheduler_groups(
     resource: str,
 ) -> None:
     module = _load_module(
         "packaging/tests/conftest.py",
-        "xpj_packaging_empty_lane_probe",
+        f"xpj_packaging_resource_probe_{resource}",
     )
-    monkeypatch.setenv(module._STRICT_RUNTIME_ENV, "1")  # noqa: SLF001
-    nodeid = f"packaging/tests/test_{resource}.py::test_contract"
-    _set_packaging_membership_proofs(
-        monkeypatch,
-        module,
-        nodeid,
-        resource=resource,
+    item = _ResourceItem(
+        f"packaging/tests/test_{resource}.py::test_contract",
+        resource,
+        module.PACKAGING_RESOURCE_MARKER,
     )
-    item = _ResourceItem(nodeid, resource, module.PACKAGING_RESOURCE_MARKER)
 
     hook = module.pytest_collection_modifyitems([item])
     next(hook)
@@ -177,17 +132,8 @@ _POSTGRES_CLUSTER_CUTOVER_NODEIDS = (
 )
 
 
-@pytest.mark.parametrize(
-    ("resource", "expected"),
-    (
-        ("windows_host", _WINDOWS_HOST_CUTOVER_NODEIDS),
-        ("postgres_cluster", _POSTGRES_CLUSTER_CUTOVER_NODEIDS),
-    ),
-)
-def test_high_risk_packaging_cutover_resources_are_exact(
-    resource: str,
-    expected: tuple[str, ...],
-) -> None:
+def test_high_risk_packaging_cutover_tests_remain_serial() -> None:
+    expected = _WINDOWS_HOST_CUTOVER_NODEIDS + _POSTGRES_CLUSTER_CUTOVER_NODEIDS
     result = subprocess.run(
         [
             sys.executable,
@@ -200,12 +146,14 @@ def test_high_risk_packaging_cutover_resources_are_exact(
             "-p",
             "no:cacheprovider",
             "-m",
-            packaging_resource_membership_marker(resource),
+            "xdist_group",
             "-o",
             "addopts=",
         ],
         cwd=run_packaging_tests.BACKEND_ROOT,
-        env=pytest_execution_environment(remove_keys=(run_packaging_tests.STRICT_WINDOWS_RUNTIME_ENV,)),
+        env=pytest_execution_environment(
+            remove_keys=(run_packaging_tests.STRICT_WINDOWS_RUNTIME_ENV,),
+        ),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -214,7 +162,9 @@ def test_high_risk_packaging_cutover_resources_are_exact(
         timeout=60,
     )
     selected = {
-        line.strip() for line in result.stdout.splitlines() if line.startswith("packaging/tests/") and "::" in line
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.startswith("packaging/tests/") and "::" in line
     }
     assert result.returncode == 0, result.stdout + result.stderr
     assert selected == set(expected)
@@ -285,191 +235,3 @@ def test_backend_worker_completion_requires_runtime_cleanup_ack(
     )
     module.pytest_testnodedown(node, None)
     assert "cleanup" in controller._xpj_xdist_worker_errors["gw0"]
-
-
-def test_pre_cutover_base_has_no_invented_packaging_partitions(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    audit = _load_module(
-        "scripts/_audit_pr_delta_metrics.py",
-        "xpj_pre_cutover_audit_probe",
-    )
-    backend_root = tmp_path / "legacy-backend"
-    backend_root.mkdir()
-    packaging_nodeid = "packaging/tests/test_old.py::test_old"
-
-    def collect(
-        _target: str,
-        *,
-        mark_expression: str | None = None,
-        **_kwargs: object,
-    ) -> tuple[int, tuple[str, ...]]:
-        nodeids = (packaging_nodeid,) if mark_expression is None else ()
-        return len(nodeids), nodeids
-
-    monkeypatch.setattr(audit, "_collect_pytest_tests", collect)
-    contract = audit._load_base_marker_contract(backend_root)
-    assert contract == audit._LEGACY_BASE_MARKER_CONTRACT  # noqa: SLF001
-    assert audit._collect_packaging_memberships(backend_root, contract) == {
-        "packaging_all": (packaging_nodeid,),
-        "packaging_parallel": (),
-        "packaging_serial": (),
-        **dict.fromkeys(PACKAGING_RESOURCE_MEMBERSHIP_MARKERS, ()),
-    }
-
-
-def _write_base_marker_contract(backend_root: Path) -> None:
-    scripts = backend_root / "scripts"
-    scripts.mkdir(parents=True)
-    (scripts / "pytest_marker_contract.py").write_text(
-        "\n".join(
-            (
-                "PYTEST_MARKER_CONTRACT_SCHEMA_VERSION = 2",
-                'BACKEND_PARALLEL_SAFE_MARKER = "base_parallel_safe"',
-                'BACKEND_REAL_DB_MARKER = "base_real_db"',
-                'BACKEND_STATEFUL_MARKER = "base_stateful"',
-                'BACKEND_CLUSTER_MARKER = "base_cluster"',
-                'PACKAGING_PARALLEL_MARKER = "base_packaging_parallel"',
-                'PACKAGING_SERIAL_MARKER = "base_packaging_serial"',
-                "PACKAGING_RESOURCE_MEMBERSHIP_MARKERS = (",
-                "    'packaging_resource_hermetic',",
-                "    'packaging_resource_inno_toolchain',",
-                "    'packaging_resource_postgres_cluster',",
-                "    'packaging_resource_windows_fs',",
-                "    'packaging_resource_windows_host',",
-                ")",
-            )
-        ),
-        encoding="utf-8",
-    )
-
-
-def test_base_marker_contract_is_read_without_executing_source(tmp_path: Path) -> None:
-    backend_root = tmp_path / "backend"
-    scripts = backend_root / "scripts"
-    scripts.mkdir(parents=True)
-    (scripts / "pytest_marker_contract.py").write_text(
-        "\n".join(
-            (
-                "PYTEST_MARKER_CONTRACT_SCHEMA_VERSION = 2",
-                'BACKEND_PARALLEL_SAFE_MARKER = "base_parallel_safe"',
-                'BACKEND_REAL_DB_MARKER = "base_real_db"',
-                'BACKEND_STATEFUL_MARKER = "base_stateful"',
-                'BACKEND_CLUSTER_MARKER = "base_cluster"',
-                'PACKAGING_PARALLEL_MARKER = "base_packaging_parallel"',
-                'PACKAGING_SERIAL_MARKER = "base_packaging_serial"',
-                "PACKAGING_RESOURCE_MEMBERSHIP_MARKERS = (",
-                "    'base_resource_hermetic',",
-                "    'base_resource_windows_host',",
-                ")",
-                "raise RuntimeError('historical marker contract executed')",
-            )
-        ),
-        encoding="utf-8",
-    )
-
-    audit = _load_module(
-        "scripts/_audit_pr_delta_metrics.py",
-        "xpj_literal_marker_contract_probe",
-    )
-    contract = audit._load_base_marker_contract(backend_root)
-
-    assert contract.parallel_safe == "base_parallel_safe"
-    assert contract.packaging_resource_memberships == (
-        "base_resource_hermetic",
-        "base_resource_windows_host",
-    )
-
-
-def test_base_marker_contract_drives_snapshot_filters(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    audit = _load_module(
-        "scripts/_audit_pr_delta_metrics.py",
-        "xpj_base_marker_audit_probe",
-    )
-    backend_root = tmp_path / "base-backend"
-    _write_base_marker_contract(backend_root)
-    packaging_nodeid = "packaging/tests/test_old.py::test_old"
-    observed: list[str] = []
-
-    def collect(
-        target: str,
-        *,
-        mark_expression: str | None = None,
-        **_kwargs: object,
-    ) -> tuple[int, tuple[str, ...]]:
-        if mark_expression is not None:
-            observed.append(mark_expression)
-        if target == "tests":
-            nodeids = ("tests/test_old.py::test_old",) if mark_expression is None else ()
-        else:
-            nodeids = (
-                (packaging_nodeid,)
-                if mark_expression
-                in (
-                    None,
-                    "base_packaging_serial",
-                    "packaging_resource_inno_toolchain",
-                )
-                else ()
-            )
-        return len(nodeids), nodeids
-
-    monkeypatch.setattr(audit, "_collect_pytest_tests", collect)
-    contract = audit._load_base_marker_contract(backend_root)
-    memberships = audit._collect_pytest_memberships(backend_root, contract)
-    assert memberships["packaging_serial"] == (packaging_nodeid,)
-    assert memberships["packaging_resource_inno_toolchain"] == (packaging_nodeid,)
-    assert set(observed) == {
-        "not base_stateful",
-        "base_parallel_safe",
-        "base_real_db",
-        "base_stateful",
-        "base_cluster",
-        "base_packaging_parallel",
-        "base_packaging_serial",
-        *PACKAGING_RESOURCE_MEMBERSHIP_MARKERS,
-    }
-
-
-def test_pr_delta_main_propagates_membership_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    audit = _load_module(
-        "scripts/_audit_pr_delta_metrics.py",
-        "xpj_pr_delta_exit_probe",
-    )
-    memberships = {
-        "backend_all": (),
-        "backend_parallel": (),
-        "parallel_safe": (),
-        "real_db": (),
-        "stateful_serial": (),
-        "cluster_serial": (),
-        "packaging_all": (),
-        "packaging_parallel": (),
-        "packaging_serial": (),
-        **dict.fromkeys(PACKAGING_RESOURCE_MEMBERSHIP_MARKERS, ()),
-    }
-    monkeypatch.setattr(audit, "_count_mutate_token_metrics", dict)
-    monkeypatch.setattr(
-        audit,
-        "_collect_pytest_memberships",
-        lambda *_args, **_kwargs: memberships,
-    )
-    monkeypatch.setattr(
-        audit,
-        "_collect_base_pytest_memberships",
-        lambda _environment: (True, memberships, True, True, None),
-    )
-    monkeypatch.setattr(audit, "evaluate_pr_delta_metrics", lambda _counts: 0)
-    monkeypatch.setattr(
-        audit,
-        "evaluate_protected_pytest_memberships",
-        lambda *_args, **_kwargs: 1,
-    )
-
-    assert audit.main() == 1

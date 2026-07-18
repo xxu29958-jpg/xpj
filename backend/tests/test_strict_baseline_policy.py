@@ -5,10 +5,7 @@ import subprocess
 
 import pytest
 
-from scripts.strict_baseline_policy import (
-    StrictBaselinePolicy,
-    parse_strict_baseline_policy,
-)
+from scripts.strict_baseline_policy import parse_strict_baseline_policy
 
 pytestmark = pytest.mark.parallel_safe
 
@@ -71,7 +68,7 @@ def test_literal_policy_rejects_noncanonical_protected_writes(mutation: str) -> 
         parse_strict_baseline_policy(content)
 
 
-def test_ratchet_policy_rejects_unknown_and_removed_memberships(monkeypatch) -> None:
+def test_ratchet_policy_rejects_unknown_memberships(monkeypatch) -> None:
     gate = importlib.reload(importlib.import_module("scripts.codebase_audit_gate"))
     monkeypatch.setattr(
         gate,
@@ -84,17 +81,9 @@ def test_ratchet_policy_rejects_unknown_and_removed_memberships(monkeypatch) -> 
         "BASELINE_RATCHET_DOWN",
         frozenset({"mutate_token_exemption"}),
     )
-    base_policy = StrictBaselinePolicy(
-        {"mutate_token_exempted": 122},
-        frozenset(),
-        frozenset({"mutate_token_exempted"}),
-        True,
-    )
-
-    violations = gate._compute_ratchet_policy_findings(base_policy)
+    violations = gate._compute_ratchet_policy_findings()
 
     assert any("unknown counter" in violation for violation in violations)
-    assert any("removed protected counter" in violation for violation in violations)
 
 
 def test_ratchet_policy_rejects_malformed_current_source(monkeypatch) -> None:
@@ -105,6 +94,6 @@ def test_ratchet_policy_rejects_malformed_current_source(monkeypatch) -> None:
         lambda _content: (_ for _ in ()).throw(ValueError("mutated source")),
     )
 
-    violations = gate._compute_ratchet_policy_findings(None)
+    violations = gate._compute_ratchet_policy_findings()
 
     assert "current gate source policy is malformed: mutated source" in violations

@@ -8,6 +8,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from backend_manager.process import WindowsKillOnCloseJob, spawn_windows_job_process
 from backend_manager.runtime import RuntimeControlError
 from backend_manager.windows_user_security import require_local_fixed_regular_file
 
@@ -69,13 +70,25 @@ class EdgeAppWindow:
     """One dedicated Edge browser process owned by the Manager session."""
 
     process: subprocess.Popen
+    job: WindowsKillOnCloseJob | None = None
 
     def is_open(self) -> bool:
-        return self.process.poll() is None
+        if self.process.poll() is None:
+            return True
+        self._close_job()
+        return False
 
     def close(self, *, timeout: float = 5.0) -> bool:
         if self.process.poll() is not None:
+            self._close_job()
             return True
+        if self.job is not None:
+            self._close_job()
+            try:
+                self.process.wait(timeout=timeout)
+                return True
+            except subprocess.TimeoutExpired:
+                pass
         with contextlib.suppress(OSError):
             self.process.terminate()
         try:
@@ -89,6 +102,11 @@ class EdgeAppWindow:
             self.process.wait(timeout=timeout)
         return self.process.poll() is not None
 
+    def _close_job(self) -> None:
+        job, self.job = self.job, None
+        if job is not None:
+            job.close()
+
 
 def open_app_window(url: str, *, profile: Path) -> EdgeAppWindow | None:
     """Open a dedicated, waitable Edge app process for the Manager UI."""
@@ -101,7 +119,7 @@ def open_app_window(url: str, *, profile: Path) -> EdgeAppWindow | None:
     except OSError:
         return None
     try:
-        process = subprocess.Popen(
+        process, job = spawn_windows_job_process(
             [
                 edge,
                 "--edge-skip-compat-layer-relaunch",
@@ -119,4 +137,4 @@ def open_app_window(url: str, *, profile: Path) -> EdgeAppWindow | None:
         )
     except OSError:
         return None
-    return EdgeAppWindow(process)
+    return EdgeAppWindow(process, job)

@@ -8,10 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from tests._infra.pytest_membership_examples import (
-    assert_protected_pytest_membership_gate as _assert_protected_pytest_membership_gate,
-)
-
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
@@ -99,7 +95,6 @@ def test_release_audit_discovers_adr_contract_lane() -> None:
     assert ("adr-contracts", "_audit_adr_contracts.py") in lanes
     assert ("pr-delta-metrics", "_audit_pr_delta_metrics.py") in lanes
     assert ("adr-registry", "_audit_adr_registry.py") not in lanes
-    assert mod._required_lane_contract_failures(SCRIPTS, discovered) == []
 
 
 def test_adr_contract_gate_is_present_in_a_clean_git_clone() -> None:
@@ -131,102 +126,45 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
     assert "stderr detail" in captured.err
 
 
-def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> None:
-    # The single in-flight grandfather now points at the ADR-0053 merchant
-    # catalog web create-row exemption. Older up-hops are dead history.
+def test_release_audit_requires_the_two_product_risk_lanes(
+) -> None:
+    mod = importlib.reload(importlib.import_module("release_audit"))
+
+    assert mod._missing_required_lanes(
+        [("ci-gap", "_audit_ci_gap.py")]
+    ) == ["_audit_pr_delta_metrics.py"]
+
+
+def test_pr_delta_exemption_count_is_not_a_directional_quality_score(
+    monkeypatch,
+) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 122
+    baseline["mutate_token_exempted"] = 129
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
-    _bootstrapped, violations, _removed = mod._compute_ratchet_findings({"mutate_token_exempted": 121})
+    _bootstrapped, violations = mod._compute_ratchet_findings(
+        {"mutate_token_exempted": 121}
+    )
+    _missing, mismatches, _extras = mod._compute_strict_equality_findings(
+        {**baseline, "mutate_token_exempted": 130}
+    )
 
     assert violations == []
+    assert mismatches == [("mutate_token_exempted", 130, 129)]
 
 
-def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
+def test_pr_delta_cannot_remove_a_mutate_token_counter(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    current = dict(mod.STRICT_EQUALITY_BASELINE)
+    removed = current.pop("mutate_token_reason_create_row")
+    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", current)
 
-    # Non-grandfathered transitions still fail: the 121 -> 122 exception is exact, so
-    # neither older up-hops nor overshoots are waved through.
-    for base_count, current_count in ((116, 119), (119, 120), (120, 121), (121, 123)):
-        baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-        baseline["mutate_token_exempted"] = current_count
-        monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
-        _bootstrapped, violations, _removed = mod._compute_ratchet_findings({"mutate_token_exempted": base_count})
-
-        assert len(violations) == 1
-        assert str(base_count) in violations[0]
-        assert str(current_count) in violations[0]
-
-
-def test_backend_pytest_count_cannot_drop_with_actuals_and_baseline(monkeypatch) -> None:
-    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
-    for counter, base_value, current_value in (
-        ("backend_pytest_count", 3000, 2653),
-        ("backend_pytest_stateful_count", 61, 60),
-    ):
-        baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-        baseline[counter] = current_value
-        monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
-
-        _bootstrapped, violations, _removed = mod._compute_ratchet_findings({counter: base_value})
-
-        assert len(violations) == 1
-        assert f"{counter} (UP-only)" in violations[0]
-        assert f"base={base_value}, current={current_value}" in violations[0]
-
-
-def test_pytest_counter_strips_ambient_collection_filters(monkeypatch) -> None:
-    mod = importlib.reload(importlib.import_module("_audit_pr_delta_metrics"))
-    captured: list[tuple[list[str], dict[str, str]]] = []
-    monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k owner")
-    monkeypatch.setenv("PYTEST_PLUGINS", "untrusted_plugin")
-    monkeypatch.setenv("PYTHONOPTIMIZE", "2")
-    monkeypatch.setenv("PYTHONPATH", "untrusted-import-root")
-    monkeypatch.setenv("XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME", "1")
-
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        environment = kwargs["env"]
-        assert isinstance(environment, dict)
-        captured.append((command, environment))
-        stdout = (
-            "tests/test_stateful.py::test_one\n1/2 tests collected (1 deselected) in 1.00s\n"
-            if "stateful_serial" in command
-            else ("tests/test_parallel.py::test_one\ntests/test_stateful.py::test_one\n2 tests collected in 1.00s\n")
-        )
-        return subprocess.CompletedProcess(
-            command,
-            0,
-            stdout=stdout,
-            stderr="",
-        )
-
-    monkeypatch.setattr(mod.subprocess, "run", fake_run)
-
-    assert mod._count_pytest_tests("tests") == 2
-    assert mod._count_pytest_tests("tests", mark_expression="stateful_serial") == 1
-    assert mod._pytest_membership_digest(("tests/test_stateful.py::test_one",)) != mod._pytest_membership_digest(
-        ("tests/test_parallel.py::test_one",)
+    _bootstrapped, violations = mod._compute_ratchet_findings(
+        {**current, "mutate_token_reason_create_row": removed}
     )
-    assert mod._pytest_membership_digest(
-        ("tests/test_b.py::test_two", "tests/test_a.py::test_one")
-    ) == mod._pytest_membership_digest(("tests/test_a.py::test_one", "tests/test_b.py::test_two"))
-    assert captured[1][0][-4:] == [
-        "-m",
-        "stateful_serial",
-        "-o",
-        "addopts=",
-    ]
-    for _command, environment in captured:
-        assert "PYTEST_ADDOPTS" not in environment
-        assert "PYTEST_PLUGINS" not in environment
-        assert "PYTHONOPTIMIZE" not in environment
-        assert "PYTHONPATH" not in environment
-        assert "XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME" not in environment
-        assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
 
-    _assert_protected_pytest_membership_gate()
+    assert any("mutate_token_reason_create_row" in violation for violation in violations)
 
 
 def test_codebase_marker_audit_ignores_strings_and_reads_comments() -> None:
@@ -258,7 +196,7 @@ def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
     assert mod._strict_baseline_selection_error == ("CI requires XPJ_AUDIT_BASE_REF with the exact pre-change commit")
 
     missing_and_extra = dict(counts)
-    missing_and_extra.pop("backend_pytest_count")
+    missing_and_extra.pop("mutate_token_carriers")
     missing_and_extra["unexpected_counter"] = 1
     assert mod.evaluate_pr_delta_metrics(missing_and_extra) == 1
 

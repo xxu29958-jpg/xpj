@@ -471,6 +471,10 @@ public sealed partial class XpjTestProcessJob : IDisposable
     private static void WriteStandardInput(IntPtr handle, string content)
     {
         byte[] bytes = new UTF8Encoding(false).GetBytes(content);
+        if (bytes.Length == 0)
+        {
+            return;
+        }
         uint written;
         if (!WriteFile(
             handle,

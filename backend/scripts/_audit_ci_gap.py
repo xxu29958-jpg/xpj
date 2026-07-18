@@ -27,7 +27,11 @@ from ci_gap_pytest_lanes import (
     pytest_lane_sequence_violations as _evaluate_pytest_lane_sequence,
 )
 from ci_gap_release_scope import release_apk_scope_policy_violations
-from ci_gap_required_commands import REQUIRED_CI_INVOCATIONS, REQUIRED_CI_INVOCATIONS_BY_PLATFORM
+from ci_gap_required_commands import (
+    PATH_SCOPED_CI_INVOCATIONS,
+    REQUIRED_CI_INVOCATIONS,
+    REQUIRED_CI_INVOCATIONS_BY_PLATFORM,
+)
 from ci_gap_shell import (
     has_unquoted_shell_separator as _has_unquoted_shell_separator,
 )
@@ -42,6 +46,7 @@ from ci_gap_shell import (
     split_shell_command_segments as _split_shell_command_segments,
 )
 from ci_gap_shell import strip_inline_shell_comment as _strip_inline_shell_comment
+from ci_gap_windows_qualification import github_qualification_event_violations
 from ci_gap_workflow_parser import (
     WorkflowAction,
     WorkflowCommand,
@@ -55,7 +60,6 @@ from ci_gap_workflow_parser import (
 class GradleInvocation:
     workflow: pathlib.Path
     tokens: tuple[str, ...]
-
 
 REQUIRED_GRADLE_TASKS = [
     ":app:testGrayDebugUnitTest",
@@ -78,9 +82,8 @@ REQUIRED_GRADLE_TASKS_BY_PLATFORM = {
     "GitHub": tuple(REQUIRED_GRADLE_TASKS),
     "Gitea": tuple(REQUIRED_GRADLE_TASKS),
 }
-PATH_SCOPED_RELEASE_TASKS = frozenset(
-    {":app:assembleGrayRelease", ":app:assembleInternalRelease"}
-)
+PATH_SCOPED_RELEASE_TASKS = frozenset({":app:assembleGrayRelease", ":app:assembleInternalRelease"})
+
 
 def _is_line_continued(stripped_line: str) -> bool:
     return stripped_line.endswith("\\") or stripped_line.endswith("`")
@@ -264,7 +267,6 @@ def _missing_gradle_tasks(commands: list[WorkflowCommand]) -> list[str]:
 def _commands_for_platform(commands: list[WorkflowCommand], platform: str) -> list[WorkflowCommand]:
     return [command for command in commands if PLATFORM_WORKFLOW_PARTS[platform] in command.workflow.parts]
 
-
 def _missing_gradle_tasks_by_platform(
     commands: list[WorkflowCommand],
     *,
@@ -309,30 +311,36 @@ def _missing_ci_invocations(commands: list[WorkflowCommand]) -> list[str]:
         if not any(required.matches(segment) for segment in executable_segments)
     ]
 
-
-def _missing_ci_invocations_by_platform(commands: list[WorkflowCommand]) -> list[str]:
+def _missing_ci_invocations_by_platform(
+    commands: list[WorkflowCommand],
+    *,
+    path_scoped_commands: list[WorkflowCommand] | None = None,
+) -> list[str]:
     missing: list[str] = []
+    all_commands = commands if path_scoped_commands is None else path_scoped_commands
     for platform in PLATFORM_WORKFLOW_PARTS:
-        platform_commands = [
-            command
-            for command in _commands_for_platform(commands, platform)
-            if command.protection_scope == "full"
-        ]
-        for label in _missing_ci_invocations(platform_commands):
-            missing.append(f"{platform}: {label}")
-        executable_segments = _iter_executable_command_segments(platform_commands)
+        protected_segments = _iter_executable_command_segments(
+            [
+                command
+                for command in _commands_for_platform(commands, platform)
+                if command.protection_scope == "full"
+            ]
+        )
+        scoped_segments = _iter_executable_command_segments(
+            _commands_for_platform(all_commands, platform)
+        )
+        for required in REQUIRED_CI_INVOCATIONS:
+            segments = scoped_segments if required.label in PATH_SCOPED_CI_INVOCATIONS else protected_segments
+            if not any(required.matches(segment) for segment in segments):
+                missing.append(f"{platform}: {required.label}")
         for required in REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]:
-            if not any(required.matches(segment) for segment in executable_segments):
+            if not any(required.matches(segment) for segment in scoped_segments):
                 missing.append(f"{platform}: {required.label}")
     return missing
 
 
 def _pytest_lane_sequence_violations(commands: list[WorkflowCommand]) -> list[str]:
-    return _evaluate_pytest_lane_sequence(
-        commands,
-        segment_reader=_iter_executable_command_segments,
-    )
-
+    return _evaluate_pytest_lane_sequence(commands, segment_reader=_iter_executable_command_segments)
 
 def _missing_installer_hash_dataflow_by_platform(
     commands: list[WorkflowCommand],
@@ -440,25 +448,32 @@ def main() -> int:
         return 1
 
     commands = _iter_workflow_run_commands(workflow_dirs, protected_only=True)
-    actions = _iter_workflow_actions(workflow_dirs, protected_only=True)
     path_scoped_commands = _iter_workflow_run_commands(workflow_dirs)
+    path_scoped_actions = _iter_workflow_actions(workflow_dirs)
     missing: list[str] = []
     for task in _missing_gradle_tasks_by_platform(
         commands,
         path_scoped_commands=path_scoped_commands,
     ):
         missing.append(f"gradle task: {task}")
-    for invocation in _missing_ci_invocations_by_platform(commands):
+    for invocation in _missing_ci_invocations_by_platform(commands, path_scoped_commands=path_scoped_commands):
         missing.append(f"ci invocation: {invocation}")
     for violation in _pytest_lane_sequence_violations(commands):
         missing.append(f"ci policy: {violation}")
-    for dataflow in _missing_installer_hash_dataflow_by_platform(commands):
+    for dataflow in _missing_installer_hash_dataflow_by_platform(path_scoped_commands):
         missing.append(f"ci dataflow: {dataflow}")
-    for action in _missing_installer_publish_actions_by_platform(commands, actions):
+    for action in _missing_installer_publish_actions_by_platform(
+        path_scoped_commands, path_scoped_actions
+    ):
         missing.append(f"ci action: {action}")
     for violation in _github_ci_release_apk_policy_violations(path_scoped_commands):
         missing.append(f"ci policy: {violation}")
     for violation in _gitea_ci_release_apk_policy_violations(path_scoped_commands):
+        missing.append(f"ci policy: {violation}")
+    for violation in github_qualification_event_violations(
+        workflow_dirs,
+        segment_reader=_iter_executable_command_segments,
+    ):
         missing.append(f"ci policy: {violation}")
     for violation in _github_external_uses_pin_violations(workflow_dirs):
         missing.append(f"ci policy: {violation}")

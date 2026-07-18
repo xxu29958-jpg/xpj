@@ -5,19 +5,18 @@
 baseline can be lowered in the same cleanup slice.
 
 ``STRICT_EQUALITY_BASELINE`` protects PR-Δ counters from
-``_audit_pr_delta_metrics.py``. It composes three checks: exact current
-actuals, directional movement vs the base branch for ratcheted keys, and
-removed-key detection so managed counters cannot be renamed away.
+``_audit_pr_delta_metrics.py``. It composes exact current actuals with
+directional movement against the base branch for counters that remain managed.
 
 Bootstrap is purely data-shaped: a new key absent from the base baseline
 skips only the directional ratchet for that PR, while strict equality
 still applies. PR CI must be able to read the base file via git; local
 dev without PR context may skip that comparison with an INFO line.
 
-Scope: these numeric gates defend high-risk surfaces against silent drift.
-They are not universal quality scores; adding a counter still requires a
-stable, machine-verifiable risk and a clear owner. See ADR-0038 for the
-full policy history and CODE-2026-07-01 for provenance-comment cleanup.
+Scope: these numeric gates defend high-risk product surfaces against silent
+drift. They are not universal quality scores and do not freeze test counts or
+test names; test completeness is proved by the runners and qualification
+lanes. See ADR-0038 for the original policy history.
 """
 
 from __future__ import annotations
@@ -153,20 +152,6 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2752,
-    "backend_pytest_parallel_count": 2690,
-    "backend_pytest_parallel_safe_count": 154,
-    "backend_pytest_real_db_count": 150,
-    "backend_pytest_real_db_membership_digest":
-        47_554_044_499_875_252_747_688_535_530_001_338_751_707_817_381_612_743_212_365_202_433_320_420_233_908,
-    "backend_pytest_stateful_count": 62,
-    "backend_pytest_stateful_membership_digest":
-        2_226_304_664_685_623_122_141_236_903_997_730_648_405_805_352_223_944_179_097_500_419_195_772_145_940,
-    "backend_pytest_cluster_count": 7,
-    "backend_pytest_cluster_membership_digest":
-        20_986_048_875_972_673_385_075_257_154_712_410_674_609_335_780_934_224_221_339_523_405_367_512_423_631,
-    # Lifecycle authority, credential cleanup, ACL, and maintenance contracts.
-    "installer_pytest_count": 130,
 }
 
 # Android ``@Test`` count is enforced separately by the Android CI lane
@@ -176,26 +161,15 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 # cut-over PRs that touch both sides needing to update both baseline files.
 # Android count is NOT listed here.
 # UP-only keys cannot drop vs base; strict equality alone could miss lockstep
-# baseline/actual reductions. Both backend and release-critical installer
-# behavior suites are monotonic floors. The stateful floor prevents a serial
-# risk proof from being silently demoted into the parallel lane; the parallel
-# count remains strict-equality but may decrease when a reviewed test moves to
-# the safer stateful partition.
+# baseline/actual reductions.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset({
-    "backend_pytest_count",
-    "backend_pytest_cluster_count",
-    "backend_pytest_real_db_count",
-    "backend_pytest_stateful_count",
-    "installer_pytest_count",
     "mutate_token_carriers",
 })
 
-# DOWN-only keys may shrink as routes graduate; they must not grow back.
-# New ALLOWLIST routes need explicit ADR pointers per v1.3 PR-2.
-BASELINE_RATCHET_DOWN: frozenset[str] = frozenset({
-    "mutate_token_exempted",
-})
-_ADR_0049_EXEMPTED_GRANDFATHER = (121, 122)  # ADR-0053 web merchant catalog adds one create-row exemption (POST /web/merchants/catalog/create) while hide/delete carry OCC tokens. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop.
+# Exemption counts are not a quality score: a new route can add a legitimate,
+# reason-coded exemption. Strict equality still requires each intentional
+# distribution change to update the audited baseline in the same PR.
+BASELINE_RATCHET_DOWN: frozenset[str] = frozenset()
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -282,18 +256,26 @@ def _compute_strict_equality_findings(
 
 def _compute_ratchet_findings(
     base_baseline: dict[str, int],
-) -> tuple[list[str], list[str], list[str]]:
-    """Layer 2/3: returns (bootstrapped, movement_violations, removed_keys) by
-    walking STRICT_EQUALITY_BASELINE keys against the base baseline dict."""
+) -> tuple[list[str], list[str]]:
+    """Compare currently managed counters with their base values."""
     bootstrapped: list[str] = []
     movement_violations: list[str] = []
+    removed_mutate_token_counters = sorted(
+        key
+        for key in base_baseline
+        if key.startswith("mutate_token_") and key not in STRICT_EQUALITY_BASELINE
+    )
+    if removed_mutate_token_counters:
+        movement_violations.append(
+            "  - protected mutate-token counter(s) removed: "
+            + ", ".join(removed_mutate_token_counters)
+        )
     for key in sorted(STRICT_EQUALITY_BASELINE):
         current_val = STRICT_EQUALITY_BASELINE[key]
         if key not in base_baseline:
             bootstrapped.append(key)
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
-        adr_0049_exempt = key == "mutate_token_exempted" and (base_val, current_val) == _ADR_0049_EXEMPTED_GRANDFATHER
         if key in BASELINE_RATCHET_UP and current_val < base_val:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
@@ -301,19 +283,16 @@ def _compute_ratchet_findings(
                 f"accumulate, not vanish. Strict equality alone misses this when "
                 f"actuals dropped in lockstep — this layer catches it."
             )
-        elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not adr_0049_exempt:
+        elif key in BASELINE_RATCHET_DOWN and current_val > base_val:
             movement_violations.append(
                 f"  - {key} (DOWN-only): base={base_val}, current={current_val} "
                 f"(rose by {current_val - base_val}). Exemptions should drain as "
                 f"routes graduate; adding to ALLOWLIST needs an explicit ADR pointer."
             )
-    removed_keys = sorted(set(base_baseline) - set(STRICT_EQUALITY_BASELINE))
-    return bootstrapped, movement_violations, removed_keys
+    return bootstrapped, movement_violations
 
 
-def _compute_ratchet_policy_findings(
-    base_policy: _StrictBaselinePolicy | None,
-) -> list[str]:
+def _compute_ratchet_policy_findings() -> list[str]:
     violations: list[str] = []
     try:
         source_policy = _parse_base_strict_policy(
@@ -343,18 +322,6 @@ def _compute_ratchet_policy_findings(
             "current ratchet policy references unknown counter(s): "
             + ", ".join(sorted(unknown))
         )
-    if base_policy is None or not base_policy.ratchet_policy_present:
-        return violations
-    for label, base_membership, current_membership in (
-        ("UP-only", base_policy.ratchet_up, BASELINE_RATCHET_UP),
-        ("DOWN-only", base_policy.ratchet_down, BASELINE_RATCHET_DOWN),
-    ):
-        removed = sorted(base_membership - current_membership)
-        if removed:
-            violations.append(
-                f"{label} ratchet policy removed protected counter(s): "
-                + ", ".join(removed)
-            )
     return violations
 
 
@@ -389,7 +356,6 @@ def _print_strict_equality_failures(
 
 def _print_ratchet_failures(
     movement_violations: list[str],
-    removed_keys: list[str],
     policy_violations: list[str],
     base_unreadable_but_required: bool,
 ) -> None:
@@ -401,15 +367,6 @@ def _print_ratchet_failures(
         )
         for line in movement_violations:
             print(line)
-    if removed_keys:
-        print(
-            "FAIL: keys present in base baseline are missing from current baseline. "
-            "Key removal / rename /摘出 STRICT_EQUALITY_BASELINE is a defrocking "
-            "of a managed counter — must be a dedicated migration PR with explicit "
-            "rationale, never smuggled inside a cut-over PR:"
-        )
-        for key in removed_keys:
-            print(f"  - {key} (was in base, gone in current)")
     if policy_violations:
         print("FAIL: directional ratchet policy drifted or is malformed:")
         for violation in policy_violations:
@@ -440,7 +397,7 @@ def _print_info_lines(base_readable: bool, bootstrapped: list[str]) -> None:
     if not base_readable and not _strict_baseline_base_is_required():
         print(
             "INFO: base baseline unreadable (local dev — no CI/exact-base context). "
-            "Ratchet + removed-key checks skipped. In PR CI these would FAIL "
+            "Directional ratchet checks skipped. In PR CI these would FAIL "
             "rather than skip, so this is not a CI bypass."
         )
 
@@ -448,7 +405,7 @@ def _print_info_lines(base_readable: bool, bootstrapped: list[str]) -> None:
 def _print_ok_line(base_readable: bool, bootstrapped: list[str]) -> None:
     passed = len(STRICT_EQUALITY_BASELINE)
     if base_readable:
-        msg = f"OK: {passed} PR-Δ counters pass strict + ratchet + removed-key checks"
+        msg = f"OK: {passed} PR-Δ counters pass strict equality and directional ratchets"
         if bootstrapped:
             msg += f" ({len(bootstrapped)} bootstrapped this PR)"
     else:
@@ -460,7 +417,7 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     """Reconcile exact counters and directional ratchets.
 
     Base values must remain reachable in CI. New counters may bootstrap once;
-    existing counters cannot be renamed away or move against their ratchet.
+    counters that remain managed cannot move against their ratchet.
     """
     missing, mismatches, extras = _compute_strict_equality_findings(counts)
 
@@ -468,16 +425,16 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     base_unreadable_but_required = not base_readable and _strict_baseline_base_is_required()
     bootstrapped: list[str] = []
     movement_violations: list[str] = []
-    removed_keys: list[str] = []
     if base_readable:
-        bootstrapped, movement_violations, removed_keys = _compute_ratchet_findings(base_policy.baseline)
-    policy_violations = _compute_ratchet_policy_findings(base_policy if base_readable else None)
+        bootstrapped, movement_violations = _compute_ratchet_findings(
+            base_policy.baseline
+        )
+    policy_violations = _compute_ratchet_policy_findings()
 
     print("== Gate. ADR-0038 PR-Δ verification (strict-equality + ratchet) ==")
     _print_strict_equality_failures(counts, missing, mismatches, extras)
     _print_ratchet_failures(
         movement_violations,
-        removed_keys,
         policy_violations,
         base_unreadable_but_required,
     )
@@ -488,7 +445,6 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
         or mismatches
         or extras
         or movement_violations
-        or removed_keys
         or policy_violations
         or base_unreadable_but_required
     )

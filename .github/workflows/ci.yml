@@ -48,6 +48,95 @@ jobs:
           # PR CI rather than silently downgrading to strict-equality-only.
           fetch-depth: 0
 
+      - name: Detect Windows qualification scope
+        id: windows-scope
+        working-directory: .
+        shell: pwsh
+        env:
+          CI_EVENT_NAME: ${{ github.event_name }}
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          $scope = [ordered]@{
+            contract_required = $true
+            backend_exe_required = $true
+            manager_exe_required = $true
+            installer_required = $true
+          }
+
+          if ($env:CI_EVENT_NAME -eq "pull_request") {
+            foreach ($key in @($scope.Keys)) { $scope[$key] = $false }
+            $canDiff = $env:CI_BASE_SHA -match '^[0-9a-fA-F]{40,64}$' -and $env:CI_HEAD_SHA -match '^[0-9a-fA-F]{40,64}$'
+            if ($canDiff) {
+              $changed = @(git diff --name-only "$env:CI_BASE_SHA...$env:CI_HEAD_SHA")
+              $canDiff = $LASTEXITCODE -eq 0
+            }
+            if (-not $canDiff) {
+              Write-Warning "Cannot prove Windows qualification scope; running every qualification step."
+              foreach ($key in @($scope.Keys)) { $scope[$key] = $true }
+            }
+            else {
+              $changed | ForEach-Object { Write-Host $_ }
+              foreach ($path in $changed) {
+                if ($path -match '^(\.github/workflows/|\.gitea/workflows/)') {
+                  foreach ($key in @($scope.Keys)) { $scope[$key] = $true }
+                }
+                elseif ($path -match '^backend/packaging/tests/') {
+                  $scope.contract_required = $true
+                }
+                elseif ($path -match '^android/scripts/') {
+                  $scope.contract_required = $true
+                }
+                elseif ($path -match '^backend/packaging/' -or $path -match '^desktop/packaging/') {
+                  $scope.installer_required = $true
+                }
+                elseif ($path -match '^backend/scripts/(run_packaging_tests\.py|packaging_.*|pytest_(execution|marker)_contract\.py|test_pg_.*|start_test_pg\.ps1|stop_test_pg\.ps1)$') {
+                  $scope.contract_required = $true
+                }
+                elseif ($path -match '^backend/scripts/windows_(build|backend_build)_provenance\.ps1$') {
+                  $scope.backend_exe_required = $true
+                  $scope.manager_exe_required = $true
+                }
+                elseif ($path -eq 'backend/scripts/build_backend_exe.ps1') {
+                  $scope.backend_exe_required = $true
+                }
+                elseif ($path -eq 'backend/app/version.py') {
+                  $scope.installer_required = $true
+                }
+                elseif ($path -match '^backend/migrations/' -or $path -eq 'backend/alembic.ini') {
+                  $scope.backend_exe_required = $true
+                }
+                elseif ($path -match '^backend/app/' -or $path -match '^backend/requirements' -or $path -match '^backend/pyproject\.toml$') {
+                  $scope.backend_exe_required = $true
+                }
+                elseif ($path -eq 'desktop/scripts/windows_manager_build_provenance.ps1') {
+                  $scope.manager_exe_required = $true
+                }
+                elseif ($path -match '^desktop/scripts/' -or $path -match '^desktop/backend_manager/' -or $path -match '^desktop/requirements') {
+                  $scope.manager_exe_required = $true
+                }
+                elseif ($path -match '^desktop/' -and $path -notmatch '^desktop/tests/') {
+                  $scope.manager_exe_required = $true
+                }
+              }
+              if ($scope.backend_exe_required -or $scope.manager_exe_required) {
+                $scope.installer_required = $true
+              }
+              if ($scope.installer_required) {
+                $scope.contract_required = $true
+                $scope.backend_exe_required = $true
+                $scope.manager_exe_required = $true
+              }
+            }
+          }
+
+          $utf8 = [System.Text.UTF8Encoding]::new($false)
+          foreach ($entry in $scope.GetEnumerator()) {
+            $value = $entry.Value.ToString().ToLowerInvariant()
+            [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "$($entry.Key)=$value`n", $utf8)
+            Write-Host "$($entry.Key)=$value"
+          }
+
       - name: Check PowerShell scripts
         working-directory: .
         shell: powershell
@@ -93,20 +182,24 @@ jobs:
         run: ruff check app scripts tests packaging/tests
 
       - name: Windows installer safety behavior
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.contract_required == 'true'
         timeout-minutes: 20
         env:
           XPJ_REQUIRE_WINDOWS_LIFECYCLE_RUNTIME: "1"
         run: python scripts/run_packaging_tests.py
 
       - name: Installer source preflight (Windows PowerShell 5.1)
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.contract_required == 'true'
         shell: powershell
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
 
       - name: Installer source preflight (PowerShell 7)
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.contract_required == 'true'
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
 
       - name: Cache pinned Windows build inputs
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.backend_exe_required == 'true' || steps.windows-scope.outputs.manager_exe_required == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -117,26 +210,31 @@ jobs:
           key: windows-installer-vendor-${{ hashFiles('backend/packaging/windows-build-toolchain.json', 'backend/packaging/build_pg_bundle.ps1', 'backend/packaging/prepare_windows_installer_vendor.ps1') }}
 
       - name: Frozen backend locked release build
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.backend_exe_required == 'true'
         shell: powershell
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
 
       - name: Frozen Desktop Manager locked release build
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.manager_exe_required == 'true'
         shell: powershell
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ..\desktop\scripts\build_manager_exe.ps1 -Clean
 
       - name: Prepare pinned PostgreSQL and Shawl inputs
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.installer_required == 'true'
         shell: powershell
         run: |
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Prepare pinned Inno Setup compiler
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.installer_required == 'true'
         shell: powershell
         run: |
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_build_toolchain.ps1 -Component Inno -Force
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile authoritative Inno installer
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.installer_required == 'true'
         id: compile_installer
         shell: powershell
         run: |
@@ -144,6 +242,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify atomic Windows installer publish unit
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.installer_required == 'true'
         shell: powershell
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
@@ -152,6 +251,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve verified Windows installer publish path
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.installer_required == 'true'
         shell: powershell
         run: |
           $versionText = Get-Content -LiteralPath app\version.py -Raw -Encoding UTF8
@@ -168,6 +268,7 @@ jobs:
           )
 
       - name: Upload atomic Windows installer publish unit
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.installer_required == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ticketbox-windows-installer
@@ -175,6 +276,7 @@ jobs:
           if-no-files-found: error
 
       - name: Create fresh installer verification directory
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.installer_required == 'true'
         shell: powershell
         run: |
           $downloadRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
@@ -191,12 +293,14 @@ jobs:
           )
 
       - name: Download uploaded Windows installer publish unit
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.installer_required == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ticketbox-windows-installer
           path: ${{ env.INSTALLER_VERIFY_DOWNLOAD_PATH }}
 
       - name: Verify uploaded Windows installer bytes
+        if: github.event_name != 'pull_request' || steps.windows-scope.outputs.installer_required == 'true'
         shell: powershell
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
