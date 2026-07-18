@@ -10,11 +10,6 @@ on:
       - "refactor/**"
       - "codex/**"
   workflow_dispatch:
-    inputs:
-      adr_base_ref:
-        description: Canonical default-branch divergence commit for ADR history ratchets
-        required: true
-        type: string
 
 jobs:
   backend-full:
@@ -244,25 +239,21 @@ jobs:
         working-directory: backend
         run: .\.ci-venv\Scripts\python.exe scripts\check_api_contract.py
 
-      - name: Resolve release audit base
+      - name: Resolve release audit base for push
+        if: github.event_name == 'push'
         env:
-          ADR_MANUAL_BASE: ${{ inputs.adr_base_ref }}
           ADR_PUSH_BEFORE: ${{ github.event.before }}
         run: |
-          if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") {
-            $auditBase = $env:ADR_MANUAL_BASE
-          }
-          elseif ($env:GITHUB_EVENT_NAME -eq "push" -and $env:GITHUB_REF -eq "refs/heads/main") {
+          if ($env:GITHUB_REF -eq "refs/heads/main") {
             $auditBase = $env:ADR_PUSH_BEFORE
           }
-          elseif ($env:GITHUB_EVENT_NAME -eq "push") {
+          else {
             $auditBaseCandidates = @(git merge-base --all HEAD refs/remotes/origin/main)
             if ($LASTEXITCODE -ne 0 -or $auditBaseCandidates.Count -ne 1) {
               throw "Cannot resolve one unique canonical work-branch audit base."
             }
             $auditBase = ([string]$auditBaseCandidates[0]).Trim()
           }
-          else { throw "Unsupported release audit event: $env:GITHUB_EVENT_NAME" }
           if ($auditBase -notmatch '^[0-9a-fA-F]{40,64}$') { throw "Release audit base is not an exact object ID." }
           [System.IO.File]::AppendAllText($env:GITHUB_ENV, "XPJ_AUDIT_BASE_REF=$auditBase" + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
 

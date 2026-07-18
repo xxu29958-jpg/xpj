@@ -70,6 +70,8 @@ def select_ratchet_base(
                     f"divergence base {canonical.commit}, got {commit}"
                 )
         return GitBase(ref=explicit, commit=commit), None
+    if environ.get("GITHUB_EVENT_NAME", "").strip() == "workflow_dispatch":
+        return _select_default_divergence_base(repo_root, environ)
     if has_auditable_ci_context(environ):
         return None, "CI requires XPJ_AUDIT_BASE_REF with the exact pre-change commit"
 
