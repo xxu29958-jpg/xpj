@@ -29,6 +29,7 @@ jobs:
       - run: powershell -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: powershell -NoProfile -File scripts/build_backend_exe.ps1 -Clean
+      - run: powershell -NoProfile -File ../desktop/scripts/build_manager_exe.ps1 -Clean
       - run: python scripts/postgres_backup_drill.py
       - run: python scripts/check_api_contract.py
       - run: ruff check app scripts tests packaging/tests

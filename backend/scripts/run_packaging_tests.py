@@ -8,21 +8,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
-import pytest
-
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from scripts.packaging_pytest_contract import (  # noqa: E402
-    PACKAGING_EXPECTED_PARALLEL_COUNT_ENV,
-    PACKAGING_EXPECTED_PARALLEL_DIGEST_ENV,
-    PACKAGING_EXPECTED_SERIAL_COUNT_ENV,
-    PACKAGING_EXPECTED_SERIAL_DIGEST_ENV,
-    PACKAGING_PARALLEL_MARKER,
-    PACKAGING_SERIAL_MARKER,
-    packaging_partition_violation,
-)
 from scripts.pytest_execution_contract import (  # noqa: E402
     PYTEST_EXPECTED_COUNT_ENV,
     PYTEST_EXPECTED_DIGEST_ENV,
@@ -70,42 +59,12 @@ def run_packaging_tests() -> int:
         backend_root=BACKEND_ROOT,
         remove_environment=(STRICT_WINDOWS_RUNTIME_ENV,),
     )
-    parallel_snapshot = collect_pytest_snapshot(
-        "packaging/tests",
-        mark_expression=PACKAGING_PARALLEL_MARKER,
-        backend_root=BACKEND_ROOT,
-        allow_empty=True,
-        remove_environment=(STRICT_WINDOWS_RUNTIME_ENV,),
-    )
-    serial_snapshot = collect_pytest_snapshot(
-        "packaging/tests",
-        mark_expression=PACKAGING_SERIAL_MARKER,
-        backend_root=BACKEND_ROOT,
-        allow_empty=True,
-        remove_environment=(STRICT_WINDOWS_RUNTIME_ENV,),
-    )
-    partition_violation = packaging_partition_violation(
-        snapshot.nodeids,
-        parallel_snapshot.nodeids,
-        serial_snapshot.nodeids,
-    )
-    if partition_violation:
-        print(f"[packaging-tests] {partition_violation}", file=sys.stderr, flush=True)
-        return pytest.ExitCode.USAGE_ERROR
     environment = pytest_execution_environment()
     environment[STRICT_WINDOWS_RUNTIME_ENV] = "1"
     environment[PYTEST_EXPECTED_COUNT_ENV] = str(snapshot.count)
     environment[PYTEST_EXPECTED_DIGEST_ENV] = snapshot.digest
-    environment[PACKAGING_EXPECTED_PARALLEL_COUNT_ENV] = str(
-        parallel_snapshot.count
-    )
-    environment[PACKAGING_EXPECTED_PARALLEL_DIGEST_ENV] = parallel_snapshot.digest
-    environment[PACKAGING_EXPECTED_SERIAL_COUNT_ENV] = str(serial_snapshot.count)
-    environment[PACKAGING_EXPECTED_SERIAL_DIGEST_ENV] = serial_snapshot.digest
     print(
-        "[packaging-tests] resource partition: "
-        f"parallel={parallel_snapshot.count}, serial={serial_snapshot.count}, "
-        f"total={snapshot.count}",
+        f"[packaging-tests] collected {snapshot.count} tests",
         flush=True,
     )
     with TemporaryDirectory(prefix="xpj-packaging-pytest-") as handshake_dir:

@@ -15,21 +15,50 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from backend_manager.process import WindowsKillOnCloseJob, spawn_windows_job_process
+
 _WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-_EVALUATE_PAGE_ATTEMPTS = 2
+_EDGE_OPERATION_TIMEOUT_SECONDS = 30.0
+_APP_TARGET_STABLE_CLOSED_SECONDS = 0.25
 
 
 class _DevToolsTransportError(RuntimeError):
     """Raised when a bounded Edge DevTools session cannot carry commands."""
 
 
+def _remaining_timeout(deadline: float, *, cap: float, message: str) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise _DevToolsTransportError(message)
+    return min(cap, max(remaining, 0.001))
+
+
 class _WebSocket:
-    def __init__(self, url: str, *, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        url: str,
+        *,
+        deadline: float | None = None,
+        timeout: float = 10.0,
+    ) -> None:
         parsed = urlsplit(url)
         if parsed.scheme != "ws" or parsed.hostname not in {"127.0.0.1", "localhost"}:
             raise AssertionError(f"refusing non-loopback DevTools websocket: {url}")
-        self._socket = socket.create_connection((parsed.hostname, parsed.port or 80), timeout=timeout)
-        self._socket.settimeout(timeout)
+        self._deadline = deadline
+        connect_timeout = (
+            timeout
+            if deadline is None
+            else _remaining_timeout(
+                deadline,
+                cap=timeout,
+                message="Edge operation deadline expired before DevTools connected",
+            )
+        )
+        self._socket = socket.create_connection(
+            (parsed.hostname, parsed.port or 80),
+            timeout=connect_timeout,
+        )
+        self._socket.settimeout(connect_timeout)
         self._stream = self._socket.makefile("rb", buffering=0)
         key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
         path = parsed.path or "/"
@@ -45,9 +74,11 @@ class _WebSocket:
             "Origin: http://127.0.0.1\r\n\r\n"
         )
         self._socket.sendall(request.encode("ascii"))
+        self._refresh_timeout()
         status = self._stream.readline().decode("ascii", errors="replace").strip()
         headers: dict[str, str] = {}
         while True:
+            self._refresh_timeout()
             line = self._stream.readline()
             if line in {b"\r\n", b"\n", b""}:
                 break
@@ -63,6 +94,16 @@ class _WebSocket:
             raise _DevToolsTransportError(f"DevTools websocket handshake failed: {status}")
         self._next_id = 1
 
+    def _refresh_timeout(self) -> None:
+        if self._deadline is not None:
+            self._socket.settimeout(
+                _remaining_timeout(
+                    self._deadline,
+                    cap=10.0,
+                    message="Edge operation deadline expired during DevTools transport",
+                ),
+            )
+
     def close(self) -> None:
         try:
             self._stream.close()
@@ -70,6 +111,7 @@ class _WebSocket:
             self._socket.close()
 
     def _send_frame(self, payload: bytes, *, opcode: int = 1) -> None:
+        self._refresh_timeout()
         mask = secrets.token_bytes(4)
         length = len(payload)
         header = bytearray([0x80 | opcode])
@@ -89,6 +131,7 @@ class _WebSocket:
         chunks: list[bytes] = []
         remaining = length
         while remaining:
+            self._refresh_timeout()
             chunk = self._stream.read(remaining)
             if not chunk:
                 raise _DevToolsTransportError("DevTools websocket closed unexpectedly")
@@ -146,9 +189,13 @@ class _WebSocket:
             return result
 
 
-def _wait_for_devtools(profile: Path, process: subprocess.Popen[bytes]) -> tuple[int, str]:
+def _wait_for_devtools(
+    profile: Path,
+    process: subprocess.Popen[bytes],
+    *,
+    deadline: float,
+) -> tuple[int, str]:
     active_port = profile / "DevToolsActivePort"
-    deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline:
         try:
             lines = active_port.read_text(encoding="ascii").splitlines()
@@ -156,20 +203,41 @@ def _wait_for_devtools(profile: Path, process: subprocess.Popen[bytes]) -> tuple
             lines = []
         if len(lines) >= 2:
             return int(lines[0]), lines[1]
+        return_code = process.poll()
+        if return_code is not None:
+            raise _DevToolsTransportError(
+                f"Edge exited before publishing DevToolsActivePort (exit={return_code})",
+            )
         time.sleep(0.05)
     raise _DevToolsTransportError(
         f"Edge did not publish DevToolsActivePort (launcher exit={process.poll()})",
     )
 
 
-def _page_websocket(port: int) -> str:
+def _page_websocket(
+    port: int,
+    process: subprocess.Popen[bytes],
+    *,
+    deadline: float,
+) -> str:
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
         try:
-            with opener.open(f"http://127.0.0.1:{port}/json/list", timeout=1) as response:
+            with opener.open(
+                f"http://127.0.0.1:{port}/json/list",
+                timeout=_remaining_timeout(
+                    deadline,
+                    cap=1.0,
+                    message="Edge operation deadline expired before page discovery",
+                ),
+            ) as response:
                 targets = json.loads(response.read())
         except (OSError, ValueError):
+            return_code = process.poll()
+            if return_code is not None:
+                raise _DevToolsTransportError(
+                    f"Edge exited before exposing a page DevTools target (exit={return_code})",
+                ) from None
             time.sleep(0.05)
             continue
         for target in targets:
@@ -178,9 +246,16 @@ def _page_websocket(port: int) -> str:
     raise _DevToolsTransportError("Edge did not expose a page DevTools target")
 
 
-def _devtools_targets(port: int) -> list[dict[str, object]]:
+def _devtools_targets(port: int, *, deadline: float) -> list[dict[str, object]]:
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(f"http://127.0.0.1:{port}/json/list", timeout=1) as response:
+    with opener.open(
+        f"http://127.0.0.1:{port}/json/list",
+        timeout=_remaining_timeout(
+            deadline,
+            cap=1.0,
+            message="Edge app-window deadline expired during target discovery",
+        ),
+    ) as response:
         targets = json.loads(response.read())
     assert isinstance(targets, list)
     return [target for target in targets if isinstance(target, dict)]
@@ -193,27 +268,53 @@ def _close_websocket_safely(websocket: _WebSocket | None) -> None:
         websocket.close()
 
 
-def _reap_edge_process(process: subprocess.Popen[bytes]) -> None:
+def _reap_edge_process(
+    process: subprocess.Popen[bytes],
+    *,
+    job: WindowsKillOnCloseJob | None,
+) -> None:
+    if job is not None:
+        job.close()
     try:
-        process.wait(timeout=5)
+        process.wait(timeout=2)
         return
     except subprocess.TimeoutExpired:
         pass
     with contextlib.suppress(OSError):
         process.terminate()
     try:
-        process.wait(timeout=5)
+        process.wait(timeout=1)
         return
     except subprocess.TimeoutExpired:
         pass
     with contextlib.suppress(OSError):
         process.kill()
-    process.wait(timeout=5)
+    process.wait(timeout=2)
+
+
+def _app_window_targets_are_closed(
+    targets: list[dict[str, object]],
+    *,
+    target_id: str,
+) -> bool:
+    page_targets = [target for target in targets if target.get("type") == "page"]
+    return not page_targets and all(str(target.get("id")) != target_id for target in targets)
+
+
+def _launch_edge(edge: str, arguments: list[str]) -> tuple[subprocess.Popen[bytes], WindowsKillOnCloseJob]:
+    process, job = spawn_windows_job_process(
+        [edge, *arguments],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return process, job
 
 
 def _stop_edge(
     process: subprocess.Popen[bytes],
     *,
+    job: WindowsKillOnCloseJob,
     page: _WebSocket | None,
     browser_endpoint: str | None,
 ) -> None:
@@ -229,59 +330,7 @@ def _stop_edge(
         finally:
             _close_websocket_safely(browser)
     finally:
-        _reap_edge_process(process)
-
-
-def _evaluate_page_once(
-    edge: str,
-    *,
-    profile: Path,
-    url: str,
-    width: int,
-    height: int,
-    expression: str,
-) -> object:
-    profile.mkdir(parents=True)
-    process = subprocess.Popen(
-        [
-            edge,
-            "--headless=new",
-            "--disable-background-networking",
-            "--disable-gpu",
-            "--no-first-run",
-            "--remote-allow-origins=*",
-            "--remote-debugging-port=0",
-            f"--user-data-dir={profile}",
-            "about:blank",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    page: _WebSocket | None = None
-    browser_endpoint: str | None = None
-    try:
-        port, browser_path = _wait_for_devtools(profile, process)
-        browser_endpoint = f"ws://127.0.0.1:{port}{browser_path}"
-        page = _WebSocket(_page_websocket(port))
-        page.request(
-            "Emulation.setDeviceMetricsOverride",
-            {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False},
-        )
-        page.request("Page.navigate", {"url": url})
-        deadline = time.monotonic() + 10.0
-        while time.monotonic() < deadline:
-            evaluated = page.request(
-                "Runtime.evaluate",
-                {"expression": expression, "returnByValue": True},
-            )
-            remote = evaluated.get("result", {})
-            if isinstance(remote, dict) and remote.get("type") != "undefined":
-                return remote.get("value")
-            time.sleep(0.05)
-        raise AssertionError("layout probe did not become available")
-    finally:
-        _stop_edge(process, page=page, browser_endpoint=browser_endpoint)
+        _reap_edge_process(process, job=job)
 
 
 def evaluate_page(
@@ -293,33 +342,58 @@ def evaluate_page(
     height: int,
     expression: str,
 ) -> object:
-    failures: list[BaseException] = []
-    for attempt in range(1, _EVALUATE_PAGE_ATTEMPTS + 1):
-        try:
-            return _evaluate_page_once(
-                edge,
-                profile=profile / f"attempt-{attempt}",
-                url=url,
-                width=width,
-                height=height,
-                expression=expression,
+    deadline = time.monotonic() + _EDGE_OPERATION_TIMEOUT_SECONDS
+    profile.mkdir(parents=True)
+    process, job = _launch_edge(
+        edge,
+        [
+            "--edge-skip-compat-layer-relaunch",
+            "--headless=new",
+            "--disable-background-networking",
+            "--disable-gpu",
+            "--no-first-run",
+            "--remote-allow-origins=*",
+            "--remote-debugging-port=0",
+            f"--user-data-dir={profile}",
+            "about:blank",
+        ],
+    )
+    page: _WebSocket | None = None
+    browser_endpoint: str | None = None
+    try:
+        port, browser_path = _wait_for_devtools(profile, process, deadline=deadline)
+        browser_endpoint = f"ws://127.0.0.1:{port}{browser_path}"
+        page = _WebSocket(
+            _page_websocket(port, process, deadline=deadline),
+            deadline=deadline,
+        )
+        page.request(
+            "Emulation.setDeviceMetricsOverride",
+            {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False},
+        )
+        page.request("Page.navigate", {"url": url})
+        while time.monotonic() < deadline:
+            evaluated = page.request(
+                "Runtime.evaluate",
+                {"expression": expression, "returnByValue": True},
             )
-        except (OSError, _DevToolsTransportError) as exc:
-            failures.append(exc)
-    last_failure = failures[-1]
-    raise _DevToolsTransportError(
-        "Edge DevTools transport failed after "
-        f"{_EVALUATE_PAGE_ATTEMPTS} fresh sessions: "
-        f"{type(last_failure).__name__}: {last_failure}",
-    ) from last_failure
+            remote = evaluated.get("result", {})
+            if isinstance(remote, dict) and remote.get("type") != "undefined":
+                return remote.get("value")
+            time.sleep(0.05)
+        raise AssertionError("layout probe did not become available")
+    finally:
+        _stop_edge(process, job=job, page=page, browser_endpoint=browser_endpoint)
 
 
 def wait_for_app_window_close(edge: str, *, profile: Path, url: str) -> None:
     """Verify that a real Edge app target closes itself after rendering the page."""
+    deadline = time.monotonic() + _EDGE_OPERATION_TIMEOUT_SECONDS
     profile.mkdir(parents=True)
-    process = subprocess.Popen(
+    process, job = _launch_edge(
+        edge,
         [
-            edge,
+            "--edge-skip-compat-layer-relaunch",
             "--disable-background-mode",
             "--disable-background-networking",
             "--no-first-run",
@@ -329,31 +403,46 @@ def wait_for_app_window_close(edge: str, *, profile: Path, url: str) -> None:
             f"--app={url}",
             "--window-size=820,660",
         ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     browser_endpoint: str | None = None
     try:
-        port, browser_path = _wait_for_devtools(profile, process)
+        port, browser_path = _wait_for_devtools(profile, process, deadline=deadline)
         browser_endpoint = f"ws://127.0.0.1:{port}{browser_path}"
-        saw_target = False
-        deadline = time.monotonic() + 10.0
+        target_id: str | None = None
+        closed_since: float | None = None
         while time.monotonic() < deadline:
+            if target_id is not None and process.poll() is not None:
+                return
             try:
-                targets = _devtools_targets(port)
+                targets = _devtools_targets(port, deadline=deadline)
             except (OSError, ValueError):
-                if saw_target and process.poll() is not None:
+                if target_id is not None and process.poll() is not None:
                     return
                 time.sleep(0.05)
                 continue
-            target_open = any(
-                target.get("type") == "page" and target.get("url") == url for target in targets
-            )
-            saw_target = saw_target or target_open
-            if saw_target and not target_open:
-                return
+            if target_id is None:
+                matching = next(
+                    (
+                        target
+                        for target in targets
+                        if target.get("type") == "page"
+                        and target.get("url") == url
+                        and isinstance(target.get("id"), str)
+                    ),
+                    None,
+                )
+                if matching is not None:
+                    target_id = str(matching["id"])
+                time.sleep(0.05)
+                continue
+            if _app_window_targets_are_closed(targets, target_id=target_id):
+                now = time.monotonic()
+                closed_since = closed_since or now
+                if now - closed_since >= _APP_TARGET_STABLE_CLOSED_SECONDS:
+                    return
+            else:
+                closed_since = None
             time.sleep(0.05)
         raise AssertionError("Edge app window did not close after Manager maintenance state")
     finally:
-        _stop_edge(process, page=None, browser_endpoint=browser_endpoint)
+        _stop_edge(process, job=job, page=None, browser_endpoint=browser_endpoint)

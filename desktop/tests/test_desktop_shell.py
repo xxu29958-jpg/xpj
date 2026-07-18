@@ -66,13 +66,17 @@ def test_app_window_uses_a_dedicated_profile_and_returns_process_handle(
         def poll(self):
             return None
 
-    def popen(command, **kwargs):
+    class Job:
+        def close(self) -> None:
+            pass
+
+    def spawn(command, **kwargs):
         captured["command"] = command
         captured.update(kwargs)
-        return Process()
+        return Process(), Job()
 
     monkeypatch.setattr(desktop_shell, "discover_edge_executable", lambda: r"C:\Edge\msedge.exe")
-    monkeypatch.setattr(desktop_shell.subprocess, "Popen", popen)
+    monkeypatch.setattr(desktop_shell, "spawn_windows_job_process", spawn)
 
     profile = tmp_path / "profile"
     window = desktop_shell.open_app_window("http://127.0.0.1:8799/", profile=profile)
@@ -113,6 +117,27 @@ def test_edge_window_close_escalates_and_reports_process_exit() -> None:
 
     assert window.close(timeout=1) is True
     assert events == ["terminate", "wait:1", "kill", "wait:1"]
+
+
+def test_edge_window_closes_owned_job_before_waiting() -> None:
+    events: list[str] = []
+
+    class Process:
+        def poll(self):
+            return None
+
+        def wait(self, *, timeout: float):
+            events.append(f"wait:{timeout:g}")
+            return 0
+
+    class Job:
+        def close(self) -> None:
+            events.append("job-close")
+
+    window = desktop_shell.EdgeAppWindow(Process(), Job())  # type: ignore[arg-type]
+
+    assert window.close(timeout=1) is True
+    assert events == ["job-close", "wait:1"]
 
 
 def test_browser_launch_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:

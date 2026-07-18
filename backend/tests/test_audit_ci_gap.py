@@ -38,6 +38,7 @@ jobs:
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
         "frozen backend locked release build",
+        "frozen Desktop Manager locked release build",
         "end-to-end smoke",
         "backup/restore drill",
         "API contract check",
@@ -65,6 +66,7 @@ jobs:
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\\build_backend_exe.ps1 -Clean
+      - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ..\\desktop\\scripts\\build_manager_exe.ps1 -Clean
       - run: .\\.ci-venv\\Scripts\\python.exe scripts\\release_audit.py
       - run: .\\.ci-venv\\Scripts\\python.exe scripts\\check_api_contract.py
   desktop:
@@ -169,6 +171,7 @@ jobs:
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
         "frozen backend locked release build",
+        "frozen Desktop Manager locked release build",
         "end-to-end smoke",
         "backup/restore drill",
         "API contract check",
@@ -333,6 +336,7 @@ jobs:
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
         "frozen backend locked release build",
+        "frozen Desktop Manager locked release build",
         "end-to-end smoke",
         "backup/restore drill",
         "API contract check",

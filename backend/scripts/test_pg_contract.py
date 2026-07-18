@@ -51,9 +51,12 @@ from scripts.test_pg_url_contract import (
     validate_test_database_url,
 )
 from scripts.test_pg_windows_contract import (
+    WINDOWS_PARENT_AUTHORITY_CREATED_ENV,
+    WINDOWS_PARENT_AUTHORITY_PID_ENV,
     _abort_disposable_test_process,
     _database_port,
     _windows_temp_directory,
+    bind_windows_child_authority,
     start_windows_parent_watchdog,
     windows_test_postgres_consumer_lease,
 )
@@ -67,11 +70,14 @@ __all__ = (
     "TEST_CLUSTER_MARKER_PATH_ENV",
     "TEST_CLUSTER_SYSTEM_IDENTIFIER_ENV",
     "TEST_POSTGRES_CREDENTIAL_FILE_ENV",
+    "WINDOWS_PARENT_AUTHORITY_CREATED_ENV",
+    "WINDOWS_PARENT_AUTHORITY_PID_ENV",
     "_windows_temp_directory",
     "admin_connection_args",
     "assert_managed_test_cluster_authority",
     "assert_test_cluster_authority",
     "authority_connection_watchdog",
+    "bind_windows_child_authority",
     "configured_test_database_url",
     "managed_test_database_url",
     "sanitized_libpq_test_environment",

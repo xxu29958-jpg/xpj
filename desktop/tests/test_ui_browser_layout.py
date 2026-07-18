@@ -100,10 +100,9 @@ def _render_with_edge(tmp_path: Path, *, width: int, height: int, degraded: bool
     rendered = source.replace(_STARTUP_SCRIPT, _probe_script(_status(degraded=degraded)))
     page = tmp_path / f"manager-{width}x{height}-{'degraded' if degraded else 'healthy'}.html"
     page.write_text(rendered, encoding="utf-8")
-    profile = tmp_path / f"edge-profile-{width}-{height}-{degraded}"
     value = evaluate_page(
         edge,
-        profile=profile,
+        profile=tmp_path / f"edge-profile-{width}-{height}-{degraded}",
         url=page.as_uri(),
         width=width,
         height=height,
@@ -201,63 +200,12 @@ def test_manager_offline_and_service_action_states_remain_coherent(tmp_path: Pat
     assert probe["primaryText"] == "▶启动"
 
 
-def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    profiles: list[Path] = []
-
-    def evaluate_once(_edge: str, *, profile: Path, **_kwargs: object) -> object:
-        profiles.append(profile)
-        if len(profiles) == 1:
-            raise TimeoutError("synthetic DevTools stall")
-        return {"ready": True}
-
-    monkeypatch.setattr(_edge_cdp, "_evaluate_page_once", evaluate_once)
-
-    result = evaluate_page(
-        "edge.exe",
-        profile=tmp_path / "profile",
-        url="file:///manager.html",
-        width=390,
-        height=844,
-        expression="window.__layoutProbe",
-    )
-
-    assert result == {"ready": True}
-    assert profiles == [
-        tmp_path / "profile" / "attempt-1",
-        tmp_path / "profile" / "attempt-2",
-    ]
-
-
-def test_layout_probe_does_not_retry_a_semantic_assertion(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    profiles: list[Path] = []
-
-    def evaluate_once(_edge: str, *, profile: Path, **_kwargs: object) -> object:
-        profiles.append(profile)
-        raise AssertionError("layout probe did not become available")
-
-    monkeypatch.setattr(_edge_cdp, "_evaluate_page_once", evaluate_once)
-
-    with pytest.raises(AssertionError, match="layout probe did not become available"):
-        evaluate_page(
-            "edge.exe",
-            profile=tmp_path / "profile",
-            url="file:///manager.html",
-            width=390,
-            height=844,
-            expression="window.__layoutProbe",
-        )
-
-    assert profiles == [tmp_path / "profile" / "attempt-1"]
-
-
 def test_edge_teardown_reaps_process_when_websocket_cleanup_fails(monkeypatch) -> None:
     events: list[str] = []
+
+    class Job:
+        def close(self) -> None:
+            events.append("job-close")
 
     class FailingWebSocket:
         def request(self, method: str) -> None:
@@ -288,6 +236,7 @@ def test_edge_teardown_reaps_process_when_websocket_cleanup_fails(monkeypatch) -
 
     _edge_cdp._stop_edge(  # noqa: SLF001 - teardown failure contract
         StubbornProcess(),  # type: ignore[arg-type]
+        job=Job(),  # type: ignore[arg-type]
         page=FailingWebSocket(),  # type: ignore[arg-type]
         browser_endpoint="ws://127.0.0.1:9222/devtools/browser/test",
     )
@@ -296,12 +245,37 @@ def test_edge_teardown_reaps_process_when_websocket_cleanup_fails(monkeypatch) -
         "socket-close",
         "Browser.close",
         "socket-close",
+        "job-close",
         "wait-1",
         "terminate",
         "wait-2",
         "kill",
         "wait-3",
     ]
+
+
+def test_app_target_navigation_or_replacement_is_not_treated_as_window_close() -> None:
+    assert (
+        _edge_cdp._app_window_targets_are_closed(  # noqa: SLF001 - target lifetime contract
+            [{"id": "app-target", "type": "page", "url": "about:blank"}],
+            target_id="app-target",
+        )
+        is False
+    )
+    assert (
+        _edge_cdp._app_window_targets_are_closed(  # noqa: SLF001 - target lifetime contract
+            [{"id": "replacement", "type": "page", "url": "about:blank"}],
+            target_id="app-target",
+        )
+        is False
+    )
+    assert (
+        _edge_cdp._app_window_targets_are_closed(  # noqa: SLF001 - target lifetime contract
+            [],
+            target_id="app-target",
+        )
+        is True
+    )
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")
