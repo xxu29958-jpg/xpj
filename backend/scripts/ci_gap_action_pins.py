@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pathlib
 
-from ci_gap_workflow_parser import yaml_scalar_key_values
+import yaml
+from ci_gap_workflow_parser import workflow_yaml_root
+from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
@@ -39,7 +41,32 @@ def _iter_workflow_paths(
 
 
 def _iter_yaml_uses(path: pathlib.Path) -> list[tuple[int, str]]:
-    return yaml_scalar_key_values(path, key="uses")
+    root = workflow_yaml_root(path)
+    if root is None:
+        return []
+    found: list[tuple[int, str]] = []
+    visited: set[int] = set()
+
+    def visit(node: yaml.Node) -> None:
+        if id(node) in visited:
+            return
+        visited.add(id(node))
+        if isinstance(node, MappingNode):
+            for key_node, value_node in node.value:
+                if isinstance(key_node, ScalarNode) and key_node.value == "uses":
+                    value = (
+                        value_node.value
+                        if isinstance(value_node, ScalarNode)
+                        else "<non-scalar>"
+                    )
+                    found.append((key_node.start_mark.line + 1, value))
+                visit(value_node)
+        elif isinstance(node, SequenceNode):
+            for item in node.value:
+                visit(item)
+
+    visit(root)
+    return found
 
 
 def _is_github_automation(path: pathlib.Path) -> bool:

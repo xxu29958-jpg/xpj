@@ -307,6 +307,28 @@ def test_report_verifier_accepts_current_complete_runtime_evidence(
     assert "OWASP_APP_REPORT_VERIFIED" in result.stdout
 
 
+def _mutated_report(mutation: str) -> dict:
+    report = _valid_report()
+    match mutation:
+        case "wrong-engine":
+            report["scanInfo"]["engineVersion"] = "99.0.0"
+        case "stale-nvd":
+            report["scanInfo"]["dataSource"][0]["timestamp"] = _timestamp(
+                datetime.now(UTC) - timedelta(hours=25)
+            )
+        case "partial-scope":
+            report["dependencies"][0]["projectReferences"] = [_REFERENCES[0]]
+        case "analysis-exception":
+            report["scanInfo"]["analysisExceptions"] = [{"message": "failed"}]
+        case "wrong-package":
+            report["dependencies"][0]["packages"] = [
+                {"id": "pkg:maven/androidx.core/core@1.16.0"}
+            ]
+        case _:
+            raise AssertionError(f"unknown report mutation: {mutation}")
+    return report
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
@@ -321,22 +343,7 @@ def test_report_verifier_rejects_incomplete_or_untrusted_evidence(
     tmp_path: Path,
     mutation: str,
 ) -> None:
-    report = _valid_report()
-    if mutation == "wrong-engine":
-        report["scanInfo"]["engineVersion"] = "99.0.0"
-    elif mutation == "stale-nvd":
-        report["scanInfo"]["dataSource"][0]["timestamp"] = _timestamp(
-            datetime.now(UTC) - timedelta(hours=25)
-        )
-    elif mutation == "partial-scope":
-        report["dependencies"][0]["projectReferences"] = [_REFERENCES[0]]
-    elif mutation == "analysis-exception":
-        report["scanInfo"]["analysisExceptions"] = [{"message": "failed"}]
-    elif mutation == "wrong-package":
-        report["dependencies"][0]["packages"] = [
-            {"id": "pkg:maven/androidx.core/core@1.16.0"}
-        ]
-    result = _verify_report(tmp_path, report)
+    result = _verify_report(tmp_path, _mutated_report(mutation))
     assert result.returncode != 0
     assert "::error::" in result.stderr
 

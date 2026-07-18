@@ -22,7 +22,7 @@ from ci_gap_workflow_conditions import (
     condition_guarantees_after_needs as _condition_guarantees_after_needs,
 )
 from yaml.constructor import ConstructorError
-from yaml.nodes import MappingNode, ScalarNode, SequenceNode
+from yaml.nodes import MappingNode
 
 
 @dataclass(frozen=True)
@@ -132,46 +132,14 @@ def _load_workflow(path: pathlib.Path) -> dict[object, object]:
     return value
 
 
-def yaml_scalar_key_values(
-    path: pathlib.Path,
-    *,
-    key: str,
-) -> list[tuple[int, str]]:
-    """Return decoded scalar values for a YAML key with source line numbers."""
-
+def workflow_yaml_root(path: pathlib.Path) -> yaml.Node | None:
+    """Parse a validated workflow again while preserving source locations."""
     text = path.read_text(encoding="utf-8")
     _load_workflow(path)
     try:
-        root = yaml.compose(text, Loader=_WorkflowLoader)
+        return yaml.compose(text, Loader=_WorkflowLoader)
     except yaml.YAMLError as exc:
         raise ValueError(f"invalid workflow YAML: {path}: {exc}") from exc
-    if root is None:
-        return []
-
-    found: list[tuple[int, str]] = []
-    visited: set[int] = set()
-
-    def visit(node: yaml.Node) -> None:
-        identity = id(node)
-        if identity in visited:
-            return
-        visited.add(identity)
-        if isinstance(node, MappingNode):
-            for key_node, value_node in node.value:
-                if isinstance(key_node, ScalarNode) and key_node.value == key:
-                    value = (
-                        value_node.value
-                        if isinstance(value_node, ScalarNode)
-                        else "<non-scalar>"
-                    )
-                    found.append((key_node.start_mark.line + 1, value))
-                visit(value_node)
-        elif isinstance(node, SequenceNode):
-            for item in node.value:
-                visit(item)
-
-    visit(root)
-    return found
 
 
 def _required_protection_event(path: pathlib.Path) -> str:
