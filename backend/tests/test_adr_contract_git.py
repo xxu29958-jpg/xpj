@@ -69,20 +69,7 @@ def test_explicit_sha_and_local_main_resolve_without_remote_guessing(tmp_path: P
     assert local is not None and local.commit == base
 
 
-def _assert_pull_request_base_selection(tmp_path: Path, stale: str, base: str) -> None:
-    stale_pr, stale_pr_error = select_ratchet_base(
-        tmp_path,
-        {
-            "CI": "1",
-            "GITHUB_EVENT_NAME": "pull_request",
-            "GITHUB_BASE_REF": "main",
-            "XPJ_AUDIT_BASE_REF": stale,
-            "XPJ_AUDIT_DEFAULT_REF": "refs/heads/main",
-        },
-    )
-    assert stale_pr is None
-    assert stale_pr_error is not None and "pull-request ADR ratchet base" in stale_pr_error
-
+def _assert_pull_request_base_selection(tmp_path: Path, base: str) -> None:
     exact_pr, exact_pr_error = select_ratchet_base(
         tmp_path,
         {
@@ -100,7 +87,7 @@ def _assert_pull_request_base_selection(tmp_path: Path, stale: str, base: str) -
 def _create_synthetic_pr_merge(tmp_path: Path) -> tuple[str, str]:
     # actions/checkout's pull_request default is the synthetic merge ref. When
     # main advances after the feature branch was created, the event base SHA is
-    # therefore both an ancestor of HEAD and the canonical divergence base.
+    # an ancestor of the merge checkout and is the exact PR comparison base.
     _git(tmp_path, "checkout", "-q", "main")
     _git(tmp_path, "commit", "--allow-empty", "-qm", "advanced target tip")
     advanced_base = _git(tmp_path, "rev-parse", "HEAD")
@@ -108,6 +95,31 @@ def _create_synthetic_pr_merge(tmp_path: Path) -> tuple[str, str]:
     previous_feature_head = _git(tmp_path, "rev-parse", "HEAD")
     _git(tmp_path, "merge", "--no-ff", "-qm", "synthetic PR merge", "main")
     return advanced_base, previous_feature_head
+
+
+def _assert_stacked_pull_request_uses_parent_tip(tmp_path: Path) -> None:
+    _git(tmp_path, "checkout", "-qb", "stack-parent")
+    _git(tmp_path, "commit", "--allow-empty", "-qm", "stack parent base")
+    _git(tmp_path, "checkout", "-qb", "stack-child")
+    _git(tmp_path, "commit", "--allow-empty", "-qm", "stack child")
+    _git(tmp_path, "checkout", "-q", "stack-parent")
+    _git(tmp_path, "commit", "--allow-empty", "-qm", "stack parent tip")
+    parent_tip = _git(tmp_path, "rev-parse", "HEAD")
+    _git(tmp_path, "checkout", "-q", "stack-child")
+    _git(tmp_path, "merge", "--no-ff", "-qm", "synthetic stacked PR merge", "stack-parent")
+
+    selected, error = select_ratchet_base(
+        tmp_path,
+        {
+            "CI": "1",
+            "GITHUB_EVENT_NAME": "pull_request",
+            "GITHUB_BASE_REF": "stack-parent",
+            "XPJ_AUDIT_BASE_REF": parent_tip,
+            "XPJ_AUDIT_DEFAULT_REF": "refs/heads/main",
+        },
+    )
+    assert error is None
+    assert selected is not None and selected.commit == parent_tip
 
 
 def _assert_synthetic_merge_and_push_bases(
@@ -176,15 +188,16 @@ def _assert_github_pr_checkout_contract() -> None:
     assert "ref:" not in checkout_step
 
 
-def test_pull_request_requires_canonical_divergence_base(tmp_path: Path) -> None:
-    stale, base = _init_feature_repo(tmp_path)
-    _assert_pull_request_base_selection(tmp_path, stale, base)
+def test_pull_request_uses_event_base_while_push_uses_default_divergence(tmp_path: Path) -> None:
+    _, base = _init_feature_repo(tmp_path)
+    _assert_pull_request_base_selection(tmp_path, base)
     advanced_base, previous_feature_head = _create_synthetic_pr_merge(tmp_path)
     _assert_synthetic_merge_and_push_bases(
         tmp_path,
         advanced_base,
         previous_feature_head,
     )
+    _assert_stacked_pull_request_uses_parent_tip(tmp_path)
     _assert_github_pr_checkout_contract()
 
 
