@@ -21,6 +21,14 @@ _REQUIRED_APP_REFERENCES = (
     "app:internalReleaseRuntimeClasspath",
 )
 _VALID_APP_REFERENCE = _REQUIRED_APP_REFERENCES[0]
+_RUNTIME_ARTIFACT = {
+    "group": "androidx.core",
+    "name": "core-ktx",
+    "version": "1.16.0",
+    "fileName": "core-ktx-1.16.0.jar",
+    "sha256": "a" * 64,
+}
+_RUNTIME_ARTIFACT_PURL = "pkg:maven/androidx.core/core-ktx@1.16.0"
 
 
 def bash_executable() -> str:
@@ -56,7 +64,7 @@ def _iso_timestamp(moment: datetime) -> str:
 def _valid_report(*, project_reference: object = None) -> dict:
     now = datetime.now(UTC)
     references = (
-        [*_REQUIRED_APP_REFERENCES, "app:grayDebugCompileClasspath"]
+        list(_REQUIRED_APP_REFERENCES)
         if project_reference is None
         else (
             [project_reference]
@@ -80,14 +88,20 @@ def _valid_report(*, project_reference: object = None) -> dict:
             ],
         },
         "projectInfo": {
-            "name": "xpj",
+            "name": "root project 'Ticketbox'",
+            "artifactID": "Ticketbox",
             "reportDate": _iso_timestamp(now),
         },
         "dependencies": [
             {
-                "isVirtual": True,
-                "fileName": "androidx.core:core-ktx:1.16.0",
-                "filePath": "androidx.core:core-ktx:1.16.0",
+                "isVirtual": False,
+                "fileName": _RUNTIME_ARTIFACT["fileName"],
+                "filePath": (
+                    "/gradle-cache/androidx.core/core-ktx/1.16.0/"
+                    f"{_RUNTIME_ARTIFACT['fileName']}"
+                ),
+                "sha256": _RUNTIME_ARTIFACT["sha256"],
+                "packages": [{"id": _RUNTIME_ARTIFACT_PURL}],
                 "projectReferences": references,
                 "evidenceCollected": {
                     "vendorEvidence": [],
@@ -129,6 +143,12 @@ def _fake_reports() -> dict[str, dict]:
     analysis_exception["scanInfo"]["analysisExceptions"] = [
         {"exception": {"message": "fake analyzer failure"}}
     ]
+    wrong_project = deepcopy(valid)
+    wrong_project["projectInfo"]["artifactID"] = "foreign-project"
+    missing_inventory_artifact = deepcopy(valid)
+    missing_inventory_artifact["dependencies"][0]["packages"] = [
+        {"id": "pkg:maven/androidx.core/core@1.16.0"}
+    ]
     return {
         "valid": valid,
         "vulnerable": vulnerable,
@@ -141,12 +161,42 @@ def _fake_reports() -> dict[str, dict]:
         "stale-nvd": stale_nvd,
         "not-refreshed": not_refreshed,
         "analysis-exception": analysis_exception,
+        "wrong-project": wrong_project,
+        "missing-inventory-artifact": missing_inventory_artifact,
         "minimal": {
             "dependencies": [
                 {"projectReferences": [_VALID_APP_REFERENCE]}
             ]
         },
     }
+
+
+def _write_fake_runtime_inventory(tmp_path: Path) -> None:
+    inventory = {
+        "schema": 1,
+        "project": "Ticketbox",
+        "configurations": {
+            reference: [dict(_RUNTIME_ARTIFACT)]
+            for reference in _REQUIRED_APP_REFERENCES
+        },
+    }
+    inventory_path = (
+        tmp_path
+        / "build"
+        / "reports"
+        / "dependency-check-runtime-inventory.json"
+    )
+    inventory_path.parent.mkdir(parents=True, exist_ok=True)
+    inventory_path.write_text(
+        json.dumps(inventory, separators=(",", ":")),
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "fake-runtime-inventory.json").write_text(
+        json.dumps(inventory, separators=(",", ":")),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def _write_fake_version_catalog(tmp_path: Path) -> None:
@@ -163,6 +213,7 @@ def _write_fake_version_catalog(tmp_path: Path) -> None:
 
 def write_fake_gradlew(tmp_path: Path) -> None:
     _write_fake_version_catalog(tmp_path)
+    _write_fake_runtime_inventory(tmp_path)
     reports = tmp_path / "fake-reports"
     reports.mkdir()
     for name, report in _fake_reports().items():
@@ -227,6 +278,8 @@ fi
 mkdir -p build/reports
 cp "fake-reports/${FAKE_REPORT_MODE:-valid}.json" \
   build/reports/dependency-check-report.json
+cp fake-runtime-inventory.json \
+  build/reports/dependency-check-runtime-inventory.json
 """,
         encoding="utf-8",
         newline="\n",

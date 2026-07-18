@@ -187,9 +187,14 @@ def create_manifest(
     *,
     report_path: Path,
     catalog_path: Path,
+    inventory_path: Path,
     nvd_checked_after_epoch: int,
 ) -> PayloadIdentity:
-    report_identity = verify_report(report_path, catalog_path=catalog_path)
+    report_identity = verify_report(
+        report_path,
+        catalog_path=catalog_path,
+        inventory_path=inventory_path,
+    )
     if (
         report_identity.nvd_checked_epoch + _PRODUCER_REFRESH_SKEW_SECONDS
         < nvd_checked_after_epoch
@@ -353,6 +358,7 @@ def main() -> int:
     parser.add_argument("data_dir", type=Path)
     parser.add_argument("--version-catalog", type=Path)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--inventory", type=Path)
     parser.add_argument("--nvd-checked-after-epoch", type=int)
     parser.add_argument("--allow-expired", action="store_true")
     parser.add_argument("--minimum-refreshed-at-epoch", type=int, default=0)
@@ -374,17 +380,27 @@ def main() -> int:
             or args.github_output is not None
         ):
             raise ValueError(
-                "create accepts only --report and --nvd-checked-after-epoch"
+                "create accepts only --report, --inventory, and "
+                "--nvd-checked-after-epoch"
             )
         identity = create_manifest(
             args.data_dir,
             report_path=args.report,
             catalog_path=catalog_path,
+            inventory_path=args.inventory
+            or catalog_path.parent.parent
+            / "build"
+            / "reports"
+            / "dependency-check-runtime-inventory.json",
             nvd_checked_after_epoch=args.nvd_checked_after_epoch,
         )
         status = "NVD_PAYLOAD_MANIFEST_CREATED"
     else:
-        if args.report is not None or args.nvd_checked_after_epoch is not None:
+        if (
+            args.report is not None
+            or args.inventory is not None
+            or args.nvd_checked_after_epoch is not None
+        ):
             raise ValueError("verify does not accept report creation arguments")
         verified = verify_manifest(
             args.data_dir,

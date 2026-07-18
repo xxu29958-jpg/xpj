@@ -222,6 +222,8 @@ def test_report_contract_rejects_forged_or_wrong_scope_documents(
         "analysis-exception",
         "no-app",
         "stale-nvd",
+        "wrong-project",
+        "missing-inventory-artifact",
     ):
         rejected = subprocess.run(
             [

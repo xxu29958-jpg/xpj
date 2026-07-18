@@ -13,8 +13,10 @@ from types import ModuleType
 
 import pytest
 
+from tests._infra.android_gradle_cache import (
+    assert_github_gradle_cache_topology,
+)
 from tests._infra.android_nvd_producer import (
-    assert_gradle_cache_authority,
     assert_legacy_nvd_consumer_job,
     assert_nvd_producer_workflow,
     assert_runtime_dependency_suppressions,
@@ -66,22 +68,19 @@ def test_prepare_android_keeps_runner_tuning_out_of_source_authority() -> None:
     assert ">> gradle.properties" not in tune["run"]
 
 
-def test_legacy_android_nvd_writer_fails_closed_until_consumer_cutover() -> None:
+def test_legacy_android_nvd_transition_and_cache_authority_are_explicit() -> None:
     ci = _load_workflow(_ROOT / ".github" / "workflows" / "ci.yml")
     assert_legacy_nvd_consumer_job(ci["jobs"]["android"])
-    codeql = _load_workflow(_ROOT / ".github" / "workflows" / "codeql.yml")
-    assert_gradle_cache_authority(
-        codeql["jobs"]["analyze-android"],
-        java_version="21",
-        cache_read_only=True,
+    workflows = {
+        path.name: _load_workflow(path)
+        for path in (_ROOT / ".github" / "workflows").glob("*.yml")
+    }
+    assert_github_gradle_cache_topology(workflows)
+    gitea = _load_workflow(
+        _ROOT / ".gitea" / "workflows" / "windows-ci.yml"
     )
-    connected = _load_workflow(
-        _ROOT / ".github" / "workflows" / "android-connected-test.yml"
-    )
-    assert_gradle_cache_authority(
-        connected["jobs"]["connected"],
-        java_version="21",
-        cache_read_only=True,
+    assert gitea["jobs"]["android-unit"]["env"]["GRADLE_OPTS"] == (
+        "-Dorg.gradle.caching=false"
     )
 
 
@@ -456,6 +455,9 @@ def test_dependency_check_policy_is_fixed_and_validation_is_task_scoped() -> Non
         '"internalReleaseRuntimeClasspath"',
         "scanConfigurations = dependencyCheckRuntimeConfigurations",
         "analyzers.ossIndex.enabled = false",
+        "hostedSuppressions.enabled = false",
+        'tasks.register("exportDependencyCheckRuntimeInventory")',
+        "outputs.upToDateWhen { false }",
         "autoUpdate = dependencyCheckAutoUpdate.get()",
         'providers.gradleProperty("dependencyCheckNvdValidForHours")',
         "hours == 0 || hours == 24",

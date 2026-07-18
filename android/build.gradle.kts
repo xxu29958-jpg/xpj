@@ -1,3 +1,7 @@
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+
 plugins {
     alias(libs.plugins.android.application) apply false
     // issue #64 A1: declared apply-false at the root so the :macrobenchmark and
@@ -59,6 +63,8 @@ val dependencyCheckRuntimeConfigurations =
         "internalDebugRuntimeClasspath",
         "internalReleaseRuntimeClasspath",
     )
+val dependencyCheckRuntimeInventoryFile =
+    layout.buildDirectory.file("reports/dependency-check-runtime-inventory.json")
 
 // Keep the NVD database under Gradle user home so trusted CI events can
 // refresh one cache while pull requests consume it read-only.
@@ -92,6 +98,9 @@ dependencyCheck {
     // payload. OSS Index requires separate Sonatype credentials and remote
     // availability, so it must not be enabled implicitly by plugin defaults.
     analyzers.ossIndex.enabled = false
+    // The hosted feed is a second mutable suppression authority. All accepted
+    // suppressions must instead be reviewable in the committed local file.
+    hostedSuppressions.enabled = false
     // A trusted producer overrides both properties to force a real refresh.
     // Existing CI keeps the warm-cache default until the read-only consumer
     // replaces it, so the staged rollout never creates two forced writers.
@@ -141,6 +150,93 @@ val verifyDependencyCheckContract =
             check(dependencyCheck.analyzers.ossIndex.enabled == false) {
                 "dependency-check must not add an unauthenticated OSS Index data source"
             }
+            check(dependencyCheck.hostedSuppressions.enabled == false) {
+                "dependency-check must use only committed suppression policy"
+            }
+        }
+    }
+
+val exportDependencyCheckRuntimeInventory =
+    tasks.register("exportDependencyCheckRuntimeInventory") {
+        group = "verification"
+        description = "Exports the independently resolved Android runtime dependency inventory."
+        outputs.file(dependencyCheckRuntimeInventoryFile)
+        outputs.upToDateWhen { false }
+        doLast {
+            fun sha256(file: File): String {
+                val digest = MessageDigest.getInstance("SHA-256")
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) {
+                            break
+                        }
+                        digest.update(buffer, 0, count)
+                    }
+                }
+                return digest.digest().joinToString("") {
+                    (it.toInt() and 0xff).toString(16).padStart(2, '0')
+                }
+            }
+
+            val appProject = project(":app")
+            val configurations =
+                linkedMapOf<String, List<Map<String, String>>>()
+            for (configurationName in dependencyCheckRuntimeConfigurations) {
+                val artifacts =
+                    appProject.configurations
+                        .getByName(configurationName)
+                        .incoming
+                        .artifacts
+                        .artifacts
+                        .map { artifact ->
+                            val component =
+                                artifact.id.componentIdentifier
+                                    as? ModuleComponentIdentifier
+                                    ?: error(
+                                        "runtime artifact is not a versioned module: " +
+                                            artifact.id.displayName
+                                    )
+                            val file = artifact.file
+                            check(file.isFile) {
+                                "runtime artifact is not a regular file: $file"
+                            }
+                            linkedMapOf(
+                                "group" to component.group,
+                                "name" to component.module,
+                                "version" to component.version,
+                                "fileName" to file.name,
+                                "sha256" to sha256(file),
+                            )
+                        }.distinct()
+                        .sortedWith(
+                            compareBy<Map<String, String>>(
+                                { it.getValue("group") },
+                                { it.getValue("name") },
+                                { it.getValue("version") },
+                                { it.getValue("fileName") },
+                                { it.getValue("sha256") },
+                            )
+                        )
+                check(artifacts.isNotEmpty()) {
+                    "$configurationName resolved no runtime artifacts"
+                }
+                configurations["app:$configurationName"] = artifacts
+            }
+
+            val document =
+                linkedMapOf<String, Any>(
+                    "schema" to 1,
+                    "project" to rootProject.name,
+                    "configurations" to configurations,
+                )
+            val output = dependencyCheckRuntimeInventoryFile.get().asFile
+            output.parentFile.mkdirs()
+            output.writeText(
+                JsonOutput.prettyPrint(JsonOutput.toJson(document)) + "\n",
+                Charsets.UTF_8,
+            )
         }
     }
 
@@ -150,6 +246,7 @@ tasks.named("dependencyCheckUpdate") {
 
 tasks.named("dependencyCheckAggregate") {
     dependsOn(verifyDependencyCheckContract)
+    dependsOn(exportDependencyCheckRuntimeInventory)
 }
 
 tasks.register("dependencyCheckValidateNvd") {

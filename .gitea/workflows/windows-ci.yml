@@ -502,6 +502,10 @@ jobs:
       TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
       ANDROID_HOME: E:\projects\xiaopiaojia\.toolchains\android-sdk
       ANDROID_SDK_ROOT: E:\projects\xiaopiaojia\.toolchains\android-sdk
+      # Feature branches share one self-hosted runner account. They may reuse
+      # dependency downloads, but cannot publish task outputs into a shared
+      # Gradle build cache later consumed by another branch.
+      GRADLE_OPTS: -Dorg.gradle.caching=false
 
     steps:
       - name: Checkout (offline — local Gitea, no github.com)

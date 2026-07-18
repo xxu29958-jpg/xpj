@@ -9,12 +9,12 @@ from ci_gap_workflow_parser import yaml_scalar_key_values
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _TRUSTED_EXTERNAL_ACTIONS: dict[str, frozenset[str]] = {
-    "actions/cache": frozenset({"0057852bfaa89a56745cba8c7296529d2fc39830"}),
+    "actions/cache": frozenset({"55cc8345863c7cc4c66a329aec7e433d2d1c52a9"}),
     "actions/cache/restore": frozenset(
-        {"0057852bfaa89a56745cba8c7296529d2fc39830"}
+        {"55cc8345863c7cc4c66a329aec7e433d2d1c52a9"}
     ),
     "actions/cache/save": frozenset(
-        {"0057852bfaa89a56745cba8c7296529d2fc39830"}
+        {"55cc8345863c7cc4c66a329aec7e433d2d1c52a9"}
     ),
     "actions/checkout": frozenset(
         {"df4cb1c069e1874edd31b4311f1884172cec0e10"}

@@ -5,37 +5,15 @@ import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from typing import Any
 
+from tests._infra.android_gradle_cache import assert_gradle_cache_authority
+
 _SETUP_STEPS = [
     "Checkout",
     "Set up Java",
     "Set up Gradle",
     "Prepare Android build",
 ]
-_SETUP_GRADLE_ACTION = (
-    "gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92"
-)
-
-
-def assert_gradle_cache_authority(
-    job: dict[str, Any],
-    *,
-    java_version: str,
-    cache_read_only: str | bool,
-) -> None:
-    steps = {step["name"]: step for step in job["steps"]}
-    java = steps["Set up Java"]
-    assert java["with"] == {
-        "distribution": "temurin",
-        "java-version": java_version,
-    }
-    gradle = steps["Set up Gradle"]
-    assert gradle["uses"] == _SETUP_GRADLE_ACTION
-    assert gradle["with"] == {
-        "cache-provider": "basic",
-        "cache-read-only": cache_read_only,
-    }
-    step_names = [step["name"] for step in job["steps"]]
-    assert step_names.index("Set up Java") < step_names.index("Set up Gradle")
+_CACHE_ACTION_SHA = "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
 
 
 def assert_legacy_nvd_consumer_job(android: dict[str, Any]) -> None:
@@ -47,14 +25,52 @@ def assert_legacy_nvd_consumer_job(android: dict[str, Any]) -> None:
         cache_read_only="${{ github.ref != 'refs/heads/main' }}",
     )
     steps = {step["name"]: step for step in android["steps"]}
-    require = steps["Require NVD credential"]
-    assert "id" not in require
-    assert require["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
-    assert 'if [ -z "$NVD_API_KEY" ]; then' in require["run"]
-    assert "exit 78" in require["run"]
+    _assert_legacy_nvd_credential_and_cache(steps)
+    _assert_legacy_nvd_scan_and_evidence(steps)
+    step_names = [step["name"] for step in android["steps"]]
+    assert step_names.index("Set up Gradle") < step_names.index(
+        "Install Android SDK packages"
+    )
+    assert step_names.index(
+        "Dependency vulnerability scan (OWASP dependency-check)"
+    ) < step_names.index("Android debug APK builds")
+    assert step_names.index(
+        "Dependency vulnerability scan (OWASP dependency-check)"
+    ) < step_names.index("Verify Android dependency-check report")
+    assert "Enforce OWASP CVE findings (tolerate only NVD-data outages)" not in steps
+    assert json.dumps(android, sort_keys=True).count("secrets.NVD_API_KEY") == 2
 
+
+def _assert_legacy_nvd_credential_and_cache(
+    steps: dict[str, dict[str, Any]],
+) -> None:
+    credential = steps["Detect legacy NVD credential"]
+    assert credential["id"] == "nvd-credential"
+    assert credential["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
+    assert 'if [ -n "$NVD_API_KEY" ]; then' in credential["run"]
+    assert "available=true" in credential["run"]
+    assert "available=false" in credential["run"]
+    assert "exit 78" not in credential["run"]
+
+    cache_restore = steps["Restore OWASP NVD database"]
+    assert cache_restore["id"] == "nvd-cache"
+    assert cache_restore["if"] == (
+        "steps.nvd-credential.outputs.available == 'true'"
+    )
+    assert cache_restore["uses"] == f"actions/cache/restore@{_CACHE_ACTION_SHA}"
+    cache_save = steps["Save OWASP NVD database"]
+    assert cache_save["uses"] == f"actions/cache/save@{_CACHE_ACTION_SHA}"
+    assert "github.ref == 'refs/heads/main'" in cache_save["if"]
+    assert "steps.nvd-cache.outputs.cache-hit != 'true'" in cache_save["if"]
+    assert "Dependency vulnerability scan skipped" in steps
+
+
+def _assert_legacy_nvd_scan_and_evidence(
+    steps: dict[str, dict[str, Any]],
+) -> None:
     scan = steps["Dependency vulnerability scan (OWASP dependency-check)"]
     assert scan["id"] == "android-dependency-scan"
+    assert scan["if"] == "steps.nvd-credential.outputs.available == 'true'"
     assert scan["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
     normalized = " ".join(scan["run"].split())
     assert "set -euo pipefail" in scan["run"]
@@ -63,45 +79,37 @@ def assert_legacy_nvd_consumer_job(android: dict[str, Any]) -> None:
     assert "dependencyCheckAggregate" in normalized
     assert "-PdependencyCheckAutoUpdate=false" in normalized
     assert normalized.count("-PdependencyCheckNvdValidForHours=24") == 2
-    assert 'rm -f "$report_path"' in scan["run"]
-    assert "env -u NVD_API_KEY python3 scripts/verify_dependency_check_report.py" in (
-        normalized
-    )
+    assert 'rm -f "$report_path" "$inventory_path"' in scan["run"]
+    assert "verify_dependency_check_report.py" not in normalized
     assert normalized.index("dependencyCheckUpdate") < normalized.index(
         "dependencyCheckAggregate"
-    )
-    assert normalized.index("dependencyCheckAggregate") < normalized.index(
-        "verify_dependency_check_report.py"
     )
     assert "dependencyCheckValidateNvd" not in scan["run"]
     assert "-PnvdApiKey" not in scan["run"]
 
+    verification = steps["Verify Android dependency-check report"]
+    assert verification["if"] == (
+        "steps.nvd-credential.outputs.available == 'true'"
+    )
+    verify_run = " ".join(verification["run"].split())
+    assert 'test -s "$report_path"' in verify_run
+    assert 'test -s "$inventory_path"' in verify_run
+    assert "verify_dependency_check_report.py" in verify_run
+    assert '--inventory "$inventory_path"' in verify_run
+
     evidence = steps["Upload Android dependency-check evidence"]
     assert evidence["if"] == (
-        "${{ always() && steps.android-dependency-scan.outcome != 'skipped' }}"
+        "${{ always() && steps.nvd-credential.outputs.available == 'true' "
+        "&& steps.android-dependency-scan.outcome != 'skipped' }}"
     )
     assert evidence["with"]["if-no-files-found"] == "error"
     assert "android/build/reports/dependency-check-report.json" in (
         evidence["with"]["path"]
     )
-    assert "android/owasp-output.log" in evidence["with"]["path"]
-
-    step_names = [step["name"] for step in android["steps"]]
-    assert step_names.index("Set up Gradle") < step_names.index(
-        "Install Android SDK packages"
+    assert "android/build/reports/dependency-check-runtime-inventory.json" in (
+        evidence["with"]["path"]
     )
-    assert step_names.index(
-        "Dependency vulnerability scan (OWASP dependency-check)"
-    ) < step_names.index("Android debug APK builds")
-    for name in (
-        "NVD cache key (UTC date)",
-        "Cache OWASP NVD database",
-        "Dependency vulnerability scan (OWASP dependency-check)",
-    ):
-        assert "if" not in steps[name]
-    assert "Dependency vulnerability scan skipped" not in steps
-    assert "Enforce OWASP CVE findings (tolerate only NVD-data outages)" not in steps
-    assert json.dumps(android, sort_keys=True).count("secrets.NVD_API_KEY") == 2
+    assert "android/owasp-output.log" in evidence["with"]["path"]
 
 
 def assert_runtime_dependency_suppressions(path: Path) -> None:
@@ -109,6 +117,7 @@ def assert_runtime_dependency_suppressions(path: Path) -> None:
     ns = {"dc": namespace}
     root = ElementTree.parse(path).getroot()
     assert root.tag == f"{{{namespace}}}suppressions"
+    assert root.attrib == {}
     rules = root.findall("dc:suppress", ns)
     assert len(rules) == 3
 
@@ -118,14 +127,31 @@ def assert_runtime_dependency_suppressions(path: Path) -> None:
         return node.text.strip()
 
     sqlite, lifecycle, kotlin = rules
+    expected_tags = [
+        ["notes", "packageUrl", "cpe"],
+        ["notes", "packageUrl", "cpe", "cpe", "cpe", "cpe"],
+        ["notes", "packageUrl", "cve"],
+    ]
+    for rule, tags in zip(rules, expected_tags, strict=True):
+        assert rule.attrib == {}
+        assert [
+            child.tag.removeprefix(f"{{{namespace}}}")
+            for child in rule
+        ] == tags
+        assert rule[0].attrib == {}
+        assert rule[0].text is not None and rule[0].text.strip()
     assert text(sqlite, "packageUrl") == (
         r"^pkg:maven/androidx\.sqlite/(?:sqlite-android|sqlite-framework-android)"
         r"@2\.6\.2$"
     )
     assert text(sqlite, "cpe") == "cpe:/a:sqlite:sqlite:2.6.2"
+    assert sqlite[1].attrib == {"regex": "true"}
+    assert sqlite[2].attrib == {}
     assert text(lifecycle, "packageUrl") == (
         "pkg:maven/androidx.lifecycle/lifecycle-viewmodel@2.10.0"
     )
+    assert lifecycle[1].attrib == {}
+    assert all(node.attrib == {} for node in lifecycle[2:])
     assert [node.text for node in lifecycle.findall("dc:cpe", ns)] == [
         f"cpe:/a:apache:{product}:2.10.0"
         for product in ("impala", "shenyu", "skywalking", "zookeeper")
@@ -135,6 +161,8 @@ def assert_runtime_dependency_suppressions(path: Path) -> None:
         r"kotlin-reflect@1\.8\.21|kotlin-stdlib-jdk[78]@1\.8\.21)$"
     )
     assert text(kotlin, "cve") == "CVE-2026-53914"
+    assert kotlin[1].attrib == {"regex": "true"}
+    assert kotlin[2].attrib == {}
     for rule in rules:
         assert rule.find("dc:notes", ns) is not None
         assert rule.find("dc:cvssBelow", ns) is None
@@ -216,10 +244,6 @@ def _assert_refresh_job(
     assert "if" not in refresh
     assert refresh["timeout-minutes"] == 35
     assert refresh["outputs"] == {
-        "artifact-name": (
-            "${{ steps.nvd-seed.outputs.publication-artifact-name }}"
-        ),
-        "contract-sha256": "${{ steps.nvd-seed.outputs.contract-sha256 }}",
         "staging-artifact-name": (
             "${{ steps.nvd-seed.outputs.staging-artifact-name }}"
         ),
@@ -228,6 +252,7 @@ def _assert_refresh_job(
     assert [step["name"] for step in refresh["steps"]] == [
         *_SETUP_STEPS,
         "Restore previous certified NVD artifact",
+        "Revalidate publication ref before secret use",
         "Refresh OWASP NVD database",
         "Publish staged OWASP NVD artifact",
     ]
@@ -247,6 +272,16 @@ def _assert_refresh_job(
             "allow-expired": "true",
         },
     }
+    guard = steps["Revalidate publication ref before secret use"]
+    assert guard["env"] == {
+        "REQUESTED_REF": "${{ github.ref }}",
+        "REQUESTED_SHA": "${{ github.sha }}",
+        "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+        "GITHUB_TOKEN": "${{ github.token }}",
+    }
+    assert guard["run"] == (
+        "python3 ../scripts/verify_android_nvd_publication_ref.py"
+    )
     update = steps["Refresh OWASP NVD database"]
     assert update["env"] == {
         "NVD_API_KEY": "${{ secrets.ANDROID_NVD_API_KEY }}"
@@ -312,6 +347,7 @@ def _assert_promote_job(
     assert "environment" not in promote
     assert promote["timeout-minutes"] == 15
     assert promote["outputs"] == {
+        "artifact-name": "${{ steps.publication.outputs.artifact-name }}",
         "artifact-digest": "${{ steps.publish.outputs.artifact-digest }}",
         "payload-sha256": "${{ steps.candidate.outputs.payload-sha256 }}",
         "refreshed-at-epoch": (
@@ -326,6 +362,7 @@ def _assert_promote_job(
         "Download certified staged OWASP NVD artifact",
         "Install certified staged OWASP NVD artifact",
         "Verify monotonic publication payload",
+        "Build final publication identity",
         "Publish immutable certified NVD artifact",
     ]
     steps = {step["name"]: step for step in promote["steps"]}
@@ -353,11 +390,22 @@ def _assert_promote_job(
     normalized = " ".join(candidate["run"].split())
     assert "--minimum-refreshed-at-epoch \"$minimum\"" in normalized
     assert "--github-output \"$GITHUB_OUTPUT\"" in normalized
+    publication = steps["Build final publication identity"]
+    assert publication["id"] == "publication"
+    assert publication["env"] == {
+        "REPOSITORY_ROOT": "${{ github.workspace }}",
+        "CACHE_OS": "${{ runner.os }}",
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+    }
+    assert publication["run"] == (
+        "python3 ../scripts/build_android_nvd_identity.py"
+    )
     publish = steps["Publish immutable certified NVD artifact"]
     assert publish["id"] == "publish"
     assert publish["uses"] == f"actions/upload-artifact@{upload_action_sha}"
     assert publish["with"] == {
-        "name": "${{ needs.refresh.outputs.artifact-name }}",
+        "name": "${{ steps.publication.outputs.artifact-name }}",
         "path": "${{ env.NVD_ARTIFACT_PATH }}/",
         "if-no-files-found": "error",
         "include-hidden-files": True,
@@ -370,7 +418,7 @@ def _assert_verify_publication_job(
     *,
     download_action_sha: str,
 ) -> None:
-    assert verify["needs"] == ["refresh", "promote"]
+    assert verify["needs"] == "promote"
     assert verify["timeout-minutes"] == 10
     assert [step["name"] for step in verify["steps"]] == [
         "Checkout",
@@ -383,7 +431,7 @@ def _assert_verify_publication_job(
         f"actions/download-artifact@{download_action_sha}"
     )
     assert download["with"] == {
-        "name": "${{ needs.refresh.outputs.artifact-name }}",
+        "name": "${{ needs.promote.outputs.artifact-name }}",
         "path": "${{ runner.temp }}/android-nvd-published",
     }
     proof = steps["Verify exact published payload"]

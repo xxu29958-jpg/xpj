@@ -182,4 +182,4 @@ git push gitee main                  # 推 cloud mirror
 
 5. **emulator AVD/路径**：gitea `android-connected.yml` 用 runner 宿主用户级 AVD `ticketbox_api36_host`（与记忆一致）；但 **GitHub `android-connected-test.yml` 用 `reactivecircus/android-emulator-runner@v2` 动态起 pixel_6 / api-36，无 `ticketbox_api36_host`**。HANDOFF 把宿主 AVD 当成两端通用，实为 gitea 专属。
 
-（其余记忆陈述——Gradle daemon 共享、OWASP `actions/cache@v4` + `validForHours=24`、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。）
+（其余记忆陈述——Gradle daemon 共享、OWASP NVD 缓存只允许 `main` 写入、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。）
