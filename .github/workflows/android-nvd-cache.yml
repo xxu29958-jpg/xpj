@@ -3,6 +3,7 @@ name: Android NVD cache
 on:
   schedule:
     - cron: "17 2 * * *"
+    - cron: "17 14 * * *"
   workflow_dispatch:
   push:
     branches:
@@ -61,15 +62,21 @@ jobs:
 
       - name: NVD cache key
         id: nvd-key
-        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "abi=$(python3 scripts/dependency_check_contract.py --cache-abi)" >> "$GITHUB_OUTPUT"
 
       - name: Restore previous NVD database
         id: nvd-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.gradle/dependency-check-data
-          key: nvd-${{ runner.os }}-v1-${{ steps.nvd-key.outputs.date }}
+          key: nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.abi }}-${{ steps.nvd-key.outputs.date }}
+          # Transitional seed bridge. Remove both legacy prefixes after the
+          # protected main producer has published the first ABI-keyed cache.
           restore-keys: |
+            nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.abi }}-
             nvd-${{ runner.os }}-v1-
             nvd-${{ runner.os }}-
 
@@ -102,7 +109,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.gradle/dependency-check-data
-          key: nvd-${{ runner.os }}-v1-${{ steps.nvd-key.outputs.date }}
+          key: nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.abi }}-${{ steps.nvd-key.outputs.date }}
 
       - name: Upload verification evidence
         if: always()

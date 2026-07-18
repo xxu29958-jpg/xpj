@@ -577,10 +577,13 @@ jobs:
         run: ./gradlew --no-daemon --max-workers=2 :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
 
       - name: NVD cache key (UTC date)
-        # Day-rotating key so the cached NVD DB refreshes ~daily; restore-keys
-        # below falls back to the most recent prior cache on a key miss.
+        # The key carries both freshness and the actual Dependency-Check/H2
+        # compatibility epoch. A plugin-major or schema-epoch change must miss.
         id: nvd-key
-        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "abi=$(python3 scripts/dependency_check_contract.py --cache-abi)" >> "$GITHUB_OUTPUT"
 
       - name: Restore OWASP NVD database
         id: nvd-cache
@@ -590,8 +593,11 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.gradle/dependency-check-data
-          key: nvd-${{ runner.os }}-v1-${{ steps.nvd-key.outputs.date }}
+          key: nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.abi }}-${{ steps.nvd-key.outputs.date }}
+          # Transitional seed bridge. Remove both legacy prefixes after the
+          # protected main producer has published the first ABI-keyed cache.
           restore-keys: |
+            nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.abi }}-
             nvd-${{ runner.os }}-v1-
             nvd-${{ runner.os }}-
 

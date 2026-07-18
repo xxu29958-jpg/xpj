@@ -17,11 +17,18 @@ def assert_dependency_check_ci_contract(android: dict[str, Any]) -> None:
         cache_read_only="${{ github.ref != 'refs/heads/main' }}",
     )
     steps = {step["name"]: step for step in android["steps"]}
+    cache_key = steps["NVD cache key (UTC date)"]
+    assert "dependency_check_contract.py --cache-abi" in cache_key["run"]
     cache_restore = steps["Restore OWASP NVD database"]
     assert cache_restore["id"] == "nvd-cache"
     assert cache_restore["uses"].startswith("actions/cache/restore@")
-    assert "nvd-${{ runner.os }}-v1-" in cache_restore["with"]["key"]
+    assert (
+        cache_restore["with"]["key"]
+        == "nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.abi }}-"
+        "${{ steps.nvd-key.outputs.date }}"
+    )
     assert cache_restore["with"]["restore-keys"].splitlines() == [
+        "nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.abi }}-",
         "nvd-${{ runner.os }}-v1-",
         "nvd-${{ runner.os }}-",
     ]
@@ -76,6 +83,10 @@ def assert_dependency_check_ci_contract(android: dict[str, Any]) -> None:
 
 def assert_dependency_check_producer_contract(workflow: dict[str, Any]) -> None:
     assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["on"]["schedule"] == [
+        {"cron": "17 2 * * *"},
+        {"cron": "17 14 * * *"},
+    ]
     assert workflow["concurrency"] == {
         "group": "android-nvd-cache",
         "cancel-in-progress": True,
@@ -91,9 +102,17 @@ def assert_dependency_check_producer_contract(workflow: dict[str, Any]) -> None:
         cache_read_only=True,
     )
     steps = {step["name"]: step for step in job["steps"]}
+    cache_key = steps["NVD cache key"]
+    assert "dependency_check_contract.py --cache-abi" in cache_key["run"]
     restore = steps["Restore previous NVD database"]
     assert restore["uses"].startswith("actions/cache/restore@")
+    assert (
+        restore["with"]["key"]
+        == "nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.abi }}-"
+        "${{ steps.nvd-key.outputs.date }}"
+    )
     assert restore["with"]["restore-keys"].splitlines() == [
+        "nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.abi }}-",
         "nvd-${{ runner.os }}-v1-",
         "nvd-${{ runner.os }}-",
     ]
@@ -110,6 +129,7 @@ def assert_dependency_check_producer_contract(workflow: dict[str, Any]) -> None:
     save = steps["Save verified NVD database"]
     assert save["uses"].startswith("actions/cache/save@")
     assert "steps.nvd-cache.outputs.cache-hit != 'true'" in save["if"]
+    assert save["with"]["key"] == restore["with"]["key"]
     serialized = json.dumps(workflow, sort_keys=True)
     assert serialized.count("secrets.NVD_API_KEY") == 1
 

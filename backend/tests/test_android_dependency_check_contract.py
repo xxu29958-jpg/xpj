@@ -87,6 +87,39 @@ def test_android_dependency_scan_is_fail_closed_with_one_cache_writer() -> None:
     assert nvd_cache_writers == [("android-nvd-cache.yml", "refresh")]
 
 
+def test_dependency_check_cache_abi_follows_the_locked_plugin_major(
+    tmp_path: Path,
+) -> None:
+    catalog = tmp_path / "libs.versions.toml"
+    catalog.write_text(
+        "[plugins]\n"
+        'owasp-dependency-check = { id = "org.owasp.dependencycheck", '
+        'version = "13.4.2" }\n',
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(
+                _ROOT
+                / "android"
+                / "scripts"
+                / "dependency_check_contract.py"
+            ),
+            "--cache-abi",
+            "--version-catalog",
+            str(catalog),
+        ],
+        cwd=_ROOT / "android",
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "dc13-h2e1"
+
+
 def test_prepare_android_keeps_runner_tuning_out_of_source_authority() -> None:
     action = _load_workflow(
         _ROOT / ".github" / "actions" / "prepare-android" / "action.yml"

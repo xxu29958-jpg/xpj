@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
 import tomllib
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 PAYLOAD_TTL_SECONDS = 24 * 60 * 60
 MAX_FUTURE_SKEW_SECONDS = 5 * 60
+DEPENDENCY_CHECK_H2_SCHEMA_EPOCH = 1
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 EXPECTED_APP_REFERENCES = frozenset(
     {
@@ -42,6 +45,14 @@ def dependency_check_version(catalog_path: Path) -> str:
     ):
         raise ValueError("dependency-check plugin version is missing or invalid")
     return version
+
+
+def dependency_check_cache_abi(catalog_path: Path) -> str:
+    version = dependency_check_version(catalog_path)
+    major = version.partition(".")[0]
+    if not major.isdigit() or int(major) < 1:
+        raise ValueError("dependency-check plugin major version is invalid")
+    return f"dc{major}-h2e{DEPENDENCY_CHECK_H2_SCHEMA_EPOCH}"
 
 
 def require_mapping(value: object, *, label: str) -> dict[str, Any]:
@@ -83,3 +94,26 @@ def parse_timestamp(value: object, *, label: str) -> datetime:
 def assert_secret_absent() -> None:
     if os.environ.get("NVD_API_KEY"):
         raise ValueError("NVD credential reached a read-only verification process")
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--cache-abi",
+        action="store_true",
+        help="print the Dependency-Check/H2 cache compatibility identity",
+    )
+    parser.add_argument(
+        "--version-catalog",
+        type=Path,
+        default=version_catalog_path(),
+    )
+    args = parser.parse_args(argv)
+    if not args.cache_abi:
+        parser.error("one output mode is required")
+    print(dependency_check_cache_abi(args.version_catalog))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

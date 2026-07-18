@@ -18,6 +18,9 @@ _ANDROID_PROTECTED_PATHS = frozenset(
         "android/settings.gradle.kts",
     }
 )
+_GITHUB_ANDROID_PROTECTED_PATHS = frozenset(
+    {".github/actions/prepare-android/**"}
+)
 _STATUS_FUNCTION = re.compile(r"(?i)\b(success|always|failure|cancelled)\s*\(")
 
 
@@ -112,7 +115,10 @@ def _protected_path_scope(
     if not paths:
         return "full"
     normalized = {item.replace("\\", "/").removeprefix("./") for item in paths}
-    if not _ANDROID_PROTECTED_PATHS.issubset(normalized):
+    required_paths = _ANDROID_PROTECTED_PATHS
+    if ".github" in path.parts:
+        required_paths |= _GITHUB_ANDROID_PROTECTED_PATHS
+    if not required_paths.issubset(normalized):
         return None
     if _workflow_relative_path(path) not in normalized:
         return None

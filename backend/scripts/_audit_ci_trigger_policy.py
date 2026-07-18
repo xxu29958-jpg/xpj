@@ -22,6 +22,7 @@ GITHUB_CONNECTED_PATHS = (
     "android/gradlew",
     "android/gradlew.bat",
     "android/settings.gradle.kts",
+    ".github/actions/prepare-android/**",
     ".github/workflows/android-connected-test.yml",
 )
 GITEA_CONNECTED_PATHS = (
