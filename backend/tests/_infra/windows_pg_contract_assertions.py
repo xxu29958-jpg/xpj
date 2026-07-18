@@ -324,6 +324,66 @@ def _assert_gitea_postgres_job_budget(gitea_ci: str) -> None:
     assert execution_ceiling + cleanup_ceiling < int(timeout_match.group(1))
 
 
+def _assert_gitea_checkout_control(workflow: str, checkout_count: int) -> None:
+    checkout_marker = "      - name: Checkout (offline — local Gitea, no github.com)"
+    blocks = workflow.split(checkout_marker)[1:]
+    assert len(blocks) == checkout_count
+    for body in blocks:
+        checkout = body.split("\n      - name:", 1)[0]
+        reset_control = checkout.index("Reused Git control state survived reset.")
+        disable_system = checkout.index('$env:GIT_CONFIG_NOSYSTEM = "1"')
+        disable_global = checkout.index('$env:GIT_CONFIG_GLOBAL = "NUL"')
+        disable_hooks = checkout.index('$env:GIT_CONFIG_KEY_0 = "core.hooksPath"')
+        initialize = checkout.index("git init -q --template= $ws")
+        remove_token = checkout.index("Remove-Item Env:REPO_TOKEN")
+        fetch = checkout.index(" fetch -q ")
+        checkout_exact = checkout.index("checkout -q -f $env:GITHUB_SHA")
+        assert (
+            reset_control
+            < disable_system
+            < disable_global
+            < disable_hooks
+            < initialize
+            < remove_token
+            < fetch
+            < checkout_exact
+        )
+
+
+def _assert_android_workflow_contract(
+    project_root: Path,
+    gitea_ci: str,
+    github_ci: str,
+) -> None:
+    connected_ci = (project_root / ".gitea/workflows/android-connected.yml").read_text(encoding="utf-8")
+    assert connected_ci.count("assert_gitea_runner_contract.ps1") == 1
+    assert connected_ci.count(r".\scripts\stop_ci_emulator.ps1") == 3
+    assert "XPJ_CI_EMULATOR_START_FILETIME" in connected_ci
+    assert '"android/scripts/**"' in connected_ci
+    assert "Start-XpjTestPostgresProtectedProcess" in connected_ci
+    assert "$emulatorJob = [XpjTestProcessJob]::new()" in connected_ci
+    assert "$emulatorJob.Dispose()" in connected_ci
+    assert (
+        connected_ci.index("$emulatorJob = [XpjTestProcessJob]::new()")
+        < connected_ci.index("Start-XpjTestPostgresProtectedProcess")
+        < connected_ci.index("XPJ_CI_EMULATOR_PID=")
+    )
+    assert "$path -match '^android/scripts/'" in github_ci
+    assert "taskkill" not in connected_ci.lower()
+    emulator_backstop = connected_ci.split(
+        "      - name: Stop owned emulator (backstop)",
+        1,
+    )[1]
+    assert "        if: always()" in emulator_backstop
+    assert "        timeout-minutes: 3" in emulator_backstop
+    for workflow, checkout_count in ((gitea_ci, 4), (connected_ci, 1)):
+        _assert_gitea_checkout_control(workflow, checkout_count)
+        assert workflow.count("git -C $ws clean -ffdx") == checkout_count * 2
+        assert workflow.count("git -C $ws reset -q --hard $env:GITHUB_SHA") == checkout_count
+        assert workflow.count("status --porcelain=v1 --untracked-files=all") == checkout_count
+        assert workflow.count("checkout workspace is not clean") == checkout_count
+
+
 def _assert_workflow_contract(project_root: Path) -> None:
     gitea_ci = (project_root / ".gitea/workflows/windows-ci.yml").read_text(encoding="utf-8")
     github_ci = (project_root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -371,23 +431,7 @@ def _assert_workflow_contract(project_root: Path) -> None:
     assert "Remove-Item -Recurse -Force $datadir" not in gitea_ci
     assert "XPJ_TEST_CLUSTER_INSTANCE_ID" in github_ci
     _assert_gitea_postgres_job_budget(gitea_ci)
-    connected_ci = (project_root / ".gitea/workflows/android-connected.yml").read_text(encoding="utf-8")
-    assert connected_ci.count("assert_gitea_runner_contract.ps1") == 1
-    assert connected_ci.count(r".\scripts\stop_ci_emulator.ps1") == 3
-    assert "XPJ_CI_EMULATOR_START_FILETIME" in connected_ci
-    assert "taskkill" not in connected_ci.lower()
-    emulator_backstop = connected_ci.split(
-        "      - name: Stop owned emulator (backstop)",
-        1,
-    )[1]
-    assert "        if: always()" in emulator_backstop
-    assert "        timeout-minutes: 3" in emulator_backstop
-    for workflow, checkout_count in ((gitea_ci, 4), (connected_ci, 1)):
-        assert workflow.count("git -C $ws clean -ffdx") == checkout_count * 2
-        assert workflow.count("git -C $ws reset -q --hard $env:GITHUB_SHA") == checkout_count
-        assert workflow.count("status --porcelain=v1 --untracked-files=all") == checkout_count
-        assert workflow.count("checkout workspace is not clean") == checkout_count
-        assert "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" not in workflow
+    _assert_android_workflow_contract(project_root, gitea_ci, github_ci)
     verify_project = (project_root / "scripts/verify_project.ps1").read_text(encoding="utf-8-sig")
     packaging_tests = verify_project.index("scripts/run_packaging_tests.py")
     database_reset = verify_project.index("start_test_pg.ps1")

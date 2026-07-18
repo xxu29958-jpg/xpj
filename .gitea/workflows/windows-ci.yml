@@ -32,12 +32,32 @@ jobs:
         env:
           REPO_TOKEN: ${{ github.token }}
         run: |
-          $ws = $env:GITHUB_WORKSPACE
+          $ws = [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE).TrimEnd('\')
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
-          git init -q $ws
+          $gitControl = [System.IO.Path]::GetFullPath((Join-Path $ws ".git"))
+          if (-not [string]::Equals((Split-Path -Parent $gitControl), $ws, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to reset Git control state outside the workspace."
+          }
+          if (Test-Path -LiteralPath $gitControl) {
+            $gitItem = Get-Item -LiteralPath $gitControl -Force
+            if ($gitItem.PSIsContainer -and -not ($gitItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+              Remove-Item -LiteralPath $gitControl -Recurse -Force
+            } else {
+              $gitItem.Delete()
+            }
+          }
+          if (Test-Path -LiteralPath $gitControl) { throw "Reused Git control state survived reset." }
+          $emptyHooks = Join-Path $ws (".xpj-empty-git-hooks-" + [Guid]::NewGuid().ToString("N"))
+          $env:GIT_CONFIG_NOSYSTEM = "1"
+          $env:GIT_CONFIG_GLOBAL = "NUL"
+          $env:GIT_CONFIG_COUNT = "1"
+          $env:GIT_CONFIG_KEY_0 = "core.hooksPath"
+          $env:GIT_CONFIG_VALUE_0 = $emptyHooks
+          git init -q --template= $ws
           if ($LASTEXITCODE -ne 0) { throw "git init failed" }
           git -C $ws clean -ffdx
           if ($LASTEXITCODE -ne 0) { throw "git clean of reused workspace failed" }
+          New-Item -ItemType Directory -Path $emptyHooks | Out-Null
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
           $origin = "$server/$env:GITHUB_REPOSITORY.git"
           if (@(git -C $ws remote) -contains "origin") {
@@ -47,7 +67,9 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { throw "git remote setup failed" }
           $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
+          Remove-Item Env:REPO_TOKEN
           git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          $b64 = $null
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
@@ -286,12 +308,32 @@ jobs:
         env:
           REPO_TOKEN: ${{ github.token }}
         run: |
-          $ws = $env:GITHUB_WORKSPACE
+          $ws = [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE).TrimEnd('\')
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
-          git init -q $ws
+          $gitControl = [System.IO.Path]::GetFullPath((Join-Path $ws ".git"))
+          if (-not [string]::Equals((Split-Path -Parent $gitControl), $ws, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to reset Git control state outside the workspace."
+          }
+          if (Test-Path -LiteralPath $gitControl) {
+            $gitItem = Get-Item -LiteralPath $gitControl -Force
+            if ($gitItem.PSIsContainer -and -not ($gitItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+              Remove-Item -LiteralPath $gitControl -Recurse -Force
+            } else {
+              $gitItem.Delete()
+            }
+          }
+          if (Test-Path -LiteralPath $gitControl) { throw "Reused Git control state survived reset." }
+          $emptyHooks = Join-Path $ws (".xpj-empty-git-hooks-" + [Guid]::NewGuid().ToString("N"))
+          $env:GIT_CONFIG_NOSYSTEM = "1"
+          $env:GIT_CONFIG_GLOBAL = "NUL"
+          $env:GIT_CONFIG_COUNT = "1"
+          $env:GIT_CONFIG_KEY_0 = "core.hooksPath"
+          $env:GIT_CONFIG_VALUE_0 = $emptyHooks
+          git init -q --template= $ws
           if ($LASTEXITCODE -ne 0) { throw "git init failed" }
           git -C $ws clean -ffdx
           if ($LASTEXITCODE -ne 0) { throw "git clean of reused workspace failed" }
+          New-Item -ItemType Directory -Path $emptyHooks | Out-Null
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
           $origin = "$server/$env:GITHUB_REPOSITORY.git"
           if (@(git -C $ws remote) -contains "origin") {
@@ -301,7 +343,9 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { throw "git remote setup failed" }
           $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
+          Remove-Item Env:REPO_TOKEN
           git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          $b64 = $null
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
@@ -435,12 +479,32 @@ jobs:
         env:
           REPO_TOKEN: ${{ github.token }}
         run: |
-          $ws = $env:GITHUB_WORKSPACE
+          $ws = [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE).TrimEnd('\')
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
-          git init -q $ws
+          $gitControl = [System.IO.Path]::GetFullPath((Join-Path $ws ".git"))
+          if (-not [string]::Equals((Split-Path -Parent $gitControl), $ws, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to reset Git control state outside the workspace."
+          }
+          if (Test-Path -LiteralPath $gitControl) {
+            $gitItem = Get-Item -LiteralPath $gitControl -Force
+            if ($gitItem.PSIsContainer -and -not ($gitItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+              Remove-Item -LiteralPath $gitControl -Recurse -Force
+            } else {
+              $gitItem.Delete()
+            }
+          }
+          if (Test-Path -LiteralPath $gitControl) { throw "Reused Git control state survived reset." }
+          $emptyHooks = Join-Path $ws (".xpj-empty-git-hooks-" + [Guid]::NewGuid().ToString("N"))
+          $env:GIT_CONFIG_NOSYSTEM = "1"
+          $env:GIT_CONFIG_GLOBAL = "NUL"
+          $env:GIT_CONFIG_COUNT = "1"
+          $env:GIT_CONFIG_KEY_0 = "core.hooksPath"
+          $env:GIT_CONFIG_VALUE_0 = $emptyHooks
+          git init -q --template= $ws
           if ($LASTEXITCODE -ne 0) { throw "git init failed" }
           git -C $ws clean -ffdx
           if ($LASTEXITCODE -ne 0) { throw "git clean of reused workspace failed" }
+          New-Item -ItemType Directory -Path $emptyHooks | Out-Null
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
           $origin = "$server/$env:GITHUB_REPOSITORY.git"
           if (@(git -C $ws remote) -contains "origin") {
@@ -450,7 +514,9 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { throw "git remote setup failed" }
           $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
+          Remove-Item Env:REPO_TOKEN
           git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          $b64 = $null
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
@@ -509,12 +575,32 @@ jobs:
         env:
           REPO_TOKEN: ${{ github.token }}
         run: |
-          $ws = $env:GITHUB_WORKSPACE
+          $ws = [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE).TrimEnd('\')
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
-          git init -q $ws
+          $gitControl = [System.IO.Path]::GetFullPath((Join-Path $ws ".git"))
+          if (-not [string]::Equals((Split-Path -Parent $gitControl), $ws, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to reset Git control state outside the workspace."
+          }
+          if (Test-Path -LiteralPath $gitControl) {
+            $gitItem = Get-Item -LiteralPath $gitControl -Force
+            if ($gitItem.PSIsContainer -and -not ($gitItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+              Remove-Item -LiteralPath $gitControl -Recurse -Force
+            } else {
+              $gitItem.Delete()
+            }
+          }
+          if (Test-Path -LiteralPath $gitControl) { throw "Reused Git control state survived reset." }
+          $emptyHooks = Join-Path $ws (".xpj-empty-git-hooks-" + [Guid]::NewGuid().ToString("N"))
+          $env:GIT_CONFIG_NOSYSTEM = "1"
+          $env:GIT_CONFIG_GLOBAL = "NUL"
+          $env:GIT_CONFIG_COUNT = "1"
+          $env:GIT_CONFIG_KEY_0 = "core.hooksPath"
+          $env:GIT_CONFIG_VALUE_0 = $emptyHooks
+          git init -q --template= $ws
           if ($LASTEXITCODE -ne 0) { throw "git init failed" }
           git -C $ws clean -ffdx
           if ($LASTEXITCODE -ne 0) { throw "git clean of reused workspace failed" }
+          New-Item -ItemType Directory -Path $emptyHooks | Out-Null
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
           $origin = "$server/$env:GITHUB_REPOSITORY.git"
           if (@(git -C $ws remote) -contains "origin") {
@@ -524,7 +610,9 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { throw "git remote setup failed" }
           $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
+          Remove-Item Env:REPO_TOKEN
           git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          $b64 = $null
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
