@@ -3,23 +3,27 @@
 from __future__ import annotations
 
 import argparse
-import ast
-import importlib.util
 import io
 import json
-import re
 import subprocess
 import tokenize
-from collections import defaultdict, deque
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
+
+from scripts.test_impact_source_graph import (
+    SOURCE_PREFIXES,
+    ImpactEvidenceError,
+    modules_referencing_routes,
+    reverse_closure,
+    reverse_import_graph,
+    route_paths,
+    route_paths_from_source,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = REPO_ROOT / "backend"
 PLAN_SCHEMA_VERSION = 1
-_SOURCE_PREFIXES = ("app/", "scripts/", "tests/")
-_HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
 _FULL_FALLBACK_PATHS = frozenset(
     {
         ".github/workflows/ci.yml",
@@ -51,7 +55,6 @@ _IGNORED_BACKEND_PREFIXES = (
     "backend/packaging/",
 )
 _MAX_SELECTED_TEST_RATIO = 0.70
-_IMPORT_PROPAGATION_STOPS = frozenset({"app.database"})
 
 
 @dataclass(frozen=True)
@@ -82,10 +85,6 @@ class Selection:
     mode: str
     reasons: tuple[str, ...]
     selected_tests: tuple[str, ...]
-
-
-class ImpactEvidenceError(RuntimeError):
-    """Raised when Git or source evidence cannot support a partial selection."""
 
 
 def _normalize_repo_path(raw_path: str) -> str:
@@ -194,233 +193,8 @@ def git_changes(
     )
 
 
-def _module_name(path: Path, backend_root: Path) -> str | None:
-    try:
-        relative = path.relative_to(backend_root)
-    except ValueError:
-        return None
-    if relative.suffix != ".py" or relative.parts[0] not in {"app", "scripts", "tests"}:
-        return None
-    parts = list(relative.with_suffix("").parts)
-    if parts[-1] == "__init__":
-        parts.pop()
-    return ".".join(parts) if parts else None
-
-
-def _source_modules(backend_root: Path) -> dict[str, Path]:
-    modules: dict[str, Path] = {}
-    for prefix in _SOURCE_PREFIXES:
-        source_root = backend_root / prefix.rstrip("/")
-        if not source_root.is_dir():
-            continue
-        for path in source_root.rglob("*.py"):
-            module = _module_name(path, backend_root)
-            if module:
-                modules[module] = path
-    return modules
-
-
-def _read_python_source(path: Path) -> str:
-    try:
-        with tokenize.open(path) as stream:
-            return stream.read()
-    except (OSError, SyntaxError, UnicodeError) as exc:
-        raise ImpactEvidenceError(f"cannot read Python source {path}: {exc}") from exc
-
-
-def _import_base(node: ast.ImportFrom, *, importer: str, importer_path: Path) -> str | None:
-    base = node.module or ""
-    if not node.level:
-        return base
-    package = importer if importer_path.name == "__init__.py" else importer.rpartition(".")[0]
-    try:
-        return importlib.util.resolve_name("." * node.level + base, package)
-    except (ImportError, ValueError):
-        return None
-
-
-def _package_exports(
-    known_modules: Mapping[str, Path],
-) -> dict[tuple[str, str], str]:
-    exports: dict[tuple[str, str], str] = {}
-    for package, path in known_modules.items():
-        if path.name != "__init__.py":
-            continue
-        try:
-            tree = ast.parse(_read_python_source(path), filename=str(path))
-        except SyntaxError as exc:
-            raise ImpactEvidenceError(f"cannot parse {path}: {exc}") from exc
-        for node in tree.body:
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            base = _import_base(node, importer=package, importer_path=path)
-            if not base:
-                continue
-            for alias in node.names:
-                if alias.name == "*":
-                    continue
-                child_module = f"{base}.{alias.name}"
-                target = child_module if child_module in known_modules else base
-                if target in known_modules:
-                    exports[(package, alias.asname or alias.name)] = target
-    return exports
-
-
-def _resolve_imported_modules(
-    tree: ast.AST,
-    *,
-    importer: str,
-    importer_path: Path,
-    known_modules: Mapping[str, Path],
-    package_exports: Mapping[tuple[str, str], str],
-) -> set[str]:
-    imported: set[str] = set()
-
-    def add_candidate(candidate: str) -> None:
-        if candidate in known_modules:
-            imported.add(candidate)
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                add_candidate(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            base = _import_base(node, importer=importer, importer_path=importer_path)
-            if base is None:
-                continue
-            for alias in node.names:
-                if alias.name == "*":
-                    add_candidate(base)
-                    continue
-                exported_target = package_exports.get((base, alias.name))
-                if exported_target is not None:
-                    add_candidate(exported_target)
-                    continue
-                child_module = f"{base}.{alias.name}" if base else alias.name
-                if child_module in known_modules:
-                    add_candidate(child_module)
-                else:
-                    add_candidate(base)
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-            add_candidate(node.value)
-    return imported
-
-
-def _reverse_import_graph(backend_root: Path) -> tuple[dict[str, set[str]], dict[str, Path]]:
-    modules = _source_modules(backend_root)
-    package_exports = _package_exports(modules)
-    reverse: dict[str, set[str]] = defaultdict(set)
-    for importer, path in modules.items():
-        try:
-            tree = ast.parse(_read_python_source(path), filename=str(path))
-        except SyntaxError as exc:
-            raise ImpactEvidenceError(f"cannot parse {path}: {exc}") from exc
-        for imported in _resolve_imported_modules(
-            tree,
-            importer=importer,
-            importer_path=path,
-            known_modules=modules,
-            package_exports=package_exports,
-        ):
-            if importer == "app.main" and imported.startswith("app.routes."):
-                continue
-            reverse[imported].add(importer)
-    return reverse, modules
-
-
-def _reverse_closure(seeds: Iterable[str], reverse: Mapping[str, set[str]]) -> set[str]:
-    affected = set(seeds)
-    queue = deque(affected)
-    while queue:
-        affected_module = queue.popleft()
-        if affected_module in _IMPORT_PROPAGATION_STOPS:
-            continue
-        for importer in reverse.get(affected_module, ()):
-            if importer not in affected:
-                affected.add(importer)
-                queue.append(importer)
-    return affected
-
-
-def _literal_string(node: ast.AST | None) -> str | None:
-    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
-
-
-def route_paths(path: Path) -> tuple[str, ...]:
-    try:
-        return route_paths_from_source(_read_python_source(path), label=str(path))
-    except SyntaxError as exc:
-        raise ImpactEvidenceError(f"cannot parse route module {path}: {exc}") from exc
-
-
-def route_paths_from_source(source: str, *, label: str) -> tuple[str, ...]:
-    tree = ast.parse(source, filename=label)
-    prefixes: dict[str, str] = {}
-    unresolved = False
-    for node in tree.body:
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-            continue
-        value = node.value
-        if not isinstance(value, ast.Call) or not (
-            isinstance(value.func, ast.Name) and value.func.id == "APIRouter"
-        ):
-            continue
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        names = [target.id for target in targets if isinstance(target, ast.Name)]
-        prefix_node = next((keyword.value for keyword in value.keywords if keyword.arg == "prefix"), None)
-        prefix = _literal_string(prefix_node) if prefix_node is not None else ""
-        if prefix is None:
-            unresolved = True
-            continue
-        for name in names:
-            prefixes[name] = prefix
-
-    paths: set[str] = set()
-    for node in ast.walk(tree):
-        decorators = getattr(node, "decorator_list", ())
-        for decorator in decorators:
-            if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
-                continue
-            owner = decorator.func.value
-            if decorator.func.attr not in _HTTP_METHODS or not isinstance(owner, ast.Name):
-                continue
-            if owner.id not in prefixes:
-                unresolved = True
-                continue
-            path_node = decorator.args[0] if decorator.args else next(
-                (keyword.value for keyword in decorator.keywords if keyword.arg in {"path", "url"}),
-                None,
-            )
-            suffix = _literal_string(path_node)
-            if suffix is None:
-                unresolved = True
-                continue
-            paths.add(prefixes[owner.id] + suffix)
-    if unresolved:
-        raise ImpactEvidenceError(f"route paths in {label} are not all static literals")
-    return tuple(sorted(paths))
-
-
 def _test_target(path: Path, backend_root: Path) -> str:
     return path.relative_to(backend_root).as_posix()
-
-
-def _modules_referencing_routes(
-    route_patterns: Iterable[str],
-    modules: Mapping[str, Path],
-) -> set[str]:
-    regexes = []
-    for route_path in route_patterns:
-        parts = re.split(r"\{[^}]+\}", route_path)
-        regexes.append(re.compile(".+".join(re.escape(part) for part in parts)))
-    selected: set[str] = set()
-    for module, path in modules.items():
-        if not module.startswith("tests."):
-            continue
-        text = _read_python_source(path)
-        if any(regex.search(text) for regex in regexes):
-            selected.add(module)
-    return selected
 
 
 def _full_fallback_reason(changes: Sequence[GitChange]) -> str | None:
@@ -456,7 +230,7 @@ def _python_source_path(change_path: str) -> str | None:
     if not change_path.startswith("backend/") or not change_path.endswith(".py"):
         return None
     relative = change_path.removeprefix("backend/")
-    return relative if relative.startswith(_SOURCE_PREFIXES) else None
+    return relative if relative.startswith(SOURCE_PREFIXES) else None
 
 
 def _classify_source_changes(
@@ -492,7 +266,7 @@ def select_impacted_tests(
     if classified is not None:
         return classified
 
-    reverse, modules = _reverse_import_graph(backend_root)
+    reverse, modules = reverse_import_graph(backend_root)
     modules_by_path = {path.resolve(): module for module, path in modules.items()}
     changed_modules: set[str] = set()
     selected: set[str] = set()
@@ -505,7 +279,7 @@ def select_impacted_tests(
         if path.name.startswith("test_") and "tests" in path.relative_to(backend_root).parts[:1]:
             selected.add(_test_target(path, backend_root))
 
-    affected = _reverse_closure(changed_modules, reverse)
+    affected = reverse_closure(changed_modules, reverse)
     test_files = tuple(sorted((backend_root / "tests").rglob("test_*.py")))
     for module in affected:
         path = modules.get(module)
@@ -521,8 +295,8 @@ def select_impacted_tests(
     try:
         for path in affected_routes:
             route_patterns.update(route_paths(path))
-        route_consumers = _reverse_closure(
-            _modules_referencing_routes(route_patterns, modules),
+        route_consumers = reverse_closure(
+            modules_referencing_routes(route_patterns, modules),
             reverse,
         )
         for module in route_consumers:

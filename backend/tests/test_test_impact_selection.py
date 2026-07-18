@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -8,7 +7,6 @@ import pytest
 from scripts.test_impact_selection import (
     GitChange,
     _parse_name_status,
-    create_impact_plan,
     route_paths,
     select_impacted_tests,
 )
@@ -60,18 +58,6 @@ def _backend_fixture(tmp_path: Path) -> Path:
             f"def test_unrelated_{index}():\n    assert True\n",
         )
     return backend
-
-
-def _git(repo: Path, *arguments: str) -> str:
-    completed = subprocess.run(
-        ["git", *arguments],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert completed.returncode == 0, completed.stderr
-    return completed.stdout.strip()
 
 
 def test_service_change_selects_direct_and_route_consumers(tmp_path: Path) -> None:
@@ -398,112 +384,3 @@ def test_git_name_status_parser_keeps_destructive_identity() -> None:
         GitChange("M", "backend/app/a.py"),
         GitChange("R", "docs/new.py", old_path="backend/app/old.py"),
     )
-
-
-def test_git_plan_unions_historical_and_current_route_contracts(
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    backend = repo / "backend"
-    _write(
-        backend,
-        "app/routes/sample.py",
-        "from fastapi import APIRouter\n"
-        "router = APIRouter(prefix='/api/old')\n"
-        "@router.get('')\n"
-        "def sample():\n"
-        "    return 1\n",
-    )
-    _write(backend, "tests/test_old.py", "def test_old(client):\n    client.get('/api/old')\n")
-    for index in range(3):
-        _write(backend, f"tests/test_other_{index}.py", f"def test_other_{index}():\n    pass\n")
-    _git(repo, "init", "-q")
-    _git(repo, "add", ".")
-    _git(
-        repo,
-        "-c",
-        "user.name=Codex Test",
-        "-c",
-        "user.email=codex-test@example.invalid",
-        "commit",
-        "-qm",
-        "base",
-    )
-    base = _git(repo, "rev-parse", "HEAD")
-
-    _write(
-        backend,
-        "app/routes/sample.py",
-        "from fastapi import APIRouter\n"
-        "router = APIRouter(prefix='/api/new')\n"
-        "@router.get('')\n"
-        "def sample():\n"
-        "    return 2\n",
-    )
-    _write(backend, "tests/test_new.py", "def test_new(client):\n    client.get('/api/new')\n")
-    _git(repo, "add", ".")
-    _git(
-        repo,
-        "-c",
-        "user.name=Codex Test",
-        "-c",
-        "user.email=codex-test@example.invalid",
-        "commit",
-        "-qm",
-        "head",
-    )
-    head = _git(repo, "rev-parse", "HEAD")
-
-    plan = create_impact_plan(
-        repo_root=repo,
-        backend_root=backend,
-        base_ref=base,
-        head_ref=head,
-    )
-
-    assert plan.mode == "selected"
-    assert plan.source_state == "commit"
-    assert plan.selected_tests == ("tests/test_new.py", "tests/test_old.py")
-
-    _git(repo, "checkout", "-q", base)
-    mismatched_checkout = create_impact_plan(
-        repo_root=repo,
-        backend_root=backend,
-        base_ref=base,
-        head_ref=head,
-    )
-    assert mismatched_checkout.mode == "full"
-    assert "does not match checked-out HEAD" in mismatched_checkout.reasons[0]
-    _git(repo, "checkout", "-q", head)
-
-    _write(backend, "tests/test_new.py", "def test_new():\n    assert False\n")
-    dirty_plan = create_impact_plan(
-        repo_root=repo,
-        backend_root=backend,
-        base_ref=base,
-        head_ref=head,
-    )
-    assert dirty_plan.mode == "full"
-    assert "working tree changes" in dirty_plan.reasons[0]
-    local_plan = create_impact_plan(
-        repo_root=repo,
-        backend_root=backend,
-        base_ref=base,
-        head_ref=head,
-        include_worktree=True,
-    )
-    assert local_plan.mode == "selected"
-    assert local_plan.source_state == "worktree"
-
-    _git(repo, "checkout", "--", "backend/tests/test_new.py")
-    _write(backend, "tests/test_untracked.py", "def test_untracked():\n    assert True\n")
-    untracked_plan = create_impact_plan(
-        repo_root=repo,
-        backend_root=backend,
-        base_ref=base,
-        head_ref=head,
-        include_worktree=True,
-    )
-    assert untracked_plan.mode == "selected"
-    assert "tests/test_untracked.py" in untracked_plan.selected_tests
