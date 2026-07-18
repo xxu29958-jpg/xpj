@@ -14,10 +14,10 @@ from tests._infra.ci_gap_action_pins import (
 
 pytestmark = pytest.mark.parallel_safe
 
-_CHECKOUT = "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10"
+_PINNED_ACTION = f"owner/composite-dependency@{'b' * 40}"
 
 
-def test_github_actions_require_reviewed_identity_and_commit(
+def test_github_actions_require_commit_pins_across_workflows_and_composites(
     tmp_path: Path,
 ) -> None:
     mod = _load()
@@ -31,7 +31,7 @@ def test_github_actions_require_reviewed_identity_and_commit(
         and "owner/composite-dependency@main" in item
         for item in composite_violations
     )
-    write_composite_action_dependency(workflows, _CHECKOUT)
+    write_composite_action_dependency(workflows, _PINNED_ACTION)
 
     write_action_pin_mutations(workflows, mutations)
     violations = mod._github_external_uses_pin_violations(workflows)

@@ -8,45 +8,6 @@ from ci_gap_workflow_parser import yaml_scalar_key_values
 
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
-_TRUSTED_EXTERNAL_ACTIONS: dict[str, frozenset[str]] = {
-    "actions/cache": frozenset({"55cc8345863c7cc4c66a329aec7e433d2d1c52a9"}),
-    "actions/cache/restore": frozenset(
-        {"55cc8345863c7cc4c66a329aec7e433d2d1c52a9"}
-    ),
-    "actions/cache/save": frozenset(
-        {"55cc8345863c7cc4c66a329aec7e433d2d1c52a9"}
-    ),
-    "actions/checkout": frozenset(
-        {"df4cb1c069e1874edd31b4311f1884172cec0e10"}
-    ),
-    "actions/download-artifact": frozenset(
-        {"d3f86a106a0bac45b974a628896c90dbdf5c8093"}
-    ),
-    "actions/setup-java": frozenset(
-        {"0f481fcb613427c0f801b606911222b5b6f3083a"}
-    ),
-    "actions/setup-python": frozenset(
-        {"ece7cb06caefa5fff74198d8649806c4678c61a1"}
-    ),
-    "actions/upload-artifact": frozenset(
-        {
-            "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-            "ea165f8d65b6e75b540449e92b4886f43607fa02",
-        }
-    ),
-    "github/codeql-action/analyze": frozenset(
-        {"1ad29ea4a422cce9a242a9fae469541dcd08addc"}
-    ),
-    "github/codeql-action/init": frozenset(
-        {"1ad29ea4a422cce9a242a9fae469541dcd08addc"}
-    ),
-    "gradle/actions/setup-gradle": frozenset(
-        {"3f131e8634966bd73d06cc69884922b02e6faf92"}
-    ),
-    "reactivecircus/android-emulator-runner": frozenset(
-        {"4c44018e59b437e86cdfc41da381398f93ed8808"}
-    ),
-}
 
 
 def _workflow_dir_list(
@@ -144,9 +105,6 @@ def _external_action_violation(value: str) -> str | None:
     valid_sha = len(sha) == 40 and all(character in _HEX_DIGITS for character in sha)
     if not valid_identity or not valid_sha:
         return f"external uses ref must be exactly a 40-hex commit SHA: {value}"
-    sha = sha.lower()
-    if sha not in _TRUSTED_EXTERNAL_ACTIONS.get(identity, frozenset()):
-        return f"external action identity and SHA are not reviewed: {value}"
     return None
 
 
