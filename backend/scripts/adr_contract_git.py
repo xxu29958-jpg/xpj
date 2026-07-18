@@ -53,7 +53,7 @@ def select_ratchet_base(
         if ancestry_error is not None:
             return None, ancestry_error
         event_name = environ.get("GITHUB_EVENT_NAME", "").strip()
-        require_canonical = event_name in {"pull_request", "workflow_dispatch"} or (
+        require_canonical = event_name == "workflow_dispatch" or (
             event_name == "push" and _is_non_default_branch_push(environ)
         )
         if require_canonical:
@@ -62,7 +62,6 @@ def select_ratchet_base(
                 return None, canonical_error
             if commit != canonical.commit:
                 context = {
-                    "pull_request": "pull-request",
                     "workflow_dispatch": "manual",
                 }.get(event_name, "work-branch push")
                 return None, (

@@ -11,7 +11,9 @@ GITHUB_WORKFLOWS = ROOT / ".github" / "workflows"
 GITEA_WORKFLOWS = ROOT / ".gitea" / "workflows"
 
 GITHUB_MAIN_ONLY = ("main",)
-GITEA_WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "codex/**")
+WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "codex/**")
+GITHUB_PR_TARGETS = WORK_BRANCHES
+GITEA_WORK_BRANCHES = WORK_BRANCHES
 CODEQL_WEEKLY_CRON = "37 3 * * 1"
 GITHUB_CONNECTED_PATHS = (
     "android/app/src/**",
@@ -115,14 +117,14 @@ def _expect_exact(label: str, actual: tuple[str, ...], expected: tuple[str, ...]
         failures.append(f"{label}: expected {list(expected)}, got {list(actual)}")
 
 
-def _audit_github_main_pr_policy(failures: list[str]) -> None:
+def _audit_github_pr_policy(failures: list[str]) -> None:
     for workflow_name in ("ci.yml", "android-connected-test.yml", "codeql.yml"):
         path = GITHUB_WORKFLOWS / workflow_name
         _expect_exact(f"{workflow_name} push branches", _branches(path, "push"), GITHUB_MAIN_ONLY, failures)
         _expect_exact(
             f"{workflow_name} pull_request branches",
             _branches(path, "pull_request"),
-            GITHUB_MAIN_ONLY,
+            GITHUB_PR_TARGETS,
             failures,
         )
         if not _event_present(path, "workflow_dispatch"):
@@ -152,7 +154,7 @@ def _audit_gitea_fallback_policy(failures: list[str]) -> None:
 
 def main() -> int:
     failures: list[str] = []
-    _audit_github_main_pr_policy(failures)
+    _audit_github_pr_policy(failures)
     _audit_gitea_fallback_policy(failures)
     if failures:
         print("=== CI trigger policy audit: FAIL ===")
@@ -162,7 +164,7 @@ def main() -> int:
 
     print(
         "PASS: CI trigger policy pinned "
-        "(GitHub PR/main-push, CodeQL schedule/manual, Gitea fallback work branches)."
+        "(GitHub stacked-PR/main-push, CodeQL schedule/manual, Gitea fallback work branches)."
     )
     return 0
 

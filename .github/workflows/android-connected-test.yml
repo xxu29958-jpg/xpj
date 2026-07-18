@@ -26,6 +26,11 @@ on:
   pull_request:
     branches:
       - main
+      - "feat/**"
+      - "fix/**"
+      - "perf/**"
+      - "refactor/**"
+      - "codex/**"
     paths:
       - "android/app/src/**"
       - "android/gradle/**"
