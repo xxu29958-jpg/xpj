@@ -7,6 +7,11 @@ from pathlib import Path
 
 import pytest
 
+from scripts.packaging_powershell_contract import (
+    POWERSHELL_CONTRACT_PROOF_ENV,
+    powershell_contract_engines,
+    powershell_contract_preflight_proof,
+)
 from scripts.packaging_pytest_contract import (
     PACKAGING_EXPECTED_PARALLEL_COUNT_ENV,
     PACKAGING_EXPECTED_PARALLEL_DIGEST_ENV,
@@ -88,6 +93,24 @@ def _start_strict_runtime_watchdog(config: pytest.Config) -> None:
     start_windows_parent_watchdog(label=f"strict packaging pytest {role}")
 
 
+def _prepare_powershell_contract(config: pytest.Config) -> None:
+    if _is_xdist_worker(config):
+        if not os.environ.get(POWERSHELL_CONTRACT_PROOF_ENV):
+            raise pytest.UsageError(
+                "strict packaging worker is missing the controller PowerShell proof"
+            )
+        try:
+            powershell_contract_engines()
+        except (AssertionError, OSError, TypeError, ValueError) as exc:
+            raise pytest.UsageError(
+                "strict packaging worker rejected the controller PowerShell proof"
+            ) from exc
+        return
+    os.environ[POWERSHELL_CONTRACT_PROOF_ENV] = (
+        powershell_contract_preflight_proof()
+    )
+
+
 def _resource_for_item(item: pytest.Item) -> str:
     declarations = list(item.iter_markers_with_node(name=PACKAGING_RESOURCE_MARKER))
     if not declarations:
@@ -151,6 +174,7 @@ def pytest_configure(config: pytest.Config) -> None:
     if not _strict_runtime_enabled():
         return
     _start_strict_runtime_watchdog(config)
+    _prepare_powershell_contract(config)
     violations: list[str] = []
     if config.getoption("collectonly", default=False):
         violations.append("strict packaging contracts must execute, not only collect")
