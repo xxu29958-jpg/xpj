@@ -162,14 +162,18 @@ function Invoke-XpjTestPostgresBoundedProcess {
     $stderrPath = Join-Path $temporaryRoot ".xpj-pg-process-$processId.stderr"
     $job = [XpjTestProcessJob]::new()
     try {
-        [void](Start-XpjTestPostgresProtectedProcess `
-            -Job $job `
-            -FilePath $FilePath `
-            -ArgumentList $ArgumentList `
-            -StdoutPath $stdoutPath `
-            -StderrPath $stderrPath `
-            -StandardInput $StandardInput `
-            -RestrictWindowsAdminAuthority:$RestrictWindowsAdminAuthority)
+        $startArguments = @{
+            Job = $job
+            FilePath = $FilePath
+            ArgumentList = $ArgumentList
+            StdoutPath = $stdoutPath
+            StderrPath = $stderrPath
+            RestrictWindowsAdminAuthority = $RestrictWindowsAdminAuthority
+        }
+        if ($null -ne $StandardInput) {
+            $startArguments.StandardInput = $StandardInput
+        }
+        [void](Start-XpjTestPostgresProtectedProcess @startArguments)
         $timedOut = -not $job.WaitForStartedProcess($TimeoutSeconds * 1000)
         if ($timedOut) {
             $job.Terminate(1)

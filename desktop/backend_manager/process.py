@@ -25,6 +25,9 @@ from typing import Literal
 from backend_manager.version_contract import is_managed_release_version
 
 _CREATE_NO_WINDOW = 0x08000000  # don't pop a console window for child processes
+_CREATE_SUSPENDED = 0x00000004
+_TH32CS_SNAPTHREAD = 0x00000004
+_THREAD_SUSPEND_RESUME = 0x0002
 _LOG_LINES = 300
 _HEALTH_RESPONSE_LIMIT_BYTES = 4096
 _HEALTH_KEYS = frozenset(
@@ -89,6 +92,18 @@ class _ExtendedLimitInformation(ctypes.Structure):
     ]
 
 
+class _ThreadEntry32(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", ctypes.c_uint32),
+        ("cntUsage", ctypes.c_uint32),
+        ("th32ThreadID", ctypes.c_uint32),
+        ("th32OwnerProcessID", ctypes.c_uint32),
+        ("tpBasePri", ctypes.c_int32),
+        ("tpDeltaPri", ctypes.c_int32),
+        ("dwFlags", ctypes.c_uint32),
+    ]
+
+
 class WindowsKillOnCloseJob:
     """One owning job handle; Windows kills every assigned descendant when it closes."""
 
@@ -138,6 +153,76 @@ def _attach_kill_on_close_job(popen: subprocess.Popen[str]) -> WindowsKillOnClos
         job.close()
         raise
     return job
+
+
+def _resume_suspended_process(process_id: int) -> None:
+    """Resume the only thread present before a suspended process executes user code."""
+    kernel32 = ctypes.WinDLL("Kernel32", use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+    kernel32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+    kernel32.Thread32First.argtypes = [ctypes.c_void_p, ctypes.POINTER(_ThreadEntry32)]
+    kernel32.Thread32First.restype = ctypes.c_int
+    kernel32.Thread32Next.argtypes = [ctypes.c_void_p, ctypes.POINTER(_ThreadEntry32)]
+    kernel32.Thread32Next.restype = ctypes.c_int
+    kernel32.OpenThread.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel32.OpenThread.restype = ctypes.c_void_p
+    kernel32.ResumeThread.argtypes = [ctypes.c_void_p]
+    kernel32.ResumeThread.restype = ctypes.c_uint32
+    snapshot = kernel32.CreateToolhelp32Snapshot(_TH32CS_SNAPTHREAD, 0)
+    if snapshot == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        entry = _ThreadEntry32()
+        entry.dwSize = ctypes.sizeof(entry)
+        found = kernel32.Thread32First(snapshot, ctypes.byref(entry))
+        while found:
+            if entry.th32OwnerProcessID == process_id:
+                thread = kernel32.OpenThread(
+                    _THREAD_SUSPEND_RESUME,
+                    False,
+                    entry.th32ThreadID,
+                )
+                if not thread:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                try:
+                    if kernel32.ResumeThread(thread) == 0xFFFFFFFF:
+                        raise ctypes.WinError(ctypes.get_last_error())
+                finally:
+                    kernel32.CloseHandle(thread)
+                return
+            found = kernel32.Thread32Next(snapshot, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snapshot)
+    raise RuntimeError("Cannot identify the suspended process primary thread")
+
+
+def spawn_windows_job_process(
+    command: list[str],
+    **popen_kwargs: object,
+) -> tuple[subprocess.Popen, WindowsKillOnCloseJob]:
+    """Create a Windows child suspended, bind its Job authority, then let it run."""
+    if os.name != "nt":
+        raise OSError("Windows Job Object is unavailable on this platform")
+    requested_flags = int(popen_kwargs.pop("creationflags", 0))
+    process = subprocess.Popen(
+        command,
+        creationflags=requested_flags | _CREATE_SUSPENDED,
+        **popen_kwargs,
+    )
+    job: WindowsKillOnCloseJob | None = None
+    try:
+        job = _attach_kill_on_close_job(process)
+        _resume_suspended_process(process.pid)
+    except BaseException:
+        if job is not None:
+            job.close()
+        else:
+            with contextlib.suppress(OSError, subprocess.SubprocessError):
+                process.kill()
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            process.wait(timeout=5)
+        raise
+    return process, job
 
 
 @dataclass(frozen=True)
@@ -238,7 +323,7 @@ def spawn_backend(
     child_environment = os.environ.copy()
     child_environment["TICKETBOX_DATA_DIR"] = str(data_root)
     child_environment["XPJ_EXTRA_LOOPBACK_HOSTS"] = f"127.0.0.1:{port}"
-    popen = subprocess.Popen(
+    popen, job = spawn_windows_job_process(
         [
             str(venv_python), "-m", "uvicorn", "app.main:app",
             "--host", host, "--port", str(port), "--no-access-log",
@@ -253,16 +338,6 @@ def spawn_backend(
         creationflags=_CREATE_NO_WINDOW,
         env=child_environment,
     )
-    try:
-        job = _attach_kill_on_close_job(popen)
-    except BaseException:
-        kill_requested = tree_kill(popen.pid)
-        if not kill_requested:
-            with contextlib.suppress(OSError, subprocess.SubprocessError):
-                popen.kill()
-        with contextlib.suppress(OSError, subprocess.SubprocessError):
-            popen.wait(timeout=5)
-        raise
     return UvicornProcess(popen, job)
 
 

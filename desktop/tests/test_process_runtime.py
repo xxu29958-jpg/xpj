@@ -47,7 +47,7 @@ def test_source_spawn_overrides_extra_loopback_hosts_with_exact_custom_port(
         "0.0.0.0:9123,api.example.com,127.0.0.1:8000",
     )
     monkeypatch.setattr(process.subprocess, "Popen", fake_popen)
-    attached: list[object] = []
+    events: list[str] = []
 
     class FakeJob:
         def close(self) -> None:
@@ -56,7 +56,12 @@ def test_source_spawn_overrides_extra_loopback_hosts_with_exact_custom_port(
     monkeypatch.setattr(
         process,
         "_attach_kill_on_close_job",
-        lambda popen: (attached.append(popen), FakeJob())[-1],
+        lambda _popen: (events.append("attach"), FakeJob())[-1],
+    )
+    monkeypatch.setattr(
+        process,
+        "_resume_suspended_process",
+        lambda process_id: events.append(f"resume:{process_id}"),
     )
 
     process.spawn_backend(
@@ -72,7 +77,8 @@ def test_source_spawn_overrides_extra_loopback_hosts_with_exact_custom_port(
     assert child_environment["XPJ_EXTRA_LOOPBACK_HOSTS"] == "127.0.0.1:9123"
     assert child_environment["TICKETBOX_DATA_DIR"] == str(tmp_path / "runtime-data")
     assert "api.example.com" not in child_environment["XPJ_EXTRA_LOOPBACK_HOSTS"]
-    assert len(attached) == 1
+    assert events == ["attach", "resume:1234"]
+    assert int(captured["creationflags"]) & process._CREATE_SUSPENDED  # noqa: SLF001
 
 
 def test_spawn_failure_to_attach_job_terminates_new_child(monkeypatch, tmp_path: Path) -> None:
@@ -95,7 +101,6 @@ def test_spawn_failure_to_attach_job_terminates_new_child(monkeypatch, tmp_path:
         "_attach_kill_on_close_job",
         lambda _popen: (_ for _ in ()).throw(OSError("job unavailable")),
     )
-    monkeypatch.setattr(process, "tree_kill", lambda pid: (events.append(f"tree-kill:{pid}"), False)[-1])
 
     with pytest.raises(OSError, match="job unavailable"):
         process.spawn_backend(
@@ -106,17 +111,16 @@ def test_spawn_failure_to_attach_job_terminates_new_child(monkeypatch, tmp_path:
             port=9123,
         )
 
-    assert events == ["tree-kill:1234", "kill", "wait:5"]
+    assert events == ["kill", "wait:5"]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object required")
-def test_kill_on_close_job_terminates_owned_child() -> None:
-    child = subprocess.Popen(
+def test_suspended_job_launch_terminates_owned_child() -> None:
+    child, job = process.spawn_windows_job_process(
         [sys.executable, "-c", "import time; time.sleep(30)"],
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     try:
-        job = process._attach_kill_on_close_job(child)  # noqa: SLF001 - native ownership contract
         job.close()
         child.wait(timeout=5)
         assert child.poll() is not None

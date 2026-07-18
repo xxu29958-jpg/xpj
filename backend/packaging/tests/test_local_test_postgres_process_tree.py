@@ -26,6 +26,50 @@ pytestmark = pytest.mark.packaging_resource("postgres_cluster")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
+def test_bounded_process_without_standard_input_does_not_create_a_pipe(
+    tmp_path: Path,
+) -> None:
+    probe = tmp_path / "no-standard-input.ps1"
+    probe.write_text(
+        "param($Contract)\n"
+        ". $Contract\n"
+        "foreach ($attempt in 1..20) {\n"
+        "  $result = Invoke-XpjTestPostgresBoundedProcess "
+        "-FilePath $env:ComSpec -ArgumentList @('/d','/c','exit','0') "
+        "-TimeoutSeconds 5\n"
+        "  if ($result.TimedOut -or $result.ExitCode -ne 0) {\n"
+        "    throw \"fast child failed without stdin on attempt $attempt\"\n"
+        "  }\n"
+        "}\n",
+        encoding="ascii",
+    )
+
+    for engine in powershell_contract_engines():
+        completed = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(probe),
+                "-Contract",
+                str(TEST_POSTGRES_CONTRACT),
+            ],
+            cwd=tmp_path,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_postmaster_generation_retains_one_exact_process_handle(tmp_path: Path) -> None:
     probe = tmp_path / "postmaster-generation.ps1"
     probe.write_text(
@@ -550,7 +594,9 @@ def test_bounded_process_times_out_and_releases_lifecycle_mutex(tmp_path: Path) 
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows process identity")
-def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> None:
+def test_python_consumer_exits_when_its_declared_parent_authority_dies(
+    tmp_path: Path,
+) -> None:
     child = tmp_path / "watch-parent-child.py"
     child.write_text(
         "import json, os, sys, time\n"
@@ -560,6 +606,8 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
         "    EPHEMERAL_SERVICE_AUTHORITY, TEST_CLUSTER_AUTHORITY_ENV,\n"
         "    TEST_POSTGRES_CREDENTIAL_FILE_ENV, start_windows_parent_watchdog,\n"
         "    test_postgres_credential_environment,\n"
+        "    WINDOWS_PARENT_AUTHORITY_CREATED_ENV,\n"
+        "    WINDOWS_PARENT_AUTHORITY_PID_ENV,\n"
         ")\n"
         "from scripts.test_pg_protected_reader import _open_windows_protected_read_descriptor\n"
         "from scripts.test_pg_windows_contract import (\n"
@@ -580,10 +628,14 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
         "        created = _windows_process_created_filetime(\n"
         "            kernel32, kernel32.GetCurrentProcess()\n"
         "        )\n"
+        "        authority_pid = int(os.environ[WINDOWS_PARENT_AUTHORITY_PID_ENV])\n"
+        "        authority_created = int(os.environ[WINDOWS_PARENT_AUTHORITY_CREATED_ENV])\n"
         "        start_windows_parent_watchdog(label='runtime contract child')\n"
         "        sys.stderr.close()\n"
         "        payload = json.dumps(\n"
-        "            {'pid': os.getpid(), 'created': created, 'passfile': str(passfile)}\n"
+        "            {'pid': os.getpid(), 'created': created, 'passfile': str(passfile),\n"
+        "             'authority_pid': authority_pid,\n"
+        "             'authority_created': authority_created}\n"
         "        )\n"
         "        ready_temp = ready.with_name(f'.{ready.name}.{os.getpid()}.tmp')\n"
         "        ready_temp.write_text(payload, encoding='utf-8')\n"
@@ -597,7 +649,14 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
     parent = tmp_path / "watch-parent.py"
     parent.write_text(
         "import subprocess, sys, time\n"
-        "child = subprocess.Popen([sys.executable, sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]])\n"
+        "sys.path.insert(0, sys.argv[2])\n"
+        "from scripts.test_pg_contract import bind_windows_child_authority\n"
+        "environment = __import__('os').environ.copy()\n"
+        "bind_windows_child_authority(environment)\n"
+        "child = subprocess.Popen(\n"
+        "    [sys.executable, sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]],\n"
+        "    env=environment,\n"
+        ")\n"
         "while True:\n"
         "    time.sleep(0.1)\n",
         encoding="ascii",
@@ -623,6 +682,8 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
     )
     child_kernel32: object | None = None
     child_handle: object | None = None
+    authority_kernel32: object | None = None
+    authority_handle: object | None = None
     derived_passfile: Path | None = None
     try:
         deadline = time.monotonic() + 10
@@ -641,9 +702,17 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
             int(ready["created"]),
         )
         assert _windows_process_handle_is_running(child_kernel32, child_handle)
-        launcher.kill()
-        launcher.wait(timeout=10)
-        assert child_kernel32.WaitForSingleObject(child_handle, 10_000) == 0
+        authority_kernel32, authority_handle = _open_exact_windows_process(
+            int(ready["authority_pid"]),
+            int(ready["authority_created"]),
+        )
+        assert _windows_process_handle_is_running(
+            authority_kernel32,
+            authority_handle,
+        )
+        _terminate_exact_windows_process(authority_kernel32, authority_handle)
+        assert authority_kernel32.WaitForSingleObject(authority_handle, 10_000) == 0
+        assert child_kernel32.WaitForSingleObject(child_handle, 10_000) == 0, ready
         exit_code = ctypes.c_uint32()
         assert child_kernel32.GetExitCodeProcess(
             child_handle,
@@ -658,3 +727,6 @@ def test_python_consumer_exits_when_its_exact_parent_dies(tmp_path: Path) -> Non
         if child_kernel32 is not None and child_handle is not None:
             _terminate_exact_windows_process(child_kernel32, child_handle)
             child_kernel32.CloseHandle(child_handle)
+        if authority_kernel32 is not None and authority_handle is not None:
+            _terminate_exact_windows_process(authority_kernel32, authority_handle)
+            authority_kernel32.CloseHandle(authority_handle)

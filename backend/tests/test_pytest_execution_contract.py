@@ -9,12 +9,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from scripts import run_packaging_tests
-from scripts.packaging_pytest_contract import (
-    PACKAGING_PARALLEL_MARKER,
-    PACKAGING_SERIAL_MARKER,
-    packaging_partition_violation,
-    packaging_xdist_group,
-)
+from scripts.packaging_pytest_contract import packaging_xdist_group
 from scripts.pytest_execution_contract import (
     PytestCollectionSnapshot,
     parse_pytest_collection,
@@ -45,8 +40,6 @@ def test_pytest_collection_digest_is_order_independent() -> None:
     second = tuple(reversed(first))
 
     assert pytest_nodeid_digest(first) == pytest_nodeid_digest(second)
-    assert packaging_partition_violation(first, first[:1], first[1:]) is None
-    assert packaging_partition_violation(first, first, first[1:]) is not None
 
 
 def test_pytest_execution_environment_removes_ambient_selectors() -> None:
@@ -157,21 +150,18 @@ def test_execution_membership_rejects_precollection_omission() -> None:
 def test_packaging_runner_clears_filters_and_requires_handshake(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    parallel_snapshot = PytestCollectionSnapshot(())
-    serial_snapshot = PytestCollectionSnapshot(("packaging/tests/test_installer.py::test_upgrade",))
-    snapshot = PytestCollectionSnapshot((*parallel_snapshot.nodeids, *serial_snapshot.nodeids))
+    snapshot = PytestCollectionSnapshot(
+        ("packaging/tests/test_installer.py::test_upgrade",)
+    )
     observed: dict[str, object] = {}
+    collection_calls = 0
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only -k version")
     monkeypatch.setenv("PYTEST_PLUGINS", "ambient_plugin")
     monkeypatch.setenv("PYTHONPATH", "ambient-import-root")
 
-    def collect(*_args, mark_expression: str | None = None, **kwargs):
-        if mark_expression == PACKAGING_PARALLEL_MARKER:
-            assert kwargs["allow_empty"] is True
-            return parallel_snapshot
-        if mark_expression == PACKAGING_SERIAL_MARKER:
-            assert kwargs["allow_empty"] is True
-            return serial_snapshot
+    def collect(*_args, **_kwargs):
+        nonlocal collection_calls
+        collection_calls += 1
         return snapshot
 
     monkeypatch.setattr(run_packaging_tests, "collect_pytest_snapshot", collect)
@@ -199,6 +189,7 @@ def test_packaging_runner_clears_filters_and_requires_handshake(
     monkeypatch.setattr(run_packaging_tests.subprocess, "run", execute)
 
     assert run_packaging_tests.run_packaging_tests() == 0
+    assert collection_calls == 1
     environment = observed["environment"]
     assert isinstance(environment, dict)
     assert "PYTEST_ADDOPTS" not in environment
@@ -213,26 +204,19 @@ def test_packaging_runner_clears_filters_and_requires_handshake(
     assert observed["command"][observed["command"].index("-n") + 1] == "3"
     assert "--dist=loadgroup" in observed["command"]
     assert "--max-worker-restart=0" in observed["command"]
-    assert observed["command"].count("-m") == 1
-    assert environment[run_packaging_tests.PACKAGING_EXPECTED_PARALLEL_COUNT_ENV] == "0"
-    assert environment[run_packaging_tests.PACKAGING_EXPECTED_SERIAL_COUNT_ENV] == "1"
 
 
 def test_packaging_runner_rejects_success_without_handshake(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    parallel_snapshot = PytestCollectionSnapshot(("packaging/tests/test_contract.py::test_manifest",))
-    serial_snapshot = PytestCollectionSnapshot(("packaging/tests/test_installer.py::test_upgrade",))
-    snapshot = PytestCollectionSnapshot((*parallel_snapshot.nodeids, *serial_snapshot.nodeids))
-
-    def collect(*_args, mark_expression: str | None = None, **_kwargs):
-        if mark_expression == PACKAGING_PARALLEL_MARKER:
-            return parallel_snapshot
-        if mark_expression == PACKAGING_SERIAL_MARKER:
-            return serial_snapshot
-        return snapshot
-
-    monkeypatch.setattr(run_packaging_tests, "collect_pytest_snapshot", collect)
+    snapshot = PytestCollectionSnapshot(
+        ("packaging/tests/test_installer.py::test_upgrade",)
+    )
+    monkeypatch.setattr(
+        run_packaging_tests,
+        "collect_pytest_snapshot",
+        lambda *_args, **_kwargs: snapshot,
+    )
     monkeypatch.setattr(
         run_packaging_tests.subprocess,
         "run",
@@ -356,13 +340,10 @@ def test_packaging_collection_rejects_authored_scheduler_markers(
         def get_closest_marker(self, name: str) -> SimpleNamespace | None:
             return self.marker if name == self.marker.name else None
 
-    markers = tuple(
-        SimpleNamespace(name=name) for name in (PACKAGING_PARALLEL_MARKER, PACKAGING_SERIAL_MARKER, "xdist_group")
-    )
-    for marker in markers:
-        hook = module.pytest_collection_modifyitems([AuthoredItem(marker)])
-        with pytest.raises(pytest.UsageError, match=marker.name):
-            next(hook)
+    marker = SimpleNamespace(name="xdist_group")
+    hook = module.pytest_collection_modifyitems([AuthoredItem(marker)])
+    with pytest.raises(pytest.UsageError, match=marker.name):
+        next(hook)
 
 
 def _write_packaging_loadgroup_probe(probe_root: Path) -> Path:

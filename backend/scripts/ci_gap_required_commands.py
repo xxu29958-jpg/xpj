@@ -100,6 +100,20 @@ def _matches_frozen_backend_build(command: str) -> bool:
     return script == "scripts/build_backend_exe.ps1" and "-clean" in arguments
 
 
+def _matches_frozen_manager_build(command: str) -> bool:
+    invocation = _powershell_file_invocation(
+        command,
+        executables={"powershell", "powershell.exe", "pwsh", "pwsh.exe"},
+    )
+    if invocation is None:
+        return False
+    script, arguments = invocation
+    return script in {
+        "../desktop/scripts/build_manager_exe.ps1",
+        "desktop/scripts/build_manager_exe.ps1",
+    } and "-clean" in arguments
+
+
 def _matches_authoritative_inno_build(command: str) -> bool:
     invocation = _powershell_file_invocation(
         command,
@@ -191,6 +205,15 @@ REQUIRED_CI_INVOCATIONS = (
         matcher=_matches_frozen_backend_build,
     ),
     RequiredCommand(
+        "frozen Desktop Manager locked release build",
+        re.compile(
+            r"(?i)^\s*(?:&\s+)?(?:powershell|pwsh)(?:\.exe)?\b[^\r\n]*\s-File\s+"
+            r"(?:\.\.[\\/])?desktop[\\/]+scripts[\\/]+build_manager_exe\.ps1\b"
+            r"[^\r\n]*\s-Clean\b"
+        ),
+        matcher=_matches_frozen_manager_build,
+    ),
+    RequiredCommand(
         "end-to-end smoke",
         re.compile(_PYTHON_PREFIX + r"scripts[\\/]+smoke_test\.py\b"),
     ),
@@ -222,6 +245,16 @@ REQUIRED_CI_INVOCATIONS = (
         "desktop pytest",
         re.compile(_PYTHON_PREFIX + r"-m\s+pytest\s+-q\s*$", re.MULTILINE),
     ),
+)
+
+PATH_SCOPED_CI_INVOCATIONS = frozenset(
+    {
+        "pytest installer safety lane",
+        "installer source preflight (Windows PowerShell 5.1)",
+        "installer source preflight (PowerShell 7)",
+        "frozen backend locked release build",
+        "frozen Desktop Manager locked release build",
+    }
 )
 
 _REQUIRED_INNO_BUILD_INVOCATIONS = (

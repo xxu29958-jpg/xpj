@@ -292,11 +292,12 @@ def _iter_reachable_workflow_steps(
     workflow_dirs: pathlib.Path | list[pathlib.Path],
     *,
     protected_only: bool = False,
+    protected_event: str | None = None,
 ) -> list[WorkflowStep]:
     reachable: list[WorkflowStep] = []
     for path in _iter_workflow_paths(workflow_dirs):
         workflow = _load_workflow(path)
-        event_name = _required_protection_event(path)
+        event_name = protected_event or _required_protection_event(path)
         protection_scope = "full"
         if protected_only:
             resolved_scope = _protected_workflow_scope(path, workflow, event_name)
@@ -362,12 +363,14 @@ def _iter_workflow_run_commands(
     workflow_dirs: pathlib.Path | list[pathlib.Path],
     *,
     protected_only: bool = False,
+    protected_event: str | None = None,
 ) -> list[WorkflowCommand]:
     commands: list[WorkflowCommand] = []
     for path, job_name, index, raw_step, job_shell, protection_scope, environment in (
         _iter_reachable_workflow_steps(
             workflow_dirs,
             protected_only=protected_only,
+            protected_event=protected_event,
         )
     ):
         parsed = _workflow_step_command(
@@ -388,12 +391,14 @@ def _iter_workflow_actions(
     workflow_dirs: pathlib.Path | list[pathlib.Path],
     *,
     protected_only: bool = False,
+    protected_event: str | None = None,
 ) -> list[WorkflowAction]:
     actions: list[WorkflowAction] = []
     for path, job_name, index, raw_step, _job_shell, protection_scope, environment in (
         _iter_reachable_workflow_steps(
             workflow_dirs,
             protected_only=protected_only,
+            protected_event=protected_event,
         )
     ):
         uses = raw_step.get("uses")
