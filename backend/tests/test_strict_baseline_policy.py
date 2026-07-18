@@ -97,24 +97,3 @@ def test_ratchet_policy_rejects_malformed_current_source(monkeypatch) -> None:
     violations = gate._compute_ratchet_policy_findings()
 
     assert "current gate source policy is malformed: mutated source" in violations
-
-
-def test_ratchet_policy_cannot_drop_a_still_managed_directional_counter(
-    monkeypatch,
-) -> None:
-    gate = importlib.reload(importlib.import_module("scripts.codebase_audit_gate"))
-    base_policy = gate._StrictBaselinePolicy(
-        dict(gate.STRICT_EQUALITY_BASELINE),
-        frozenset({"mutate_token_carriers"}),
-        frozenset({"mutate_token_exempted"}),
-        True,
-    )
-    monkeypatch.setattr(gate, "BASELINE_RATCHET_UP", frozenset())
-
-    violations = gate._compute_ratchet_policy_findings(base_policy)
-
-    assert any(
-        "UP-only ratchet removed still-managed counter(s): mutate_token_carriers"
-        in violation
-        for violation in violations
-    )

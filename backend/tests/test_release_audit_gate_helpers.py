@@ -135,19 +135,23 @@ def test_release_audit_requires_the_two_product_risk_lanes(
     ) == ["_audit_pr_delta_metrics.py"]
 
 
-def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> None:
-    # The single in-flight grandfather now points at the ADR-0053 merchant
-    # catalog web create-row exemption. Older up-hops are dead history.
+def test_pr_delta_exemption_count_is_not_a_directional_quality_score(
+    monkeypatch,
+) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 122
+    baseline["mutate_token_exempted"] = 129
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations = mod._compute_ratchet_findings(
         {"mutate_token_exempted": 121}
     )
+    _missing, mismatches, _extras = mod._compute_strict_equality_findings(
+        {**baseline, "mutate_token_exempted": 130}
+    )
 
     assert violations == []
+    assert mismatches == [("mutate_token_exempted", 130, 129)]
 
 
 def test_pr_delta_cannot_remove_a_mutate_token_counter(monkeypatch) -> None:
@@ -161,24 +165,6 @@ def test_pr_delta_cannot_remove_a_mutate_token_counter(monkeypatch) -> None:
     )
 
     assert any("mutate_token_reason_create_row" in violation for violation in violations)
-
-
-def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
-    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
-
-    # Non-grandfathered transitions still fail: the 121 -> 122 exception is exact, so
-    # neither older up-hops nor overshoots are waved through.
-    for base_count, current_count in ((116, 119), (119, 120), (120, 121), (121, 123)):
-        baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-        baseline["mutate_token_exempted"] = current_count
-        monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
-        _bootstrapped, violations = mod._compute_ratchet_findings(
-            {"mutate_token_exempted": base_count}
-        )
-
-        assert len(violations) == 1
-        assert str(base_count) in violations[0]
-        assert str(current_count) in violations[0]
 
 
 def test_codebase_marker_audit_ignores_strings_and_reads_comments() -> None:
