@@ -75,14 +75,21 @@ def test_legacy_android_nvd_writer_fails_closed_until_consumer_cutover() -> None
     scan = steps["Dependency vulnerability scan (OWASP dependency-check)"]
     assert scan["env"] == {"NVD_API_KEY": "${{ secrets.NVD_API_KEY }}"}
     normalized = " ".join(scan["run"].split())
+    assert "set -euo pipefail" in scan["run"]
+    assert "continue-on-error" not in scan
     assert "dependencyCheckUpdate -PdependencyCheckNvdValidForHours=24" in normalized
-    assert (
-        "dependencyCheckAggregate -PdependencyCheckAutoUpdate=false "
-        "-PdependencyCheckNvdValidForHours=24"
-    ) in normalized
+    assert "dependencyCheckAggregate" in normalized
+    assert "-PdependencyCheckAutoUpdate=false" in normalized
+    assert normalized.count("-PdependencyCheckNvdValidForHours=24") == 2
     assert 'rm -f "$report_path"' in scan["run"]
     assert "env -u NVD_API_KEY python3 scripts/verify_dependency_check_report.py" in (
         normalized
+    )
+    assert normalized.index("dependencyCheckUpdate") < normalized.index(
+        "dependencyCheckAggregate"
+    )
+    assert normalized.index("dependencyCheckAggregate") < normalized.index(
+        "verify_dependency_check_report.py"
     )
     assert "dependencyCheckValidateNvd" not in scan["run"]
     assert "-PnvdApiKey" not in scan["run"]
@@ -90,11 +97,25 @@ def test_legacy_android_nvd_writer_fails_closed_until_consumer_cutover() -> None
         "NVD cache key (UTC date)",
         "Cache OWASP NVD database",
         "Dependency vulnerability scan (OWASP dependency-check)",
-        "Enforce OWASP CVE findings (tolerate only NVD-data outages)",
     ):
         assert "if" not in steps[name]
     assert "Dependency vulnerability scan skipped" not in steps
+    assert "Enforce OWASP CVE findings (tolerate only NVD-data outages)" not in steps
     assert json.dumps(android, sort_keys=True).count("secrets.NVD_API_KEY") == 2
+
+
+def test_legacy_android_nvd_failures_are_not_adjudicated_from_logs() -> None:
+    ci = _load_workflow(_ROOT / ".github" / "workflows" / "ci.yml")
+    android = ci["jobs"]["android"]
+    steps = {step["name"]: step for step in android["steps"]}
+    scan = steps["Dependency vulnerability scan (OWASP dependency-check)"]
+    serialized = json.dumps(android, sort_keys=True)
+    assert "continue-on-error" not in scan
+    assert "steps.owasp.outcome" not in serialized
+    assert "OWASP_NVD_UPDATE_TIMED_OUT" not in serialized
+    assert "OWASP_ANALYZE_TIMED_OUT" not in serialized
+    assert "NoDataException" not in serialized
+    assert "No documents exist" not in serialized
 
 
 def _assert_restore_action_interface(action: dict[object, object]) -> None:
