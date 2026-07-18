@@ -46,7 +46,6 @@ def test_ci_requires_explicit_exact_base(tmp_path: Path) -> None:
     for environment in (
         {"CI": "1"},
         {"CI": "false"},
-        {"GITHUB_EVENT_NAME": "workflow_dispatch"},
         {"GITHUB_BASE_REF": "main"},
     ):
         selected, error = select_ratchet_base(tmp_path, environment)
@@ -158,11 +157,17 @@ def _assert_synthetic_merge_and_push_bases(
 
 
 def _assert_github_pr_checkout_contract() -> None:
-    github_workflow = (
-        SCRIPTS.parents[1] / ".github" / "workflows" / "ci.yml"
+    repo_root = SCRIPTS.parents[1]
+    github_workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    gitea_workflow = (
+        repo_root / ".gitea" / "workflows" / "windows-ci.yml"
     ).read_text(encoding="utf-8")
     assert "fetch-depth: 0" in github_workflow
     assert "github.event.pull_request.base.sha" in github_workflow
+    assert "adr_base_ref" not in github_workflow
+    assert "adr_base_ref" not in gitea_workflow
     checkout_step = github_workflow[
         github_workflow.index("      - name: Checkout\n") : github_workflow.index(
             "      - name: Check PowerShell scripts\n"
@@ -208,6 +213,17 @@ def test_manual_and_recreated_default_reject_noncanonical_base(
     monkeypatch,
 ) -> None:
     stale, base = _init_feature_repo(tmp_path)
+
+    derived, derived_error = select_ratchet_base(
+        tmp_path,
+        {
+            "CI": "1",
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "XPJ_AUDIT_DEFAULT_REF": "refs/heads/main",
+        },
+    )
+    assert derived_error is None
+    assert derived is not None and derived.commit == base
 
     manual, manual_error = select_ratchet_base(
         tmp_path,

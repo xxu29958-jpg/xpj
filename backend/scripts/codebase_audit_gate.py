@@ -187,11 +187,12 @@ def _read_base_strict_policy() -> tuple[bool, _StrictBaselinePolicy]:
 
     Base ref priority:
       1. ``XPJ_AUDIT_BASE_REF`` (the workflow supplies the exact PR target
-         SHA / pre-push SHA; manual runs supply their exact pre-change SHA).
+         SHA / pre-push SHA).
       2. ``GITHUB_BASE_REF`` fallback (the CI runner sets the target branch
          name on PR events; fetched as ``origin/<branch>``).
-      3. else: local ``refs/heads/main`` / CI push (``GITHUB_SHA`` set) →
-         ``origin/main`` (GitHub main on cloud CI).
+      3. Manual CI derives the unique default-branch divergence commit from
+         the checked-out graph; local runs use ``refs/heads/main`` /
+         ``origin/main``.
     """
     git_ref = _strict_baseline_git_ref()
     if git_ref is None:
