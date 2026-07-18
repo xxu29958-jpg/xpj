@@ -11,6 +11,10 @@ import pytest
 from scripts import run_packaging_tests
 
 pytestmark = pytest.mark.parallel_safe
+TEST_IMPACT_SOURCE_PREFIXES = (
+    "backend/packaging/",
+    "backend/scripts/packaging_powershell_contract.py",
+)
 
 
 def _load_module(relative_path: str, module_name: str) -> ModuleType:

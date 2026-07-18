@@ -22,6 +22,7 @@ from scripts.pytest_execution_contract import (
 )
 
 pytestmark = pytest.mark.parallel_safe
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/packaging/",)
 
 
 def _load_packaging_conftest() -> ModuleType:

@@ -90,19 +90,36 @@ def route_paths(path: Path) -> tuple[str, ...]:
 
 def route_paths_from_source(source: str, *, label: str) -> tuple[str, ...]:
     tree = ast.parse(source, filename=label)
-    if _has_unmodeled_route_registration(tree):
+    prefixes, unresolved_prefix = _router_prefixes(tree)
+    aliases, unresolved_alias = _router_callable_aliases(tree, prefixes)
+    if _has_unmodeled_route_registration(tree, prefixes):
         raise ImpactEvidenceError(
             f"route topology in {label} uses an unsupported registration form"
         )
-    prefixes, unresolved_prefix = _router_prefixes(tree)
-    decorated, unresolved_decorator = _decorated_route_paths(tree, prefixes)
-    registered, unresolved_registration = _registered_route_paths(tree, prefixes)
-    if unresolved_prefix or unresolved_decorator or unresolved_registration:
+    decorated, unresolved_decorator = _decorated_route_paths(
+        tree,
+        prefixes,
+        aliases,
+    )
+    registered, unresolved_registration = _registered_route_paths(
+        tree,
+        prefixes,
+        aliases,
+    )
+    if (
+        unresolved_prefix
+        or unresolved_alias
+        or unresolved_decorator
+        or unresolved_registration
+    ):
         raise ImpactEvidenceError(f"route paths in {label} are not all static literals")
     return tuple(sorted(decorated | registered))
 
 
-def _has_unmodeled_route_registration(tree: ast.Module) -> bool:
+def _has_unmodeled_route_registration(
+    tree: ast.Module,
+    prefixes: Mapping[str, str],
+) -> bool:
     constructor_names = set(_UNMODELED_ROUTE_CONSTRUCTORS)
     for node in tree.body:
         if not isinstance(node, ast.ImportFrom) or node.module not in {
@@ -131,6 +148,19 @@ def _has_unmodeled_route_registration(tree: ast.Module) -> bool:
         if (
             isinstance(node.func, ast.Attribute)
             and node.func.attr in _UNMODELED_ROUTE_CONSTRUCTORS
+        ):
+            return True
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+            continue
+        if not isinstance(node.value, ast.Attribute):
+            continue
+        owner = node.value.value
+        if (
+            isinstance(owner, ast.Name)
+            and owner.id in prefixes
+            and node.value.attr
+            not in _ROUTE_DECORATOR_METHODS | _DIRECT_ROUTE_REGISTRATION_METHODS
         ):
             return True
     return False
@@ -162,15 +192,43 @@ def _router_prefixes(tree: ast.Module) -> tuple[dict[str, str], bool]:
     return prefixes, unresolved
 
 
+def _router_callable_aliases(
+    tree: ast.Module,
+    prefixes: Mapping[str, str],
+) -> tuple[dict[str, tuple[str, str]], bool]:
+    aliases: dict[str, tuple[str, str]] = {}
+    unresolved = False
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+            continue
+        value = node.value
+        if not isinstance(value, ast.Attribute) or not isinstance(value.value, ast.Name):
+            continue
+        owner = value.value.id
+        if owner not in prefixes or value.attr not in (
+            _ROUTE_DECORATOR_METHODS | _DIRECT_ROUTE_REGISTRATION_METHODS
+        ):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        names = [target.id for target in targets if isinstance(target, ast.Name)]
+        if len(names) != len(targets):
+            unresolved = True
+            continue
+        for name in names:
+            aliases[name] = (owner, value.attr)
+    return aliases, unresolved
+
+
 def _decorated_route_paths(
     tree: ast.Module,
     prefixes: Mapping[str, str],
+    aliases: Mapping[str, tuple[str, str]],
 ) -> tuple[set[str], bool]:
     paths: set[str] = set()
     unresolved = False
     for node in ast.walk(tree):
         for decorator in getattr(node, "decorator_list", ()):
-            resolved = _decorator_route_path(decorator, prefixes)
+            resolved = _decorator_route_path(decorator, prefixes, aliases)
             if resolved is False:
                 unresolved = True
             elif isinstance(resolved, str):
@@ -181,17 +239,25 @@ def _decorated_route_paths(
 def _decorator_route_path(
     decorator: ast.AST,
     prefixes: Mapping[str, str],
+    aliases: Mapping[str, tuple[str, str]],
 ) -> str | bool | None:
-    if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
-        return None
-    owner = decorator.func.value
-    if not isinstance(owner, ast.Name):
-        return None
-    if owner.id in prefixes and decorator.func.attr not in _ROUTE_DECORATOR_METHODS:
+    if not isinstance(decorator, ast.Call):
+        return False if prefixes else None
+    if isinstance(decorator.func, ast.Name) and decorator.func.id in aliases:
+        owner_name, method = aliases[decorator.func.id]
+    elif isinstance(decorator.func, ast.Attribute):
+        owner = decorator.func.value
+        if not isinstance(owner, ast.Name):
+            return False if prefixes else None
+        owner_name = owner.id
+        method = decorator.func.attr
+    else:
+        return False if prefixes else None
+    if owner_name in prefixes and method not in _ROUTE_DECORATOR_METHODS:
         return False
-    if decorator.func.attr not in _ROUTE_DECORATOR_METHODS:
-        return None
-    if owner.id not in prefixes:
+    if method not in _ROUTE_DECORATOR_METHODS:
+        return False if prefixes else None
+    if owner_name not in prefixes:
         return False
     path_node = decorator.args[0] if decorator.args else next(
         (
@@ -202,17 +268,18 @@ def _decorator_route_path(
         None,
     )
     suffix = _literal_string(path_node)
-    return False if suffix is None else prefixes[owner.id] + suffix
+    return False if suffix is None else prefixes[owner_name] + suffix
 
 
 def _registered_route_paths(
     tree: ast.Module,
     prefixes: Mapping[str, str],
+    aliases: Mapping[str, tuple[str, str]],
 ) -> tuple[set[str], bool]:
     paths: set[str] = set()
     unresolved = False
     for node in ast.walk(tree):
-        resolved = _registered_route_path(node, prefixes)
+        resolved = _registered_route_path(node, prefixes, aliases)
         if resolved is False:
             unresolved = True
         elif isinstance(resolved, str):
@@ -223,13 +290,23 @@ def _registered_route_paths(
 def _registered_route_path(
     node: ast.AST,
     prefixes: Mapping[str, str],
+    aliases: Mapping[str, tuple[str, str]],
 ) -> str | bool | None:
-    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+    if not isinstance(node, ast.Call):
         return None
-    if node.func.attr not in _DIRECT_ROUTE_REGISTRATION_METHODS:
+    if isinstance(node.func, ast.Name) and node.func.id in aliases:
+        owner_name, method = aliases[node.func.id]
+    elif isinstance(node.func, ast.Attribute):
+        owner = node.func.value
+        if not isinstance(owner, ast.Name):
+            return None
+        owner_name = owner.id
+        method = node.func.attr
+    else:
         return None
-    owner = node.func.value
-    if not isinstance(owner, ast.Name) or owner.id not in prefixes:
+    if method not in _DIRECT_ROUTE_REGISTRATION_METHODS:
+        return None
+    if owner_name not in prefixes:
         return False
     path_node = node.args[0] if node.args else next(
         (
@@ -240,7 +317,7 @@ def _registered_route_path(
         None,
     )
     suffix = _literal_string(path_node)
-    return False if suffix is None else prefixes[owner.id] + suffix
+    return False if suffix is None else prefixes[owner_name] + suffix
 
 
 def pytest_fixture_boundaries(

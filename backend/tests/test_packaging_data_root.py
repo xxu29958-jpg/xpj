@@ -24,6 +24,8 @@ import pytest
 
 import app.config as config
 
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/packaging/",)
+
 
 def _load_launch_module():
     """Import ``packaging/launch.py`` by path — it is a frozen-EXE entry script,

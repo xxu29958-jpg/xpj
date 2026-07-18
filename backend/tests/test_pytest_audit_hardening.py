@@ -11,6 +11,10 @@ from scripts import run_packaging_tests
 from scripts.pytest_execution_contract import pytest_execution_environment
 
 pytestmark = pytest.mark.parallel_safe
+TEST_IMPACT_SOURCE_PREFIXES = (
+    "backend/packaging/",
+    "backend/tests/conftest.py",
+)
 
 
 def _load_module(relative_path: str, module_name: str) -> ModuleType:

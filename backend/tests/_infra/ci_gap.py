@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 _SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/scripts/",)
 
 
 def load_ci_gap_module(module_name: str) -> object:

@@ -16,6 +16,8 @@ from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR
 
+TEST_IMPACT_SOURCE_PREFIXES = ("backend/packaging/",)
+
 
 def _upload_png(client: TestClient, *, identity) -> int:
     response = client.post(

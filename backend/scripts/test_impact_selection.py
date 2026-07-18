@@ -86,6 +86,10 @@ def _test_target(path: Path, backend_root: Path) -> str:
     return path.relative_to(backend_root).as_posix()
 
 
+def _is_pytest_file(path: Path) -> bool:
+    return path.name.startswith("test_") or path.name.endswith("_test.py")
+
+
 def _full_fallback_reason(changes: Sequence[GitChange]) -> str | None:
     for change in changes:
         candidates = tuple(path for path in (change.old_path, change.path) if path)
@@ -140,17 +144,16 @@ def _test_targets_for_modules(
         _test_target(path, backend_root)
         for module in module_names
         if (path := modules.get(module)) is not None
-        and path.name.startswith("test_")
+        and _is_pytest_file(path)
         and path.is_relative_to(tests_root)
     }
 
 
-def _route_impacted_test_targets(
+def _route_impacted_modules(
     *,
     affected: set[str],
     reverse: dict[str, set[str]],
     modules: dict[str, Path],
-    backend_root: Path,
     historical_route_patterns: Iterable[str],
 ) -> tuple[set[str], int]:
     affected_routes = [
@@ -165,27 +168,15 @@ def _route_impacted_test_targets(
         modules_referencing_routes(route_patterns, modules),
         reverse,
     )
-    selected = _test_targets_for_modules(
-        route_consumers,
-        modules,
-        backend_root,
-    )
     if affected_routes:
-        selected.update(
-            _test_targets_for_modules(
-                reverse_closure({"app.main"}, reverse),
-                modules,
-                backend_root,
-            )
-        )
-    return selected, len(affected_routes)
+        route_consumers.update(reverse_closure({"app.main"}, reverse))
+    return route_consumers, len(affected_routes)
 
 
-def _declared_dependency_test_targets(
+def _declared_dependency_modules(
     changes: Sequence[GitChange],
     reverse: dict[str, set[str]],
     modules: dict[str, Path],
-    backend_root: Path,
 ) -> set[str]:
     consumers = modules_declaring_path_dependencies(
         (
@@ -196,11 +187,7 @@ def _declared_dependency_test_targets(
         ),
         modules,
     )
-    return _test_targets_for_modules(
-        reverse_closure(consumers, reverse),
-        modules,
-        backend_root,
-    )
+    return reverse_closure(consumers, reverse)
 
 
 def _changed_module_evidence(
@@ -217,7 +204,7 @@ def _changed_module_evidence(
         if module is None:
             raise ImpactEvidenceError(f"unresolved-python-module:{change.path}")
         changed_modules.add(module)
-        if path.name.startswith("test_") and path.is_relative_to(
+        if _is_pytest_file(path) and path.is_relative_to(
             backend_root / "tests"
         ):
             changed_tests.add(_test_target(path, backend_root))
@@ -268,12 +255,14 @@ def select_impacted_tests(
     if classified is not None:
         return classified
 
-    reverse, modules = reverse_import_graph(backend_root)
-    selected = _declared_dependency_test_targets(
+    try:
+        reverse, modules = reverse_import_graph(backend_root)
+    except ImpactEvidenceError as exc:
+        return Selection("full", (f"python-import-impact-unproven:{exc}",), ())
+    evidence_modules = _declared_dependency_modules(
         relevant,
         reverse,
         modules,
-        backend_root,
     )
     try:
         changed_modules, changed_tests = _changed_module_evidence(
@@ -283,33 +272,42 @@ def select_impacted_tests(
         )
     except ImpactEvidenceError as exc:
         return Selection("full", (str(exc),), ())
-    selected.update(changed_tests)
-
     affected = reverse_closure(changed_modules, reverse)
-    fixture_boundaries = pytest_fixture_boundaries(affected, modules)
+    evidence_modules.update(affected)
+
+    try:
+        route_modules, affected_route_count = _route_impacted_modules(
+            affected=affected,
+            reverse=reverse,
+            modules=modules,
+            historical_route_patterns=historical_route_patterns,
+        )
+        evidence_modules.update(route_modules)
+    except ImpactEvidenceError as exc:
+        return Selection("full", (f"route-impact-unproven:{exc}",), ())
+
+    fixture_boundaries = pytest_fixture_boundaries(evidence_modules, modules)
     if fixture_boundaries:
         return Selection(
             "full",
             (f"pytest-fixture-closure-unproven:{fixture_boundaries[0]}",),
             (),
         )
-    selected.update(_test_targets_for_modules(affected, modules, backend_root))
-
-    try:
-        route_tests, affected_route_count = _route_impacted_test_targets(
-            affected=affected,
-            reverse=reverse,
-            modules=modules,
-            backend_root=backend_root,
-            historical_route_patterns=historical_route_patterns,
+    selected = set(changed_tests)
+    selected.update(
+        _test_targets_for_modules(
+            evidence_modules,
+            modules,
+            backend_root,
         )
-        selected.update(route_tests)
-    except ImpactEvidenceError as exc:
-        return Selection("full", (f"route-impact-unproven:{exc}",), ())
-
+    )
     return _bounded_selection(
         selected=selected,
-        test_file_count=sum(1 for _ in (backend_root / "tests").rglob("test_*.py")),
+        test_file_count=sum(
+            1
+            for path in (backend_root / "tests").rglob("*.py")
+            if _is_pytest_file(path)
+        ),
         source_changes=source_changes,
         changed_module_count=len(changed_modules),
         affected_route_count=affected_route_count,

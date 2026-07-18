@@ -9,6 +9,11 @@ from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+from scripts.test_impact_dynamic_imports import (
+    DynamicImportEvidenceError,
+    dynamic_import_targets,
+)
+
 SOURCE_PREFIXES = ("app/", "scripts/", "tests/")
 
 
@@ -230,7 +235,18 @@ def _resolve_imported_modules(
     module_aliases: Mapping[str, str],
     package_exports: Mapping[tuple[str, str], str],
 ) -> set[str]:
-    imported: set[str] = set()
+    try:
+        imported = dynamic_import_targets(
+            tree,
+            importer_path=importer_path,
+            resolve_reference=lambda reference: _resolve_module_reference(
+                reference,
+                known_modules=known_modules,
+                module_aliases=module_aliases,
+            ),
+        )
+    except DynamicImportEvidenceError as exc:
+        raise ImpactEvidenceError(str(exc)) from exc
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             imported.update(
@@ -262,6 +278,20 @@ def _resolve_imported_modules(
     return imported
 
 
+def _module_execution_dependencies(
+    module: str,
+    known_modules: Mapping[str, Path],
+) -> set[str]:
+    dependencies = {module}
+    parts = module.split(".")
+    for size in range(1, len(parts)):
+        package = ".".join(parts[:size])
+        package_path = known_modules.get(package)
+        if package_path is not None and package_path.name == "__init__.py":
+            dependencies.add(package)
+    return dependencies
+
+
 def reverse_import_graph(
     backend_root: Path,
 ) -> tuple[dict[str, set[str]], dict[str, Path]]:
@@ -282,8 +312,11 @@ def reverse_import_graph(
             module_aliases=module_aliases,
             package_exports=package_exports,
         ):
-            if importer != "app.main" or not imported.startswith("app.routes."):
-                reverse[imported].add(importer)
+            for dependency in _module_execution_dependencies(imported, modules):
+                if dependency == importer:
+                    continue
+                if importer != "app.main" or not dependency.startswith("app.routes."):
+                    reverse[dependency].add(importer)
     return reverse, modules
 
 

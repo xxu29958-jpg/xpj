@@ -111,6 +111,50 @@ def test_package_initializer_execution_propagates_to_each_facade_consumer(
     )
 
 
+def test_direct_submodule_import_executes_shared_package_initializer(
+    tmp_path: Path,
+) -> None:
+    backend = tmp_path / "backend"
+    _write(backend, "app/providers/bundle/first.py", "FIRST = 1\n")
+    _write(backend, "app/providers/bundle/second.py", "SECOND = 2\n")
+    _write(
+        backend,
+        "app/providers/bundle/__init__.py",
+        "from app.providers.bundle.first import FIRST\n",
+    )
+    _write(
+        backend,
+        "tests/test_first.py",
+        "from app.providers.bundle.first import FIRST\n"
+        "def test_first():\n"
+        "    assert FIRST == 1\n",
+    )
+    _write(
+        backend,
+        "tests/test_second.py",
+        "from app.providers.bundle.second import SECOND\n"
+        "def test_second():\n"
+        "    assert SECOND == 2\n",
+    )
+    for index in range(3):
+        _write(
+            backend,
+            f"tests/test_other_{index}.py",
+            f"def test_other_{index}():\n    pass\n",
+        )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/app/providers/bundle/first.py")],
+    )
+
+    assert selection.mode == "selected"
+    assert selection.selected_tests == (
+        "tests/test_first.py",
+        "tests/test_second.py",
+    )
+
+
 def test_source_scanner_declares_its_path_dependency(tmp_path: Path) -> None:
     backend = _route_backend_fixture(tmp_path)
     _write(
@@ -301,6 +345,37 @@ def test_dynamic_script_file_reference_closes_scanner_dependency(
     assert selection.selected_tests == ("tests/test_service_scanner.py",)
 
 
+def test_nonliteral_dynamic_import_without_scope_falls_back_to_full(
+    tmp_path: Path,
+) -> None:
+    backend = tmp_path / "backend"
+    _write(backend, "app/providers/alpha.py", "VALUE = 1\n")
+    _write(
+        backend,
+        "tests/test_dynamic_provider.py",
+        "import importlib\n"
+        "PROVIDER = 'alpha'\n"
+        "def test_provider():\n"
+        "    module = importlib.import_module(f'app.providers.{PROVIDER}')\n"
+        "    assert module.VALUE == 1\n",
+    )
+    _write(
+        backend,
+        "tests/test_alpha.py",
+        "from app.providers.alpha import VALUE\n"
+        "def test_alpha():\n"
+        "    assert VALUE == 1\n",
+    )
+
+    selection = select_impacted_tests(
+        backend,
+        [GitChange("M", "backend/app/providers/alpha.py")],
+    )
+
+    assert selection.mode == "full"
+    assert selection.reasons[0].startswith("python-import-impact-unproven:")
+
+
 def test_route_parser_combines_each_router_prefix(tmp_path: Path) -> None:
     route = _write(
         tmp_path,
@@ -338,6 +413,23 @@ def test_route_parser_combines_decorated_and_direct_registration(
     assert route_paths(route) == ("/api/items", "/api/stream")
 
 
+def test_route_parser_models_router_method_aliases(tmp_path: Path) -> None:
+    route = _write(
+        tmp_path,
+        "routes.py",
+        "from fastapi import APIRouter\n"
+        "router = APIRouter(prefix='/api')\n"
+        "route_get = router.get\n"
+        "register = router.add_api_route\n"
+        "@route_get('/items')\n"
+        "def items():\n"
+        "    pass\n"
+        "register('/status', items, methods=['GET'])\n",
+    )
+
+    assert route_paths(route) == ("/api/items", "/api/status")
+
+
 @pytest.mark.parametrize(
     "registration",
     [
@@ -345,6 +437,7 @@ def test_route_parser_combines_decorated_and_direct_registration(
         "routes = [Route('/items', endpoint)]\n",
         "from starlette.routing import Route as R\nroutes = [R('/items', endpoint)]\n",
         "@router.trace('/items')\ndef trace_items():\n    pass\n",
+        "@route('/items')\ndef wrapped_items():\n    pass\n",
     ],
 )
 def test_route_parser_fails_closed_for_unmodeled_topology(
