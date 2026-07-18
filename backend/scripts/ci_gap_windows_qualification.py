@@ -20,33 +20,11 @@ from ci_gap_workflow_parser import (
 )
 
 SegmentReader = Callable[[list[WorkflowCommand]], list[str]]
-_PR_INSTALLER_DEPENDENCY_BRANCHES = (
-    (
-        "backend provenance scripts",
-        re.compile(
-            r"elseif \(\$path -match "
-            r"'\^backend/scripts/windows_\(build\|backend_build\)_provenance\\\.ps1\$'\)"
-            r" \{(?P<body>.*?)^\s*\}",
-            re.MULTILINE | re.DOTALL,
-        ),
-    ),
-    (
-        "Desktop Manager provenance script",
-        re.compile(
-            r"elseif \(\$path -eq "
-            r"'desktop/scripts/windows_manager_build_provenance\.ps1'\)"
-            r" \{(?P<body>.*?)^\s*\}",
-            re.MULTILINE | re.DOTALL,
-        ),
-    ),
-    (
-        "Alembic runtime inputs",
-        re.compile(
-            r"elseif \(\$path -match '\^backend/migrations/' -or "
-            r"\$path -eq 'backend/alembic\.ini'\) \{(?P<body>.*?)^\s*\}",
-            re.MULTILINE | re.DOTALL,
-        ),
-    ),
+_PR_INSTALLER_DEPENDENCY_CLOSURE = re.compile(
+    r"if \(\$scope\.backend_exe_required -or "
+    r"\$scope\.manager_exe_required\) \{"
+    r"(?P<body>.*?)^\s*\}",
+    re.MULTILINE | re.DOTALL,
 )
 
 
@@ -65,16 +43,17 @@ def github_pr_installer_dependency_scope_violations(
     if github_ci is None:
         return ["GitHub CI workflow is unavailable for installer dependency scope"]
     source = github_ci.read_text(encoding="utf-8")
-    violations: list[str] = []
-    for label, pattern in _PR_INSTALLER_DEPENDENCY_BRANCHES:
-        match = pattern.search(source)
-        if match is None:
-            violations.append(f"GitHub PR scope does not classify {label}")
-        elif "$scope.installer_required = $true" not in match.group("body"):
-            violations.append(
-                f"GitHub PR scope must run the installer for {label}"
-            )
-    return violations
+    match = _PR_INSTALLER_DEPENDENCY_CLOSURE.search(source)
+    if match is None:
+        return [
+            "GitHub PR scope must close frozen backend/Manager artifacts "
+            "into installer qualification"
+        ]
+    if "$scope.installer_required = $true" not in match.group("body"):
+        return [
+            "GitHub PR artifact closure must require installer qualification"
+        ]
+    return []
 
 
 def github_qualification_event_violations(
