@@ -122,12 +122,12 @@ def assert_runtime_dependency_suppressions(path: Path) -> None:
         r"^pkg:maven/androidx\.sqlite/(?:sqlite-android|sqlite-framework-android)"
         r"@2\.6\.2$"
     )
-    assert text(sqlite, "cpe") == "cpe:2.3:a:sqlite:sqlite:2.6.2:*:*:*:*:*:*:*"
+    assert text(sqlite, "cpe") == "cpe:/a:sqlite:sqlite:2.6.2"
     assert text(lifecycle, "packageUrl") == (
         "pkg:maven/androidx.lifecycle/lifecycle-viewmodel@2.10.0"
     )
     assert [node.text for node in lifecycle.findall("dc:cpe", ns)] == [
-        f"cpe:2.3:a:apache:{product}:2.10.0:*:*:*:*:*:*:*"
+        f"cpe:/a:apache:{product}:2.10.0"
         for product in ("impala", "shenyu", "skywalking", "zookeeper")
     ]
     assert text(kotlin, "packageUrl") == (

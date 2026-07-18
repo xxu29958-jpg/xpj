@@ -8,7 +8,7 @@
             https://developer.android.com/jetpack/androidx/releases/sqlite
         ]]></notes>
         <packageUrl regex="true">^pkg:maven/androidx\.sqlite/(?:sqlite-android|sqlite-framework-android)@2\.6\.2$</packageUrl>
-        <cpe>cpe:2.3:a:sqlite:sqlite:2.6.2:*:*:*:*:*:*:*</cpe>
+        <cpe>cpe:/a:sqlite:sqlite:2.6.2</cpe>
     </suppress>
     <suppress>
         <notes><![CDATA[
@@ -16,10 +16,10 @@
             products inferred solely from the shared 2.10.0 version.
         ]]></notes>
         <packageUrl>pkg:maven/androidx.lifecycle/lifecycle-viewmodel@2.10.0</packageUrl>
-        <cpe>cpe:2.3:a:apache:impala:2.10.0:*:*:*:*:*:*:*</cpe>
-        <cpe>cpe:2.3:a:apache:shenyu:2.10.0:*:*:*:*:*:*:*</cpe>
-        <cpe>cpe:2.3:a:apache:skywalking:2.10.0:*:*:*:*:*:*:*</cpe>
-        <cpe>cpe:2.3:a:apache:zookeeper:2.10.0:*:*:*:*:*:*:*</cpe>
+        <cpe>cpe:/a:apache:impala:2.10.0</cpe>
+        <cpe>cpe:/a:apache:shenyu:2.10.0</cpe>
+        <cpe>cpe:/a:apache:skywalking:2.10.0</cpe>
+        <cpe>cpe:/a:apache:zookeeper:2.10.0</cpe>
     </suppress>
     <suppress>
         <notes><![CDATA[
