@@ -52,6 +52,13 @@ def test_github_actions_require_reviewed_identity_and_commit(
         "local action must resolve to exactly one metadata file" in item
         for item in metadata_violations
     )
+    adversarial = "owner/repo/" + "!/" * 4_096 + f"@{'f' * 40}"
+    write_composite_action_dependency(workflows, adversarial)
+    adversarial_violations = mod._github_external_uses_pin_violations(workflows)
+    assert any(
+        adversarial in item and "must be exactly a 40-hex commit SHA" in item
+        for item in adversarial_violations
+    )
 
 
 @pytest.mark.parametrize(

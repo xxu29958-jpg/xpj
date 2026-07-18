@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import pathlib
-import re
 
 from ci_gap_workflow_parser import yaml_scalar_key_values
 
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
-_EXTERNAL_USES_SHA = re.compile(
-    r"^(?P<identity>[^\s@/]+/[^\s@/]+(?:/[^\s@]+)*)@"
-    r"(?P<sha>[0-9a-fA-F]{40})$"
-)
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _TRUSTED_EXTERNAL_ACTIONS: dict[str, frozenset[str]] = {
     "actions/cache": frozenset({"0057852bfaa89a56745cba8c7296529d2fc39830"}),
     "actions/cache/restore": frozenset(
@@ -134,11 +130,21 @@ def _local_action_violation(path: pathlib.Path, value: str) -> str | None:
 
 
 def _external_action_violation(value: str) -> str | None:
-    match = _EXTERNAL_USES_SHA.fullmatch(value)
-    if match is None:
+    identity, separator, sha = value.rpartition("@")
+    identity_segments = identity.split("/")
+    valid_identity = (
+        separator == "@"
+        and len(identity_segments) >= 2
+        and all(
+            segment
+            and all(not character.isspace() and character != "@" for character in segment)
+            for segment in identity_segments
+        )
+    )
+    valid_sha = len(sha) == 40 and all(character in _HEX_DIGITS for character in sha)
+    if not valid_identity or not valid_sha:
         return f"external uses ref must be exactly a 40-hex commit SHA: {value}"
-    identity = match.group("identity")
-    sha = match.group("sha").lower()
+    sha = sha.lower()
     if sha not in _TRUSTED_EXTERNAL_ACTIONS.get(identity, frozenset()):
         return f"external action identity and SHA are not reviewed: {value}"
     return None
