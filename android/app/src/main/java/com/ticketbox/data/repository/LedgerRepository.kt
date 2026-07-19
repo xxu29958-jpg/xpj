@@ -146,9 +146,11 @@ class LedgerRepository(
             val session = sessionCoordinator.currentSnapshot()
             val bound = requestGuard.bind(expectedLedgerId = session.activeLedgerId)
             val response = bound.call { api -> api.switchLedger(ledgerId) }
-            check(response.sessionToken == session.sessionToken) {
-                "账本切换返回了不同的设备凭据，已拒绝更新本地会话。"
-            }
+            // The response field is a compatibility echo, not credential authority.
+            // A same-session refresh may rotate the token after this operation captured
+            // [session] but before OkHttp dispatches the request. The session store keeps
+            // the rotated credential while the logical binding/version checks below
+            // decide whether this ledger transition is still current.
             val serverId = response.serverId.requireSessionProtocolId("服务器身份")
             val dataGeneration = response.dataGeneration.requireSessionProtocolId("数据代际")
             val accountPublicId = response.accountPublicId.requireSessionProtocolId("成员身份")

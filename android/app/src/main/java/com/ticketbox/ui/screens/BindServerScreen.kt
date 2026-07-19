@@ -7,8 +7,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,19 +48,26 @@ data class ServerUrlEntryConfig(
     val showInput: Boolean,
 )
 
+data class BindServerActions(
+    val onBind: (String, String) -> Unit,
+    val onJoinWithInvitation: () -> Unit,
+    val onAbandonPendingEnrollment: () -> Unit,
+)
+
 @Composable
 fun BindServerScreen(
     loading: Boolean,
     message: UiText?,
+    hasPendingEnrollment: Boolean,
     serverUrlEntry: ServerUrlEntryConfig,
-    onBind: (String, String) -> Unit,
-    onJoinWithInvitation: () -> Unit,
+    actions: BindServerActions,
 ) {
     var serverUrl by remember(serverUrlEntry.defaultUrl) { mutableStateOf(serverUrlEntry.defaultUrl) }
     var pairingCode by remember { mutableStateOf("") }
+    var confirmAbandonPending by remember { mutableStateOf(false) }
     val canBind = !loading && serverUrl.isNotBlank() && pairingCode.length == BindingCodeLength
     val submitBind = {
-        if (canBind) onBind(serverUrl, pairingCode)
+        if (canBind) actions.onBind(serverUrl, pairingCode)
     }
 
     AppPageScrollableColumn(
@@ -128,9 +137,43 @@ fun BindServerScreen(
                 text = stringResource(R.string.bind_server_button_join_with_invitation),
                 enabled = !loading,
                 modifier = Modifier.fillMaxWidth(),
-                onClick = onJoinWithInvitation,
+                onClick = actions.onJoinWithInvitation,
             )
+            if (hasPendingEnrollment) {
+                QuietOutlinedButton(
+                    text = stringResource(R.string.bind_server_button_abandon_pending),
+                    enabled = !loading,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { confirmAbandonPending = true },
+                )
+            }
         }
+    }
+    if (confirmAbandonPending) {
+        AlertDialog(
+            onDismissRequest = { confirmAbandonPending = false },
+            title = {
+                Text(text = stringResource(R.string.bind_server_abandon_pending_title))
+            },
+            text = {
+                Text(text = stringResource(R.string.bind_server_abandon_pending_body))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmAbandonPending = false
+                        actions.onAbandonPendingEnrollment()
+                    },
+                ) {
+                    Text(text = stringResource(R.string.bind_server_abandon_pending_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmAbandonPending = false }) {
+                    Text(text = stringResource(R.string.common_cancel))
+                }
+            },
+        )
     }
 }
 

@@ -82,7 +82,7 @@ class LedgerRepositoryMutationTest {
     }
 
     @Test
-    fun switchLedgerRejectsCredentialReplacementAndPreservesBinding() = runTest {
+    fun switchLedgerIgnoresNonAuthoritativeCredentialEcho() = runTest {
         val api = StubApi(
             LedgerStubApiState(
                 switchResult = LedgerSwitchResponseDto(
@@ -106,11 +106,65 @@ class LedgerRepositoryMutationTest {
             expenseDao = LedgerFakeDao(),
         )
 
-        val failure = repo.switchLedger("L_house").exceptionOrNull()
-        assertNotNull(failure)
+        val summary = repo.switchLedger("L_house").getOrThrow()
+
         assertEquals("old-token", tokenStore.getToken())
-        assertEquals("owner", repo.activeLedgerId())
-        assertTrue(failure.message.orEmpty().contains("不同的设备凭据"))
+        assertEquals("L_house", repo.activeLedgerId())
+        assertEquals("L_house", summary.ledgerId)
+    }
+
+    @Test
+    fun switchLedgerAcceptsResponseSentWithSameSessionRefreshedToken() = runTest {
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("token-before-refresh") }
+        val initial = requireNotNull(tokenStore.sessionStore.currentSession())
+        val refresh = requireNotNull(
+            tokenStore.sessionStore.sessionRefresh.beginOrReuse(
+                expectedSessionGeneration = initial.sessionGeneration,
+                expectedToken = initial.credential.token,
+            ),
+        )
+        val api = StubApi(
+            LedgerStubApiState(
+                switchResult = LedgerSwitchResponseDto(
+                    sessionToken = "token-after-refresh",
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
+                    accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                    devicePublicId = TEST_DEVICE_PUBLIC_ID,
+                    ledger = ledgerDto("L_house", "家庭账本", role = "viewer"),
+                    accountName = "我",
+                    deviceName = "Pixel",
+                ),
+            ),
+        )
+        val apiFactory = LedgerStubApiFactory(api) {
+            assertTrue(
+                tokenStore.sessionStore.sessionRefresh.completeIfCurrent(
+                    expectedSessionGeneration = initial.sessionGeneration,
+                    expectedToken = initial.credential.token,
+                    refreshAttemptId = refresh.attemptId,
+                    replacement = com.ticketbox.security.StoredSessionToken("token-after-refresh"),
+                ),
+            )
+        }
+        val repo = testLedgerRepository(
+            apiClient = apiFactory,
+            settingsStore = LedgerFakeSettingsStore().apply {
+                saveServerUrl("https://api.example.com")
+            },
+            tokenStore = tokenStore,
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val summary = repo.switchLedger("L_house").getOrThrow()
+
+        assertEquals(
+            listOf<String?>("token-after-refresh"),
+            apiFactory.dispatchedSwitchTokenSnapshots,
+        )
+        assertEquals("token-after-refresh", tokenStore.getToken())
+        assertEquals("L_house", repo.activeLedgerId())
+        assertEquals("L_house", summary.ledgerId)
     }
 
     @Test

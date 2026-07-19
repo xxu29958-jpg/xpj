@@ -15,6 +15,7 @@ import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
 import com.ticketbox.security.PendingDeviceEnrollment
+import com.ticketbox.security.PendingDeviceEnrollmentConflictException
 import com.ticketbox.security.PendingSessionRefresh
 import com.ticketbox.security.SessionCredentialProvider
 import com.ticketbox.security.SessionCredentialAdapter
@@ -266,9 +267,9 @@ internal class InMemoryLocalSessionStore(
     override suspend fun beginOrReuseDeviceEnrollment(
         intent: DeviceEnrollmentIntent,
     ): PendingDeviceEnrollment = synchronized(lock) {
-        pendingEnrollment
-            ?.takeIf { it.intent.hasSameAuthoritySource(intent) }
-            ?: PendingDeviceEnrollment(
+        val current = pendingEnrollment
+        when {
+            current == null -> PendingDeviceEnrollment(
                 attemptId = UUID.randomUUID().toString(),
                 intent = intent,
                 attemptSecret = Base64.getUrlEncoder().withoutPadding().encodeToString(
@@ -279,7 +280,19 @@ internal class InMemoryLocalSessionStore(
                 pendingEnrollment = it
                 hasStateMarker = true
             }
+            current.intent.hasSameAuthoritySource(intent) -> current
+            else -> throw PendingDeviceEnrollmentConflictException(current.attemptId)
+        }
     }
+
+    override suspend fun abandonPendingDeviceEnrollment(expectedAttemptId: String): Boolean =
+        synchronized(lock) {
+            val current = pendingEnrollment ?: return@synchronized false
+            if (current.attemptId != expectedAttemptId) return@synchronized false
+            pendingEnrollment = null
+            hasStateMarker = session != null || pendingRefresh != null
+            true
+        }
 
     override suspend fun establishSession(
         record: LocalSessionRecord,

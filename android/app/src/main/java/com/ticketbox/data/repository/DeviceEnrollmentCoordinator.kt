@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.security.DeviceEnrollmentIntent
 import com.ticketbox.security.LocalSessionStore
 import com.ticketbox.security.PendingDeviceEnrollment
+import com.ticketbox.security.PendingDeviceEnrollmentConflictException
 import com.ticketbox.security.StoredSessionToken
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -28,7 +29,7 @@ internal class DeviceEnrollmentCoordinator(
         requireUnbound()
         val normalized = validateBindingInput(serverUrl, pairingCode)
         complete(
-            sessionStore.beginOrReuseDeviceEnrollment(
+            beginEnrollment(
                 DeviceEnrollmentIntent.Pairing(
                     serverUrl = normalized,
                     pairingCode = pairingCode.trim(),
@@ -46,7 +47,7 @@ internal class DeviceEnrollmentCoordinator(
     ): LedgerSessionIdentity = mutex.withLock {
         requireUnbound()
         complete(
-            sessionStore.beginOrReuseDeviceEnrollment(
+            beginEnrollment(
                 DeviceEnrollmentIntent.Invitation(
                     serverUrl = validateServerUrlInput(serverUrl),
                     inviteToken = inviteToken,
@@ -60,6 +61,21 @@ internal class DeviceEnrollmentCoordinator(
     suspend fun resumePending(): LedgerSessionIdentity? = mutex.withLock {
         sessionStore.pendingDeviceEnrollment()?.let { complete(it) }
     }
+
+    suspend fun abandonPending(): Boolean = mutex.withLock {
+        requireUnbound()
+        val pending = sessionStore.pendingDeviceEnrollment() ?: return@withLock false
+        sessionStore.abandonPendingDeviceEnrollment(pending.attemptId)
+    }
+
+    private suspend fun beginEnrollment(intent: DeviceEnrollmentIntent): PendingDeviceEnrollment =
+        try {
+            sessionStore.beginOrReuseDeviceEnrollment(intent)
+        } catch (_: PendingDeviceEnrollmentConflictException) {
+            throw RepositoryException(
+                "已有一项未完成的设备绑定。请先恢复它，或明确放弃后再开始新的绑定。",
+            )
+        }
 
     private suspend fun complete(attempt: PendingDeviceEnrollment): LedgerSessionIdentity {
         requireUnbound()

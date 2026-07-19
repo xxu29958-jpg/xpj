@@ -1,6 +1,7 @@
 package com.ticketbox.security
 
 import kotlinx.coroutines.flow.Flow
+import java.util.UUID
 
 data class LocalSessionIdentity(
     val accountPublicId: String? = null,
@@ -30,6 +31,30 @@ data class LocalSessionRecord(
     val version: LocalSessionVersion
         get() = LocalSessionVersion(sessionGeneration, bindingRevision)
 }
+
+enum class LocalSessionReadiness {
+    Absent,
+    VerificationRequired,
+    Ready,
+}
+
+fun LocalSessionRecord?.businessReadiness(): LocalSessionReadiness {
+    val session = this ?: return LocalSessionReadiness.Absent
+    val stableAuthority = listOf(
+        session.serverId,
+        session.dataGeneration,
+        session.identity.accountPublicId,
+        session.identity.devicePublicId,
+    ).all { it.isCanonicalUuid() }
+    return if (stableAuthority) {
+        LocalSessionReadiness.Ready
+    } else {
+        LocalSessionReadiness.VerificationRequired
+    }
+}
+
+fun LocalSessionRecord?.isBusinessReady(): Boolean =
+    businessReadiness() == LocalSessionReadiness.Ready
 
 data class LocalSessionBindingUpdate(
     val expectedVersion: LocalSessionVersion,
@@ -71,6 +96,8 @@ interface LocalSessionStore {
         intent: DeviceEnrollmentIntent,
     ): PendingDeviceEnrollment
 
+    suspend fun abandonPendingDeviceEnrollment(expectedAttemptId: String): Boolean
+
     suspend fun clearSession()
 }
 
@@ -109,6 +136,10 @@ data class PendingDeviceEnrollment(
     val serverUrl: String
         get() = intent.serverUrl
 }
+
+class PendingDeviceEnrollmentConflictException(
+    val activeAttemptId: String,
+) : IllegalStateException("A different device enrollment attempt is already pending.")
 
 data class PendingSessionRefresh(
     val attemptId: String,
@@ -191,4 +222,10 @@ class SessionCredentialAdapter(
         refreshAttemptId = refreshAttemptId,
         replacement = replacement,
     )
+}
+
+private fun String?.isCanonicalUuid(): Boolean {
+    val candidate = this?.trim()?.takeIf(String::isNotEmpty) ?: return false
+    return runCatching { UUID.fromString(candidate).toString() == candidate }
+        .getOrDefault(false)
 }
