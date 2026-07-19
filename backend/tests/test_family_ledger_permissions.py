@@ -510,7 +510,6 @@ def test_graced_source_token_can_finish_invitation_acceptance_after_refresh_wins
         "/api/auth/check",
         headers={
             "Authorization": f"Bearer {refreshed.json()['session_token']}",
-            "X-Ticketbox-Ledger-ID": family_id,
         },
     )
     assert selected.status_code == 200, selected.text

@@ -129,8 +129,11 @@ def _recover_or_create_device(
     db.execute(
         update(AuthToken)
         .where(AuthToken.device_id == recovery_device.id)
-        .where(AuthToken.revoked_at.is_(None))
-        .values(revoked_at=replaced_at, grace_until=None)
+        .values(
+            revoked_at=func.coalesce(AuthToken.revoked_at, replaced_at),
+            grace_until=None,
+        )
+        .execution_options(synchronize_session=False)
     )
     db.execute(
         update(UploadLink)

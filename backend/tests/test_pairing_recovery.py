@@ -13,7 +13,7 @@ from app.models import AuthToken, Device, DeviceEnrollmentAttempt, PairingCode
 from app.services.identity_service import PairingResult, hash_secret, pair_device
 from app.services.session_lifecycle_service import hash_pairing_code
 from app.services.time_service import now_utc
-from tests.pairing_test_support import pairing_payload
+from tests.pairing_test_support import pairing_payload, session_refresh_payload
 
 
 def _device_identity_for_token(token_value: str) -> tuple[int, str]:
@@ -100,6 +100,52 @@ def _assert_recovery_receipt(
     assert _active_token_hashes(target_device_id) == {expected_token_hash}
 
 
+def _refresh_device_session(
+    client: TestClient,
+    *,
+    source_token: str,
+    headers: dict[str, str],
+) -> tuple[dict[str, str], str]:
+    with SessionLocal() as db:
+        source = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(source_token))
+        )
+        assert source is not None
+        source.expires_at = now_utc() + timedelta(days=30)
+        db.commit()
+    proof = session_refresh_payload()
+    refreshed = client.post("/api/auth/refresh", headers=headers, json=proof)
+    assert refreshed.status_code == 200, refreshed.text
+    return proof, str(refreshed.json()["session_token"])
+
+
+def _assert_recovery_revoked_credential_family(
+    client: TestClient,
+    *,
+    source_token: str,
+    replacement_token: str,
+    recovered_token: str,
+    refresh_proof: dict[str, str],
+) -> None:
+    for stale_token in (source_token, replacement_token):
+        rejected = client.get(
+            "/api/auth/check",
+            headers={"Authorization": f"Bearer {stale_token}"},
+        )
+        assert rejected.status_code == 401, rejected.text
+    accepted = client.get(
+        "/api/auth/check",
+        headers={"Authorization": f"Bearer {recovered_token}"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    refresh_replay = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {source_token}"},
+        json=refresh_proof,
+    )
+    assert refresh_replay.status_code == 401, refresh_replay.text
+
+
 def test_legacy_pair_requires_upgrade_without_consuming_code(
     client: TestClient,
     *,
@@ -165,6 +211,7 @@ def test_device_recovery_closes_sibling_codes_and_replays_one_enrollment(
     *,
     identity,
 ) -> None:
+    source_token = identity.tenant_app_token
     target_device_id, target_public_id = _device_identity_for_token(identity.tenant_app_token)
     code_a = _create_recovery_pairing_code(
         client,
@@ -175,6 +222,11 @@ def test_device_recovery_closes_sibling_codes_and_replays_one_enrollment(
         client,
         headers=identity.app_headers,
         device_public_id=target_public_id,
+    )
+    refresh_proof, replacement_token = _refresh_device_session(
+        client,
+        source_token=source_token,
+        headers=identity.gray_app_headers,
     )
     request_b = pairing_payload(code_b, device_name="recovered-after-response-loss")
 
@@ -210,6 +262,13 @@ def test_device_recovery_closes_sibling_codes_and_replays_one_enrollment(
         assert target.public_id == target_public_id
         assert target.device_name == "recovered-after-response-loss"
     assert _active_token_hashes(target_device_id) == {expected_token_hash}
+    _assert_recovery_revoked_credential_family(
+        client,
+        source_token=source_token,
+        replacement_token=replacement_token,
+        recovered_token=first_result.session_token,
+        refresh_proof=refresh_proof,
+    )
 
 
 @pytest.mark.real_db
