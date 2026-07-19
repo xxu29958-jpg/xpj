@@ -158,6 +158,53 @@ class SecureSessionStoreTest {
     }
 
     @Test
+    fun differentEnrollmentRequiresExplicitAbandonAcrossReconstruction() = runBlocking {
+        val process = SessionProcessHarness(context)
+        try {
+            val firstProcess = process.start()
+            val firstAttempt = firstProcess.beginOrReuseDeviceEnrollment(
+                DeviceEnrollmentIntent.Pairing(
+                    serverUrl = "https://api.example.com",
+                    pairingCode = "12345678",
+                    deviceName = "Pixel",
+                ),
+            )
+
+            val reconstructed = process.restart()
+            val conflict = runCatching {
+                reconstructed.beginOrReuseDeviceEnrollment(
+                    DeviceEnrollmentIntent.Invitation(
+                        serverUrl = "https://api.example.com",
+                        inviteToken = "inv_different_authority",
+                        accountName = "家人",
+                        deviceName = "Pixel",
+                    ),
+                )
+            }.exceptionOrNull()
+
+            assertTrue(conflict is PendingDeviceEnrollmentConflictException)
+            assertEquals(firstAttempt, reconstructed.pendingDeviceEnrollment())
+            assertFalse(reconstructed.abandonPendingDeviceEnrollment("not-current"))
+            assertTrue(
+                reconstructed.abandonPendingDeviceEnrollment(firstAttempt.attemptId),
+            )
+
+            val replacement = reconstructed.beginOrReuseDeviceEnrollment(
+                DeviceEnrollmentIntent.Invitation(
+                    serverUrl = "https://api.example.com",
+                    inviteToken = "inv_different_authority",
+                    accountName = "家人",
+                    deviceName = "Pixel",
+                ),
+            )
+            assertTrue(replacement.attemptId != firstAttempt.attemptId)
+            assertEquals(replacement, process.restart().pendingDeviceEnrollment())
+        } finally {
+            process.close()
+        }
+    }
+
+    @Test
     fun sessionRefreshSurvivesReconstructionAndCommitsWithCredential() = runBlocking {
         val process = SessionProcessHarness(context)
         try {

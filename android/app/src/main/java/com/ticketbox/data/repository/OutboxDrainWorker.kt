@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ticketbox.TicketboxApplication
+import com.ticketbox.security.LocalSessionRecord
+import com.ticketbox.security.isBusinessReady
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -62,6 +64,10 @@ class OutboxDrainWorker(
                 Log.w(TAG, "AppContainer not yet ready; deferring drain")
                 return Result.retry()
             }
+        if (!canDrain(container.sessionStore.currentSession())) {
+            Log.w(TAG, "Verified session not ready; skipping outbox drain")
+            return Result.success()
+        }
         val outcome = runDrain(
             logWarning = { message, error -> Log.w(TAG, message, error) },
         ) { container.outboxDrainEngine.drainOnce() }
@@ -133,6 +139,9 @@ class OutboxDrainWorker(
             }
             return classify(summary)
         }
+
+        internal fun canDrain(session: LocalSessionRecord?): Boolean =
+            session.isBusinessReady()
 
         internal fun classify(summary: DrainSummary): DrainOutcome =
             when {

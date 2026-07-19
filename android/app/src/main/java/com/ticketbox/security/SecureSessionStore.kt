@@ -50,14 +50,27 @@ class SecureSessionStore private constructor(
     ): PendingDeviceEnrollment {
         validateEnrollmentIntent(intent)
         return persistence.update { persisted ->
-            persisted.pendingDeviceEnrollment
-                ?.takeIf { it.intent.hasSameAuthoritySource(intent) }
-                ?: PendingDeviceEnrollment(
+            val current = persisted.pendingDeviceEnrollment
+            when {
+                current == null -> PendingDeviceEnrollment(
                     attemptId = UUID.randomUUID().toString(),
                     intent = intent,
                     attemptSecret = newAttemptSecret(),
                     createdAt = Instant.now().toString(),
                 ).also { writeDeviceEnrollment(it) }
+                current.intent.hasSameAuthoritySource(intent) -> current
+                else -> throw PendingDeviceEnrollmentConflictException(current.attemptId)
+            }
+        }
+    }
+
+    override suspend fun abandonPendingDeviceEnrollment(expectedAttemptId: String): Boolean {
+        require(expectedAttemptId.isNotBlank()) { "Enrollment attempt id is required." }
+        return persistence.update { persisted ->
+            val current = persisted.pendingDeviceEnrollment ?: return@update false
+            if (current.attemptId != expectedAttemptId) return@update false
+            clearDeviceEnrollment()
+            true
         }
     }
 

@@ -76,6 +76,12 @@ class ExpenseRepository(
 
     override fun hasActiveSession(): Boolean = bindingRepository.hasActiveSession()
 
+    override fun isBusinessSessionReady(): Boolean =
+        bindingRepository.isBusinessSessionReady()
+
+    override fun hasPendingBinding(): Boolean =
+        bindingRepository.hasPendingBinding()
+
     fun currentLedgerRole(): String? = connectionRepository.currentLedgerRole()
 
     fun localBinding(): LocalBindingInfo? = core.localBinding()
@@ -91,6 +97,9 @@ class ExpenseRepository(
 
     override suspend fun resumePendingBinding(): Result<BindServerResult>? =
         bindingRepository.resumePendingBinding()
+
+    override suspend fun abandonPendingBinding(): Boolean =
+        bindingRepository.abandonPendingBinding()
 
     override suspend fun reconcileActiveSession(): Result<Unit>? =
         connectionRepository.reconcileActiveSession()

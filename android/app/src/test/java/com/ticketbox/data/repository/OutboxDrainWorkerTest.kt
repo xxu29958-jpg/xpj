@@ -1,6 +1,9 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.repository.OutboxDrainWorker.DrainOutcome
+import com.ticketbox.security.LocalSessionIdentity
+import com.ticketbox.security.LocalSessionRecord
+import com.ticketbox.security.StoredSessionToken
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -16,6 +19,20 @@ import kotlin.test.assertFailsWith
  * test surface.
  */
 class OutboxDrainWorkerTest {
+    @Test
+    fun `worker refuses legacy session until stable authority is verified`() {
+        val legacy = workerSession().copy(
+            serverId = null,
+            dataGeneration = null,
+            identity = workerSession().identity.copy(
+                accountPublicId = null,
+                devicePublicId = null,
+            ),
+        )
+
+        assertEquals(false, OutboxDrainWorker.canDrain(legacy))
+        assertEquals(true, OutboxDrainWorker.canDrain(workerSession()))
+    }
 
     private data class DrainSummaryFixture(
         val attempted: Int = 0,
@@ -192,3 +209,22 @@ class OutboxDrainWorkerTest {
         assertEquals(DrainOutcome.RETRY, retryOutcome)
     }
 }
+
+private fun workerSession() = LocalSessionRecord(
+    sessionGeneration = "session-one",
+    bindingRevision = "binding-one",
+    serverId = "70000000-0000-0000-0000-000000000001",
+    dataGeneration = "70000000-0000-0000-0000-000000000002",
+    serverUrl = "https://api.example.com",
+    credential = StoredSessionToken("token"),
+    identity = LocalSessionIdentity(
+        accountPublicId = "70000000-0000-0000-0000-000000000003",
+        devicePublicId = "70000000-0000-0000-0000-000000000004",
+        accountName = "我",
+        ledgerId = "ledger-a",
+        ledgerName = "家庭账本",
+        deviceName = "Pixel",
+        role = "owner",
+        boundAt = "2026-07-14T00:00:00Z",
+    ),
+)

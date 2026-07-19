@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.security.isBusinessReady
 import kotlinx.coroutines.CancellationException
 import java.util.UUID
 
@@ -13,6 +14,12 @@ internal class ExpenseBindingRepository(
     )
 
     override fun hasActiveSession(): Boolean = core.apiProvider.currentSession() != null
+
+    override fun isBusinessSessionReady(): Boolean =
+        core.apiProvider.currentSession().isBusinessReady()
+
+    override fun hasPendingBinding(): Boolean =
+        core.binding.sessionStore.pendingDeviceEnrollment() != null
 
     override suspend fun bindServer(
         serverUrl: String,
@@ -31,6 +38,9 @@ internal class ExpenseBindingRepository(
             requireNotNull(enrollment.resumePending())
         }
     }
+
+    override suspend fun abandonPendingBinding(): Boolean =
+        enrollment.abandonPending()
 
     private suspend fun completeEnrollment(
         serverUrl: String,

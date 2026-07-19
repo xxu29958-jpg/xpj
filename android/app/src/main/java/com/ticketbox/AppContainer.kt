@@ -35,6 +35,7 @@ import com.ticketbox.data.repository.toEntity
 import com.ticketbox.data.repository.toOutboxBinding
 import com.ticketbox.security.SecureSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
+import com.ticketbox.security.isBusinessReady
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
@@ -76,7 +77,11 @@ class AppContainer(context: Context) {
         // the user doesn't wait up to 15 min for the periodic tick.
         // OutboxScheduler.enqueueOnce uses KEEP policy → a burst of
         // 20 enqueues collapses into one drain pass.
-        onEnqueued = { outboxScheduler.enqueueOnce(appContext) },
+        onEnqueued = {
+            if (sessionStore.currentSession().isBusinessReady()) {
+                outboxScheduler.enqueueOnce(appContext)
+            }
+        },
         // Session-boundary pause: cancel any in-flight or scheduled
         // workers so they do not keep draining rows from the old
         // binding after credentials change.
@@ -92,7 +97,9 @@ class AppContainer(context: Context) {
         // session boundary.
         onClearAll = {
             outboxScheduler.cancel(appContext)
-            outboxScheduler.ensurePeriodic(appContext)
+            if (sessionStore.currentSession().isBusinessReady()) {
+                outboxScheduler.ensurePeriodic(appContext)
+            }
         },
     )
 

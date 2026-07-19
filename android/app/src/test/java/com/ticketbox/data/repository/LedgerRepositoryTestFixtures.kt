@@ -67,16 +67,27 @@ import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 
-internal class LedgerStubApiFactory(private val service: ApiService) : ApiServiceFactory {
+internal class LedgerStubApiFactory(
+    private val service: ApiService,
+    private val beforeSwitchDispatch: (suspend () -> Unit)? = null,
+) : ApiServiceFactory {
     val tokenProviders: MutableList<() -> String?> = mutableListOf()
     val tokenSnapshots: MutableList<String?> = mutableListOf()
+    val dispatchedSwitchTokenSnapshots: MutableList<String?> = mutableListOf()
     val baseUrls: MutableList<String> = mutableListOf()
 
     override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
         tokenProviders += tokenProvider
         tokenSnapshots += tokenProvider()
         baseUrls += baseUrl
-        return service
+        val dispatchHook = beforeSwitchDispatch ?: return service
+        return object : ApiService by service {
+            override suspend fun switchLedger(ledgerId: String): LedgerSwitchResponseDto {
+                dispatchHook()
+                dispatchedSwitchTokenSnapshots += tokenProvider()
+                return service.switchLedger(ledgerId)
+            }
+        }
     }
 }
 
