@@ -36,6 +36,7 @@ from app.services.session_lifecycle_service import (
     app_token_expiry_window,
     app_token_soft_refresh_after,
 )
+from app.services.session_refresh_service import set_session_family_ledger_default
 from app.services.time_service import ensure_utc, now_utc, to_iso
 from app.tenants import SessionPrincipal
 
@@ -219,7 +220,11 @@ def _accept_for_existing_session(
             invitation_public_id=invitation.public_id,
             new_role=membership.role,
         )
-    token.ledger_id = ledger.ledger_id
+    set_session_family_ledger_default(
+        db,
+        token=token,
+        ledger_id=ledger.ledger_id,
+    )
     device.last_seen_at = accepted_at
     db.commit()
     token_expires_at = ensure_utc(token.expires_at)
