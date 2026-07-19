@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -144,6 +144,28 @@ def _recover_or_create_device(
     return recovery_device
 
 
+def _close_sibling_recovery_pairing_codes(
+    db: Session,
+    *,
+    device_id: int,
+    consumed_pairing_id: int,
+    closed_at: datetime,
+) -> None:
+    """Close every other unused recovery capability for the recovered Device."""
+
+    db.execute(
+        update(PairingCode)
+        .where(PairingCode.recovery_device_id == device_id)
+        .where(PairingCode.id != consumed_pairing_id)
+        .where(PairingCode.used_at.is_(None))
+        .values(
+            revoked_at=func.coalesce(PairingCode.revoked_at, closed_at),
+            recovery_device_id=None,
+        )
+        .execution_options(synchronize_session=False)
+    )
+
+
 def _session_window(
     *,
     platform: str,
@@ -189,10 +211,17 @@ def _create_pairing_completion(
     )
     if recovery_device is not None:
         # The target protects an unconsumed recovery command from device
-        # cleanup. Once this transaction has consumed the code and recovered
-        # the exact Device, the durable DeviceEnrollmentAttempt becomes the
-        # replay receipt; retaining the one-shot FK would make that Device
-        # undeletable forever under the intentional RESTRICT constraint.
+        # cleanup. Recovery makes one enrollment attempt authoritative, so all
+        # sibling one-shot capabilities must close in this same transaction.
+        _close_sibling_recovery_pairing_codes(
+            db,
+            device_id=recovery_device.id,
+            consumed_pairing_id=pairing.id,
+            closed_at=issued_at,
+        )
+        # The durable DeviceEnrollmentAttempt is now the replay receipt;
+        # retaining the consumed code's FK would make that Device undeletable
+        # forever under the intentional RESTRICT constraint.
         pairing.recovery_device_id = None
     token_expires_at, soft_refresh_after = _session_window(
         platform=device.platform,
