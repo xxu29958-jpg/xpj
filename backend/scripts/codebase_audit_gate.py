@@ -136,7 +136,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 6,
     "mutate_token_reason_terminal_flag_flip": 28,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2674,
+    "backend_pytest_count": 2699,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 

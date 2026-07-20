@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -22,6 +22,7 @@ from app.routes.web_common import (
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
 from app.services.budget_service import get_monthly_budget, upsert_monthly_budget
+from app.services.currency_common import home_currency_code, major_amount_to_minor, minor_unit_digits
 from app.services.spending_contract_service import (
     current_accounting_month,
     default_accounting_timezone_name,
@@ -41,9 +42,20 @@ def _parse_amount_yuan(raw: str, *, label: str, allow_negative: bool = False, re
         amount = Decimal(text)
     except InvalidOperation as exc:
         raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
-    if amount < 0 and not allow_negative:
+    if not amount.is_finite() or (amount < 0 and not allow_negative):
         raise AppError("invalid_request", f"{label}不能为负数。", status_code=422)
-    return int((amount * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    home = home_currency_code()
+    digits = minor_unit_digits(home)
+    try:
+        exact = amount.quantize(Decimal(1).scaleb(-digits))
+    except InvalidOperation as exc:
+        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
+    if exact != amount:
+        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
+        raise AppError("invalid_request", f"{label}按 {home} {detail}。", status_code=422)
+    result = major_amount_to_minor(amount, home, allow_negative=allow_negative)
+    assert result is not None
+    return result
 
 
 def _split_categories(raw: str) -> list[str]:

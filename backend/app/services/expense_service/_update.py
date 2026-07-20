@@ -23,7 +23,7 @@ from app.services.duplicate_service import (
     mark_duplicate_status,
     revalidate_duplicate_references_to,
 )
-from app.services.exchange_rate_service import apply_currency_payload, refresh_currency_snapshot
+from app.services.exchange_rate_service import refresh_currency_snapshot
 from app.services.expense_service._helpers import (
     EDITABLE_STATUSES,
     _clean_category,
@@ -33,6 +33,7 @@ from app.services.expense_service._helpers import (
     _expense_has_pending_fx,
 )
 from app.services.expense_service._query import get_expense, resolve_expense
+from app.services.expense_service._update_currency import _apply_update_currency
 from app.services.ocr_service import clear_ocr_draft_fields
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.receipt_item_service import recompute_items_sum_status
@@ -172,6 +173,7 @@ def update_expense(
     payload: ExpenseUpdateRequest,
     *,
     commit: bool = True,
+    preserve_currency_snapshot: bool = False,
 ) -> Expense:
     # ADR-0038: atomic UPDATE WHERE id, tenant_id, status, updated_at =
     # expected. Race-rejected at the DB layer (rowcount=0 → 404/409),
@@ -219,12 +221,13 @@ def update_expense(
         expense.value_score = updates["value_score"]
     if "regret_score" in updates:
         expense.regret_score = updates["regret_score"]
-    apply_currency_payload(
+    _apply_update_currency(
         db,
         tenant_id=tenant_id,
         expense=expense,
         payload=payload,
-        amount_was_explicit="amount_cents" in updates,
+        updates=updates,
+        preserve_currency_snapshot=preserve_currency_snapshot,
     )
     if expense.status == "confirmed":
         _ensure_expense_can_confirm(expense)

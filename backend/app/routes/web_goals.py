@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -22,6 +22,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import GoalCreateRequest
+from app.services.currency_common import home_currency_code, major_amount_to_minor, minor_unit_digits
 from app.services.goal_service import archive_goal, create_goal, list_goals
 from app.services.time_service import current_month
 
@@ -36,9 +37,20 @@ def _parse_amount_yuan(raw: str) -> int:
         amount = Decimal(text)
     except InvalidOperation as exc:
         raise AppError("invalid_request", "目标金额不是合法金额。", status_code=422) from exc
-    if amount <= 0:
+    if not amount.is_finite() or amount <= 0:
         raise AppError("invalid_request", "目标金额必须大于 0。", status_code=422)
-    return int((amount * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    home = home_currency_code()
+    digits = minor_unit_digits(home)
+    try:
+        exact = amount.quantize(Decimal(1).scaleb(-digits))
+    except InvalidOperation as exc:
+        raise AppError("invalid_request", "目标金额不是合法金额。", status_code=422) from exc
+    if exact != amount:
+        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
+        raise AppError("invalid_request", f"目标金额按 {home} {detail}。", status_code=422)
+    result = major_amount_to_minor(amount, home)
+    assert result is not None
+    return result
 
 
 def _goal_view(goal) -> dict:

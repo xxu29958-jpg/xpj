@@ -6,7 +6,7 @@ route files don't have to import from each other.
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, Response
@@ -21,6 +21,7 @@ from app.schemas import (
     ExpenseSplitRequest,
 )
 from app.services.category_service import list_ledger_category_options
+from app.services.currency_common import home_currency_code, major_amount_to_minor, minor_unit_digits
 from app.services.expense_service import get_expense
 from app.services.expense_split_service import (
     list_active_split_members,
@@ -39,10 +40,18 @@ def parse_amount_yuan(raw: str) -> tuple[int | None, str | None]:
         d = Decimal(cleaned)
     except InvalidOperation:
         return None, "请填写正确的金额，例如 12.34。"
-    if d < 0:
+    if not d.is_finite() or d < 0:
         return None, "金额不能为负数。"
-    cents = int((d * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-    return cents, None
+    home = home_currency_code()
+    digits = minor_unit_digits(home)
+    try:
+        exact = d.quantize(Decimal(1).scaleb(-digits))
+    except InvalidOperation:
+        return None, "请填写正确的金额，例如 12.34。"
+    if exact != d:
+        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
+        return None, f"金额按 {home} {detail}。"
+    return major_amount_to_minor(d, home), None
 
 
 def parse_original_amount(raw: str) -> tuple[Decimal | None, str | None]:
