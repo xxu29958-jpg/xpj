@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol
 
 from sqlalchemy.orm import Session
@@ -14,7 +14,6 @@ from app.fx_constants import (
     FX_SOURCE_MANUAL,
     FX_STATUS_PENDING,
     FX_STATUS_READY,
-    NO_FRACTION_CURRENCY_CODES,
 )
 from app.ledger_scope import ledger_scoped_select
 from app.models import ExchangeRate, Expense
@@ -22,6 +21,8 @@ from app.services.currency_common import (
     RATE_QUANT,
     format_decimal_rate,
     home_currency_code,
+    major_amount_to_minor,
+    minor_unit_digits,
     normalize_currency_code,
     supported_currency_codes,
 )
@@ -57,23 +58,11 @@ class CurrencyPayload(Protocol):
 
 
 def minor_units_for_currency(currency_code: str) -> int:
-    return 0 if normalize_currency_code(currency_code) in NO_FRACTION_CURRENCY_CODES else 2
+    return minor_unit_digits(normalize_currency_code(currency_code))
 
 
 def amount_major_to_minor(value: Decimal | None, currency_code: str) -> int | None:
-    if value is None:
-        return None
-    try:
-        amount = Decimal(str(value))
-    except (InvalidOperation, ValueError) as exc:
-        raise AppError("amount_invalid", status_code=422) from exc
-    if amount < 0:
-        raise AppError("amount_invalid", status_code=422)
-    units = minor_units_for_currency(currency_code)
-    quant = Decimal("1") if units == 0 else Decimal("0.01")
-    rounded = amount.quantize(quant, rounding=ROUND_HALF_UP)
-    multiplier = Decimal(1) if units == 0 else Decimal(100)
-    return int((rounded * multiplier).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return major_amount_to_minor(value, normalize_currency_code(currency_code))
 
 
 def calculate_cny_cents(
@@ -97,10 +86,10 @@ def calculate_cny_cents(
     rate = Decimal("1") if currency_code == home_currency_code() else format_decimal_rate(exchange_rate_to_cny)
     if rate is None:
         return None
-    divisor = Decimal(1) if minor_units_for_currency(currency_code) == 0 else Decimal(100)
+    divisor = Decimal(10) ** minor_units_for_currency(currency_code)
     amount_major = Decimal(original_amount_minor) / divisor
     home_units = minor_units_for_currency(home_currency_code())
-    home_multiplier = Decimal(1) if home_units == 0 else Decimal(100)
+    home_multiplier = Decimal(10) ** home_units
     return int((amount_major * rate * home_multiplier).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 

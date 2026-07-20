@@ -19,6 +19,7 @@ from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateRequest
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.classify_service import classify_expense
+from app.services.currency_common import home_currency_code
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import apply_currency_payload
 from app.services.expense_query import local_ref_storage_key, resolve_expense
@@ -106,31 +107,36 @@ def create_pending_expense(
     source: str = "iPhone截图",
     run_enrichment: bool = True,
 ) -> Expense:
-    now = now_utc()
-    thumbnail_path = (
-        _try_generate_thumbnail(saved_file.relative_path, tenant_id)
-        if run_enrichment
-        else None
-    )
-    expense = Expense(
-        tenant_id=tenant_id,
-        amount_cents=None,
-        merchant=None,
-        category="其他",
-        note="",
-        source=source,
-        image_path=saved_file.relative_path,
-        thumbnail_path=thumbnail_path,
-        image_hash=saved_file.image_hash,
-        image_perceptual_hash=saved_file.image_perceptual_hash,
-        raw_text="",
-        confidence=None,
-        status="pending",
-        created_at=now,
-        updated_at=now,
-    )
     created = False
+    thumbnail_path: str | None = None
     try:
+        now = now_utc()
+        frozen_home_currency = home_currency_code()
+        thumbnail_path = (
+            _try_generate_thumbnail(saved_file.relative_path, tenant_id)
+            if run_enrichment
+            else None
+        )
+        expense = Expense(
+            tenant_id=tenant_id,
+            amount_cents=None,
+            home_currency_code=frozen_home_currency,
+            original_currency_code=frozen_home_currency,
+            original_amount_minor=None,
+            merchant=None,
+            category="其他",
+            note="",
+            source=source,
+            image_path=saved_file.relative_path,
+            thumbnail_path=thumbnail_path,
+            image_hash=saved_file.image_hash,
+            image_perceptual_hash=saved_file.image_perceptual_hash,
+            raw_text="",
+            confidence=None,
+            status="pending",
+            created_at=now,
+            updated_at=now,
+        )
         db.add(expense)
         db.flush()
         mark_duplicate_status(db, expense)

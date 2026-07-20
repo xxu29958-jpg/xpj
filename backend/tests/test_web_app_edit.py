@@ -246,8 +246,6 @@ def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient, 
         ("12.34", 1234),
         ("0.01", 1),
         ("0.1", 10),
-        ("12.345", 1235),
-        ("0.005", 1),
         ("100", 10000),
         ("0", 0),
     ],
@@ -269,6 +267,32 @@ def test_web_amount_decimal_precision(
     from decimal import Decimal
     expected_display = str((Decimal(expected_cents) / Decimal("100")).quantize(Decimal("0.01")))
     assert expected_display in detail.text
+
+
+@pytest.mark.parametrize("input_str", ["12.345", "0.005"])
+def test_web_amount_over_precision_rejected(
+    web_client: TestClient, input_str: str, *, identity
+) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
+    resp = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
+        data={"amount_yuan": input_str, "merchant": "", "category": "", "note": "",
+              "ledger_id": "owner"},
+        follow_redirects=True,
+    )
+    # Over-precision input is rejected, never silently rounded, and the row
+    # keeps its previous (pending, amount-less) state.
+    assert resp.status_code == 200
+    assert "金额格式不正确" in resp.text
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models import Expense
+    with SessionLocal() as db:
+        amount = db.scalar(select(Expense.amount_cents).where(Expense.id == expense_id))
+    assert amount is None
 
 
 def test_web_save_negative_amount_shows_error(web_client: TestClient, *, identity) -> None:

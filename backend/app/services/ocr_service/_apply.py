@@ -12,7 +12,8 @@ from app.errors import AppError
 from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import Expense
 from app.services.category_service import normalize_category
-from app.services.exchange_rate_service import default_rate_date, home_currency_code
+from app.services.currency_common import home_currency_code, minor_unit_digits
+from app.services.exchange_rate_service import default_rate_date
 from app.services.ocr_service._draft_fields import _write_ocr_draft_fields, ocr_draft_fields
 from app.services.ocr_service._merge import _best_confidence, _merge_result_with_text_parse
 from app.services.ocr_service._models import (
@@ -200,13 +201,14 @@ def _apply_ocr_result_to_expense(
     ):
         expense.category = normalize_category(merged.category)
         applied_fields.add("category")
-    home = home_currency_code()
-    if expense.amount_cents is not None and expense.original_currency_code == home:
+    frozen_home = (expense.home_currency_code or home_currency_code()).strip().upper()
+    minor_unit_digits(frozen_home)
+    if expense.amount_cents is not None and expense.original_currency_code == frozen_home:
         expense.original_amount_minor = expense.amount_cents
         expense.exchange_rate_to_cny = Decimal("1")
         expense.exchange_rate_date = default_rate_date(expense.expense_time)
         expense.exchange_rate_source = FX_SOURCE_BASE
-        expense.home_currency_code = home
+        expense.home_currency_code = frozen_home
         expense.fx_status = FX_STATUS_READY
     if applied_fields:
         _write_ocr_draft_fields(expense, draft_fields.union(applied_fields))

@@ -21,6 +21,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.learning_service import (
@@ -37,6 +40,35 @@ from app.services.ocr_service import (
 from app.services.ocr_service._draft_fields import (
     _legacy_pending_ocr_draft_fields,
 )
+
+
+def test_ocr_amount_preserves_upload_frozen_home_currency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
+    get_settings.cache_clear()
+    try:
+        expense = Expense(
+            status="pending",
+            amount_cents=None,
+            home_currency_code="JPY",
+            original_currency_code="JPY",
+            original_amount_minor=None,
+            category="其他",
+            raw_text="",
+        )
+
+        apply_ocr_result(
+            expense,
+            OcrResult(raw_text="合計 1234", confidence=0.9, amount_cents=1234),
+        )
+
+        assert expense.home_currency_code == "JPY"
+        assert expense.original_currency_code == "JPY"
+        assert expense.amount_cents == 1234
+        assert expense.original_amount_minor == 1234
+    finally:
+        get_settings.cache_clear()
 
 
 def test_legacy_draft_gate_uses_confidence_only() -> None:

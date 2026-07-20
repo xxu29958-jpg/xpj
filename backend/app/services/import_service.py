@@ -7,7 +7,11 @@ manual data entry shaped like the existing export schema.
 
 Accepted columns (case-insensitive, BOM-aware):
 
-* ``amount_yuan`` *or* ``amount_cents`` — required, must parse as number
+* ``amount_yuan`` *or* ``amount_cents`` — required, must parse as number.
+  ``amount_yuan`` is the published legacy CSV compatibility column and always
+  means a two-decimal major-unit projection (``amount * 100``), independent of
+  the configured home currency. Currency-aware producers should prefer the
+  exact ``amount_cents`` plus the original-currency snapshot columns.
 * ``merchant`` — optional
 * ``category`` — optional, defaults to ``"其他"``
 * ``note`` — optional
@@ -93,6 +97,11 @@ class CsvPreview:
 
 
 def _parse_amount(raw_yuan: str, raw_cents: str) -> tuple[int | None, str, str | None]:
+    """Parse the published legacy CSV amount boundary.
+
+    Do not replace this fixed ×100 contract with the Web form's adaptive
+    currency parser: exported/imported files must continue round-tripping.
+    """
     cents_text = raw_cents.strip()
     yuan_text = raw_yuan.strip()
     parsed_yuan_cents: int | None = None
@@ -242,7 +251,7 @@ def _parse_csv_currency_code(raw: str) -> tuple[str, str | None]:
     """Resolve ``original_currency_code`` cell → (code, error)."""
     cleaned = raw.strip()
     if not cleaned:
-        return BASE_CURRENCY_CODE, None
+        return home_currency_code(), None
     try:
         return normalize_currency_code(cleaned), None
     except AppError:
@@ -258,20 +267,35 @@ def _apply_csv_amount_currency_swap(
     original_currency_code: str,
     has_original_fields: bool,
     explicit_amount_cents: bool,
+    has_legacy_fx_snapshot: bool,
 ) -> tuple[int | None, str, str | None, int | None]:
-    """For rows declaring a foreign currency, route the user's amount
-    into ``original_amount_minor`` so the FX resolver later mints the
-    home amount; leave RMB rows untouched."""
-    if (
+    """Keep home/original units separate while preserving the released CSV shape.
+
+    Older currency-aware exports used ``amount_cents`` for the original minor
+    amount when the row also carried a complete FX snapshot.  Continue to
+    accept that unambiguous shape, but reject a bare foreign currency plus
+    ``amount_cents`` because it could otherwise be mistaken for a home amount.
+    """
+    is_foreign = (
         has_original_fields
-        and original_amount_minor is None
         and original_currency_code != home_currency_code()
-        and amount_cents is not None
-    ):
-        original_amount_minor = amount_cents
-        amount_cents = None
+    )
+    if is_foreign and original_amount_minor is None:
+        if (
+            explicit_amount_cents
+            and has_legacy_fx_snapshot
+            and amount_cents is not None
+        ):
+            original_amount_minor = amount_cents
+            amount_cents = None
+            amount_display = ""
+            amount_error = None
+        else:
+            amount_error = amount_error or "外币记录必须提供 original_amount_minor"
+            amount_cents = None
+            amount_display = ""
     if (
-        has_original_fields
+        is_foreign
         and original_amount_minor is not None
         and original_currency_code != home_currency_code()
         and not explicit_amount_cents
@@ -290,31 +314,41 @@ def _authoritative_rate_for_currency(
     return None, None
 
 
-def parse_csv_row(
-    headers: list[str],
-    row: list[str],
+@dataclass(frozen=True)
+class _CsvFxColumns:
+    amount_cents: int | None
+    amount_display: str
+    amount_error: str | None
+    original_currency_code: str
+    original_amount_minor: int | None
+    exchange_rate_date: date | None
+    exchange_rate_to_cny: Decimal | None
+    currency_error: str | None
+    original_amount_error: str | None
+    exchange_rate_error: str | None
+    exchange_rate_date_error: str | None
+    has_original_currency_fields: bool
+
+
+def _parse_csv_fx_columns(
+    cells: dict[str, str],
     *,
-    line_number: int,
-    timezone_name: str | None = None,
-) -> ParsedRow:
-    cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
-    amount_cents, amount_display, amount_error = _parse_amount(
-        cells.get("amount_yuan", ""), cells.get("amount_cents", "")
-    )
+    amount_cents: int | None,
+    amount_display: str,
+    amount_error: str | None,
+    expense_rate_date: date | None,
+) -> _CsvFxColumns:
     original_currency_code, currency_error = _parse_csv_currency_code(
         cells.get("original_currency_code", "")
     )
     original_amount_minor, original_amount_error = _parse_optional_int(
         cells.get("original_amount_minor", ""), "original_amount_minor"
     )
-    _, exchange_rate_error = _parse_optional_decimal(
+    parsed_exchange_rate, exchange_rate_error = _parse_optional_decimal(
         cells.get("exchange_rate_to_cny", ""), "exchange_rate_to_cny"
     )
     exchange_rate_date, exchange_rate_date_error = _parse_optional_date(
         cells.get("exchange_rate_date", "")
-    )
-    expense_time, etime_display, etime_error, expense_rate_date = _parse_expense_time(
-        cells.get("expense_time", ""), timezone_name=timezone_name
     )
     if expense_rate_date is not None:
         exchange_rate_date = expense_rate_date
@@ -336,27 +370,68 @@ def parse_csv_row(
             original_currency_code=original_currency_code,
             has_original_fields=has_original_currency_fields,
             explicit_amount_cents=bool(cells.get("amount_cents", "").strip()),
+            has_legacy_fx_snapshot=(
+                parsed_exchange_rate is not None
+                and exchange_rate_date is not None
+            ),
         )
     )
+    return _CsvFxColumns(
+        amount_cents=amount_cents,
+        amount_display=amount_display,
+        amount_error=amount_error,
+        original_currency_code=original_currency_code,
+        original_amount_minor=original_amount_minor,
+        exchange_rate_date=exchange_rate_date,
+        exchange_rate_to_cny=parsed_exchange_rate,
+        currency_error=currency_error,
+        original_amount_error=original_amount_error,
+        exchange_rate_error=exchange_rate_error,
+        exchange_rate_date_error=exchange_rate_date_error,
+        has_original_currency_fields=has_original_currency_fields,
+    )
+
+
+def parse_csv_row(
+    headers: list[str],
+    row: list[str],
+    *,
+    line_number: int,
+    timezone_name: str | None = None,
+) -> ParsedRow:
+    cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
+    amount_cents, amount_display, amount_error = _parse_amount(
+        cells.get("amount_yuan", ""), cells.get("amount_cents", "")
+    )
+    expense_time, etime_display, etime_error, expense_rate_date = _parse_expense_time(
+        cells.get("expense_time", ""), timezone_name=timezone_name
+    )
+    fx = _parse_csv_fx_columns(
+        cells,
+        amount_cents=amount_cents,
+        amount_display=amount_display,
+        amount_error=amount_error,
+        expense_rate_date=expense_rate_date,
+    )
     authoritative_rate, authoritative_rate_source = _authoritative_rate_for_currency(
-        original_currency_code
+        fx.original_currency_code
     )
     error = (
-        currency_error
-        or original_amount_error
-        or exchange_rate_error
-        or exchange_rate_date_error
-        or amount_error
+        fx.currency_error
+        or fx.original_amount_error
+        or fx.exchange_rate_error
+        or fx.exchange_rate_date_error
+        or fx.amount_error
         or etime_error
     )
     return ParsedRow(
         line_number=line_number,
-        amount_cents=amount_cents,
-        amount_display=amount_display,
-        original_currency_code=original_currency_code,
-        original_amount_minor=original_amount_minor if has_original_currency_fields else amount_cents,
+        amount_cents=fx.amount_cents,
+        amount_display=fx.amount_display,
+        original_currency_code=fx.original_currency_code,
+        original_amount_minor=fx.original_amount_minor if fx.has_original_currency_fields else fx.amount_cents,
         exchange_rate_to_cny=authoritative_rate,
-        exchange_rate_date=exchange_rate_date,
+        exchange_rate_date=fx.exchange_rate_date,
         exchange_rate_source=cells.get("exchange_rate_source", "").strip() or authoritative_rate_source,
         merchant=cells.get("merchant", "").strip(),
         category=normalize_category(cells.get("category", "")),
