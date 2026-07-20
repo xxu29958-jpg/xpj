@@ -45,6 +45,8 @@ class PairingResult:
     role: str
     expires_at: datetime | None = None
     soft_refresh_after: datetime | None = None
+    activation_required: bool = False
+    activation_expires_at: datetime | None = None
 
 
 @dataclass(frozen=True)

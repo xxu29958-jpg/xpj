@@ -17,6 +17,7 @@ from app.models.ai_advisor import (
 )
 from app.models.app_meta import AppMeta
 from app.models.auth import (
+    DesktopActivationAttempt,
     DeviceEnrollmentAttempt,
     Invitation,
     PairingAttemptFailure,
@@ -129,6 +130,7 @@ __all__ = [
     "MonthlyIncomePlan",
     "OcrFact",
     "PairingAttemptFailure",
+    "DesktopActivationAttempt",
     "DeviceEnrollmentAttempt",
     "PairingCode",
     "RecurringItem",

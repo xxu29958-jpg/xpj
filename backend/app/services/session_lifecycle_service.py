@@ -36,6 +36,8 @@ ENROLLMENT_ATTEMPT_SECRET_CONTEXT = b"ticketbox/device-enrollment/v1/attempt-sec
 ENROLLMENT_SESSION_TOKEN_CONTEXT = b"ticketbox/device-enrollment/v1/session-token\0"
 SESSION_REFRESH_SECRET_CONTEXT = b"ticketbox/session-refresh/v1/attempt-secret\0"
 SESSION_REFRESH_TOKEN_CONTEXT = b"ticketbox/session-refresh/v1/session-token\0"
+DESKTOP_ACTIVATION_SECRET_CONTEXT = b"ticketbox/desktop-activation/v1/attempt-secret\0"
+DESKTOP_ACTIVATION_TOKEN_CONTEXT = b"ticketbox/desktop-activation/v1/session-token\0"
 ATTEMPT_SECRET_BYTES = 32
 # Cross-runtime protocol identifiers: never change a v1 context in place.
 BOOTSTRAP_ADMIN_TOKEN_CONTEXT = b"ticketbox/bootstrap-owner/v1/admin-token"
@@ -118,6 +120,25 @@ def derive_session_refresh_token(secret: str, attempt_id: str) -> str:
         secret,
         attempt_id,
         context=SESSION_REFRESH_TOKEN_CONTEXT,
+    )
+
+
+def hash_desktop_activation_attempt_secret(secret: str) -> str:
+    return _hash_attempt_secret(secret, context=DESKTOP_ACTIVATION_SECRET_CONTEXT)
+
+
+def derive_desktop_activation_token(secret: str, attempt_id: str) -> str:
+    """Derive the stable staged→activated credential for one desktop attempt.
+
+    One value serves both phases: staged as a ``desktop_pending`` token, then
+    promoted in place to ``app`` scope by activation, so the value the Manager
+    persisted before activate is still the value it uses afterwards.
+    """
+
+    return _derive_attempt_token(
+        secret,
+        attempt_id,
+        context=DESKTOP_ACTIVATION_TOKEN_CONTEXT,
     )
 
 

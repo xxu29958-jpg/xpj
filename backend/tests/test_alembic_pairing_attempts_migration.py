@@ -14,7 +14,8 @@ from sqlalchemy.engine import Connection
 from app.database import engine
 
 _PREVIOUS_REVISION = "20260711_0001"
-_HEAD_REVISION = "20260715_0001"
+# Head pin follows the chain tip: each new head migration updates it.
+_HEAD_REVISION = "20260720_0001"
 _ENROLLMENT_COLUMNS = {
     "id",
     "public_id",
@@ -271,7 +272,7 @@ def test_identity_receipts_upgrade_real_previous_revision_and_reject_downgrade()
         assert all(str(UUID(value)) == value for value in identity_rows.values())
 
         _insert_committed_receipts(values)
-        with pytest.raises(RuntimeError, match="irreversible identity receipt"):
+        with pytest.raises(RuntimeError, match="irreversible (identity receipt|desktop activation receipt)"):
             _run_alembic(command.downgrade, _PREVIOUS_REVISION)
 
         with engine.begin() as connection:

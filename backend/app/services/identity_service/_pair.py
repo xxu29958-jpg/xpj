@@ -18,6 +18,11 @@ from app.models import (
     PairingCode,
     UploadLink,
 )
+from app.services.desktop_activation_service import (
+    DESKTOP_PLATFORM,
+    find_live_pending_token,
+    stage_desktop_pending_token,
+)
 from app.services.identity_service._auth import _role_for
 from app.services.identity_service._device import _create_auth_token, _create_device
 from app.services.identity_service._enrollment import (
@@ -40,7 +45,9 @@ from app.services.identity_service._pairing_throttle import (
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import (
     app_token_expiry_window,
+    app_token_soft_refresh_after,
     consume_pairing_code,
+    derive_desktop_activation_token,
     hash_pairing_code,
 )
 from app.services.time_service import ensure_utc, now_utc
@@ -53,6 +60,10 @@ class PairingCompletion:
     device: Device
     role: str
     attempt: DeviceEnrollmentAttempt
+    activation_pending: bool = False
+    activation_expires_at: datetime | None = None
+    session_expires_at: datetime | None = None
+    session_soft_refresh_after: datetime | None = None
 
 
 def _load_pairing_code(
@@ -187,6 +198,7 @@ def _create_pairing_completion(
     proof: EnrollmentProof,
     device_name: str,
     platform: str,
+    pairing_attempt_secret: str,
     remote_id: str | None,
     issued_at: datetime,
 ) -> PairingCompletion:
@@ -226,6 +238,40 @@ def _create_pairing_completion(
         # retaining the consumed code's FK would make that Device undeletable
         # forever under the intentional RESTRICT constraint.
         pairing.recovery_device_id = None
+    if device.platform == DESKTOP_PLATFORM:
+        # Two-phase desktop enrollment: stage a short-lived pending credential
+        # instead of a live session. The activate endpoint is the only way to
+        # promote it; the enrollment receipt stays replayable for the whole
+        # ceremony, so expires_at/session_expires_at stay open (None).
+        pending_token = stage_desktop_pending_token(
+            db,
+            account_id=account.id,
+            device_id=device.id,
+            ledger_id=ledger.ledger_id,
+            attempt_public_id=proof.public_id,
+            activation_secret=pairing_attempt_secret,
+            issued_at=issued_at,
+        )
+        attempt = record_enrollment_attempt(
+            db,
+            proof=proof,
+            pairing_code_id=pairing.id,
+            account_id=account.id,
+            device_id=device.id,
+            ledger_id=ledger.ledger_id,
+            issued_at=issued_at,
+            session_expires_at=None,
+            session_soft_refresh_after=None,
+        )
+        return PairingCompletion(
+            ledger,
+            account,
+            device,
+            role,
+            attempt,
+            activation_pending=True,
+            activation_expires_at=pending_token.expires_at,
+        )
     token_expires_at, soft_refresh_after = _session_window(
         platform=device.platform,
         issued_at=issued_at,
@@ -268,6 +314,34 @@ def _recover_pairing_completion(
         pairing_code_id=pairing.id,
     ):
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
+    device = db.get(Device, attempt.device_id)
+    if device is not None and (device.platform or "") == DESKTOP_PLATFORM:
+        pending = find_live_pending_token(db, session_token_hash=attempt.session_token_hash)
+        if pending is not None:
+            account = db.get(Account, attempt.account_id)
+            ledger = db.scalar(
+                select(Ledger).where(Ledger.ledger_id == attempt.ledger_id).execution_options(populate_existing=True).limit(1)
+            )
+            if (
+                account is not None
+                and account.disabled_at is None
+                and device.revoked_at is None
+                and ledger is not None
+                and ledger.archived_at is None
+            ):
+                # Canonical replay while the ceremony is still staged: hand
+                # the same pending credential back unchanged — activation is
+                # the only way forward, re-pairing must not mint another.
+                attempt.last_issued_at = issued_at
+                return PairingCompletion(
+                    ledger,
+                    account,
+                    device,
+                    _role_for(db, ledger.ledger_id, account.id),
+                    attempt,
+                    activation_pending=True,
+                    activation_expires_at=pending.expires_at,
+                )
     identity = recover_enrollment_identity(
         db,
         attempt=attempt,
@@ -282,10 +356,22 @@ def _recover_pairing_completion(
         identity.device,
         identity.role,
         attempt,
+        session_expires_at=ensure_utc(identity.token.expires_at),
+        session_soft_refresh_after=app_token_soft_refresh_after(ensure_utc(identity.token.expires_at)),
     )
 
 
 def _pairing_result(proof: EnrollmentProof, completion: PairingCompletion) -> PairingResult:
+    expires_at = (
+        completion.session_expires_at
+        if completion.session_expires_at is not None
+        else completion.attempt.session_expires_at
+    )
+    soft_refresh_after = (
+        completion.session_soft_refresh_after
+        if completion.session_soft_refresh_after is not None
+        else completion.attempt.session_soft_refresh_after
+    )
     return PairingResult(
         session_token=proof.session_token,
         pairing_attempt_id=completion.attempt.public_id,
@@ -296,8 +382,10 @@ def _pairing_result(proof: EnrollmentProof, completion: PairingCompletion) -> Pa
         ledger_name=completion.ledger.name,
         device_name=completion.device.device_name,
         role=completion.role,
-        expires_at=completion.attempt.session_expires_at,
-        soft_refresh_after=completion.attempt.session_soft_refresh_after,
+        expires_at=expires_at,
+        soft_refresh_after=soft_refresh_after,
+        activation_required=completion.activation_pending,
+        activation_expires_at=completion.activation_expires_at,
     )
 
 
@@ -314,6 +402,16 @@ def pair_device(
     lock_bootstrap_owner_transaction(db)
     _check_pairing_attempt_limit(db, remote_id)
     proof = prepare_enrollment_proof(pairing_attempt_id, pairing_attempt_secret)
+    if (platform or "").strip().lower() == DESKTOP_PLATFORM:
+        # Desktop enrollment is two-phase: the derived value is staged as a
+        # desktop_pending credential (desktop-activation context) and only the
+        # activate endpoint can promote it. The enrollment receipt's secret
+        # hash domain stays unchanged, so pair replay keeps working.
+        proof = EnrollmentProof(
+            public_id=proof.public_id,
+            secret_hash=proof.secret_hash,
+            session_token=derive_desktop_activation_token(pairing_attempt_secret, proof.public_id),
+        )
     code_hash = hash_pairing_code(pairing_code.strip())
     pairing = _load_pairing_code(
         db,
@@ -330,6 +428,7 @@ def pair_device(
             proof=proof,
             device_name=device_name,
             platform=platform,
+            pairing_attempt_secret=pairing_attempt_secret,
             remote_id=remote_id,
             issued_at=used_at,
         )

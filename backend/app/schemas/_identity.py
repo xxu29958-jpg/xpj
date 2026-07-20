@@ -20,6 +20,8 @@ __all__ = [
     "AdminUploadLinkSecretResponse",
     "BootstrapOwnerRequest",
     "BootstrapOwnerResponse",
+    "DesktopActivateRequest",
+    "DesktopActivateResponse",
     "InvitationAcceptRequest",
     "InvitationAcceptResponse",
     "InvitationCreateRequest",
@@ -80,6 +82,35 @@ class PairResponse(BaseModel):
     # remaining lifetime drops below ``soft_refresh_after``.
     expires_at: str | None = None
     soft_refresh_after: str | None = None
+    # Two-phase desktop enrollment: True while the returned credential is a
+    # staged ``desktop_pending`` token that only the activate endpoint accepts.
+    activation_required: bool = False
+    activation_expires_at: str | None = None
+
+
+class DesktopActivateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    activation_attempt_id: UUID
+    activation_attempt_secret: str = Field(
+        min_length=43,
+        max_length=43,
+        pattern=r"^[A-Za-z0-9_-]{43}$",
+    )
+
+
+class DesktopActivateResponse(BaseModel):
+    session_token: str
+    activation_attempt_id: str
+    server_id: str
+    data_generation: str
+    account_public_id: str
+    device_public_id: str
+    ledger_id: str
+    expires_at: str | None = None
+    soft_refresh_after: str | None = None
+    # True = this call performed the activation; False = canonical replay.
+    activated: bool
 
 
 class RefreshSessionRequest(BaseModel):
