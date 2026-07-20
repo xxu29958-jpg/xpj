@@ -10,11 +10,14 @@ from app.errors import AppError
 from app.network_boundary import pairing_rate_limit_key
 from app.schemas import (
     AuthCheckResponse,
+    DesktopActivateRequest,
+    DesktopActivateResponse,
     PairRequest,
     PairResponse,
     RefreshSessionRequest,
     RefreshSessionResponse,
 )
+from app.services.desktop_activation_service import activate_desktop_session
 from app.services.identity_service import authenticate_session_token, pair_device
 from app.services.server_identity_service import read_server_data_identity
 from app.services.session_refresh_service import (
@@ -89,6 +92,8 @@ def pair(payload: PairRequest, request: Request, db: Session = Depends(get_db)) 
         role=result.role,
         expires_at=to_iso(result.expires_at),
         soft_refresh_after=to_iso(result.soft_refresh_after),
+        activation_required=result.activation_required,
+        activation_expires_at=to_iso(result.activation_expires_at),
     )
 
 
@@ -134,4 +139,40 @@ def refresh_session(
         expires_at=to_iso(result.expires_at),
         soft_refresh_after=to_iso(result.soft_refresh_after),
         rotated=True,
+    )
+
+
+@router.post("/desktop/activate", response_model=DesktopActivateResponse)
+def activate_desktop(
+    payload: DesktopActivateRequest,
+    x_ticketbox_previous_session: str | None = Header(default=None, alias="X-Ticketbox-Previous-Session"),
+    db: Session = Depends(get_db),
+) -> DesktopActivateResponse:
+    """Promote a staged desktop credential to a full session.
+
+    The staged ``desktop_pending`` token is rejected by every ordinary auth
+    surface; this endpoint is the only place the attempt proof is accepted.
+    A replay with the same ``(activation_attempt_id, activation_attempt_secret)``
+    returns the originally committed activation, never a second credential.
+    """
+
+    result = activate_desktop_session(
+        db,
+        activation_attempt_id=str(payload.activation_attempt_id),
+        activation_attempt_secret=payload.activation_attempt_secret,
+        previous_token_value=(x_ticketbox_previous_session or "").strip() or None,
+    )
+    db.commit()
+    server = read_server_data_identity(db)
+    return DesktopActivateResponse(
+        session_token=result.session_token,
+        activation_attempt_id=result.activation_attempt_id,
+        server_id=server.server_id,
+        data_generation=server.data_generation,
+        account_public_id=result.account_public_id,
+        device_public_id=result.device_public_id,
+        ledger_id=result.ledger_id,
+        expires_at=to_iso(result.expires_at),
+        soft_refresh_after=to_iso(result.soft_refresh_after),
+        activated=result.activated,
     )

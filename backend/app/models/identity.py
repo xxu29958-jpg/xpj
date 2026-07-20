@@ -74,7 +74,7 @@ class Device(Base):
 class AuthToken(Base):
     __tablename__ = "auth_tokens"
     __table_args__ = (
-        CheckConstraint("scope IN ('app', 'admin')", name="ck_auth_tokens_scope_valid"),
+        CheckConstraint("scope IN ('app', 'admin', 'desktop_pending')", name="ck_auth_tokens_scope_valid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

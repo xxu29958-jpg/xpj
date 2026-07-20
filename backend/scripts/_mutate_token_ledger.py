@@ -112,7 +112,14 @@ class Exempt:
 # Shared table-set constants keep entries on one line and DRY repeated
 # blast radii. Every name is a SQLAlchemy ``__tablename__`` value and is
 # cross-checked against the live metadata by :func:`validate_ledger`.
-_PAIR_BIND = ("devices", "auth_tokens", "pairing_codes")
+_PAIR_BIND = (
+    "devices",
+    "auth_tokens",
+    "pairing_codes",
+    "device_enrollment_attempts",
+    "desktop_activation_attempts",
+)
+_DESKTOP_ACTIVATE = ("auth_tokens", "devices", "desktop_activation_attempts")
 _BOOTSTRAP_IDENTITY = (
     "accounts",
     "ledgers",
@@ -154,6 +161,10 @@ ALLOWLIST: dict[str, Exempt] = {
     # --- /api create routes (collection POST → new row, no prior version) ---
     "POST /api/auth/pair": Exempt("session_rotation", "identity", _PAIR_BIND, "medium"),
     "POST /api/auth/refresh": Exempt("session_rotation", "identity", ("auth_tokens",)),
+    # Two-phase desktop credential: the only route that accepts a staged
+    # desktop_pending proof. Promotes the staged row in place, supersedes the
+    # predecessor with rotation grace, and commits the activation receipt.
+    "POST /api/auth/desktop/activate": Exempt("session_rotation", "identity", _DESKTOP_ACTIVATE, "medium"),
     "POST /api/app/upload-screenshot": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/bootstrap/owner": Exempt("session_rotation", "identity", _BOOTSTRAP_IDENTITY, "medium"),
     "POST /api/bootstrap/pairing-codes": Exempt("create_row", "identity", ("pairing_codes",)),

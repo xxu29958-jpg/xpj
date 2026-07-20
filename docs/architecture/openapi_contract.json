@@ -5067,6 +5067,99 @@
         "title": "DebtVoidCreateRequest",
         "type": "object"
       },
+      "DesktopActivateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "activation_attempt_id": {
+            "format": "uuid",
+            "title": "Activation Attempt Id",
+            "type": "string"
+          },
+          "activation_attempt_secret": {
+            "maxLength": 43,
+            "minLength": 43,
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Activation Attempt Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activation_attempt_id",
+          "activation_attempt_secret"
+        ],
+        "title": "DesktopActivateRequest",
+        "type": "object"
+      },
+      "DesktopActivateResponse": {
+        "properties": {
+          "account_public_id": {
+            "title": "Account Public Id",
+            "type": "string"
+          },
+          "activated": {
+            "title": "Activated",
+            "type": "boolean"
+          },
+          "activation_attempt_id": {
+            "title": "Activation Attempt Id",
+            "type": "string"
+          },
+          "data_generation": {
+            "title": "Data Generation",
+            "type": "string"
+          },
+          "device_public_id": {
+            "title": "Device Public Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "server_id": {
+            "title": "Server Id",
+            "type": "string"
+          },
+          "session_token": {
+            "title": "Session Token",
+            "type": "string"
+          },
+          "soft_refresh_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soft Refresh After"
+          }
+        },
+        "required": [
+          "session_token",
+          "activation_attempt_id",
+          "server_id",
+          "data_generation",
+          "account_public_id",
+          "device_public_id",
+          "ledger_id",
+          "activated"
+        ],
+        "title": "DesktopActivateResponse",
+        "type": "object"
+      },
       "DiscretionaryResponse": {
         "description": "Inspectable breakdown of \"本月可自由支配\".\n\nMirrors :class:`DiscretionaryBreakdown` so the UI can render the\nsubtraction step by step.",
         "properties": {
@@ -9893,6 +9986,22 @@
             "title": "Account Public Id",
             "type": "string"
           },
+          "activation_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Expires At"
+          },
+          "activation_required": {
+            "default": false,
+            "title": "Activation Required",
+            "type": "boolean"
+          },
           "data_generation": {
             "title": "Data Generation",
             "type": "string"
@@ -13170,6 +13279,76 @@
           }
         },
         "summary": "Check Auth",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/desktop/activate": {
+      "post": {
+        "description": "Promote a staged desktop credential to a full session.\n\nThe staged ``desktop_pending`` token is rejected by every ordinary auth\nsurface; this endpoint is the only place the attempt proof is accepted.\nA replay with the same ``(activation_attempt_id, activation_attempt_secret)``\nreturns the originally committed activation, never a second credential.",
+        "operationId": "activate_desktop_api_auth_desktop_activate_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Previous-Session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Previous-Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesktopActivateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopActivateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Activate Desktop",
         "tags": [
           "auth"
         ]

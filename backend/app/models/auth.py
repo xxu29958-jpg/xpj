@@ -175,6 +175,47 @@ class DeviceEnrollmentAttempt(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
+class DesktopActivationAttempt(Base):
+    """Recoverable transaction activating one staged desktop credential.
+
+    Desktop pairing (and, later, desktop ledger-switch prepare) first stages a
+    short-lived ``scope='desktop_pending'`` token. Every ordinary auth surface
+    rejects that scope, so the only way forward is the activate endpoint with
+    the stable attempt proof. This receipt makes the response-loss replay
+    return the same committed activation instead of minting a second
+    credential, and records the lineage from the superseded predecessor token.
+    """
+
+    __tablename__ = "desktop_activation_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True)
+    token_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("auth_tokens.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    previous_token_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("auth_tokens.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=False, index=True)
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ledger_id: Mapped[str] = mapped_column(String(64), ForeignKey("ledgers.ledger_id"), nullable=False, index=True)
+    secret_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
 class SessionRefreshAttempt(Base):
     """Recoverable transaction linking one old app token to its replacement."""
 
