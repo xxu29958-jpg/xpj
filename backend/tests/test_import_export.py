@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
@@ -74,6 +75,39 @@ def test_parse_csv_preview_accepts_foreign_currency_columns() -> None:
     assert row.exchange_rate_date and row.exchange_rate_date.isoformat() == "2026-05-04"
 
 
+@pytest.mark.parametrize(
+    "csv",
+    [
+        "amount_yuan,original_currency_code\n12.34,JPY\n",
+        "amount_cents,original_currency_code\n1234,JPY\n",
+    ],
+)
+def test_parse_csv_preview_rejects_ambiguous_foreign_amount(csv: str) -> None:
+    preview = parse_csv_preview(csv)
+    assert preview.valid_count == 0
+    assert preview.error_count == 1
+    row = preview.rows[0]
+    assert row.amount_cents is None
+    assert row.original_amount_minor is None
+    assert "original_amount_minor" in (row.error or "")
+
+
+def test_parse_csv_preview_binds_blank_currency_to_runtime_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        preview = parse_csv_preview("amount_yuan,merchant\n12.34,Tokyo\n")
+        assert preview.valid_count == 1
+        row = preview.rows[0]
+        assert row.original_currency_code == "JPY"
+        assert row.amount_cents == 1234
+        assert row.original_amount_minor == 1234
+    finally:
+        get_settings.cache_clear()
+
+
 def test_parse_csv_preview_treats_naive_time_as_configured_local_time() -> None:
     csv = "amount_yuan,merchant,expense_time\n1.00,Cafe,2026-05-01 00:30:00\n"
     preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai")
@@ -84,8 +118,9 @@ def test_parse_csv_preview_treats_naive_time_as_configured_local_time() -> None:
 
 def test_parse_csv_preview_derives_fx_date_from_local_spending_day() -> None:
     csv = (
-        "amount_cents,original_currency_code,exchange_rate_to_cny,merchant,expense_time\n"
-        "12345,USD,7.0000,Overseas Cafe,2026-05-04T16:30:00Z\n"
+        "amount_cents,original_currency_code,original_amount_minor,"
+        "exchange_rate_to_cny,merchant,expense_time\n"
+        "12345,USD,12345,7.0000,Overseas Cafe,2026-05-04T16:30:00Z\n"
     )
     preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai")
 
@@ -97,8 +132,9 @@ def test_parse_csv_preview_derives_fx_date_from_local_spending_day() -> None:
 
 def test_parse_csv_preview_expense_time_overrides_legacy_fx_date() -> None:
     csv = (
-        "amount_cents,original_currency_code,exchange_rate_to_cny,exchange_rate_date,merchant,expense_time\n"
-        "12345,USD,7.0000,2026-04-30,Overseas Cafe,2026-04-30T16:30:00Z\n"
+        "amount_cents,original_currency_code,original_amount_minor,"
+        "exchange_rate_to_cny,exchange_rate_date,merchant,expense_time\n"
+        "12345,USD,12345,7.0000,2026-04-30,Overseas Cafe,2026-04-30T16:30:00Z\n"
     )
     preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai")
 

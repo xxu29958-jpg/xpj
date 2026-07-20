@@ -145,13 +145,12 @@ def test_foreign_currency_proposal_pending_rate_is_409(client: TestClient, *, id
     assert proposals == []
 
 
-def test_create_proposal_foreign_amount_idempotent_across_minor_unit_rounding(
+def test_create_proposal_foreign_amount_rejects_surplus_precision_before_idempotency(
     client: TestClient, *, identity
 ) -> None:
-    # §3.6: the create fingerprint hashes the *stored* minor-unit amount, so a
-    # lost-response retry whose serializer emits a finer USD decimal (10.004,
-    # which rounds HALF_UP to the same 1000 minor units as 10.00) still HITs the
-    # same proposal instead of 422 idempotency_key_reused.
+    # Exact money input is a server boundary, not just an Android affordance.
+    # A lost-response retry with surplus USD precision must be rejected before
+    # idempotency lookup instead of rounding into the existing 1000 minor units.
     member_id, member_token = _mint_member_actor()
     debt = _create_member_debt(
         client,
@@ -176,20 +175,20 @@ def test_create_proposal_foreign_amount_idempotent_across_minor_unit_rounding(
     assert first.json()["original_amount_minor"] == 1000  # 10.00 USD → 1000 minor units
     proposal_public_id = first.json()["public_id"]
 
-    # Same key, business-identical amount, finer decimal representation that
-    # rounds to the same stored minor units → canonical HIT, not key_reused.
+    # Same key does not legalize an unrepresentable amount.
     replay = client.post(
         f"/api/debts/{debt['public_id']}/repayment-proposals",
         headers=headers,
         json={**body, "original_amount": "10.004"},
     )
-    assert replay.status_code == 201, replay.json()
-    assert replay.json()["public_id"] == proposal_public_id
+    assert replay.status_code == 422, replay.json()
+    assert replay.json()["error"] == "amount_invalid"
 
     proposals = client.get(
         f"/api/debts/{debt['public_id']}/repayment-proposals", headers=identity.app_headers
     ).json()["items"]
-    assert len(proposals) == 1  # the replay HIT, no second proposal created
+    assert len(proposals) == 1
+    assert proposals[0]["public_id"] == proposal_public_id
 
 
 def test_create_proposal_foreign_paid_at_fingerprint_includes_rate_date(
@@ -227,4 +226,3 @@ def test_create_proposal_foreign_paid_at_fingerprint_includes_rate_date(
     )
     assert replay.status_code == 422
     assert replay.json()["error"] == "idempotency_key_reused"
-
