@@ -287,6 +287,46 @@ def _recover_committed_activation(
     )
 
 
+def _supersede_predecessors(
+    db: Session,
+    *,
+    attempt: DesktopActivationAttempt,
+    staged_token: AuthToken,
+    previous: AuthToken | None,
+    checked_at: datetime,
+) -> None:
+    """Supersede same-slot predecessors with rotation grace + record lineage.
+
+    The explicit header proof plus any live app token occupying the unique
+    partial index slot are revoked with the same rotation grace refresh uses.
+    """
+
+    grace_seconds = max(get_settings().app_token_rotation_grace_seconds, 0)
+    grace_until = checked_at + timedelta(seconds=grace_seconds) if grace_seconds > 0 else None
+    predecessors = db.scalars(
+        select(AuthToken)
+        .where(AuthToken.account_id == attempt.account_id)
+        .where(AuthToken.device_id == attempt.device_id)
+        .where(AuthToken.ledger_id == attempt.ledger_id)
+        .where(AuthToken.scope == "app")
+        .where(AuthToken.revoked_at.is_(None))
+        .where(AuthToken.id != staged_token.id)
+        .with_for_update()
+    ).all()
+    superseded_ids: set[int] = set()
+    for predecessor in predecessors:
+        predecessor.revoked_at = checked_at
+        predecessor.grace_until = grace_until
+        superseded_ids.add(predecessor.id)
+    if previous is not None:
+        if previous.id not in superseded_ids:
+            previous.revoked_at = checked_at
+            previous.grace_until = grace_until
+        attempt.previous_token_id = previous.id
+    elif predecessors:
+        attempt.previous_token_id = predecessors[0].id
+
+
 def _activate_staged_token(
     db: Session,
     *,
@@ -325,33 +365,13 @@ def _activate_staged_token(
         checked_at=checked_at,
     )
 
-    grace_seconds = max(get_settings().app_token_rotation_grace_seconds, 0)
-    grace_until = checked_at + timedelta(seconds=grace_seconds) if grace_seconds > 0 else None
-    # Supersede the previous active credential on this principal slot: the
-    # explicit header proof, plus any live app token occupying the unique
-    # partial index slot. Supersede uses the same rotation grace as refresh.
-    predecessors = db.scalars(
-        select(AuthToken)
-        .where(AuthToken.account_id == attempt.account_id)
-        .where(AuthToken.device_id == attempt.device_id)
-        .where(AuthToken.ledger_id == attempt.ledger_id)
-        .where(AuthToken.scope == "app")
-        .where(AuthToken.revoked_at.is_(None))
-        .where(AuthToken.id != token.id)
-        .with_for_update()
-    ).all()
-    superseded_ids: set[int] = set()
-    for predecessor in predecessors:
-        predecessor.revoked_at = checked_at
-        predecessor.grace_until = grace_until
-        superseded_ids.add(predecessor.id)
-    if previous is not None:
-        if previous.id not in superseded_ids:
-            previous.revoked_at = checked_at
-            previous.grace_until = grace_until
-        attempt.previous_token_id = previous.id
-    elif predecessors:
-        attempt.previous_token_id = predecessors[0].id
+    _supersede_predecessors(
+        db,
+        attempt=attempt,
+        staged_token=token,
+        previous=previous,
+        checked_at=checked_at,
+    )
 
     # Promote the staged credential in place: same value, real session scope.
     expiry = app_token_expiry_window(checked_at)

@@ -164,9 +164,9 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _ADR_0049_EXEMPTED_GRANDFATHER = (
-    121,
     122,
-)  # ADR-0053 web merchant catalog adds one create-row exemption (POST /web/merchants/catalog/create) while hide/delete carry OCC tokens. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop.
+    123,
+)  # Desktop two-phase credential (PR #219): POST /api/auth/desktop/activate adds one session_rotation exemption — it carries attempt-proof replay instead of OCC (ledger row in _mutate_token_ledger.py). The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (121, 122) for the ADR-0053 web merchant catalog create.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``

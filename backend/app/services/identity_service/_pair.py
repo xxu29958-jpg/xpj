@@ -191,6 +191,94 @@ def _session_window(
     return expiry.expires_at, expiry.soft_refresh_after
 
 
+def _create_desktop_pairing_completion(
+    db: Session,
+    *,
+    pairing: PairingCode,
+    proof: EnrollmentProof,
+    account: Account,
+    device: Device,
+    ledger: Ledger,
+    role: str,
+    pairing_attempt_secret: str,
+    issued_at: datetime,
+) -> PairingCompletion:
+    """Two-phase desktop enrollment: stage a pending credential, no live session.
+
+    The activate endpoint is the only way to promote it; the enrollment
+    receipt stays replayable for the whole ceremony, so
+    expires_at/session_expires_at stay open (None).
+    """
+
+    pending_token = stage_desktop_pending_token(
+        db,
+        account_id=account.id,
+        device_id=device.id,
+        ledger_id=ledger.ledger_id,
+        attempt_public_id=proof.public_id,
+        activation_secret=pairing_attempt_secret,
+        issued_at=issued_at,
+    )
+    attempt = record_enrollment_attempt(
+        db,
+        proof=proof,
+        pairing_code_id=pairing.id,
+        account_id=account.id,
+        device_id=device.id,
+        ledger_id=ledger.ledger_id,
+        issued_at=issued_at,
+        session_expires_at=None,
+        session_soft_refresh_after=None,
+    )
+    return PairingCompletion(
+        ledger,
+        account,
+        device,
+        role,
+        attempt,
+        activation_pending=True,
+        activation_expires_at=pending_token.expires_at,
+    )
+
+
+def _issue_pairing_session(
+    db: Session,
+    *,
+    pairing: PairingCode,
+    proof: EnrollmentProof,
+    account: Account,
+    device: Device,
+    ledger: Ledger,
+    role: str,
+    issued_at: datetime,
+) -> PairingCompletion:
+    token_expires_at, soft_refresh_after = _session_window(
+        platform=device.platform,
+        issued_at=issued_at,
+    )
+    _create_auth_token(
+        db,
+        account_id=account.id,
+        device_id=device.id,
+        ledger_id=ledger.ledger_id,
+        scope="app",
+        expires_at=token_expires_at,
+        token_value=proof.session_token,
+    )
+    attempt = record_enrollment_attempt(
+        db,
+        proof=proof,
+        pairing_code_id=pairing.id,
+        account_id=account.id,
+        device_id=device.id,
+        ledger_id=ledger.ledger_id,
+        issued_at=issued_at,
+        session_expires_at=token_expires_at,
+        session_soft_refresh_after=soft_refresh_after,
+    )
+    return PairingCompletion(ledger, account, device, role, attempt)
+
+
 def _create_pairing_completion(
     db: Session,
     *,
@@ -239,64 +327,27 @@ def _create_pairing_completion(
         # forever under the intentional RESTRICT constraint.
         pairing.recovery_device_id = None
     if device.platform == DESKTOP_PLATFORM:
-        # Two-phase desktop enrollment: stage a short-lived pending credential
-        # instead of a live session. The activate endpoint is the only way to
-        # promote it; the enrollment receipt stays replayable for the whole
-        # ceremony, so expires_at/session_expires_at stay open (None).
-        pending_token = stage_desktop_pending_token(
+        return _create_desktop_pairing_completion(
             db,
-            account_id=account.id,
-            device_id=device.id,
-            ledger_id=ledger.ledger_id,
-            attempt_public_id=proof.public_id,
-            activation_secret=pairing_attempt_secret,
-            issued_at=issued_at,
-        )
-        attempt = record_enrollment_attempt(
-            db,
+            pairing=pairing,
             proof=proof,
-            pairing_code_id=pairing.id,
-            account_id=account.id,
-            device_id=device.id,
-            ledger_id=ledger.ledger_id,
+            account=account,
+            device=device,
+            ledger=ledger,
+            role=role,
+            pairing_attempt_secret=pairing_attempt_secret,
             issued_at=issued_at,
-            session_expires_at=None,
-            session_soft_refresh_after=None,
         )
-        return PairingCompletion(
-            ledger,
-            account,
-            device,
-            role,
-            attempt,
-            activation_pending=True,
-            activation_expires_at=pending_token.expires_at,
-        )
-    token_expires_at, soft_refresh_after = _session_window(
-        platform=device.platform,
-        issued_at=issued_at,
-    )
-    _create_auth_token(
+    return _issue_pairing_session(
         db,
-        account_id=account.id,
-        device_id=device.id,
-        ledger_id=ledger.ledger_id,
-        scope="app",
-        expires_at=token_expires_at,
-        token_value=proof.session_token,
-    )
-    attempt = record_enrollment_attempt(
-        db,
+        pairing=pairing,
         proof=proof,
-        pairing_code_id=pairing.id,
-        account_id=account.id,
-        device_id=device.id,
-        ledger_id=ledger.ledger_id,
+        account=account,
+        device=device,
+        ledger=ledger,
+        role=role,
         issued_at=issued_at,
-        session_expires_at=token_expires_at,
-        session_soft_refresh_after=soft_refresh_after,
     )
-    return PairingCompletion(ledger, account, device, role, attempt)
 
 
 def _recover_pairing_completion(
