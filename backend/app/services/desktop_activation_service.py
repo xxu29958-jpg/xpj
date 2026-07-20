@@ -35,6 +35,7 @@ from app.services.session_lifecycle_service import (
     app_token_expiry_window,
     app_token_soft_refresh_after,
     derive_desktop_activation_token,
+    family_of_token,
     hash_desktop_activation_attempt_secret,
     hash_secret,
     issue_auth_token,
@@ -211,11 +212,11 @@ def _load_live_previous_token(
 ) -> AuthToken | None:
     """Validate the optional predecessor possession proof.
 
-    A stale, revoked, or expired predecessor is a no-op, never a blocker.
-    A live predecessor must be an ``app`` token on a desktop device bound to
-    the SAME account and ledger as the staged credential — a foreign token
-    is refused (401) and never revoked, so it can never be mis-registered
-    into this activation's lineage.
+    A long-dead (revoked past grace) or expired predecessor is a no-op, never
+    a blocker. A live or grace-window predecessor must be an ``app`` token on
+    a desktop device bound to the SAME account and ledger as the staged
+    credential — a foreign token is refused (401) and never revoked, so it
+    can never be mis-registered into this activation's lineage.
     """
 
     if not previous_token_value:
@@ -228,8 +229,15 @@ def _load_live_previous_token(
     if previous.id == staged_token.id:
         raise AppError("desktop_identity_rotation_required", status_code=409)
     previous_expires_at = ensure_utc(previous.expires_at) if previous.expires_at else None
-    if previous.revoked_at is not None or (previous_expires_at is not None and previous_expires_at <= checked_at):
+    if previous_expires_at is not None and previous_expires_at <= checked_at:
         return None
+    if previous.revoked_at is not None:
+        # Revocation inside the rotation grace window is still an in-flight
+        # predecessor (its refresh lineage must be closed); past grace it is
+        # just history and a no-op.
+        grace_until = ensure_utc(previous.grace_until) if previous.grace_until else None
+        if grace_until is None or grace_until <= checked_at:
+            return None
     if previous.scope != "app":
         return None
     # Identity binding: the predecessor must share the staged credential's
@@ -319,10 +327,19 @@ def _supersede_predecessors(
         predecessor.grace_until = grace_until
         superseded_ids.add(predecessor.id)
     if previous is not None:
-        if previous.id not in superseded_ids:
-            previous.revoked_at = checked_at
-            previous.grace_until = grace_until
-        attempt.previous_token_id = previous.id
+        # Close the whole predecessor lineage: if the presented credential was
+        # already refreshed, its family head (the live replacement) must not
+        # survive the activation as a second authorized family.
+        family_head: AuthToken | None = None
+        for member in family_of_token(db, token=previous):
+            if member.id == staged_token.id:
+                continue
+            if member.revoked_at is None:
+                member.revoked_at = checked_at
+                member.grace_until = grace_until
+                superseded_ids.add(member.id)
+                family_head = member
+        attempt.previous_token_id = (family_head or previous).id
     elif predecessors:
         attempt.previous_token_id = predecessors[0].id
 

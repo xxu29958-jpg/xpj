@@ -3,7 +3,8 @@
 Pins the entry-level contract: ``desktop_pending`` credentials are rejected by
 every ordinary auth surface (business routes, /api/auth/check, refresh, admin),
 and the activate endpoint is the only way forward — once, or as the canonical
-replay of the committed result after a response loss.
+replay of the committed result after a response loss. Lineage/predecessor
+convergence lives in ``test_desktop_activation_lineage.py``.
 """
 
 from __future__ import annotations
@@ -31,56 +32,26 @@ from app.services.session_lifecycle_service import (
     hash_secret,
 )
 from app.services.time_service import ensure_utc, now_utc
+from tests.desktop_activation_support import (
+    activate as _activate,
+)
+from tests.desktop_activation_support import (
+    attempt_row as _attempt_row,
+)
+from tests.desktop_activation_support import (
+    live_tokens as _live_tokens,
+)
+from tests.desktop_activation_support import (
+    pair_desktop as _pair_desktop,
+)
+from tests.desktop_activation_support import (
+    token_row as _token_row,
+)
 from tests.pairing_test_support import (
     invitation_accept_payload,
     pairing_payload,
     session_refresh_payload,
 )
-
-
-def _pair_desktop(client: TestClient, pairing_code: str, **overrides) -> tuple[dict, dict]:
-    payload = pairing_payload(pairing_code, device_name="pytest-desktop", platform="desktop", **overrides)
-    response = client.post("/api/auth/pair", json=payload)
-    assert response.status_code == 200, response.text
-    return payload, response.json()
-
-
-def _activate(client: TestClient, payload: dict, *, previous: str | None = None):
-    body = {
-        "activation_attempt_id": payload["pairing_attempt_id"],
-        "activation_attempt_secret": payload["pairing_attempt_secret"],
-    }
-    headers = {"X-Ticketbox-Previous-Session": previous} if previous else None
-    return client.post("/api/auth/desktop/activate", json=body, headers=headers)
-
-
-def _token_row(token_value: str) -> AuthToken:
-    with SessionLocal() as db:
-        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token_value)))
-        assert row is not None
-        db.expunge(row)
-        return row
-
-
-def _attempt_row(public_id: str) -> DesktopActivationAttempt:
-    with SessionLocal() as db:
-        row = db.scalar(select(DesktopActivationAttempt).where(DesktopActivationAttempt.public_id == public_id))
-        assert row is not None
-        db.expunge(row)
-        return row
-
-
-def _live_tokens(device_id: int, scope: str) -> list[AuthToken]:
-    with SessionLocal() as db:
-        rows = db.scalars(
-            select(AuthToken)
-            .where(AuthToken.device_id == device_id)
-            .where(AuthToken.scope == scope)
-            .where(AuthToken.revoked_at.is_(None))
-        ).all()
-        for row in rows:
-            db.expunge(row)
-        return list(rows)
 
 
 def test_desktop_pair_stages_pending_credential(identity, client: TestClient) -> None:
@@ -225,65 +196,7 @@ def test_previous_header_equal_to_pending_is_409(identity, client: TestClient) -
     assert _activate(client, payload).status_code == 200
 
 
-def test_activate_supersedes_previous_desktop_token_with_grace(identity, client: TestClient) -> None:
-    first_payload, _ = _pair_desktop(client, identity.pairing_code)
-    first = _activate(client, first_payload)
-    assert first.status_code == 200, first.text
-    previous_token = first.json()["session_token"]
-
-    recovery = client.post(
-        "/api/ledgers/owner/devices/pairing-codes",
-        headers=identity.app_headers,
-        json={},
-    )
-    assert recovery.status_code == 201, recovery.text
-    second_payload, _ = _pair_desktop(client, recovery.json()["pairing_code"])
-
-    response = _activate(client, second_payload, previous=previous_token)
-    assert response.status_code == 200, response.text
-
-    previous_row = _token_row(previous_token)
-    assert previous_row.revoked_at is not None
-    assert previous_row.grace_until is not None
-    assert ensure_utc(previous_row.grace_until) > now_utc()
-
-    attempt = _attempt_row(second_payload["pairing_attempt_id"])
-    assert attempt.previous_token_id == previous_row.id
-
-    # #213 rotation grace: the superseded predecessor finishes in-flight work.
-    check = client.get("/api/auth/check", headers={"Authorization": f"Bearer {previous_token}"})
-    assert check.status_code == 200, check.text
-
-
-def test_cross_ledger_previous_is_refused_and_untouched(identity, client: TestClient) -> None:
-    first_payload, _ = _pair_desktop(client, identity.pairing_code)
-    first = _activate(client, first_payload)
-    assert first.status_code == 200, first.text
-    foreign_token = first.json()["session_token"]
-
-    # Stage a new desktop pending on the other ledger (same account).
-    code = client.post(
-        "/api/ledgers/tester_1/devices/pairing-codes",
-        headers=identity.gray_app_headers,
-        json={},
-    )
-    assert code.status_code == 201, code.text
-    second_payload, _ = _pair_desktop(client, code.json()["pairing_code"])
-
-    # A live desktop token from another ledger is a foreign credential, not
-    # a predecessor: refused, never revoked, never recorded as lineage.
-    response = _activate(client, second_payload, previous=foreign_token)
-    assert response.status_code == 401
-    assert _token_row(foreign_token).revoked_at is None
-    assert _attempt_row(second_payload["pairing_attempt_id"]).previous_token_id is None
-
-    # A wrong previous does not poison the staged credential.
-    assert _activate(client, second_payload).status_code == 200
-
-
-def test_cross_account_previous_is_refused_and_untouched(identity, client: TestClient) -> None:
-    # A second account joins the "owner" ledger via invitation (single-phase
-    # non-Manager flow) and holds its own active desktop token.
+def test_desktop_invitation_is_refused(identity, client: TestClient) -> None:
     invitation = client.post(
         "/api/ledgers/owner/invitations",
         headers=identity.app_headers,
@@ -299,63 +212,21 @@ def test_cross_account_previous_is_refused_and_untouched(identity, client: TestC
             platform="desktop",
         ),
     )
-    assert accept.status_code < 300, accept.text
-    foreign_token = accept.json()["session_token"]
+    # A new desktop session via invitation would bypass the WinCred staging
+    # ceremony; it is refused without consuming the invitation.
+    assert accept.status_code == 422
+    assert accept.json()["error"] == "desktop_invitation_not_supported"
 
-    code = client.post(
-        "/api/ledgers/owner/devices/pairing-codes",
-        headers=identity.app_headers,
-        json={},
+    accept_android = client.post(
+        "/api/invitations/accept",
+        json=invitation_accept_payload(
+            invitation.json()["invite_token"],
+            account_name="pytest-second",
+            device_name="pytest-second-android",
+            platform="android",
+        ),
     )
-    assert code.status_code == 201, code.text
-    second_payload, _ = _pair_desktop(client, code.json()["pairing_code"])
-
-    # A live desktop token from another account is refused, never revoked,
-    # never recorded — and the staged credential still activates afterwards.
-    response = _activate(client, second_payload, previous=foreign_token)
-    assert response.status_code == 401
-    assert _token_row(foreign_token).revoked_at is None
-    assert _attempt_row(second_payload["pairing_attempt_id"]).previous_token_id is None
-    assert _activate(client, second_payload).status_code == 200
-
-
-def test_activate_supersedes_same_slot_active_token(identity, client: TestClient) -> None:
-    first_payload, _ = _pair_desktop(client, identity.pairing_code)
-    first = _activate(client, first_payload)
-    assert first.status_code == 200, first.text
-    previous_token = first.json()["session_token"]
-
-    attempt_id = str(uuid4())
-    secret = secrets_module.token_urlsafe(32)
-    with SessionLocal() as db:
-        previous_row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(previous_token)))
-        assert previous_row is not None
-        stage_desktop_pending_token(
-            db,
-            account_id=previous_row.account_id,
-            device_id=previous_row.device_id,
-            ledger_id=previous_row.ledger_id,
-            attempt_public_id=attempt_id,
-            activation_secret=secret,
-        )
-        db.commit()
-
-    response = client.post(
-        "/api/auth/desktop/activate",
-        json={"activation_attempt_id": attempt_id, "activation_attempt_secret": secret},
-    )
-    assert response.status_code == 200, response.text
-
-    previous_row = _token_row(previous_token)
-    assert previous_row.revoked_at is not None
-    assert previous_row.grace_until is not None
-
-    new_row = _token_row(response.json()["session_token"])
-    assert new_row.scope == "app"
-    assert new_row.device_id == previous_row.device_id
-
-    attempt = _attempt_row(attempt_id)
-    assert attempt.previous_token_id == previous_row.id
+    assert accept_android.status_code < 300, accept_android.text
 
 
 def test_pair_replay_before_activation_returns_same_pending(identity, client: TestClient) -> None:

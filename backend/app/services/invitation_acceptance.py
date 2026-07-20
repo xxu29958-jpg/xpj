@@ -411,6 +411,12 @@ def accept_invitation(
 ) -> AcceptInvitationResult:
     """Join a ledger without changing an already authenticated identity."""
 
+    if principal is None and (platform or "").strip().lower() == "desktop":
+        # Desktop credentials must go through the two-phase staging ceremony
+        # (WinCred first, then activate). Until the invitation flow grows the
+        # same pending model, a new desktop session via invitation is refused
+        # instead of minting an active token that bypasses staging.
+        raise AppError("desktop_invitation_not_supported", status_code=422)
     if principal is None:
         if session_token is not None:
             raise AppError("invalid_token", status_code=401)

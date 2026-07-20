@@ -20,7 +20,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AuthToken, Device, PairingCode, UploadLink
+from app.models import AuthToken, Device, PairingCode, SessionRefreshAttempt, UploadLink
 from app.services.session_credential_lock import (
     lock_and_revalidate_credential_mint_context,
     lock_bootstrap_owner_transaction,
@@ -125,6 +125,52 @@ def derive_session_refresh_token(secret: str, attempt_id: str) -> str:
 
 def hash_desktop_activation_attempt_secret(secret: str) -> str:
     return _hash_attempt_secret(secret, context=DESKTOP_ACTIVATION_SECRET_CONTEXT)
+
+
+def family_of_token(db: Session, *, token: AuthToken) -> list[AuthToken]:
+    """Compute the credential-family closure of one token via refresh edges.
+
+    Mirrors the walk in ``set_session_family_ledger_default``: edges are
+    scoped to the token's (account, device, scope='app'); a graced
+    predecessor is part of the family, so lifecycle transactions can close
+    the whole lineage, not just the presented credential.
+    """
+
+    from sqlalchemy.orm import aliased
+
+    source_token = aliased(AuthToken)
+    edges = db.execute(
+        select(
+            SessionRefreshAttempt.source_token_id,
+            SessionRefreshAttempt.replacement_token_id,
+        )
+        .join(
+            source_token,
+            source_token.id == SessionRefreshAttempt.source_token_id,
+        )
+        .where(source_token.account_id == token.account_id)
+        .where(source_token.device_id == token.device_id)
+        .where(source_token.scope == "app")
+    ).all()
+    family_ids = {token.id}
+    while True:
+        expanded = family_ids | {
+            token_id
+            for source_token_id, replacement_token_id in edges
+            if source_token_id in family_ids or replacement_token_id in family_ids
+            for token_id in (source_token_id, replacement_token_id)
+        }
+        if expanded == family_ids:
+            break
+        family_ids = expanded
+    return list(
+        db.scalars(
+            select(AuthToken)
+            .where(AuthToken.id.in_(family_ids))
+            .order_by(AuthToken.id.asc())
+            .with_for_update()
+        )
+    )
 
 
 def derive_desktop_activation_token(secret: str, attempt_id: str) -> str:
