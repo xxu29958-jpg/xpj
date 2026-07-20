@@ -18,10 +18,8 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         val container = (application as? TicketboxApplication)?.container ?: return
         val preferences = container.settingsStore.notificationPreferences()
         if (!preferences.autoCaptureEnabled) return
-        if (!container.settingsStore.isBound()) return
         if (!container.expenseRepository.canModifyLedger()) return
-        val ledgerIdAtPost = container.expenseRepository.currentActiveLedgerId()
-            ?.takeIf { it.isNotBlank() }
+        val bindingAtPost = container.expenseRepository.captureDeferredLedgerBinding()
             ?: return
 
         // 隐私边界（codex P2）：非白名单包**在读正文前**就退出——`toSnapshot()` 会读 EXTRA_TITLE/TEXT/
@@ -38,7 +36,7 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         if (!draftDeduper.tryReserve(result, notificationKey)) return
 
         serviceScope.launch {
-            dispatch(container, result, ledgerIdAtPost, notificationKey)
+            dispatch(container, result, bindingAtPost, notificationKey)
         }
     }
 
@@ -54,19 +52,19 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
     private suspend fun dispatch(
         container: com.ticketbox.AppContainer,
         result: PaymentNotificationResult,
-        ledgerIdAtPost: String,
+        bindingAtPost: com.ticketbox.data.repository.LogicalSessionBinding,
         notificationKey: String,
     ) {
         val outcome = when (result) {
             is PaymentNotificationResult.Expense -> container.expenseRepository.createNotificationDraft(
                 result.draft,
-                expectedLedgerId = ledgerIdAtPost,
+                expectedBinding = bindingAtPost,
                 notificationKey = notificationKey,
             ).onSuccess { created -> container.notifier.onDraftCreated(created) }
 
             is PaymentNotificationResult.Repayment -> container.repaymentDraftRepository.createDraft(
                 result.draft,
-                expectedLedgerId = ledgerIdAtPost,
+                expectedBinding = bindingAtPost,
                 notificationKey = notificationKey,
             )
         }

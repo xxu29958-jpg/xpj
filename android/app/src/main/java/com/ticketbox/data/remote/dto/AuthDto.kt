@@ -4,6 +4,14 @@ import com.squareup.moshi.Json
 
 data class AuthCheckDto(
     val status: String,
+    @param:Json(name = "server_id")
+    val serverId: String? = null,
+    @param:Json(name = "data_generation")
+    val dataGeneration: String? = null,
+    @param:Json(name = "account_public_id")
+    val accountPublicId: String? = null,
+    @param:Json(name = "device_public_id")
+    val devicePublicId: String? = null,
     @param:Json(name = "account_name")
     val accountName: String,
     @param:Json(name = "ledger_id")
@@ -19,6 +27,10 @@ data class AuthCheckDto(
 data class PairRequestDto(
     @param:Json(name = "pairing_code")
     val pairingCode: String,
+    @param:Json(name = "pairing_attempt_id")
+    val pairingAttemptId: String,
+    @param:Json(name = "pairing_attempt_secret")
+    val pairingAttemptSecret: String,
     @param:Json(name = "device_name")
     val deviceName: String,
     val platform: String,
@@ -27,6 +39,16 @@ data class PairRequestDto(
 data class PairResponseDto(
     @param:Json(name = "session_token")
     val sessionToken: String,
+    @param:Json(name = "pairing_attempt_id")
+    val pairingAttemptId: String,
+    @param:Json(name = "server_id")
+    val serverId: String? = null,
+    @param:Json(name = "data_generation")
+    val dataGeneration: String? = null,
+    @param:Json(name = "account_public_id")
+    val accountPublicId: String? = null,
+    @param:Json(name = "device_public_id")
+    val devicePublicId: String? = null,
     @param:Json(name = "account_name")
     val accountName: String,
     @param:Json(name = "ledger_id")
@@ -45,11 +67,20 @@ data class PairResponseDto(
 data class RefreshSessionResponseDto(
     @param:Json(name = "session_token")
     val sessionToken: String,
+    @param:Json(name = "refresh_attempt_id")
+    val refreshAttemptId: String? = null,
     @param:Json(name = "expires_at")
     val expiresAt: String?,
     @param:Json(name = "soft_refresh_after")
     val softRefreshAfter: String?,
     val rotated: Boolean,
+)
+
+data class RefreshSessionRequestDto(
+    @param:Json(name = "refresh_attempt_id")
+    val refreshAttemptId: String,
+    @param:Json(name = "refresh_attempt_secret")
+    val refreshAttemptSecret: String,
 )
 
 data class StatusDto(

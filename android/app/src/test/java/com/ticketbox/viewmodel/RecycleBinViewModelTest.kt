@@ -5,8 +5,8 @@ import com.ticketbox.data.remote.dto.RecycleBinListResponseDto
 import com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto
 import com.ticketbox.data.repository.LedgerFakeDao
 import com.ticketbox.data.repository.LedgerFakeSettingsStore
-import com.ticketbox.data.repository.LedgerFakeTokenStore
-import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.ledgerSessionFixture
+import com.ticketbox.data.repository.testLedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiFactory
 import com.ticketbox.data.repository.StubApi
 import com.ticketbox.domain.model.MessageTone
@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -34,10 +35,10 @@ class RecycleBinViewModelTest {
             saveActiveLedger(ledger, "家庭账本")
             capturedRole = role
         }
-        val repository = LedgerRepository(
+        val repository = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = ledgerSessionFixture(ledger, "家庭账本", role = role, token = "t"),
             expenseDao = LedgerFakeDao(),
         )
         return RecycleBinViewModel(repository)
@@ -80,6 +81,7 @@ class RecycleBinViewModelTest {
             assertNull(state.message)
             assertEquals(MessageTone.Neutral, state.messageTone)
         } finally {
+            advanceUntilIdle()
             Dispatchers.resetMain()
         }
     }
@@ -107,6 +109,7 @@ class RecycleBinViewModelTest {
             assertEquals(MessageTone.Success, state.messageTone)
             assertNull(state.busyItemKey)
         } finally {
+            advanceUntilIdle()
             Dispatchers.resetMain()
         }
     }
@@ -138,6 +141,7 @@ class RecycleBinViewModelTest {
             assertTrue(state.loadFailed)
             assertEquals(MessageTone.Danger, state.messageTone)
         } finally {
+            advanceUntilIdle()
             Dispatchers.resetMain()
         }
     }
@@ -153,6 +157,7 @@ class RecycleBinViewModelTest {
 
             assertTrue(api.recycleBinRestoreRequests.isEmpty())
         } finally {
+            advanceUntilIdle()
             Dispatchers.resetMain()
         }
     }
@@ -171,6 +176,7 @@ class RecycleBinViewModelTest {
             assertEquals(emptyList(), state.items)
             assertEquals(MessageTone.Danger, state.messageTone)
         } finally {
+            advanceUntilIdle()
             Dispatchers.resetMain()
         }
     }
@@ -189,6 +195,7 @@ class RecycleBinViewModelTest {
             assertNull(state.busyItemKey)
             assertEquals(MessageTone.Danger, state.messageTone)
         } finally {
+            advanceUntilIdle()
             Dispatchers.resetMain()
         }
     }

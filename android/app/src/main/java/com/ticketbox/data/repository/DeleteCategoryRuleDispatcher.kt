@@ -25,7 +25,7 @@ import retrofit2.HttpException
  * single source of truth — round-8 P3#5).
  */
 class DeleteCategoryRuleDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<CategoryRuleDeleteRequest>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.DeleteCategoryRule
@@ -59,7 +59,7 @@ class DeleteCategoryRuleDispatcher(
             // ADR-0042: replay carries the row's original intent-time key so a
             // committed-but-unseen first attempt is deduped server-side (HIT)
             // instead of false-409ing on the stale row_version.
-            apiProvider().deleteCategoryRule(ruleId, request, idempotencyKey)
+            apiProvider(row).deleteCategoryRule(ruleId, request, idempotencyKey)
             // DELETE response carries no body; Success.newRowVersion
             // is null because there's no post-mutation token to
             // cascade (the row is gone).

@@ -1,22 +1,19 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.RepaymentDraftDismissRequestDto
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.RepaymentDraftStatuses
 import com.ticketbox.domain.model.RepaymentNotificationDraft
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
 import java.util.UUID
 
 /**
  * ADR-0049 §杠杆③ (slice 3a) repayment-capture inbox repository.
  *
  * - [createDraft] is the NLS path: it posts a PENDING capture (never auto-records, §8) and is bound to
- *   the ledger active at notification-post time (`expectedLedgerId`), so a ledger switch between the
- *   notification and the IO is rejected — mirroring `ExpenseRepository.createNotificationDraft`. The
- *   capture is content+identity deduped server-side, so it carries no idempotency key.
+ *   the complete session authority captured at notification-post time, so a server, principal, device,
+ *   ledger, or session transition before IO is rejected. The capture is content+identity deduped
+ *   server-side, so it carries no idempotency key.
  * - [listPendingDrafts] / [confirmDraft] / [dismissDraft] drive the in-app review inbox.
  *
  * Direct-only online (no offline outbox). Writes short-circuit on the viewer role before the network
@@ -25,11 +22,6 @@ import java.util.UUID
  */
 interface RepaymentDraftActions {
     fun canModifyLedger(): Boolean
-    suspend fun createDraft(
-        draft: RepaymentNotificationDraft,
-        expectedLedgerId: String?,
-        notificationKey: String?,
-    ): Result<RepaymentDraft>
     suspend fun listPendingDrafts(): Result<List<RepaymentDraft>>
     suspend fun confirmDraft(
         draftPublicId: String,
@@ -40,16 +32,11 @@ interface RepaymentDraftActions {
 }
 
 class RepaymentDraftRepository(
-    apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    tokenStore: SessionTokenStore,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(
-        apiClient, settingsStore, tokenStore,
-    ),
+    private val apiProvider: ApiServiceProvider,
 ) : RepaymentDraftActions {
-    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "RepaymentDraft",
         statusMessages = mapOf(
             403 to "当前账号无法处理还款草稿。",
@@ -59,16 +46,18 @@ class RepaymentDraftRepository(
         ),
     )
 
-    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun createDraft(
+    internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
+        ledgerRequestGuard.captureLogicalBinding()
+
+    internal suspend fun createDraft(
         draft: RepaymentNotificationDraft,
-        expectedLedgerId: String?,
+        expectedBinding: LogicalSessionBinding,
         notificationKey: String?,
     ): Result<RepaymentDraft> = errorHandler.safeCall {
-        // Bound to the ledger active at notification-post time (mirrors createNotificationDraft) — a
-        // ledger switch before the IO completes is rejected rather than capturing into the wrong book.
-        ledgerRequestGuard.guardedCall(expectedLedgerId = expectedLedgerId) { api ->
+        val bound = ledgerRequestGuard.bindExact(expectedBinding)
+        bound.call { api ->
             // No idempotency key: the route is content+identity deduped server-side (notificationKey is
             // the primary axis), and the capture is not part of the offline outbox.
             api.createRepaymentDraft(draft.toCreateRequest(notificationKey)).toDomain()

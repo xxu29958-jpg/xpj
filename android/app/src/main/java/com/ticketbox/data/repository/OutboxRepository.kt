@@ -21,6 +21,14 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
+internal data class PendingMutationIntent(
+    val type: PendingMutationType,
+    val targetId: String,
+    val payloadJson: String,
+    val expectedRowVersion: Long,
+    val idempotencyKey: String? = null,
+)
+
 /**
  * ADR-0038 PR-2g: offline outbox queue.
  *
@@ -49,10 +57,23 @@ import java.util.concurrent.atomic.AtomicLong
  * already-serialised JSON strings, so a future mutation type can
  * be added without touching this layer.
  */
-class OutboxRepository(
+private data class OutboxBindingSource(
+    val current: () -> OutboxBinding,
+    val changes: Flow<OutboxBinding>?,
+)
+
+private data class OutboxLifecycleHooks(
+    val onEnqueued: () -> Unit,
+    val onClearAll: () -> Unit,
+)
+
+class OutboxRepository private constructor(
     private val dao: PendingMutationDao,
-    private val clock: Clock = Clock.systemUTC(),
-    private val bindingProvider: () -> OutboxBinding = { OutboxBinding.DEFAULT },
+    private val clock: Clock,
+    bindingSource: OutboxBindingSource,
+    lifecycleHooks: OutboxLifecycleHooks,
+) {
+    private val bindingProvider = bindingSource.current
     /**
      * Reactive binding source for the live UI streams ([observeStatus] and
      * friends). When supplied (AppContainer wires it from the active-ledger
@@ -62,7 +83,7 @@ class OutboxRepository(
      * the previous origin. Null keeps the same revision-driven behaviour for
      * tests and non-Android callers.
      */
-    private val bindingChanges: Flow<OutboxBinding>? = null,
+    private val bindingChanges = bindingSource.changes
     /**
      * Fired immediately after a row is persisted by [enqueue]. Used
      * by AppContainer to schedule a one-time [OutboxDrainWorker]
@@ -75,7 +96,7 @@ class OutboxRepository(
      * caller can construct ``OutboxRepository`` without wiring the
      * scheduler.
      */
-    private val onEnqueued: () -> Unit = {},
+    private val onEnqueued = lifecycleHooks.onEnqueued
     /**
      * Fired immediately after [clearAll] drains the DAO. AppContainer
      * wires this to [OutboxScheduler.cancel] FOLLOWED by
@@ -89,8 +110,21 @@ class OutboxRepository(
      * Same best-effort semantics as [onEnqueued] (we catch
      * [Exception] internally; JVM-level Errors propagate).
      */
-    private val onClearAll: () -> Unit = {},
-) {
+    private val onClearAll = lifecycleHooks.onClearAll
+
+    constructor(
+        dao: PendingMutationDao,
+        clock: Clock = Clock.systemUTC(),
+        bindingProvider: () -> OutboxBinding,
+        bindingChanges: Flow<OutboxBinding>? = null,
+        onEnqueued: () -> Unit = {},
+        onClearAll: () -> Unit = {},
+    ) : this(
+        dao = dao,
+        clock = clock,
+        bindingSource = OutboxBindingSource(bindingProvider, bindingChanges),
+        lifecycleHooks = OutboxLifecycleHooks(onEnqueued, onClearAll),
+    )
 
     /**
      * ADR-0038 PR-2g.3 round-9 P1: session-boundary epoch.
@@ -138,8 +172,8 @@ class OutboxRepository(
      *   4. a binding transition starts (epoch bumps to N+1)
      *   5. session coordinator writes new serverUrl + sessionToken
      *   6. drain resumes, calls dispatcher.dispatch(row)
-     *   7. dispatch resolves apiProvider() lazily; OkHttp
-     *      interceptor lazily reads the (NEW) sessionToken
+     *   7. dispatch could otherwise acquire a bound service for the
+     *      NEW session after the row was selected
      *   8. request goes out under NEW session for OLD row →
      *      wrong-session replay
      *
@@ -170,8 +204,10 @@ class OutboxRepository(
 
     private suspend fun currentBinding(): OutboxBinding =
         bindingTransitionLease.withLock {
-            canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            canonicalBindingWithAliasesMigratedLocked(rawBinding())
         }
+
+    private fun rawBinding(): OutboxBinding = bindingProvider()
 
     private suspend fun canonicalBindingWithAliasesMigratedLocked(
         binding: OutboxBinding,
@@ -181,9 +217,11 @@ class OutboxRepository(
         if (
             raw.serverUrl != canonical.serverUrl &&
             raw.ledgerId.isNotEmpty() &&
+            raw.owner != null &&
             canonical.serverUrl.isNotEmpty()
         ) {
             dao.migrateServerUrlAlias(
+                ownerKey = requireNotNull(raw.owner).storageKey,
                 oldServerUrl = raw.serverUrl,
                 newServerUrl = canonical.serverUrl,
                 ledgerId = raw.ledgerId,
@@ -199,6 +237,21 @@ class OutboxRepository(
      */
     suspend fun <T> withDispatchLease(block: suspend () -> T): T =
         dispatchLease.withLock { block() }
+
+    /**
+     * Commit binding-scoped local state at the same linearization boundary as
+     * session transitions. The complete origin/ledger/token snapshot is checked
+     * only after the lease is held, so an old response cannot repopulate Room
+     * after a same-ledger rebind cleared it.
+     */
+    internal suspend fun <T> withActiveBinding(
+        boundRequest: BoundLedgerRequest,
+        block: suspend () -> T,
+    ): T = bindingTransitionLease.withLock {
+        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+        boundRequest.requireStillActiveFor(binding)
+        block()
+    }
 
     /**
      * Hold the complete credential/binding mutation boundary.
@@ -228,11 +281,14 @@ class OutboxRepository(
                             dao.clearAll()
                         }
                         serverAliasMigration?.let { migration ->
-                            dao.migrateServerUrlAlias(
-                                oldServerUrl = migration.oldServerUrl,
-                                newServerUrl = migration.newServerUrl,
-                                ledgerId = migration.ledgerId,
-                            )
+                            rawBinding().owner?.storageKey?.let { ownerKey ->
+                                dao.migrateServerUrlAlias(
+                                    ownerKey = ownerKey,
+                                    oldServerUrl = migration.oldServerUrl,
+                                    newServerUrl = migration.newServerUrl,
+                                    ledgerId = migration.ledgerId,
+                                )
+                            }
                         }
                         block()
                     } finally {
@@ -284,21 +340,55 @@ class OutboxRepository(
         // plumbing) lands without touching call sites; Slice B+ passes the
         // intent-time UUID so committed-but-unseen replays dedupe server-side.
         idempotencyKey: String? = null,
+    ): Long = enqueueInternal(
+        boundRequest = null,
+        intent = PendingMutationIntent(
+            type = type,
+            targetId = targetId,
+            payloadJson = payloadJson,
+            expectedRowVersion = expectedRowVersion,
+            idempotencyKey = idempotencyKey,
+        ),
+    )
+
+    /**
+     * Persist a fallback intent only if the request's complete origin/ledger/
+     * credential snapshot is still current at the outbox linearization point.
+     */
+    internal suspend fun enqueue(
+        boundRequest: BoundLedgerRequest,
+        intent: PendingMutationIntent,
+        afterPersisted: suspend () -> Unit = {},
+    ): Long = enqueueInternal(
+        boundRequest = boundRequest,
+        intent = intent,
+        afterPersisted = afterPersisted,
+    )
+
+    private suspend fun enqueueInternal(
+        boundRequest: BoundLedgerRequest?,
+        intent: PendingMutationIntent,
+        afterPersisted: suspend () -> Unit = {},
     ): Long {
         val id = bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            boundRequest?.requireStillActiveFor(binding)
+            binding.requireReadyForEnqueue()
             val row = PendingMutationEntity(
                 serverUrl = binding.serverUrl,
                 ledgerId = binding.ledgerId,
-                type = type.wireValue,
-                targetId = targetId,
-                payload = payloadJson,
-                expectedRowVersion = expectedRowVersion,
-                idempotencyKey = idempotencyKey,
+                ownerKey = requireNotNull(binding.owner).storageKey,
+                type = intent.type.wireValue,
+                targetId = intent.targetId,
+                payload = intent.payloadJson,
+                expectedRowVersion = intent.expectedRowVersion,
+                idempotencyKey = intent.idempotencyKey,
                 status = PendingMutationStatus.Pending.wireValue,
                 createdAt = nowIso(),
             )
-            dao.insert(row)
+            val insertedId = dao.insert(row)
+            afterPersisted()
+            insertedId
         }
         try {
             onEnqueued()
@@ -330,6 +420,19 @@ class OutboxRepository(
         withBindingTransition(clearExistingRows = false) {
             removed = dao.clearAll()
         }
+        return removed
+    }
+
+    /** Remove only legacy or foreign-owner rows after explicit user confirmation. */
+    suspend fun clearQuarantined(): Int {
+        val removed = dispatchLease.withLock {
+            bindingTransitionLease.withLock {
+                val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+                binding.requireReadyForEnqueue()
+                dao.deleteQuarantined(binding.ownerStorageKey)
+            }
+        }
+        if (removed > 0) notifyClearBoundary()
         return removed
     }
 
@@ -371,7 +474,7 @@ class OutboxRepository(
         // Round-3 introduced ``nextRunnableBatch`` but a rebase wiped
         // out the production caller; round-4 wires it back.
         val candidates = dao.nextRunnableBatch(
-            serverUrl = binding.serverUrl,
+            ownerKey = binding.ownerStorageKey,
             ledgerId = binding.ledgerId,
             pendingStatus = PendingMutationStatus.Pending.wireValue,
             unresolvedStatuses = UNRESOLVED_STATUS_VALUES,
@@ -393,30 +496,6 @@ class OutboxRepository(
     }
 
     /**
-     * One-time v9 → v10 adoption. The 9 → 10 migration added the
-     * ``serverUrl`` / ``ledgerId`` columns with an empty-string default but
-     * couldn't know the active binding (it lives in settings, not the DB), so
-     * pre-upgrade rows carry ``('', '')`` and match no binding-scoped query.
-     * v9 tracked no binding but had a single active one, so those stranded
-     * rows belong to whatever the app is bound to now. The drain engine calls
-     * this at the start of every pass; it's a no-op once adopted (or while
-     * unbound), so no extra startup wiring is needed.
-     *
-     * URL aliases are migrated in the same lease first. This makes the
-     * operation an idempotent process-death repair when Room committed an
-     * alias rewrite before the settings projection reached disk.
-     *
-     * @return the number of empty-binding legacy rows adopted.
-     */
-    suspend fun adoptLegacyRowsForCurrentBinding(): Int {
-        return bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
-            if (binding.serverUrl.isEmpty() || binding.ledgerId.isEmpty()) return@withLock 0
-            dao.adoptLegacyBinding(serverUrl = binding.serverUrl, ledgerId = binding.ledgerId)
-        }
-    }
-
-    /**
      * Recovery: push rows stuck in IN_FLIGHT past [staleAfterMillis]
      * back to PENDING so the next drain can re-claim them. Called
      * by the engine at the start of each drain.
@@ -430,7 +509,7 @@ class OutboxRepository(
         val cutoff = Instant.now(clock).minusMillis(staleAfterMillis)
         return currentBinding().let { binding ->
             dao.recoverStaleInFlight(
-                serverUrl = binding.serverUrl,
+                ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 staleCutoffIso = ISO.format(cutoff),
                 recoveryMessage = "recovered_from_stuck_in_flight",
@@ -472,7 +551,7 @@ class OutboxRepository(
     suspend fun cascadeFreshToken(targetId: String, newToken: Long): Int =
         currentBinding().let { binding ->
             dao.cascadeFreshTokenForTarget(
-                serverUrl = binding.serverUrl,
+                ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 targetId = targetId,
                 pendingStatus = PendingMutationStatus.Pending.wireValue,
@@ -526,7 +605,7 @@ class OutboxRepository(
      * historical attempt count survives so observability / debug surfaces can
      * read it (codex P1 #7). Once the user picks
      * [FailedResolution.Retry][FailedResolution.Retry], the DAO atomic update
-     * (`markRetryableIfStatus` / `refreshTokenIfStatus`) zeros it so they get a
+     * (`retryFailed` / `requeueFailedWithFreshToken`) zeros it so they get a
      * fresh budget. While the row is FAILED, ``retryCount`` should be treated
      * as historical-only — no future drain decision keys off it.
      */
@@ -553,25 +632,26 @@ class OutboxRepository(
     suspend fun resolveConflict(
         id: Long,
         resolution: ConflictResolution,
-    ): Boolean {
+    ): Boolean = bindingTransitionLease.withLock {
+        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
         // [codex round-4 P2] Atomic status-checked updates so a
         // stale UI banner click can't flip a DONE / re-resolved row
         // back to PENDING (or delete a row a parallel keep-mine
         // just turned PENDING). Returns ``true`` only if THIS call
         // actually changed the row.
-        return when (resolution) {
+        when (resolution) {
             is ConflictResolution.KeepMine ->
                 // ADR-0042 §4.10: an over-age CONFLICT row can't be re-queued —
                 // expire it instead (rotating the key can't save a committed-but-
                 // unseen original whose server key the ~30d retention already
                 // purged → double-apply). Otherwise the normal token-refresh flip.
-                if (expireOverAgeOnResolve(id, PendingMutationStatus.Conflict.wireValue)) {
+                if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Conflict.wireValue)) {
                     true
                 } else {
-                    dao.refreshTokenIfStatus(
+                    dao.requeueConflictWithFreshToken(
                         id = id,
-                        fromStatus = PendingMutationStatus.Conflict.wireValue,
-                        toStatus = PendingMutationStatus.Pending.wireValue,
+                        ownerKey = binding.ownerStorageKey,
+                        ledgerId = binding.ledgerId,
                         freshToken = resolution.freshToken,
                         // ADR-0042 §4.8: KeepMine = overwrite-the-new-version intent →
                         // rotate the idempotency key (DAO applies it only to
@@ -582,6 +662,8 @@ class OutboxRepository(
             ConflictResolution.DropMine ->
                 dao.deleteIfStatus(
                     id = id,
+                    ownerKey = binding.ownerStorageKey,
+                    ledgerId = binding.ledgerId,
                     expectedStatus = PendingMutationStatus.Conflict.wireValue,
                 ) > 0
         }
@@ -605,36 +687,36 @@ class OutboxRepository(
     suspend fun resolveFailed(
         id: Long,
         resolution: FailedResolution,
-    ): Boolean {
+    ): Boolean = bindingTransitionLease.withLock {
+        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
         // [codex round-4 P2] Same atomic-status guard as
         // resolveConflict — stale banner click on a row that's
         // already been retried + DONE elsewhere must be a no-op.
-        return when (resolution) {
+        when (resolution) {
             is FailedResolution.Retry -> {
                 // ADR-0042 §4.10: an over-age FAILED row can't be retried — the next
                 // drain's reaper would re-expire it, and replaying risks double-apply
                 // (a rotated/fresh token doesn't help once the server purged the
                 // original key). Expire it so the UI offers only 移除.
-                if (expireOverAgeOnResolve(id, PendingMutationStatus.Failed.wireValue)) {
+                if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Failed.wireValue)) {
                     true
                 } else {
                     val freshToken = resolution.freshToken
                     if (freshToken != null) {
-                        dao.refreshTokenIfStatus(
+                        dao.requeueFailedWithFreshToken(
                             id = id,
-                            fromStatus = PendingMutationStatus.Failed.wireValue,
-                            toStatus = PendingMutationStatus.Pending.wireValue,
+                            ownerKey = binding.ownerStorageKey,
+                            ledgerId = binding.ledgerId,
                             freshToken = freshToken,
                             // §4.8: retry-with-fresh-token is the same overwrite-new-
                             // version intent as KeepMine → rotate the key too.
                             rotatedIdempotencyKey = UUID.randomUUID().toString(),
                         ) > 0
                     } else {
-                        dao.markRetryableIfStatus(
+                        dao.retryFailed(
                             id = id,
-                            fromStatus = PendingMutationStatus.Failed.wireValue,
-                            toStatus = PendingMutationStatus.Pending.wireValue,
-                            lastError = "manual_retry",
+                            ownerKey = binding.ownerStorageKey,
+                            ledgerId = binding.ledgerId,
                         ) > 0
                     }
                 }
@@ -642,6 +724,8 @@ class OutboxRepository(
             FailedResolution.Drop ->
                 dao.deleteIfStatus(
                     id = id,
+                    ownerKey = binding.ownerStorageKey,
+                    ledgerId = binding.ledgerId,
                     expectedStatus = PendingMutationStatus.Failed.wireValue,
                 ) > 0
         }
@@ -671,7 +755,7 @@ class OutboxRepository(
     fun observeQueueDepth(): Flow<Int> =
         bindingFlow().flatMapLatest { binding ->
             dao.observeQueueDepth(
-                serverUrl = binding.serverUrl,
+                ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 pendingStatus = PendingMutationStatus.Pending.wireValue,
                 inFlightStatus = PendingMutationStatus.InFlight.wireValue,
@@ -690,7 +774,7 @@ class OutboxRepository(
     fun observeConflicts(): Flow<List<OutboxRow>> =
         bindingFlow().flatMapLatest { binding ->
             dao.observeConflictRows(
-                serverUrl = binding.serverUrl,
+                ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 conflictStatus = PendingMutationStatus.Conflict.wireValue,
             )
@@ -706,31 +790,65 @@ class OutboxRepository(
     fun observeFailed(): Flow<List<OutboxRow>> =
         bindingFlow().flatMapLatest { binding ->
             dao.observeFailedRows(
-                serverUrl = binding.serverUrl,
+                ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 failedStatus = PendingMutationStatus.Failed.wireValue,
             )
         }
             .map { rows -> rows.map { it.toDomain() } }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun observeStatus(): Flow<OutboxStatus> =
-        combine(observeQueueDepth(), observeConflicts(), observeFailed()) { queueDepth, conflicts, failed ->
-            OutboxStatus(
-                queueDepth = queueDepth,
-                conflicts = conflicts,
-                failed = failed,
-            )
+        bindingFlow().flatMapLatest { binding ->
+            combine(
+                dao.observeQueueDepth(
+                    ownerKey = binding.ownerStorageKey,
+                    ledgerId = binding.ledgerId,
+                    pendingStatus = PendingMutationStatus.Pending.wireValue,
+                    inFlightStatus = PendingMutationStatus.InFlight.wireValue,
+                ),
+                dao.observeConflictRows(
+                    ownerKey = binding.ownerStorageKey,
+                    ledgerId = binding.ledgerId,
+                    conflictStatus = PendingMutationStatus.Conflict.wireValue,
+                ),
+                dao.observeFailedRows(
+                    ownerKey = binding.ownerStorageKey,
+                    ledgerId = binding.ledgerId,
+                    failedStatus = PendingMutationStatus.Failed.wireValue,
+                ),
+                dao.observeQuarantinedCount(binding.owner?.storageKey),
+            ) { queueDepth, conflicts, failed, quarantinedCount ->
+                OutboxStatus(
+                    queueDepth = queueDepth,
+                    conflicts = conflicts.map { it.toDomain() },
+                    failed = failed.map { it.toDomain() },
+                    quarantinedCount = quarantinedCount,
+                )
+            }
         }
 
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
-        currentBinding().let { binding ->
-            dao.activeForTarget(
-                serverUrl = binding.serverUrl,
-                ledgerId = binding.ledgerId,
-                targetId = targetId,
-                activeStatuses = ACTIVE_STATUS_VALUES,
-            )
-        }.map { it.toDomain() }
+        activeForTarget(currentBinding(), targetId)
+
+    internal suspend fun activeForTarget(
+        boundRequest: BoundLedgerRequest,
+        targetId: String,
+    ): List<OutboxRow> = bindingTransitionLease.withLock {
+        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+        boundRequest.requireStillActiveFor(binding)
+        activeForTarget(binding, targetId)
+    }
+
+    private suspend fun activeForTarget(
+        binding: OutboxBinding,
+        targetId: String,
+    ): List<OutboxRow> = dao.activeForTarget(
+        ownerKey = binding.ownerStorageKey,
+        ledgerId = binding.ledgerId,
+        targetId = targetId,
+        activeStatuses = ACTIVE_STATUS_VALUES,
+    ).map { it.toDomain() }
 
     /**
      * Garbage-collect completed DONE rows older than [retentionMillis].
@@ -798,14 +916,18 @@ class OutboxRepository(
      * fired so the resolve path skips the normal flip-to-PENDING. Uses the repo's
      * own [clock] — this is the user-action path, not the engine's drain clock.
      */
-    private suspend fun expireOverAgeOnResolve(id: Long, fromStatus: String): Boolean {
+    private suspend fun expireOverAgeOnResolve(
+        id: Long,
+        binding: OutboxBinding,
+        fromStatus: String,
+    ): Boolean {
         val cutoff = ISO.format(Instant.now(clock).minusMillis(OUTBOX_PENDING_AGE_CAP_MILLIS))
-        return dao.expireIfStatusAndOverAge(
+        return dao.expireBoundRowIfStatusAndOverAge(
             id = id,
+            ownerKey = binding.ownerStorageKey,
+            ledgerId = binding.ledgerId,
             fromStatus = fromStatus,
             cutoffCreatedAtIso = cutoff,
-            expiredStatus = PendingMutationStatus.Failed.wireValue,
-            lastError = "outbox_row_expired",
         ) > 0
     }
 
@@ -862,6 +984,7 @@ data class OutboxRow(
     val id: Long,
     val serverUrl: String,
     val ledgerId: String,
+    val ownerKey: String? = null,
     val type: PendingMutationType,
     val targetId: String,
     val payloadJson: String,
@@ -875,14 +998,30 @@ data class OutboxRow(
     val idempotencyKey: String? = null,
 )
 
+internal fun OutboxRow.bindingOrNull(): OutboxBinding? {
+    val owner = OutboxOwnerIdentity.parseOrNull(ownerKey) ?: return null
+    val canonicalOrigin = canonicalServerOriginOrNull(serverUrl) ?: return null
+    val cleanLedgerId = ledgerId.trim().takeIf(String::isNotEmpty) ?: return null
+    return OutboxBinding(
+        serverUrl = canonicalOrigin,
+        ledgerId = cleanLedgerId,
+        owner = owner,
+    )
+}
+
 data class OutboxBinding(
     val serverUrl: String,
     val ledgerId: String,
+    val owner: OutboxOwnerIdentity?,
 ) {
+    internal val ownerStorageKey: String
+        get() = owner?.storageKey.orEmpty()
+
     internal fun trimmed(): OutboxBinding =
         OutboxBinding(
             serverUrl = serverUrl.trim().trimEnd('/'),
             ledgerId = ledgerId.trim(),
+            owner = owner,
         )
 
     fun normalized(): OutboxBinding {
@@ -892,8 +1031,14 @@ data class OutboxBinding(
         )
     }
 
+    internal fun requireReadyForEnqueue() {
+        if (serverUrl.isBlank() || ledgerId.isBlank() || owner == null) {
+            throw RepositoryException("设备身份尚未完成校验，已停止保存离线操作。")
+        }
+    }
+
     companion object {
-        val DEFAULT = OutboxBinding(serverUrl = "", ledgerId = "")
+        val DEFAULT = OutboxBinding(serverUrl = "", ledgerId = "", owner = null)
     }
 }
 
@@ -919,15 +1064,17 @@ data class OutboxStatus(
     val queueDepth: Int,
     val conflicts: List<OutboxRow>,
     val failed: List<OutboxRow>,
+    val quarantinedCount: Int = 0,
 ) {
     val needsUserAction: Boolean
-        get() = conflicts.isNotEmpty() || failed.isNotEmpty()
+        get() = conflicts.isNotEmpty() || failed.isNotEmpty() || quarantinedCount > 0
 }
 
 private fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
     id = id,
     serverUrl = serverUrl,
     ledgerId = ledgerId,
+    ownerKey = ownerKey,
     type = PendingMutationType.fromWire(type),
     targetId = targetId,
     payloadJson = payload,

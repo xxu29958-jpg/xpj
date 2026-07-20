@@ -23,6 +23,7 @@ import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberProposalStatuses
+import com.ticketbox.security.LocalSessionIdentity
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -98,7 +99,7 @@ class DebtRepositoryTest {
     fun viewerCreateShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore())
+        val result = repository(handler, role = "viewer")
             .createDebt(DebtDraft(DebtDirections.I_OWE, "房东", 50_000))
 
         assertTrue(result.isFailure)
@@ -157,7 +158,7 @@ class DebtRepositoryTest {
     fun parseDebtBillViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore())
+        val result = repository(handler, role = "viewer")
             .parseDebtBillImage("bill.jpg", "image/jpeg", byteArrayOf(1))
 
         assertTrue(result.isFailure)
@@ -275,7 +276,7 @@ class DebtRepositoryTest {
     fun recordRepaymentViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore())
+        val result = repository(handler, role = "viewer")
             .recordRepayment("d1", expectedRowVersion = 1L, amountCents = 10_000L)
 
         assertTrue(result.isFailure)
@@ -339,7 +340,7 @@ class DebtRepositoryTest {
     fun recordAdjustmentViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore())
+        val result = repository(handler, role = "viewer")
             .recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 100L, reason = "x")
 
         assertTrue(result.isFailure)
@@ -372,7 +373,7 @@ class DebtRepositoryTest {
     fun voidDebtViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore()).voidDebt("d1", expectedRowVersion = 1L, reason = "x")
+        val result = repository(handler, role = "viewer").voidDebt("d1", expectedRowVersion = 1L, reason = "x")
 
         assertTrue(result.isFailure)
         assertTrue(handler.voidCalls.isEmpty())
@@ -407,7 +408,7 @@ class DebtRepositoryTest {
     fun setDebtKindViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore())
+        val result = repository(handler, role = "viewer")
             .setDebtKind("d1", expectedRowVersion = 1L, debtKind = DebtKinds.ONE_OFF)
 
         assertTrue(result.isFailure)
@@ -471,7 +472,7 @@ class DebtRepositoryTest {
     fun proposeViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore())
+        val result = repository(handler, role = "viewer")
             .proposals.proposeRepayment("d1", 15_000L, note = null, supersedesProposalPublicId = null)
 
         assertTrue(result.isFailure)
@@ -550,7 +551,7 @@ class DebtRepositoryTest {
     fun confirmViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore())
+        val result = repository(handler, role = "viewer")
             .proposals.confirmRepaymentProposal("d1", "p1", expectedRowVersion = 5L, confirmedAmountCents = null)
 
         assertTrue(result.isFailure)
@@ -573,7 +574,7 @@ class DebtRepositoryTest {
     fun withdrawViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore()).proposals.withdrawRepaymentProposal("d1", "p1")
+        val result = repository(handler, role = "viewer").proposals.withdrawRepaymentProposal("d1", "p1")
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -584,7 +585,7 @@ class DebtRepositoryTest {
     fun rejectViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore()).proposals.rejectRepaymentProposal("d1", "p1")
+        val result = repository(handler, role = "viewer").proposals.rejectRepaymentProposal("d1", "p1")
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -633,7 +634,7 @@ class DebtRepositoryTest {
     fun forgiveViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, viewerSettingsStore())
+        val result = repository(handler, role = "viewer")
             .proposals.forgiveDebt("d1", expectedRowVersion = 1L)
 
         assertTrue(result.isFailure)
@@ -657,30 +658,23 @@ class DebtRepositoryTest {
 
     private fun repository(
         handler: DebtApiHandler,
-        settings: FakeTicketboxSettingsStore = boundSettingsStore(),
+        role: String = "owner",
     ): DebtRepository {
-        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val tokenStore = TestSessionFixture(
+            identity = LocalSessionIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = role,
+                boundAt = "2026-05-01T00:00:00Z",
+            ),
+        ).apply { saveToken("session-token") }
+        val apiClient = DebtApiFactory(handler)
         return DebtRepository(
-            apiClient = DebtApiFactory(handler),
-            settingsStore = settings,
-            tokenStore = tokenStore,
+            apiProvider = testApiServiceProvider(apiClient, tokenStore),
         )
     }
-
-    private fun viewerSettingsStore(): FakeTicketboxSettingsStore =
-        FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.example.com")
-            saveIdentity(
-                PersistedLedgerIdentity(
-                    accountName = "我",
-                    ledgerId = "owner",
-                    ledgerName = "我的小票夹",
-                    deviceName = "Pixel",
-                    role = "viewer",
-                    boundAt = "2026-05-01T00:00:00Z",
-                )
-            )
-        }
 }
 
 private fun debtDto(

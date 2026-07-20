@@ -2,8 +2,6 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
@@ -21,7 +19,6 @@ import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportsOverviewQuery
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.domain.model.normalizeExpenseCategory
-import com.ticketbox.security.SessionTokenStore
 import retrofit2.Response
 import java.io.IOException
 import java.time.YearMonth
@@ -93,10 +90,7 @@ interface ReportsActions : DashboardCardsActions {
 }
 
 class ReportsRepository(
-    private val apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
+    private val apiProvider: ApiServiceProvider,
     /**
      * ADR-0042 Slice F: outbox surface for the offline-aware
      * [updateGoalAllowingOffline] entrypoint. ``null`` keeps every test
@@ -107,14 +101,14 @@ class ReportsRepository(
     private val outbox: OutboxRepository? = null,
     private val goalUpdateAdapter: JsonAdapter<GoalUpdateRequestDto>? = null,
 ) : ReportsActions {
-    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "Reports",
         statusMessages = mapOf(404 to "没有找到目标。"),
     )
 
-    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
     override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
         val cleanQuery = query.validated()
@@ -295,7 +289,7 @@ class ReportsRepository(
                 token = baseline.rowVersion,
                 idempotencyKey = idempotencyKey,
             )
-            if (outboxRef.activeForTarget(enqueueContext.targetId).isNotEmpty()) {
+            if (outboxRef.activeForTarget(bound, enqueueContext.targetId).isNotEmpty()) {
                 // Per-target FIFO guard (codex follow-up review) — a direct
                 // PATCH must not jump an unresolved queued mutation for the
                 // same goal. Same mechanism as the expense:{id} guards.
@@ -332,13 +326,15 @@ class ReportsRepository(
         adapter: JsonAdapter<GoalUpdateRequestDto>,
         request: GoalUpdateRequestDto,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.UpdateGoal,
-            targetId = context.targetId,
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = context.token,
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.UpdateGoal,
+                targetId = context.targetId,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 

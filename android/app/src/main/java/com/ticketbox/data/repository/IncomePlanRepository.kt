@@ -2,14 +2,11 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.io.IOException
@@ -54,12 +51,7 @@ data class IncomePlanListing(
 )
 
 class IncomePlanRepository(
-    apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    tokenStore: SessionTokenStore,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(
-        apiClient, settingsStore, tokenStore,
-    ),
+    private val apiProvider: ApiServiceProvider,
     /**
      * ADR-0042 Slice F: outbox surface for [updateAllowingOffline]. ``null``
      * keeps every test that doesn't wire the outbox at the old direct-only
@@ -69,13 +61,9 @@ class IncomePlanRepository(
     private val incomePlanUpdateAdapter: JsonAdapter<IncomePlanUpdateRequestDto>? = null,
 ) : IncomePlanActions {
 
-    private val ledgerRequestGuard = LedgerRequestGuard(
-        settingsStore,
-        tokenStore,
-        apiProvider,
-    )
+    private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "IncomePlan",
         statusMessages = mapOf(
             404 to "收入计划不存在。",
@@ -84,9 +72,9 @@ class IncomePlanRepository(
         ),
     )
 
-    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
+    override fun observeActiveLedgerId(): Flow<String?> = apiProvider.observeActiveLedgerId()
 
     override suspend fun listActive(): Result<IncomePlanListing> =
         errorHandler.safeCall {
@@ -188,7 +176,7 @@ class IncomePlanRepository(
                 token = baseline.rowVersion,
                 idempotencyKey = idempotencyKey,
             )
-            if (outboxRef.activeForTarget(enqueueContext.targetId).isNotEmpty()) {
+            if (outboxRef.activeForTarget(bound, enqueueContext.targetId).isNotEmpty()) {
                 // Per-target FIFO guard (codex follow-up review) — a direct
                 // PATCH must not jump an unresolved queued mutation for the
                 // same plan. Same mechanism as the expense:{id} guards.
@@ -220,13 +208,15 @@ class IncomePlanRepository(
         adapter: JsonAdapter<IncomePlanUpdateRequestDto>,
         request: IncomePlanUpdateRequestDto,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.UpdateIncomePlan,
-            targetId = context.targetId,
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = context.token,
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.UpdateIncomePlan,
+                targetId = context.targetId,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 

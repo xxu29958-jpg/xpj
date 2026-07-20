@@ -6,11 +6,15 @@ import com.ticketbox.data.remote.dto.LedgerListResponseDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import com.ticketbox.data.repository.LedgerFakeDao
 import com.ticketbox.data.repository.LedgerFakeSettingsStore
-import com.ticketbox.data.repository.LedgerFakeTokenStore
-import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.ledgerSessionFixture
+import com.ticketbox.data.repository.testLedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiFactory
 import com.ticketbox.data.repository.LedgerStubApiState
 import com.ticketbox.data.repository.StubApi
+import com.ticketbox.data.repository.TEST_ACCOUNT_PUBLIC_ID
+import com.ticketbox.data.repository.TEST_DATA_GENERATION
+import com.ticketbox.data.repository.TEST_DEVICE_PUBLIC_ID
+import com.ticketbox.data.repository.TEST_SERVER_ID
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
@@ -118,7 +122,11 @@ class LedgerSwitcherViewModelTest {
         try {
             val api = StubApi(LedgerStubApiState(
                 switchResult = LedgerSwitchResponseDto(
-                    sessionToken = "new-token",
+                    sessionToken = "t",
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
+                    accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                    devicePublicId = TEST_DEVICE_PUBLIC_ID,
                     ledger = ledgerDto("L_family", "Family ledger"),
                     accountName = "Owner",
                     deviceName = "Phone",
@@ -178,10 +186,10 @@ class LedgerSwitcherViewModelTest {
             saveActiveLedger(ledger, "My receipts")
             capturedRole = role
         }
-        val repository = LedgerRepository(
+        val repository = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = ledgerSessionFixture(ledger, "My receipts", role = role, token = "t"),
             expenseDao = LedgerFakeDao(),
         )
         return LedgerSwitcherViewModel(repository)

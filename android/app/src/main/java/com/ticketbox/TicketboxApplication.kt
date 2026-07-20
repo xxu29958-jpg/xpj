@@ -3,10 +3,12 @@ package com.ticketbox
 import android.app.Application
 import android.util.Log
 import androidx.work.Configuration
+import com.ticketbox.security.isBusinessReady
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -28,7 +30,11 @@ class TicketboxApplication : Application(), Configuration.Provider {
     fun scheduleStartupWorkersAfterLaunchSettles() {
         if (!startupWorkersScheduled.compareAndSet(false, true)) return
         startupScope.launch {
-            delay(STARTUP_WORK_AFTER_LAUNCH_SETTLES_DELAY_MS)
+            while (true) {
+                container.sessionStore.observeSession().first { it.isBusinessReady() }
+                delay(STARTUP_WORK_AFTER_LAUNCH_SETTLES_DELAY_MS)
+                if (container.sessionStore.currentSession().isBusinessReady()) break
+            }
             scheduleStartupWork("outbox") {
                 container.outboxScheduler.ensurePeriodic(this@TicketboxApplication)
                 container.outboxScheduler.enqueueOnce(this@TicketboxApplication)

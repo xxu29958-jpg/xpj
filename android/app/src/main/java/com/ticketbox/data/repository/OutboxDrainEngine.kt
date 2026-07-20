@@ -121,11 +121,6 @@ class OutboxDrainEngine(
      * [codex round-2 P1#2] companion.
      */
     suspend fun drainOnce(): DrainSummary {
-        // v9 → v10 one-time backfill: adopt any rows the schema migration left
-        // with an empty binding into the current one before the binding-scoped
-        // reads run, so pre-upgrade offline edits aren't stranded. No-op once
-        // adopted / while unbound.
-        outbox.adoptLegacyRowsForCurrentBinding()
         outbox.recoverStaleInFlight()
         // [ADR-0042 §4.10] PENDING age-cap reaper: terminally FAIL (never replay)
         // any row that has sat PENDING past OUTBOX_PENDING_AGE_CAP_MILLIS, BEFORE
@@ -181,8 +176,8 @@ class OutboxDrainEngine(
             // [codex round-10 P1] Hold the dispatch lease across
             // BOTH the epoch check AND the dispatcher.dispatch(row)
             // call. Without the lease, a binding transition that fires
-            // AFTER the epoch check but BEFORE dispatch resolves
-            // apiProvider() / OkHttp reads the token would let the
+            // AFTER the epoch check but BEFORE dispatch acquires its
+            // bound service would let the
             // old row be sent under the NEW session. With the
             // lease:
             //   - the binding transition blocks until our dispatch returns,

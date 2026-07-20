@@ -8,13 +8,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.HttpException
-import retrofit2.Response
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -38,12 +33,15 @@ class LedgerRepositoryMutationTest {
     }
 
     @Test
-    fun switchLedgerRotatesTokenAndClearsTargetCacheFirst() = runTest {
-        val newToken = "session-token-new"
+    fun switchLedgerKeepsCredentialAndClearsTargetCacheFirst() = runTest {
         val api = StubApi(
             LedgerStubApiState(
                 switchResult = LedgerSwitchResponseDto(
-                    sessionToken = newToken,
+                    sessionToken = "old-token",
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
+                    accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                    devicePublicId = TEST_DEVICE_PUBLIC_ID,
                     ledger = ledgerDto("L_house", "家庭账本", role = "viewer"),
                     accountName = "我",
                     deviceName = "Pixel",
@@ -52,13 +50,20 @@ class LedgerRepositoryMutationTest {
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val initialSession = requireNotNull(tokenStore.sessionStore.currentSession())
+        val pendingRefresh = requireNotNull(
+            tokenStore.sessionStore.sessionRefresh.beginOrReuse(
+                expectedSessionGeneration = initialSession.sessionGeneration,
+                expectedToken = initialSession.credential.token,
+            ),
+        )
         val apiFactory = LedgerStubApiFactory(api)
         val dao = LedgerFakeDao().apply {
             // Pre-seed the cache for both ledgers.
             insertEntity(ledgerEntity(id = 1, ledgerId = "L_owner", serverId = 100))
             insertEntity(ledgerEntity(id = 2, ledgerId = "L_house", serverId = 200))
         }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = apiFactory,
             settingsStore = store,
             tokenStore = tokenStore,
@@ -67,38 +72,99 @@ class LedgerRepositoryMutationTest {
 
         val summary = repo.switchLedger("L_house").getOrThrow()
         assertEquals("L_house", summary.ledgerId)
-        assertEquals(newToken, tokenStore.getToken())
-        assertEquals("L_house", store.activeLedgerId())
-        assertEquals("viewer", store.capturedRole)
+        assertEquals("old-token", tokenStore.getToken())
+        assertEquals(pendingRefresh, tokenStore.sessionStore.sessionRefresh.pending())
+        assertEquals("L_house", repo.activeLedgerId())
+        assertEquals("viewer", repo.currentLedgerRole())
         // Only the target ledger's rows are wiped; the other ledger keeps its cache.
         assertNull(dao.find(2))
         assertNotNull(dao.find(1))
     }
 
     @Test
-    fun switchLedgerFailurePreservesOldToken() = runTest {
-        val errorJson = "{\"error\":\"forbidden\",\"message\":\"无权访问该账本\"}"
+    fun switchLedgerIgnoresNonAuthoritativeCredentialEcho() = runTest {
         val api = StubApi(
             LedgerStubApiState(
-                switchError = HttpException(
-                    Response.error<Any>(403, errorJson.toResponseBody("application/json".toMediaType())),
+                switchResult = LedgerSwitchResponseDto(
+                    sessionToken = "unexpected-new-token",
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
+                    accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                    devicePublicId = TEST_DEVICE_PUBLIC_ID,
+                    ledger = ledgerDto("L_house", "家庭账本", role = "viewer"),
+                    accountName = "我",
+                    deviceName = "Pixel",
                 ),
             ),
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
             expenseDao = LedgerFakeDao(),
         )
 
-        val failure = repo.switchLedger("L_house").exceptionOrNull()
-        assertNotNull(failure)
+        val summary = repo.switchLedger("L_house").getOrThrow()
+
         assertEquals("old-token", tokenStore.getToken())
-        assertNull(store.activeLedgerId())
-        assertFalse(failure.message.isNullOrBlank())
+        assertEquals("L_house", repo.activeLedgerId())
+        assertEquals("L_house", summary.ledgerId)
+    }
+
+    @Test
+    fun switchLedgerAcceptsResponseSentWithSameSessionRefreshedToken() = runTest {
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("token-before-refresh") }
+        val initial = requireNotNull(tokenStore.sessionStore.currentSession())
+        val refresh = requireNotNull(
+            tokenStore.sessionStore.sessionRefresh.beginOrReuse(
+                expectedSessionGeneration = initial.sessionGeneration,
+                expectedToken = initial.credential.token,
+            ),
+        )
+        val api = StubApi(
+            LedgerStubApiState(
+                switchResult = LedgerSwitchResponseDto(
+                    sessionToken = "token-after-refresh",
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
+                    accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                    devicePublicId = TEST_DEVICE_PUBLIC_ID,
+                    ledger = ledgerDto("L_house", "家庭账本", role = "viewer"),
+                    accountName = "我",
+                    deviceName = "Pixel",
+                ),
+            ),
+        )
+        val apiFactory = LedgerStubApiFactory(api) {
+            assertTrue(
+                tokenStore.sessionStore.sessionRefresh.completeIfCurrent(
+                    expectedSessionGeneration = initial.sessionGeneration,
+                    expectedToken = initial.credential.token,
+                    refreshAttemptId = refresh.attemptId,
+                    replacement = com.ticketbox.security.StoredSessionToken("token-after-refresh"),
+                ),
+            )
+        }
+        val repo = testLedgerRepository(
+            apiClient = apiFactory,
+            settingsStore = LedgerFakeSettingsStore().apply {
+                saveServerUrl("https://api.example.com")
+            },
+            tokenStore = tokenStore,
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val summary = repo.switchLedger("L_house").getOrThrow()
+
+        assertEquals(
+            listOf<String?>("token-after-refresh"),
+            apiFactory.dispatchedSwitchTokenSnapshots,
+        )
+        assertEquals("token-after-refresh", tokenStore.getToken())
+        assertEquals("L_house", repo.activeLedgerId())
+        assertEquals("L_house", summary.ledgerId)
     }
 
     @Test
@@ -113,7 +179,11 @@ class LedgerRepositoryMutationTest {
                         releaseFirst.await()
                     }
                     LedgerSwitchResponseDto(
-                        sessionToken = "token-$ledgerId",
+                        sessionToken = "old-token",
+                        serverId = TEST_SERVER_ID,
+                        dataGeneration = TEST_DATA_GENERATION,
+                        accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                        devicePublicId = TEST_DEVICE_PUBLIC_ID,
                         ledger = ledgerDto(ledgerId, ledgerId, role = "owner"),
                         accountName = "我",
                         deviceName = "Pixel",
@@ -123,7 +193,7 @@ class LedgerRepositoryMutationTest {
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
@@ -141,8 +211,8 @@ class LedgerRepositoryMutationTest {
         assertEquals("L_first", first.await().getOrThrow().ledgerId)
         assertEquals("L_second", second.await().getOrThrow().ledgerId)
         assertEquals(listOf("L_first", "L_second"), api.switchRequests)
-        assertEquals("token-L_second", tokenStore.getToken())
-        assertEquals("L_second", store.activeLedgerId())
+        assertEquals("old-token", tokenStore.getToken())
+        assertEquals("L_second", repo.activeLedgerId())
     }
 
     @Test
@@ -160,23 +230,29 @@ class LedgerRepositoryMutationTest {
                 )
             )
         }
-        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val tokenStore = existingOwnerSessionFixture(
+            ledgerId = "L_old",
+            ledgerName = "旧账本",
+            accountName = "旧账号",
+            deviceName = "Old Pixel",
+            token = "old-token",
+        )
         val api = StubApi(
             LedgerStubApiState(
                 switchHandler = { ledgerId ->
-                    tokenStore.saveToken("new-token")
-                    store.saveIdentity(
-                        PersistedLedgerIdentity(
-                            accountName = "新账号",
-                            ledgerId = "L_new",
-                            ledgerName = "新账本",
-                            deviceName = "New Pixel",
-                            role = "owner",
-                            boundAt = "2026-05-01T00:05:00Z",
-                        )
+                    tokenStore.rebindAsDifferentAccountForFixture(
+                        accountName = "新账号",
+                        ledgerId = "L_new",
+                        ledgerName = "新账本",
+                        deviceName = "New Pixel",
+                        token = "new-token",
                     )
                     LedgerSwitchResponseDto(
-                        sessionToken = "switched-token",
+                        sessionToken = "old-token",
+                        serverId = TEST_SERVER_ID,
+                        dataGeneration = TEST_DATA_GENERATION,
+                        accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                        devicePublicId = TEST_DEVICE_PUBLIC_ID,
                         ledger = ledgerDto(ledgerId, "家庭账本", role = "viewer"),
                         accountName = "旧账号",
                         deviceName = "Old Pixel",
@@ -184,7 +260,7 @@ class LedgerRepositoryMutationTest {
                 },
             ),
         )
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
@@ -195,14 +271,14 @@ class LedgerRepositoryMutationTest {
 
         assertNotNull(failure)
         assertEquals("new-token", tokenStore.getToken())
-        assertEquals("L_new", store.activeLedgerId())
-        assertEquals("新账号", store.accountName())
+        assertEquals("L_new", repo.activeLedgerId())
+        assertEquals("新账号", repo.currentAccountName())
     }
 
     private fun makeRepo(): LedgerRepository {
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("t") }
-        return LedgerRepository(
+        return testLedgerRepository(
             apiClient = LedgerStubApiFactory(StubApi()),
             settingsStore = store,
             tokenStore = tokenStore,

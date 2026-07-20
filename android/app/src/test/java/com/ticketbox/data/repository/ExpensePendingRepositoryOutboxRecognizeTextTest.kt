@@ -31,7 +31,7 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
 
     private fun recognizeTextRepo(api: ApiService, outbox: OutboxRepository): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
-        binding = ServerSessionBinding(
+        binding = testServerSessionBinding(
             apiClient = TestApiServiceFactory(api),
             settingsStore = seededSettingsStore(),
             tokenStore = seededTokenStore(),
@@ -47,7 +47,7 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
     fun `recognizeText IOException returns Queued unchanged + enqueues body without token`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         // ADR-0042: capture the Idempotency-Key the repository supplied on the
         // direct POST so we can assert the enqueued row carries the SAME key.
         var directIdempotencyKey: String? = null
@@ -98,7 +98,7 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
     fun `recognizeText direct 2xx returns Synced parsed expense, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun recognizeText(
                 id: String,

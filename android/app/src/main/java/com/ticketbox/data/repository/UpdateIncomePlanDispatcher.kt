@@ -23,7 +23,7 @@ import retrofit2.HttpException
  * single source of truth (round-8 P3#5).
  */
 class UpdateIncomePlanDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<IncomePlanUpdateRequestDto>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.UpdateIncomePlan
@@ -62,7 +62,7 @@ class UpdateIncomePlanDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
-            val updated = apiProvider().updateIncomePlan(publicId, request, idempotencyKey)
+            val updated = apiProvider(row).updateIncomePlan(publicId, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

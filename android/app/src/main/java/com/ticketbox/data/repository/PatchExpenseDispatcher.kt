@@ -34,7 +34,7 @@ import retrofit2.HttpException
  * pins the worker to whatever ledger the user is currently on.
  */
 class PatchExpenseDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseUpdateRequest>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.PatchExpense
@@ -77,7 +77,7 @@ class PatchExpenseDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
-            val updated = apiProvider().updateExpense(expenseRef, request, idempotencyKey)
+            val updated = apiProvider(row).updateExpense(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

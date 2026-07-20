@@ -24,7 +24,7 @@ import retrofit2.HttpException
  * the mutation itself.
  */
 class UpdateGoalDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<GoalUpdateRequestDto>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.UpdateGoal
@@ -63,7 +63,7 @@ class UpdateGoalDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
-            val updated = apiProvider().updateGoal(publicId, request, idempotencyKey, timezone = null)
+            val updated = apiProvider(row).updateGoal(publicId, request, idempotencyKey, timezone = null)
             DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

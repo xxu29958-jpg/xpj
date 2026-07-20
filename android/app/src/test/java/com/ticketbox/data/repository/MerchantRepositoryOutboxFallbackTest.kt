@@ -64,8 +64,8 @@ class MerchantRepositoryOutboxFallbackTest {
             )
         }
 
-    private fun seededTokenStore(): FakeSessionTokenStore =
-        FakeSessionTokenStore().apply { saveToken("session-token") }
+    private fun seededTokenStore(): TestSessionFixture =
+        TestSessionFixture().apply { saveToken("session-token") }
 
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
@@ -77,7 +77,7 @@ class MerchantRepositoryOutboxFallbackTest {
         deleteAdapter: com.squareup.moshi.JsonAdapter<MerchantAliasDeleteRequest>? = null,
         updateAdapter: com.squareup.moshi.JsonAdapter<MerchantAliasUpdateRequest>? = null,
     ): MerchantRepository = MerchantRepository(
-        binding = ServerSessionBinding(
+        binding = testServerSessionBinding(
             apiClient = TestApiServiceFactory(api),
             settingsStore = seededSettingsStore(),
             tokenStore = seededTokenStore(),
@@ -106,7 +106,7 @@ class MerchantRepositoryOutboxFallbackTest {
     fun `direct 2xx returns Synced, no enqueue`() = runTest {
         val baseline = baselineAlias()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(MerchantAliasDeleteRequest::class.java)
         // FakeApiService.deleteMerchantAlias returns StatusDto("ok") —
         // success path.
@@ -126,7 +126,7 @@ class MerchantRepositoryOutboxFallbackTest {
         // fails loudly (ISE is not the IOException fallback trigger).
         val baseline = baselineAlias()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(MerchantAliasDeleteRequest::class.java)
         val api = ThrowingDeleteAliasApiService(IllegalStateException("direct DELETE must not run"))
         val repo = buildRepository(api, outbox = outbox, deleteAdapter = adapter)
@@ -154,7 +154,7 @@ class MerchantRepositoryOutboxFallbackTest {
     fun `update with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
         val baseline = baselineAlias()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val updateAdapter = moshi().adapter(MerchantAliasUpdateRequest::class.java)
         val api = UpdateAliasApiServiceStub(
             updateResult = UpdateAliasResult.Throw(IllegalStateException("direct PATCH must not run")),
@@ -183,7 +183,7 @@ class MerchantRepositoryOutboxFallbackTest {
     fun `IOException returns Queued + enqueues row without token in payload`() = runTest {
         val baseline = baselineAlias()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(MerchantAliasDeleteRequest::class.java)
         val api = ThrowingDeleteAliasApiService(IOException("net out"))
 
@@ -218,7 +218,7 @@ class MerchantRepositoryOutboxFallbackTest {
     @Test
     fun `HttpException 409 surfaces as failure, no enqueue`() = runTest {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(MerchantAliasDeleteRequest::class.java)
         val api = ThrowingDeleteAliasApiService(
             httpException(409, """{"error":"state_conflict","message":"别名已修改"}"""),
@@ -234,7 +234,7 @@ class MerchantRepositoryOutboxFallbackTest {
     @Test
     fun `HttpException 500 surfaces as failure, no enqueue`() = runTest {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(MerchantAliasDeleteRequest::class.java)
         val api = ThrowingDeleteAliasApiService(httpException(500, """{"error":"internal"}"""))
 
@@ -261,7 +261,7 @@ class MerchantRepositoryOutboxFallbackTest {
     fun `update direct 2xx returns Synced, no enqueue`() = runTest {
         val baseline = baselineAlias()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val updateAdapter = moshi().adapter(MerchantAliasUpdateRequest::class.java)
         val api = UpdateAliasApiServiceStub(UpdateAliasResult.Success(aliasDto()))
 
@@ -278,7 +278,7 @@ class MerchantRepositoryOutboxFallbackTest {
     fun `update IOException returns Queued + enqueues row without token in payload`() = runTest {
         val baseline = baselineAlias()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val updateAdapter = moshi().adapter(MerchantAliasUpdateRequest::class.java)
         val api = UpdateAliasApiServiceStub(UpdateAliasResult.Throw(IOException("net out")))
 
@@ -319,7 +319,7 @@ class MerchantRepositoryOutboxFallbackTest {
     @Test
     fun `update HttpException 409 surfaces as failure, no enqueue`() = runTest {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val updateAdapter = moshi().adapter(MerchantAliasUpdateRequest::class.java)
         val api = UpdateAliasApiServiceStub(
             UpdateAliasResult.Throw(

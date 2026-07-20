@@ -40,7 +40,7 @@ import retrofit2.HttpException
  *
  * The fakes themselves ([FakeApiService], [FakeExpenseDao],
  * [FakePendingMutationDao], [FakeTicketboxSettingsStore],
- * [FakeSessionTokenStore]) live in other same-package files and are
+ * [TestSessionFixture]) live in other same-package files and are
  * reused by name.
  */
 internal abstract class ExpensePendingRepositoryOutboxTestBase {
@@ -103,8 +103,8 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             )
         }
 
-    protected fun seededTokenStore(): FakeSessionTokenStore =
-        FakeSessionTokenStore().apply { saveToken("session-token") }
+    protected fun seededTokenStore(): TestSessionFixture =
+        TestSessionFixture().apply { saveToken("session-token") }
 
     protected class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
@@ -117,7 +117,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         stateTokenAdapter: com.squareup.moshi.JsonAdapter<ExpenseStateTokenRequest>? = null,
     ): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
-        binding = ServerSessionBinding(
+        binding = testServerSessionBinding(
             apiClient = TestApiServiceFactory(api),
             settingsStore = seededSettingsStore(),
             tokenStore = seededTokenStore(),
@@ -192,7 +192,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
 
     protected fun itemsRepo(api: ApiService, outbox: OutboxRepository): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
-        binding = ServerSessionBinding(
+        binding = testServerSessionBinding(
             apiClient = TestApiServiceFactory(api),
             settingsStore = seededSettingsStore(),
             tokenStore = seededTokenStore(),

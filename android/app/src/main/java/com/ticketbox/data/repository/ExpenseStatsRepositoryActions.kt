@@ -16,7 +16,9 @@ internal class ExpenseStatsRepositoryActions(
 
     override fun monthlyBudgetCents(): Long? = core.settingsStore.monthlyBudgetCents()
 
-    override fun lastUploadAt(): String? = core.settingsStore.lastUploadAt()
+    override fun lastUploadAt(): String? =
+        core.apiProvider.currentLedgerId()
+            ?.let(core.settingsStore::lastUploadAtForLedger)
 
     override suspend fun months(): Result<List<String>> = ledgerActions.months()
 

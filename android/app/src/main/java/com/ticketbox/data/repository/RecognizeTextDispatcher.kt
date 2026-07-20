@@ -28,7 +28,7 @@ import retrofit2.HttpException
  * PENDING row so the follow-up doesn't replay with a stale token (ADR-0041 P1).
  */
 class RecognizeTextDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.RecognizeText
@@ -61,7 +61,7 @@ class RecognizeTextDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
-            val recognized = apiProvider().recognizeText(expenseRef, request, idempotencyKey)
+            val recognized = apiProvider(row).recognizeText(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = recognized.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

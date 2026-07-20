@@ -85,7 +85,6 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
-import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.ui.appearance.AppearanceDefaults
 import com.ticketbox.ui.appearance.BackgroundCatalog
@@ -201,14 +200,12 @@ fun SettingsRootScreen(
                     icon = Icons.Filled.Group,
                     onClick = navigationActions.ledgerFamily.onOpenFamilyMembers,
                 )
-                if (state.role == LEDGER_ROLE_OWNER) {
-                    SettingsEntryRow(
-                        title = stringResource(R.string.settings_root_entry_my_devices_title),
-                        subtitle = stringResource(R.string.settings_root_entry_my_devices_subtitle),
-                        icon = Icons.Filled.Devices,
-                        onClick = navigationActions.ledgerFamily.onOpenMyDevices,
-                    )
-                }
+                SettingsEntryRow(
+                    title = stringResource(R.string.settings_root_entry_my_devices_title),
+                    subtitle = stringResource(R.string.settings_root_entry_my_devices_subtitle),
+                    icon = Icons.Filled.Devices,
+                    onClick = navigationActions.ledgerFamily.onOpenMyDevices,
+                )
                 SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_join_family_title),
                     subtitle = stringResource(R.string.settings_root_entry_join_family_subtitle),

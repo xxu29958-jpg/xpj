@@ -40,7 +40,7 @@ class OutboxRepositoryTest {
     @Test
     fun enqueueInsertsPendingRowInCausalOrder() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
 
         val first = repo.enqueue(
             type = PendingMutationType.PatchExpense,
@@ -63,7 +63,7 @@ class OutboxRepositoryTest {
     @Test
     fun dequeueSkipsRowsForTargetsAlreadyInFlight() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
 
         val first = repo.enqueue(
             type = PendingMutationType.PatchExpense,
@@ -101,7 +101,7 @@ class OutboxRepositoryTest {
     @Test
     fun dequeueDedupesSameTargetBeforeApplyingLimit() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
 
         val firstSameTarget = repo.enqueue(
             type = PendingMutationType.PatchExpense,
@@ -130,7 +130,7 @@ class OutboxRepositoryTest {
     @Test
     fun markDoneSetsCompletedAt() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
 
         repo.tryClaim(id)
@@ -145,7 +145,7 @@ class OutboxRepositoryTest {
     @Test
     fun markConflictPreservesServerMessage() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
 
         repo.markConflict(id, "账单已在其它端被修改，请刷新后重试。")
@@ -158,7 +158,7 @@ class OutboxRepositoryTest {
     @Test
     fun resolveConflictKeepMineRefreshesTokenAndReturnsToPending() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(
             PendingMutationType.PatchExpense,
             "expense:1",
@@ -189,7 +189,7 @@ class OutboxRepositoryTest {
         // (PatchExpense) must ROTATE its idempotency key — otherwise the replay's
         // fingerprint (which folds in the token) would mismatch the original key.
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(
             PendingMutationType.PatchExpense,
             "expense:1",
@@ -212,7 +212,7 @@ class OutboxRepositoryTest {
         // Slice B) must NOT gain a key on KeepMine; the DAO CASE only rotates
         // rows that already carry one.
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(PendingMutationType.ConfirmExpense, "expense:1", "{}", 1L)
         repo.markConflict(id, "stale")
 
@@ -224,7 +224,7 @@ class OutboxRepositoryTest {
     @Test
     fun resolveConflictDropMineDeletesRow() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markConflict(id, "stale")
 
@@ -237,7 +237,7 @@ class OutboxRepositoryTest {
     fun gcCompletedDeletesDoneRowsOlderThanRetention() = runTest {
         val dao = FakePendingMutationDao()
         val now = "2026-05-04T12:00:00Z"
-        val repo = OutboxRepository(dao = dao, clock = fixedClock(now))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
 
         val oldId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         // Hand-edit completedAt to before retention window.
@@ -266,7 +266,7 @@ class OutboxRepositoryTest {
         // NEVER replayed. A fresh PENDING row (well within the cap) is untouched.
         val dao = FakePendingMutationDao()
         val now = "2026-05-04T12:00:00Z"
-        val repo = OutboxRepository(dao = dao, clock = fixedClock(now))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
 
         val staleId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         // Hand-edit createdAt to a month ago — far past the 7-day cap.
@@ -293,7 +293,7 @@ class OutboxRepositoryTest {
         // by the reaper. Confirms the reap is scoped to un-dispatched rows.
         val dao = FakePendingMutationDao()
         val now = "2026-05-04T12:00:00Z"
-        val repo = OutboxRepository(dao = dao, clock = fixedClock(now))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
 
         val conflictId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         repo.markConflict(conflictId, "stale")
@@ -315,7 +315,7 @@ class OutboxRepositoryTest {
         // re-reaps it (dead action + double-apply risk). resolveFailed must expire it.
         val dao = FakePendingMutationDao()
         val now = "2026-05-04T12:00:00Z"
-        val repo = OutboxRepository(dao = dao, clock = fixedClock(now))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
 
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         repo.markFailed(id, "max_attempts_exceeded(10/10): server 503")
@@ -335,7 +335,7 @@ class OutboxRepositoryTest {
         // committed-but-unseen original whose server key the retention purged.
         val dao = FakePendingMutationDao()
         val now = "2026-05-04T12:00:00Z"
-        val repo = OutboxRepository(dao = dao, clock = fixedClock(now))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
 
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         repo.markConflict(id, "stale token")
@@ -353,7 +353,7 @@ class OutboxRepositoryTest {
     fun resolveFailedRetryOnFreshRowRequeuesNormally() = runTest {
         // Control: a FAILED row inside the cap retries normally (flip to PENDING).
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T12:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T12:00:00Z"))
 
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         repo.markFailed(id, "transient parse")
@@ -369,7 +369,7 @@ class OutboxRepositoryTest {
     @Test
     fun failedRowsAreNotCompletedAndAreNotGarbageCollected() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(
+        val repo = testOutboxRepository(
             dao = dao,
             clock = fixedClock("2026-05-04T12:00:00Z"),
         )
@@ -392,7 +392,7 @@ class OutboxRepositoryTest {
         // r2#1's NOT EXISTS filter. ``resolveFailed(Retry)`` must
         // put the row back to PENDING so the next drain re-claims it.
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markFailed(id, "transient parse")
 
@@ -410,7 +410,7 @@ class OutboxRepositoryTest {
     @Test
     fun resolveFailedRetryWithFreshTokenAlsoRefreshesIt() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(
             PendingMutationType.PatchExpense,
             "expense:1",
@@ -438,7 +438,7 @@ class OutboxRepositoryTest {
         // surface already retried + DONE this row must NOT flip the
         // DONE row back to PENDING and trigger a duplicate replay.
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         // Simulate: row was FAILED, another surface retried, drain
         // ran, server accepted → row is now DONE.
@@ -460,7 +460,7 @@ class OutboxRepositoryTest {
         // parallel surface already moved the row out of CONFLICT,
         // a stale banner click is a no-op.
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markConflict(id, "stale")
         // Another surface keep-mined first; row is now PENDING.
@@ -483,7 +483,7 @@ class OutboxRepositoryTest {
     @Test
     fun resolveFailedDropDeletesRow() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markFailed(id, "user gave up")
 
@@ -495,7 +495,7 @@ class OutboxRepositoryTest {
     @Test
     fun activeForTargetExcludesTerminalRows() = runTest {
         val dao = FakePendingMutationDao()
-        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
 
         val pendingId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         val doneId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
@@ -510,8 +510,8 @@ class OutboxRepositoryTest {
     @Test
     fun bindingScopedQueueDoesNotDrainRowsFromPreviousLedger() = runTest {
         val dao = FakePendingMutationDao()
-        var binding = OutboxBinding("https://old.example.com", "ledger-a")
-        val repo = OutboxRepository(
+        var binding = testOutboxBinding().copy(serverUrl = "https://old.example.com", ledgerId = "ledger-a")
+        val repo = testOutboxRepository(
             dao = dao,
             clock = fixedClock("2026-05-04T00:00:00Z"),
             bindingProvider = { binding },
@@ -523,7 +523,7 @@ class OutboxRepositoryTest {
             payloadJson = "{}",
             expectedRowVersion = 1L,
         )
-        binding = OutboxBinding("https://new.example.com", "ledger-b")
+        binding = testOutboxBinding().copy(serverUrl = "https://new.example.com", ledgerId = "ledger-b")
         val newRow = repo.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:2",
@@ -541,8 +541,8 @@ class OutboxRepositoryTest {
     @Test
     fun observeStatusAggregatesCurrentBindingOnly() = runTest {
         val dao = FakePendingMutationDao()
-        var binding = OutboxBinding("https://api.example.com", "active")
-        val repo = OutboxRepository(
+        var binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "active")
+        val repo = testOutboxRepository(
             dao = dao,
             clock = fixedClock("2026-05-04T00:00:00Z"),
             bindingProvider = { binding },
@@ -551,9 +551,9 @@ class OutboxRepositoryTest {
         val activeConflict = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
         repo.markConflict(activeConflict, "stale")
 
-        binding = OutboxBinding("https://api.example.com", "other")
+        binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "other")
         repo.enqueue(PendingMutationType.PatchExpense, "expense:3", "{}", 0L)
-        binding = OutboxBinding("https://api.example.com", "active")
+        binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "active")
 
         val status = repo.observeStatus().first()
 
@@ -564,11 +564,11 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun observeStatusRetargetsAfterSameLedgerServerTransition() = runTest {
+    fun routeChangeKeepsRowsVisibleForTheSameServerIdentity() = runTest {
         val dao = FakePendingMutationDao()
-        var binding = OutboxBinding("https://old.example.com", "active")
+        var binding = testOutboxBinding().copy(serverUrl = "https://old.example.com", ledgerId = "active")
         val unchangedLedgerSignal = MutableStateFlow(binding)
-        val repo = OutboxRepository(
+        val repo = testOutboxRepository(
             dao = dao,
             bindingProvider = { binding },
             bindingChanges = unchangedLedgerSignal,
@@ -584,29 +584,37 @@ class OutboxRepositoryTest {
         initialObserved.await()
 
         repo.withBindingTransition {
-            binding = OutboxBinding("https://new.example.com", "active")
+            binding = testOutboxBinding().copy(serverUrl = "https://new.example.com", ledgerId = "active")
         }
 
-        assertEquals(listOf(1, 0), observed.await())
+        assertEquals(listOf(1, 1), observed.await())
     }
 
     @Test
     fun concurrentBindingInvalidationsRetargetToFinalServer() = runTest {
         val dao = FakePendingMutationDao()
-        var binding = OutboxBinding("https://old.example.com", "active")
+        var binding = testOutboxBinding().copy(serverUrl = "https://old.example.com", ledgerId = "active")
         val unchangedLedgerSignal = MutableStateFlow(binding)
-        val repo = OutboxRepository(
+        val repo = testOutboxRepository(
             dao = dao,
             bindingProvider = { binding },
             bindingChanges = unchangedLedgerSignal,
         )
         repo.enqueue(PendingMutationType.PatchExpense, "old", "{}", 0L)
-        binding = OutboxBinding("https://middle.example.com", "active")
+        binding = testOutboxBinding().copy(
+            serverUrl = "https://middle.example.com",
+            ledgerId = "active",
+            owner = testOwner("20000000"),
+        )
         repo.enqueue(PendingMutationType.PatchExpense, "middle", "{}", 0L)
-        binding = OutboxBinding("https://final.example.com", "active")
+        binding = testOutboxBinding().copy(
+            serverUrl = "https://final.example.com",
+            ledgerId = "active",
+            owner = testOwner("30000000"),
+        )
         repo.enqueue(PendingMutationType.PatchExpense, "final-1", "{}", 0L)
         repo.enqueue(PendingMutationType.PatchExpense, "final-2", "{}", 0L)
-        binding = OutboxBinding("https://old.example.com", "active")
+        binding = testOutboxBinding().copy(serverUrl = "https://old.example.com", ledgerId = "active")
 
         val initialObserved = CompletableDeferred<Unit>()
         val finalDepth = async(start = CoroutineStart.UNDISPATCHED) {
@@ -619,7 +627,11 @@ class OutboxRepositoryTest {
         val releaseFirstTransition = CompletableDeferred<Unit>()
         val firstTransition = launch {
             repo.withBindingTransition {
-                binding = OutboxBinding("https://middle.example.com", "active")
+                binding = testOutboxBinding().copy(
+                    serverUrl = "https://middle.example.com",
+                    ledgerId = "active",
+                    owner = testOwner("20000000"),
+                )
                 firstTransitionEntered.complete(Unit)
                 releaseFirstTransition.await()
             }
@@ -627,7 +639,11 @@ class OutboxRepositoryTest {
         firstTransitionEntered.await()
         val finalTransition = launch {
             repo.withBindingTransition {
-                binding = OutboxBinding("https://final.example.com", "active")
+                binding = testOutboxBinding().copy(
+                    serverUrl = "https://final.example.com",
+                    ledgerId = "active",
+                    owner = testOwner("30000000"),
+                )
             }
         }
 
@@ -652,8 +668,8 @@ class OutboxRepositoryTest {
     @Test
     fun recoverStaleInFlightScopesToCurrentBindingOnly() = runTest {
         val dao = FakePendingMutationDao()
-        var binding = OutboxBinding("https://api.example.com", "active")
-        val repo = OutboxRepository(
+        var binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "active")
+        val repo = testOutboxRepository(
             dao = dao,
             clock = fixedClock("2026-05-04T00:00:00Z"),
             bindingProvider = { binding },
@@ -664,14 +680,14 @@ class OutboxRepositoryTest {
             attemptedAt = "2026-05-03T00:00:00.000Z",
         )
 
-        binding = OutboxBinding("https://api.example.com", "other")
+        binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "other")
         val otherRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
         dao.rows[otherRow] = dao.rows[otherRow]!!.copy(
             status = PendingMutationStatus.InFlight.wireValue,
             attemptedAt = "2026-05-03T00:00:00.000Z",
         )
 
-        binding = OutboxBinding("https://api.example.com", "active")
+        binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "active")
         val recovered = repo.recoverStaleInFlight()
 
         assertEquals(1, recovered)
@@ -682,8 +698,8 @@ class OutboxRepositoryTest {
     @Test
     fun enqueueWaitsForBindingTransitionAndCannotPersistMixedBinding() = runTest {
         val dao = FakePendingMutationDao()
-        var binding = OutboxBinding("https://old.example.com", "ledger-a")
-        val repo = OutboxRepository(
+        var binding = testOutboxBinding().copy(serverUrl = "https://old.example.com", ledgerId = "ledger-a")
+        val repo = testOutboxRepository(
             dao = dao,
             clock = fixedClock("2026-05-04T00:00:00Z"),
             bindingProvider = { binding },
@@ -693,10 +709,10 @@ class OutboxRepositoryTest {
 
         val transition = async {
             repo.withBindingTransition {
-                binding = OutboxBinding("https://new.example.com", "ledger-a")
+                binding = testOutboxBinding().copy(serverUrl = "https://new.example.com", ledgerId = "ledger-a")
                 transitionStarted.complete(Unit)
                 releaseTransition.await()
-                binding = OutboxBinding("https://new.example.com", "ledger-b")
+                binding = testOutboxBinding().copy(serverUrl = "https://new.example.com", ledgerId = "ledger-b")
             }
         }
         transitionStarted.await()
@@ -718,6 +734,15 @@ class OutboxRepositoryTest {
 
     private fun fixedClock(iso: String): Clock =
         Clock.fixed(Instant.parse(iso), ZoneOffset.UTC)
+
+    private fun testOwner(prefix: String): OutboxOwnerIdentity = requireNotNull(
+        OutboxOwnerIdentity.fromOrNull(
+            serverId = "$prefix-0000-0000-0000-000000000001",
+            dataGeneration = "$prefix-0000-0000-0000-000000000002",
+            accountPublicId = "$prefix-0000-0000-0000-000000000003",
+            devicePublicId = "$prefix-0000-0000-0000-000000000004",
+        ),
+    )
 }
 
 // FakePendingMutationDao moved to its own file so OutboxDrainEngineTest

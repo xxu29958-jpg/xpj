@@ -9,9 +9,10 @@ import org.junit.Test
 
 /**
  * ADR-0041 P2 (review): the v10→v11 migration is install-upgrade-critical —
- * it adds ``expenses.rowVersion`` (DEFAULT 1) and DROPs + rebuilds
+ * it adds ``expenses.rowVersion`` (DEFAULT 1) and rebuilds
  * ``pending_mutations`` with the new INTEGER ``expectedRowVersion`` column and
- * its 6 indices. Static schema alignment with 11.json was verified by hand,
+ * its 6 indices while preserving old intents as review-required failures.
+ * Static schema alignment with 11.json was verified by hand,
  * but only a real [MigrationTestHelper] run exercises the actual migration SQL
  * against SQLite and validates the resulting schema against the exported
  * 11.json — catching upgrade crashes and schema/index drift the fake-DAO unit
@@ -71,11 +72,19 @@ class AppDatabaseMigrationTest {
             assertTrue("migrated expenses row must survive", cursor.moveToFirst())
             assertEquals(1L, cursor.getLong(0))
         }
-        // pending_mutations was dropped + recreated empty (string tokens can't
-        // replay against the int-CAS backend — intentional outbox reset).
-        db.query("SELECT COUNT(*) FROM pending_mutations").use { cursor ->
-            assertTrue(cursor.moveToFirst())
-            assertEquals("v10→v11 intentionally clears the outbox", 0L, cursor.getLong(0))
+        // The timestamp token cannot replay against int CAS, but the financial
+        // intent remains available for explicit review instead of disappearing.
+        db.query(
+            "SELECT type, targetId, payload, expectedRowVersion, status, lastError " +
+                "FROM pending_mutations WHERE targetId = 'expense:9'",
+        ).use { cursor ->
+            assertTrue("migrated outbox intent must survive", cursor.moveToFirst())
+            assertEquals("patch_expense", cursor.getString(0))
+            assertEquals("expense:9", cursor.getString(1))
+            assertEquals("{}", cursor.getString(2))
+            assertEquals(0L, cursor.getLong(3))
+            assertEquals("failed", cursor.getString(4))
+            assertEquals("legacy_concurrency_token_requires_review", cursor.getString(5))
         }
     }
 
@@ -170,6 +179,40 @@ class AppDatabaseMigrationTest {
         db.query("SELECT COUNT(*) FROM expenses WHERE serverId IS NULL").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals("a NULL-serverId local row must be insertable", 1L, cursor.getLong(0))
+        }
+    }
+
+    @Test
+    fun migrate13To14PreservesLegacyIntentWithoutGuessingOwner() {
+        val name = "migration-13-14-test.db"
+        helper.createDatabase(name, 13).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO pending_mutations (
+                    serverUrl, ledgerId, type, targetId, payload, expectedRowVersion,
+                    status, retryCount, createdAt
+                ) VALUES (
+                    'https://old.example.com', 'owner', 'create_expense', 'expense:local:abc',
+                    '{}', 0, 'pending', 0, '2026-07-15T00:00:00.000Z'
+                )
+                """.trimIndent(),
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            name,
+            14,
+            true,
+            AppDatabase.Migration13To14,
+        )
+
+        db.query(
+            "SELECT serverUrl, ledgerId, ownerKey FROM pending_mutations WHERE targetId = 'expense:local:abc'",
+        ).use { cursor ->
+            assertTrue("the offline intent must survive migration", cursor.moveToFirst())
+            assertEquals("https://old.example.com", cursor.getString(0))
+            assertEquals("owner", cursor.getString(1))
+            assertTrue("URL-only ownership must remain quarantined", cursor.isNull(2))
         }
     }
 }

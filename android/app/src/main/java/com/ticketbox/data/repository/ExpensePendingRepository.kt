@@ -41,7 +41,7 @@ internal class ExpensePendingRepository(
 
     override suspend fun syncPending(): Result<List<Expense>> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        core.syncPendingFromService(service = bound.service, ledgerIdAtRequest = bound.ledgerId)
+        core.syncPendingFromService(bound)
     }
 
     override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> = core.errorHandler.safeCall {
@@ -83,8 +83,8 @@ internal class ExpensePendingRepository(
                 },
             )
         }
-        if (bound.isStillActive()) {
-            core.settingsStore.saveLastUploadAt(Instant.now().toString())
+        core.withActiveBindingCommit(bound) {
+            core.settingsStore.saveLastUploadAtForLedger(bound.ledgerId, Instant.now().toString())
         }
         response.id
     }
@@ -113,7 +113,7 @@ internal class ExpensePendingRepository(
             bound.call {
                 it.updateExpense(id.toString(), draft.toRequest(baseline = baseline), UUID.randomUUID().toString())
             },
-            bound.ledgerId,
+            bound,
         )
         updated.toDomain()
     }
@@ -203,7 +203,7 @@ internal class ExpensePendingRepository(
             // don't pretend we saved.
             val updated = core.cacheIfConfirmed(
                 bound.call { it.updateExpense(pathRef, request, idempotencyKey) },
-                bound.ledgerId,
+                bound,
             )
             return SaveOutcome.Synced(updated.toDomain())
         }
@@ -214,7 +214,7 @@ internal class ExpensePendingRepository(
             token = token,
             idempotencyKey = idempotencyKey,
         )
-        if (core.hasUnresolvedQueuedMutationsFor(enqueueContext.targetId)) {
+        if (core.hasUnresolvedQueuedMutationsFor(bound, enqueueContext.targetId)) {
             // Per-target FIFO guard: an unresolved queued mutation for this
             // row exists, so a direct PATCH now would land out of intent
             // order (e.g. ahead of a queued confirm whose token cascade
@@ -229,7 +229,7 @@ internal class ExpensePendingRepository(
             // Synced with the server's canonical Expense.
             val updated = core.cacheIfConfirmed(
                 bound.call { it.updateExpense(pathRef, request, idempotencyKey) },
-                bound.ledgerId,
+                bound,
             )
             SaveOutcome.Synced(updated.toDomain())
         } catch (networkError: IOException) {
@@ -269,18 +269,17 @@ internal class ExpensePendingRepository(
         adapter: JsonAdapter<ExpenseUpdateRequest>,
         request: ExpenseUpdateRequest,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            // issue #65 slice 4: caller resolves the server-id vs local-ref
-            // target (expenseOutboxTargetId) so a pending-create edit replays
-            // against ``expense:local:{clientRef}``.
-            targetId = context.targetId,
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
-            expectedRowVersion = context.token,
-            // Same key as the direct attempt would have used — see the rationale
-            // where it's minted. The dispatcher replays it from row.idempotencyKey.
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.PatchExpense,
+                // issue #65 slice 4: caller resolves the server-id vs local-ref
+                // target so a pending-create edit replays against the local ref.
+                targetId = context.targetId,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 
@@ -322,7 +321,7 @@ internal class ExpensePendingRepository(
                 // single-use — it only satisfies the server's mandatory header.
                 it.confirmExpense(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
             },
-            bound.ledgerId,
+            bound,
         )
         confirmed.toDomain()
     }
@@ -337,7 +336,9 @@ internal class ExpensePendingRepository(
             it.rejectExpense(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
         }
         if (rejected.status == "rejected") {
-            core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(rejected.id))
+            core.withActiveBindingCommit(bound) {
+                core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(rejected.id))
+            }
         }
         rejected.toDomain()
     }
@@ -364,7 +365,7 @@ internal class ExpensePendingRepository(
                 // ADR-0042: single-use key — direct-only path, no replay.
                 it.markNotDuplicate(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
             },
-            bound.ledgerId,
+            bound,
         )
         updated.toDomain()
     }
@@ -379,7 +380,10 @@ internal class ExpensePendingRepository(
         // server HITs the recorded success instead of false-409ing on the stale
         // token. The dispatcher replays it from row.idempotencyKey.
         val idempotencyKey = UUID.randomUUID().toString()
-        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
+        if (
+            core.canEnqueueStateTransition(expense) &&
+            core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))
+        ) {
             // Per-target FIFO guard: an unresolved queued mutation (e.g. the
             // PATCH a just-queued save enqueued) must replay BEFORE this
             // confirm — a direct confirm now would commit the row WITHOUT the
@@ -398,7 +402,7 @@ internal class ExpensePendingRepository(
                 bound.call {
                     it.confirmExpense(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 },
-                bound.ledgerId,
+                bound,
             )
             ExpenseStateOutcome.Synced(confirmed.toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {
@@ -420,7 +424,10 @@ internal class ExpensePendingRepository(
         // ADR-0042: one intent-time key for both the direct attempt and the
         // replay — see confirmExpenseAllowingOffline for the rationale.
         val idempotencyKey = UUID.randomUUID().toString()
-        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
+        if (
+            core.canEnqueueStateTransition(expense) &&
+            core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))
+        ) {
             // Per-target FIFO guard — see confirmExpenseAllowingOffline.
             core.enqueueStateTransition(
                 bound = bound,
@@ -429,9 +436,6 @@ internal class ExpensePendingRepository(
                 networkError = null,
                 idempotencyKey = idempotencyKey,
             )
-            if (expense.status == "confirmed") {
-                core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(expense.id))
-            }
             return@safeCall ExpenseStateOutcome.Queued(expense.copy(status = "rejected"))
         }
         try {
@@ -439,7 +443,9 @@ internal class ExpensePendingRepository(
                 it.rejectExpense(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
             }
             if (rejected.status == "rejected") {
-                core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(rejected.id))
+                core.withActiveBindingCommit(bound) {
+                    core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(rejected.id))
+                }
             }
             ExpenseStateOutcome.Synced(rejected.toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {
@@ -450,9 +456,6 @@ internal class ExpensePendingRepository(
                 networkError = networkError,
                 idempotencyKey = idempotencyKey,
             )
-            if (expense.status == "confirmed") {
-                core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(expense.id))
-            }
             ExpenseStateOutcome.Queued(expense.copy(status = "rejected")) as ExpenseStateOutcome
         }
     }
@@ -464,7 +467,10 @@ internal class ExpensePendingRepository(
         // ADR-0042: one intent-time key for both the direct attempt and the
         // replay — see confirmExpenseAllowingOffline for the rationale.
         val idempotencyKey = UUID.randomUUID().toString()
-        if (core.canEnqueueStateTransition(expense) && core.hasUnresolvedQueuedMutationsFor(expenseOutboxTargetId(expense))) {
+        if (
+            core.canEnqueueStateTransition(expense) &&
+            core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))
+        ) {
             // Per-target FIFO guard — see confirmExpenseAllowingOffline.
             core.enqueueStateTransition(
                 bound = bound,
@@ -480,7 +486,7 @@ internal class ExpensePendingRepository(
                 bound.call {
                     it.markNotDuplicate(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 },
-                bound.ledgerId,
+                bound,
             )
             ExpenseStateOutcome.Synced(updated.toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {

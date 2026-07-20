@@ -3,8 +3,8 @@ package com.ticketbox.data.remote
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
-import com.ticketbox.security.SessionTokenStore
-import com.ticketbox.security.StoredSessionToken
+import com.ticketbox.security.RequestAuthSnapshot
+import com.ticketbox.security.SessionCredentialRotator
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -13,23 +13,32 @@ import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.io.IOException
 import java.net.Proxy
-import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 private const val USER_AGENT = "TicketBox/1.0 Android"
 private val RETRYABLE_GET_STATUS_CODES = setOf(502, 503, 504)
 private const val GET_IO_RETRY_COUNT = 2
 private const val GET_IO_RETRY_DELAY_MS = 350L
+internal const val LEDGER_ID_HEADER = "X-Ticketbox-Ledger-ID"
 
 internal fun buildApiHttpClient(
     routeProvider: BackendNetworkRouteProvider?,
     tokenProvider: () -> String?,
+    ledgerIdProvider: () -> String?,
     refreshController: SessionRefreshController?,
-    tokenStore: SessionTokenStore?,
+    credentials: SessionCredentialRotator?,
 ): OkHttpClient {
     val clientBuilder = baseClientBuilder()
-        .addInterceptor(authInterceptor(tokenProvider, refreshController, tokenStore))
+        .addInterceptor(
+            authInterceptor(
+                tokenProvider,
+                ledgerIdProvider,
+                refreshController,
+                credentials,
+            ),
+        )
         .addInterceptor(NonVpnGetFallbackInterceptor(routeProvider))
         .addInterceptor(GetIoRetryInterceptor(GET_IO_RETRY_COUNT, GET_IO_RETRY_DELAY_MS))
         .addInterceptor(retryableGetStatusInterceptor())
@@ -52,32 +61,49 @@ private fun baseClientBuilder(): OkHttpClient.Builder =
 
 private fun authInterceptor(
     tokenProvider: () -> String?,
+    ledgerIdProvider: () -> String?,
     refreshController: SessionRefreshController?,
-    tokenStore: SessionTokenStore?,
+    credentials: SessionCredentialRotator?,
 ): Interceptor =
     Interceptor { chain ->
         val requestBuilder = chain.request().newBuilder()
             .header("User-Agent", USER_AGENT)
-        val session = tokenStore?.getSessionToken()
-        refreshSessionIfNeeded(session, refreshController, chain)
-        appendBearerToken(requestBuilder, session?.token ?: tokenProvider())
-        val response = chain.proceed(requestBuilder.build())
-        clearSessionOnUnauthorized(response, session, tokenStore)
-        response
+        val requestSnapshot = credentials?.let {
+            resolveRequestAuthSnapshot(
+                credentials = it,
+                refreshController = refreshController,
+                recoverCredential = !requestTargetsRefresh(chain),
+            )
+        }
+        val token = requestSnapshot?.credential?.token ?: tokenProvider()
+        appendBearerToken(requestBuilder, token)
+        if (!token.isNullOrBlank()) {
+            appendLedgerId(requestBuilder, requestSnapshot?.ledgerId ?: ledgerIdProvider())
+        }
+        chain.proceed(requestBuilder.build())
     }
 
-private fun refreshSessionIfNeeded(
-    session: StoredSessionToken?,
+private fun resolveRequestAuthSnapshot(
+    credentials: SessionCredentialRotator,
     refreshController: SessionRefreshController?,
-    chain: Interceptor.Chain,
-) {
-    if (session == null || requestTargetsRefresh(chain)) {
-        return
+    recoverCredential: Boolean,
+): RequestAuthSnapshot {
+    val initial = credentials.requestAuthSnapshot()
+        ?: throw IOException("Authenticated session changed before request dispatch.")
+    val snapshot = if (recoverCredential && refreshController != null) {
+        refreshController.prepareForRequest(initial)
+            ?: throw IOException("Authenticated session changed during credential recovery.")
+    } else {
+        initial
     }
-    val now = Instant.now()
-    if (!isExpired(session, now)) {
-        refreshController?.refreshAsync(now)
+    if (snapshot.credential.token.isBlank() ||
+        snapshot.ledgerId.isBlank() ||
+        snapshot.sessionGeneration.isBlank() ||
+        snapshot.bindingRevision.isBlank()
+    ) {
+        throw IOException("Authenticated session is incomplete.")
     }
+    return snapshot
 }
 
 private fun appendBearerToken(requestBuilder: Request.Builder, token: String?) {
@@ -86,13 +112,9 @@ private fun appendBearerToken(requestBuilder: Request.Builder, token: String?) {
     }
 }
 
-private fun clearSessionOnUnauthorized(
-    response: Response,
-    session: StoredSessionToken?,
-    tokenStore: SessionTokenStore?,
-) {
-    if (response.code == 401 && session != null) {
-        tokenStore?.clear()
+private fun appendLedgerId(requestBuilder: Request.Builder, ledgerId: String?) {
+    ledgerId?.trim()?.takeIf { it.isNotEmpty() }?.let { selectedLedger ->
+        requestBuilder.header(LEDGER_ID_HEADER, selectedLedger)
     }
 }
 

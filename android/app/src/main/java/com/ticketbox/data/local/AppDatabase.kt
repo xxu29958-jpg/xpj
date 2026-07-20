@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class, PendingMutationEntity::class],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -238,9 +238,10 @@ abstract class AppDatabase : RoomDatabase() {
         //      value arrives on the next sync refresh).
         //   2. The outbox token column changes TEXT → INTEGER. SQLite can't ALTER
         //      a column type, and a string ``updated_at`` token captured by a
-        //      pre-0041 build can't be replayed against the int-CAS backend, so
-        //      the queue is dropped and rebuilt empty (no real install base
-        //      during development — this is a destructive outbox reset by design).
+        //      pre-0041 build cannot be replayed against the int-CAS backend.
+        //      Preserve the intent as FAILED with a review marker and token 0;
+        //      v14 later quarantines it without guessing an owner. Losing an
+        //      offline financial intent during an app upgrade is never valid.
         // SQL exposed as a list (not inline) so AppDatabaseMigrationSqlTest (JVM,
         // sqlite-jdbc) runs the EXACT production statements against in-memory
         // SQLite, while the instrumented AppDatabaseMigrationTest hands the
@@ -248,7 +249,13 @@ abstract class AppDatabase : RoomDatabase() {
         // result against the exported 11.json on a device.
         internal val MIGRATION_10_11_STATEMENTS: List<String> = listOf(
             "ALTER TABLE expenses ADD COLUMN rowVersion INTEGER NOT NULL DEFAULT 1",
-            "DROP TABLE IF EXISTS pending_mutations",
+            "ALTER TABLE pending_mutations RENAME TO pending_mutations_v10",
+            "DROP INDEX IF EXISTS index_pending_mutations_createdAt",
+            "DROP INDEX IF EXISTS index_pending_mutations_targetId_status",
+            "DROP INDEX IF EXISTS index_pending_mutations_status",
+            "DROP INDEX IF EXISTS index_pending_mutations_serverUrl_ledgerId_createdAt",
+            "DROP INDEX IF EXISTS index_pending_mutations_serverUrl_ledgerId_targetId_status",
+            "DROP INDEX IF EXISTS index_pending_mutations_serverUrl_ledgerId_status",
             """
             CREATE TABLE IF NOT EXISTS pending_mutations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -266,6 +273,25 @@ abstract class AppDatabase : RoomDatabase() {
                 completedAt TEXT
             )
             """.trimIndent(),
+            """
+            INSERT INTO pending_mutations (
+                id, serverUrl, ledgerId, type, targetId, payload,
+                expectedRowVersion, status, retryCount, lastError,
+                createdAt, attemptedAt, completedAt
+            )
+            SELECT
+                id, serverUrl, ledgerId, type, targetId, payload,
+                0,
+                CASE WHEN status = 'done' THEN 'done' ELSE 'failed' END,
+                retryCount,
+                CASE
+                    WHEN status = 'done' THEN lastError
+                    ELSE 'legacy_concurrency_token_requires_review'
+                END,
+                createdAt, attemptedAt, completedAt
+            FROM pending_mutations_v10
+            """.trimIndent(),
+            "DROP TABLE pending_mutations_v10",
             "CREATE INDEX IF NOT EXISTS index_pending_mutations_createdAt ON pending_mutations (createdAt)",
             "CREATE INDEX IF NOT EXISTS index_pending_mutations_targetId_status ON pending_mutations (targetId, status)",
             "CREATE INDEX IF NOT EXISTS index_pending_mutations_status ON pending_mutations (status)",
@@ -390,6 +416,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_13_14_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE pending_mutations ADD COLUMN ownerKey TEXT",
+            "DROP INDEX IF EXISTS index_pending_mutations_serverUrl_ledgerId_createdAt",
+            "DROP INDEX IF EXISTS index_pending_mutations_serverUrl_ledgerId_targetId_status",
+            "DROP INDEX IF EXISTS index_pending_mutations_serverUrl_ledgerId_status",
+            "CREATE INDEX IF NOT EXISTS index_pending_mutations_ownerKey_ledgerId_createdAt ON pending_mutations (ownerKey, ledgerId, createdAt)",
+            "CREATE INDEX IF NOT EXISTS index_pending_mutations_ownerKey_ledgerId_targetId_status ON pending_mutations (ownerKey, ledgerId, targetId, status)",
+            "CREATE INDEX IF NOT EXISTS index_pending_mutations_ownerKey_ledgerId_status ON pending_mutations (ownerKey, ledgerId, status)",
+        )
+
+        internal val Migration13To14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_13_14_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -410,6 +452,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration10To11,
                         Migration11To12,
                         Migration12To13,
+                        Migration13To14,
                     )
                     .build()
                     .also { instance = it }

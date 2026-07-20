@@ -31,9 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
@@ -50,6 +48,7 @@ import com.ticketbox.viewmodel.MyDevicesViewModel
 @Immutable
 private class DeviceRowActions(
     val onRename: (AccountDevice) -> Unit,
+    val onRecover: (AccountDevice) -> Unit,
     val onRevoke: (AccountDevice) -> Unit,
     val onDelete: (AccountDevice) -> Unit,
 )
@@ -59,6 +58,7 @@ private sealed interface DeviceDialog {
     val device: AccountDevice
 
     data class Rename(override val device: AccountDevice) : DeviceDialog
+    data class Recover(override val device: AccountDevice) : DeviceDialog
     data class Revoke(override val device: AccountDevice) : DeviceDialog
     data class Remove(override val device: AccountDevice) : DeviceDialog
 }
@@ -70,11 +70,11 @@ fun MyDevicesScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val canManage = viewModel.deviceIsOwner()
     var dialog by remember { mutableStateOf<DeviceDialog?>(null) }
     val rowActions = remember {
         DeviceRowActions(
             onRename = { dialog = DeviceDialog.Rename(it) },
+            onRecover = { dialog = DeviceDialog.Recover(it) },
             onRevoke = { dialog = DeviceDialog.Revoke(it) },
             onDelete = { dialog = DeviceDialog.Remove(it) },
         )
@@ -87,6 +87,11 @@ fun MyDevicesScreen(
         is DeviceDialog.Rename -> RenameDeviceDialog(
             device = open.device,
             onConfirm = { name -> viewModel.rename(open.device, name, activeLedgerId); dialog = null },
+            onDismiss = { dialog = null },
+        )
+        is DeviceDialog.Recover -> RecoverDeviceDialog(
+            device = open.device,
+            onConfirm = { viewModel.recover(open.device, activeLedgerId); dialog = null },
             onDismiss = { dialog = null },
         )
         is DeviceDialog.Revoke -> RevokeDeviceDialog(
@@ -104,35 +109,27 @@ fun MyDevicesScreen(
 
     SettingsPageFrame(
         title = stringResource(R.string.my_devices_page_title),
-        subtitle = if (canManage) {
-            stringResource(R.string.my_devices_page_subtitle_manage)
-        } else {
-            stringResource(R.string.my_devices_page_subtitle_view)
-        },
+        subtitle = stringResource(R.string.my_devices_page_subtitle_manage),
         onBack = onBack,
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         DeviceListSection(
             state = state,
-            canManage = canManage,
             onRefresh = { viewModel.refresh(activeLedgerId) },
             actions = rowActions,
         )
-        if (canManage) {
-            AddDeviceSection(
-                creating = state.pairingCreating,
-                createdCode = state.createdPairingCode,
-                onCreate = { viewModel.createPairingCode(activeLedgerId) },
-                onDismissResult = { viewModel.dismissPairingCode() },
-            )
-        }
+        AddDeviceSection(
+            creating = state.pairingCreating,
+            createdCode = state.createdPairingCode,
+            onCreate = { viewModel.createPairingCode(activeLedgerId) },
+            onDismissResult = { viewModel.dismissPairingCode() },
+        )
     }
 }
 
 @Composable
 private fun DeviceListSection(
     state: MyDevicesUiState,
-    canManage: Boolean,
     onRefresh: () -> Unit,
     actions: DeviceRowActions,
 ) {
@@ -155,7 +152,6 @@ private fun DeviceListSection(
             state.devices.forEachIndexed { index, device ->
                 DeviceRow(
                     device = device,
-                    canManage = canManage,
                     busy = state.busyDeviceId == device.publicId,
                     actions = actions,
                 )
@@ -189,7 +185,6 @@ private fun DeviceListSection(
 @Composable
 private fun DeviceRow(
     device: AccountDevice,
-    canManage: Boolean,
     busy: Boolean,
     actions: DeviceRowActions,
 ) {
@@ -201,7 +196,6 @@ private fun DeviceRow(
     ) {
         DeviceTitleRow(
             device = device,
-            canManage = canManage,
             busy = busy,
             actions = actions,
         )
@@ -212,7 +206,6 @@ private fun DeviceRow(
 @Composable
 private fun DeviceTitleRow(
     device: AccountDevice,
-    canManage: Boolean,
     busy: Boolean,
     actions: DeviceRowActions,
 ) {
@@ -240,9 +233,7 @@ private fun DeviceTitleRow(
                 color = MaterialTheme.colorScheme.primary,
             )
         }
-        if (canManage) {
-            DeviceActionsMenu(device = device, busy = busy, actions = actions)
-        }
+        DeviceActionsMenu(device = device, busy = busy, actions = actions)
     }
 }
 
@@ -302,6 +293,15 @@ private fun DeviceActionsMenu(
                 actions.onRename(device)
             },
         )
+        if (!device.isCurrent) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.my_devices_action_recover)) },
+                onClick = {
+                    expanded = false
+                    actions.onRecover(device)
+                },
+            )
+        }
         if (!device.isCurrent && !device.isRevoked) {
             DropdownMenuItem(
                 text = {
@@ -374,49 +374,6 @@ private fun AddDeviceSection(
 }
 
 @Composable
-private fun CreatedPairingCodeResult(
-    code: DevicePairingCode,
-    onDismissResult: () -> Unit,
-) {
-    val clipboard = LocalClipboardManager.current
-    Text(
-        text = stringResource(R.string.my_devices_add_code_title),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurface,
-    )
-    Text(
-        text = code.pairingCode,
-        style = MaterialTheme.typography.headlineSmall,
-        color = MaterialTheme.colorScheme.onSurface,
-    )
-    Text(
-        text = stringResource(R.string.my_devices_add_code_expires_at, displayTime(code.expiresAt)),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Text(
-        text = stringResource(R.string.my_devices_add_code_once_hint),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        OutlinedButton(
-            onClick = { clipboard.setText(AnnotatedString(code.pairingCode)) },
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(stringResource(R.string.my_devices_add_code_copy))
-        }
-        TextButton(onClick = onDismissResult) {
-            Text(stringResource(R.string.my_devices_add_code_dismiss))
-        }
-    }
-}
-
-@Composable
 private fun RenameDeviceDialog(
     device: AccountDevice,
     onConfirm: (String) -> Unit,
@@ -438,6 +395,29 @@ private fun RenameDeviceDialog(
         confirmButton = {
             TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) {
                 Text(stringResource(R.string.my_devices_rename_dialog_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun RecoverDeviceDialog(
+    device: AccountDevice,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.my_devices_recovery_dialog_title)) },
+        text = { Text(stringResource(R.string.my_devices_recovery_dialog_text, device.deviceName)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.my_devices_recovery_dialog_confirm))
             }
         },
         dismissButton = {

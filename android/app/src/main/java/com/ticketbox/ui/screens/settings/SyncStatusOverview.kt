@@ -15,8 +15,9 @@ internal data class SyncStatusOverview(
     val queuedCount: Int,
     val conflictCount: Int,
     val failedCount: Int,
+    val quarantinedCount: Int,
 ) {
-    val needsActionCount: Int = conflictCount + failedCount
+    val needsActionCount: Int = conflictCount + failedCount + quarantinedCount
     val isSettled: Boolean = queuedCount == 0 && needsActionCount == 0
 }
 
@@ -25,6 +26,7 @@ internal fun syncStatusOverview(status: OutboxStatus): SyncStatusOverview =
         queuedCount = status.queueDepth.coerceAtLeast(0),
         conflictCount = status.conflicts.size,
         failedCount = status.failed.size,
+        quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
     )
 
 @Composable
@@ -54,6 +56,11 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus) {
                         value = overview.failedCount.toString(),
                         caption = stringResource(R.string.sync_status_overview_failed_caption),
                     ),
+                    SettingsMetricData(
+                        label = stringResource(R.string.sync_status_overview_quarantined_label),
+                        value = overview.quarantinedCount.toString(),
+                        caption = stringResource(R.string.sync_status_overview_quarantined_caption),
+                    ),
                 ),
             )
             Text(
@@ -67,6 +74,10 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus) {
 
 @Composable
 private fun overviewCaption(overview: SyncStatusOverview): String = when {
+    overview.quarantinedCount > 0 -> stringResource(
+        R.string.sync_status_overview_caption_quarantined,
+        overview.quarantinedCount,
+    )
     overview.needsActionCount > 0 -> stringResource(
         R.string.sync_status_overview_caption_needs_action,
         overview.needsActionCount,

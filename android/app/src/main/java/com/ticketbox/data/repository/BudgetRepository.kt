@@ -1,11 +1,8 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.time.YearMonth
@@ -19,21 +16,18 @@ interface BudgetActions {
 }
 
 class BudgetRepository(
-    private val apiClient: ApiServiceFactory,
-    private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
+    private val apiProvider: ApiServiceProvider,
 ) : BudgetActions {
-    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "Budget",
         statusMessages = mapOf(404 to "预算不存在。"),
     )
 
-    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
+    override fun observeActiveLedgerId(): Flow<String?> = apiProvider.observeActiveLedgerId()
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> =
         monthlyBudget(month = month, timezone = currentTimezoneId())

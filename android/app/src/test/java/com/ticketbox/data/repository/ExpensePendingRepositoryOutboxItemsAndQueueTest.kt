@@ -28,7 +28,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
     fun `replaceItems IOException returns Queued optimistic + enqueues body without token`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         // ADR-0042: capture the Idempotency-Key the repository supplied on the
         // direct PUT so we can assert the enqueued row carries the SAME key.
         var directIdempotencyKey: String? = null
@@ -81,7 +81,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
         // path — mirrors the PATCH / confirm guards.
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         var directAttempted = false
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun replaceExpenseItems(
@@ -119,7 +119,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
     fun `replaceItems direct 2xx returns Synced, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun replaceExpenseItems(
                 id: String,
@@ -156,7 +156,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
         // narrowed the catch from Throwable to Exception so
         // JVM-level Errors propagate.
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(
+        val outbox = testOutboxRepository(
             dao = dao,
             onEnqueued = { throw IllegalStateException("simulated WorkManager fault") },
         )
@@ -179,7 +179,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
         // scheduler-cancel callback.
         val dao = FakePendingMutationDao()
         var cancelled = false
-        val outbox = OutboxRepository(
+        val outbox = testOutboxRepository(
             dao = dao,
             onClearAll = { cancelled = true },
         )
@@ -206,7 +206,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
     @Test
     fun `clearAll still succeeds when onClearAll throws (best-effort callback)`() = runTest {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(
+        val outbox = testOutboxRepository(
             dao = dao,
             onClearAll = { throw IllegalStateException("simulated WorkManager.cancel fault") },
         )

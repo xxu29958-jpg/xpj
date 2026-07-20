@@ -27,22 +27,17 @@ class MerchantRepository(
     private val binding: ServerSessionBinding,
     private val offlineMutations: MerchantAliasOfflineMutationWiring = MerchantAliasOfflineMutationWiring(),
 ) {
-    private val settingsStore = binding.settingsStore
     private val outbox get() = offlineMutations.outbox
     private val merchantAliasDeleteAdapter get() = offlineMutations.deleteAdapter
     private val merchantAliasUpdateAdapter get() = offlineMutations.updateAdapter
-    private val ledgerRequestGuard = LedgerRequestGuard(
-        binding.settingsStore,
-        binding.tokenStore,
-        binding.apiProvider,
-    )
+    private val ledgerRequestGuard = LedgerRequestGuard(binding.apiProvider)
     private val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { binding.apiProvider.currentSession()?.serverUrl },
         context = "Merchant",
         statusMessages = mapOf(404 to "商家别名不存在。"),
     )
 
-    fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    fun canModifyLedger(): Boolean = ledgerRoleCanModify(binding.apiProvider.currentLedgerRole())
 
     suspend fun merchantCatalog(includeHidden: Boolean = true): Result<List<MerchantCatalog>> =
         errorHandler.safeCall {
@@ -258,7 +253,7 @@ class MerchantRepository(
             token = alias.rowVersion,
             idempotencyKey = idempotencyKey,
         )
-        if (outboxRef.activeForTarget("merchant_alias:$cleanPublicId").isNotEmpty()) {
+        if (outboxRef.activeForTarget(bound, "merchant_alias:$cleanPublicId").isNotEmpty()) {
             // Per-target FIFO guard (codex follow-up review) — a direct DELETE
             // must not jump an unresolved queued mutation for the same alias.
             enqueueDeleteMerchantAlias(enqueueContext, adapter, request)
@@ -286,13 +281,15 @@ class MerchantRepository(
         adapter: JsonAdapter<MerchantAliasDeleteRequest>,
         request: MerchantAliasDeleteRequest,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.DeleteMerchantAlias,
-            targetId = context.targetId,
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = context.token,
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.DeleteMerchantAlias,
+                targetId = context.targetId,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 
@@ -344,7 +341,7 @@ class MerchantRepository(
             token = baseline.rowVersion,
             idempotencyKey = idempotencyKey,
         )
-        if (outboxRef.activeForTarget("merchant_alias:$cleanPublicId").isNotEmpty()) {
+        if (outboxRef.activeForTarget(bound, "merchant_alias:$cleanPublicId").isNotEmpty()) {
             // Per-target FIFO guard — see deleteMerchantAliasAllowingOffline.
             enqueueUpdateMerchantAlias(enqueueContext, adapter, request)
             return@safeCall MerchantAliasSaveOutcome.Queued(
@@ -374,13 +371,15 @@ class MerchantRepository(
         adapter: JsonAdapter<MerchantAliasUpdateRequest>,
         request: MerchantAliasUpdateRequest,
     ) {
-        context.bound.requireStillActive()
         context.outbox.enqueue(
-            type = PendingMutationType.UpdateMerchantAlias,
-            targetId = context.targetId,
-            payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-            expectedRowVersion = context.token,
-            idempotencyKey = context.idempotencyKey,
+            boundRequest = context.bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.UpdateMerchantAlias,
+                targetId = context.targetId,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = context.token,
+                idempotencyKey = context.idempotencyKey,
+            ),
         )
     }
 

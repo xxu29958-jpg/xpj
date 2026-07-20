@@ -1,13 +1,20 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.ExpenseDao
-import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.security.SessionTokenStore
+import com.ticketbox.security.LocalSessionBindingUpdate
+import com.ticketbox.security.LocalSessionIdentity
+import com.ticketbox.security.LocalSessionRecord
+import com.ticketbox.security.LocalSessionStore
+import com.ticketbox.security.LocalSessionVersion
+import com.ticketbox.security.StoredSessionToken
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.UUID
 
 data class LedgerSessionIdentity(
+    val accountPublicId: String? = null,
+    val devicePublicId: String? = null,
     val accountName: String,
     val ledgerId: String,
     val ledgerName: String,
@@ -17,13 +24,38 @@ data class LedgerSessionIdentity(
 )
 
 data class LedgerSessionSnapshot(
+    val serverId: String? = null,
+    val dataGeneration: String? = null,
     val serverUrl: String?,
     val sessionToken: String?,
     val activeLedgerId: String?,
-)
+    val sessionGeneration: String? = null,
+    val bindingRevision: String? = null,
+) {
+    val version: LocalSessionVersion?
+        get() = sessionGeneration?.let { generation ->
+            bindingRevision?.let { revision -> LocalSessionVersion(generation, revision) }
+        }
+
+    fun hasSameLogicalBinding(other: LedgerSessionSnapshot): Boolean =
+        serverId == other.serverId &&
+            dataGeneration == other.dataGeneration &&
+            serverUrl == other.serverUrl &&
+            activeLedgerId == other.activeLedgerId &&
+            version == other.version
+}
+
+enum class LocalSessionChange {
+    EstablishSession,
+    SelectLedger,
+    RefreshProjection,
+}
 
 data class LedgerSessionTransition(
+    val change: LocalSessionChange,
     val identity: LedgerSessionIdentity,
+    val serverId: String? = null,
+    val dataGeneration: String? = null,
     val serverUrl: String? = null,
     val sessionToken: String? = null,
     val tokenExpiresAt: String? = null,
@@ -31,6 +63,7 @@ data class LedgerSessionTransition(
     val cacheInvalidation: LedgerCacheInvalidation = LedgerCacheInvalidation.None,
     val clearAvailableLedgers: Boolean = false,
     val markUnlocked: Boolean = false,
+    val completedEnrollmentAttemptId: String? = null,
 )
 
 enum class LedgerCacheInvalidation {
@@ -39,194 +72,269 @@ enum class LedgerCacheInvalidation {
     AllLedgers,
 }
 
-/**
- * Single local boundary for persisted ledger-session changes.
- *
- * Identity is saved last so the active-ledger hot flow cannot expose a new
- * ledger before its local cache and sync markers have been invalidated.
- */
+/** Linearization point for local session establishment and ledger selection. */
 class LocalLedgerSessionCoordinator(
     private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
+    private val sessionStore: LocalSessionStore,
     private val expenseDao: ExpenseDao,
-    /**
-     * Optional outbox boundary hook. Session transitions pause
-     * dispatch before credentials are written; binding-scoped rows
-     * then prevent old ledger/server mutations from replaying under
-     * the new session. ``null`` keeps tests and older construction
-     * sites at the original behaviour.
-     */
     private val outbox: OutboxRepository? = null,
 ) {
     private val mutex = Mutex()
 
-    fun currentSnapshot(): LedgerSessionSnapshot =
-        LedgerSessionSnapshot(
-            serverUrl = currentServerUrl(),
-            sessionToken = currentToken(),
-            activeLedgerId = settingsStore.activeLedgerId(),
-        )
+    fun currentSnapshot(): LedgerSessionSnapshot = sessionStore.currentSession().toSnapshot()
 
     fun isCurrent(snapshot: LedgerSessionSnapshot): Boolean =
-        currentServerUrl() == snapshot.serverUrl &&
-            currentToken() == snapshot.sessionToken &&
-            settingsStore.activeLedgerId() == snapshot.activeLedgerId
+        currentSnapshot().hasSameLogicalBinding(snapshot)
 
     suspend fun applyTransition(transition: LedgerSessionTransition) {
         mutex.withLock {
-            applyTransitionLocked(transition)
+            check(applyTransitionLocked(transition = transition, clearOutbox = false)) {
+                "The local session changed while applying a transition."
+            }
         }
     }
 
     suspend fun applyTransitionIfCurrent(
         expectedSnapshot: LedgerSessionSnapshot,
         transition: LedgerSessionTransition,
-    ): Boolean {
-        return mutex.withLock {
-            if (!isCurrent(expectedSnapshot)) return@withLock false
-            applyTransitionLocked(transition)
-            true
+    ): Boolean = mutex.withLock {
+        if (!isCurrent(expectedSnapshot)) return@withLock false
+        applyTransitionLocked(transition = transition, clearOutbox = false)
+    }
+
+    internal suspend fun clearSession() {
+        mutex.withLock {
+            val clear: suspend () -> Unit = {
+                expenseDao.clear()
+                sessionStore.clearSession()
+                settingsStore.clear()
+            }
+            val outboxRef = outbox
+            if (outboxRef == null) {
+                clear()
+            } else {
+                outboxRef.withBindingTransition(clearExistingRows = false, block = clear)
+            }
         }
     }
 
-    private suspend fun applyTransitionLocked(transition: LedgerSessionTransition) {
-        val identity = transition.identity
-        transition.serverUrl?.let { serverUrl ->
-            require(serverUrl == canonicalServerOriginOrNull(serverUrl)) {
-                "Ledger session transitions must persist a canonical server origin."
-            }
-        }
-        if (transition.cacheInvalidation != LedgerCacheInvalidation.None && outbox != null) {
-            outbox.withBindingTransition(
-                serverAliasMigration = serverAliasMigration(transition),
-            ) {
-                transition.serverUrl?.let(settingsStore::saveServerUrl)
-                transition.sessionToken?.let { token ->
-                    tokenStore.saveToken(
-                        token = token,
-                        expiresAt = transition.tokenExpiresAt,
-                        softRefreshAfter = transition.tokenSoftRefreshAfter,
-                    )
-                }
-
-                if (transition.clearAvailableLedgers) {
-                    settingsStore.saveAvailableLedgersJson(null)
-                }
-
-                when (transition.cacheInvalidation) {
-                    LedgerCacheInvalidation.None -> Unit
-                    LedgerCacheInvalidation.TargetLedger -> {
-                        expenseDao.clearForLedger(identity.ledgerId)
-                        settingsStore.clearLastConfirmedSyncAtForLedger(identity.ledgerId)
-                    }
-                    LedgerCacheInvalidation.AllLedgers -> {
-                        expenseDao.clear()
-                        settingsStore.clearLedgerScopedRuntimeState()
-                    }
-                }
-
-                settingsStore.saveIdentity(identity.toPersistedIdentity())
-                if (transition.markUnlocked) {
-                    settingsStore.markUnlocked()
-                }
-            }
-            return
-        }
-
-        // The outbox dispatch boundary MUST be paused BEFORE any
-        // credential change.
-        //
-        // The drain engine's [OutboxDrainEngine] post-claim epoch
-        // check catches "epoch already bumped" before dispatch. But
-        // if we write serverUrl/sessionToken FIRST and only bump
-        // the epoch later via outbox.pauseForBindingTransition(),
-        // there's a window
-        // where a concurrent drain has:
-        //   - passed the post-claim epoch check (epoch still old)
-        //   - reads apiProvider() inside dispatch → already sees
-        //     the NEW serverUrl / sessionToken
-        //   - sends the OLD row under the NEW session
-        //
-        // Order: pause FIRST: the epoch bumps before any new
-        // credential is visible. The drain either:
-        //   - hasn't captured epoch yet → captures the new value and
-        //     drains only rows for the new binding
-        //   - has captured old epoch but not yet claimed any row →
-        //     post-claim check fires on next iteration, aborts
-        //   - has captured old epoch AND already passed the
-        //     post-claim check → it WILL dispatch, but apiProvider
-        //     still resolves the OLD credentials (we haven't
-        //     written the new ones yet); the request goes under
-        //     the OLD session, which is the safer failure mode
-        //     ("old-session in-flight" vs "wrong-session replay").
-        //
-        // Old-session in-flight at the boundary moment is a real
-        // residual, but binding-scoped drain reads prevent queued
-        // old rows from replaying after the switch.
-        if (transition.cacheInvalidation != LedgerCacheInvalidation.None) {
-            outbox?.pauseForBindingTransition()
-        }
-
-        transition.serverUrl?.let(settingsStore::saveServerUrl)
-        transition.sessionToken?.let { token ->
-            tokenStore.saveToken(
-                token = token,
-                expiresAt = transition.tokenExpiresAt,
-                softRefreshAfter = transition.tokenSoftRefreshAfter,
+    internal suspend fun replaceCredentialsForDebug(serverUrl: String, sessionToken: String) {
+        mutex.withLock {
+            val current = sessionStore.currentSession()
+                ?: error("Debug credential override requires an existing session.")
+            val identity = current.identity.toLedgerSessionIdentity()
+            check(
+                applyTransitionLocked(
+                    transition = LedgerSessionTransition(
+                        change = LocalSessionChange.EstablishSession,
+                        identity = identity,
+                        serverId = current.serverId,
+                        dataGeneration = current.dataGeneration,
+                        serverUrl = canonicalServerOriginOrNull(serverUrl)
+                            ?: error("Debug server origin is invalid."),
+                        sessionToken = sessionToken,
+                        cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
+                        clearAvailableLedgers = true,
+                        markUnlocked = true,
+                    ),
+                    clearOutbox = true,
+                ),
             )
         }
+    }
 
-        if (transition.clearAvailableLedgers) {
-            settingsStore.saveAvailableLedgersJson(null)
+    private suspend fun applyTransitionLocked(
+        transition: LedgerSessionTransition,
+        clearOutbox: Boolean,
+    ): Boolean {
+        val current = sessionStore.currentSession()
+        validateSessionTransition(transition, current)
+        val commit: suspend () -> Boolean = {
+            invalidateLocalCache(transition)
+            val committed = persistSession(transition, current)
+            if (committed) persistSessionSideEffects(transition)
+            committed
         }
 
+        if (transition.change == LocalSessionChange.RefreshProjection || outbox == null) {
+            return commit()
+        }
+        return outbox.withBindingTransition(
+            clearExistingRows = clearOutbox,
+            block = commit,
+        )
+    }
+
+    private suspend fun persistSession(
+        transition: LedgerSessionTransition,
+        current: LocalSessionRecord?,
+    ): Boolean {
+        val identity = transition.identity.toLocalSessionIdentity()
+        if (transition.change == LocalSessionChange.EstablishSession) {
+            val serverUrl = requireNotNull(transition.serverUrl)
+            require(canonicalServerOriginOrNull(serverUrl) == serverUrl) {
+                "New sessions must persist a canonical server origin."
+            }
+            sessionStore.establishSession(
+                LocalSessionRecord(
+                    sessionGeneration = UUID.randomUUID().toString(),
+                    bindingRevision = UUID.randomUUID().toString(),
+                    serverId = transition.serverId,
+                    dataGeneration = transition.dataGeneration,
+                    serverUrl = serverUrl,
+                    credential = transition.replacementCredential(),
+                    identity = identity,
+                ),
+                completedEnrollmentAttemptId = transition.completedEnrollmentAttemptId,
+            )
+            return true
+        }
+
+        val existing = requireNotNull(current)
+        return sessionStore.updateBindingIfCurrent(
+            LocalSessionBindingUpdate(
+                expectedVersion = existing.version,
+                bindingRevision = when (transition.change) {
+                    LocalSessionChange.SelectLedger -> UUID.randomUUID().toString()
+                    LocalSessionChange.RefreshProjection -> existing.bindingRevision
+                    LocalSessionChange.EstablishSession -> error("handled above")
+                },
+                serverId = transition.serverId ?: existing.serverId,
+                dataGeneration = transition.dataGeneration ?: existing.dataGeneration,
+                serverUrl = existing.serverUrl,
+                identity = identity,
+                replacementCredential = transition.sessionToken?.let {
+                    transition.replacementCredential()
+                },
+            ),
+        )
+    }
+
+    private fun LedgerSessionTransition.replacementCredential(): StoredSessionToken =
+        StoredSessionToken(
+            token = requireNotNull(sessionToken),
+            expiresAt = tokenExpiresAt,
+            softRefreshAfter = tokenSoftRefreshAfter,
+        )
+
+    private suspend fun invalidateLocalCache(transition: LedgerSessionTransition) {
         when (transition.cacheInvalidation) {
             LedgerCacheInvalidation.None -> Unit
             LedgerCacheInvalidation.TargetLedger -> {
-                expenseDao.clearForLedger(identity.ledgerId)
-                settingsStore.clearLastConfirmedSyncAtForLedger(identity.ledgerId)
-                // outbox.pauseForBindingTransition() already ran
-                // above; cache invalidation below is just the local
-                // expense rows.
+                expenseDao.clearForLedger(transition.identity.ledgerId)
+                settingsStore.clearLastConfirmedSyncAtForLedger(transition.identity.ledgerId)
             }
             LedgerCacheInvalidation.AllLedgers -> {
                 expenseDao.clear()
                 settingsStore.clearLedgerScopedRuntimeState()
             }
         }
-
-        settingsStore.saveIdentity(identity.toPersistedIdentity())
-        if (transition.markUnlocked) {
-            settingsStore.markUnlocked()
-        }
     }
 
-    private fun serverAliasMigration(
-        transition: LedgerSessionTransition,
-    ): OutboxServerAliasMigration? {
-        val oldServerUrl = currentServerUrl() ?: return null
-        val newServerUrl = transition.serverUrl ?: return null
-        val oldLedgerId = settingsStore.activeLedgerId() ?: return null
-        if (oldServerUrl == newServerUrl || oldLedgerId != transition.identity.ledgerId) return null
-        val oldOrigin = canonicalServerOriginOrNull(oldServerUrl) ?: return null
-        val newOrigin = canonicalServerOriginOrNull(newServerUrl) ?: return null
-        if (oldOrigin != newOrigin) return null
-        return OutboxServerAliasMigration(
-            oldServerUrl = oldServerUrl,
-            newServerUrl = newOrigin,
-            ledgerId = oldLedgerId,
-        )
+    private fun persistSessionSideEffects(transition: LedgerSessionTransition) {
+        if (transition.clearAvailableLedgers) settingsStore.saveAvailableLedgersJson(null)
+        if (transition.markUnlocked) settingsStore.markUnlocked()
     }
 
-    private fun currentServerUrl(): String? =
-        settingsStore.serverUrl()?.trim()?.trimEnd('/')?.takeIf { it.isNotBlank() }
-
-    private fun currentToken(): String? =
-        tokenStore.getToken()?.takeIf { it.isNotBlank() }
 }
 
-private fun LedgerSessionIdentity.toPersistedIdentity(): PersistedLedgerIdentity =
-    PersistedLedgerIdentity(
+private fun validateSessionTransition(
+    transition: LedgerSessionTransition,
+    current: LocalSessionRecord?,
+) {
+    when (transition.change) {
+        LocalSessionChange.EstablishSession -> validateEstablishedSession(transition)
+        LocalSessionChange.SelectLedger -> validateLedgerSelection(transition, current)
+        LocalSessionChange.RefreshProjection -> validateProjectionRefresh(transition, current)
+    }
+    validateSessionContinuity(transition, current)
+}
+
+private fun validateEstablishedSession(transition: LedgerSessionTransition) {
+    requireNotNull(transition.serverUrl) { "New sessions require a server origin." }
+    requireNotNull(transition.sessionToken) { "New sessions require a credential." }
+    require(!transition.serverId.isNullOrBlank()) { "New sessions require a logical server identity." }
+    require(!transition.dataGeneration.isNullOrBlank()) { "New sessions require a server data generation." }
+    require(!transition.identity.accountPublicId.isNullOrBlank()) { "New sessions require a stable account identity." }
+    require(!transition.identity.devicePublicId.isNullOrBlank()) { "New sessions require a stable device identity." }
+}
+
+private fun validateLedgerSelection(
+    transition: LedgerSessionTransition,
+    current: LocalSessionRecord?,
+) {
+    val established = requireNotNull(current) { "Ledger selection requires an established session." }
+    require(!(transition.serverId ?: established.serverId).isNullOrBlank()) {
+        "Ledger selection requires a logical server identity."
+    }
+    require(!(transition.dataGeneration ?: established.dataGeneration).isNullOrBlank()) {
+        "Ledger selection requires a server data generation."
+    }
+}
+
+private fun validateProjectionRefresh(
+    transition: LedgerSessionTransition,
+    current: LocalSessionRecord?,
+) {
+    val established = requireNotNull(current) { "Projection refresh requires an established session." }
+    require(transition.serverUrl == null && transition.sessionToken == null) {
+        "Projection refresh cannot replace the server or credential."
+    }
+    require(established.identity.ledgerId == transition.identity.ledgerId) {
+        "Projection refresh cannot select another ledger."
+    }
+}
+
+private fun validateSessionContinuity(
+    transition: LedgerSessionTransition,
+    current: LocalSessionRecord?,
+) {
+    if (current == null || transition.change == LocalSessionChange.EstablishSession) return
+    require(transition.serverId == null || current.serverId == null || current.serverId == transition.serverId) {
+        "Logical server identity changed."
+    }
+    require(
+        transition.dataGeneration == null ||
+            current.dataGeneration == null ||
+            current.dataGeneration == transition.dataGeneration,
+    ) { "Server data generation changed." }
+    require(
+        current.identity.accountPublicId == null ||
+            current.identity.accountPublicId == transition.identity.accountPublicId,
+    ) { "Authenticated account identity changed." }
+    require(
+        current.identity.devicePublicId == null ||
+            current.identity.devicePublicId == transition.identity.devicePublicId,
+    ) { "Authenticated device identity changed." }
+}
+
+private fun LocalSessionRecord?.toSnapshot(): LedgerSessionSnapshot =
+    LedgerSessionSnapshot(
+        serverId = this?.serverId,
+        dataGeneration = this?.dataGeneration,
+        serverUrl = this?.serverUrl,
+        sessionToken = this?.credential?.token,
+        activeLedgerId = this?.identity?.ledgerId,
+        sessionGeneration = this?.sessionGeneration,
+        bindingRevision = this?.bindingRevision,
+    )
+
+private fun LedgerSessionIdentity.toLocalSessionIdentity(): LocalSessionIdentity =
+    LocalSessionIdentity(
+        accountPublicId = accountPublicId,
+        devicePublicId = devicePublicId,
+        accountName = accountName,
+        ledgerId = ledgerId,
+        ledgerName = ledgerName,
+        deviceName = deviceName,
+        role = role,
+        boundAt = boundAt,
+    )
+
+private fun LocalSessionIdentity.toLedgerSessionIdentity(): LedgerSessionIdentity =
+    LedgerSessionIdentity(
+        accountPublicId = accountPublicId,
+        devicePublicId = devicePublicId,
         accountName = accountName,
         ledgerId = ledgerId,
         ledgerName = ledgerName,

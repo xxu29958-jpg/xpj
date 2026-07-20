@@ -5,7 +5,6 @@ import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DeviceRenameRequestDto
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerDto
@@ -16,6 +15,7 @@ import com.ticketbox.data.remote.dto.PairingCodeResponseDto
 import com.ticketbox.data.remote.dto.RecycleBinItemDto
 import com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
+import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
 import com.ticketbox.data.remote.dto.InvitationCreateRequestDto
 import com.ticketbox.data.remote.dto.InvitationCreateResponseDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
@@ -37,7 +37,7 @@ import com.ticketbox.domain.model.RecycleBinSnapshot
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
+import com.ticketbox.security.LocalSessionStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -51,22 +51,21 @@ import java.time.Instant
  * Repository for v0.4-alpha1 multi-ledger management.
  *
  * Owns the small surface that is **not** about expenses: listing the
- * ledgers an account belongs to, creating a new ledger, and switching
- * the active session token to a different ledger.
+ * ledgers an account belongs to, creating a new ledger, and selecting
+ * the request ledger for the existing Account/Device session.
  *
  * Ownership is decided server-side; this repository never persists or
  * trusts a client-supplied role beyond display purposes.
  */
 class LedgerRepository(
-    private val apiClient: ApiServiceFactory,
     private val settingsStore: TicketboxSettingsStore,
-    private val tokenStore: SessionTokenStore,
     private val expenseDao: ExpenseDao,
-    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
+    private val sessionStore: LocalSessionStore,
+    private val apiProvider: ApiServiceProvider,
     private val sessionCoordinator: LocalLedgerSessionCoordinator = LocalLedgerSessionCoordinator(
-        settingsStore,
-        tokenStore,
-        expenseDao,
+        settingsStore = settingsStore,
+        sessionStore = sessionStore,
+        expenseDao = expenseDao,
     ),
 ) {
     private val moshi: Moshi by lazy {
@@ -87,36 +86,27 @@ class LedgerRepository(
         moshi.adapter<List<LedgerDto>>(ledgerListType)
     }
     private val switchLedgerMutex = Mutex()
-
-    private fun api() = apiProvider.temporary(
-        requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
-            "Ledger server is not bound."
-        },
-        requireNotNull(tokenStore.getToken()?.takeIf { it.isNotBlank() }) {
-            "Ledger token is not bound."
-        },
+    private val requestGuard = LedgerRequestGuard(apiProvider)
+    private val enrollment = DeviceEnrollmentCoordinator(
+        sessionStore = sessionStore,
+        apiProvider = apiProvider,
+        sessionCoordinator = sessionCoordinator,
     )
 
     private fun unauthenticatedApi() = apiProvider.unauthenticated(
-        requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
+        requireNotNull(apiProvider.currentSession()?.serverUrl) {
             "账本地址未绑定"
         },
     )
 
     suspend fun refreshLedgers(): Result<List<LedgerSummary>> = wrap {
-        val session = sessionCoordinator.currentSnapshot()
-        val serverUrl = requireNotNull(session.serverUrl) { "Ledger server is not bound." }
-        val token = requireNotNull(session.sessionToken) { "Ledger token is not bound." }
-        val response = apiProvider.temporary(serverUrl, token).listLedgers()
+        val bound = requestGuard.bind()
+        val response = bound.call { it.listLedgers() }
         val summaries = response.ledgers.map { it.toSummary() }
-        if (sessionCoordinator.isCurrent(session)) {
-            settingsStore.saveAvailableLedgersJson(ledgerListAdapter.toJson(response.ledgers))
-            settingsStore.activeLedgerId()
-                ?.let { activeId ->
-                    summaries.firstOrNull { it.ledgerId == activeId }
-                        ?.let { persistCurrentRoleIfChanged(it.role, expectedLedgerId = activeId) }
-                }
-        }
+        bound.requireStillActive()
+        settingsStore.saveAvailableLedgersJson(ledgerListAdapter.toJson(response.ledgers))
+        summaries.firstOrNull { it.ledgerId == bound.ledgerId }
+            ?.let { persistCurrentRoleIfChanged(it.role, expectedLedgerId = bound.ledgerId) }
         summaries
     }
 
@@ -128,53 +118,58 @@ class LedgerRepository(
         }.getOrElse { emptyList() }
     }
 
-    fun currentAccountName(): String? = settingsStore.accountName()
+    fun currentAccountName(): String? = apiProvider.currentSession()?.identity?.accountName
 
-    fun currentLedgerName(): String? = settingsStore.activeLedgerName()
-        ?: settingsStore.ledgerName()
+    fun currentLedgerName(): String? = apiProvider.currentSession()?.identity?.ledgerName
 
-    fun currentLedgerRole(): String? = settingsStore.role()
+    fun currentLedgerRole(): String? = apiProvider.currentLedgerRole()
 
-    fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    fun activeLedgerId(): String? = settingsStore.activeLedgerId()
+    fun activeLedgerId(): String? = apiProvider.currentLedgerId()
 
     suspend fun createLedger(name: String): Result<LedgerSummary> = wrap {
         val cleanName = name.trim()
         require(cleanName.isNotEmpty()) { "请填写账本名称。" }
         require(cleanName.length <= LEDGER_NAME_MAX_LEN) { "账本名称最多 60 个字。" }
-        val dto = api().createLedger(LedgerCreateRequestDto(name = cleanName))
+        val dto = requestGuard.guardedCall { api ->
+            api.createLedger(LedgerCreateRequestDto(name = cleanName))
+        }
         // Refresh the cache so the new ledger appears in the picker.
         runCatching { refreshLedgers() }
         dto.toSummary()
     }
 
-    /**
-     * Switch the active session token to [ledgerId]. The previous token is
-     * revoked server-side, so we must persist the freshly issued token
-     * before doing any post-switch network calls. The local confirmed-cache
-     * for the *new* ledger is wiped so the next sync repopulates it
-     * exclusively with rows belonging to [ledgerId].
-     */
+    /** Select [ledgerId] without replacing or rotating the device session. */
     suspend fun switchLedger(ledgerId: String): Result<LedgerSummary> = wrap {
         switchLedgerMutex.withLock {
             val session = sessionCoordinator.currentSnapshot()
-            val serverUrl = requireNotNull(session.serverUrl) { "Ledger server is not bound." }
-            val token = requireNotNull(session.sessionToken) { "Ledger token is not bound." }
-            val response = apiProvider.temporary(serverUrl, token).switchLedger(ledgerId)
+            val bound = requestGuard.bind(expectedLedgerId = session.activeLedgerId)
+            val response = bound.call { api -> api.switchLedger(ledgerId) }
+            // The response field is a compatibility echo, not credential authority.
+            // A same-session refresh may rotate the token after this operation captured
+            // [session] but before OkHttp dispatches the request. The session store keeps
+            // the rotated credential while the logical binding/version checks below
+            // decide whether this ledger transition is still current.
+            val serverId = response.serverId.requireSessionProtocolId("服务器身份")
+            val dataGeneration = response.dataGeneration.requireSessionProtocolId("数据代际")
+            val accountPublicId = response.accountPublicId.requireSessionProtocolId("成员身份")
+            val devicePublicId = response.devicePublicId.requireSessionProtocolId("设备身份")
             val applied = sessionCoordinator.applyTransitionIfCurrent(
                 expectedSnapshot = session,
                 transition = LedgerSessionTransition(
-                    sessionToken = response.sessionToken,
-                    tokenExpiresAt = response.expiresAt,
-                    tokenSoftRefreshAfter = response.softRefreshAfter,
+                    change = LocalSessionChange.SelectLedger,
+                    serverId = serverId,
+                    dataGeneration = dataGeneration,
                     identity = LedgerSessionIdentity(
+                        accountPublicId = accountPublicId,
+                        devicePublicId = devicePublicId,
                         accountName = response.accountName,
                         ledgerId = response.ledger.ledgerId,
                         ledgerName = response.ledger.name,
                         deviceName = response.deviceName,
                         role = response.ledger.role,
-                        boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                        boundAt = apiProvider.currentSession()?.identity?.boundAt ?: Instant.now().toString(),
                     ),
                     cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
                 ),
@@ -190,7 +185,9 @@ class LedgerRepository(
         val targetLedgerId = requireNotNull(ledgerId?.takeIf { it.isNotBlank() }) {
             "当前账本还没有准备好。"
         }
-        val members = api().ledgerMembers(targetLedgerId).members.map { it.toFamilyMember() }
+        val members = requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.ledgerMembers(targetLedgerId).members.map { it.toFamilyMember() }
+        }
         members.firstOrNull { it.isSelf }?.let { persistSelfRoleIfChanged(it, expectedLedgerId = targetLedgerId) }
         members
     }
@@ -201,7 +198,9 @@ class LedgerRepository(
     ): Result<List<LedgerAuditEntry>> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
         val safeLimit = limit.coerceIn(1, AUDIT_MAX_LIMIT)
-        api().ledgerAudit(targetLedgerId, safeLimit).items.map { it.toLedgerAuditEntry() }
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.ledgerAudit(targetLedgerId, safeLimit).items.map { it.toLedgerAuditEntry() }
+        }
     }
 
     suspend fun updateFamilyMemberRole(
@@ -214,11 +213,13 @@ class LedgerRepository(
         require(cleanRole == LEDGER_ROLE_MEMBER || cleanRole == LEDGER_ROLE_VIEWER) {
             "成员角色只能是成员或只读。"
         }
-        api().updateLedgerMemberRole(
-            ledgerId = targetLedgerId,
-            memberId = memberId,
-            request = LedgerMemberRoleUpdateRequestDto(role = cleanRole),
-        ).toFamilyMember()
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.updateLedgerMemberRole(
+                ledgerId = targetLedgerId,
+                memberId = memberId,
+                request = LedgerMemberRoleUpdateRequestDto(role = cleanRole),
+            ).toFamilyMember()
+        }
     }
 
     /**
@@ -236,10 +237,12 @@ class LedgerRepository(
         require(cleanRole == LEDGER_ROLE_MEMBER || cleanRole == LEDGER_ROLE_VIEWER) {
             "邀请角色只能是成员或只读。"
         }
-        api().createInvitation(
-            ledgerId = targetLedgerId,
-            request = InvitationCreateRequestDto(role = cleanRole),
-        ).toFamilyInvitationCreated()
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.createInvitation(
+                ledgerId = targetLedgerId,
+                request = InvitationCreateRequestDto(role = cleanRole),
+            ).toFamilyInvitationCreated()
+        }
     }
 
     suspend fun disableFamilyMember(
@@ -247,7 +250,9 @@ class LedgerRepository(
         ledgerId: String? = activeLedgerId(),
     ): Result<FamilyMember> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
-        api().disableLedgerMember(targetLedgerId, memberId).toFamilyMember()
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.disableLedgerMember(targetLedgerId, memberId).toFamilyMember()
+        }
     }
 
     suspend fun transferOwner(
@@ -255,7 +260,9 @@ class LedgerRepository(
         ledgerId: String? = activeLedgerId(),
     ): Result<OwnerTransferResult> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
-        val response = api().transferLedgerOwner(targetLedgerId, memberId)
+        val response = requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.transferLedgerOwner(targetLedgerId, memberId)
+        }
         val result = response.toOwnerTransferResult()
         persistSelfRoleIfChanged(result.previousOwner, expectedLedgerId = targetLedgerId)
         persistSelfRoleIfChanged(result.newOwner, expectedLedgerId = targetLedgerId)
@@ -272,7 +279,9 @@ class LedgerRepository(
         ledgerId: String? = activeLedgerId(),
     ): Result<List<AccountDevice>> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
-        api().ledgerDevices(targetLedgerId).devices.map { it.toAccountDevice() }
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.ledgerDevices(targetLedgerId).devices.map { it.toAccountDevice() }
+        }
     }
 
     suspend fun renameDevice(
@@ -283,11 +292,13 @@ class LedgerRepository(
         val targetLedgerId = requireActiveLedger(ledgerId)
         val cleanName = deviceName.trim()
         require(cleanName.isNotEmpty()) { "设备名称不能为空。" }
-        api().renameLedgerDevice(
-            ledgerId = targetLedgerId,
-            publicId = publicId,
-            request = DeviceRenameRequestDto(deviceName = cleanName),
-        ).toAccountDevice()
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.renameLedgerDevice(
+                ledgerId = targetLedgerId,
+                publicId = publicId,
+                request = DeviceRenameRequestDto(deviceName = cleanName),
+            ).toAccountDevice()
+        }
     }
 
     suspend fun revokeDevice(
@@ -295,7 +306,9 @@ class LedgerRepository(
         ledgerId: String? = activeLedgerId(),
     ): Result<AccountDevice> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
-        api().revokeLedgerDevice(targetLedgerId, publicId).toAccountDevice()
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.revokeLedgerDevice(targetLedgerId, publicId).toAccountDevice()
+        }
     }
 
     /**
@@ -308,27 +321,35 @@ class LedgerRepository(
         ledgerId: String? = activeLedgerId(),
     ): Result<Unit> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
-        api().deleteLedgerDevice(targetLedgerId, publicId)
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.deleteLedgerDevice(targetLedgerId, publicId)
+        }
     }
 
     /**
-     * issue #65 slice 6b: mint a one-time device pairing code for the active
-     * ledger. The plaintext code is returned ONCE for the user to enter on the
-     * new device; the server stores only its hash.
+     * Mint a one-time code either for a new Device or for explicit recovery of
+     * one existing Device owned by this Account.
      */
     suspend fun createDevicePairingCode(
+        recoveryDevice: AccountDevice? = null,
         ledgerId: String? = activeLedgerId(),
     ): Result<DevicePairingCode> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
-        api().createLedgerDevicePairingCode(
-            ledgerId = targetLedgerId,
-            request = PairingCodeCreateRequestDto(),
-        ).toDevicePairingCode()
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.createLedgerDevicePairingCode(
+                ledgerId = targetLedgerId,
+                request = PairingCodeCreateRequestDto(
+                    recoveryDevicePublicId = recoveryDevice?.publicId,
+                ),
+            ).toDevicePairingCode(recoveryDevice?.deviceName)
+        }
     }
 
     suspend fun refreshRecycleBin(): Result<RecycleBinSnapshot> = wrap {
-        requireActiveLedger(activeLedgerId())
-        val response = api().recycleBin()
+        val targetLedgerId = requireActiveLedger(activeLedgerId())
+        val response = requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.recycleBin()
+        }
         val items = response.items.map { it.toRecycleBinItem() }
         RecycleBinSnapshot(
             items = items,
@@ -337,14 +358,16 @@ class LedgerRepository(
     }
 
     suspend fun restoreRecycleBinItem(item: RecycleBinItem): Result<String> = wrap {
-        requireActiveLedger(activeLedgerId())
-        api().restoreRecycleBinItem(
-            RecycleBinRestoreRequestDto(
-                kind = item.kind,
-                resourceId = item.resourceId,
-                expectedRowVersion = item.expectedRowVersion,
-            ),
-        ).message
+        val targetLedgerId = requireActiveLedger(activeLedgerId())
+        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+            api.restoreRecycleBinItem(
+                RecycleBinRestoreRequestDto(
+                    kind = item.kind,
+                    resourceId = item.resourceId,
+                    expectedRowVersion = item.expectedRowVersion,
+                ),
+            ).message
+        }
     }
 
     /**
@@ -371,14 +394,10 @@ class LedgerRepository(
     /**
      * v0.4-beta1: accept a family-ledger invitation.
      *
-     * Posts the plain ``invite_token`` to ``/api/invitations/accept``. When this
-     * device is already bound, the current app token lets the server revoke the
-     * replaced session; on success the server creates a
-     * brand-new Account + Device + LedgerMember row and issues a session
-     * token. The caller MUST already be unbound or willing to overwrite the
-     * current binding — accept replaces the active session token, identity,
-     * and active ledger. The local confirmed-cache for the joined ledger is
-     * wiped so the next sync produces a clean view.
+     * An unbound installation persists a recoverable enrollment attempt before
+     * consuming the invitation. An already bound installation keeps its
+     * Account, Device, token and session generation; the server only activates
+     * membership and the client selects the joined ledger.
      *
      * [serverUrlOverride] is the cold-start (unbound device) join entry. It is
      * validated through the bind-screen URL rules, the accept goes out
@@ -402,50 +421,44 @@ class LedgerRepository(
         require(cleanDevice.isNotEmpty()) { "请填写设备名。" }
         require(cleanDevice.length <= 120) { "设备名最多 120 个字。" }
         val session = sessionCoordinator.currentSnapshot()
-        val joiningUnbound = serverUrlOverride != null
-        val serverUrl = resolvedInvitationServerUrl(serverUrlOverride, session)
-        val acceptApi = when {
-            joiningUnbound -> apiProvider.unauthenticated(serverUrl)
-            else -> session.sessionToken
-                ?.let { apiProvider.temporary(serverUrl, tokenOverride = it) }
-                ?: apiProvider.unauthenticated(serverUrl)
+        val joiningUnbound = session.sessionToken == null
+        require(joiningUnbound || serverUrlOverride == null) {
+            "已绑定设备不能通过邀请覆盖当前服务器，请先确认当前账号。"
         }
-        val response = acceptApi.acceptInvitation(
-            InvitationAcceptRequestDto(
+        val serverUrl = resolvedInvitationServerUrl(serverUrlOverride, session)
+        val joinedIdentity = if (joiningUnbound) {
+            enrollment.acceptInvitation(
+                serverUrl = serverUrl,
                 inviteToken = cleanToken,
                 accountName = cleanAccount,
                 deviceName = cleanDevice,
-            ),
-        )
-        val applied = sessionCoordinator.applyTransitionIfCurrent(
-            expectedSnapshot = session,
-            transition = LedgerSessionTransition(
-                serverUrl = serverUrl.takeIf { joiningUnbound },
-                sessionToken = response.sessionToken,
-                tokenExpiresAt = response.expiresAt,
-                tokenSoftRefreshAfter = response.softRefreshAfter,
-                identity = LedgerSessionIdentity(
-                    accountName = response.accountName,
-                    ledgerId = response.ledgerId,
-                    ledgerName = response.ledgerName,
-                    deviceName = response.deviceName,
-                    role = response.role,
-                    boundAt = java.time.Instant.now().toString(),
-                ),
-                cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
-                clearAvailableLedgers = true,
-                markUnlocked = joiningUnbound,
-            ),
-        )
-        if (!applied) {
-            throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
+            )
+        } else {
+            val response = requestGuard.guardedCall(expectedLedgerId = session.activeLedgerId) { api ->
+                api.acceptInvitation(
+                    InvitationAcceptRequestDto(
+                        inviteToken = cleanToken,
+                        accountName = cleanAccount,
+                        deviceName = cleanDevice,
+                    ),
+                )
+            }
+            val current = requireNotNull(sessionStore.currentSession())
+            val applied = sessionCoordinator.applyTransitionIfCurrent(
+                expectedSnapshot = session,
+                transition = response.toLedgerSelectionTransition(current.identity.boundAt),
+            )
+            if (!applied) {
+                throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
+            }
+            response.toLedgerSessionIdentity(current.identity.boundAt)
         }
         // Refresh the ledger list so the picker shows the joined ledger.
         runCatching { refreshLedgers() }
         LedgerSummary(
-            ledgerId = response.ledgerId,
-            name = response.ledgerName,
-            role = response.role,
+            ledgerId = joinedIdentity.ledgerId,
+            name = joinedIdentity.ledgerName,
+            role = joinedIdentity.role,
             isDefault = false,
             createdAt = null,
             archivedAt = null,
@@ -505,21 +518,21 @@ class LedgerRepository(
     }
 
     private suspend fun persistCurrentRoleIfChanged(role: String, expectedLedgerId: String) {
-        if (settingsStore.activeLedgerId() != expectedLedgerId) return
-        if (role == settingsStore.role()) return
-        val accountName = settingsStore.accountName() ?: return
-        val ledgerId = settingsStore.activeLedgerId() ?: return
-        val ledgerName = settingsStore.activeLedgerName() ?: settingsStore.ledgerName() ?: return
-        val deviceName = settingsStore.deviceName() ?: return
+        val session = apiProvider.currentSession() ?: return
+        if (session.identity.ledgerId != expectedLedgerId) return
+        if (role == session.identity.role) return
         sessionCoordinator.applyTransition(
             LedgerSessionTransition(
+                change = LocalSessionChange.RefreshProjection,
                 identity = LedgerSessionIdentity(
-                    accountName = accountName,
-                    ledgerId = ledgerId,
-                    ledgerName = ledgerName,
-                    deviceName = deviceName,
+                    accountPublicId = session.identity.accountPublicId,
+                    devicePublicId = session.identity.devicePublicId,
+                    accountName = session.identity.accountName,
+                    ledgerId = session.identity.ledgerId,
+                    ledgerName = session.identity.ledgerName,
+                    deviceName = session.identity.deviceName,
                     role = role,
-                    boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                    boundAt = session.identity.boundAt,
                 ),
             ),
         )
@@ -574,10 +587,13 @@ internal fun MyDeviceDto.toAccountDevice(): AccountDevice = AccountDevice(
     isCurrent = isCurrent,
 )
 
-private fun PairingCodeResponseDto.toDevicePairingCode(): DevicePairingCode = DevicePairingCode(
+private fun PairingCodeResponseDto.toDevicePairingCode(
+    recoveryDeviceName: String?,
+): DevicePairingCode = DevicePairingCode(
     pairingCode = pairingCode,
     ledgerName = ledgerName,
     expiresAt = expiresAt,
+    recoveryDeviceName = recoveryDeviceName,
 )
 
 private fun RecycleBinItemDto.toRecycleBinItem(): RecycleBinItem = RecycleBinItem(
@@ -597,6 +613,28 @@ private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPrevie
     role = role,
     expiresAt = expiresAt,
 )
+
+private fun InvitationAcceptResponseDto.toLedgerSelectionTransition(
+    boundAt: String,
+): LedgerSessionTransition = LedgerSessionTransition(
+    change = LocalSessionChange.SelectLedger,
+    serverId = serverId.requireSessionProtocolId("服务器身份"),
+    dataGeneration = dataGeneration.requireSessionProtocolId("数据代际"),
+    identity = toLedgerSessionIdentity(boundAt),
+    cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
+)
+
+private fun InvitationAcceptResponseDto.toLedgerSessionIdentity(boundAt: String) =
+    LedgerSessionIdentity(
+        accountPublicId = accountPublicId.requireSessionProtocolId("成员身份"),
+        devicePublicId = devicePublicId.requireSessionProtocolId("设备身份"),
+        accountName = accountName,
+        ledgerId = ledgerId,
+        ledgerName = ledgerName,
+        deviceName = deviceName,
+        role = role,
+        boundAt = boundAt,
+    )
 
 private fun InvitationCreateResponseDto.toFamilyInvitationCreated(): FamilyInvitationCreated =
     FamilyInvitationCreated(

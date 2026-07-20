@@ -84,7 +84,6 @@ class NetworkErrorMapperTest {
         val cases = listOf(
             " https://api.example.com/ " to "https://api.example.com",
             "https://API.EXAMPLE.COM:443" to "https://api.example.com",
-            "https://API.Example.COM./" to "https://api.example.com",
             "https://xn--fa-hia.de" to "https://xn--fa-hia.de",
             "https://[2001:0DB8:0:0::1]:8443" to "https://[2001:db8::1]:8443",
         )
@@ -105,6 +104,7 @@ class NetworkErrorMapperTest {
             "https://%31%32%37.0.0.1",
             "https://[::ffff:192.168.1.10]",
             "https://user:pass@api.example.com",
+            "https://API.Example.COM./",
             "https://api.example.com../",
             "https://api.example.com/path",
             "https://api.example.com?next=/web",

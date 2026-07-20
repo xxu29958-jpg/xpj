@@ -22,34 +22,23 @@ import kotlin.test.assertTrue
 class LedgerRepositoryInvitationTest {
 
     @Test
-    fun acceptInvitationPersistsTokenIdentityAndWipesLocalAccountCache() = runTest {
-        val newToken = "session-token-fresh"
-        val api = StubApi(
-            LedgerStubApiState(
-                acceptResult = InvitationAcceptResponseDto(
-                    sessionToken = newToken,
-                    accountName = "二号",
-                    ledgerId = "L_family",
-                    ledgerName = "家庭账本",
-                    deviceName = "Pixel 8",
-                    role = "member",
-                ),
-                // refreshLedgers is called after accept; let it succeed with a tiny list.
-                listLedgersResult = LedgerListResponseDto(
-                    ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
-                ),
-            ),
-        )
+    fun boundInvitationPreservesPrincipalSessionAndOtherLedgerCache() = runTest {
+        val api = apiAcceptingFamilyInvitationForExistingMember()
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
-        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val tokenStore = existingOwnerSessionFixture(
+            ledgerId = "L_personal",
+            ledgerName = "个人账本",
+            accountName = "原成员",
+            deviceName = "原手机",
+            token = "old-token",
+        )
+        val before = requireNotNull(tokenStore.sessionStore.currentSession())
         val apiFactory = LedgerStubApiFactory(api)
         val dao = LedgerFakeDao().apply {
-            // Invitation accept replaces the local account, so all old local
-            // ledger caches must be discarded before the new identity is shown.
             insertEntity(ledgerEntity(id = 1, ledgerId = "L_family", serverId = 100))
-            insertEntity(ledgerEntity(id = 2, ledgerId = "L_other", serverId = 200))
+            insertEntity(ledgerEntity(id = 2, ledgerId = "L_personal", serverId = 200))
         }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = apiFactory,
             settingsStore = store,
             tokenStore = tokenStore,
@@ -58,8 +47,8 @@ class LedgerRepositoryInvitationTest {
 
         val summary = repo.acceptInvitation(
             inviteToken = "  inv_PLAINTOKEN  ",
-            accountName = "二号",
-            deviceName = "Pixel 8",
+            accountName = "不得覆盖原成员",
+            deviceName = "不得覆盖原手机",
         ).getOrThrow()
 
         assertEquals("L_family", summary.ledgerId)
@@ -67,18 +56,22 @@ class LedgerRepositoryInvitationTest {
         // The plain token is trimmed before being sent to the server.
         assertEquals("inv_PLAINTOKEN", api.acceptRequests.single().inviteToken)
         assertEquals("android", api.acceptRequests.single().platform)
-        // Bound-device invitation accept carries the replaced token so the server can revoke it.
-        assertEquals("old-token", apiFactory.tokenProviders.first().invoke())
-        // Token rotated; identity captured; active ledger switched.
-        assertEquals(newToken, tokenStore.getToken())
-        assertEquals("L_family", store.activeLedgerId())
-        assertEquals("二号", store.capturedAccountName)
-        assertEquals("Pixel 8", store.capturedDeviceName)
-        assertEquals("member", store.capturedRole)
-        assertFalse(store.capturedBoundAt.isNullOrBlank())
-        // The account boundary was replaced; old ledger caches are gone.
+        assertNull(api.acceptRequests.single().enrollmentAttemptId)
+        assertEquals("old-token", apiFactory.tokenSnapshots.first())
+        val after = requireNotNull(tokenStore.sessionStore.currentSession())
+        assertEquals("old-token", after.credential.token)
+        assertEquals(before.sessionGeneration, after.sessionGeneration)
+        assertTrue(before.bindingRevision != after.bindingRevision)
+        val identity = after.identity
+        assertEquals("L_family", identity.ledgerId)
+        assertEquals(before.identity.accountPublicId, identity.accountPublicId)
+        assertEquals(before.identity.devicePublicId, identity.devicePublicId)
+        assertEquals("原成员", identity.accountName)
+        assertEquals("原手机", identity.deviceName)
+        assertEquals("member", identity.role)
+        assertEquals(before.identity.boundAt, identity.boundAt)
         assertNull(dao.find(1))
-        assertNull(dao.find(2))
+        assertNotNull(dao.find(2))
     }
 
     @Test
@@ -87,6 +80,10 @@ class LedgerRepositoryInvitationTest {
             LedgerStubApiState(
                 acceptResult = InvitationAcceptResponseDto(
                     sessionToken = "invite-token",
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
+                    accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                    devicePublicId = TEST_DEVICE_PUBLIC_ID,
                     accountName = "邀请账号",
                     ledgerId = "L_invited",
                     ledgerName = "邀请账本",
@@ -122,21 +119,30 @@ class LedgerRepositoryInvitationTest {
                 """.trimIndent(),
             )
         }
-        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val tokenStore = existingOwnerSessionFixture(
+            ledgerId = "L_old",
+            ledgerName = "旧账本",
+            accountName = "旧账号",
+            deviceName = "Old Pixel",
+            token = "old-token",
+        )
         api.onAcceptInvitation = {
-            tokenStore.saveToken("new-token")
-            store.saveIdentity(
-                PersistedLedgerIdentity(
-                    accountName = "新账号",
-                    ledgerId = "L_new",
-                    ledgerName = "新账本",
-                    deviceName = "New Pixel",
-                    role = "owner",
-                    boundAt = "2026-05-01T00:05:00Z",
-                )
+            val current = requireNotNull(tokenStore.sessionStore.currentSession())
+            tokenStore.sessionStore.replaceForFixture(
+                current.copy(
+                    sessionGeneration = "new-account-session",
+                    bindingRevision = "new-account-binding",
+                    credential = current.credential.copy(token = "new-token"),
+                    identity = current.identity.copy(
+                        accountName = "新账号",
+                        ledgerId = "L_new",
+                        ledgerName = "新账本",
+                        deviceName = "New Pixel",
+                    ),
+                ),
             )
         }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
@@ -151,8 +157,8 @@ class LedgerRepositoryInvitationTest {
 
         assertNotNull(failure)
         assertEquals("new-token", tokenStore.getToken())
-        assertEquals("L_new", store.activeLedgerId())
-        assertEquals("新账号", store.accountName())
+        assertEquals("L_new", repo.activeLedgerId())
+        assertEquals("新账号", repo.currentAccountName())
         assertEquals(listOf("L_new"), repo.cachedLedgers().map { it.ledgerId })
     }
 
@@ -184,7 +190,7 @@ class LedgerRepositoryInvitationTest {
         }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val apiFactory = LedgerStubApiFactory(api)
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = apiFactory,
             settingsStore = store,
             tokenStore = tokenStore,
@@ -231,7 +237,7 @@ class LedgerRepositoryInvitationTest {
             )
         }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
@@ -271,7 +277,7 @@ class LedgerRepositoryInvitationTest {
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
-        val repo = LedgerRepository(
+        val repo = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
             tokenStore = tokenStore,
@@ -293,13 +299,33 @@ class LedgerRepositoryInvitationTest {
     private fun makeRepo(): LedgerRepository {
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("t") }
-        return LedgerRepository(
+        return testLedgerRepository(
             apiClient = LedgerStubApiFactory(StubApi()),
             settingsStore = store,
             tokenStore = tokenStore,
             expenseDao = LedgerFakeDao(),
         )
     }
+
+    private fun apiAcceptingFamilyInvitationForExistingMember() = StubApi(
+        LedgerStubApiState(
+            acceptResult = InvitationAcceptResponseDto(
+                sessionToken = "old-token",
+                serverId = TEST_SERVER_ID,
+                dataGeneration = TEST_DATA_GENERATION,
+                accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+                devicePublicId = TEST_DEVICE_PUBLIC_ID,
+                accountName = "原成员",
+                ledgerId = "L_family",
+                ledgerName = "家庭账本",
+                deviceName = "原手机",
+                role = "member",
+            ),
+            listLedgersResult = LedgerListResponseDto(
+                ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
+            ),
+        ),
+    )
 
     private fun ledgerDto(
         id: String,

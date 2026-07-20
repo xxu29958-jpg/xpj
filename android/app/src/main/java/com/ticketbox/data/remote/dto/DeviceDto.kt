@@ -38,6 +38,8 @@ data class PairingCodeCreateRequestDto(
     val deviceNameHint: String? = null,
     @param:Json(name = "ttl_minutes")
     val ttlMinutes: Int = 15,
+    @param:Json(name = "recovery_device_public_id")
+    val recoveryDevicePublicId: String? = null,
 )
 
 data class PairingCodeResponseDto(

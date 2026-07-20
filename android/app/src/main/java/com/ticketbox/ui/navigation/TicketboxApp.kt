@@ -38,6 +38,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.resolve
+import com.ticketbox.ui.screens.BindServerActions
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.LoginScreen
 import com.ticketbox.ui.screens.ServerUrlEntryConfig
@@ -83,7 +84,7 @@ internal fun TicketboxApp(
             appState = appState,
             appViewModel = appViewModel,
             dependencies = dependencies,
-            onAuthMessageShown = appViewModel::consumeAuthMessage,
+            onAuthMessageShown = { appViewModel.setAuthMessage(null) },
             launchConsumer = LaunchRequestConsumer(
                 request = launchRequest,
                 onHandled = onLaunchRequestHandled,
@@ -123,6 +124,17 @@ private fun TicketboxContent(
                 ledgerRepository = dependencies.repositories.ledgerRepository,
             )
         }
+        return
+    }
+
+    if (!appState.isBusinessReady) {
+        SessionVerificationGate(
+            backgroundSettings = appState.backgroundSettings,
+            currentSkin = appState.skin,
+            verification = appState.sessionVerification,
+            message = appState.authMessage,
+            onRetry = appViewModel::refreshBindingState,
+        )
         return
     }
 
@@ -230,9 +242,13 @@ private fun UnboundAuthFlow(
         BindServerScreen(
             loading = appState.binding,
             message = appState.authMessage,
+            hasPendingEnrollment = appState.hasPendingEnrollment,
             serverUrlEntry = serverUrlEntry,
-            onBind = appViewModel::bind,
-            onJoinWithInvitation = { showJoinFlow = true },
+            actions = BindServerActions(
+                onBind = appViewModel::bind,
+                onJoinWithInvitation = { showJoinFlow = true },
+                onAbandonPendingEnrollment = appViewModel::abandonPendingEnrollment,
+            ),
         )
     }
 }
@@ -391,7 +407,7 @@ private fun attemptBiometricUnlock(
     biometricAuthManager.authenticate(
         onSuccess = appViewModel::unlockSucceeded,
         // BiometricAuthManager.onError 给的是已解析系统串,原样包装保持消息不变。
-        onError = { message -> appViewModel.unlockFailed(UiText.raw(message)) },
+        onError = { message -> appViewModel.setAuthMessage(UiText.raw(message)) },
     )
 }
 

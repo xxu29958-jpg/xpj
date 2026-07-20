@@ -27,7 +27,7 @@ import retrofit2.HttpException
  * the intent is moot, nothing for the user to keep/drop.
  */
 class AcknowledgeItemsMismatchDispatcher(
-    private val apiProvider: () -> ApiService,
+    private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.AcknowledgeItemsMismatch
@@ -61,7 +61,7 @@ class AcknowledgeItemsMismatchDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical items) instead of false-409ing on the stale row_version.
-            val response = apiProvider().acknowledgeExpenseItemsMismatch(expenseRef, request, idempotencyKey)
+            val response = apiProvider(row).acknowledgeExpenseItemsMismatch(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = response.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)

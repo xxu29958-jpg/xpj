@@ -1,16 +1,13 @@
 """Release gate: session / ledger binding mutations only at sanctioned sites.
 
-Persisted credential writes -- ``serverUrl`` (server binding), the session token
-when it accompanies a binding switch, and the ledger identity / active ledger --
-change the outbox binding. They MUST happen inside
-``OutboxRepository.withBindingTransition`` (or be a same-binding token rotation)
-so queued offline mutations can never replay under a new session against the
-old ledger's id space.
+Persisted writes to the complete session authority change the outbox binding.
+They MUST happen inside the session coordinator, during startup reconciliation
+before workers exist, or as an atomic same-session token rotation.
 
 ``LocalLedgerSessionCoordinator`` is the canonical boundary that does this. The
 "every binding write goes through the transition" rule was previously enforced
 only by developer discipline; this lane turns it into a machine gate. Any call
-to ``saveServerUrl`` / ``saveToken`` / ``saveIdentity`` / ``saveActiveLedger``
+to a raw binding setter or durable-session commit
 outside the reason-annotated allowlist fails the build, closing future bypass
 paths (mirrors the ``android-outbox-contract`` lane shape;
 docs/audits/2026-06-14-known-bugs.md P3 #1).
@@ -26,17 +23,25 @@ from __future__ import annotations
 
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ANDROID_SRC = REPO_ROOT / "android" / "app" / "src"
 
-# Credential-write primitives that mutate the outbox binding (server URL,
-# session token, ledger identity, active ledger). ``saveActiveLedger`` has no
-# production call site today (the active ledger is set via ``saveIdentity`` in
-# the coordinator) but is a real binding setter, so it is gated to catch any
-# future bypass that switches ledgers outside a binding transition.
-_PRIMITIVES = ("saveServerUrl", "saveToken", "saveIdentity", "saveActiveLedger")
+# Current LocalSessionStore mutations plus legacy raw setters that must never
+# regain a production caller.
+_PRIMITIVES = (
+    "establishSession",
+    "updateBindingIfCurrent",
+    "clearSession",
+    "completeSessionRefreshIfCurrent",
+    "completeIfCurrent",
+    "saveServerUrl",
+    "saveToken",
+    "saveIdentity",
+    "saveActiveLedger",
+)
 
 # A call/method-reference to one of the primitives: ``.saveX`` or ``::saveX``.
 # Definitions (``fun saveX`` / ``override fun saveX``) have no ``.``/``::`` prefix
@@ -47,18 +52,15 @@ _CALL_PATTERN = re.compile(r"(?:\.|::)\s*(" + "|".join(_PRIMITIVES) + r")\b")
 # credentials outside LocalLedgerSessionCoordinator. Each entry is an explicit
 # risk-ledger line, validated by the allowlist-reasons meta-audit.
 ALLOWLIST = {
-    "main/java/com/ticketbox/data/repository/LocalLedgerSessionCoordinator.kt::saveServerUrl":
-        "session-level binding boundary: serverUrl writes run inside withBindingTransition",
-    "main/java/com/ticketbox/data/repository/LocalLedgerSessionCoordinator.kt::saveToken":
-        "session-level binding boundary: token writes run inside withBindingTransition",
-    "main/java/com/ticketbox/data/repository/LocalLedgerSessionCoordinator.kt::saveIdentity":
-        "session-level binding boundary: identity writes run inside withBindingTransition",
-    "main/java/com/ticketbox/MainActivity.kt::saveServerUrl":
-        "internal debug-bind path writes inside withBindingTransition (FLAG_DEBUGGABLE only)",
-    "main/java/com/ticketbox/MainActivity.kt::saveToken":
-        "internal debug-bind path writes inside withBindingTransition (FLAG_DEBUGGABLE only)",
-    "main/java/com/ticketbox/data/remote/AuthSessionRefresh.kt::saveToken":
-        "session refresh rotates the token within the same binding (no ledger/server change)",
+    "main/java/com/ticketbox/data/repository/ExpenseRepositoryCore.kt::clearSession": "session-level explicit sign-out enters the coordinator transition boundary",
+    "main/java/com/ticketbox/data/repository/LocalLedgerSessionCoordinator.kt::clearSession": "session-level removal is serialized with outbox binding transitions",
+    "main/java/com/ticketbox/data/repository/LocalLedgerSessionCoordinator.kt::establishSession": "session-level authority is committed inside the outbox transition lease",
+    "main/java/com/ticketbox/data/repository/LocalLedgerSessionCoordinator.kt::updateBindingIfCurrent": "session-level binding refresh uses compare-and-set inside the transition lease",
+    "main/java/com/ticketbox/data/repository/LocalSessionReconciliation.kt::clearSession": "session-level startup repair fails closed before outbox workers are constructed",
+    "main/java/com/ticketbox/data/repository/LocalSessionReconciliation.kt::establishSession": "one-time legacy migration runs before outbox workers are constructed",
+    "main/java/com/ticketbox/security/LocalSessionStore.kt::completeIfCurrent": "credential adapter delegates only to the durable same-session refresh transaction",
+    "main/java/com/ticketbox/data/repository/ApiServiceProvider.kt::completeSessionRefreshIfCurrent": "session refresh credentials reject completion after generation changes",
+    "main/java/com/ticketbox/data/remote/AuthSessionRefresh.kt::completeSessionRefreshIfCurrent": "session refresh proof atomically swaps only the current session credential",
 }
 
 
@@ -138,17 +140,17 @@ def _production_source_roots() -> list[Path]:
     return roots
 
 
-def _detected_sites() -> set[str]:
-    sites: set[str] = set()
+def _detected_site_counts() -> Counter[str]:
+    sites: Counter[str] = Counter()
     for root in _production_source_roots():
         for path in sorted(root.rglob("*.kt")):
             code = _code_only(path.read_text(encoding="utf-8"))
-            primitives = {match.group(1) for match in _CALL_PATTERN.finditer(code)}
+            primitives = [match.group(1) for match in _CALL_PATTERN.finditer(code)]
             if not primitives:
                 continue
             rel = f"{root.name}/{path.relative_to(root).as_posix()}"
             for primitive in primitives:
-                sites.add(f"{rel}::{primitive}")
+                sites[f"{rel}::{primitive}"] += 1
     return sites
 
 
@@ -157,7 +159,8 @@ def main() -> int:
         print(f"FAIL: android source root not found: {ANDROID_SRC}")
         return 1
 
-    detected = _detected_sites()
+    detected_counts = _detected_site_counts()
+    detected = set(detected_counts)
     allowed = set(ALLOWLIST)
     failures: list[str] = []
 
@@ -172,6 +175,12 @@ def main() -> int:
             f"stale ALLOWLIST entry {site} -- the credential write moved or was "
             "removed; drop the entry so the risk ledger stays honest"
         )
+    for site in sorted(detected & allowed):
+        if detected_counts[site] != 1:
+            failures.append(
+                f"sanctioned credential write {site} occurs {detected_counts[site]} times "
+                "-- each additional call site requires its own reviewable boundary"
+            )
 
     if failures:
         print("FAIL: session/ledger binding contract drift:")
@@ -180,7 +189,7 @@ def main() -> int:
         return 1
     print(
         "PASS: session/ledger binding mutations confined to sanctioned sites "
-        f"({len(detected)} credential-write site(s))"
+        f"({sum(detected_counts.values())} credential-write call(s))"
     )
     return 0
 

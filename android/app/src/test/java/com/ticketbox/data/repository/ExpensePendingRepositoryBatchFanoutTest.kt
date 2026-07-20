@@ -30,7 +30,7 @@ internal class ExpensePendingRepositoryBatchFanoutTest : ExpensePendingRepositor
     fun `category-only batch direct success sends category not tags, no enqueue`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Success(successExpenseDto()))
         val repo = buildRepository(api, outbox, adapter)
@@ -49,7 +49,7 @@ internal class ExpensePendingRepositoryBatchFanoutTest : ExpensePendingRepositor
     fun `tags-only batch offline enqueues payload with tags but no category`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(IOException("net out")))
         val repo = buildRepository(api, outbox, adapter)
@@ -71,7 +71,7 @@ internal class ExpensePendingRepositoryBatchFanoutTest : ExpensePendingRepositor
     fun `category-only batch offline enqueues payload with category but no tags`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(IOException("net out")))
         val repo = buildRepository(api, outbox, adapter)
@@ -88,7 +88,7 @@ internal class ExpensePendingRepositoryBatchFanoutTest : ExpensePendingRepositor
         val first = baselineExpense().copy(id = 1L)
         val second = baselineExpense().copy(id = 2L)
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
         val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(IOException("net out")))
         val repo = buildRepository(api, outbox, adapter)
@@ -108,7 +108,7 @@ internal class ExpensePendingRepositoryBatchFanoutTest : ExpensePendingRepositor
         val second = baselineExpense().copy(id = 2L)
         val third = baselineExpense().copy(id = 3L)
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
         val api = ApiServiceStub(
             extras = ApiServiceStubExtras(
@@ -134,7 +134,7 @@ internal class ExpensePendingRepositoryBatchFanoutTest : ExpensePendingRepositor
     fun `batch counts a 409 conflict as failed without enqueueing it`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
         val api = ApiServiceStub(
             updateExpenseResult = ApiResult.Throw(

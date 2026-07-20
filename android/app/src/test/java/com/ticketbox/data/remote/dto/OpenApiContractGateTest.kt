@@ -38,6 +38,12 @@ class OpenApiContractGateTest {
 
     private val pairs = listOf(
         Pairing(ErrorDto::class, "ErrorResponse"),
+        Pairing(AuthCheckDto::class, "AuthCheckResponse"),
+        Pairing(PairRequestDto::class, "PairRequest"),
+        Pairing(PairResponseDto::class, "PairResponse"),
+        Pairing(RefreshSessionRequestDto::class, "RefreshSessionRequest"),
+        Pairing(RefreshSessionResponseDto::class, "RefreshSessionResponse"),
+        Pairing(LedgerSwitchResponseDto::class, "LedgerSwitchResponse"),
         Pairing(ExpenseDto::class, "ExpenseResponse"),
         // Dedicated manual-create DTO (no OCC-token field) + the PATCH body it
         // was split from — the forward check is the forbid-protection: a DTO
@@ -79,6 +85,8 @@ class OpenApiContractGateTest {
         Pairing(InvitationCreateRequestDto::class, "InvitationCreateRequest"),
         Pairing(InvitationSummaryDto::class, "InvitationSummaryResponse"),
         Pairing(InvitationCreateResponseDto::class, "InvitationCreateResponse"),
+        Pairing(InvitationAcceptRequestDto::class, "InvitationAcceptRequest"),
+        Pairing(InvitationAcceptResponseDto::class, "InvitationAcceptResponse"),
         // issue #65 slice 6b owner "My Devices" surface. Rename body reuses the
         // backend AdminDeviceRenameRequest; the pairing-code response carries the
         // one-time plaintext code — a field drift = the add-device link silently

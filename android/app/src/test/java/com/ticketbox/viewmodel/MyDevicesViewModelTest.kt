@@ -6,8 +6,8 @@ import com.ticketbox.data.remote.dto.MyDeviceListResponseDto
 import com.ticketbox.data.remote.dto.PairingCodeResponseDto
 import com.ticketbox.data.repository.LedgerFakeDao
 import com.ticketbox.data.repository.LedgerFakeSettingsStore
-import com.ticketbox.data.repository.LedgerFakeTokenStore
-import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.ledgerSessionFixture
+import com.ticketbox.data.repository.testLedgerRepository
 import com.ticketbox.data.repository.LedgerStubApiFactory
 import com.ticketbox.data.repository.StubApi
 import com.ticketbox.domain.model.AccountDevice
@@ -27,10 +27,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * issue #65 slice 6b — owner gating + mutate→refresh contract for the My Devices
- * VM. The device list/mutations are owner-only on the backend (slice 6a), so the
- * VM must refuse to even call the API when the bound session is not OWNER, and a
- * successful rename/revoke must re-list (so the row reflects the new state).
+ * Account-scoped device lifecycle and mutate→refresh contract. Ledger role must
+ * not block a member from managing their own Account's devices.
  * Drives a real [LedgerRepository] over the Ledger stub fixtures.
  *
  * [LedgerRepository.wrap] hops to a real `Dispatchers.IO`, so positive paths are
@@ -49,10 +47,10 @@ class MyDevicesViewModelTest {
             saveActiveLedger(ledger, "家庭账本")
             capturedRole = role
         }
-        val repository = LedgerRepository(
+        val repository = testLedgerRepository(
             apiClient = LedgerStubApiFactory(api),
             settingsStore = store,
-            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            tokenStore = ledgerSessionFixture(ledger, "家庭账本", role = role, token = "t"),
             expenseDao = LedgerFakeDao(),
         )
         return MyDevicesViewModel(repository)
@@ -197,16 +195,19 @@ class MyDevicesViewModelTest {
     }
 
     @Test
-    fun renameAsNonOwnerIsNoOp() = runTest {
+    fun memberCanRenameOwnDevice() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi().apply { renameDeviceResult = deviceDto("d2", "新名字") }
+            val api = StubApi().apply {
+                renameDeviceResult = deviceDto("d2", "新名字")
+                devicesResult = MyDeviceListResponseDto(listOf(deviceDto("d2", "新名字")))
+            }
             val vm = harness(api, role = "member")
 
-            // non-owner short-circuits BEFORE launching: nothing to await.
             vm.rename(accountDevice("d2"), "新名字", ledger)
+            vm.uiState.first { it.message != null }
 
-            assertTrue(api.renameDeviceTargets.isEmpty())
+            assertEquals(ledger to "d2", api.renameDeviceTargets.single())
         } finally {
             Dispatchers.resetMain()
         }
@@ -253,15 +254,21 @@ class MyDevicesViewModelTest {
     }
 
     @Test
-    fun revokeAsNonOwnerIsNoOp() = runTest {
+    fun viewerCanRevokeOwnDevice() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi().apply { revokeDeviceResult = deviceDto("d2") }
+            val api = StubApi().apply {
+                revokeDeviceResult = deviceDto("d2", revokedAt = "2026-06-23T00:00:00Z")
+                devicesResult = MyDeviceListResponseDto(
+                    listOf(deviceDto("d2", revokedAt = "2026-06-23T00:00:00Z")),
+                )
+            }
             val vm = harness(api, role = "viewer")
 
             vm.revoke(accountDevice("d2"), ledger)
+            vm.uiState.first { it.message != null }
 
-            assertTrue(api.revokeDeviceTargets.isEmpty())
+            assertEquals(ledger to "d2", api.revokeDeviceTargets.single())
         } finally {
             Dispatchers.resetMain()
         }
@@ -291,15 +298,18 @@ class MyDevicesViewModelTest {
     }
 
     @Test
-    fun deleteAsNonOwnerIsNoOp() = runTest {
+    fun memberCanDeleteRevokedOwnDevice() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val api = StubApi()
+            val api = StubApi().apply {
+                devicesResult = MyDeviceListResponseDto(emptyList())
+            }
             val vm = harness(api, role = "member")
 
             vm.delete(accountDevice("d2"), ledger)
+            vm.uiState.first { it.message != null }
 
-            assertTrue(api.deleteDeviceTargets.isEmpty())
+            assertEquals(ledger to "d2", api.deleteDeviceTargets.single())
         } finally {
             Dispatchers.resetMain()
         }
@@ -316,6 +326,30 @@ class MyDevicesViewModelTest {
             val state = vm.uiState.first { it.message != null }
 
             assertEquals(ledger to "d2", api.deleteDeviceTargets.single())
+            assertNull(state.busyDeviceId)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun recoverCreatesCodeForTheSelectedDeviceIdentity() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi().apply {
+                pairingCodeResult = PairingCodeResponseDto(
+                    pairingCode = "87654321",
+                    ledgerName = "家庭账本",
+                    expiresAt = "2026-06-23T01:00:00Z",
+                )
+            }
+            val vm = harness(api, role = "member")
+
+            vm.recover(accountDevice("d2", "旧手机"), ledger)
+            val state = vm.uiState.first { it.createdPairingCode != null }
+
+            assertEquals("d2", api.pairingCodeRequests.single().recoveryDevicePublicId)
+            assertEquals("旧手机", state.createdPairingCode?.recoveryDeviceName)
             assertNull(state.busyDeviceId)
         } finally {
             Dispatchers.resetMain()
@@ -357,6 +391,7 @@ class MyDevicesViewModelTest {
             val state = vm.uiState.first { it.createdPairingCode != null }
 
             assertEquals(ledger, api.pairingCodeTargets.single())
+            assertNull(api.pairingCodeRequests.single().recoveryDevicePublicId)
             assertEquals("12345678", state.createdPairingCode?.pairingCode)
 
             vm.dismissPairingCode()

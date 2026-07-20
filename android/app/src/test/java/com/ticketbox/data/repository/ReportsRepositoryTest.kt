@@ -26,7 +26,8 @@ import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverviewQuery
-import com.ticketbox.security.SessionTokenStore
+import com.ticketbox.security.LocalSessionIdentity
+import com.ticketbox.security.SessionCredentialProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -436,14 +437,19 @@ class ReportsRepositoryTest {
         handler: ReportsApiHandler,
         role: String = "owner",
     ): ReportsRepository {
-        val settings = ReportsFakeSettingsStore(role = role).apply {
-            saveServerUrl("https://api.example.com")
-        }
-        val tokenStore = ReportsFakeTokenStore().apply { saveToken("session-token") }
+        val tokenStore = TestSessionFixture(
+            identity = LocalSessionIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = role,
+                boundAt = "2026-05-01T00:00:00Z",
+            ),
+        ).apply { saveToken("session-token") }
+        val apiClient = ReportsApiFactory(handler)
         return ReportsRepository(
-            apiClient = ReportsApiFactory(handler),
-            settingsStore = settings,
-            tokenStore = tokenStore,
+            apiProvider = testApiServiceProvider(apiClient, tokenStore),
         )
     }
 }
@@ -793,61 +799,6 @@ private fun dashboardCardsDto(surface: String = "android"): DashboardCardsRespon
         DashboardCardDto("reports", "报表", visible = false, position = 1),
     ),
 )
-
-private class ReportsFakeSettingsStore(
-    private var role: String? = "owner",
-) : TicketboxSettingsStore {
-    override val backgroundSettingsFlow: Flow<BackgroundSettings> = MutableStateFlow(BackgroundSettings())
-    private var serverUrl: String? = null
-
-    override fun serverUrl(): String? = serverUrl
-    override fun appSkinKey(): String? = null
-    override fun monthlyBudgetCents(): Long? = null
-    override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
-    override fun lastConfirmedSyncAt(): String? = null
-    override fun accountName(): String? = "我"
-    override fun ledgerName(): String? = "我的小票夹"
-    override fun activeLedgerId(): String? = "owner"
-    override fun activeLedgerName(): String? = "我的小票夹"
-    override fun availableLedgersJson(): String? = null
-    override fun observeActiveLedgerId(): Flow<String?> = MutableStateFlow("owner")
-    override fun saveActiveLedger(ledgerId: String, ledgerName: String) = Unit
-    override fun saveAvailableLedgersJson(json: String?) = Unit
-    override fun deviceName(): String? = "Pixel"
-    override fun role(): String? = role
-    override fun boundAt(): String? = "2026-05-13T00:00:00Z"
-    override fun saveIdentity(identity: PersistedLedgerIdentity) {
-        role = identity.role
-    }
-    override fun saveLastConfirmedSyncAt(value: String) = Unit
-    override fun clearLastConfirmedSyncAt() = Unit
-    override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) = Unit
-    override fun clearLedgerScopedRuntimeState() = Unit
-    override fun lastUploadAt(): String? = null
-    override fun saveLastUploadAt(value: String) = Unit
-    override fun saveAppSkinKey(skinKey: String) = Unit
-    override fun currencyCodeKey(): String? = null
-    override fun saveCurrencyCodeKey(currencyKey: String) = Unit
-    override fun observeCurrencyCodeKey(): Flow<String?> = MutableStateFlow(null)
-    override fun saveServerUrl(serverUrl: String) {
-        this.serverUrl = serverUrl.trim().trimEnd('/')
-    }
-    override fun isBound(): Boolean = !serverUrl.isNullOrBlank()
-    override fun markUnlocked() = Unit
-    override fun markBackgrounded() = Unit
-    override fun requiresUnlock(): Boolean = false
-    override fun clear() {
-        serverUrl = null
-        role = null
-    }
-}
-
-private class ReportsFakeTokenStore : SessionTokenStore {
-    private var token: String? = null
-    override fun saveToken(token: String) { this.token = token }
-    override fun getToken(): String? = token
-    override fun clear() { token = null }
-}
 
 private fun withReportsTimezone(id: String, block: () -> Unit) {
     val old = TimeZone.getDefault()

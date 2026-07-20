@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.Flow
  *     all carry a ``status = :fromStatus`` predicate so concurrent
  *     drains / stale UI banners can't move a row out of the state
  *     the caller thought it was in.
- *   - [refreshTokenIfStatus] / [markRetryableIfStatus] /
+ *   - [requeueConflictWithFreshToken] / [retryFailed] /
  *     [deleteIfStatus] are the user-facing resolveConflict /
  *     resolveFailed building blocks; each is rowcount-checked so
  *     a stale banner click is a no-op rather than a stomp.
@@ -159,7 +159,7 @@ interface PendingMutationDao {
      * exactly like [recoverStaleInFlight]'s ``staleCutoffIso`` and
      * [deleteResolvedBefore]'s ``cutoffIso``.
      *
-     * Intentionally **not binding-scoped** (no ``serverUrl`` / ``ledgerId``
+     * Intentionally **not binding-scoped** (no ``ownerKey`` / ``ledgerId``
      * filter, unlike the drain reads): a stale PENDING row under ANY binding is a
      * double-apply risk the moment that binding becomes active again, so the
      * reaper must catch all of them — same global reach as the
@@ -199,19 +199,21 @@ interface PendingMutationDao {
     @Query(
         """
         UPDATE pending_mutations
-        SET status = :expiredStatus,
-            lastError = :lastError
+        SET status = 'failed',
+            lastError = 'outbox_row_expired'
         WHERE id = :id
+          AND ownerKey = :ownerKey
+          AND ledgerId = :ledgerId
           AND status = :fromStatus
           AND createdAt < :cutoffCreatedAtIso
         """,
     )
-    suspend fun expireIfStatusAndOverAge(
+    suspend fun expireBoundRowIfStatusAndOverAge(
         id: Long,
+        ownerKey: String,
+        ledgerId: String,
         fromStatus: String,
         cutoffCreatedAtIso: String,
-        expiredStatus: String,
-        lastError: String,
     ): Int
 
     @Query(
@@ -226,13 +228,8 @@ interface PendingMutationDao {
     suspend fun refreshToken(id: Long, pendingStatus: String, freshToken: Long): Int
 
     /**
-     * Atomic ``CONFLICT → PENDING`` or ``FAILED → PENDING`` token refresh used by
-     * both [OutboxRepository.resolveConflict] (``KeepMine``) and
-     * [OutboxRepository.resolveFailed] (``Retry(freshToken=...)``). The
-     * ``status = fromStatus`` predicate makes the call a no-op if the row already
-     * advanced (e.g. the user clicked "keep mine" twice on a stale banner after
-     * a different surface already resolved it). Returns the affected rowcount so
-     * the repository can branch on it.
+     * Atomic ``CONFLICT → PENDING`` token refresh for Keep Mine. The fixed source
+     * state makes a stale action a no-op rather than a generic state-machine write.
      *
      * codex P1 #7: ``retryCount = 0`` 重置——两条路径都是用户显式"重试", 都该拿到完整
      * 的 max_attempts 预算, 而不是接着之前的失败次数继续撞 cap。
@@ -251,7 +248,7 @@ interface PendingMutationDao {
     @Query(
         """
         UPDATE pending_mutations
-        SET status = :toStatus,
+        SET status = 'pending',
             expectedRowVersion = :freshToken,
             idempotencyKey = CASE
                 WHEN idempotencyKey IS NOT NULL THEN :rotatedIdempotencyKey
@@ -259,13 +256,42 @@ interface PendingMutationDao {
             END,
             retryCount = 0,
             lastError = NULL
-        WHERE id = :id AND status = :fromStatus
+        WHERE id = :id
+          AND ownerKey = :ownerKey
+          AND ledgerId = :ledgerId
+          AND status = 'conflict'
         """,
     )
-    suspend fun refreshTokenIfStatus(
+    suspend fun requeueConflictWithFreshToken(
         id: Long,
-        fromStatus: String,
-        toStatus: String,
+        ownerKey: String,
+        ledgerId: String,
+        freshToken: Long,
+        rotatedIdempotencyKey: String?,
+    ): Int
+
+    /** Atomic ``FAILED → PENDING`` retry with a newly fetched row token. */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET status = 'pending',
+            expectedRowVersion = :freshToken,
+            idempotencyKey = CASE
+                WHEN idempotencyKey IS NOT NULL THEN :rotatedIdempotencyKey
+                ELSE idempotencyKey
+            END,
+            retryCount = 0,
+            lastError = NULL
+        WHERE id = :id
+          AND ownerKey = :ownerKey
+          AND ledgerId = :ledgerId
+          AND status = 'failed'
+        """,
+    )
+    suspend fun requeueFailedWithFreshToken(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
         freshToken: Long,
         rotatedIdempotencyKey: String?,
     ): Int
@@ -273,7 +299,7 @@ interface PendingMutationDao {
     /**
      * Atomic ``FAILED → PENDING`` manual retry (no token refresh).
      * Same race-protection rationale as
-     * [refreshTokenIfStatus] / [markInFlightIfPending].
+     * [requeueFailedWithFreshToken] / [markInFlightIfPending].
      *
      * codex P1 #7: 用户手动 retry 时 ``retryCount = 0``。否则用户点 Retry → 立刻被
      * max_attempts 拦住 → 再点 Retry → 再被拦, 退化成永远困在 FAILED。重置 retryCount
@@ -282,17 +308,19 @@ interface PendingMutationDao {
     @Query(
         """
         UPDATE pending_mutations
-        SET status = :toStatus,
+        SET status = 'pending',
             retryCount = 0,
-            lastError = :lastError
-        WHERE id = :id AND status = :fromStatus
+            lastError = 'manual_retry'
+        WHERE id = :id
+          AND ownerKey = :ownerKey
+          AND ledgerId = :ledgerId
+          AND status = 'failed'
         """,
     )
-    suspend fun markRetryableIfStatus(
+    suspend fun retryFailed(
         id: Long,
-        fromStatus: String,
-        toStatus: String,
-        lastError: String,
+        ownerKey: String,
+        ledgerId: String,
     ): Int
 
     /**
@@ -333,10 +361,18 @@ interface PendingMutationDao {
     @Query(
         """
         DELETE FROM pending_mutations
-        WHERE id = :id AND status = :expectedStatus
+        WHERE id = :id
+          AND ownerKey = :ownerKey
+          AND ledgerId = :ledgerId
+          AND status = :expectedStatus
         """,
     )
-    suspend fun deleteIfStatus(id: Long, expectedStatus: String): Int
+    suspend fun deleteIfStatus(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        expectedStatus: String,
+    ): Int
 
     /**
      * Cascade a new ``expected_row_version`` to every still-PENDING
@@ -356,14 +392,14 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET expectedRowVersion = :freshToken
-        WHERE serverUrl = :serverUrl
+        WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND targetId = :targetId
           AND status = :pendingStatus
         """,
     )
     suspend fun cascadeFreshTokenForTarget(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         targetId: String,
         pendingStatus: String,
@@ -396,19 +432,19 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT * FROM pending_mutations AS pm
-        WHERE pm.serverUrl = :serverUrl
+        WHERE pm.ownerKey = :ownerKey
           AND pm.ledgerId = :ledgerId
           AND pm.status = :pendingStatus
           AND NOT EXISTS (
             SELECT 1 FROM pending_mutations AS sib
-            WHERE sib.serverUrl = pm.serverUrl
+            WHERE sib.ownerKey = pm.ownerKey
               AND sib.ledgerId = pm.ledgerId
               AND sib.targetId = pm.targetId
               AND sib.status IN (:unresolvedStatuses)
           )
           AND NOT EXISTS (
             SELECT 1 FROM pending_mutations AS older
-            WHERE older.serverUrl = pm.serverUrl
+            WHERE older.ownerKey = pm.ownerKey
               AND older.ledgerId = pm.ledgerId
               AND older.targetId = pm.targetId
               AND older.status = :pendingStatus
@@ -422,7 +458,7 @@ interface PendingMutationDao {
         """,
     )
     suspend fun nextRunnableBatch(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         pendingStatus: String,
         unresolvedStatuses: Collection<String>,
@@ -438,7 +474,7 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT * FROM pending_mutations
-        WHERE serverUrl = :serverUrl
+        WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = :pendingStatus
         ORDER BY createdAt ASC, id ASC
@@ -446,7 +482,7 @@ interface PendingMutationDao {
         """,
     )
     suspend fun nextPendingBatch(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         pendingStatus: String,
         limit: Int,
@@ -465,14 +501,14 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT COUNT(*) > 0 FROM pending_mutations
-        WHERE serverUrl = :serverUrl
+        WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND targetId = :targetId
           AND status = :inFlightStatus
         """,
     )
     suspend fun isTargetBusy(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         targetId: String,
         inFlightStatus: String,
@@ -497,14 +533,14 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT COUNT(*) > 0 FROM pending_mutations
-        WHERE serverUrl = :serverUrl
+        WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND targetId = :targetId
           AND status IN (:unresolvedStatuses)
         """,
     )
     suspend fun hasUnresolvedRowForTarget(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         targetId: String,
         unresolvedStatuses: Collection<String>,
@@ -532,14 +568,14 @@ interface PendingMutationDao {
         UPDATE pending_mutations
         SET status = 'pending',
             lastError = :recoveryMessage
-        WHERE serverUrl = :serverUrl
+        WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'in_flight'
           AND (attemptedAt IS NULL OR attemptedAt < :staleCutoffIso)
         """,
     )
     suspend fun recoverStaleInFlight(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         staleCutoffIso: String,
         recoveryMessage: String,
@@ -553,7 +589,7 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT * FROM pending_mutations
-        WHERE serverUrl = :serverUrl
+        WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND targetId = :targetId
           AND status IN (:activeStatuses)
@@ -561,7 +597,7 @@ interface PendingMutationDao {
         """,
     )
     suspend fun activeForTarget(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         targetId: String,
         activeStatuses: Collection<String>,
@@ -576,13 +612,13 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT COUNT(*) FROM pending_mutations
-        WHERE serverUrl = :serverUrl
+        WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status IN (:pendingStatus, :inFlightStatus)
         """,
     )
     fun observeQueueDepth(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         pendingStatus: String,
         inFlightStatus: String,
@@ -595,14 +631,14 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT * FROM pending_mutations
-        WHERE serverUrl = :serverUrl
+        WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = :conflictStatus
         ORDER BY createdAt ASC, id ASC
         """,
     )
     fun observeConflictRows(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         conflictStatus: String,
     ): Flow<List<PendingMutationEntity>>
@@ -621,14 +657,14 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT * FROM pending_mutations
-        WHERE serverUrl = :serverUrl
+        WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = :failedStatus
         ORDER BY createdAt ASC, id ASC
         """,
     )
     fun observeFailedRows(
-        serverUrl: String,
+        ownerKey: String,
         ledgerId: String,
         failedStatus: String,
     ): Flow<List<PendingMutationEntity>>
@@ -678,34 +714,35 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET serverUrl = :newServerUrl
-        WHERE serverUrl = :oldServerUrl AND ledgerId = :ledgerId
+        WHERE ownerKey = :ownerKey
+          AND serverUrl = :oldServerUrl
+          AND ledgerId = :ledgerId
         """,
     )
     suspend fun migrateServerUrlAlias(
+        ownerKey: String,
         oldServerUrl: String,
         newServerUrl: String,
         ledgerId: String,
     ): Int
 
-    /**
-     * One-time v9 → v10 backfill. The 9→10 migration added the
-     * ``serverUrl`` / ``ledgerId`` columns with an empty-string default but
-     * could not know the active binding (it lives in settings, not the DB),
-     * so pre-upgrade rows carry ``('', '')`` and match no binding-scoped
-     * query — they would be silently stranded. The app adopts them into the
-     * current binding once at drain start (v9 had a single active binding, so
-     * the queued rows belong to it). Idempotent: matches nothing once every
-     * row carries a real binding.
-     *
-     * @return the number of legacy rows adopted.
-     */
     @Query(
         """
-        UPDATE pending_mutations
-        SET serverUrl = :serverUrl,
-            ledgerId = :ledgerId
-        WHERE serverUrl = '' AND ledgerId = ''
+        SELECT COUNT(*) FROM pending_mutations
+        WHERE :activeOwnerKey IS NULL
+           OR ownerKey IS NULL
+           OR ownerKey != :activeOwnerKey
         """,
     )
-    suspend fun adoptLegacyBinding(serverUrl: String, ledgerId: String): Int
+    fun observeQuarantinedCount(activeOwnerKey: String?): Flow<Int>
+
+    /** Explicitly remove rows that cannot belong to the active proven owner. */
+    @Query(
+        """
+        DELETE FROM pending_mutations
+        WHERE ownerKey IS NULL
+           OR ownerKey != :activeOwnerKey
+        """,
+    )
+    suspend fun deleteQuarantined(activeOwnerKey: String): Int
 }

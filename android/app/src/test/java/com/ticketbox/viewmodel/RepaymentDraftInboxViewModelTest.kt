@@ -11,7 +11,6 @@ import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.RepaymentDraftStatuses
-import com.ticketbox.domain.model.RepaymentNotificationDraft
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -366,12 +365,6 @@ private class FakeRepaymentDraftActions(
     var listGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
-
-    override suspend fun createDraft(
-        draft: RepaymentNotificationDraft,
-        expectedLedgerId: String?,
-        notificationKey: String?,
-    ): Result<RepaymentDraft> = Result.success(draft("created"))
 
     override suspend fun listPendingDrafts(): Result<List<RepaymentDraft>> {
         listCalls++

@@ -1,11 +1,11 @@
-﻿package com.ticketbox.viewmodel
+package com.ticketbox.viewmodel
 
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.repository.BindServerResult
 import com.ticketbox.data.repository.ServerBindingRepository
 import com.ticketbox.domain.model.BackgroundSettings
-import com.ticketbox.security.SessionTokenStore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -13,14 +13,84 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModelBindingTest {
+    @Test
+    fun legacySessionWaitsForDelayedAuthCheckBeforeBusinessBecomesReady() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val verification = CompletableDeferred<Result<Unit>?>()
+            val repository = FakeBindingRepository(
+                bindResult = Result.success(BindServerResult()),
+                initialActiveSession = true,
+                initialBusinessSessionReady = false,
+            ).apply {
+                reconcileGate = verification
+            }
+            val viewModel = AppViewModel(
+                repository = repository,
+                settingsStore = FakeAppSettingsStore(initialBound = true),
+                requireLocalUnlock = false,
+            )
+
+            runCurrent()
+
+            assertEquals(SessionVerificationState.Verifying, viewModel.uiState.value.sessionVerification)
+            assertFalse(viewModel.uiState.value.isBusinessReady)
+            assertFalse(viewModel.uiState.value.unlocked)
+            assertEquals(1, repository.reconcileCalls)
+
+            viewModel.refreshBindingState()
+            viewModel.refreshBindingState()
+            runCurrent()
+            assertEquals(1, repository.reconcileCalls)
+
+            verification.complete(Result.success(Unit))
+            advanceUntilIdle()
+
+            assertEquals(SessionVerificationState.Ready, viewModel.uiState.value.sessionVerification)
+            assertTrue(viewModel.uiState.value.isBusinessReady)
+            assertTrue(viewModel.uiState.value.unlocked)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun pendingEnrollmentOnlyClearsAfterExplicitAbandonAction() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val repository = FakeBindingRepository(
+                bindResult = Result.success(BindServerResult()),
+                initialPendingEnrollment = true,
+            )
+            val viewModel = AppViewModel(
+                repository = repository,
+                settingsStore = FakeAppSettingsStore(initialBound = false),
+            )
+            advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.hasPendingEnrollment)
+
+            viewModel.abandonPendingEnrollment()
+            advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.hasPendingEnrollment)
+            assertEquals(1, repository.abandonCalls)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
     @Test
     fun bindKeepsUserBoundWhenConfirmedRestoreFails() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -31,7 +101,6 @@ class AppViewModelBindingTest {
                     Result.success(BindServerResult(confirmedRestoreFailed = true)),
                 ),
                 settingsStore = FakeAppSettingsStore(initialBound = false),
-                tokenStore = FakeSessionTokenStore(initialToken = null),
             )
 
             viewModel.bind("https://api.example.com", "123456")
@@ -54,9 +123,8 @@ class AppViewModelBindingTest {
         try {
             val settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true)
             val viewModel = AppViewModel(
-                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                repository = FakeBindingRepository(Result.success(BindServerResult()), initialActiveSession = true),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore(initialToken = "tk_bound"),
                 requireLocalUnlock = false,
             )
 
@@ -79,9 +147,8 @@ class AppViewModelBindingTest {
         Dispatchers.setMain(dispatcher)
         try {
             val viewModel = AppViewModel(
-                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                repository = FakeBindingRepository(Result.success(BindServerResult()), initialActiveSession = true),
                 settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true),
-                tokenStore = FakeSessionTokenStore(initialToken = "tk_release"),
                 requireLocalUnlock = true,
             )
 
@@ -98,11 +165,10 @@ class AppViewModelBindingTest {
         Dispatchers.setMain(dispatcher)
         try {
             val settingsStore = FakeAppSettingsStore(initialBound = false, requiresUnlock = true)
-            val tokenStore = FakeSessionTokenStore(initialToken = null)
+            val repository = FakeBindingRepository(Result.success(BindServerResult()))
             val viewModel = AppViewModel(
-                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                repository = repository,
                 settingsStore = settingsStore,
-                tokenStore = tokenStore,
                 requireLocalUnlock = true,
             )
             assertEquals(false, viewModel.uiState.value.isBound)
@@ -111,7 +177,8 @@ class AppViewModelBindingTest {
             // having persisted a binding behind the VM's back (the cold-start
             // invitation join path).
             settingsStore.bound = true
-            tokenStore.saveToken("tk_joined")
+            repository.activeSession = true
+            repository.businessSessionReady = true
             viewModel.refreshBindingState()
 
             assertTrue(viewModel.uiState.value.isBound)
@@ -131,7 +198,6 @@ class AppViewModelBindingTest {
             val viewModel = AppViewModel(
                 repository = FakeBindingRepository(Result.success(BindServerResult())),
                 settingsStore = FakeAppSettingsStore(initialBound = false),
-                tokenStore = FakeSessionTokenStore(initialToken = null),
             )
 
             viewModel.refreshBindingState()
@@ -152,14 +218,13 @@ class AppViewModelBindingTest {
         Dispatchers.setMain(dispatcher)
         try {
             val viewModel = AppViewModel(
-                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                repository = FakeBindingRepository(Result.success(BindServerResult()), initialActiveSession = true),
                 settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true),
-                tokenStore = FakeSessionTokenStore(initialToken = "tk_release"),
                 requireLocalUnlock = true,
             )
             assertEquals(false, viewModel.uiState.value.unlocked)
 
-            viewModel.unlockFailed(BIND_RESTORE_FAILED_MESSAGE)
+            viewModel.setAuthMessage(BIND_RESTORE_FAILED_MESSAGE)
             viewModel.disableLocalUnlock()
 
             assertTrue(viewModel.uiState.value.unlocked)
@@ -180,9 +245,8 @@ class AppViewModelBindingTest {
         try {
             val settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true)
             val viewModel = AppViewModel(
-                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                repository = FakeBindingRepository(Result.success(BindServerResult()), initialActiveSession = true),
                 settingsStore = settingsStore,
-                tokenStore = FakeSessionTokenStore(initialToken = "tk_release"),
                 requireLocalUnlock = true,
             )
 
@@ -211,9 +275,8 @@ class AppViewModelBindingTest {
         Dispatchers.setMain(dispatcher)
         try {
             val viewModel = AppViewModel(
-                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                repository = FakeBindingRepository(Result.success(BindServerResult()), initialActiveSession = true),
                 settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true),
-                tokenStore = FakeSessionTokenStore(initialToken = "tk_release"),
                 requireLocalUnlock = true,
             )
             viewModel.unlockSucceeded()
@@ -231,10 +294,51 @@ class AppViewModelBindingTest {
 
 private class FakeBindingRepository(
     private val bindResult: Result<BindServerResult>,
+    initialActiveSession: Boolean = false,
+    initialBusinessSessionReady: Boolean = initialActiveSession,
+    initialPendingEnrollment: Boolean = false,
 ) : ServerBindingRepository {
-    override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> = bindResult
+    var activeSession: Boolean = initialActiveSession
+    var businessSessionReady: Boolean = initialBusinessSessionReady
+    var pendingEnrollment: Boolean = initialPendingEnrollment
+    var reconcileGate: CompletableDeferred<Result<Unit>?>? = null
+    var reconcileCalls: Int = 0
+        private set
+    var abandonCalls: Int = 0
+        private set
 
-    override suspend fun clearBinding() = Unit
+    override fun hasActiveSession(): Boolean = activeSession
+
+    override fun isBusinessSessionReady(): Boolean = businessSessionReady
+
+    override fun hasPendingBinding(): Boolean = pendingEnrollment
+
+    override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> =
+        bindResult.onSuccess {
+            activeSession = true
+            businessSessionReady = true
+            pendingEnrollment = false
+        }
+
+    override suspend fun abandonPendingBinding(): Boolean {
+        abandonCalls += 1
+        val abandoned = pendingEnrollment
+        pendingEnrollment = false
+        return abandoned
+    }
+
+    override suspend fun reconcileActiveSession(): Result<Unit>? {
+        reconcileCalls += 1
+        val result = reconcileGate?.await()
+        if (result?.isSuccess == true) businessSessionReady = true
+        return result
+    }
+
+    override suspend fun clearBinding() {
+        activeSession = false
+        businessSessionReady = false
+        pendingEnrollment = false
+    }
 }
 
 private class FakeAppSettingsStore(
@@ -246,7 +350,7 @@ private class FakeAppSettingsStore(
     var markBackgroundedCalls: Int = 0
         private set
 
-    override fun serverUrl(): String? = null
+    fun serverUrl(): String? = null
 
     override fun appSkinKey(): String? = null
 
@@ -256,29 +360,29 @@ private class FakeAppSettingsStore(
 
     override fun lastConfirmedSyncAt(): String? = null
 
-    override fun accountName(): String? = null
+    fun accountName(): String? = null
 
-    override fun ledgerName(): String? = null
+    fun ledgerName(): String? = null
 
-    override fun activeLedgerId(): String? = null
+    fun activeLedgerId(): String? = null
 
-    override fun activeLedgerName(): String? = null
+    fun activeLedgerName(): String? = null
 
     override fun availableLedgersJson(): String? = null
 
-    override fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
+    fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
 
-    override fun saveActiveLedger(ledgerId: String, ledgerName: String) = Unit
+    fun saveActiveLedger(ledgerId: String, ledgerName: String) = Unit
 
     override fun saveAvailableLedgersJson(json: String?) = Unit
 
-    override fun deviceName(): String? = null
+    fun deviceName(): String? = null
 
-    override fun role(): String? = null
+    fun role(): String? = null
 
-    override fun boundAt(): String? = null
+    fun boundAt(): String? = null
 
-    override fun saveIdentity(identity: PersistedLedgerIdentity) = Unit
+    fun saveIdentity(identity: PersistedLedgerIdentity) = Unit
 
     override fun saveLastConfirmedSyncAt(value: String) = Unit
 
@@ -300,9 +404,9 @@ private class FakeAppSettingsStore(
 
     override fun observeCurrencyCodeKey(): Flow<String?> = emptyFlow()
 
-    override fun saveServerUrl(serverUrl: String) = Unit
+    fun saveServerUrl(serverUrl: String) = Unit
 
-    override fun isBound(): Boolean = bound
+    fun isBound(): Boolean = bound
 
     override fun markUnlocked() = Unit
 
@@ -313,20 +417,4 @@ private class FakeAppSettingsStore(
     override fun requiresUnlock(): Boolean = requiresUnlock
 
     override fun clear() = Unit
-}
-
-private class FakeSessionTokenStore(
-    initialToken: String?,
-) : SessionTokenStore {
-    private var token: String? = initialToken
-
-    override fun saveToken(token: String) {
-        this.token = token
-    }
-
-    override fun getToken(): String? = token
-
-    override fun clear() {
-        token = null
-    }
 }

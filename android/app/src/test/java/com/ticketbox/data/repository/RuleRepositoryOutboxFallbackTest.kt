@@ -88,8 +88,8 @@ class RuleRepositoryOutboxFallbackTest {
             )
         }
 
-    private fun seededTokenStore(): FakeSessionTokenStore =
-        FakeSessionTokenStore().apply { saveToken("session-token") }
+    private fun seededTokenStore(): TestSessionFixture =
+        TestSessionFixture().apply { saveToken("session-token") }
 
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
@@ -101,7 +101,7 @@ class RuleRepositoryOutboxFallbackTest {
         adapter: com.squareup.moshi.JsonAdapter<CategoryRuleUpdateRequest>? = null,
         deleteAdapter: com.squareup.moshi.JsonAdapter<com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest>? = null,
     ): RuleRepository = RuleRepository(
-        binding = ServerSessionBinding(
+        binding = testServerSessionBinding(
             apiClient = TestApiServiceFactory(api),
             settingsStore = seededSettingsStore(),
             tokenStore = seededTokenStore(),
@@ -123,7 +123,7 @@ class RuleRepositoryOutboxFallbackTest {
         // guard fails loudly (ISE is not the IOException fallback trigger).
         val baseline = baselineRule()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
         val api = ApiServiceStub(
             updateCategoryRuleResult = ApiResult.Throw(IllegalStateException("direct PATCH must not run")),
@@ -154,7 +154,7 @@ class RuleRepositoryOutboxFallbackTest {
     fun `delete with unresolved queued mutation enqueues behind it, no direct call`() = runTest {
         val baseline = baselineRule()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val updateAdapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
         val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
         val api = ApiServiceStub(
@@ -184,7 +184,7 @@ class RuleRepositoryOutboxFallbackTest {
     fun `direct 2xx returns Synced with server rule, no enqueue`() = runTest {
         val baseline = baselineRule()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
         val api = ApiServiceStub(updateCategoryRuleResult = ApiResult.Success(successDto()))
 
@@ -204,7 +204,7 @@ class RuleRepositoryOutboxFallbackTest {
     fun `IOException returns Queued with optimistic rule + enqueues row`() = runTest {
         val baseline = baselineRule()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
         val api = ApiServiceStub(updateCategoryRuleResult = ApiResult.Throw(IOException("net out")))
 
@@ -263,7 +263,7 @@ class RuleRepositoryOutboxFallbackTest {
         // the flip.
         val baseline = baselineRule().copy(enabled = true)
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
         val api = ApiServiceStub(updateCategoryRuleResult = ApiResult.Throw(IOException("net out")))
 
@@ -281,7 +281,7 @@ class RuleRepositoryOutboxFallbackTest {
     @Test
     fun `HttpException 409 surfaces as failure, no enqueue`() = runTest {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
         val api = ApiServiceStub(
             updateCategoryRuleResult = ApiResult.Throw(
@@ -299,7 +299,7 @@ class RuleRepositoryOutboxFallbackTest {
     @Test
     fun `HttpException 422 surfaces as failure, no enqueue`() = runTest {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
         val api = ApiServiceStub(
             updateCategoryRuleResult = ApiResult.Throw(
@@ -317,7 +317,7 @@ class RuleRepositoryOutboxFallbackTest {
     @Test
     fun `HttpException 500 surfaces as failure, no enqueue`() = runTest {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(CategoryRuleUpdateRequest::class.java)
         val api = ApiServiceStub(
             updateCategoryRuleResult = ApiResult.Throw(
@@ -350,7 +350,7 @@ class RuleRepositoryOutboxFallbackTest {
     fun `delete direct 2xx returns Synced, no enqueue`() = runTest {
         val baseline = baselineRule()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
         // default deleteCategoryRuleException = null → success
         val api = ApiServiceStub()
@@ -366,7 +366,7 @@ class RuleRepositoryOutboxFallbackTest {
     fun `delete IOException returns Queued + enqueues row without token in payload`() = runTest {
         val baseline = baselineRule()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
         val api = ApiServiceStub(deleteCategoryRuleException = IOException("net out"))
 
@@ -400,7 +400,7 @@ class RuleRepositoryOutboxFallbackTest {
     @Test
     fun `delete HttpException 409 surfaces as failure, no enqueue`() = runTest {
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
         val api = ApiServiceStub(
             deleteCategoryRuleException = httpException(
@@ -435,7 +435,7 @@ class RuleRepositoryOutboxFallbackTest {
         // outbox after a mid-flight switch.
         val baseline = baselineRule()
         val dao = FakePendingMutationDao()
-        val outbox = OutboxRepository(dao = dao)
+        val outbox = testOutboxRepository(dao = dao)
         val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
 
         val settings = FakeTicketboxSettingsStore().apply {
@@ -451,7 +451,7 @@ class RuleRepositoryOutboxFallbackTest {
                 )
             )
         }
-        val tokens = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val tokens = ledgerSessionFixture("ledger-a", "账本 A")
 
         val api = object : ApiService by FakeApiService(
             events = mutableListOf(),
@@ -462,22 +462,13 @@ class RuleRepositoryOutboxFallbackTest {
                 request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
                 idempotencyKey: String?,
             ): com.ticketbox.data.remote.dto.StatusDto {
-                settings.saveIdentity(
-                    PersistedLedgerIdentity(
-                        accountName = "我",
-                        ledgerId = "ledger-b",
-                        ledgerName = "账本 B",
-                        deviceName = "Pixel",
-                        role = "owner",
-                        boundAt = "2026-05-04T12:00:00Z",
-                    )
-                )
+                tokens.switchLedgerForFixture("ledger-b", "账本 B")
                 throw IOException("net out")
             }
         }
 
         val repo = RuleRepository(
-            binding = ServerSessionBinding(
+            binding = testServerSessionBinding(
                 apiClient = TestApiServiceFactory(api),
                 settingsStore = settings,
                 tokenStore = tokens,

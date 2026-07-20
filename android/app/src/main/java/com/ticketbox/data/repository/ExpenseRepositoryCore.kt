@@ -6,7 +6,6 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ConfirmedExpensesApiQuery
 import com.ticketbox.data.remote.ExpenseListFilterQuery
 import com.ticketbox.data.remote.PageQuery
@@ -23,7 +22,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.security.SessionTokenStore
+import com.ticketbox.security.SessionCredentialProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -38,7 +37,6 @@ import java.util.TimeZone
 private const val CONFIRMED_SYNC_PAGE_SIZE = 200
 
 internal data class ConfirmedSyncRequest(
-    val ledgerIdAtRequest: String,
     val month: String? = null,
     val category: String? = null,
     val tag: String? = null,
@@ -55,8 +53,8 @@ internal class ExpenseRepositoryCore(
 ) {
     val settingsStore: TicketboxSettingsStore
         get() = binding.settingsStore
-    val tokenStore: SessionTokenStore
-        get() = binding.tokenStore
+    val tokenStore: SessionCredentialProvider
+        get() = binding.credentials
     val apiProvider: ApiServiceProvider
         get() = binding.apiProvider
     val outbox: OutboxRepository?
@@ -75,14 +73,14 @@ internal class ExpenseRepositoryCore(
         get() = offlineMutations.manualCreateAdapter
 
     val errorHandler = NetworkErrorHandler(
-        settingsStore = settingsStore,
+        serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "Repository",
         statusMessages = mapOf(
             404 to "账单不存在。",
             413 to "上传文件超过大小限制。",
         ),
     )
-    val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
+    val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
 
     /**
      * 「确认态写入本地缓存」的单点回调（轴 6 预算超支检测的触发接缝）。[cacheIfConfirmed]
@@ -96,16 +94,26 @@ internal class ExpenseRepositoryCore(
 
     fun currentTimezoneId(): String = TimeZone.getDefault().id
 
-    fun currentLedgerRole(): String? = settingsStore.role()
+    fun localBinding(): LocalBindingInfo? {
+        val session = apiProvider.currentSession() ?: return null
+        return LocalBindingInfo(
+            serverUrl = session.serverUrl,
+            accountName = session.identity.accountName,
+            ledgerId = session.identity.ledgerId,
+            ledgerName = session.identity.ledgerName,
+            deviceName = session.identity.deviceName,
+            role = session.identity.role,
+            boundAt = session.identity.boundAt,
+        )
+    }
 
-    fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+    fun currentLedgerRole(): String? = apiProvider.currentLedgerRole()
 
-    fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
+    fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    fun currentActiveLedgerId(): String? = settingsStore.activeLedgerId()
+    fun observeActiveLedgerId(): Flow<String?> = apiProvider.observeActiveLedgerId()
 
-    fun api(serverUrl: String, token: String): ApiService =
-        apiProvider.temporary(serverUrl, token)
+    fun currentActiveLedgerId(): String? = apiProvider.currentLedgerId()
 
     fun readProtectedImage(response: Response<ResponseBody>): ProtectedImage {
         if (!response.isSuccessful) {
@@ -132,8 +140,9 @@ internal class ExpenseRepositoryCore(
         return when (error) {
             is HttpException -> errorHandler.parseHttpError(error).message
             is IOException -> {
-                Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, settingsStore.serverUrl()), error)
-                userNetworkMessage(error, settingsStore.serverUrl())
+                val serverUrl = apiProvider.currentSession()?.serverUrl
+                Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, serverUrl), error)
+                userNetworkMessage(error, serverUrl)
             }
             is RepositoryException -> error.message ?: "操作失败。"
             is IllegalArgumentException -> error.message ?: "请求参数不正确。"
@@ -145,25 +154,35 @@ internal class ExpenseRepositoryCore(
         check: AuthCheckDto,
         expectedSnapshot: LedgerSessionSnapshot,
     ) {
-        val expectedLedgerId = expectedSnapshot.activeLedgerId?.takeIf { it.isNotBlank() }
-        sessionCoordinator.applyTransitionIfCurrent(
+        val expectedLedgerId = requireNotNull(
+            expectedSnapshot.activeLedgerId?.takeIf { it.isNotBlank() },
+        ) { "Authenticated requests require a selected ledger." }
+        if (check.ledgerId != expectedLedgerId) {
+            throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
+        }
+        val serverId = check.serverId.requireSessionProtocolId("服务器身份")
+        val dataGeneration = check.dataGeneration.requireSessionProtocolId("数据代际")
+        val accountPublicId = check.accountPublicId.requireSessionProtocolId("成员身份")
+        val devicePublicId = check.devicePublicId.requireSessionProtocolId("设备身份")
+        val applied = sessionCoordinator.applyTransitionIfCurrent(
             expectedSnapshot = expectedSnapshot,
             transition = LedgerSessionTransition(
+                change = LocalSessionChange.RefreshProjection,
+                serverId = serverId,
+                dataGeneration = dataGeneration,
                 identity = LedgerSessionIdentity(
+                    accountPublicId = accountPublicId,
+                    devicePublicId = devicePublicId,
                     accountName = check.accountName,
                     ledgerId = check.ledgerId,
                     ledgerName = check.ledgerName,
                     deviceName = check.deviceName,
                     role = check.role,
-                    boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                    boundAt = apiProvider.currentSession()?.identity?.boundAt ?: Instant.now().toString(),
                 ),
-                cacheInvalidation = if (check.ledgerId != expectedLedgerId) {
-                    LedgerCacheInvalidation.TargetLedger
-                } else {
-                    LedgerCacheInvalidation.None
-                },
             ),
         )
+        if (!applied) throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
     }
 
     suspend fun persistServerSettings(
@@ -178,31 +197,36 @@ internal class ExpenseRepositoryCore(
         sessionCoordinator.applyTransitionIfCurrent(
             expectedSnapshot = expectedSnapshot,
             transition = LedgerSessionTransition(
+                change = LocalSessionChange.RefreshProjection,
                 identity = LedgerSessionIdentity(
+                    accountPublicId = apiProvider.currentSession()?.identity?.accountPublicId,
+                    devicePublicId = apiProvider.currentSession()?.identity?.devicePublicId,
                     accountName = settings.accountName,
                     ledgerId = ledgerId,
                     ledgerName = settings.ledgerName,
                     deviceName = settings.deviceName,
                     role = settings.role,
-                    boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                    boundAt = apiProvider.currentSession()?.identity?.boundAt ?: Instant.now().toString(),
                 ),
             ),
         )
     }
 
-    suspend fun cacheIfConfirmed(dto: ExpenseDto, ledgerIdAtRequest: String): ExpenseDto {
-        if (dto.status == "confirmed" && activeLedgerIdOrLegacy() == ledgerIdAtRequest) {
-            expenseDao.upsertByServerIdForLedger(ledgerIdAtRequest, dto.toEntity(ledgerIdAtRequest))
-            onConfirmedCommitted(ledgerIdAtRequest)
+    suspend fun cacheIfConfirmed(dto: ExpenseDto, bound: BoundLedgerRequest): ExpenseDto {
+        if (dto.status == "confirmed") {
+            withActiveBindingCommit(bound) {
+                expenseDao.upsertByServerIdForLedger(bound.ledgerId, dto.toEntity(bound.ledgerId))
+                onConfirmedCommitted(bound.ledgerId)
+            }
         }
         return dto
     }
 
     suspend fun syncConfirmedFromService(
-        service: ApiService,
-        request: ConfirmedSyncRequest = ConfirmedSyncRequest(ledgerIdAtRequest = activeLedgerIdOrLegacy()),
+        bound: BoundLedgerRequest,
+        request: ConfirmedSyncRequest = ConfirmedSyncRequest(),
     ): List<Expense> {
-        val ledgerIdAtRequest = request.ledgerIdAtRequest
+        val ledgerIdAtRequest = bound.ledgerId
         val isFullLedgerSync = request.month == null && request.category == null && request.tag == null
         // Prune-eligibility snapshot BEFORE the first page request: a row
         // confirmed (and cached via cacheIfConfirmed) while the paginated
@@ -210,7 +234,9 @@ internal class ExpenseRepositoryCore(
         // it must not be pruned as "server-deleted". See
         // ExpenseDao.applyConfirmedSyncForLedger's pruneScope contract.
         val preSyncConfirmedServerIds: Set<Long> = if (!request.replaceCache && isFullLedgerSync) {
-            expenseDao.confirmedServerIdsForLedger(ledgerIdAtRequest).toSet()
+            withActiveBindingCommit(bound) {
+                expenseDao.confirmedServerIdsForLedger(ledgerIdAtRequest).toSet()
+            }
         } else {
             emptySet()
         }
@@ -219,20 +245,19 @@ internal class ExpenseRepositoryCore(
         val pageSize = CONFIRMED_SYNC_PAGE_SIZE
         var total = Int.MAX_VALUE
         do {
-            if (activeLedgerIdOrLegacy() != ledgerIdAtRequest) {
-                return emptyList()
+            val response = bound.call { service ->
+                service.confirmedExpenses(
+                    query = ConfirmedExpensesApiQuery(
+                        page = PageQuery(page = page, pageSize = pageSize),
+                        filters = ExpenseListFilterQuery(
+                            month = request.month,
+                            category = request.category,
+                            tag = request.tag,
+                        ),
+                        timezone = currentTimezoneId(),
+                    ).toQueryMap(),
+                )
             }
-            val response = service.confirmedExpenses(
-                query = ConfirmedExpensesApiQuery(
-                    page = PageQuery(page = page, pageSize = pageSize),
-                    filters = ExpenseListFilterQuery(
-                        month = request.month,
-                        category = request.category,
-                        tag = request.tag,
-                    ),
-                    timezone = currentTimezoneId(),
-                ).toQueryMap(),
-            )
             total = response.total
             collectedDtos += response.items
             if (response.items.isEmpty() && collectedDtos.size < total) {
@@ -242,19 +267,17 @@ internal class ExpenseRepositoryCore(
         } while (collectedDtos.size < total)
 
         val collected = collectedDtos.map { it.toDomain() }
-        if (activeLedgerIdOrLegacy() != ledgerIdAtRequest) {
-            return emptyList()
-        }
-
-        val entities = collectedDtos.map { it.toEntity(ledgerIdAtRequest) }
-        expenseDao.applyConfirmedSyncForLedger(
-            ledgerId = ledgerIdAtRequest,
-            expenses = entities,
-            replaceCache = request.replaceCache,
-            pruneScope = if (!request.replaceCache && isFullLedgerSync) preSyncConfirmedServerIds else null,
-        )
-        if (request.recordSyncTimestamp && isFullLedgerSync) {
-            settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
+        withActiveBindingCommit(bound) {
+            val entities = collectedDtos.map { it.toEntity(ledgerIdAtRequest) }
+            expenseDao.applyConfirmedSyncForLedger(
+                ledgerId = ledgerIdAtRequest,
+                expenses = entities,
+                replaceCache = request.replaceCache,
+                pruneScope = if (!request.replaceCache && isFullLedgerSync) preSyncConfirmedServerIds else null,
+            )
+            if (request.recordSyncTimestamp && isFullLedgerSync) {
+                settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
+            }
         }
         return collected
     }
@@ -277,21 +300,32 @@ internal class ExpenseRepositoryCore(
      * 拿到响应后若 active ledger 已变即丢弃，绝不把旧账本数据写进新账本缓存。
      */
     suspend fun syncPendingFromService(
-        service: ApiService,
-        ledgerIdAtRequest: String = activeLedgerIdOrLegacy(),
+        bound: BoundLedgerRequest,
     ): List<Expense> {
-        val dtos = service.pendingExpenses()
-        if (activeLedgerIdOrLegacy() != ledgerIdAtRequest) {
-            return emptyList()
+        val dtos = bound.call { it.pendingExpenses() }
+        withActiveBindingCommit(bound) {
+            val entities = dtos.map { it.toEntity(bound.ledgerId) }
+            expenseDao.applyPendingSyncForLedger(ledgerId = bound.ledgerId, expenses = entities)
         }
-        val entities = dtos.map { it.toEntity(ledgerIdAtRequest) }
-        expenseDao.applyPendingSyncForLedger(ledgerId = ledgerIdAtRequest, expenses = entities)
         return dtos.map { it.toDomain() }
+    }
+
+    suspend fun <T> withActiveBindingCommit(
+        bound: BoundLedgerRequest,
+        block: suspend () -> T,
+    ): T {
+        val outboxRef = outbox
+        return if (outboxRef == null) {
+            bound.requireStillActive()
+            block()
+        } else {
+            outboxRef.withActiveBinding(bound, block)
+        }
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun observeConfirmed(): Flow<List<Expense>> =
-        settingsStore.observeActiveLedgerId()
+        apiProvider.observeActiveLedgerId()
             .map { it?.takeIf { id -> id.isNotBlank() } ?: LedgerRequestGuard.LEGACY_LEDGER_ID }
             .distinctUntilChanged()
             .flatMapLatest { id -> expenseDao.observeConfirmed(id).map { rows -> rows.map { it.toDomain() } } }
@@ -300,24 +334,11 @@ internal class ExpenseRepositoryCore(
 
     suspend fun clearLocalCache() {
         expenseDao.clear()
-        settingsStore.clearLastConfirmedSyncAt()
+        apiProvider.currentLedgerId()?.let(settingsStore::clearLastConfirmedSyncAtForLedger)
     }
 
     suspend fun clearBinding() {
-        val clearStores: suspend () -> Unit = {
-            apiProvider.clear()
-            expenseDao.clear()
-            settingsStore.clear()
-            tokenStore.clear()
-        }
-        val outboxRef = outbox
-        if (outboxRef != null) {
-            outboxRef.withBindingTransition(clearExistingRows = true) {
-                clearStores()
-            }
-        } else {
-            clearStores()
-        }
+        sessionCoordinator.clearSession()
     }
 
     /**
@@ -332,8 +353,10 @@ internal class ExpenseRepositoryCore(
      * branch instead; callers without outbox wiring keep the direct path
      * (there is no queue to respect).
      */
-    suspend fun hasUnresolvedQueuedMutationsFor(targetId: String): Boolean =
-        outbox?.activeForTarget(targetId)?.isNotEmpty() ?: false
+    suspend fun hasUnresolvedQueuedMutationsFor(
+        boundRequest: BoundLedgerRequest,
+        targetId: String,
+    ): Boolean = outbox?.activeForTarget(boundRequest, targetId)?.isNotEmpty() ?: false
 
     /**
      * Whether [enqueueStateTransition] CAN enqueue for this expense —
@@ -388,16 +411,22 @@ internal class ExpenseRepositoryCore(
                 "enqueueStateTransition without outbox wiring — guard callers must pre-check canEnqueueStateTransition",
             )
         }
-        bound.requireStillActive()
         outboxRef.enqueue(
-            type = type,
-            // issue #65 slice 4: a not-yet-synced expense (pendingSync) is
-            // addressed by its device-local ref so the backend resolves it via
-            // draft_idempotency_key; a synced one keeps the server-id target.
-            targetId = expenseOutboxTargetId(expense),
-            payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L)),
-            expectedRowVersion = expense.rowVersion,
-            idempotencyKey = idempotencyKey,
+            boundRequest = bound,
+            intent = PendingMutationIntent(
+                type = type,
+                // A pending create is addressed by its device-local ref; a synced
+                // expense keeps the server id.
+                targetId = expenseOutboxTargetId(expense),
+                payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L)),
+                expectedRowVersion = expense.rowVersion,
+                idempotencyKey = idempotencyKey,
+            ),
+            afterPersisted = {
+                if (type == PendingMutationType.RejectExpense && expense.status == "confirmed") {
+                    expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(expense.id))
+                }
+            },
         )
     }
 
@@ -423,17 +452,23 @@ internal class ExpenseRepositoryCore(
         draft: ExpenseDraft,
         clientRef: String,
     ): Expense {
-        bound.requireStillActive()
         val entity = draft.toLocalCreateEntity(bound.ledgerId, clientRef)
-        val rowId = expenseDao.insert(entity)
-        onConfirmedCommitted(bound.ledgerId)
+        var rowId = 0L
         outbox.enqueue(
-            type = PendingMutationType.CreateExpense,
-            targetId = expenseLocalTargetId(clientRef),
-            payloadJson = adapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
-            expectedRowVersion = FIRST_WRITE_ROW_VERSION,
-            idempotencyKey = null,
+            boundRequest = bound,
+            intent = PendingMutationIntent(
+                type = PendingMutationType.CreateExpense,
+                targetId = expenseLocalTargetId(clientRef),
+                payloadJson = adapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
+                expectedRowVersion = FIRST_WRITE_ROW_VERSION,
+            ),
+            afterPersisted = {
+                rowId = expenseDao.insert(entity)
+            },
         )
+        // The durable intent is committed before its optimistic projection in
+        // one binding lease. Process death can lose UI sugar, never the intent.
+        onConfirmedCommitted(bound.ledgerId)
         return entity.copy(id = rowId).toDomain()
     }
 

@@ -73,6 +73,7 @@ internal class FakeApiServiceFactory(
 internal class FakeApiService(
     private val events: MutableList<String>,
     private var confirmedFailuresRemaining: Int,
+    private var pairFailuresRemaining: Int = 0,
     private val checkAuthResult: AuthCheckDto? = null,
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
@@ -117,6 +118,7 @@ internal class FakeApiService(
     val expenseFetchIds = mutableListOf<Long>()
     val confirmExpenseIds = mutableListOf<String>()
     val markNotDuplicateIds = mutableListOf<String>()
+    val pairRequests = mutableListOf<PairRequestDto>()
     // suspend so a test can mutate the (suspend-API) FakeExpenseDao from the
     // hook — e.g. simulate a row being confirmed-and-cached mid-fetch.
     var onConfirmedRequest: (suspend () -> Unit)? = null
@@ -125,8 +127,18 @@ internal class FakeApiService(
     var onCheckAuth: (() -> Unit)? = null
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
+        pairRequests += request
+        if (pairFailuresRemaining > 0) {
+            pairFailuresRemaining -= 1
+            throw IOException("simulated lost pairing response")
+        }
         return PairResponseDto(
             sessionToken = "session-token",
+            pairingAttemptId = request.pairingAttemptId,
+            serverId = "11111111-1111-4111-8111-111111111111",
+            dataGeneration = "22222222-2222-4222-8222-222222222222",
+            accountPublicId = "33333333-3333-4333-8333-333333333333",
+            devicePublicId = "44444444-4444-4444-8444-444444444444",
             accountName = "我",
             ledgerId = "owner",
             ledgerName = "我的小票夹",
@@ -135,7 +147,9 @@ internal class FakeApiService(
         )
     }
 
-    override suspend fun refreshSession(): RefreshSessionResponseDto = unsupported()
+    override suspend fun refreshSession(
+        request: com.ticketbox.data.remote.dto.RefreshSessionRequestDto,
+    ): RefreshSessionResponseDto = unsupported()
 
     override suspend fun confirmedExpenses(
         query: Map<String, String>,
