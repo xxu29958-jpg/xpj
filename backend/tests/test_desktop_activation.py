@@ -31,7 +31,11 @@ from app.services.session_lifecycle_service import (
     hash_secret,
 )
 from app.services.time_service import ensure_utc, now_utc
-from tests.pairing_test_support import pairing_payload, session_refresh_payload
+from tests.pairing_test_support import (
+    invitation_accept_payload,
+    pairing_payload,
+    session_refresh_payload,
+)
 
 
 def _pair_desktop(client: TestClient, pairing_code: str, **overrides) -> tuple[dict, dict]:
@@ -249,6 +253,70 @@ def test_activate_supersedes_previous_desktop_token_with_grace(identity, client:
     # #213 rotation grace: the superseded predecessor finishes in-flight work.
     check = client.get("/api/auth/check", headers={"Authorization": f"Bearer {previous_token}"})
     assert check.status_code == 200, check.text
+
+
+def test_cross_ledger_previous_is_refused_and_untouched(identity, client: TestClient) -> None:
+    first_payload, _ = _pair_desktop(client, identity.pairing_code)
+    first = _activate(client, first_payload)
+    assert first.status_code == 200, first.text
+    foreign_token = first.json()["session_token"]
+
+    # Stage a new desktop pending on the other ledger (same account).
+    code = client.post(
+        "/api/ledgers/tester_1/devices/pairing-codes",
+        headers=identity.gray_app_headers,
+        json={},
+    )
+    assert code.status_code == 201, code.text
+    second_payload, _ = _pair_desktop(client, code.json()["pairing_code"])
+
+    # A live desktop token from another ledger is a foreign credential, not
+    # a predecessor: refused, never revoked, never recorded as lineage.
+    response = _activate(client, second_payload, previous=foreign_token)
+    assert response.status_code == 401
+    assert _token_row(foreign_token).revoked_at is None
+    assert _attempt_row(second_payload["pairing_attempt_id"]).previous_token_id is None
+
+    # A wrong previous does not poison the staged credential.
+    assert _activate(client, second_payload).status_code == 200
+
+
+def test_cross_account_previous_is_refused_and_untouched(identity, client: TestClient) -> None:
+    # A second account joins the "owner" ledger via invitation (single-phase
+    # non-Manager flow) and holds its own active desktop token.
+    invitation = client.post(
+        "/api/ledgers/owner/invitations",
+        headers=identity.app_headers,
+        json={"role": "member"},
+    )
+    assert invitation.status_code == 201, invitation.text
+    accept = client.post(
+        "/api/invitations/accept",
+        json=invitation_accept_payload(
+            invitation.json()["invite_token"],
+            account_name="pytest-second",
+            device_name="pytest-second-desktop",
+            platform="desktop",
+        ),
+    )
+    assert accept.status_code < 300, accept.text
+    foreign_token = accept.json()["session_token"]
+
+    code = client.post(
+        "/api/ledgers/owner/devices/pairing-codes",
+        headers=identity.app_headers,
+        json={},
+    )
+    assert code.status_code == 201, code.text
+    second_payload, _ = _pair_desktop(client, code.json()["pairing_code"])
+
+    # A live desktop token from another account is refused, never revoked,
+    # never recorded — and the staged credential still activates afterwards.
+    response = _activate(client, second_payload, previous=foreign_token)
+    assert response.status_code == 401
+    assert _token_row(foreign_token).revoked_at is None
+    assert _attempt_row(second_payload["pairing_attempt_id"]).previous_token_id is None
+    assert _activate(client, second_payload).status_code == 200
 
 
 def test_activate_supersedes_same_slot_active_token(identity, client: TestClient) -> None:

@@ -204,14 +204,18 @@ def _revoke_dead_staged(token: AuthToken | None, checked_at: datetime, db: Sessi
 def _load_live_previous_token(
     db: Session,
     *,
+    attempt: DesktopActivationAttempt,
     staged_token: AuthToken,
     previous_token_value: str | None,
     checked_at: datetime,
 ) -> AuthToken | None:
-    """Validate the optional predecessor possession proof (#218 semantics).
+    """Validate the optional predecessor possession proof.
 
-    A stale, revoked, or expired predecessor is a no-op, never a blocker;
-    a live predecessor must be an ``app`` token on a desktop device.
+    A stale, revoked, or expired predecessor is a no-op, never a blocker.
+    A live predecessor must be an ``app`` token on a desktop device bound to
+    the SAME account and ledger as the staged credential — a foreign token
+    is refused (401) and never revoked, so it can never be mis-registered
+    into this activation's lineage.
     """
 
     if not previous_token_value:
@@ -228,6 +232,11 @@ def _load_live_previous_token(
         return None
     if previous.scope != "app":
         return None
+    # Identity binding: the predecessor must share the staged credential's
+    # account and ledger. Anything else is a foreign credential, not a
+    # predecessor — refuse without touching it.
+    if previous.account_id != attempt.account_id or previous.ledger_id != attempt.ledger_id:
+        raise _invalid_activation()
     previous_device = db.get(Device, previous.device_id)
     if previous_device is None or (previous_device.platform or "") != DESKTOP_PLATFORM:
         raise _invalid_activation()
@@ -310,6 +319,7 @@ def _activate_staged_token(
         raise _invalid_activation()
     previous = _load_live_previous_token(
         db,
+        attempt=attempt,
         staged_token=token,
         previous_token_value=previous_token_value,
         checked_at=checked_at,
