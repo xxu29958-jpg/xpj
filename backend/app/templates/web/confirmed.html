@@ -50,7 +50,7 @@
   {% else %}
     {% if can_write %}
     <div class="confirmed-batch-head">
-      <div class="checkbox" id="check-all" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择本页全部账单"></div>
+      <input class="checkbox" id="check-all" type="checkbox" aria-label="选择本页全部账单">
       <span>本页批处理</span>
       <span class="hint">只会修改已入账账单的分类或标签</span>
     </div>
@@ -67,10 +67,10 @@
       {# amount_label 已是带原币符号的完整串（FX 时是原币如 $12.34,本币时是 ¥X）;
          只把末尾小数拆出来做灰显,不改符号、不强加 ¥。 #}
       {% set _ap = (e.amount_label or '未识别').rsplit('.', 1) %}
-      <a class="timeline-row lrow{% if can_write %} has-check{% endif %}" href="/web/expenses/{{ e.id }}/edit{{ _q }}" data-cat="{{ e.category or '' }}">
+      <a class="timeline-row timeline-row-detail lrow{% if can_write %} has-check{% endif %}" href="/web/expenses/{{ e.id }}/edit{{ _q }}" data-cat="{{ e.category or '' }}">
         {% if can_write %}
         <div class="lrow-sel" data-stop="true">
-          <div class="checkbox row-check" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择账单 #{{ e.id }}"></div>
+          <input class="checkbox row-check" type="checkbox" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单 #{{ e.id }}">
         </div>
         {% endif %}
         <div class="lrow-ic {{ _icmap.get(e.category, 'other') }}">{{ (e.category or '·')[:1] }}</div>
@@ -166,6 +166,7 @@
   <input type="hidden" name="page" value="{{ page }}">
   <span class="count" data-bulk-count>0</span>
   <span class="label">已选中</span>
+  <button class="dt-btn" type="button" data-bulk-clear>取消选择</button>
   <input class="bulk-field" name="category" maxlength="64" placeholder="分类" aria-label="批量修改分类">
   <button class="dt-btn" type="submit" name="action" value="set_category">改分类</button>
   <input class="bulk-field" name="tags" maxlength="500" placeholder="标签，逗号分隔" aria-label="批量修改标签">

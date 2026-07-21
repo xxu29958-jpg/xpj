@@ -30,14 +30,13 @@ from app.services.expense_service import (
     update_expense,
 )
 
-ALLOWED_ACTIONS = frozenset(
-    {"set_category", "set_merchant", "reject", "confirm_ready", "keep_duplicate"}
-)
+ALLOWED_ACTIONS = frozenset({"set_category", "set_merchant", "reject", "confirm_ready", "keep_duplicate"})
 
 SKIP_REASON_CROSS_LEDGER = "不属于当前账本"
 SKIP_REASON_NOT_PENDING = "非待确认"
 SKIP_REASON_MISSING_AMOUNT = "缺金额"
 SKIP_REASON_NOT_SUSPECTED_DUPLICATE = "非疑似重复"
+SKIP_REASON_STALE = "页面内容已变化，请刷新后重新选择"
 
 
 @dataclass
@@ -69,6 +68,7 @@ def apply_review_bulk(
     tenant_id: str,
     action: str,
     expense_ids: list[int],
+    expected_row_version_by_id: dict[int, int],
     category: str = "",
     merchant: str = "",
 ) -> BulkResult:
@@ -82,6 +82,14 @@ def apply_review_bulk(
     if action not in ALLOWED_ACTIONS:
         raise AppError("invalid_request", status_code=422)
 
+    unique_expense_ids = list(dict.fromkeys(expense_ids))
+    if set(expected_row_version_by_id) != set(unique_expense_ids):
+        raise AppError(
+            "invalid_request",
+            "页面已过期，请刷新后重新操作。",
+            status_code=422,
+        )
+
     category_clean = category.strip()
     merchant_clean = merchant.strip()
 
@@ -90,11 +98,11 @@ def apply_review_bulk(
     if action == "set_merchant" and not merchant_clean:
         raise AppError("invalid_request", "请填写商家。", status_code=422)
 
-    rows = list_expenses_by_ids(db, tenant_id=tenant_id, expense_ids=expense_ids)
-    found_ids = {row.id for row in rows}
+    rows = list_expenses_by_ids(db, tenant_id=tenant_id, expense_ids=unique_expense_ids)
+    rows_by_id = {row.id: row for row in rows}
 
     result = BulkResult()
-    cross_ledger = sum(1 for eid in expense_ids if eid not in found_ids)
+    cross_ledger = sum(1 for eid in unique_expense_ids if eid not in rows_by_id)
     if cross_ledger:
         result.skipped_reasons[SKIP_REASON_CROSS_LEDGER] = cross_ledger
 
@@ -102,44 +110,45 @@ def apply_review_bulk(
     # is a flat dispatcher (audit A5 used to flag this function at
     # nesting depth 6 because the if/elif chain compiles to a nested
     # ``If(orelse=[If(...)])`` tree).
-    handler = _resolve_bulk_action_handler(
-        action, category_clean=category_clean, merchant_clean=merchant_clean
-    )
-    for row in rows:
-        handler(db, row, tenant_id, result)
+    handler = _resolve_bulk_action_handler(action, category_clean=category_clean, merchant_clean=merchant_clean)
+    for expense_id in unique_expense_ids:
+        row = rows_by_id.get(expense_id)
+        if row is None:
+            continue
+        expected_row_version = expected_row_version_by_id[expense_id]
+        if row.row_version != expected_row_version:
+            result.bump(SKIP_REASON_STALE)
+            continue
+        handler(db, row, tenant_id, expected_row_version, result)
     return result
 
 
-def _resolve_bulk_action_handler(
-    action: str, *, category_clean: str, merchant_clean: str
-):
-    """Return a ``(db, row, tenant_id, result) -> None`` callable.
+def _resolve_bulk_action_handler(action: str, *, category_clean: str, merchant_clean: str):
+    """Return a ``(db, row, tenant_id, expected_row_version, result)`` callable.
 
     ``action`` is trusted because the caller already enforced
     ``ALLOWED_ACTIONS`` membership; cross-ledger / not-pending checks
     happen inside the leaf handlers.
     """
     if action == "set_category":
-        return lambda db, row, tenant_id, result: _apply_metadata_update(
+        return lambda db, row, tenant_id, expected_row_version, result: _apply_metadata_update(
             db,
             row,
             tenant_id,
             ExpenseUpdateRequest(
                 category=category_clean,
-                # ADR-0038 PR-2a: 服务端 bulk handler 已经读到 row.updated_at，
-                # 拿来当 expected_row_version 用即可，无需让外层管线携带 token。
-                expected_row_version=row.row_version,
+                expected_row_version=expected_row_version,
             ),
             result,
         )
     if action == "set_merchant":
-        return lambda db, row, tenant_id, result: _apply_metadata_update(
+        return lambda db, row, tenant_id, expected_row_version, result: _apply_metadata_update(
             db,
             row,
             tenant_id,
             ExpenseUpdateRequest(
                 merchant=merchant_clean,
-                expected_row_version=row.row_version,
+                expected_row_version=expected_row_version,
             ),
             result,
         )
@@ -163,26 +172,34 @@ def _apply_metadata_update(
     try:
         update_expense(db, row.id, tenant_id, payload)
         result.record_success(row.id)
-    except AppError:
-        result.bump("更新失败")
+    except AppError as exc:
+        _record_action_error(result, exc, fallback="更新失败")
 
 
-def _apply_reject(db: Session, row, tenant_id: str, result: BulkResult) -> None:
+def _apply_reject(
+    db: Session,
+    row,
+    tenant_id: str,
+    expected_row_version: int,
+    result: BulkResult,
+) -> None:
     if row.status != "pending":
         result.bump(SKIP_REASON_NOT_PENDING)
         return
     try:
-        # ADR-0038 PR-2b: 服务端 bulk handler 已经读到 row.updated_at，
-        # 直接喂给 reject_expense；不让外层管线携带 token。
-        rejected = reject_expense(
-            db, row.id, tenant_id, expected_row_version=row.row_version
-        )
+        rejected = reject_expense(db, row.id, tenant_id, expected_row_version=expected_row_version)
         result.record_success(row.id, undo_row_version=rejected.row_version)
-    except AppError:
-        result.bump("忽略失败")
+    except AppError as exc:
+        _record_action_error(result, exc, fallback="忽略失败")
 
 
-def _apply_confirm_ready(db: Session, row, tenant_id: str, result: BulkResult) -> None:
+def _apply_confirm_ready(
+    db: Session,
+    row,
+    tenant_id: str,
+    expected_row_version: int,
+    result: BulkResult,
+) -> None:
     if row.status != "pending":
         result.bump(SKIP_REASON_NOT_PENDING)
         return
@@ -190,20 +207,41 @@ def _apply_confirm_ready(db: Session, row, tenant_id: str, result: BulkResult) -
         result.bump(SKIP_REASON_MISSING_AMOUNT)
         return
     try:
-        confirm_expense(db, row.id, tenant_id, expected_row_version=row.row_version)
+        confirm_expense(
+            db,
+            row.id,
+            tenant_id,
+            expected_row_version=expected_row_version,
+        )
         result.record_success(row.id)
-    except AppError:
-        result.bump("确认失败")
+    except AppError as exc:
+        _record_action_error(result, exc, fallback="确认失败")
 
 
-def _apply_keep_duplicate(db: Session, row, tenant_id: str, result: BulkResult) -> None:
+def _apply_keep_duplicate(
+    db: Session,
+    row,
+    tenant_id: str,
+    expected_row_version: int,
+    result: BulkResult,
+) -> None:
     if (row.duplicate_status or "") != "suspected":
         result.bump(SKIP_REASON_NOT_SUSPECTED_DUPLICATE)
         return
     try:
         mark_expense_not_duplicate(
-            db, row.id, tenant_id, expected_row_version=row.row_version
+            db,
+            row.id,
+            tenant_id,
+            expected_row_version=expected_row_version,
         )
         result.record_success(row.id)
-    except AppError:
-        result.bump("更新失败")
+    except AppError as exc:
+        _record_action_error(result, exc, fallback="更新失败")
+
+
+def _record_action_error(result: BulkResult, exc: AppError, *, fallback: str) -> None:
+    if exc.error == "state_conflict":
+        result.bump(SKIP_REASON_STALE)
+        return
+    result.bump(fallback)

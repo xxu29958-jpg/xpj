@@ -50,16 +50,38 @@ def _seed_pending_with_amount(
     return expense_id
 
 
-def test_web_batch_reject_redirect_renders_batch_undo_form(
-    web_client: TestClient, *, identity
-) -> None:
+def _bulk_snapshot_fields(
+    web_client: TestClient,
+    expense_ids: list[int],
+    *,
+    identity,
+) -> dict[str, list[str]]:
+    tokens: list[str] = []
+    for expense_id in expense_ids:
+        response = web_client.get(
+            f"/api/expenses/{expense_id}",
+            headers=identity.app_headers,
+        )
+        assert response.status_code == 200, response.text
+        tokens.append(str(response.json()["row_version"]))
+    return {
+        "expense_ids": [str(expense_id) for expense_id in expense_ids],
+        "expected_row_version": tokens,
+    }
+
+
+def test_web_batch_reject_redirect_renders_batch_undo_form(web_client: TestClient, *, identity) -> None:
     first = _seed_pending_with_amount(web_client, "12.00", "Undo A", identity=identity)
     second = _seed_pending_with_amount(web_client, "13.00", "Undo B", identity=identity)
     resp = web_client.post(
         "/web/pending/batch-reject",
         data={
             "ledger_id": "owner",
-            "expense_ids": [str(first), str(second)],
+            **_bulk_snapshot_fields(
+                web_client,
+                [first, second],
+                identity=identity,
+            ),
             "filter": "all",
         },
         follow_redirects=False,
@@ -77,20 +99,18 @@ def test_web_batch_reject_redirect_renders_batch_undo_form(
     assert page.text.count('name="expected_row_version"') == 2
 
 
-def test_web_batch_undo_restores_rejected_rows_and_writes_audit(
-    web_client: TestClient, *, identity
-) -> None:
-    first = _seed_pending_with_amount(
-        web_client, "12.00", "Undo Apply A", identity=identity
-    )
-    second = _seed_pending_with_amount(
-        web_client, "13.00", "Undo Apply B", identity=identity
-    )
+def test_web_batch_undo_restores_rejected_rows_and_writes_audit(web_client: TestClient, *, identity) -> None:
+    first = _seed_pending_with_amount(web_client, "12.00", "Undo Apply A", identity=identity)
+    second = _seed_pending_with_amount(web_client, "13.00", "Undo Apply B", identity=identity)
     reject = web_client.post(
         "/web/pending/batch-reject",
         data={
             "ledger_id": "owner",
-            "expense_ids": [str(first), str(second)],
+            **_bulk_snapshot_fields(
+                web_client,
+                [first, second],
+                identity=identity,
+            ),
             "filter": "all",
             "fragment": "1",
         },
@@ -104,9 +124,7 @@ def test_web_batch_undo_restores_rejected_rows_and_writes_audit(
         data={
             "ledger_id": "owner",
             "expense_ids": [str(item["id"]) for item in undo_items],
-            "expected_row_version": [
-                str(item["expected_row_version"]) for item in undo_items
-            ],
+            "expected_row_version": [str(item["expected_row_version"]) for item in undo_items],
         },
         follow_redirects=False,
     )

@@ -86,6 +86,9 @@
     // behaviour for the open action).
     function openRow(row) {
       if (!row) return;
+      // 批选模式(非空选择)挂起行导航:bulk-bar.js 给行加 aria-disabled,
+      // 点击已被它拦截;这里兜底程序化入口(review-hotkeys 的 drawerApi.open)。
+      if (row.getAttribute("aria-disabled") === "true") return;
       const url = row.getAttribute("data-fragment-url");
       if (!url) return;
       rememberFocus(row);
@@ -251,6 +254,9 @@
 
     document.querySelectorAll(".exp-row[data-fragment-url]").forEach(function (row) {
       row.addEventListener("click", function (e) {
+        // 批选模式下 bulk-bar.js 负责拦截行导航;它在同一节点上后注册,
+        // 所以这里也要自查 aria-disabled,否则监听器执行顺序会让抽屉先开。
+        if (row.getAttribute("aria-disabled") === "true") return;
         // 点 checkbox / 表单元素时不打开抽屉
         const tag = (e.target.tagName || "").toLowerCase();
         if (tag === "input" || tag === "button") return;

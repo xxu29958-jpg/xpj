@@ -4,137 +4,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from api_contract_helpers import web_confirm_expense, web_save_expense
+import pytest
+from _web_bulk_test_support import (
+    bulk_snapshot_fields as _bulk_snapshot_fields,
+)
+from _web_bulk_test_support import (
+    create_pending as _create_pending,
+)
+from _web_bulk_test_support import (
+    row_version as _row_version,
+)
+from _web_bulk_test_support import (
+    seed_pending_with_amount as _seed_pending_with_amount,
+)
+from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Expense
-
-
-def _create_pending(client: TestClient, *, identity) -> int:
-    """Helper: upload a tiny PNG to the owner ledger so /web/pending sees it."""
-    png = (
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
-        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
-        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
-    resp = client.post(
-        f"/u/{identity.upload_key}",
-        headers={"Content-Type": "image/png"},
-        content=png,
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
-
-
-def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00", merchant: str = "测试", *, identity) -> int:
-    """Upload a tiny PNG then patch amount+merchant via /web/expenses/{id}/save."""
-    expense_id = _create_pending(web_client, identity=identity)
-    resp = web_save_expense(
-        web_client,
-        expense_id,
-        identity=identity,
-        data={"amount_yuan": amount_yuan, "merchant": merchant, "category": "其他",
-              "note": "", "ledger_id": "owner"},
-    )
-    assert resp.status_code in {303, 307}, resp.text
-    return expense_id
-
-
-def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, identity) -> None:
-    expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe", identity=identity)
-    confirmed = web_confirm_expense(
-        web_client, expense_id, identity=identity, follow_redirects=False
-    )
-    assert confirmed.status_code in {303, 307}
-
-    page = web_client.get("/web/confirmed?ledger_id=owner")
-    assert page.status_code == 200
-    assert 'action="/web/confirmed/batch-update"' in page.text
-    assert f'data-id="{expense_id}"' in page.text
-    assert 'data-row-version="' in page.text
-    assert 'id="check-all"' in page.text
-    token = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()[
-        "row_version"
-    ]
-
-    category_resp = web_client.post(
-        "/web/confirmed/batch-update",
-        data={
-            "action": "set_category",
-            "ledger_id": "owner",
-            "expense_ids": [str(expense_id)],
-            "expected_row_version": [token],
-            "category": "Batch Web Cat",
-            "page": "2",
-        },
-        follow_redirects=False,
-    )
-    assert category_resp.status_code in {303, 307}
-    assert "page=2" in category_resp.headers["location"]
-    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
-    assert "Batch Web Cat" in detail.text
-    token = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()[
-        "row_version"
-    ]
-
-    tags_resp = web_client.post(
-        "/web/confirmed/batch-update",
-        data={
-            "action": "set_tags",
-            "ledger_id": "owner",
-            "expense_ids": [str(expense_id)],
-            "expected_row_version": [token],
-            "tags": "web, family, web",
-        },
-        follow_redirects=False,
-    )
-    assert tags_resp.status_code in {303, 307}
-    api_detail = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
-    assert api_detail.status_code == 200
-    assert api_detail.json()["tags"] == "web, family"
-
-
-def test_web_confirmed_batch_stale_token_redirects_without_partial_update(
-    web_client: TestClient, *, identity
-) -> None:
-    first_id = _seed_pending_with_amount(web_client, "21.00", "Bulk Stale A", identity=identity)
-    second_id = _seed_pending_with_amount(web_client, "22.00", "Bulk Stale B", identity=identity)
-    for expense_id in (first_id, second_id):
-        confirmed = web_confirm_expense(
-            web_client, expense_id, identity=identity, follow_redirects=False
-        )
-        assert confirmed.status_code in {303, 307}
-
-    first_before = web_client.get(f"/api/expenses/{first_id}", headers=identity.app_headers).json()
-    second_before = web_client.get(f"/api/expenses/{second_id}", headers=identity.app_headers).json()
-    changed = web_save_expense(
-        web_client,
-        first_id,
-        identity=identity,
-        data={"amount_yuan": "21.00", "merchant": "Bulk Stale A", "category": "Intervening"},
-    )
-    assert changed.status_code in {303, 307}, changed.text
-
-    response = web_client.post(
-        "/web/confirmed/batch-update",
-        data={
-            "action": "set_category",
-            "ledger_id": "owner",
-            "expense_ids": [str(first_id), str(second_id)],
-            "expected_row_version": [first_before["row_version"], second_before["row_version"]],
-            "category": "Should Not Land",
-        },
-        follow_redirects=False,
-    )
-    assert response.status_code in {303, 307}
-    assert "msg=" in response.headers["location"]
-
-    first_after = web_client.get(f"/api/expenses/{first_id}", headers=identity.app_headers).json()
-    second_after = web_client.get(f"/api/expenses/{second_id}", headers=identity.app_headers).json()
-    assert first_after["category"] == "Intervening"
-    assert second_after["category"] == second_before["category"]
 
 
 def test_web_pending_filter_missing_amount(web_client: TestClient, *, identity) -> None:
@@ -169,42 +57,202 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     resp = web_client.get("/web/pending?ledger_id=owner")
     assert resp.status_code == 200
     assert f'data-expense-id="{eid}"' in resp.text
+    # main 保留 drawer.js 的 aria-selected 选中标记(#218 才换成 aria-current),
+    # 行锚点也未做 #218 的行重构,只补 JS 契约要求的 class / 原生 checkbox。
     assert 'aria-selected="false"' in resp.text
+    assert ('<button class="dt-btn" type="button" data-bulk-clear>取消选择</button>') in resp.text
     assert f'aria-label="选择账单 #{eid}"' in resp.text
-    assert 'role="checkbox"' in resp.text
+    assert 'type="checkbox"' in resp.text
+    assert 'role="checkbox"' not in resp.text
+    assert 'data-row-version="' in resp.text
+    assert "exp-row-detail" in resp.text
     assert 'name="category"' in resp.text
     assert 'name="merchant"' in resp.text
 
     js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
     js = js_path.read_text(encoding="utf-8")
     assert 'h.name = "expense_ids";' in js
-    assert "if (entry.rowVersion)" in js
     assert 'token.name = "expected_row_version";' in js
+    # 快照 token 恒 emitted(不再 if (entry.rowVersion) 条件跳过)——缺失即 409 fail-closed。
+    assert "token.value = entry.rowVersion;" in js
+    assert "if (entry.rowVersion)" not in js
+    assert '".row-check:checked"' in js
+    assert 'row.setAttribute("aria-disabled", "true");' in js
+    assert 'row.setAttribute("tabindex", "-1");' in js
+    assert "setBatchNavigationMode(entries.length > 0);" in js
+    # checkbox 在 main 的行锚点内部:点击必须 stopPropagation,否则冒泡触发整行跳转。
+    assert "e.stopPropagation();" in js
+
+    drawer_js = js_path.with_name("drawer.js").read_text(encoding="utf-8")
+    hotkeys_js = js_path.with_name("review-hotkeys.js").read_text(encoding="utf-8")
+    # 批选模式(非空选择)挂起行导航:drawer 点击 + 程序化 open 都要尊重 aria-disabled。
+    assert 'row.getAttribute("aria-disabled") === "true"' in drawer_js
+    assert 'getAttribute("aria-disabled") !== "true"' in hotkeys_js
 
 
 def test_web_bulk_set_category_updates_pending(web_client: TestClient, *, identity) -> None:
     eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
+    before_token = _row_version(web_client, eid, identity=identity)
     resp = web_client.post(
         "/web/review/bulk",
-        data={"action": "set_category", "ledger_id": "owner",
-              "expense_ids": [str(eid)], "category": "餐饮", "filter": "all"},
+        data={
+            "action": "set_category",
+            "ledger_id": "owner",
+            # 重复 id 会去重,整批只应用一次。
+            "expense_ids": [str(eid), str(eid)],
+            "expected_row_version": [str(before_token), str(before_token)],
+            "category": "餐饮",
+            "filter": "all",
+        },
         follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
     detail = web_client.get(f"/web/expenses/{eid}/edit?ledger_id=owner")
     assert "餐饮" in detail.text
+    assert _row_version(web_client, eid, identity=identity) == before_token + 1
 
 
-def test_web_bulk_set_category_requires_value(web_client: TestClient, *, identity) -> None:
+def test_web_pending_bulk_fails_closed_on_invalid_payloads(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
     eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
-    resp = web_client.post(
+    before = web_client.get(
+        f"/api/expenses/{eid}",
+        headers=identity.app_headers,
+    ).json()
+
+    missing_token = web_client.post(
         "/web/review/bulk",
-        data={"action": "set_category", "ledger_id": "owner",
-              "expense_ids": [str(eid)], "category": "", "filter": "all"},
+        data={
+            "action": "set_category",
+            "ledger_id": "owner",
+            "expense_ids": [str(eid)],
+            "category": "不应写入",
+            "filter": "all",
+        },
+        follow_redirects=True,
+    )
+    assert missing_token.status_code == 200
+    assert "页面已过期，请刷新后重新操作" in missing_token.text
+
+    malformed_token = web_client.post(
+        "/web/review/bulk",
+        data={
+            "action": "confirm_ready",
+            "ledger_id": "owner",
+            "expense_ids": [str(eid)],
+            "expected_row_version": ["not-a-token"],
+            "filter": "all",
+            "fragment": "1",
+        },
+        follow_redirects=False,
+    )
+    assert malformed_token.status_code == 409
+    assert malformed_token.json()["removed_ids"] == []
+    assert "页面已过期" in malformed_token.json()["message"]
+
+    empty_category = web_client.post(
+        "/web/review/bulk",
+        data={
+            "action": "set_category",
+            "ledger_id": "owner",
+            **_bulk_snapshot_fields(web_client, [eid], identity=identity),
+            "category": "",
+            "filter": "all",
+        },
         follow_redirects=False,
     )
     # Empty input must not silently succeed — either 422 or redirect with skip msg.
-    assert resp.status_code in {303, 307, 422}
+    assert empty_category.status_code in {303, 307, 422}
+
+    after = web_client.get(
+        f"/api/expenses/{eid}",
+        headers=identity.app_headers,
+    ).json()
+    assert after["status"] == before["status"]
+    assert after["category"] == before["category"]
+    assert after["amount_cents"] == before["amount_cents"]
+
+
+@pytest.mark.parametrize("operation", ["metadata", "confirm", "reject"])
+def test_web_pending_bulk_skips_t1_snapshot_after_t2_change(
+    web_client: TestClient,
+    *,
+    identity,
+    operation: str,
+) -> None:
+    eid = _seed_pending_with_amount(
+        web_client,
+        "19.00",
+        "Snapshot Merchant",
+        identity=identity,
+    )
+    t1_token = _row_version(web_client, eid, identity=identity)
+
+    changed = web_save_expense(
+        web_client,
+        eid,
+        identity=identity,
+        data={
+            "amount_yuan": "44.00",
+            "merchant": "Snapshot Merchant",
+            "category": "T2 保留分类",
+            "ledger_id": "owner",
+        },
+    )
+    assert changed.status_code in {303, 307}, changed.text
+    t2 = web_client.get(
+        f"/api/expenses/{eid}",
+        headers=identity.app_headers,
+    ).json()
+    assert t2["row_version"] > t1_token
+
+    if operation == "reject":
+        response = web_client.post(
+            "/web/pending/batch-reject",
+            data={
+                "ledger_id": "owner",
+                "expense_ids": [str(eid)],
+                "expected_row_version": [str(t1_token)],
+                "filter": "all",
+                "fragment": "1",
+            },
+            follow_redirects=False,
+        )
+    else:
+        response = web_client.post(
+            "/web/review/bulk",
+            data={
+                "action": "set_category" if operation == "metadata" else "confirm_ready",
+                "ledger_id": "owner",
+                "expense_ids": [str(eid)],
+                "expected_row_version": [str(t1_token)],
+                "category": "T3 不应覆盖",
+                "filter": "all",
+                "fragment": "1",
+            },
+            follow_redirects=False,
+        )
+
+    if operation == "metadata":
+        assert response.status_code in {303, 307}
+        rendered = web_client.get(response.headers["location"])
+        assert "页面内容已变化，请刷新后重新选择" in rendered.text
+    else:
+        assert response.status_code == 200, response.text
+        assert response.json()["removed_ids"] == []
+        assert "页面内容已变化，请刷新后重新选择" in response.json()["message"]
+
+    after = web_client.get(
+        f"/api/expenses/{eid}",
+        headers=identity.app_headers,
+    ).json()
+    assert after["status"] == "pending"
+    assert after["amount_cents"] == t2["amount_cents"] == 4400
+    assert after["category"] == t2["category"] == "T2 保留分类"
+    assert after["row_version"] == t2["row_version"]
 
 
 def test_web_bulk_confirm_ready_skips_missing_amount(web_client: TestClient, *, identity) -> None:
@@ -212,8 +260,16 @@ def test_web_bulk_confirm_ready_skips_missing_amount(web_client: TestClient, *, 
     ready = _seed_pending_with_amount(web_client, "11.00", "Ready", identity=identity)
     resp = web_client.post(
         "/web/review/bulk",
-        data={"action": "confirm_ready", "ledger_id": "owner",
-              "expense_ids": [str(no_amount), str(ready)], "filter": "all"},
+        data={
+            "action": "confirm_ready",
+            "ledger_id": "owner",
+            **_bulk_snapshot_fields(
+                web_client,
+                [no_amount, ready],
+                identity=identity,
+            ),
+            "filter": "all",
+        },
         follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
@@ -228,8 +284,12 @@ def test_web_bulk_reject_removes_from_pending(web_client: TestClient, *, identit
     eid = _seed_pending_with_amount(web_client, "12.00", "Y", identity=identity)
     resp = web_client.post(
         "/web/review/bulk",
-        data={"action": "reject", "ledger_id": "owner",
-              "expense_ids": [str(eid)], "filter": "all"},
+        data={
+            "action": "reject",
+            "ledger_id": "owner",
+            **_bulk_snapshot_fields(web_client, [eid], identity=identity),
+            "filter": "all",
+        },
         follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
@@ -250,7 +310,12 @@ def test_web_bulk_keep_duplicate_persists_flag_clear(web_client: TestClient, *, 
 
     resp = web_client.post(
         "/web/review/bulk",
-        data={"action": "keep_duplicate", "ledger_id": "owner", "expense_ids": [str(second)], "filter": "all"},
+        data={
+            "action": "keep_duplicate",
+            "ledger_id": "owner",
+            **_bulk_snapshot_fields(web_client, [second], identity=identity),
+            "filter": "all",
+        },
         follow_redirects=False,
     )
 
@@ -267,7 +332,15 @@ def test_web_pending_batch_reject_removes_multiple_pending(web_client: TestClien
     second = _seed_pending_with_amount(web_client, "13.00", "Z", identity=identity)
     resp = web_client.post(
         "/web/pending/batch-reject",
-        data={"ledger_id": "owner", "expense_ids": [str(first), str(second)], "filter": "all"},
+        data={
+            "ledger_id": "owner",
+            **_bulk_snapshot_fields(
+                web_client,
+                [first, second],
+                identity=identity,
+            ),
+            "filter": "all",
+        },
         follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
@@ -290,8 +363,12 @@ def test_web_bulk_unknown_action_returns_error(web_client: TestClient, *, identi
     eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     resp = web_client.post(
         "/web/review/bulk",
-        data={"action": "explode", "ledger_id": "owner",
-              "expense_ids": [str(eid)], "filter": "all"},
+        data={
+            "action": "explode",
+            "ledger_id": "owner",
+            **_bulk_snapshot_fields(web_client, [eid], identity=identity),
+            "filter": "all",
+        },
         follow_redirects=False,
     )
     assert resp.status_code in {400, 422}
@@ -304,8 +381,13 @@ def test_web_bulk_cross_ledger_id_is_ignored(web_client: TestClient, *, identity
     bogus_id = eid_owner + 99999
     resp = web_client.post(
         "/web/review/bulk",
-        data={"action": "reject", "ledger_id": "owner",
-              "expense_ids": [str(bogus_id)], "filter": "all"},
+        data={
+            "action": "reject",
+            "ledger_id": "owner",
+            "expense_ids": [str(bogus_id)],
+            "expected_row_version": ["1"],
+            "filter": "all",
+        },
         follow_redirects=False,
     )
     # Should redirect (no crash, no mutation).
@@ -313,127 +395,3 @@ def test_web_bulk_cross_ledger_id_is_ignored(web_client: TestClient, *, identity
     # Owner ledger still has its expense.
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert f"/web/expenses/{eid_owner}/edit" in pending.text
-
-
-# --- issue #64 W3: fetch+partial fragment contract for removal-type bulk actions -----
-
-
-def test_web_bulk_confirm_ready_fragment_returns_actioned_ids(
-    web_client: TestClient, *, identity
-) -> None:
-    """fragment=1 confirm_ready answers JSON {removed_ids, message, flash_type}
-    naming ONLY the rows that actually left the queue — the missing-amount row is
-    skipped, stays pending, and is NOT in removed_ids (the client must not assume
-    every selected row succeeded)."""
-    no_amount = _create_pending(web_client, identity=identity)
-    ready = _seed_pending_with_amount(web_client, "11.00", "Ready", identity=identity)
-    resp = web_client.post(
-        "/web/review/bulk",
-        data={"action": "confirm_ready", "ledger_id": "owner",
-              "expense_ids": [str(no_amount), str(ready)], "filter": "all", "fragment": "1"},
-        follow_redirects=False,
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["removed_ids"] == [ready]
-    assert body["flash_type"] == "success"
-    assert "已确认 1 条" in body["message"]
-    assert "跳过 1 条" in body["message"]
-    # Server-side state actually changed: ready confirmed (gone), no-amount stays.
-    pending = web_client.get("/web/pending?ledger_id=owner")
-    assert f"/web/expenses/{ready}/edit" not in pending.text
-    assert f"/web/expenses/{no_amount}/edit" in pending.text
-
-
-def test_web_bulk_confirm_ready_fragment_excludes_cross_ledger(
-    web_client: TestClient, *, identity
-) -> None:
-    """removed_ids must never name a row outside the current ledger — a foreign
-    id lands in skipped_reasons, never success_ids, so the client can't be told
-    to splice a row it doesn't own."""
-    ready = _seed_pending_with_amount(web_client, "11.00", "Ready", identity=identity)
-    bogus_id = ready + 99999  # id far outside any existing range
-    resp = web_client.post(
-        "/web/review/bulk",
-        data={"action": "confirm_ready", "ledger_id": "owner",
-              "expense_ids": [str(ready), str(bogus_id)], "filter": "all", "fragment": "1"},
-        follow_redirects=False,
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["removed_ids"] == [ready]
-    assert bogus_id not in body["removed_ids"]
-    assert "已确认 1 条" in body["message"]
-    assert "不属于当前账本" in body["message"]
-
-
-def test_web_batch_reject_fragment_returns_removed_ids(
-    web_client: TestClient, *, identity
-) -> None:
-    first = _seed_pending_with_amount(web_client, "12.00", "Y", identity=identity)
-    second = _seed_pending_with_amount(web_client, "13.00", "Z", identity=identity)
-    resp = web_client.post(
-        "/web/pending/batch-reject",
-        data={"ledger_id": "owner", "expense_ids": [str(first), str(second)],
-              "filter": "all", "fragment": "1"},
-        follow_redirects=False,
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert set(body["removed_ids"]) == {first, second}
-    assert {item["id"] for item in body["undo_items"]} == {first, second}
-    assert all(item["expected_row_version"] > 0 for item in body["undo_items"])
-    assert body["flash_type"] == "success"
-    assert "已忽略 2 条" in body["message"]
-    pending = web_client.get("/web/pending?ledger_id=owner")
-    assert f"/web/expenses/{first}/edit" not in pending.text
-    assert f"/web/expenses/{second}/edit" not in pending.text
-
-
-def test_web_batch_reject_fragment_no_selection_returns_error_json(
-    web_client: TestClient,
-) -> None:
-    resp = web_client.post(
-        "/web/pending/batch-reject",
-        data={"ledger_id": "owner", "filter": "all", "fragment": "1"},
-        follow_redirects=False,
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["removed_ids"] == []
-    assert body["flash_type"] == "error"
-    assert "请先勾选账单" in body["message"]
-
-
-def test_web_bulk_set_category_ignores_fragment_and_redirects(
-    web_client: TestClient, *, identity
-) -> None:
-    """fragment is honoured ONLY for removal actions — set_category mutates a row
-    in place (it stays visible), so it keeps the full-page redirect even with
-    fragment=1. Pins the _REMOVAL_ACTIONS gate so an in-place action can never
-    claim rows were removed."""
-    eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
-    resp = web_client.post(
-        "/web/review/bulk",
-        data={"action": "set_category", "ledger_id": "owner", "expense_ids": [str(eid)],
-              "category": "餐饮", "filter": "all", "fragment": "1"},
-        follow_redirects=False,
-    )
-    assert resp.status_code in {303, 307}  # redirect, NOT a JSON fragment
-    assert "removed_ids" not in resp.text  # gate is behaviour-pinned, not just 200-vs-303
-    detail = web_client.get(f"/web/expenses/{eid}/edit?ledger_id=owner")
-    assert "餐饮" in detail.text
-
-
-def test_bulk_bar_js_has_fetch_partial_mechanism() -> None:
-    """The /web fetch-JS has no browser test in the suite (like drawer.js), so a
-    content-assertion is the regression floor: pin the markers of the fetch+partial
-    path so ripping it out (silent regression to full-page reload) reds here."""
-    js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
-    js = js_path.read_text(encoding="utf-8")
-    assert 'body.append("fragment", "1");' in js
-    assert "function removalKind" in js
-    assert "removed_ids" in js
-    assert "undo_items" in js
-    assert "/web/pending/batch-undo" in js
-    assert "data-native-fallback" in js  # offline → native full-page fallback

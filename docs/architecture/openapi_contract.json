@@ -2377,6 +2377,14 @@
       },
       "Body_web_pending_batch_reject_web_pending_batch_reject_post": {
         "properties": {
+          "expected_row_version": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Row Version",
+            "type": "array"
+          },
           "expense_ids": {
             "default": [],
             "items": {
@@ -2631,6 +2639,14 @@
             "default": "",
             "title": "Category",
             "type": "string"
+          },
+          "expected_row_version": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Row Version",
+            "type": "array"
           },
           "expense_ids": {
             "default": [],

@@ -22,10 +22,10 @@
     function rows() {
       // Only rows still in the table and visible (filter tabs are server-side
       // here, but a removed row is gone from the DOM, so offsetParent guards
-      // the rare hidden case).
+      // the rare hidden case). 批选模式挂起的行(aria-disabled)不参与 J/K 导航。
       return Array.prototype.filter.call(
         table.querySelectorAll(".exp-row[data-fragment-url]"),
-        function (r) { return r.offsetParent !== null; }
+        function (r) { return r.offsetParent !== null && r.getAttribute("aria-disabled") !== "true"; }
       );
     }
 

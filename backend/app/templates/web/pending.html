@@ -69,7 +69,7 @@
   <div class="exp-head">
     <div>
       {% if can_write %}
-      <div class="checkbox" id="check-all" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择全部账单"></div>
+      <input class="checkbox" id="check-all" type="checkbox" aria-label="选择全部账单">
       {% endif %}
     </div>
     <div>小票</div>
@@ -80,13 +80,13 @@
     <div class="text-end">金额</div>
   </div>
   {% for e in expenses %}
-  <a class="exp-row" data-expense-id="{{ e.id }}"
+  <a class="exp-row exp-row-detail" data-expense-id="{{ e.id }}"
      href="/web/expenses/{{ e.id }}/edit{{ _q }}"
      data-fragment-url="/web/expenses/{{ e.id }}/edit{{ _q }}&fragment=1"
      aria-selected="false">
     <div data-stop="true">
       {% if can_write %}
-      <div class="checkbox row-check" data-id="{{ e.id }}" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择账单 #{{ e.id }}"></div>
+      <input class="checkbox row-check" type="checkbox" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单 #{{ e.id }}">
       {% endif %}
     </div>
     <div>
@@ -155,6 +155,7 @@
   <input type="hidden" name="filter" value="{{ filter }}">
   <span class="count" data-bulk-count>0</span>
   <span class="label">已选中</span>
+  <button class="dt-btn" type="button" data-bulk-clear>取消选择</button>
   <div class="spacer"></div>
   <input class="bulk-field" type="text" name="category" maxlength="64" placeholder="分类" aria-label="批量设置分类">
   <button class="dt-btn" type="submit" name="action" value="set_category">设置分类</button>
