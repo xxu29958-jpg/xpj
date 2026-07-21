@@ -333,6 +333,14 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/recurring/confirm-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /web/recurring/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
     "POST /web/review/bulk": Exempt("batch_db_write", "expenses", ("expenses",)),
+    # ADR-0049 slice C3: web twin of the /api dismiss above — same guarded
+    # terminal flip on the same draft row, same touched tables. (The web
+    # CONFIRM is fold-changing too and fences on the OCC token embedded in
+    # its composite ``target`` select value — documented in
+    # QUERY_STRING_TOKEN_ROUTES, not here.)
+    "POST /web/repayment-drafts/{public_id}/dismiss": Exempt(
+        "terminal_flag_flip", "debts", _REPAYMENT_DRAFTS
+    ),
     "POST /web/rules/applications/{public_id}/rollback": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /web/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /web/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),

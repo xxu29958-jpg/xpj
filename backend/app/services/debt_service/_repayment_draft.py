@@ -55,6 +55,7 @@ from app.schemas import (
 from app.services.currency_common import home_currency_code
 from app.services.debt_service._repayment import record_repayment
 from app.services.debt_service._repayment_draft_match import (
+    RepaymentMatchCandidate,
     list_repayment_match_candidates,
     suggest_debt_for_draft,
 )
@@ -204,9 +205,7 @@ def create_repayment_draft(
         notification_key=payload.notification_key,
     )
     existing = db.scalar(
-        ledger_scoped_select(RepaymentDraft, tenant_id).where(
-            RepaymentDraft.draft_idempotency_key == idempotency_key
-        )
+        ledger_scoped_select(RepaymentDraft, tenant_id).where(RepaymentDraft.draft_idempotency_key == idempotency_key)
     )
     if existing is not None:
         return existing
@@ -250,18 +249,14 @@ def list_repayment_drafts(
     )
     if status is not None:
         statement = statement.where(RepaymentDraft.status == status)
-    statement = statement.order_by(
-        RepaymentDraft.created_at.desc(), RepaymentDraft.id.desc()
-    )
+    statement = statement.order_by(RepaymentDraft.created_at.desc(), RepaymentDraft.id.desc())
     drafts = list(db.scalars(statement))
     # §杠杆③ slice 3b: suggest a target Debt for each PENDING draft (ephemeral — recomputed
     # here, never stored). Fetch the repayable candidate set once (only when there is a
     # pending draft to match) and run the pure matcher per pending draft; a resolved /
     # dismissed draft carries no suggestion.
     has_pending = any(draft.status == "pending" for draft in drafts)
-    candidates = (
-        list_repayment_match_candidates(db, tenant_id=tenant_id) if has_pending else []
-    )
+    candidates = list_repayment_match_candidates(db, tenant_id=tenant_id) if has_pending else []
     return RepaymentDraftListResponse(
         items=[
             repayment_draft_response(
@@ -284,9 +279,7 @@ def list_repayment_drafts(
     )
 
 
-def _lock_pending_draft(
-    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
-) -> RepaymentDraft:
+def _lock_pending_draft(db: Session, *, tenant_id: str, actor_account_id: int, public_id: str) -> RepaymentDraft:
     """``SELECT ... FOR UPDATE`` an account-scoped draft (the serialization point so two
     confirm/dismiss resolutions can't both fire). Account-scoped (§8 / privacy): only the
     capturing member may resolve their own draft; another member gets an existence-hidden 404."""
@@ -323,9 +316,7 @@ def confirm_repayment_draft(
     fence on ``expected_row_version`` — a failure there rolls back the draft latch too
     (single transaction, ``commit=False``).
     """
-    draft = _lock_pending_draft(
-        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
-    )
+    draft = _lock_pending_draft(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     if draft.status != "pending":
         # Already confirmed or dismissed — a second confirm cannot record again.
         raise AppError("state_conflict", status_code=409)
@@ -371,9 +362,7 @@ def dismiss_repayment_draft(
     commit: bool = False,
 ) -> RepaymentDraft:
     """Latch a pending draft ``dismissed`` (idempotent if already dismissed)."""
-    draft = _lock_pending_draft(
-        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
-    )
+    draft = _lock_pending_draft(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     if draft.status == "dismissed":
         return draft  # idempotent: already dismissed
     if draft.status == "confirmed":
@@ -391,18 +380,15 @@ def dismiss_repayment_draft(
 
 @dataclass(frozen=True)
 class RepaymentDraftAuditRow:
-    """One NLS repayment capture, reduced to the read-only /web audit view (web slice 3).
+    """One NLS repayment capture reduced to the actionable /web review view.
 
-    Account-scoped audit log row — NOT the API ``RepaymentDraftResponse`` (it carries no
-    OCC/idempotency machinery the web page can't act on, and adds the resolved Debt
-    counterparty labels the read-only audit renders). ``linked_debt_label`` is the
+    This is not the API ``RepaymentDraftResponse``: it adds resolved Debt labels and the
+    feasible target set with each Debt's OCC row-version token. ``linked_debt_label`` is the
     committed Debt's raw ``counterparty_label`` (only meaningful when ``status``
     ``confirmed``; ``None`` = the Debt has no label → the route applies its fallback name).
-    ``has_suggestion`` + ``suggested_debt_label`` carry a pending draft's server-suggested
-    Debt provenance (the route renders 「系统猜测对应:<对手方>」; ``has_suggestion`` separates
-    "no match" from "matched a label-less Debt"). UI prose/fallback names live in the route
-    (§1: services don't write UI copy). No ``public_id`` field: the page is read-only with no
-    per-row action/deep-link, so the row carries only rendered fields (mirrors slice-4 views)."""
+    ``has_suggestion`` + ``suggested_debt_*`` carry a pending draft's ephemeral server
+    suggestion. UI prose and fallback names remain in the route (§1: services do not write
+    UI copy)."""
 
     source: str
     amount_cents: int
@@ -413,6 +399,9 @@ class RepaymentDraftAuditRow:
     linked_debt_label: str | None
     has_suggestion: bool
     suggested_debt_label: str | None
+    public_id: str = ""
+    suggested_debt_public_id: str | None = None
+    target_debts: tuple[RepaymentMatchCandidate, ...] = ()
 
 
 def _debt_counterparty_labels(db: Session, public_ids: set[str]) -> dict[str, str | None]:
@@ -423,32 +412,30 @@ def _debt_counterparty_labels(db: Session, public_ids: set[str]) -> dict[str, st
     draft's own tenant), so the account already participates in those ledgers — no leak."""
     if not public_ids:
         return {}
-    rows = db.execute(
-        select(Debt.public_id, Debt.counterparty_label).where(Debt.public_id.in_(public_ids))
-    ).all()
+    rows = db.execute(select(Debt.public_id, Debt.counterparty_label).where(Debt.public_id.in_(public_ids))).all()
     return dict(rows)
 
 
 def list_repayment_draft_audit_for_account(
-    db: Session, *, account_id: int
+    db: Session, *, account_id: int, tenant_id: str | None = None
 ) -> list[RepaymentDraftAuditRow]:
-    """Account-scoped read-only audit of the account's NLS repayment captures (web slice 3).
+    """Build the account-scoped repayment review and audit rows for Web.
 
     Repayment captures are personal (your phone's payment notifications), so the web audit
-    shows ONLY the viewer's own — every draft with ``created_by_account_id == account_id``,
-    across ALL ledgers (account-scoped, NOT ledger-scoped), newest-first. For each PENDING
-    draft a suggested-Debt match is recomputed EPHEMERALLY (§8 — a suggestion is not a fact,
-    never stored) against the draft's OWN tenant candidate set (a draft confirms only against
-    its own ledger's Debt; candidates are fetched once per distinct tenant). For each
-    CONFIRMED draft the committed Debt is the 关联债. Both the suggested and committed Debt
-    counterparty labels are resolved here (the audit spans ledgers; resolving labels in the
-    service keeps Debt reads out of the route — §1). Confirm/dismiss/选债 stay on Android +
-    /api; this is a read-only log."""
+    shows only ``created_by_account_id == account_id``. Web supplies ``tenant_id`` so every
+    actionable row also belongs to the selected ledger; the optional ``None`` keeps the
+    account-wide service form available for non-mutating audit callers. For each PENDING
+    draft, the suggestion is recomputed (§8) and feasible targets carry current row versions
+    for the browser confirm command. Resolved rows retain their linked Debt label as history."""
+    statement = select(RepaymentDraft).where(RepaymentDraft.created_by_account_id == account_id)
+    if tenant_id is not None:
+        statement = statement.where(RepaymentDraft.tenant_id == tenant_id)
     drafts = list(
         db.scalars(
-            select(RepaymentDraft)
-            .where(RepaymentDraft.created_by_account_id == account_id)
-            .order_by(RepaymentDraft.created_at.desc(), RepaymentDraft.id.desc())
+            statement.order_by(
+                RepaymentDraft.created_at.desc(),
+                RepaymentDraft.id.desc(),
+            )
         )
     )
     candidates_by_tenant: dict[str, list] = {}
@@ -457,9 +444,7 @@ def list_repayment_draft_audit_for_account(
     for draft in drafts:
         if draft.status == "pending":
             if draft.tenant_id not in candidates_by_tenant:
-                candidates_by_tenant[draft.tenant_id] = list_repayment_match_candidates(
-                    db, tenant_id=draft.tenant_id
-                )
+                candidates_by_tenant[draft.tenant_id] = list_repayment_match_candidates(db, tenant_id=draft.tenant_id)
             suggested = suggest_debt_for_draft(
                 db,
                 account_id=draft.created_by_account_id,
@@ -477,9 +462,7 @@ def list_repayment_draft_audit_for_account(
     rows: list[RepaymentDraftAuditRow] = []
     for draft in drafts:
         suggested_id = suggested_by_draft.get(draft.id)
-        committed_id = (
-            draft.committed_debt_public_id if draft.status == "confirmed" else None
-        )
+        committed_id = draft.committed_debt_public_id if draft.status == "confirmed" else None
         rows.append(
             RepaymentDraftAuditRow(
                 source=draft.source,
@@ -491,6 +474,15 @@ def list_repayment_draft_audit_for_account(
                 linked_debt_label=labels.get(committed_id) if committed_id else None,
                 has_suggestion=suggested_id is not None,
                 suggested_debt_label=labels.get(suggested_id) if suggested_id else None,
+                public_id=draft.public_id,
+                suggested_debt_public_id=suggested_id,
+                target_debts=tuple(
+                    candidate
+                    for candidate in candidates_by_tenant.get(draft.tenant_id, [])
+                    if candidate.remaining_amount_cents >= draft.amount_cents
+                )
+                if draft.status == "pending"
+                else (),
             )
         )
     return rows
