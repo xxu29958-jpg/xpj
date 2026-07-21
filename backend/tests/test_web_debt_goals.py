@@ -1,8 +1,9 @@
 """/web/debt-goals 还债目标进度 (ADR-0049 债务域 web 面 slice 4).
 
-只读：列本账本 debt_repayment 目标 + 清偿进度。镜像 Android DebtPlanProgress——成员/混装件数
-英雄(金额弱化、成员永不带「欠」、混币隐藏)，仅纯外部目标显 KPI(three_state 琥珀非红 + 投影三态
-诚实)，写动作留 App。本文件走真 route→service→DB→模板的 HTTP 路径；视图模型派生分支的纯单测拆在
+列本账本 debt_repayment 目标 + 清偿进度，并把创建、关联调整、目标日期、复核、归档和恢复
+收成同一条 Web 闭环。镜像 Android DebtPlanProgress——成员/混装件数英雄(金额弱化、成员永不
+带「欠」、混币隐藏)，仅纯外部目标显 KPI(three_state 琥珀非红 + 投影三态诚实)。本文件走真
+route→service→DB→模板的 HTTP 路径；视图模型派生分支的纯单测拆在
 ``test_web_debt_goals_view.py``(守 files_over_500 门)。复用 conftest 的 ``web_client``(绕过 /web
 loopback gate，viewer 解析为账本 owner)；``client`` 保 gate 验 remote-403。
 """
@@ -319,9 +320,10 @@ def test_web_debt_goals_mixed_has_no_kpi_block(web_client: TestClient) -> None:
 
 
 def test_web_debt_goals_voided_member_link_needs_review_never_red(web_client: TestClient) -> None:
-    # A member goal with one open + one voided link → not_evaluable + needs_review amber note,
-    # the voided link recedes (sunk) with a neutral 已不算 badge — member surface never red.
-    _seed_debt_goal(
+    # A member goal with one open + one voided link → not_evaluable + needs_review amber note
+    # with a real remove-voided action; the voided link recedes (sunk) with a neutral 已不算
+    # badge — member surface never red.
+    goal_public_id = _seed_debt_goal(
         name="有作废",
         links=[
             {"type": "member", "status": "open", "principal": 10000, "label": "妈妈"},
@@ -332,7 +334,10 @@ def test_web_debt_goals_voided_member_link_needs_review_never_red(web_client: Te
     assert resp.status_code == 200
     assert "待复核" in resp.text  # not_evaluable eval badge
     assert "某关联欠款被判无效，需要你拿个主意" in resp.text  # needs_review descriptive note
-    assert "复核与处理请在手机 App" in resp.text  # web read-only hint, no buttons
+    assert "移除已经不算的欠款后，这个计划会按新的关联集合继续。" in resp.text  # review body arm
+    assert f"/web/debt-goals/{goal_public_id}/review/remove-voided" in resp.text  # review form action
+    assert "移除不再有效的欠款" in resp.text  # review submit
+    assert "复核与处理请在手机 App" not in resp.text  # write loop landed on web
     assert "这件事不算了" in resp.text  # voided member link note
     assert "debt-card-sunk" in resp.text  # voided link recedes
     assert "dt-pill danger" not in resp.text  # member voided never red (红线②)

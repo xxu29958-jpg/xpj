@@ -1724,6 +1724,209 @@
         "title": "Body_web_dashboard_cards_save_web_dashboard_cards_save_post",
         "type": "object"
       },
+      "Body_web_debt_goal_archive_web_debt_goals__public_id__archive_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_debt_goal_archive_web_debt_goals__public_id__archive_post",
+        "type": "object"
+      },
+      "Body_web_debt_goal_create_web_debt_goals_create_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "debt_public_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Debt Public Ids",
+            "type": "array"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_debt_goal_create_web_debt_goals_create_post",
+        "type": "object"
+      },
+      "Body_web_debt_goal_links_web_debt_goals__public_id__links_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "debt_public_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Debt Public Ids",
+            "type": "array"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_debt_goal_links_web_debt_goals__public_id__links_post",
+        "type": "object"
+      },
+      "Body_web_debt_goal_restore_web_debt_goals__public_id__restore_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_debt_goal_restore_web_debt_goals__public_id__restore_post",
+        "type": "object"
+      },
+      "Body_web_debt_goal_review_acknowledge_web_debt_goals__public_id__review_acknowledge_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_debt_goal_review_acknowledge_web_debt_goals__public_id__review_acknowledge_post",
+        "type": "object"
+      },
+      "Body_web_debt_goal_review_remove_voided_web_debt_goals__public_id__review_remove_voided_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_debt_goal_review_remove_voided_web_debt_goals__public_id__review_remove_voided_post",
+        "type": "object"
+      },
+      "Body_web_debt_goal_target_date_web_debt_goals__public_id__target_date_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "target_date": {
+            "default": "",
+            "title": "Target Date",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_debt_goal_target_date_web_debt_goals__public_id__target_date_post",
+        "type": "object"
+      },
       "Body_web_dismiss_repayment_draft_web_repayment_drafts__public_id__dismiss_post": {
         "properties": {
           "csrf_token": {
@@ -32000,6 +32203,38 @@
               ],
               "title": "Ledger Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Msg"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
           }
         ],
         "responses": {
@@ -32025,6 +32260,344 @@
           }
         },
         "summary": "Web Debt Goals",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-goals/create": {
+      "post": {
+        "operationId": "web_debt_goal_create_web_debt_goals_create_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_debt_goal_create_web_debt_goals_create_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Goal Create",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-goals/{public_id}/archive": {
+      "post": {
+        "operationId": "web_debt_goal_archive_web_debt_goals__public_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_debt_goal_archive_web_debt_goals__public_id__archive_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Goal Archive",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-goals/{public_id}/links": {
+      "post": {
+        "operationId": "web_debt_goal_links_web_debt_goals__public_id__links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_debt_goal_links_web_debt_goals__public_id__links_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Goal Links",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-goals/{public_id}/restore": {
+      "post": {
+        "operationId": "web_debt_goal_restore_web_debt_goals__public_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_debt_goal_restore_web_debt_goals__public_id__restore_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Goal Restore",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-goals/{public_id}/review/acknowledge": {
+      "post": {
+        "operationId": "web_debt_goal_review_acknowledge_web_debt_goals__public_id__review_acknowledge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_debt_goal_review_acknowledge_web_debt_goals__public_id__review_acknowledge_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Goal Review Acknowledge",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-goals/{public_id}/review/remove-voided": {
+      "post": {
+        "operationId": "web_debt_goal_review_remove_voided_web_debt_goals__public_id__review_remove_voided_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_debt_goal_review_remove_voided_web_debt_goals__public_id__review_remove_voided_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Goal Review Remove Voided",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-goals/{public_id}/target-date": {
+      "post": {
+        "operationId": "web_debt_goal_target_date_web_debt_goals__public_id__target_date_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_debt_goal_target_date_web_debt_goals__public_id__target_date_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Goal Target Date",
         "tags": [
           "web"
         ]

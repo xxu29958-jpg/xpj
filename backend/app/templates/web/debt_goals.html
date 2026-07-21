@@ -4,14 +4,61 @@
 <h1 class="page-title page-title--compact">还债目标</h1>
 <p class="page-hint">{{ intro }}</p>
 
-{% if not goals %}
+{% if message %}<div class="callout-info callout-info--success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="callout-info callout-info--danger" role="alert">{{ error }}</div>{% endif %}
+{% if not can_write %}
+<div class="readonly-callout">只读角色可以查看还债目标；创建、调整或归档请联系拥有者或成员。</div>
+{% endif %}
+
+{% if can_write %}
+<div class="dt-card dt-card--static dg-card dg-create">
+  <div class="dg-head">
+    <div class="dg-name">新建还债目标</div>
+  </div>
+  <p class="page-hint">选择想跟踪的未结清欠款，全部还清即达成目标。</p>
+  <form method="post" action="/web/debt-goals/create">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ create_values['idempotency_key'] }}">
+    <div class="dt-form-grid">
+      <label class="dt-form-row">
+        <span>目标名称</span>
+        <input class="dt-input" type="text" name="name" value="{{ create_values['name'] }}"
+               maxlength="80" placeholder="例如：清理这几笔往来" required>
+      </label>
+    </div>
+    <div class="dg-links">
+      <div class="dg-links-title">关联欠款</div>
+      <p class="page-hint">只显示当前可关联的未结清欠款。</p>
+      {% if create_candidates %}
+      {% for choice in create_candidates %}
+      <label class="dg-choice">
+        <input type="checkbox" name="debt_public_ids" value="{{ choice.public_id }}"
+               {% if choice.public_id in create_values['selected_debt_ids'] %}checked{% endif %}>
+        <span class="dg-choice-name">{{ choice.name }}</span>
+        <span class="dg-link-meta">{{ choice.meta }}</span>
+      </label>
+      {% endfor %}
+      {% else %}
+      <div class="dg-all-voided">没有可关联的欠款；先在往来里记一笔未结清的欠款，再回来创建目标。</div>
+      {% endif %}
+    </div>
+    <div class="dt-actions">
+      <button class="dt-btn primary" type="submit"
+              {% if not create_candidates %}disabled{% endif %}>创建目标</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{% if not goals_active %}
 <div class="dt-card dt-card--empty">
   <div class="empty-headline">{{ empty_title }}</div>
   <div class="empty-body">{{ empty_body }}</div>
 </div>
 {% else %}
 <div class="dg-list">
-  {% for goal in goals %}
+  {% for goal in goals_active %}
   <div class="dt-card dt-card--static dg-card">
     <div class="dg-head">
       <div class="dg-name">{{ goal.name }}</div>
@@ -44,8 +91,52 @@
     {% if goal.needs_review %}
     <div class="dg-review">
       <div class="dg-review-note">{{ needs_review_note }}</div>
-      <div class="dg-review-hint">{{ needs_review_hint }}</div>
+      <div class="dg-review-hint">{{ goal.review_body }}</div>
+      {% if can_write %}
+      <div class="dt-actions">
+        {% if goal.can_acknowledge_review %}
+        <form method="post" action="/web/debt-goals/{{ goal.public_id }}/review/acknowledge">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+          <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['acknowledge'] }}">
+          <button class="dt-btn" type="submit">保留存档</button>
+        </form>
+        {% endif %}
+        {% if goal.can_remove_voided %}
+        <form method="post" action="/web/debt-goals/{{ goal.public_id }}/review/remove-voided">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+          <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['remove_voided'] }}">
+          <button class="dt-btn primary" type="submit">移除不再有效的欠款</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
+    {% endif %}
+
+    {% if can_write and goal.can_set_target_date %}
+    <details class="debt-look">
+      <summary>{% if goal.target_date_value %}修改还清日期{% else %}设置还清日期{% endif %}</summary>
+      <form method="post" action="/web/debt-goals/{{ goal.public_id }}/target-date">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+        <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['target_date'] }}">
+        <div class="dt-form-grid">
+          <label class="dt-form-row">
+            <span>还清日期</span>
+            <input class="dt-input" type="date" name="target_date" value="{{ goal.target_date_value }}">
+          </label>
+        </div>
+        <div class="dt-actions">
+          <button class="dt-btn" type="submit">保存日期</button>
+        </div>
+        <p class="page-hint">留空保存即可清除日期；估算不足时不会编造计划状态。</p>
+      </form>
+    </details>
     {% endif %}
 
     <div class="dg-links">
@@ -70,6 +161,68 @@
       </div>
       {% endfor %}
     </div>
+
+    {% if can_write %}
+    <details class="debt-look">
+      <summary>调整关联欠款</summary>
+      <form method="post" action="/web/debt-goals/{{ goal.public_id }}/links">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+        <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['links'] }}">
+        <div class="dg-links">
+          <div class="dg-links-title">这个目标要继续跟踪哪些欠款</div>
+          {% for choice in goal.link_choices %}
+          <label class="dg-choice">
+            <input type="checkbox" name="debt_public_ids" value="{{ choice.public_id }}"
+                   {% if choice.selected %}checked{% endif %}>
+            <span class="dg-choice-name">{{ choice.name }}</span>
+            <span class="dg-link-meta">{{ choice.meta }} · {{ choice.status_label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="dt-actions">
+          <button class="dt-btn primary" type="submit">保存关联</button>
+        </div>
+      </form>
+    </details>
+    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/archive"
+          data-confirm="归档「{{ goal.name }}」？关联欠款不会被删除，之后仍可恢复这个目标。">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['archive'] }}">
+      <div class="dt-actions">
+        <button class="dt-btn" type="submit">归档目标</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if goals_archived %}
+<div class="dg-list dg-archived">
+  <div class="dg-links-title">已归档计划（{{ goals_archived | length }} 条；恢复不会改动关联欠款）</div>
+  {% for goal in goals_archived %}
+  <div class="dt-card dt-card--static dg-card debt-card-sunk">
+    <div class="dg-head">
+      <div class="dg-name">{{ goal.name }}</div>
+      <span class="dt-pill">{{ goal.eval_label }}</span>
+    </div>
+    <div class="dg-link-meta">{{ goal.links | length }} 笔关联欠款</div>
+    {% if can_write %}
+    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/restore">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['restore'] }}">
+      <div class="dt-actions">
+        <button class="dt-btn" type="submit">恢复目标</button>
+      </div>
+    </form>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

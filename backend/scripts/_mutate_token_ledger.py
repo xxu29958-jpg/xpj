@@ -332,6 +332,11 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
     "POST /web/goals/create": Exempt("create_row", "goals", ("goals",)),
     "POST /web/goals/{public_id}/archive": Exempt("terminal_flag_flip", "goals", ("goals",)),
+    # 218-C4: debt-goal create stages a brand-new Goal + its frozen DebtGoalLink
+    # batch in one transaction; no prior version exists, so no OCC token. The
+    # six fold-changing siblings (links/target-date/review/archive/restore)
+    # CARRY expected_row_version and are auto-detected carriers.
+    "POST /web/debt-goals/create": Exempt("create_row", "goals", ("goals", "debt_goal_links")),
     "POST /web/import/preview": Exempt("create_row", "imports", _IMPORT_CREATE),
     "POST /web/import/confirm": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),
     "POST /web/import/{public_id}/apply": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),

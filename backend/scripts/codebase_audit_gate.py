@@ -123,12 +123,12 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 85,
-    "mutate_token_exempted": 128,
+    "mutate_token_carriers": 91,
+    "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 19,
-    "mutate_token_reason_create_row": 34,
+    "mutate_token_reason_create_row": 35,
     "mutate_token_reason_enqueue_task": 0,
     "mutate_token_reason_external_side_effect": 4,
     "mutate_token_reason_governance_action": 8,
@@ -136,7 +136,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 6,
     "mutate_token_reason_terminal_flag_flip": 31,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2747,
+    "backend_pytest_count": 2778,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 
@@ -164,9 +164,9 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _ADR_0049_EXEMPTED_GRANDFATHER = (
-    127,
     128,
-)  # Actionable web repayment-draft review (218-C3): POST /web/repayment-drafts/{public_id}/dismiss is exempted with the same terminal_flag_flip reason as its /api twin (guarded status flip, no fold); the fold-changing web CONFIRM instead carries per-choice expected_row_version hidden fields and is auto-detected as a carrier (+1). The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (123, 127) for the 218-C2 debt command web adapters.
+    129,
+)  # Debt-goal web write loop (218-C4): POST /web/debt-goals/create is exempted with the create_row reason (brand-new Goal + frozen DebtGoalLink batch, no prior version); the six fold-changing siblings (links/target-date/review/archive/restore) CARRY expected_row_version and are auto-detected carriers (+6). The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (127, 128) for the 218-C3 repayment-draft dismiss.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
