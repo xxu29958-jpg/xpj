@@ -114,8 +114,10 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/debts/{public_id}/void"): "writer-only",
     # Debt goals (ADR-0049 债务域 web 面 slice 4 还债目标进度只读)
     ("GET", "/web/debt-goals"): "local-only-rendering",
-    # Repayment drafts (ADR-0049 债务域 web 面 slice 3 还款捕获审计只读, account-scoped)
+    # Repayment drafts (ADR-0049 债务域 web 面 slice C3 还款捕获可操作复核, account-scoped)
     ("GET", "/web/repayment-drafts"): "local-only-rendering",
+    ("POST", "/web/repayment-drafts/{public_id}/confirm"): "writer-only",
+    ("POST", "/web/repayment-drafts/{public_id}/dismiss"): "writer-only",
     # Receivables (ADR-0049 债务域 web 面 ⑤c-3 欠我的/应收只读, account-scoped cross-ledger)
     ("GET", "/web/receivables"): "local-only-rendering",
     # Duplicates

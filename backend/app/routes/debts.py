@@ -38,7 +38,7 @@ bump, no second fact insert — §2.1 "replay does not bump").
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
@@ -59,6 +59,7 @@ from app.schemas import (
     MemberRepaymentProposalWithdrawRequest,
     RepaymentCreateRequest,
     RepaymentCreateResponse,
+    RepaymentFactListResponse,
     RepaymentVoidCreateRequest,
 )
 from app.services.debt_command_service import (
@@ -80,6 +81,7 @@ from app.services.debt_service import (
     get_participant_debt_response,
     list_debts,
     list_member_receivables_for_account,
+    list_repayment_facts,
     list_repayment_proposals,
 )
 from app.tenants import AuthContext
@@ -128,6 +130,29 @@ def get_debt_detail(
     # the obligation they must confirm; a non-member participant gets the Debt
     # shell only (ledger id redacted), and a non-participant gets debt_not_found.
     return get_participant_debt_response(db, public_id=public_id, ledger_id=auth.tenant_id, account_id=auth.account_id)
+
+
+@router.get(
+    "/{public_id}/repayments",
+    response_model=RepaymentFactListResponse,
+)
+def get_repayment_facts(
+    public_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> RepaymentFactListResponse:
+    """Return canonical repayment + repayment-void facts for one visible Debt
+    (newest-first, bounded pagination — the restart-safe activity history)."""
+    return list_repayment_facts(
+        db,
+        tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id,
+        public_id=public_id,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("", response_model=DebtResponse, status_code=201)
