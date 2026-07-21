@@ -195,7 +195,7 @@ ALLOWLIST: dict[str, str] = {
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: yyyy年M月d日": "static formatter: date pattern",
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: yyyy年M月d日 HH:mm": "static formatter: date-time pattern",
     "android/app/src/main/java/com/ticketbox/ui/screens/LedgerGrouping.kt :: M月d日 E": "static formatter: date-group pattern",
-    "android/app/src/main/java/com/ticketbox/ui/screens/pending/PendingScreenModels.kt :: ^(?:\d{4}\s*[-/.年]\s*)?\d{1,2}\s*[-/.月]\s*\d{1,2}\s*日?(?:\s+周[一二三四五六日天])?(?:\s+\d{1,2}\s*[:：]\s*\d{2}(?:\s*[:：]\s*\d{2})?)?$": "internal keyword-match: date-text parser regex character classes (年月日周), not displayed copy",
+    "android/app/src/main/java/com/ticketbox/ui/screens/pending/PendingScreenModels.kt :: ^(?:\\d{4}\\s*[-/.年]\\s*)?\\d{1,2}\\s*[-/.月]\\s*\\d{1,2}\\s*日?(?:\\s+周[一二三四五六日天])?(?:\\s+\\d{1,2}\\s*[:：]\\s*\\d{2}(?:\\s*[:：]\\s*\\d{2})?)?$": "internal keyword-match: date-text parser regex character classes (年月日周), not displayed copy",
     "android/app/src/main/java/com/ticketbox/ui/screens/stats/ReportsInsightChartModels.kt :: ${}¥${}万": "static formatter: amount 万 (ten-thousand) unit",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelItemsEditor.kt :: 未命名": "static fallback-default item name value",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelSplitsEditor.kt :: 未命名成员": "static fallback-default split member name value",
