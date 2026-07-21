@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.BuildConfig
 import com.ticketbox.R
-import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
@@ -114,14 +113,12 @@ private fun SettingsLedgerFamilySection(
                 icon = Icons.Filled.Group,
                 onClick = actions.onOpenFamilyMembers,
             )
-            if (state.role == LEDGER_ROLE_OWNER) {
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_my_devices_title),
-                    subtitle = stringResource(R.string.settings_root_entry_my_devices_subtitle),
-                    icon = Icons.Filled.Devices,
-                    onClick = actions.onOpenMyDevices,
-                )
-            }
+            SettingsEntryRow(
+                title = stringResource(R.string.settings_root_entry_my_devices_title),
+                subtitle = stringResource(R.string.settings_root_entry_my_devices_subtitle),
+                icon = Icons.Filled.Devices,
+                onClick = actions.onOpenMyDevices,
+            )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_join_family_title),
                 subtitle = stringResource(R.string.settings_root_entry_join_family_subtitle),

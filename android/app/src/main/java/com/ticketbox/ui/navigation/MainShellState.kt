@@ -255,6 +255,17 @@ internal fun MainShellState.markTransactionVocabularyChanged() {
     markInsightsDataChanged()
 }
 
+/**
+ * Recycle-bin restores can revive rows from BOTH the transactions vocabulary
+ * domain (category preferences) and the plan domain (budget / income plans /
+ * recurring / goals), so a restore invalidates the two channels together.
+ * Insights gets a single bump — the two marks above would double-count it.
+ */
+internal fun MainShellState.markRecycleBinRestoreCompleted() {
+    transactionVocabularyRevision += 1
+    markPlanDataChanged()
+}
+
 @Composable
 internal fun rememberMainShellState(): MainShellState = remember { MainShellState() }
 

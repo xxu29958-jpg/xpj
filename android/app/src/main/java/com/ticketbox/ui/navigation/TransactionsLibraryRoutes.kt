@@ -65,6 +65,7 @@ internal fun NavGraphBuilder.transactionsLibraryGraph(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
     onVocabularyChanged: () -> Unit,
+    onRestoreCompleted: () -> Unit,
 ) {
     navigation(
         startDestination = TRANSACTIONS_LIBRARY_OVERVIEW_ROUTE,
@@ -114,24 +115,32 @@ internal fun NavGraphBuilder.transactionsLibraryGraph(
             RecycleBinLibraryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
-                onVocabularyChanged = onVocabularyChanged,
+                onRestoreCompleted = onRestoreCompleted,
             )
         }
     }
 }
 
+/**
+ * Ledger-scoped ViewModel key for the library subflow: keying by active ledger
+ * guarantees a fresh VM (fresh load) after a ledger switch instead of reusing
+ * the previous ledger's state from the back stack.
+ */
+internal fun transactionsLibraryViewModelKey(prefix: String, ledgerId: String?): String =
+    "$prefix-${ledgerId ?: "none"}"
+
 @Composable
 private fun RecycleBinLibraryRoute(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
-    onVocabularyChanged: () -> Unit,
+    onRestoreCompleted: () -> Unit,
 ) {
     val viewModel: RecycleBinViewModel = viewModel(
         key = "transactions-library-recycle-bin",
         factory = recycleBinViewModelFactory(screenFactory.ledgerRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    ReportSuccessfulLibraryWrites(viewModel.uiState, onVocabularyChanged) { it.changedRevision }
+    ReportSuccessfulLibraryWrites(viewModel.uiState, onRestoreCompleted) { it.changedRevision }
     RecycleBinScreen(
         viewModel = viewModel,
         onBack = navController::popBackStack,
@@ -145,7 +154,10 @@ private fun CategoryDirectoryRoute(
     onVocabularyChanged: () -> Unit,
 ) {
     val viewModel: CategoryDirectoryViewModel = viewModel(
-        key = "category-directory-${screenFactory.ledgerRepository.activeLedgerId() ?: "none"}",
+        key = transactionsLibraryViewModelKey(
+            "category-directory",
+            screenFactory.ledgerRepository.activeLedgerId(),
+        ),
         factory = categoryDirectoryViewModelFactory(screenFactory.categoryPreferenceRepository),
     )
     CategoryDirectoryScreen(
@@ -162,7 +174,10 @@ private fun TagDirectoryRoute(
     onVocabularyChanged: () -> Unit,
 ) {
     val viewModel: TagManagementViewModel = viewModel(
-        key = "tag-directory-${screenFactory.ledgerRepository.activeLedgerId() ?: "none"}",
+        key = transactionsLibraryViewModelKey(
+            "tag-directory",
+            screenFactory.ledgerRepository.activeLedgerId(),
+        ),
         factory = tagManagementViewModelFactory(screenFactory.tagRepository),
     )
     TagManagementScreen(
@@ -181,6 +196,10 @@ private fun CategoryRulesLibraryRoute(
     onVocabularyChanged: () -> Unit,
 ) {
     val viewModel: CategoryRulesViewModel = viewModel(
+        key = transactionsLibraryViewModelKey(
+            "category-rules",
+            screenFactory.ledgerRepository.activeLedgerId(),
+        ),
         factory = screenFactory.categoryRulesViewModelFactory,
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -235,6 +254,10 @@ private fun MerchantDirectoryRoute(
     onVocabularyChanged: () -> Unit,
 ) {
     val viewModel: MerchantAliasViewModel = viewModel(
+        key = transactionsLibraryViewModelKey(
+            "merchant-directory",
+            screenFactory.ledgerRepository.activeLedgerId(),
+        ),
         factory = screenFactory.merchantAliasViewModelFactory,
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()

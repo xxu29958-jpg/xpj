@@ -140,6 +140,7 @@ internal fun NavGraphBuilder.addTransactionRoutes(
             navController = navController,
             screenFactory = screenFactory,
             onVocabularyChanged = shellState::markTransactionVocabularyChanged,
+            onRestoreCompleted = shellState::markRecycleBinRestoreCompleted,
         )
     }
 }
