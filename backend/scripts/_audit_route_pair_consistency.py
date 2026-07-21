@@ -57,6 +57,19 @@ _INFRA_OPS = frozenset(
     }
 )
 
+# A Web form adapter may deliberately strengthen a legacy JSON lifecycle
+# contract with actor-scoped idempotency/OCC while preserving the same domain
+# transition. Keep those equivalences explicit: unlike WEB_ONLY_ROUTES these
+# entries still require an API sibling and participate in coverage.
+_SERVICE_OP_ALIASES: dict[str, frozenset[str]] = {
+    "create_goal": frozenset({"create_debt_repayment_goal"}),
+    "remove_voided_debt_goal_links_idempotently": frozenset(
+        {"replace_debt_repayment_goal_links"}
+    ),
+    "archive_debt_repayment_goal_idempotently": frozenset({"archive_goal"}),
+    "restore_debt_repayment_goal_idempotently": frozenset({"restore_goal"}),
+}
+
 # ``/web`` mutating routes that legitimately have NO ``/api`` sibling sharing a
 # service delegate. Each is a web-surface-only flow; keep the reason current.
 WEB_ONLY_ROUTES: dict[str, str] = {
@@ -125,8 +138,20 @@ def _module_source(endpoint: object) -> str:
         return ""
 
 
+def _called_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        if isinstance(child.func, ast.Name):
+            names.add(child.func.id)
+        elif isinstance(child.func, ast.Attribute):
+            names.add(child.func.attr)
+    return names
+
+
 def _service_func_names() -> frozenset[str]:
-    """Top-level (public) function names defined under ``app/services``."""
+    """Top-level public function names defined under ``app/services``."""
     names: set[str] = set()
     for path in _SERVICES_DIR.rglob("*.py"):
         try:
@@ -142,12 +167,60 @@ def _service_func_names() -> frozenset[str]:
 _SERVICE_FUNCS = _service_func_names()
 
 
+def _route_source_with_local_helpers(endpoint: object) -> str:
+    """Route source plus same-module helpers reachable from its handler."""
+    module_source = _module_source(endpoint)
+    endpoint_name = getattr(endpoint, "__name__", "")
+    if not module_source or not endpoint_name:
+        return _source(endpoint)
+    try:
+        tree = ast.parse(module_source)
+    except SyntaxError:
+        return _source(endpoint)
+    definitions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    pending = [endpoint_name]
+    visited: set[str] = set()
+    segments: list[str] = []
+    while pending:
+        name = pending.pop()
+        if name in visited:
+            continue
+        visited.add(name)
+        node = definitions.get(name)
+        if node is None:
+            continue
+        segments.append(ast.get_source_segment(module_source, node) or "")
+        pending.extend(_called_names(node) & definitions.keys())
+    return "\n".join(segments) or _source(endpoint)
+
+
+def _expanded_service_ops(direct: set[str]) -> set[str]:
+    expanded: set[str] = set()
+    pending = list(direct)
+    while pending:
+        operation = pending.pop()
+        if operation in expanded:
+            continue
+        expanded.add(operation)
+        pending.extend(_SERVICE_OP_ALIASES.get(operation, ()))
+        if operation.endswith("_idempotently"):
+            base = operation.removesuffix("_idempotently")
+            if base in _SERVICE_FUNCS:
+                pending.append(base)
+    return expanded
+
+
 def _route_ops(endpoint: object) -> set[str]:
-    """Service operations a route handler references (word-boundary match)."""
-    source = _source(endpoint)
+    """Service operations a route reaches through local/service adapters."""
+    source = _route_source_with_local_helpers(endpoint)
     if not source:
         return set()
-    return {fn for fn in _SERVICE_FUNCS if re.search(rf"\b{re.escape(fn)}\b", source)}
+    direct = {fn for fn in _SERVICE_FUNCS if re.search(rf"\b{re.escape(fn)}\b", source)}
+    return _expanded_service_ops(direct)
 
 
 def _check_explicit_pairs(routes: dict[tuple[str, str], object]) -> list[str]:

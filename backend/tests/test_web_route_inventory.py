@@ -33,9 +33,9 @@ tests below assert:
    whenever a new route is added).
 2. No duplicate ``(method, path)`` pair is registered; FastAPI would otherwise
    silently let the first endpoint win.
-3. Every ``writer-only`` route endpoint itself references
-   ``_require_selected_ledger_write`` (so the classification doesn't drift
-   away from the code).
+3. Every ``writer-only`` route endpoint, or a local helper it directly calls,
+   references ``_require_selected_ledger_write`` (so the classification
+   doesn't drift away from the code while route adapters remain small).
 
 Adding a route without classifying it = pytest red, which is the entire
 point.
@@ -43,7 +43,9 @@ point.
 
 from __future__ import annotations
 
+import ast
 import inspect
+import textwrap
 from collections import Counter
 from collections.abc import Callable
 from typing import Literal
@@ -112,8 +114,15 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/debts/{public_id}/repayment-voids"): "writer-only",
     ("POST", "/web/debts/{public_id}/repayments"): "writer-only",
     ("POST", "/web/debts/{public_id}/void"): "writer-only",
-    # Debt goals (ADR-0049 债务域 web 面 slice 4 还债目标进度只读)
+    # Debt goals: full create/edit/review/archive lifecycle.
     ("GET", "/web/debt-goals"): "local-only-rendering",
+    ("POST", "/web/debt-goals/create"): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/archive"): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/links"): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/restore"): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/review/acknowledge"): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/review/remove-voided"): "writer-only",
+    ("POST", "/web/debt-goals/{public_id}/target-date"): "writer-only",
     # Repayment drafts (ADR-0049 债务域 web 面 slice C3 还款捕获可操作复核, account-scoped)
     ("GET", "/web/repayment-drafts"): "local-only-rendering",
     ("POST", "/web/repayment-drafts/{public_id}/confirm"): "writer-only",
@@ -275,6 +284,35 @@ def _route_endpoint(method: str, path: str) -> Callable[..., object] | None:
     return None
 
 
+def _uses_writer_guard(
+    function: Callable[..., object],
+    *,
+    visited: set[Callable[..., object]] | None = None,
+) -> bool:
+    """Follow local function calls until the selected-ledger guard is found."""
+    seen = visited if visited is not None else set()
+    if function in seen:
+        return False
+    seen.add(function)
+    source = inspect.getsource(function)
+    if "_require_selected_ledger_write(" in source:
+        return True
+
+    tree = ast.parse(textwrap.dedent(source))
+    called_names = {
+        node.func.id for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    for name in called_names:
+        helper = function.__globals__.get(name)
+        if not inspect.isfunction(helper):
+            continue
+        if helper.__module__ != function.__module__:
+            continue
+        if _uses_writer_guard(helper, visited=seen):
+            return True
+    return False
+
+
 def test_every_web_route_is_classified() -> None:
     """Every live /web/* route must appear in the classification table.
 
@@ -304,14 +342,13 @@ def test_web_routes_are_not_registered_twice() -> None:
 
 @pytest.mark.parametrize("method,path", _writer_only_paths())
 def test_writer_only_routes_actually_check_writer(method: str, path: str) -> None:
-    """``writer-only`` classification must be backed by endpoint code."""
+    """``writer-only`` classification must be backed by its local call chain."""
     endpoint = _route_endpoint(method, path)
     assert endpoint is not None, f"endpoint not found: {method} {path}"
-    source = inspect.getsource(endpoint)
-    assert "_require_selected_ledger_write(" in source, (
+    assert _uses_writer_guard(endpoint), (
         f"{method} {path} is classified as writer-only but its handler "
-        f"({endpoint.__module__}.{endpoint.__name__}) does not reference "
-        "_require_selected_ledger_write directly."
+        f"({endpoint.__module__}.{endpoint.__name__}) does not reach "
+        "_require_selected_ledger_write through its local call chain."
     )
 
 
