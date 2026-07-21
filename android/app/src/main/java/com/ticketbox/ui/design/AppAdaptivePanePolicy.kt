@@ -206,6 +206,13 @@ fun appAdaptiveSupportingPaneWidth(maxWidth: Dp): Dp {
         maxByPrimary,
     )
     val lowerBound = minOf(AppAdaptivePaneTokens.supportingMinWidth, upperBound)
+    // A window narrower than primaryMinWidth cannot honor the primary pane's
+    // minimum (production only reaches ExpandedSupporting at the expanded width
+    // breakpoint, so this is a forced-policy / undersized-window case). The
+    // weight-based primary pane absorbs the deficit; the supporting pane keeps
+    // its half-width share instead of collapsing to zero width.
+    val visibleFloor = minOf(AppAdaptivePaneTokens.supportingMinWidth, usableWidth / 2)
     return (usableWidth * AppAdaptivePaneTokens.supportingPreferredFraction)
         .coerceIn(lowerBound, upperBound)
+        .coerceAtLeast(visibleFloor)
 }

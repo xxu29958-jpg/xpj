@@ -21,6 +21,7 @@ import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.screens.pending.pendingMerchantPresentation
 
 @Composable
 internal fun QuickMerchantSheetContent(
@@ -30,7 +31,9 @@ internal fun QuickMerchantSheetContent(
     onDismiss: () -> Unit,
 ) {
     val saving = chrome.saving
-    var value by remember(expense.id) { mutableStateOf(expense.merchant.orEmpty()) }
+    var value by remember(expense.id) {
+        mutableStateOf(pendingMerchantPresentation(expense).primaryText.orEmpty())
+    }
     val cleaned = value.trim()
     // P1-2: single-field sheet — auto-focus so the keyboard pops on open.
     val focusRequester = remember { FocusRequester() }

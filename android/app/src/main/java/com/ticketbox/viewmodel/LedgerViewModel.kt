@@ -15,6 +15,7 @@ import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.expenseLedgerMonth
 import com.ticketbox.domain.model.filterConfirmedExpenses
+import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.domain.model.recentLedgerMerchants
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +28,11 @@ enum class LedgerViewMode {
     Card,
     List,
     Table,
+}
+
+enum class LedgerDataQualityFilter {
+    MissingCategory,
+    ConfirmedWithoutImage,
 }
 
 enum class LedgerMonthsLoadState {
@@ -50,6 +56,7 @@ data class LedgerFilterUi(
     val categoryFilter: String = "",
     val tagFilter: String = "",
     val query: String = "",
+    val dataQualityFilter: LedgerDataQualityFilter? = null,
     val hasFilters: Boolean = false,
 )
 
@@ -71,6 +78,7 @@ data class LedgerUiState(
     val categoryFilter: String = "",
     val tagFilter: String = "",
     val query: String = "",
+    val dataQualityFilter: LedgerDataQualityFilter? = null,
     val viewMode: LedgerViewMode = LedgerViewMode.List,
     val lastSyncAt: String? = null,
     val syncing: Boolean = false,
@@ -146,15 +154,18 @@ data class LedgerUiState(
             categoryFilter = categoryFilter,
             tagFilter = tagFilter,
             query = query,
+            dataQualityFilter = dataQualityFilter,
             hasFilters = monthFilter.isNotBlank() ||
                 categoryFilter.isNotBlank() ||
                 tagFilter.isNotBlank() ||
-                query.isNotBlank(),
+                query.isNotBlank() ||
+                dataQualityFilter != null,
         )
 }
 
 class LedgerViewModel(
     private val repository: LedgerActions,
+    private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
         LedgerUiState(
@@ -221,8 +232,13 @@ class LedgerViewModel(
         }
     }
 
+    fun refreshVocabulary() {
+        loadCategories()
+        loadTags()
+    }
+
     private fun filterItems(expenses: List<Expense>, state: LedgerUiState): List<Expense> {
-        return filterConfirmedExpenses(
+        val normallyFiltered = filterConfirmedExpenses(
             expenses = expenses,
             criteria = ExpenseFilterCriteria(
                 month = state.monthFilter,
@@ -231,6 +247,13 @@ class LedgerViewModel(
                 query = state.query,
             ),
         )
+        return when (state.dataQualityFilter) {
+            LedgerDataQualityFilter.MissingCategory ->
+                normallyFiltered.filter { isUncategorizedExpenseCategory(it.category) }
+            LedgerDataQualityFilter.ConfirmedWithoutImage ->
+                normallyFiltered.filter { it.imagePath.isNullOrBlank() || it.imageDeletedAt != null }
+            null -> normallyFiltered
+        }
     }
 
     fun setMonthFilter(value: String) {
@@ -241,7 +264,8 @@ class LedgerViewModel(
 
     fun setCategoryFilter(value: String) {
         _uiState.update { state ->
-            state.copy(categoryFilter = value, items = filterItems(allConfirmed, state.copy(categoryFilter = value)))
+            val next = state.copy(categoryFilter = value, dataQualityFilter = null)
+            next.copy(items = filterItems(allConfirmed, next))
         }
     }
 
@@ -258,9 +282,28 @@ class LedgerViewModel(
                 categoryFilter = category,
                 tagFilter = "",
                 query = "",
+                dataQualityFilter = null,
             )
             next.copy(items = filterItems(allConfirmed, next))
         }
+    }
+
+    /**
+     * Data Quality enters Transactions with an explicit filter instead of a bare tab switch.
+     * Clear ordinary filters so the issue context starts ledger-wide, then sync that scope.
+     */
+    fun applyDataQualityFilter(filter: LedgerDataQualityFilter) {
+        _uiState.update { state ->
+            val next = state.copy(
+                monthFilter = "",
+                categoryFilter = "",
+                tagFilter = "",
+                query = "",
+                dataQualityFilter = filter,
+            )
+            next.copy(items = filterItems(allConfirmed, next))
+        }
+        sync()
     }
 
     fun setTagFilter(value: String) {
@@ -281,7 +324,13 @@ class LedgerViewModel(
 
     fun clearFilters() {
         _uiState.update { state ->
-            val next = state.copy(monthFilter = "", categoryFilter = "", tagFilter = "", query = "")
+            val next = state.copy(
+                monthFilter = "",
+                categoryFilter = "",
+                tagFilter = "",
+                query = "",
+                dataQualityFilter = null,
+            )
             next.copy(items = filterItems(allConfirmed, next))
         }
     }
@@ -437,6 +486,7 @@ class LedgerViewModel(
                         )
                         next.copy(items = filterItems(allConfirmed, next))
                     }
+                    onDataChanged()
                 }
                 .onFailure { error ->
                     // Surfaced INSIDE the still-open sheet (not page-level
@@ -547,6 +597,9 @@ class LedgerViewModel(
                             message = batchResultMessage(result),
                             messageTone = batchResultTone(result),
                         )
+                    }
+                    if (result.synced > 0 || result.queued > 0) {
+                        onDataChanged()
                     }
                 }
                 .onFailure { error ->

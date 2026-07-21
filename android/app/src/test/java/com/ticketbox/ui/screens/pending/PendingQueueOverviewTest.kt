@@ -56,7 +56,7 @@ class PendingQueueOverviewTest {
     }
 
     @Test
-    fun filterBarKeepsSelectedFilterReachable() {
+    fun duplicateUsesTheInboxSectionTabInsteadOfTheDetailFilterBar() {
         val shouldShow = shouldShowNeedsReviewFilterBar(
             PendingQueueCounts(
                 all = 1,
@@ -68,11 +68,11 @@ class PendingQueueOverviewTest {
             selected = NeedsReviewFilter.Duplicate,
         )
 
-        assertEquals(true, shouldShow)
+        assertEquals(false, shouldShow)
     }
 
     @Test
-    fun visibleFiltersKeepSelectedZeroFilterReachable() {
+    fun duplicateIsNotRepeatedInsideTheDetailFilters() {
         val filters = visibleNeedsReviewFilters(
             PendingQueueCounts(
                 all = 1,
@@ -85,7 +85,7 @@ class PendingQueueOverviewTest {
         )
 
         assertEquals(
-            listOf(NeedsReviewFilter.All, NeedsReviewFilter.ReadyToConfirm, NeedsReviewFilter.Duplicate),
+            listOf(NeedsReviewFilter.All, NeedsReviewFilter.ReadyToConfirm),
             filters,
         )
     }

@@ -36,6 +36,7 @@ enum class RecurringListLoadState {
 
 class RecurringViewModel(
     private val repository: RecurringActions,
+    private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(RecurringUiState(canModify = repository.canModifyLedger()))
     val uiState: StateFlow<RecurringUiState> = _uiState.asStateFlow()
@@ -166,6 +167,7 @@ class RecurringViewModel(
                             item,
                         )
                     }
+                    onDataChanged()
                     refresh()
                 },
                 onFailure = { error ->

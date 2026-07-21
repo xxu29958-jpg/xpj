@@ -19,14 +19,6 @@ internal enum class PendingDisplayMode {
 }
 
 @Composable
-internal fun pendingDisplayModeLabel(displayMode: PendingDisplayMode): String {
-    return when (displayMode) {
-        PendingDisplayMode.Compact -> stringResource(R.string.pending_tools_density_compact)
-        PendingDisplayMode.Comfortable -> stringResource(R.string.pending_tools_density_comfortable)
-    }
-}
-
-@Composable
 internal fun PendingToolsSheet(
     loading: Boolean,
     displayMode: PendingDisplayMode,

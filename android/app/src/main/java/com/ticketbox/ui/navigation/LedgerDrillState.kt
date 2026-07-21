@@ -3,17 +3,26 @@ package com.ticketbox.ui.navigation
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.ticketbox.viewmodel.LedgerDataQualityFilter
 
-/**
- * §三报表钻取:统计分类行点击 → 账本页带筛选打开的一次性请求。
- *
- * @property month 统计页当时的月份(`yyyy-MM`),落到账本月份筛选。
- * @property category 被点的分类,落到账本分类筛选。
- */
-internal data class LedgerDrillRequest(
-    val month: String,
-    val category: String,
-)
+/** Transactions can be entered with either a report drill or a typed quality context. */
+internal sealed interface LedgerDrillRequest {
+    /**
+     * §三报表钻取:统计分类行点击 → 账本页带筛选打开的一次性请求。
+     *
+     * @property month 统计页当时的月份(`yyyy-MM`),落到账本月份筛选。
+     * @property category 被点的分类,落到账本分类筛选。
+     */
+    data class Category(
+        val month: String,
+        val category: String,
+    ) : LedgerDrillRequest
+
+    /** Data Quality → Transactions with a visible, actionable client-side filter. */
+    data class DataQuality(
+        val filter: LedgerDataQualityFilter,
+    ) : LedgerDrillRequest
+}
 
 /**
  * 一次性钻取请求的可消费持有者(镜像 [LaunchActionState] 的单槽 post/consume 形态):

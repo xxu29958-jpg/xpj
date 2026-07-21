@@ -9,29 +9,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
-import com.ticketbox.domain.model.DASHBOARD_CARD_GOALS
-import com.ticketbox.domain.model.DASHBOARD_CARD_MONTHLY_SPEND
-import com.ticketbox.domain.model.DASHBOARD_CARD_PENDING
-import com.ticketbox.domain.model.DASHBOARD_CARD_RECENT_UPLOADS
-import com.ticketbox.domain.model.DASHBOARD_CARD_RECURRING
-import com.ticketbox.domain.model.DASHBOARD_CARD_REPORTS
-import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.StatsTab
-import com.ticketbox.domain.model.statsDashboardKeysForTab
-import com.ticketbox.domain.model.visibleDashboardCardKeys
-import com.ticketbox.ui.components.AppErrorState
-import com.ticketbox.ui.components.CardSkeleton
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAdaptivePaneScaffold
+import com.ticketbox.ui.components.AppAdaptivePanePurpose
+import com.ticketbox.ui.components.AppAdaptivePaneStructures
+import com.ticketbox.ui.components.AppAdaptiveSupportingPane
 import com.ticketbox.ui.components.AppDataAuthorityStrip
-import com.ticketbox.ui.components.AppPageHeader
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppScrollableContentChrome
@@ -39,38 +31,23 @@ import com.ticketbox.ui.components.AppScrollableContentLayout
 import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
-import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.MonthPickerListState
-import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.screens.stats.CategoryStructureCard
+import com.ticketbox.ui.components.MonthPickerSheet
+import com.ticketbox.ui.components.appAdaptiveSupportingPaneContent
 import com.ticketbox.ui.screens.stats.EmptyStatsCard
-import com.ticketbox.ui.screens.stats.LifestyleCard
-import com.ticketbox.ui.screens.stats.PendingOverviewCard
-import com.ticketbox.ui.screens.stats.RecentUploadCard
-import com.ticketbox.ui.screens.stats.RecurringCandidatesCard
-import com.ticketbox.ui.screens.stats.RecurringItemsSummaryCard
-import com.ticketbox.ui.screens.stats.GoalsSummaryCard
-import com.ticketbox.ui.screens.stats.ReportsInsightCard
-import com.ticketbox.ui.screens.stats.StatsMetricGrid
-import com.ticketbox.ui.screens.stats.StatsOverviewCard
-import com.ticketbox.ui.screens.stats.StatsOverviewTrendData
-import com.ticketbox.ui.screens.stats.StatsLeadInsight
-import com.ticketbox.ui.screens.stats.StatsPlanningActions
 import com.ticketbox.ui.screens.stats.StatsTopPanel
 import com.ticketbox.ui.screens.stats.StatsTopPanelActions
-import com.ticketbox.ui.screens.stats.TagScopeInsight
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.viewmodel.StatsSource
+import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.viewmodel.StatsFilterOptionsLoadState
+import com.ticketbox.viewmodel.StatsSource
 import com.ticketbox.viewmodel.StatsUiState
-import com.valentinilk.shimmer.shimmer
 import kotlin.math.roundToInt
 
 data class StatsScreenActions(
     val filters: StatsFilterActions,
     val onRefresh: () -> Unit,
-    val planning: StatsPlanningActions,
+    val onOpenDataQuality: () -> Unit,
     val reports: StatsReportActions,
 )
 
@@ -100,12 +77,7 @@ fun StatsScreen(
                 months = state.months,
                 selectedMonth = state.month,
                 description = stringResource(R.string.stats_month_picker_description),
-                listState = when (state.monthsLoadState) {
-                    StatsFilterOptionsLoadState.Unknown -> MonthPickerListState.Unknown
-                    StatsFilterOptionsLoadState.Loading -> MonthPickerListState.Loading
-                    StatsFilterOptionsLoadState.Loaded -> MonthPickerListState.Loaded
-                    StatsFilterOptionsLoadState.Failed -> MonthPickerListState.Failed
-                },
+                listState = state.monthPickerListState(),
                 onSelectMonth = { month ->
                     actions.filters.onMonthChange(month)
                     showMonthPicker = false
@@ -114,11 +86,64 @@ fun StatsScreen(
         }
     }
 
+    val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
+    val paneState = StatsAdaptivePaneState(
+        screenState = state,
+        selectedTab = selectedStatsTab,
+    )
+    val paneActions = StatsAdaptivePaneActions(
+        screenActions = actions,
+        onOpenMonthPicker = { showMonthPicker = true },
+        onTabChange = { selectedStatsTab = it },
+    )
+    AppAdaptivePaneScaffold(
+        structure = AppAdaptivePaneStructures.Insights,
+        policy = adaptivePolicy,
+        primaryPane = {
+            StatsPrimaryPane(
+                paneState = paneState,
+                paneActions = paneActions,
+                showSupportingPane = adaptivePolicy.showsSupportingPane,
+            )
+        },
+        supportingPane = appAdaptiveSupportingPaneContent(
+            purpose = AppAdaptivePanePurpose.InsightControls,
+        ) {
+            AppAdaptiveSupportingPane(role = AppPageRole.Stats) {
+                StatsAdaptiveControls(
+                    paneState = paneState,
+                    paneActions = paneActions,
+                )
+            }
+        },
+    )
+}
+
+private data class StatsAdaptivePaneState(
+    val screenState: StatsUiState,
+    val selectedTab: StatsTab,
+)
+
+private data class StatsAdaptivePaneActions(
+    val screenActions: StatsScreenActions,
+    val onOpenMonthPicker: () -> Unit,
+    val onTabChange: (StatsTab) -> Unit,
+)
+
+@Composable
+private fun StatsPrimaryPane(
+    paneState: StatsAdaptivePaneState,
+    paneActions: StatsAdaptivePaneActions,
+    showSupportingPane: Boolean,
+) {
+    val state = paneState.screenState
+    val actions = paneActions.screenActions
     AppScrollableContent(
         chrome = AppScrollableContentChrome(
             role = AppPageRole.Stats,
             layout = AppScrollableContentLayout(
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+                horizontalPadding = AppSpacing.cardPaddingSmall,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
             ),
         ),
         refresh = AppScrollableRefreshState(
@@ -129,70 +154,20 @@ fun StatsScreen(
             onRefresh = actions.onRefresh,
         ),
     ) {
-        val visibleDashboardKeys = orderedStatsDashboardKeys(visibleDashboardCardKeys(state.dashboardCards))
-        val tagFilterActive = state.selectedTag.isNotBlank()
-        val selectedDashboardKeys = orderedStatsDashboardKeys(
-            statsDashboardKeysForTab(
-                selectedStatsTab,
-                visibleDashboardKeys,
-                tagFilterActive = tagFilterActive,
-            ),
-        )
-        val authorityTone = when {
-            StatsRefreshIndicator.isActive(loading = state.loading, hasReadableData = state.stats != null) ->
-                DataAuthorityTone.Refreshing
-            state.statsSource == StatsSource.LocalFallback -> DataAuthorityTone.LocalCache
-            state.statsSource == StatsSource.Backend -> DataAuthorityTone.Backend
-            else -> null
-        }
-        item {
-            StatsTopPanel(
-                state = state,
-                selectedTab = selectedStatsTab,
-                visibleDashboardKeys = visibleDashboardKeys,
-                actions = StatsTopPanelActions(
-                    onOpenMonthPicker = { showMonthPicker = true },
-                    onTagChange = { tag ->
-                        actions.filters.onTagChange(tag)
-                        if (tag.isNotBlank() && selectedStatsTab in tagScopedHiddenTabs) {
-                            selectedStatsTab = StatsTab.Trend
-                        }
-                    },
-                    onTabChange = { selectedStatsTab = it },
-                    planning = actions.planning,
-                ),
-            )
-        }
-        authorityTone?.takeIf { it != DataAuthorityTone.Backend }?.let { tone ->
+        if (!showSupportingPane) {
             item {
-                AppDataAuthorityStrip(
-                    tone = tone,
+                StatsAdaptiveControls(
+                    paneState = paneState,
+                    paneActions = paneActions,
                 )
             }
         }
-        state.message?.let {
-            item { AppStatusBanner(message = it, tone = MessageTone.Neutral) }
-        }
-        if (selectedStatsTab == StatsTab.Trend) {
-            reportsTrendStatusMessage(state)?.let {
-                item { AppStatusBanner(message = it, tone = MessageTone.Danger) }
-            }
-        }
-        state.dashboardCardsMessage?.let {
-            item { AppStatusBanner(message = it, tone = MessageTone.Danger) }
-        }
+
         val stats = state.stats
         if (stats == null) {
             item {
                 when {
-                    state.loading -> Column(
-                        modifier = Modifier.shimmer(),
-                        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-                    ) {
-                        repeat(4) { CardSkeleton(lines = 3) }
-                    }
-                    // A failed load with no data → retryable error state, not the empty
-                    // card that reads like "没有数据" (审计 8.4).
+                    state.loading -> StatsProductLoadingState()
                     state.statsLoadError != null -> AppErrorState(
                         title = stringResource(R.string.stats_error_card_title),
                         body = state.statsLoadError.asString().ifBlank {
@@ -205,176 +180,72 @@ fun StatsScreen(
             }
             return@AppScrollableContent
         }
-        val visibleCategories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
-        val visibleTags = stats.byTag.filter { it.amountCents > 0L && it.count > 0 }
-        val recentUploadMergedIntoOverview = selectedStatsTab == StatsTab.Overview &&
-            DASHBOARD_CARD_MONTHLY_SPEND in selectedDashboardKeys &&
-            DASHBOARD_CARD_RECENT_UPLOADS in selectedDashboardKeys
-        var renderedCard = false
 
-        val showLeadInsight = selectedStatsTab == StatsTab.Overview &&
-            DASHBOARD_CARD_MONTHLY_SPEND in selectedDashboardKeys
+        statsProductItems(
+            state = state,
+            selectedTab = paneState.selectedTab,
+            actions = actions.reports,
+            onOpenDataQuality = actions.onOpenDataQuality,
+        )
+    }
+}
 
-        if (showLeadInsight) {
-            renderedCard = true
-            item { StatsLeadInsight(state) }
+@Composable
+private fun StatsAdaptiveControls(
+    paneState: StatsAdaptivePaneState,
+    paneActions: StatsAdaptivePaneActions,
+) {
+    val state = paneState.screenState
+    val actions = paneActions.screenActions
+    Column(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+    ) {
+        StatsTopPanel(
+            state = state,
+            selectedTab = paneState.selectedTab,
+            actions = StatsTopPanelActions(
+                onOpenMonthPicker = paneActions.onOpenMonthPicker,
+                onTagChange = actions.filters.onTagChange,
+                onTabChange = paneActions.onTabChange,
+            ),
+        )
+        statsAuthorityTone(state)?.takeIf { it != DataAuthorityTone.Backend }?.let { tone ->
+            AppDataAuthorityStrip(tone = tone)
         }
-
-        selectedDashboardKeys.forEach { key ->
-            when (key) {
-                DASHBOARD_CARD_MONTHLY_SPEND -> {
-                    if (!showLeadInsight) {
-                        renderedCard = true
-                        item {
-                            StatsOverviewCard(
-                                stats = stats,
-                                statsSource = state.statsSource,
-                                recent7DaysAmountCents = overviewRecent7DaysAmount(state),
-                                comparison = overviewMonthComparison(state),
-                                trendData = StatsOverviewTrendData(
-                                    reportTrend = state.reportsOverview?.trend.orEmpty(),
-                                    includeRecentUpload = recentUploadMergedIntoOverview,
-                                    lastUploadAt = state.lastUploadAt,
-                                ),
-                            )
-                        }
-                    }
-                }
-
-                DASHBOARD_CARD_BUDGET -> {
-                    renderedCard = true
-                    item {
-                        StatsMetricGrid(
-                            budget = state.budgetProgress,
-                            budgetStatus = state.budgetProgressStatus,
-                            onOpenBudget = actions.planning.onOpenBudget,
-                        )
-                    }
-                }
-
-                DASHBOARD_CARD_REPORTS -> {
-                    renderedCard = true
-                    if (selectedStatsTab == StatsTab.Category) {
-                        if (visibleCategories.isEmpty()) {
-                            item {
-                                EmptyStatsCard(
-                                    title = stringResource(R.string.stats_category_empty_title, displayMonthLabel(stats.month)),
-                                    body = stringResource(R.string.stats_category_empty_body),
-                                )
-                            }
-                        } else {
-                            item {
-                                CategoryStructureCard(
-                                    categories = visibleCategories,
-                                    tags = visibleTags,
-                                    totalAmountCents = stats.totalAmountCents,
-                                    onCategoryClick = actions.reports.onDrillToLedger,
-                                )
-                            }
-                        }
-                    }
-                    if (selectedStatsTab == StatsTab.Trend) {
-                        val overview = state.reportsOverview
-                        when {
-                            overview != null -> item {
-                                ReportsInsightCard(
-                                    overview = overview,
-                                    onGranularityChange = actions.reports.onGranularityChange,
-                                    onRankingMetricChange = actions.reports.onRankingMetricChange,
-                                )
-                            }
-                            state.selectedTag.isNotBlank() -> item {
-                                TagScopeInsight(
-                                    stats = stats,
-                                    selectedTag = state.selectedTag,
-                                    statsSource = state.statsSource,
-                                )
-                            }
-                            shouldShowReportsUnavailableFallback(state) -> item {
-                                EmptyStatsCard(
-                                    title = stringResource(R.string.stats_reports_unavailable_title),
-                                    body = stringResource(R.string.stats_reports_unavailable_body),
-                                )
-                            }
-                        }
-                    }
-                }
-
-                DASHBOARD_CARD_GOALS -> {
-                    if (state.selectedTag.isBlank()) {
-                        renderedCard = true
-                        item {
-                            GoalsSummaryCard(
-                                goals = state.reportGoals,
-                                loadState = state.reportGoalsLoadState,
-                                onAddGoal = actions.planning.onOpenSpendingGoal,
-                            )
-                        }
-                    }
-                }
-
-                DASHBOARD_CARD_RECURRING -> {
-                    if (state.recurringItems.isNotEmpty()) {
-                        renderedCard = true
-                        item { RecurringItemsSummaryCard(state.recurringItems) }
-                    }
-                    if (state.recurringCandidates.isNotEmpty()) {
-                        renderedCard = true
-                        item { RecurringCandidatesCard(state.recurringCandidates) }
-                    }
-                }
-
-                DASHBOARD_CARD_PENDING -> {
-                    state.dataQuality?.let { dq ->
-                        renderedCard = true
-                        item { PendingOverviewCard(dq) }
-                    }
-                }
-
-                DASHBOARD_CARD_RECENT_UPLOADS -> {
-                    if (!recentUploadMergedIntoOverview) {
-                        renderedCard = true
-                        item { RecentUploadCard(state.lastUploadAt) }
-                    }
-                    state.lifestyleStats?.let { lifestyle ->
-                        renderedCard = true
-                        item { LifestyleCard(lifestyle) }
-                    }
-                }
-            }
+        state.message?.let { message ->
+            AppStatusBanner(message = message, tone = MessageTone.Neutral)
         }
-
-        if (!renderedCard) {
-            item {
-                EmptyStatsCard(
-                    title = stringResource(R.string.stats_all_cards_hidden_title),
-                    body = stringResource(R.string.stats_all_cards_hidden_body),
-                )
+        if (paneState.selectedTab == StatsTab.Trend) {
+            reportsTrendStatusMessage(state)?.let { message ->
+                AppStatusBanner(message = message, tone = MessageTone.Danger)
             }
         }
     }
 }
 
-private fun orderedStatsDashboardKeys(keys: List<String>): List<String> {
-    val preferredOrder = listOf(
-        DASHBOARD_CARD_MONTHLY_SPEND,
-        DASHBOARD_CARD_BUDGET,
-        DASHBOARD_CARD_REPORTS,
-        DASHBOARD_CARD_GOALS,
-        DASHBOARD_CARD_RECURRING,
-        DASHBOARD_CARD_PENDING,
-        DASHBOARD_CARD_RECENT_UPLOADS,
-    )
-    return preferredOrder.filter { it in keys } + keys.filter { it !in preferredOrder }
+@Composable
+private fun StatsUiState.monthPickerListState(): MonthPickerListState = when (monthsLoadState) {
+    StatsFilterOptionsLoadState.Unknown -> MonthPickerListState.Unknown
+    StatsFilterOptionsLoadState.Loading -> MonthPickerListState.Loading
+    StatsFilterOptionsLoadState.Loaded -> MonthPickerListState.Loaded
+    StatsFilterOptionsLoadState.Failed -> MonthPickerListState.Failed
+}
+
+private fun statsAuthorityTone(state: StatsUiState): DataAuthorityTone? = when {
+    StatsRefreshIndicator.isActive(loading = state.loading, hasReadableData = state.stats != null) ->
+        DataAuthorityTone.Refreshing
+    state.statsSource == StatsSource.LocalFallback -> DataAuthorityTone.LocalCache
+    state.statsSource == StatsSource.Backend -> DataAuthorityTone.Backend
+    else -> null
 }
 
 internal fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
-    if (state.statsSource != StatsSource.Backend) return null
+    if (state.statsSource != StatsSource.Backend || state.selectedTag.isNotBlank()) return null
     return state.lifestyleStats?.recent7DaysAmountCents?.coerceAtLeast(0L)
 }
 
 internal fun overviewMonthComparison(state: StatsUiState): MonthComparison? {
-    if (state.statsSource != StatsSource.Backend) return null
+    if (state.statsSource != StatsSource.Backend || state.selectedTag.isNotBlank()) return null
     val overview = state.reportsOverview ?: return null
     if (overview.month != state.month) return null
     return overview.toAuthoritativeMonthComparison()
@@ -383,15 +254,14 @@ internal fun overviewMonthComparison(state: StatsUiState): MonthComparison? {
 private fun ReportsOverview.toAuthoritativeMonthComparison(): MonthComparison? {
     if (previousCount <= 0 || previousTotalAmountCents <= 0L) return null
     val currentAmount = totalAmountCents.coerceAtLeast(0L)
-    val previousAmount = previousTotalAmountCents
-    val delta = currentAmount - previousAmount
+    val delta = currentAmount - previousTotalAmountCents
     return MonthComparison(
         currentMonth = month,
         previousMonth = previousMonth,
         currentAmountCents = currentAmount,
-        previousAmountCents = previousAmount,
+        previousAmountCents = previousTotalAmountCents,
         deltaAmountCents = delta,
-        percentChange = ((delta.toDouble() / previousAmount.toDouble()) * 100).roundToInt(),
+        percentChange = ((delta.toDouble() / previousTotalAmountCents.toDouble()) * 100).roundToInt(),
     )
 }
 
@@ -405,5 +275,3 @@ internal object StatsRefreshIndicator {
     fun isActive(loading: Boolean, hasReadableData: Boolean): Boolean =
         ReadableRefreshIndicator.isActive(loading = loading, hasReadableData = hasReadableData)
 }
-
-private val tagScopedHiddenTabs = setOf(StatsTab.Budget, StatsTab.Goals)

@@ -162,6 +162,7 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: 
                         clearInProgress = false,
                     )
                 }
+                onDataChanged()
                 confirmAfterAmountPatch(expenseId, updated.rowVersion)
             }
             .onFailure { error ->
@@ -191,6 +192,7 @@ private suspend fun PendingViewModel.confirmAfterAmountPatch(expenseId: Long, ex
                     message = UiText.res(R.string.pending_review_amount_saved_confirmed),
                 )
             }
+            onDataChanged()
             advanceReviewOrClose(
                 field = ReviewField.AMOUNT,
                 handledId = expenseId,
@@ -266,6 +268,7 @@ fun PendingViewModel.confirmReadyExpenses() {
                 },
             )
         }
+        if (succeeded > 0) onDataChanged()
     }
 }
 
@@ -360,6 +363,7 @@ private fun PendingViewModel.patchExpense(
                         message = successMessage,
                     )
                 }
+                onDataChanged()
                 // 连续审阅：保存成功后载入下一条仍缺同字段的票，不关 sheet；
                 // 队列耗尽才关。已补完的当前票不再缺字段会自然落选，无需进跳过集。
                 advanceReviewOrClose(

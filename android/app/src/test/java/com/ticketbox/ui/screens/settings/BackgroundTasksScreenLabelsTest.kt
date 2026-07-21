@@ -7,6 +7,8 @@ import com.ticketbox.domain.model.BACKGROUND_TASK_FAILED
 import com.ticketbox.domain.model.BACKGROUND_TASK_QUEUED
 import com.ticketbox.domain.model.BACKGROUND_TASK_RUNNING
 import com.ticketbox.domain.model.BackgroundTask
+import com.ticketbox.ui.screens.tasks.backgroundTaskStatusLabelRes
+import com.ticketbox.ui.screens.tasks.backgroundTaskTypeLabelRes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -41,6 +41,10 @@ class DashboardCardsTest {
 
     @Test
     fun statsTabMappingKeepsUserVisibilityAndSavedOrder() {
+        assertEquals(
+            listOf(StatsTab.Overview, StatsTab.Trend, StatsTab.Category),
+            PrimaryStatsTabs,
+        )
         val visibleKeys = visibleDashboardCardKeys(
             listOf(
                 DashboardCard(DASHBOARD_CARD_RECURRING, "recurring", visible = true, position = 0),
