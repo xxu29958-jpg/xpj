@@ -6,13 +6,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -111,15 +111,19 @@ private fun AppVisualComponentsPreview() {
                 onClick = {},
             )
             AppBottomNav(
-                // 对齐生产主底栏(MainShellState.BottomTab): 今日/待确认/账本/洞察/设置。
+                // 对齐生产五域主底栏：所有标签常显，账户与设置不占任务域位置。
                 items = listOf(
-                    AppPrimaryNavItem("today", stringResource(R.string.nav_tab_today), Icons.Filled.Today),
-                    AppPrimaryNavItem("pending", stringResource(R.string.nav_tab_pending), Icons.Filled.CheckCircle),
-                    AppPrimaryNavItem("ledger", stringResource(R.string.nav_tab_ledger), Icons.AutoMirrored.Filled.ReceiptLong),
-                    AppPrimaryNavItem("insights", stringResource(R.string.nav_tab_insights), Icons.Filled.Insights),
-                    AppPrimaryNavItem("settings", stringResource(R.string.nav_tab_settings), Icons.Filled.Settings),
+                    AppPrimaryNavItem("inbox", stringResource(R.string.nav_domain_inbox), Icons.Filled.Inbox),
+                    AppPrimaryNavItem(
+                        "transactions",
+                        stringResource(R.string.nav_domain_transactions),
+                        Icons.AutoMirrored.Filled.ReceiptLong,
+                    ),
+                    AppPrimaryNavItem("obligations", stringResource(R.string.nav_domain_obligations), Icons.Filled.People),
+                    AppPrimaryNavItem("plans", stringResource(R.string.nav_domain_plans), Icons.AutoMirrored.Filled.EventNote),
+                    AppPrimaryNavItem("insights", stringResource(R.string.nav_domain_insights), Icons.Filled.Insights),
                 ),
-                selectedKey = "today",
+                selectedKey = "inbox",
                 onSelect = {},
             )
         }

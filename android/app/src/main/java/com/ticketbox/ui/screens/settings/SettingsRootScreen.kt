@@ -27,13 +27,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderShared
@@ -124,7 +122,6 @@ data class SettingsRootLedgerFamilyNavigationActions(
     val onOpenFamilyMembers: () -> Unit,
     val onOpenMyDevices: () -> Unit,
     val onOpenJoinFamilyLedger: () -> Unit,
-    val onOpenBillSplits: () -> Unit,
 )
 
 data class SettingsRootBookkeepingNavigationActions(
@@ -135,9 +132,7 @@ data class SettingsRootBookkeepingNavigationActions(
 )
 
 data class SettingsRootDataToolsNavigationActions(
-    val onOpenDashboardCards: () -> Unit,
     val onOpenDataExport: () -> Unit,
-    val onOpenIncomePlans: () -> Unit,
 )
 
 data class SettingsRootAlertsAppearanceNavigationActions(
@@ -157,6 +152,7 @@ data class SettingsRootConnectionSystemNavigationActions(
 fun SettingsRootScreen(
     state: SettingsUiState,
     showAdvancedTools: Boolean,
+    onBack: () -> Unit,
     navigationActions: SettingsRootNavigationActions,
 ) {
     val connectionTitle = if (showAdvancedTools) {
@@ -172,7 +168,7 @@ fun SettingsRootScreen(
     SettingsPageFrame(
         title = stringResource(R.string.settings_root_page_title),
         subtitle = stringResource(R.string.settings_root_page_subtitle),
-        onBack = null,
+        onBack = onBack,
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
@@ -212,12 +208,6 @@ fun SettingsRootScreen(
                     icon = Icons.Filled.GroupAdd,
                     onClick = navigationActions.ledgerFamily.onOpenJoinFamilyLedger,
                 )
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_bill_splits_title),
-                    subtitle = stringResource(R.string.settings_root_entry_bill_splits_subtitle),
-                    icon = Icons.Filled.Group,
-                    onClick = navigationActions.ledgerFamily.onOpenBillSplits,
-                )
             }
             SettingsSection(title = stringResource(R.string.settings_root_section_bookkeeping_data), icon = Icons.Filled.Category) {
                 SettingsEntryRow(
@@ -245,22 +235,10 @@ fun SettingsRootScreen(
                     onClick = navigationActions.bookkeeping.onOpenRecycleBin,
                 )
                 SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_dashboard_cards_title),
-                    subtitle = stringResource(R.string.settings_root_entry_dashboard_cards_subtitle),
-                    icon = Icons.Filled.DashboardCustomize,
-                    onClick = navigationActions.dataTools.onOpenDashboardCards,
-                )
-                SettingsEntryRow(
                     title = stringResource(R.string.settings_root_entry_data_export_title),
                     subtitle = stringResource(R.string.settings_root_entry_data_export_subtitle),
                     icon = Icons.Filled.FileDownload,
                     onClick = navigationActions.dataTools.onOpenDataExport,
-                )
-                SettingsEntryRow(
-                    title = stringResource(R.string.settings_root_entry_income_plans_title),
-                    subtitle = stringResource(R.string.settings_root_entry_income_plans_subtitle),
-                    icon = Icons.Filled.AccountBalanceWallet,
-                    onClick = navigationActions.dataTools.onOpenIncomePlans,
                 )
             }
             SettingsSection(title = stringResource(R.string.settings_root_section_alerts_appearance), icon = Icons.Filled.Palette) {

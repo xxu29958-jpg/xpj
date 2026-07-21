@@ -4,7 +4,6 @@ import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.BudgetProgressStatus
 import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.DailySpend
-import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.LifestyleStats
@@ -28,6 +27,8 @@ enum class ReportGoalsLoadState { Unknown, Loading, Loaded, Failed }
 
 enum class StatsFilterOptionsLoadState { Unknown, Loading, Loaded, Failed }
 
+enum class DataQualityLoadState { Unknown, Loading, Loaded, Failed }
+
 data class StatsUiState(
     val stats: MonthlyStats? = null,
     val statsSource: StatsSource = StatsSource.None,
@@ -43,12 +44,11 @@ data class StatsUiState(
     val reportGoals: List<Goal> = emptyList(),
     val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
     val lastUploadAt: String? = null,
-    val dashboardCards: List<DashboardCard> = emptyList(),
-    val dashboardCardsLoading: Boolean = false,
-    val dashboardCardsMessage: UiText? = null,
     val reportsLoading: Boolean = false,
     val reportsMessage: UiText? = null,
     val dataQuality: DataQualitySummary? = null,
+    val dataQualityLoadState: DataQualityLoadState = DataQualityLoadState.Unknown,
+    val dataQualityError: UiText? = null,
     val months: List<String> = emptyList(),
     val monthsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
     val tags: List<String> = emptyList(),
@@ -65,11 +65,6 @@ data class StatsUiState(
      * (that path uses [message] for the informational "本机估算" notice).
      */
     val statsLoadError: UiText? = null,
-    /**
-     * 轨道2 [P1]：pending 还款草稿数，统计页头「管理」菜单的「还款待确认」项据此显示计数 badge（>0 才显）。
-     * 账本作用域（与月/标签无关），由 [StatsReportsViewModel] 在每次 refresh 时拉取、经 [mergeStatsUiState] 透传。
-     */
-    val pendingRepaymentDraftCount: Int = 0,
 )
 
 data class MonthlyStatsUiState(
@@ -83,6 +78,8 @@ data class MonthlyStatsUiState(
     val recurringCandidates: List<RecurringCandidate> = emptyList(),
     val lastUploadAt: String? = null,
     val dataQuality: DataQualitySummary? = null,
+    val dataQualityLoadState: DataQualityLoadState = DataQualityLoadState.Unknown,
+    val dataQualityError: UiText? = null,
     val months: List<String> = emptyList(),
     val monthsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
     val tags: List<String> = emptyList(),
@@ -108,15 +105,10 @@ data class StatsReportsUiState(
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
     val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
-    val dashboardCards: List<DashboardCard> = emptyList(),
-    val dashboardCardsLoading: Boolean = false,
-    val dashboardCardsMessage: UiText? = null,
     val reportsLoading: Boolean = false,
     val reportsMessage: UiText? = null,
     val month: String = "",
     val selectedTag: String = "",
-    // 轨道2 [P1]：pending 还款草稿数（菜单「还款待确认」badge 源）。账本作用域，不随月/标签 gate。
-    val pendingRepaymentDraftCount: Int = 0,
 )
 
 internal fun mergeStatsUiState(
@@ -151,12 +143,11 @@ internal fun mergeStatsUiState(
             ReportGoalsLoadState.Unknown
         },
         lastUploadAt = monthly.lastUploadAt,
-        dashboardCards = reports.dashboardCards,
-        dashboardCardsLoading = reports.dashboardCardsLoading,
-        dashboardCardsMessage = reports.dashboardCardsMessage,
         reportsLoading = if (reportsMatch) reports.reportsLoading else false,
         reportsMessage = if (reportsMatch) reports.reportsMessage else null,
         dataQuality = monthly.dataQuality,
+        dataQualityLoadState = monthly.dataQualityLoadState,
+        dataQualityError = monthly.dataQualityError,
         months = monthly.months,
         monthsLoadState = monthly.monthsLoadState,
         tags = monthly.tags,
@@ -166,7 +157,5 @@ internal fun mergeStatsUiState(
         loading = monthly.loading,
         message = monthly.message,
         statsLoadError = monthly.statsLoadError,
-        // 账本作用域 badge 计数：不随 reportsMatch/budgetMatch/标签 gate（与月/标签无关，标签筛选态也要显示）。
-        pendingRepaymentDraftCount = reports.pendingRepaymentDraftCount,
     )
 }

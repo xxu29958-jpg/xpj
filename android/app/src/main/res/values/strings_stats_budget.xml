@@ -8,18 +8,8 @@
     <string name="stats_month_picker_description"></string>
     <string name="stats_category_empty_title">%1$s 还没有分类支出</string>
     <string name="stats_category_empty_body">确认几笔账单后，这里会显示分类占比。</string>
-    <string name="stats_all_cards_hidden_title">首页卡片已全部隐藏</string>
-    <string name="stats_all_cards_hidden_body">可以在设置 > 首页卡片中恢复默认卡片。</string>
     <string name="stats_header_title">洞察</string>
-    <string name="stats_header_menu_planning">规划</string>
-    <string name="stats_header_menu_planning_description">规划菜单</string>
-    <string name="stats_header_menu_planning_collapsed">已折叠</string>
-    <string name="stats_header_menu_planning_expanded">已展开</string>
-    <string name="stats_header_open_budget">预算</string>
-    <string name="stats_header_open_spending_goal">添加开销目标</string>
-    <string name="stats_header_open_recurring">固定支出</string>
-    <string name="stats_header_open_income_plans">收入记录</string>
-    <string name="stats_header_open_debt_goals">还债目标</string>
+    <string name="stats_header_subtitle">已入账支出的变化与构成</string>
     <string name="stats_filter_all_months">全部月份</string>
     <string name="stats_filter_pick_month_description">选择月份</string>
     <string name="stats_filter_all_tags">全部标签</string>
@@ -111,7 +101,7 @@
     <string name="stats_budget_empty_action">设置预算</string>
 
     <!-- CategoryStructureCard：分类结构 -->
-    <string name="stats_category_structure_title">分类结构</string>
+    <string name="stats_category_structure_title">支出构成</string>
     <string name="stats_category_structure_top">主要花在「%1$s」</string>
     <string name="stats_category_structure_empty">还没有分类支出</string>
     <string name="stats_category_structure_insight">占本月 %1$s · %2$d 个分类</string>
@@ -126,9 +116,9 @@
     <string name="stats_tag_distribution_subtitle">按本月已确认账单的标签聚合</string>
     <string name="stats_tag_distribution_row_label">#%1$s</string>
     <string name="stats_tag_distribution_percent_count">%1$d%% · %2$d 笔</string>
-    <string name="stats_tag_scope_title">标签洞察</string>
+    <string name="stats_tag_scope_title">标签支出</string>
     <string name="stats_tag_scope_subtitle">#%1$s · %2$s</string>
-    <string name="stats_tag_scope_source_monthly">服务端统计</string>
+    <string name="stats_tag_scope_source_monthly">账本汇总</string>
     <string name="stats_tag_scope_source_local">本机估算</string>
     <string name="stats_tag_scope_source_pending">等待更新</string>
     <string name="stats_tag_scope_confirmed_caption">%1$d 笔已确认记录使用此标签。</string>
@@ -143,14 +133,17 @@
     <string name="stats_recent_trend_vs_previous_down">近 3 天比前 3 天少 %1$s</string>
     <string name="stats_recent_trend_vs_previous_flat">近 3 天与前 3 天持平</string>
     <string name="stats_recent_trend_vs_previous_new">近 3 天开始有支出</string>
-    <string name="stats_chart_window_label">%1$s-%2$s</string>
+    <string name="stats_chart_window_label">%1$s\n至%2$s</string>
+    <string name="stats_chart_peak_readout">峰值 %1$s · %2$s</string>
+    <string name="stats_chart_selected_readout">已选 %1$s · %2$s</string>
+    <string name="stats_chart_point_a11y">%1$s，支出 %2$s。点按查看该数据点</string>
     <string name="stats_chart_distribution_remaining">其余 %1$d 天</string>
     <string name="stats_recent_upload_title">最近上传</string>
     <string name="stats_recent_upload_empty">还没有上传记录</string>
     <string name="stats_recent_upload_hint">用于确认手机端和电脑端最近一次上传状态。</string>
 
     <!-- LifestyleCard：生活画像 + 高频商家 + 真香/后悔 -->
-    <string name="stats_lifestyle_module_title">生活画像</string>
+    <string name="stats_lifestyle_module_title">消费线索</string>
     <string name="stats_lifestyle_header_frequent">常去 %1$s · %2$d 笔</string>
     <string name="stats_lifestyle_header_merchant_spread">商家分散 · %1$d 个商家</string>
     <string name="stats_lifestyle_header_largest">最大一笔 %1$s · %2$s</string>
@@ -169,8 +162,25 @@
     <string name="stats_frequent_merchants_title">高频商家</string>
     <string name="stats_frequent_merchants_count">%1$d 笔</string>
 
-    <!-- PendingOverviewCard：待确认概况 -->
-    <string name="stats_pending_overview_title">待确认概况</string>
+    <!-- 数据质量：洞察入口、二级页与账本体检概况 -->
+    <string name="stats_data_quality_entry_title">数据质量</string>
+    <string name="stats_data_quality_entry_attention">待确认 %1$d 项 · 未分类 %2$d 项 · 疑似重复 %3$d 项 · 已确认无图 %4$d 项</string>
+    <string name="stats_data_quality_entry_clear">当前账本的数据状态良好</string>
+    <string name="stats_data_quality_entry_loading">正在读取当前账本的数据状态</string>
+    <string name="stats_data_quality_entry_unavailable">数据状态暂时不可用，点按重试</string>
+    <string name="stats_data_quality_page_title">数据质量</string>
+    <string name="stats_data_quality_page_subtitle">检查当前账本的待确认、分类完整性与凭证状态。</string>
+    <string name="stats_data_quality_back_to_insights">洞察</string>
+    <string name="stats_data_quality_error_title">暂时无法读取数据质量</string>
+    <string name="stats_data_quality_load_failed">数据质量暂时无法加载，请稍后重试。</string>
+    <string name="stats_data_quality_empty_title">数据状态良好</string>
+    <string name="stats_data_quality_empty_body">当前没有待确认、未分类、疑似重复或缺少凭证的记录。</string>
+    <string name="stats_data_quality_open_inbox">查看待确认</string>
+    <string name="stats_data_quality_open_uncategorized_transactions">查看已确认未分类交易</string>
+    <string name="stats_data_quality_remediation_inbox_hint">进入收件对应筛选处理</string>
+    <string name="stats_data_quality_remediation_transactions_hint">进入流水问题筛选查看</string>
+    <string name="stats_data_quality_remediation_content_description">打开处理入口</string>
+    <string name="stats_pending_overview_title">待确认与完整性</string>
     <string name="stats_pending_overview_oldest">最久 %1$d 天</string>
     <string name="stats_pending_overview_oldest_empty">—</string>
     <string name="stats_pending_overview_hint">去待确认页处理，整理后这里会清零。</string>
@@ -194,8 +204,8 @@
     <string name="stats_reports_answer_no_trend">暂无波动</string>
     <string name="stats_reports_trend_title">趋势报表</string>
     <string name="stats_reports_trend_subtitle">本月节奏与近期变化</string>
-    <string name="stats_reports_unavailable_title">报表暂不可用</string>
-    <string name="stats_reports_unavailable_body">连接恢复后，再显示服务端趋势和排行。</string>
+    <string name="stats_reports_unavailable_title">趋势暂时不可用</string>
+    <string name="stats_reports_unavailable_body">连接恢复后，会显示支出走势和商家排行。</string>
     <string name="stats_reports_chart_title">本月支出趋势</string>
     <string name="stats_reports_chart_subtitle">%1$s · %2$d 笔已确认</string>
     <string name="stats_reports_chart_peak">峰值 %1$s</string>
@@ -262,7 +272,7 @@
     <string name="stats_reports_goals_loading">正在读取本月目标。</string>
     <string name="stats_reports_goals_loading_hint">目标读取完成后再显示进度和风险。</string>
     <string name="stats_reports_goals_unavailable">目标暂时打不开。</string>
-    <string name="stats_reports_goals_unavailable_hint">本月目标需要服务端响应，稍后刷新再试。</string>
+    <string name="stats_reports_goals_unavailable_hint">本月目标尚未同步完成，稍后刷新再试。</string>
     <string name="stats_reports_goals_count">本月 %1$d 个开销目标</string>
     <string name="stats_reports_goals_loading_count">正在读取目标</string>
     <string name="stats_reports_goals_unavailable_count">目标状态暂不可用</string>
@@ -363,7 +373,7 @@
     <string name="debt_create_sheet_title">记一笔欠款</string>
     <string name="debt_create_label_direction">方向</string>
     <string name="debt_create_label_counterparty">欠款对象</string>
-    <string name="debt_create_label_amount">金额（元）</string>
+    <string name="debt_create_label_amount">金额（%1$s）</string>
     <string name="debt_create_save">保存</string>
     <string name="debt_create_submitting">保存中…</string>
     <string name="debt_create_validation_error">请填写欠款对象和大于 0 的金额。</string>
@@ -374,13 +384,11 @@
     <string name="debt_bill_parse_empty">暂未识别出字段，已打开表单。</string>
     <string name="debt_bill_parse_failed">账单识别失败，请稍后再试。</string>
 
-    <!-- ADR-0049 P3b / ⑤c (slice ⑤c-2) 欠我的(应收)：跨账本债权人的只读发现面。每行复用 §1A 的
-         communal MemberDebtRow（返回按钮复用 debt_list_topbar_back）。文案镜像 web ⑤c-3 receivables.html
-         的措辞，用 Android 全角标点惯例。 -->
+    <!-- 欠我的 viewer-personal 应收：同账本 external/member + 跨账本 member 汇总。 -->
     <string name="receivables_topbar_title">欠我的</string>
-    <string name="receivables_intro_body">家人接受你发起的拆账后，还没和你对上的份额都在这里（跨账本汇总）。对方发起还款后，点开对应的那笔来确认。</string>
-    <string name="receivables_empty_title">还没有待对上的款</string>
-    <string name="receivables_empty_body">你帮家人垫了钱、对方接受拆账后，还没对上的份额会显示在这里。</string>
+    <string name="receivables_intro_body">别人还欠你的外借、垫付和已接受拆账份额都在这里。点开一笔查看并处理还款。</string>
+    <string name="receivables_empty_title">还没有欠你的款</string>
+    <string name="receivables_empty_body">当前账本和跨账本拆账里，还没有记录到欠你的款项。</string>
     <string name="receivables_load_failed">应收加载失败，请稍后再试。</string>
 
     <!-- ADR-0049 §6 (slice 8b) 新建还债目标：目标名称 + 未结清欠款多选选择器。 -->
@@ -403,6 +411,19 @@
     <string name="debt_goal_create_validation">请输入目标名称并至少选择一笔欠款。</string>
     <string name="debt_goal_create_failed">创建失败，请稍后再试。</string>
     <string name="debt_goal_create_load_failed">欠款加载失败，请稍后再试。</string>
+    <string name="debt_goal_link_editor_action">编辑关联欠款</string>
+    <string name="debt_goal_link_editor_back">返回目标详情</string>
+    <string name="debt_goal_link_editor_title">编辑关联欠款</string>
+    <string name="debt_goal_link_editor_picker_title">目标内的欠款</string>
+    <string name="debt_goal_link_editor_picker_subtitle">可加入未结清欠款；已关联且仍有效的欠款会保留在列表中。</string>
+    <string name="debt_goal_link_editor_empty_title">没有可关联的欠款</string>
+    <string name="debt_goal_link_editor_empty_body">当前账本没有仍有效的关联候选，请返回目标详情。</string>
+    <string name="debt_goal_link_editor_selected_count">已选 %1$d 笔</string>
+    <string name="debt_goal_link_editor_save">保存关联</string>
+    <string name="debt_goal_link_editor_saving">保存中…</string>
+    <string name="debt_goal_link_editor_needs_one">还债目标至少要保留一笔欠款。</string>
+    <string name="debt_goal_link_editor_load_failed">关联候选加载失败，请下拉重试。</string>
+    <string name="debt_goal_link_editor_conflict_refreshed">目标已在其他端更新；已刷新版本并保留你的选择，请复核后重试。</string>
 
     <!-- ADR-0049 §3 (slice 8c) 欠款详情 + 记还款 / 调整 / 作废管理。 -->
     <string name="debt_detail_back">返回</string>
@@ -419,8 +440,8 @@
     <string name="debt_action_repayment_title">记还款</string>
     <string name="debt_action_adjustment_title">调整本金</string>
     <string name="debt_action_void_title">作废欠款</string>
-    <string name="debt_action_amount_label">金额（元）</string>
-    <string name="debt_action_adjustment_amount_label">调整金额（元）</string>
+    <string name="debt_action_amount_label">金额（%1$s）</string>
+    <string name="debt_action_adjustment_amount_label">调整金额（%1$s）</string>
     <string name="debt_action_adjustment_increase">增加欠款</string>
     <string name="debt_action_adjustment_decrease">减少欠款</string>
     <string name="debt_action_reason_label">原因</string>
@@ -638,7 +659,7 @@
     <string name="stats_empty_skeleton_frequent_merchants">高频商家</string>
 
     <!-- RecurringScreen：固定支出独立屏 -->
-    <string name="recurring_back_to_stats">返回洞察</string>
+    <string name="recurring_back_to_stats">返回计划</string>
     <string name="recurring_header_title">固定支出</string>
     <string name="recurring_header_subtitle">候选需手动确认；正式记录只做提醒和对比，不会自动入账。</string>
     <string name="recurring_items_card_title">%1$s 固定支出</string>
@@ -647,7 +668,7 @@
     <string name="recurring_items_card_count_unavailable">待刷新</string>
     <string name="recurring_items_empty">还没有这一类固定支出。</string>
     <string name="recurring_items_load_failed_title">固定支出暂时打不开</string>
-    <string name="recurring_items_load_failed_body">没有拿到服务端列表，先别把它当成没有固定支出。</string>
+    <string name="recurring_items_load_failed_body">列表暂未同步完成，已有的固定支出不会因此消失。</string>
     <string name="recurring_item_merchant_fallback">未填写商家</string>
     <string name="recurring_item_anomaly_higher">本月偏高 %1$d%%</string>
     <string name="recurring_action_pause">暂停</string>
@@ -658,7 +679,7 @@
     <string name="recurring_candidates_card_subtitle">识别自最近账单，确认后才进入正式固定支出。</string>
     <string name="recurring_candidates_empty">还没有新的固定支出候选。</string>
     <string name="recurring_candidates_load_failed_title">候选暂时打不开</string>
-    <string name="recurring_candidates_load_failed_body">没有拿到服务端候选，先别把它当成没有可确认项。</string>
+    <string name="recurring_candidates_load_failed_body">候选暂未同步完成，稍后刷新再确认。</string>
     <string name="recurring_candidate_merchant_fallback">未填写商家</string>
     <string name="recurring_candidate_meta">%1$s · %2$d 次 · %3$s</string>
     <string name="recurring_candidate_meta_summary">%1$d &#27425; &#183; %2$s</string>
@@ -673,7 +694,7 @@
     <string name="recurring_badge_empty">未设置</string>
 
     <!-- BudgetHeader / MonthSwitcher：预算屏头部 + 月份切换 -->
-    <string name="budget_back_to_stats">返回洞察</string>
+    <string name="budget_back_to_stats">返回计划</string>
     <string name="budget_header_title">预算</string>
     <string name="budget_header_subtitle">%1$s 月度可花额度</string>
     <string name="budget_month_previous">上月</string>
@@ -739,21 +760,20 @@
     <string name="stats_message_lifestyle_failed">生活统计暂时打不开，请稍后再试。</string>
     <string name="stats_message_local_fallback">当前为离线数据，联网后自动更新。</string>
     <string name="stats_message_stats_failed">统计暂时打不开，请稍后再试。</string>
-    <string name="stats_message_dashboard_cards_failed">首页卡片设置暂时打不开，已显示默认顺序。</string>
     <string name="stats_message_reports_failed">动态图表暂时打不开，稍后再试。</string>
     <string name="stats_message_trend_failed">趋势图暂时打不开，稍后再试。</string>
 
     <!-- StatsScreen：分段控件 tab 兜底标题（后端无 title 时） -->
     <string name="stats_tab_overview">概览</string>
     <string name="stats_tab_trend">趋势</string>
-    <string name="stats_tab_category">分类</string>
+    <string name="stats_tab_category">构成</string>
     <string name="stats_tab_budget">预算</string>
     <string name="stats_tab_goals">目标</string>
 
     <!-- CreateSpendingGoalScreen：洞察→规划→添加开销目标 -->
-    <string name="spending_goal_create_title">添加开销目标</string>
-    <string name="spending_goal_create_intro">设置某个月的支出上限，保存后会在开销目标卡片里跟踪进度。</string>
-    <string name="spending_goal_create_back">返回洞察</string>
+    <string name="spending_goal_create_title">添加消费目标</string>
+    <string name="spending_goal_create_intro">设置某个月的支出上限，保存后会在消费目标列表里跟踪进度。</string>
+    <string name="spending_goal_create_back">返回计划</string>
     <string name="spending_goal_create_month_section">目标月份</string>
     <string name="spending_goal_create_month_hint">按月跟踪，之后可在目标卡片查看进度。</string>
     <string name="spending_goal_create_form_section">目标内容</string>
@@ -776,6 +796,7 @@
     <string name="stats_pending_metric_missing_merchant">缺商家</string>
     <string name="stats_pending_metric_missing_category">未分类</string>
     <string name="stats_pending_metric_duplicates">疑似重复</string>
+    <string name="stats_pending_metric_confirmed_without_image">已确认无图</string>
 
     <!-- 固定支出状态 / 置信度 chip 标签（统计屏摘要卡 + 固定支出独立屏共用） -->
     <string name="recurring_status_active">活跃</string>

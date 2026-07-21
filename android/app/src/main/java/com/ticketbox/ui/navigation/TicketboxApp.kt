@@ -420,7 +420,7 @@ private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: Main
     when (request) {
         is LaunchIntentRequest.ShareImages -> {
             shellState.launchAction.post(LaunchAction.UploadSharedImages(request.uris))
-            shellState.selectBottomTab(BottomTab.Pending.key)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)
         }
         is LaunchIntentRequest.Navigate -> dispatchShortcutNavigation(request.target, shellState)
     }
@@ -430,13 +430,13 @@ private fun dispatchShortcutNavigation(target: ShortcutTarget, shellState: MainS
     when (target) {
         ShortcutTarget.UploadReceipt -> {
             shellState.launchAction.post(LaunchAction.OpenImagePicker)
-            shellState.selectBottomTab(BottomTab.Pending.key)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)
         }
         ShortcutTarget.ReviewPending ->
-            shellState.selectBottomTab(BottomTab.Pending.key)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)
         ShortcutTarget.ManualEntry -> {
             shellState.launchAction.post(LaunchAction.OpenManualEntry)
-            shellState.selectBottomTab(BottomTab.Ledger.key)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Transactions)
         }
     }
 }

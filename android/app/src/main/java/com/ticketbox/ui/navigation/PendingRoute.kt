@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
@@ -48,7 +49,10 @@ internal fun PendingRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
 ) {
-    val pendingViewModel: PendingViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
+    val pendingFactory = remember(screenFactory, shellState) {
+        screenFactory.repositoryViewModelFactory(shellState::markInsightsDataChanged)
+    }
+    val pendingViewModel: PendingViewModel = viewModel(factory = pendingFactory)
     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val uploadScope = rememberCoroutineScope()
@@ -76,6 +80,14 @@ internal fun PendingRoute(
         chromeActions = pendingScreenChromeActions(
             viewModel = pendingViewModel,
             onUploadScreenshot = launchImagePicker,
+            navigation = PendingInboxNavigationActions(
+                onOpenProcessing = {
+                    shellState.openSecondaryPage(ProductSecondaryPage.InboxProcessing)
+                },
+                onOpenRepaymentReview = shellState::openRepaymentDrafts,
+                onOpenDataQuality = shellState::openDataQualityInboxRedirect,
+            ),
+            filterRequest = shellState.pendingFilterRequest,
         ),
         itemActions = pendingExpenseQueueActions(navController, pendingViewModel),
         reviewActions = pendingReviewFlowActions(pendingViewModel),
@@ -83,12 +95,25 @@ internal fun PendingRoute(
     )
 }
 
+private data class PendingInboxNavigationActions(
+    val onOpenProcessing: () -> Unit,
+    val onOpenRepaymentReview: () -> Unit,
+    val onOpenDataQuality: () -> Unit,
+)
+
 private fun pendingScreenChromeActions(
     viewModel: PendingViewModel,
     onUploadScreenshot: () -> Unit,
+    navigation: PendingInboxNavigationActions,
+    filterRequest: PendingFilterRequestState,
 ): PendingScreenChromeActions = PendingScreenChromeActions(
     onRefresh = viewModel::refresh,
     onUploadScreenshot = onUploadScreenshot,
+    onOpenProcessing = navigation.onOpenProcessing,
+    onOpenRepaymentReview = navigation.onOpenRepaymentReview,
+    onOpenDataQuality = navigation.onOpenDataQuality,
+    requestedFilter = filterRequest.pending,
+    onRequestedFilterConsumed = { filterRequest.consume() },
 )
 
 private fun pendingExpenseQueueActions(

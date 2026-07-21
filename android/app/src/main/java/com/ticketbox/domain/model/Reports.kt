@@ -159,6 +159,12 @@ enum class StatsTab {
     Goals,
 }
 
+val PrimaryStatsTabs: List<StatsTab> = listOf(
+    StatsTab.Overview,
+    StatsTab.Trend,
+    StatsTab.Category,
+)
+
 val DefaultAndroidDashboardCardKeys: List<String> = listOf(
     DASHBOARD_CARD_PENDING,
     DASHBOARD_CARD_MONTHLY_SPEND,

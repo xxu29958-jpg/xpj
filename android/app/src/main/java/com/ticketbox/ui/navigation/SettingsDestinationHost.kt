@@ -5,8 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -14,14 +12,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseRepository
-import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
-import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.TagRepository
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -36,9 +31,6 @@ import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.ui.appearance.background.BackgroundImageStore
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.screens.BillSplitScreen
-import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.settings.AboutScreen
 import com.ticketbox.ui.screens.settings.AppearanceBackgroundActions
 import com.ticketbox.ui.screens.settings.AppearanceImmersionActions
@@ -61,7 +53,6 @@ import com.ticketbox.ui.screens.settings.CategoryRulesScreenActions
 import com.ticketbox.ui.screens.settings.CategoryRulesScreenState
 import com.ticketbox.ui.screens.settings.CategoryRulesStatusState
 import com.ticketbox.ui.screens.settings.CategoryRulesUndoActions
-import com.ticketbox.ui.screens.settings.DashboardCardsScreen
 import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
@@ -92,11 +83,8 @@ import com.ticketbox.ui.screens.settings.SyncStatusScreen
 import com.ticketbox.ui.screens.settings.TagManagementScreen
 import com.ticketbox.viewmodel.AppearanceUiState
 import com.ticketbox.viewmodel.BackgroundTasksViewModel
-import com.ticketbox.viewmodel.BillSplitViewModel
 import com.ticketbox.viewmodel.CategoryRulesUiState
-import com.ticketbox.viewmodel.DashboardCardsViewModel
 import com.ticketbox.viewmodel.FamilyMembersViewModel
-import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
 import com.ticketbox.viewmodel.MerchantAliasUiState
@@ -106,10 +94,7 @@ import com.ticketbox.viewmodel.RecycleBinViewModel
 import com.ticketbox.viewmodel.SettingsUiState
 import com.ticketbox.viewmodel.TagManagementViewModel
 import com.ticketbox.viewmodel.backgroundTasksViewModelFactory
-import com.ticketbox.viewmodel.billSplitViewModelFactory
-import com.ticketbox.viewmodel.dashboardCardsViewModelFactory
 import com.ticketbox.viewmodel.familyMembersViewModelFactory
-import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 import com.ticketbox.viewmodel.ledgerSwitcherViewModelFactory
 import com.ticketbox.viewmodel.myDevicesViewModelFactory
@@ -168,24 +153,28 @@ internal data class SettingsRouteActions(
     val onBindingCleared: () -> Unit,
     val onBindingChanged: () -> Unit,
     val onLedgerSwitched: () -> Unit,
-    val onDashboardCardsChanged: () -> Unit,
+    // 标签提交后让洞察域重拉标签筛选 chips（镜像 218 的 transactionVocabularyRevision 通道；
+    // DashboardCards 通道随首页卡片设置页一并删除）。
+    val onTransactionVocabularyChanged: () -> Unit,
 )
 
 internal data class SettingsRouteRepositories(
     val ledgerRepository: LedgerRepository,
     val expenseRepository: ExpenseRepository,
-    val reportsRepository: ReportsActions,
-    val incomePlanRepository: IncomePlanActions,
     val outboxRepository: OutboxRepository,
     val tagRepository: TagRepository,
     val activeLedgerId: String?,
+)
+
+internal data class SettingsDestinationNavigation(
+    val onCloseRoot: () -> Unit = {},
 )
 
 @Composable
 internal fun SettingsDestinationHost(
     states: SettingsRouteStates,
     chromeState: SettingsDestinationChromeState,
-    onSecondaryActiveChange: (Boolean) -> Unit = {},
+    navigation: SettingsDestinationNavigation = SettingsDestinationNavigation(),
     actions: SettingsRouteActions,
     repositories: SettingsRouteRepositories,
 ) {
@@ -198,13 +187,6 @@ internal fun SettingsDestinationHost(
     val backgroundCopyFailedMessage = stringResource(R.string.settings_background_copy_failed)
     val backgroundCustomTitle = stringResource(R.string.settings_background_custom_title)
     val backgroundCropFailedMessage = stringResource(R.string.settings_background_crop_failed)
-
-    LaunchedEffect(route) {
-        onSecondaryActiveChange(route != SettingsDestination.Root)
-    }
-    DisposableEffect(Unit) {
-        onDispose { onSecondaryActiveChange(false) }
-    }
 
     val backgroundPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
@@ -227,13 +209,17 @@ internal fun SettingsDestinationHost(
         actions.onApplyBackgroundSettings(states.appearance.backgroundSettings.withoutBackground())
     }
 
-    BackHandler(enabled = route != SettingsDestination.Root) {
-        route = when (route) {
-            SettingsDestination.BackgroundGallery,
-            is SettingsDestination.BackgroundCrop,
-            is SettingsDestination.BackgroundPreview,
-            -> SettingsDestination.Appearance
-            else -> SettingsDestination.Root
+    BackHandler {
+        if (route == SettingsDestination.Root) {
+            navigation.onCloseRoot()
+        } else {
+            route = when (route) {
+                SettingsDestination.BackgroundGallery,
+                is SettingsDestination.BackgroundCrop,
+                is SettingsDestination.BackgroundPreview,
+                -> SettingsDestination.Appearance
+                else -> SettingsDestination.Root
+            }
         }
     }
 
@@ -241,13 +227,13 @@ internal fun SettingsDestinationHost(
         SettingsDestination.Root -> SettingsRootScreen(
             state = states.settings,
             showAdvancedTools = chromeState.showAdvancedTools,
+            onBack = navigation.onCloseRoot,
             navigationActions = SettingsRootNavigationActions(
                 ledgerFamily = SettingsRootLedgerFamilyNavigationActions(
                     onOpenLedgers = { route = SettingsDestination.Ledgers },
                     onOpenFamilyMembers = { route = SettingsDestination.FamilyMembers },
                     onOpenMyDevices = { route = SettingsDestination.MyDevices },
                     onOpenJoinFamilyLedger = { route = SettingsDestination.JoinFamilyLedger },
-                    onOpenBillSplits = { route = SettingsDestination.BillSplits },
                 ),
                 bookkeeping = SettingsRootBookkeepingNavigationActions(
                     onOpenCategoryRules = { route = SettingsDestination.CategoryRules },
@@ -256,9 +242,7 @@ internal fun SettingsDestinationHost(
                     onOpenRecycleBin = { route = SettingsDestination.RecycleBin },
                 ),
                 dataTools = SettingsRootDataToolsNavigationActions(
-                    onOpenDashboardCards = { route = SettingsDestination.DashboardCards },
                     onOpenDataExport = { route = SettingsDestination.DataExport },
-                    onOpenIncomePlans = { route = SettingsDestination.IncomePlans },
                 ),
                 alertsAppearance = SettingsRootAlertsAppearanceNavigationActions(
                     onOpenNotifications = { route = SettingsDestination.NotificationPreferences },
@@ -365,28 +349,6 @@ internal fun SettingsDestinationHost(
             },
         )
 
-        SettingsDestination.DashboardCards -> {
-            val vm: DashboardCardsViewModel = viewModel(
-                key = "settings-dashboard-cards",
-                factory = dashboardCardsViewModelFactory(repositories.reportsRepository),
-            )
-            val state by vm.uiState.collectAsStateWithLifecycle()
-            LaunchedEffect(state.savedRevision) {
-                if (state.savedRevision > 0) actions.onDashboardCardsChanged()
-            }
-            DashboardCardsScreen(
-                state = state,
-                onBack = { route = SettingsDestination.Root },
-                actions = com.ticketbox.ui.screens.settings.DashboardCardsScreenActions(
-                    onMoveCard = vm::moveCard,
-                    onReorder = vm::reorderCards,
-                    onVisibleChange = vm::setVisible,
-                    onSave = vm::saveCards,
-                    onReset = vm::resetCards,
-                ),
-            )
-        }
-
         SettingsDestination.CategoryRules -> CategoryRulesScreen(
             state = CategoryRulesScreenState(
                 rules = CategoryRulesRuleListState(
@@ -474,10 +436,8 @@ internal fun SettingsDestinationHost(
                 viewModel = vm,
                 readOnly = !ledgerRoleCanModify(states.settings.role),
                 onBack = { route = SettingsDestination.Root },
-                // P4 stale-refresh: a committed tag mutation reuses the stats-refresh
-                // signal so the stats tab re-pulls its tag list (drops the dead chip)
-                // on next show — same validated channel as dashboard-card edits.
-                onTagsChanged = actions.onDashboardCardsChanged,
+                // 标签提交后让洞察域重拉标签筛选 chips（transactionVocabularyRevision 通道）。
+                onTagsChanged = actions.onTransactionVocabularyChanged,
             )
         }
 
@@ -572,20 +532,6 @@ internal fun SettingsDestinationHost(
             )
         }
 
-        SettingsDestination.BillSplits -> {
-            val vm: BillSplitViewModel = viewModel(
-                key = "bill-splits",
-                factory = billSplitViewModelFactory(
-                    repositories.expenseRepository,
-                    repositories.ledgerRepository,
-                ),
-            )
-            BillSplitScreen(
-                viewModel = vm,
-                onBack = { route = SettingsDestination.Root },
-            )
-        }
-
         SettingsDestination.BackgroundTasks -> {
             val vm: BackgroundTasksViewModel = viewModel(
                 key = "background-tasks",
@@ -607,18 +553,6 @@ internal fun SettingsDestinationHost(
             )
             SyncStatusScreen(
                 viewModel = vm,
-                onBack = { route = SettingsDestination.Root },
-            )
-        }
-
-        SettingsDestination.IncomePlans -> {
-            val vm: IncomePlanViewModel = viewModel(
-                key = IncomePlanViewModelKey,
-                factory = incomePlanViewModelFactory(repositories.incomePlanRepository),
-            )
-            IncomePlanScreen(
-                viewModel = vm,
-                currency = LocalCurrencyDisplay.current,
                 onBack = { route = SettingsDestination.Root },
             )
         }

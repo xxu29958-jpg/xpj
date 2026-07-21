@@ -1,4 +1,4 @@
-package com.ticketbox.ui.screens.settings
+package com.ticketbox.ui.screens.tasks
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,15 +28,22 @@ import com.ticketbox.ui.design.AppTextHierarchy
 internal fun BackgroundTaskRow(
     task: BackgroundTask,
     busy: Boolean,
+    canModify: Boolean,
     onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        BackgroundTaskTitleLine(task = task, busy = busy, onCancel = onCancel)
+        BackgroundTaskTitleLine(
+            task = task,
+            busy = busy,
+            canModify = canModify,
+            onCancel = onCancel,
+        )
         BackgroundTaskTimeLines(task)
         BackgroundTaskProgress(task)
         BackgroundTaskMessage(task)
@@ -48,6 +55,7 @@ internal fun BackgroundTaskRow(
 private fun BackgroundTaskTitleLine(
     task: BackgroundTask,
     busy: Boolean,
+    canModify: Boolean,
     onCancel: () -> Unit,
 ) {
     Row(
@@ -70,7 +78,7 @@ private fun BackgroundTaskTitleLine(
                 color = MaterialTheme.colorScheme.secondary,
             )
         }
-        if (task.isCancellable) {
+        if (canCancelBackgroundTask(task, canModify)) {
             BackgroundTaskCancelAction(busy = busy, onCancel = onCancel)
         }
     }
