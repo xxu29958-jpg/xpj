@@ -4,8 +4,9 @@ import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.repository.ApiServiceProvider
-import com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring
 import com.ticketbox.data.repository.BudgetRepository
+import com.ticketbox.data.repository.CategoryPreferenceRepository
+import com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring
 import com.ticketbox.data.repository.DebtRepository
 import com.ticketbox.data.repository.ExpenseOfflineMutationWiring
 import com.ticketbox.data.repository.ExpenseRepository
@@ -150,6 +151,11 @@ internal class RepositoryGraph(
     // ADR-0043 slice C — tag management. Online-only (契约 7): no outbox / no
     // idempotency adapters, unlike MerchantRepository.
     val tagRepository = TagRepository(
+        apiProvider = apiServiceProvider,
+    )
+
+    // 218-B2: 流水资料库自定义分类目录。Online-only OCC 删除（同 TagRepository 线）。
+    val categoryPreferenceRepository = CategoryPreferenceRepository(
         apiProvider = apiServiceProvider,
     )
 

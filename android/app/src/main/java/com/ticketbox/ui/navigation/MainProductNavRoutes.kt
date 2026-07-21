@@ -65,7 +65,6 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                 preferenceControls = workspaceControls.preferences,
                 onBindingCleared = workspaceControls.onBindingCleared,
                 onClose = onBack,
-                onTransactionVocabularyChanged = shellState::markTransactionVocabularyChanged,
             )
         }
     }
@@ -137,8 +136,11 @@ internal fun NavGraphBuilder.addTransactionRoutes(
                 onBack = onBack,
             )
         }
-        // 218-B1: 流水资料库（TransactionsLibrary cluster）属后续 slice；
-        // 分类规则 / 商家别名 / 标签 / 回收站暂留设置页（见 SettingsDestinationHost）。
+        transactionsLibraryGraph(
+            navController = navController,
+            screenFactory = screenFactory,
+            onVocabularyChanged = shellState::markTransactionVocabularyChanged,
+        )
     }
 }
 

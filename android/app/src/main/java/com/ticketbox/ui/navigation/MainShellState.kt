@@ -68,7 +68,8 @@ internal enum class ProductSecondaryPage(val route: String) {
     BillSplits("product/obligations/splits"),
     // 流水域：全局搜索。
     GlobalSearch("product/transactions/search"),
-    // 218-B1: 流水资料库（分类/商家/标签/规则）属后续 slice，暂留设置页，不占二级页枚举。
+    // 流水域：分类、商家、标签与规则的资料库。
+    TransactionsLibrary(TRANSACTIONS_LIBRARY_ROUTE),
     // 洞察域：当前账本的数据质量体检（218-B1 暂不挂路由，入口重定向到带筛选的 Inbox）。
     InsightsDataQuality("product/insights/data-quality"),
     // 往来域：还债计划。
@@ -272,6 +273,7 @@ internal val ProductSecondaryPage.surfaceRole: SurfaceRole
 
         ProductSecondaryPage.BillSplits,
         ProductSecondaryPage.GlobalSearch,
+        ProductSecondaryPage.TransactionsLibrary,
         ProductSecondaryPage.DebtGoals,
         ProductSecondaryPage.RepaymentDrafts,
         -> SurfaceRole.Ledger

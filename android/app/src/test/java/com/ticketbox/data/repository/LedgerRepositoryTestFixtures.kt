@@ -265,6 +265,12 @@ internal class StubApi(
         query: Map<String, String>,
     ): PaginatedExpensesDto = ledgerUnsupported()
     override suspend fun categories(): CategoriesDto = ledgerUnsupported()
+    override suspend fun categoryPreferences(): com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto =
+        ledgerUnsupported()
+    override suspend fun deleteCategoryPreference(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.CategoryPreferenceTokenRequestDto,
+    ): com.ticketbox.data.remote.dto.CategoryPreferenceDto = ledgerUnsupported()
     override suspend fun tags(): TagsDto = ledgerUnsupported()
     override suspend fun listManagedTags(): com.ticketbox.data.remote.dto.TagManagementListDto = ledgerUnsupported()
     override suspend fun renameTag(publicId: String, request: com.ticketbox.data.remote.dto.TagRenameRequest): com.ticketbox.data.remote.dto.TagDetailDto = ledgerUnsupported()

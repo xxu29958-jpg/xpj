@@ -108,6 +108,7 @@ class RecycleBinViewModelTest {
             assertEquals(UiText.raw("收入记录已恢复。"), state.message)
             assertEquals(MessageTone.Success, state.messageTone)
             assertNull(state.busyItemKey)
+            assertEquals(1, state.changedRevision)
         } finally {
             advanceUntilIdle()
             Dispatchers.resetMain()
@@ -140,6 +141,7 @@ class RecycleBinViewModelTest {
             assertEquals(1, state.shortWindowCount)
             assertTrue(state.loadFailed)
             assertEquals(MessageTone.Danger, state.messageTone)
+            assertEquals(1, state.changedRevision)
         } finally {
             advanceUntilIdle()
             Dispatchers.resetMain()
@@ -156,6 +158,7 @@ class RecycleBinViewModelTest {
             vm.restore(recycleItem().toDomain())
 
             assertTrue(api.recycleBinRestoreRequests.isEmpty())
+            assertEquals(0, vm.uiState.value.changedRevision)
         } finally {
             advanceUntilIdle()
             Dispatchers.resetMain()

@@ -68,7 +68,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
@@ -100,6 +99,7 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
@@ -133,12 +133,7 @@ fun SettingsEntryRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.heavy),
-                modifier = Modifier.size(AppSpacing.cardPadding),
-            )
+            SettingsEntryIcon(icon = icon)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
@@ -182,26 +177,49 @@ internal fun SettingsPageFrame(
     // callers that pass no status untouched.
     status: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
-) {
-    val isSecondaryPage = onBack != null
+) = ManagementPageFrame(
+    header = ManagementPageHeader(
+        title = title,
+        subtitle = subtitle,
+    ),
+    onBack = onBack,
+    status = status,
+    content = content,
+)
 
+@Composable
+internal fun ManagementPageFrame(
+    header: ManagementPageHeader,
+    onBack: (() -> Unit)?,
+    status: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
-            role = AppPageRole.Settings,
-            title = title,
-            subtitle = subtitle,
-            backText = stringResource(R.string.settings_page_back_to_settings),
+            role = header.chrome.role,
+            title = header.title,
+            subtitle = header.subtitle,
+            backText = header.chrome.backText ?: stringResource(R.string.settings_page_back_to_settings),
             onBack = onBack,
-            hasBottomBar = !isSecondaryPage,
-            verticalArrangement = Arrangement.spacedBy(
-                if (isSecondaryPage) AppSpacing.smallGap else AppSpacing.sectionGap,
-            ),
+            hasBottomBar = false,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ),
         slots = AppSecondaryPageSlots(status = status),
     ) {
         content()
     }
 }
+
+data class ManagementPageHeader(
+    val title: String,
+    val subtitle: String,
+    val chrome: ManagementPageChrome = ManagementPageChrome(),
+)
+
+data class ManagementPageChrome(
+    val role: AppPageRole = AppPageRole.Settings,
+    val backText: String? = null,
+)
 
 @Composable
 internal fun BackgroundActionButton(

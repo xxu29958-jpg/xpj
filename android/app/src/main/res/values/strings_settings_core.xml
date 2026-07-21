@@ -21,6 +21,7 @@
     <string name="settings_root_entry_ledgers_title">账本</string>
     <string name="settings_root_entry_ledgers_subtitle">查看、切换、新建账本</string>
     <string name="settings_root_section_bookkeeping_data">记账规则与数据</string>
+    <string name="settings_root_section_data_privacy">数据与隐私</string>
     <string name="settings_root_entry_category_rules_title">分类规则</string>
     <string name="settings_root_entry_category_rules_subtitle">商家关键词和自动分类建议</string>
     <string name="settings_root_entry_merchant_aliases_title">商家管理</string>

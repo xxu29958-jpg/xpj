@@ -22,6 +22,7 @@ data class RecycleBinUiState(
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
     val canModify: Boolean = false,
+    val changedRevision: Int = 0,
 )
 
 class RecycleBinViewModel(
@@ -134,5 +135,6 @@ private fun RecycleBinUiState.withRestoredItemRemoved(key: String): RecycleBinUi
         shortWindowCount = shortWindowCount.coerceIn(0, remainingItems.size),
         loadFailed = false,
         messageTone = MessageTone.Neutral,
+        changedRevision = changedRevision + 1,
     )
 }

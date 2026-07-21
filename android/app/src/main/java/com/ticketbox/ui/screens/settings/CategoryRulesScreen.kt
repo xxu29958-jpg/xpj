@@ -101,6 +101,7 @@ data class CategoryRulesUndoActions(
 fun CategoryRulesScreen(
     state: CategoryRulesScreenState,
     actions: CategoryRulesScreenActions,
+    chrome: ManagementPageChrome = ManagementPageChrome(),
 ) {
     var form by remember { mutableStateOf<CategoryRuleDraftForm?>(null) }
     var deletingRule by remember { mutableStateOf<CategoryRule?>(null) }
@@ -130,9 +131,12 @@ fun CategoryRulesScreen(
         onConfirm = contentActions.onRollbackRuleApplication,
     )
 
-    SettingsPageFrame(
-        title = stringResource(R.string.category_rules_page_title),
-        subtitle = categoryRuleSummary(state.rules.rules),
+    ManagementPageFrame(
+        header = ManagementPageHeader(
+            title = stringResource(R.string.category_rules_page_title),
+            subtitle = categoryRuleSummary(state.rules.rules),
+            chrome = chrome,
+        ),
         onBack = actions.onBack,
         status = { AppStatusBanner(message = state.status.message, tone = state.status.messageTone) },
     ) {

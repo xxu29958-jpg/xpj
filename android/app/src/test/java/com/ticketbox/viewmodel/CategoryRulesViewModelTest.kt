@@ -129,6 +129,7 @@ class CategoryRulesViewModelTest {
         assertFalse(state.busy)
         assertEquals(MessageTone.Success, state.messageTone)
         assertEquals(listOf("高德"), state.categoryRules.map { it.keyword })
+        assertEquals(1, state.changedRevision)
     }
 
     @Test
@@ -152,6 +153,7 @@ class CategoryRulesViewModelTest {
 
         assertEquals(UiText.res(R.string.category_rules_apply_preview_failed), state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
+        assertEquals(0, state.changedRevision)
     }
 
     @Test
@@ -171,6 +173,7 @@ class CategoryRulesViewModelTest {
 
         assertEquals(UiText.res(R.string.category_rules_rollback_failed), state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
+        assertEquals(0, state.changedRevision)
     }
 
     private fun harness(api: ApiService): CategoryRulesViewModel {
