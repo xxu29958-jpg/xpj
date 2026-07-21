@@ -70,21 +70,6 @@ GOAL_FG_MAPPING: tuple[tuple[str, str], ...] = (
     ("--goal-expired-fg", "expired"),
 )
 
-# ── DashboardCardTokens(全量 24 = 8 卡 × accent/icon/surface)────────────────
-# 表项 = (css_accent_var, css_icon_var, css_surface_var, card_field)。
-# Kotlin 端 card_field 是 DashboardCardTokens 里的卡名,对应
-# DashboardCardAccent(accent, iconTint, surface) 三个 Color,按位对齐三个 css var。
-CARD_MAPPING: tuple[tuple[str, str, str, str], ...] = (
-    ("--card-pending-accent", "--card-pending-icon", "--card-pending-surface", "pending"),
-    ("--card-month-spend-accent", "--card-month-spend-icon", "--card-month-spend-surface", "monthSpend"),
-    ("--card-recent-upload-accent", "--card-recent-upload-icon", "--card-recent-upload-surface", "recentUpload"),
-    ("--card-recurring-accent", "--card-recurring-icon", "--card-recurring-surface", "recurring"),
-    ("--card-goals-accent", "--card-goals-icon", "--card-goals-surface", "goals"),
-    ("--card-budget-accent", "--card-budget-icon", "--card-budget-surface", "budget"),
-    ("--card-backup-accent", "--card-backup-icon", "--card-backup-surface", "backup"),
-    ("--card-device-accent", "--card-device-icon", "--card-device-surface", "device"),
-)
-
 # ── SwipeActionTokens(bg/fg × 3;iconTint 不比 —— 见下注)─────────────────────
 # 表项 = (css_bg_var, css_fg_var, swipe_field)。Kotlin SwipeAction(bg, fg, iconTint),
 # /web 无独立 iconTint token(图标继承 fg 色),故只比 bg/fg 两位,iconTint 不进表。

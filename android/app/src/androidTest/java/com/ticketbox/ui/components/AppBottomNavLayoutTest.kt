@@ -65,12 +65,12 @@ class AppBottomNavLayoutTest {
     private companion object {
         val bottomNavLabels = listOf("今日", "待确认", "账本", "洞察", "设置")
 
-        fun bottomNavItems(): List<AppBottomNavItem> = listOf(
-            AppBottomNavItem("today", "今日", Icons.Default.Today),
-            AppBottomNavItem("pending", "待确认", Icons.Default.CheckCircle),
-            AppBottomNavItem("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
-            AppBottomNavItem("insights", "洞察", Icons.Default.Insights),
-            AppBottomNavItem("settings", "设置", Icons.Default.Settings),
+        fun bottomNavItems(): List<AppPrimaryNavItem> = listOf(
+            AppPrimaryNavItem("today", "今日", Icons.Default.Today),
+            AppPrimaryNavItem("pending", "待确认", Icons.Default.CheckCircle),
+            AppPrimaryNavItem("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
+            AppPrimaryNavItem("insights", "洞察", Icons.Default.Insights),
+            AppPrimaryNavItem("settings", "设置", Icons.Default.Settings),
         )
     }
 }

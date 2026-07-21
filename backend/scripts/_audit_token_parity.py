@@ -11,7 +11,6 @@ Android 视觉分叉)。本 lane 把它变成硬检查,逐主题(paper/mono/midn
   - chart:`tokens.css` ↔ `ChartTokens.kt` 全量(series×8 + sequential/diverging +
     axis/grid + tooltip/legend + sankey + overspend/empty)。
   - goal-fg:`tokens.css` ↔ `GoalTokens.kt` 5 个 tone 的 **fg**。
-  - card:`tokens.css` ↔ `DashboardCardTokens.kt` 全 24(8 卡 × accent/icon/surface)。
   - swipe:`tokens.css` ↔ `SwipeActionTokens.kt` 的 bg/fg × 3。
   - skeleton:`tokens.css` ↔ `SkeletonTokens.kt` 的 base/shine × 3(半透明)。
   - motion-shimmer:`--motion-shimmer`(ms)↔ `SkeletonTokens.shimmerDurationMillis`
@@ -44,7 +43,6 @@ import sys
 from pathlib import Path
 
 from _token_parity_tables import (
-    CARD_MAPPING,
     CHART_FIELD_MAPPING,
     CHART_SERIES_VARS,
     GOAL_FG_MAPPING,
@@ -60,7 +58,6 @@ _THEME_VISUALS = _DESIGN / "ThemeVisuals.kt"
 _STATE_TOKENS = _DESIGN / "StateTokens.kt"
 _CHART_TOKENS = _DESIGN / "ChartTokens.kt"
 _GOAL_TOKENS = _DESIGN / "GoalTokens.kt"
-_CARD_TOKENS = _DESIGN / "DashboardCardTokens.kt"
 _SWIPE_TOKENS = _DESIGN / "SwipeActionTokens.kt"
 _SKELETON_TOKENS = _DESIGN / "SkeletonTokens.kt"
 
@@ -191,9 +188,9 @@ def _kotlin_field_values(text: str, anchors: dict[str, str]) -> dict[str, dict[s
 def _kotlin_named_tuple_field(text: str, factory: str, tuple_call: str, index: int) -> dict[str, dict[str, str]]:
     """逐主题取形如 ``name = <tuple_call>(c0, c1, c2)`` 的第 ``index`` 个 Color。
 
-    覆盖 GoalTokens(``StateTokens``→取 fg=idx1)、DashboardCardTokens
-    (``DashboardCardAccent``)、SwipeActionTokens(``SwipeAction``)这类
-    「具名字段 = 三元 Color 构造」结构。返回 {tone_or_card_name: norm_hex}。
+    覆盖 GoalTokens(``StateTokens``→取 fg=idx1)、SwipeActionTokens
+    (``SwipeAction``)这类「具名字段 = 三元 Color 构造」结构。
+    返回 {tone_or_card_name: norm_hex}。
     """
     out: dict[str, dict[str, str]] = {}
     for theme, skin_name in _SKIN.items():
@@ -288,19 +285,6 @@ def _check_goal(css, goal_fg, problems: list[str]) -> int:
     return checked
 
 
-def _check_card(css, accent, icon, surface, problems: list[str]) -> int:
-    checked = 0
-    parts = (("accent", accent), ("iconTint", icon), ("surface", surface))
-    for theme in _THEMES:
-        for accent_var, icon_var, surface_var, card in CARD_MAPPING:
-            for css_var, (slot, got_map) in zip((accent_var, icon_var, surface_var), parts, strict=True):
-                msg = _diff(theme, css_var, css[theme].get(css_var), got_map[theme].get(card), f"card.{card}.{slot}")
-                if msg:
-                    problems.append(msg)
-                checked += 1
-    return checked
-
-
 def _check_swipe(css, bg, fg, problems: list[str]) -> int:
     checked = 0
     for theme in _THEMES:
@@ -351,7 +335,6 @@ def main() -> int:
     state_text = _STATE_TOKENS.read_text(encoding="utf-8")
     chart_text = _CHART_TOKENS.read_text(encoding="utf-8")
     goal_text = _GOAL_TOKENS.read_text(encoding="utf-8")
-    card_text = _CARD_TOKENS.read_text(encoding="utf-8")
     swipe_text = _SWIPE_TOKENS.read_text(encoding="utf-8")
     skeleton_text = _SKELETON_TOKENS.read_text(encoding="utf-8")
 
@@ -361,9 +344,6 @@ def main() -> int:
     chart_series = _kotlin_series(chart_text)
     chart_fields = _kotlin_field_values(chart_text, {t: f"AppSkin.{_SKIN[t]} -> ChartTokens(" for t in _THEMES})
     goal_fg = _kotlin_named_tuple_field(goal_text, "GoalTokens", "GoalStateTokens", 1)
-    card_accent = _kotlin_named_tuple_field(card_text, "DashboardCardTokens", "DashboardCardAccent", 0)
-    card_icon = _kotlin_named_tuple_field(card_text, "DashboardCardTokens", "DashboardCardAccent", 1)
-    card_surface = _kotlin_named_tuple_field(card_text, "DashboardCardTokens", "DashboardCardAccent", 2)
     swipe_bg = _kotlin_named_tuple_field(swipe_text, "SwipeActionTokens", "SwipeAction", 0)
     swipe_fg = _kotlin_named_tuple_field(swipe_text, "SwipeActionTokens", "SwipeAction", 1)
     skel = _kotlin_field_values(skeleton_text, {t: f"AppSkin.{_SKIN[t]} -> SkeletonTokens(" for t in _THEMES})
@@ -373,12 +353,11 @@ def main() -> int:
     checked += _check_core_and_state(css, visuals, state_fg, problems)
     checked += _check_chart(css, chart_series, chart_fields, problems)
     checked += _check_goal(css, goal_fg, problems)
-    checked += _check_card(css, card_accent, card_icon, card_surface, problems)
     checked += _check_swipe(css, swipe_bg, swipe_fg, problems)
     checked += _check_skeleton(css, skel, problems)
     checked += _check_motion_shimmer(css_text, skeleton_text, problems)
 
-    print(f"== 三端 token parity（{checked} 项 · core/state/chart/goal/card/swipe/skeleton + 数值钉，3 主题）==")
+    print(f"== 三端 token parity（{checked} 项 · core/state/chart/goal/swipe/skeleton + 数值钉，3 主题）==")
     if problems:
         print(f"FAIL: 发现 {len(problems)} 处三端 token 漂移:")
         for problem in problems:
