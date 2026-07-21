@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -17,8 +18,11 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.isPendingReadyToConfirmDirectly
 import com.ticketbox.ui.components.AppDataAuthorityStrip
+import com.ticketbox.ui.components.AppAdaptivePaneScaffold
+import com.ticketbox.ui.components.AppAdaptivePanePurpose
+import com.ticketbox.ui.components.AppAdaptivePaneStructures
+import com.ticketbox.ui.components.AppAdaptiveSupportingPane
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppListStateContent
@@ -29,10 +33,15 @@ import com.ticketbox.ui.components.AppScrollableContentChrome
 import com.ticketbox.ui.components.AppScrollableContentLayout
 import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.DataAuthorityTone
+import com.ticketbox.ui.components.appAdaptiveSupportingPaneContent
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.screens.pending.EmptyPendingState
 import com.ticketbox.ui.screens.pending.EmptyPendingStateModel
+import com.ticketbox.ui.screens.pending.InboxSection
+import com.ticketbox.ui.screens.pending.InboxActionLinks
+import com.ticketbox.ui.screens.pending.InboxSectionNavigation
 import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
 import com.ticketbox.ui.screens.pending.NeedsReviewFilterBar
@@ -47,8 +56,8 @@ import com.ticketbox.ui.screens.pending.PendingExpenseReviewRow
 import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.ui.screens.pending.PendingListBodyState
 import com.ticketbox.ui.screens.pending.PendingPrimaryReviewAction
-import com.ticketbox.ui.screens.pending.PendingQueueEvidence
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
+import com.ticketbox.ui.screens.pending.PendingQueueEvidence
 import com.ticketbox.ui.screens.pending.PendingQueueOverview
 import com.ticketbox.ui.screens.pending.PendingReviewFlowActions
 import com.ticketbox.ui.screens.pending.PendingUndoRejectBanner
@@ -62,6 +71,8 @@ import com.ticketbox.ui.screens.pending.PendingTopState
 import com.ticketbox.ui.screens.pending.UploadProgressCard
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
 import com.ticketbox.ui.screens.pending.pendingPrimaryReviewAction
+import com.ticketbox.ui.screens.pending.pendingMerchantPresentation
+import com.ticketbox.ui.screens.pending.pendingNeedsCategory
 import com.ticketbox.ui.screens.pending.pendingListBodyState
 import com.ticketbox.ui.screens.pending.shouldShowNeedsReviewFilterBar
 import com.ticketbox.viewmodel.PendingUiState
@@ -85,9 +96,15 @@ fun PendingScreen(
     val queueCounts = PendingQueueCounts(
         all = state.items.size,
         needsAmount = state.items.count { it.amountCents == null },
-        needsMerchant = state.items.count { it.merchant.isNullOrBlank() },
+        needsMerchant = state.items.count { pendingMerchantPresentation(it).needsReview },
         duplicate = state.items.count { it.duplicateStatus == DuplicateStatusValues.SUSPECTED },
-        readyToConfirm = state.items.count { it.isPendingReadyToConfirmDirectly() },
+        readyToConfirm = state.items.count {
+            pendingPrimaryReviewAction(it) == PendingPrimaryReviewAction.Confirm
+        },
+        needsCategory = state.items.count(::pendingNeedsCategory),
+        needsInformation = state.items.count { expense ->
+            pendingPrimaryReviewAction(expense) in PendingInformationActions
+        },
     )
     val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
@@ -96,6 +113,34 @@ fun PendingScreen(
         loadState = state.listLoadState,
     )
     val haptics = rememberAppHaptics()
+    val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
+    val authorityTone = when {
+        readOnly -> DataAuthorityTone.ReadOnly
+        blockingRefresh -> DataAuthorityTone.Refreshing
+        state.showingCachedSnapshot -> DataAuthorityTone.LocalCache
+        else -> DataAuthorityTone.Backend
+    }
+    val triagePaneState = PendingTriagePaneState(
+        counts = queueCounts,
+        selectedFilter = needsReviewFilter,
+        authorityTone = authorityTone,
+        queueEvidence = if (state.showingCachedSnapshot) {
+            PendingQueueEvidence.LocalCache
+        } else {
+            PendingQueueEvidence.Backend
+        },
+        readOnly = readOnly,
+        bulkRunning = state.bulkConfirm.running,
+        showNeedsReviewFilter = bodyState == PendingListBodyState.Content &&
+            shouldShowNeedsReviewFilterBar(queueCounts, needsReviewFilter),
+    )
+    val triagePaneActions = PendingTriagePaneActions(
+        onSelectFilter = { needsReviewFilter = it },
+        onOpenProcessing = chromeActions.onOpenProcessing,
+        onOpenRepaymentReview = chromeActions.onOpenRepaymentReview,
+        onOpenDataQuality = chromeActions.onOpenDataQuality,
+        onOpenBulkConfirm = reviewActions.queue.onOpenBulkConfirm,
+    )
 
     fun resolvePrimaryAction(expense: Expense) {
         when (pendingPrimaryReviewAction(expense)) {
@@ -130,6 +175,14 @@ fun PendingScreen(
         wasBlockingRefresh = blockingRefresh
     }
 
+    LaunchedEffect(chromeActions.requestedFilter) {
+        chromeActions.requestedFilter?.let { requested ->
+            needsReviewFilter = requested
+            listState.scrollToItem(0)
+            chromeActions.onRequestedFilterConsumed()
+        }
+    }
+
     if (showPendingTools) {
         ModalBottomSheet(onDismissRequest = { showPendingTools = false }) {
             PendingToolsSheet(
@@ -159,71 +212,52 @@ fun PendingScreen(
         actions = sheetActions,
     )
 
-    AppScrollableContent(
-        chrome = AppScrollableContentChrome(
-            role = AppPageRole.Pending,
-            layout = AppScrollableContentLayout(
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ),
-        ),
-        refresh = AppScrollableRefreshState(
-            isRefreshing = state.showPageRefresh,
-            onRefresh = chromeActions.onRefresh,
-        ),
-        listState = listState,
-    ) {
-        item {
-            PendingTop(
-                state = PendingTopState(
-                    counts = queueCounts,
-                    uploading = state.uploading,
-                    readOnly = readOnly,
+    AppAdaptivePaneScaffold(
+        structure = AppAdaptivePaneStructures.Inbox,
+        policy = adaptivePolicy,
+        primaryPane = {
+            AppScrollableContent(
+                chrome = AppScrollableContentChrome(
+                    role = AppPageRole.Pending,
+                    layout = AppScrollableContentLayout(
+                        horizontalPadding = AppSpacing.cardPaddingSmall,
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                    ),
                 ),
-                onUploadScreenshot = chromeActions.onUploadScreenshot,
-                trailingAction = if (state.items.isNotEmpty()) {
-                    {
-                        PendingDisplayModeButton(
-                            loading = blockingRefresh,
-                            displayMode = displayMode,
-                            onClick = { showPendingTools = true },
+                refresh = AppScrollableRefreshState(
+                    isRefreshing = state.showPageRefresh,
+                    onRefresh = chromeActions.onRefresh,
+                ),
+                listState = listState,
+            ) {
+                item {
+                    PendingTop(
+                        state = PendingTopState(
+                            counts = queueCounts,
+                            uploading = state.uploading,
+                            readOnly = readOnly,
+                        ),
+                        onUploadScreenshot = chromeActions.onUploadScreenshot,
+                        trailingAction = if (state.items.isNotEmpty()) {
+                            {
+                                PendingDisplayModeButton(
+                                    loading = blockingRefresh,
+                                    onClick = { showPendingTools = true },
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
+                if (!adaptivePolicy.showsSupportingPane) {
+                    item {
+                        PendingTriagePane(
+                            state = triagePaneState,
+                            actions = triagePaneActions,
                         )
                     }
-                } else {
-                    null
-                },
-            )
-        }
-
-        val authorityTone = when {
-            readOnly -> DataAuthorityTone.ReadOnly
-            blockingRefresh -> DataAuthorityTone.Refreshing
-            state.showingCachedSnapshot -> DataAuthorityTone.LocalCache
-            else -> DataAuthorityTone.Backend
-        }
-        if (authorityTone != DataAuthorityTone.Backend) {
-            item {
-                AppDataAuthorityStrip(
-                    tone = authorityTone,
-                    localCacheBodyRes = R.string.components_data_authority_pending_cache_body,
-                )
-            }
-        }
-
-        if (state.items.isNotEmpty()) {
-            item {
-                PendingQueueOverview(
-                    counts = queueCounts,
-                    evidence = if (state.showingCachedSnapshot) {
-                        PendingQueueEvidence.LocalCache
-                    } else {
-                        PendingQueueEvidence.Backend
-                    },
-                    readOnly = readOnly,
-                    bulkRunning = state.bulkConfirm.running,
-                    onOpenBulkConfirm = reviewActions.queue.onOpenBulkConfirm,
-                )
-            }
-        }
+                }
 
         if (state.items.isEmpty() && !readOnly) {
             item { PendingClearCelebration(visible = showCelebration) }
@@ -282,19 +316,7 @@ fun PendingScreen(
                 }
             }
 
-            bodyState == PendingListBodyState.Content -> {
-                if (shouldShowNeedsReviewFilterBar(queueCounts, needsReviewFilter)) {
-                    item {
-                        NeedsReviewFilterBar(
-                            state = NeedsReviewFilterBarState(
-                                selected = needsReviewFilter,
-                                counts = queueCounts,
-                            ),
-                            onSelect = { needsReviewFilter = it },
-                        )
-                    }
-                }
-            }
+            bodyState == PendingListBodyState.Content -> Unit
         }
 
         if (state.items.isNotEmpty()) {
@@ -328,5 +350,97 @@ fun PendingScreen(
                 }
             }
         }
+            }
+        },
+        supportingPane = appAdaptiveSupportingPaneContent(
+            purpose = AppAdaptivePanePurpose.IntakeAndTriage,
+        ) {
+            AppAdaptiveSupportingPane(
+                role = AppPageRole.Pending,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            ) {
+                PendingTriagePane(
+                    state = triagePaneState,
+                    actions = triagePaneActions,
+                )
+            }
+        },
+    )
+}
+
+private data class PendingTriagePaneState(
+    val counts: PendingQueueCounts,
+    val selectedFilter: NeedsReviewFilter,
+    val authorityTone: DataAuthorityTone,
+    val queueEvidence: PendingQueueEvidence,
+    val readOnly: Boolean,
+    val bulkRunning: Boolean,
+    val showNeedsReviewFilter: Boolean,
+)
+
+private data class PendingTriagePaneActions(
+    val onSelectFilter: (NeedsReviewFilter) -> Unit,
+    val onOpenProcessing: () -> Unit,
+    val onOpenRepaymentReview: () -> Unit,
+    val onOpenDataQuality: () -> Unit,
+    val onOpenBulkConfirm: () -> Unit,
+)
+
+@Composable
+private fun PendingTriagePane(
+    state: PendingTriagePaneState,
+    actions: PendingTriagePaneActions,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        PendingQueueOverview(
+            counts = state.counts,
+            evidence = state.queueEvidence,
+            readOnly = state.readOnly,
+            bulkRunning = state.bulkRunning,
+            onOpenBulkConfirm = actions.onOpenBulkConfirm,
+        )
+        InboxSectionNavigation(
+            selected = if (state.selectedFilter == NeedsReviewFilter.Duplicate) {
+                InboxSection.Duplicates
+            } else {
+                InboxSection.Pending
+            },
+            onSelect = { section ->
+                actions.onSelectFilter(
+                    when (section) {
+                        InboxSection.Pending -> NeedsReviewFilter.All
+                        InboxSection.Duplicates -> NeedsReviewFilter.Duplicate
+                    },
+                )
+            },
+        )
+        InboxActionLinks(
+            onOpenProcessing = actions.onOpenProcessing,
+            onOpenRepaymentReview = actions.onOpenRepaymentReview,
+            onOpenDataQuality = actions.onOpenDataQuality,
+        )
+        if (state.authorityTone != DataAuthorityTone.Backend) {
+            AppDataAuthorityStrip(
+                tone = state.authorityTone,
+                localCacheBodyRes = R.string.components_data_authority_pending_cache_body,
+            )
+        }
+        if (state.showNeedsReviewFilter) {
+            NeedsReviewFilterBar(
+                state = NeedsReviewFilterBarState(
+                    selected = state.selectedFilter,
+                    counts = state.counts,
+                ),
+                onSelect = actions.onSelectFilter,
+            )
+        }
     }
 }
+
+private val PendingInformationActions = setOf(
+    PendingPrimaryReviewAction.MissingAmount,
+    PendingPrimaryReviewAction.QuickCategory,
+    PendingPrimaryReviewAction.QuickMerchant,
+)

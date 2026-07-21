@@ -31,6 +31,7 @@ import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.screens.DebtGoalCelebrationOverlay
 import com.ticketbox.ui.screens.DebtGoalScreen
 import com.ticketbox.ui.screens.DebtListScreen
+import com.ticketbox.ui.screens.DebtListScreenActions
 import com.ticketbox.ui.screens.DebtSettleCelebrationOverlay
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.ReceivablesScreen
@@ -39,6 +40,7 @@ import com.ticketbox.ui.screens.RecurringItemActions
 import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.RecurringScreenActions
 import com.ticketbox.ui.screens.RepaymentDraftInboxScreen
+import com.ticketbox.ui.screens.RelationsListChrome
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.BudgetViewModel
@@ -89,9 +91,13 @@ internal const val RepaymentDraftInboxViewModelKey = "repayment-draft-inbox"
 internal fun BudgetRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    onDataChanged: () -> Unit = {},
 ) {
     val budgetViewModel: BudgetViewModel = viewModel(
-        factory = budgetViewModelFactory(screenFactory.budgetRepository),
+        factory = budgetViewModelFactory(
+            repository = screenFactory.budgetRepository,
+            onDataChanged = onDataChanged,
+        ),
     )
     val state by budgetViewModel.uiState.collectAsStateWithLifecycle()
     BudgetScreen(
@@ -117,9 +123,13 @@ internal fun BudgetRoute(
 internal fun RecurringRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    onDataChanged: () -> Unit = {},
 ) {
     val recurringViewModel: RecurringViewModel = viewModel(
-        factory = recurringViewModelFactory(screenFactory.recurringRepository),
+        factory = recurringViewModelFactory(
+            repository = screenFactory.recurringRepository,
+            onDataChanged = onDataChanged,
+        ),
     )
     val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
     RecurringScreen(
@@ -143,10 +153,14 @@ internal fun RecurringRoute(
 internal fun IncomePlanRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    onDataChanged: () -> Unit = {},
 ) {
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
         key = IncomePlanViewModelKey,
-        factory = incomePlanViewModelFactory(screenFactory.incomePlanRepository),
+        factory = incomePlanViewModelFactory(
+            repository = screenFactory.incomePlanRepository,
+            onDataChanged = onDataChanged,
+        ),
     )
     IncomePlanScreen(
         viewModel = incomePlanViewModel,
@@ -222,6 +236,7 @@ internal fun DebtGoalRoute(
 internal fun DebtRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    chromeOverride: RelationsListChrome? = null,
 ) {
     val debtListViewModel: DebtListViewModel = viewModel(
         key = DebtListViewModelKey,
@@ -243,14 +258,10 @@ internal fun DebtRoute(
     val openDebtBillPicker = {
         debtBillPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
-    // overlay 复用缓存 VM 且跨账本切换存活;每次(重新)进入都 reload(先清旧账本的欠款再拉),
-    // 避免在新账本下短暂看到上一账本的欠款(账本隔离;与 DebtGoalRoute 同构)。
+    // 每次进入都 reload，避免账本切换后短暂显示上一账本的数据。
     LaunchedEffect(Unit) { debtListViewModel.reload() }
     val currency = LocalCurrencyDisplay.current
-    // 欠款详情是 overlay 内的子页(与列表互斥渲染,各屏自带 BackHandler):点击列表行进入详情,
-    // 返回回到列表(顺手让列表重拉以反映详情里记的账)。详情 VM 是单例(常量 key),每次进入用
-    // loadDebt 重拉而非复用陈旧折叠(与 DebtGoalRoute 的 reload 同构)。详情子页 + 两清浮层的接线
-    // 抽到共享的 [DebtDetailHost]（跨账本应收 ⑤b-2 复用同一套）。
+    // 列表与详情互斥；详情返回时刷新列表以接收最新折叠状态。
     var detailDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openDebtId = detailDebtId
     if (openDebtId != null) {
@@ -268,9 +279,12 @@ internal fun DebtRoute(
         DebtListScreen(
             viewModel = debtListViewModel,
             currency = currency,
-            onBack = onBack,
-            onOpenDebt = { detailDebtId = it.publicId },
-            onParseBillImage = openDebtBillPicker,
+            actions = DebtListScreenActions(
+                onBack = onBack,
+                onOpenDebt = { detailDebtId = it.publicId },
+                onParseBillImage = openDebtBillPicker,
+            ),
+            chromeOverride = chromeOverride,
         )
     }
 }
@@ -299,7 +313,7 @@ private fun rememberDebtBillImageLauncher(
     }
 
 /**
- * 欠款详情子页 + 两清庆祝浮层的接线，[DebtRoute]（同账本欠款列表）与 [ReceivablesRoute]（跨账本应收
+ * 欠款详情子页 + 两清庆祝浮层的接线，[DebtRoute]（个人应付列表）与 [ReceivablesRoute]（个人应收
  * ⑤b-2）共用：两个 overlay 的「列表 → 详情」结构完全一致，抽出避免重复那段微妙的 mascot / celebration /
  * dispose 接线，并让两个路由各自的函数保持短小。详情 VM 与 proposal VM 由调用方按自己的常量 key 创建后
  * 传入（两面各持一份实例，互不串扰）。
@@ -337,22 +351,18 @@ private fun DebtDetailHost(
 }
 
 /**
- * ADR-0049 P3b / ⑤c+⑤b-2: 欠我的(应收) —— creditor 发现面（⑤c-2 列表）+ 跨账本 creditor 确认入口
- * （⑤b-2 详情子页）。VM 是 overlay 内单例（常量 key），跨账本切换存活；应收是**账户作用域**（跨账本）、
- * 与活跃账本无关，故不像 [DebtRoute] 按账本清旧数据，只在每次（重新）进入时 [ReceivablesViewModel.refresh]
- * 拉最新。
+ * 欠我的(应收) viewer-personal 列表 + creditor 确认入口。VM 是 overlay 内单例（常量 key），跨账本
+ * 切换存活；结果包含当前账本应收，故每次进入用 [ReceivablesViewModel.reload] 清旧账本数据再拉。
  *
- * ⑤b-2 把 ⑤c-2 的「只读非链接」反转为可点进详情：翻 `DEBT_ROLLOUT` 后债务人可对跨账本拆账债发起还款
- * proposal，债权人此前在 Android 无任何确认路径（详情只从账本作用域的 [DebtRoute] 列表进、跨账本债不在
- * 其中）。这里给应收行加 tap → 跨账本 debt detail（与列表互斥渲染的子页，复用 [DebtDetailHost]），详情走
- * §5.2 participant-scoped 路径：creditor 在 [DebtDetailScreen] 的 proposal 收发箱确认/拒绝对方的还款。详情
- * VM 用自己的一组 key（[ReceivablesDetailViewModelKey] / [ReceivablesProposalViewModelKey]），与 DebtRoute
- * 隔离。返回回到列表并 refresh（确认后那笔应收已 cleared，沉降到列表底部）。
+ * 每个应收行可进入同一个 Debt 详情；跨账本 member 行继续走 §5.2 participant-scoped proposal 确认，
+ * 同账本 external/member 行走各自既有详情能力。详情 VM 用独立 key，与 [DebtRoute] 隔离；返回时
+ * refresh，让还款后的 fold 及时沉降。
  */
 @Composable
 internal fun ReceivablesRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    chromeOverride: RelationsListChrome? = null,
 ) {
     val viewModel: ReceivablesViewModel = viewModel(
         key = ReceivablesViewModelKey,
@@ -366,7 +376,7 @@ internal fun ReceivablesRoute(
         key = ReceivablesProposalViewModelKey,
         factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
     )
-    LaunchedEffect(Unit) { viewModel.refresh() }
+    LaunchedEffect(Unit) { viewModel.reload() }
     val currency = LocalCurrencyDisplay.current
     var detailDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openDebtId = detailDebtId
@@ -384,8 +394,10 @@ internal fun ReceivablesRoute(
     } else {
         ReceivablesScreen(
             viewModel = viewModel,
+            currency = currency,
             onOpenReceivable = { detailDebtId = it.publicId },
             onBack = onBack,
+            chromeOverride = chromeOverride,
         )
     }
 }
@@ -398,7 +410,6 @@ internal fun ReceivablesRoute(
 internal fun RepaymentDraftRoute(
     screenFactory: MainScreenFactory,
     focusedDraftPublicId: String? = null,
-    onFocusConsumed: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     val launchFocusedDraftPublicId = remember { focusedDraftPublicId }
@@ -411,7 +422,6 @@ internal fun RepaymentDraftRoute(
     )
     LaunchedEffect(Unit) {
         viewModel.reload(launchFocusedDraftPublicId)
-        onFocusConsumed()
     }
     RepaymentDraftInboxScreen(
         viewModel = viewModel,
@@ -432,13 +442,11 @@ internal fun StatsRoute(
     val budgetState by budgetViewModel.uiState.collectAsStateWithLifecycle()
     val reportsState by reportsViewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(shellState.dashboardCardsRevision, monthlyState.ledgerReady) {
-        if (shellState.dashboardCardsRevision > 0 && monthlyState.ledgerReady) {
-            // P4 stale-refresh: settings can change stats-relevant data while this VM
-            // persists (dashboard cards; tag delete/rename/merge bumps the same
-            // signal). refresh() resyncs confirmed (the byTag chip source) but does
-            // not re-pull the tag list, so a deleted tag would linger in the filter
-            // chips — reloadTags() closes that gap.
+    LaunchedEffect(shellState.insightsDataRevision, monthlyState.ledgerReady) {
+        if (shellState.insightsDataRevision > 0 && monthlyState.ledgerReady) {
+            // A planning or vocabulary edit can change insight inputs while these
+            // ViewModels stay alive. Reload both tags and aggregate projections so
+            // filters and summaries return to the foreground as one coherent state.
             reloadAllStats(monthlyStatsViewModel, reportsViewModel)
         }
     }
@@ -481,9 +489,8 @@ internal fun StatsRoute(
 }
 
 /**
- * 统计页全量重拉，由下拉刷新与 dashboard-card 变更 effect 共用（P4 stale-refresh）：先 reloadTags 重拉
- * 标签列表（否则删掉的标签会滞留在筛选 chip），再按当前月 + 标签重同步 monthly / budget / reports。抽成
- * 纯函数消除两处逐字重复，调用方显式传 [monthlyState]（与原内联 lambda 捕获完全一致，无行为变化）。
+ * 洞察页全量重拉，由下拉刷新与上游计划/资料库变更共用：先 reloadTags 重拉标签列表，
+ * 再按当前月与标签同步 monthly、budget、reports，避免返回页面后出现筛选项和汇总数据不同步。
  */
 internal fun reloadAllStats(
     monthly: MonthlyStatsViewModel,

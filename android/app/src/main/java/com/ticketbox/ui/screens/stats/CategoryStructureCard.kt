@@ -72,7 +72,7 @@ internal fun CategoryStructureCard(
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             Text(
@@ -148,7 +148,7 @@ internal fun CategoryStructureCard(
                 )
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
             topCategories.forEachIndexed { index, category ->
                 CategoryStructureBarRow(
                     category = category,
@@ -187,7 +187,7 @@ private fun CategoryStructureBarRow(
     }
     Column(
         modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -196,7 +196,7 @@ private fun CategoryStructureBarRow(
         ) {
             Box(
                 modifier = Modifier
-                    .size(AppSpacing.contentGap)
+                    .size(CategoryStructureTokens.LegendMarkerSize)
                     .clip(RoundedCornerShape(AppRadius.pill))
                     .background(colors[index % colors.size]),
             )
@@ -216,7 +216,7 @@ private fun CategoryStructureBarRow(
             )
             Text(
                 text = percentLabel,
-                modifier = Modifier.width(44.dp),
+                modifier = Modifier.width(CategoryStructureTokens.ShareLabelWidth),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -224,14 +224,14 @@ private fun CategoryStructureBarRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(AppSpacing.smallGap)
+                .height(CategoryStructureTokens.CategoryTrackHeight)
                 .clip(RoundedCornerShape(AppRadius.pill))
                 .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.faint)),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(progress)
-                    .height(AppSpacing.smallGap)
+                    .height(CategoryStructureTokens.CategoryTrackHeight)
                     .clip(RoundedCornerShape(AppRadius.pill))
                     .background(colors[index % colors.size]),
             )
@@ -248,10 +248,10 @@ private fun CategoryDonut(
     val emptyTrack = LocalChartTokens.current.empty
     Canvas(
         modifier = Modifier
-            .size(92.dp)
+            .size(CategoryStructureTokens.DonutSize)
             .clearAndSetSemantics {},
     ) {
-        val stroke = Stroke(width = 16.dp.toPx(), cap = StrokeCap.Round)
+        val stroke = Stroke(width = CategoryStructureTokens.DonutStrokeWidth.toPx(), cap = StrokeCap.Round)
         if (totalAmountCents <= 0L || categories.isEmpty()) {
             drawArc(
                 color = emptyTrack,
@@ -404,14 +404,14 @@ private fun TagStatsBar(progress: Float, color: Color) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(AppSpacing.miniGap)
+            .height(CategoryStructureTokens.TagTrackHeight)
             .clip(RoundedCornerShape(AppRadius.pill))
             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.faint)),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(progress)
-                .height(AppSpacing.miniGap)
+                .height(CategoryStructureTokens.TagTrackHeight)
                 .clip(RoundedCornerShape(AppRadius.pill))
                 .background(color),
         )
@@ -438,6 +438,15 @@ private fun categoryShareLabel(
 
 private const val CategoryStructureTopAmountWeight = 0.58f
 private const val CategoryStructureRowAmountWeight = 0.52f
+
+private object CategoryStructureTokens {
+    val LegendMarkerSize = 8.dp
+    val ShareLabelWidth = 44.dp
+    val CategoryTrackHeight = 4.dp
+    val DonutSize = 76.dp
+    val DonutStrokeWidth = 12.dp
+    val TagTrackHeight = 3.dp
+}
 
 @Composable
 private fun statsCategoryColors(): List<Color> {

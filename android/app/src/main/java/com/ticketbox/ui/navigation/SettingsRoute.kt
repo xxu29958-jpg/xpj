@@ -19,12 +19,18 @@ internal data class SettingsPreferenceControls(
     val onCurrencyChange: (CurrencyCode) -> Unit,
 )
 
+/**
+ * 账户与设置（workspace）路由。218-B1：拆账 / 收入计划 / 首页卡片已迁出设置页
+ * （前两者在一级域二级页，后者随 Today 域一并删除）；分类规则 / 商家别名 / 标签 /
+ * 回收站属后续 TransactionsLibrary slice，暂留设置页。
+ */
 @Composable
 internal fun SettingsRoute(
-    shellState: MainShellState,
     screenFactory: MainScreenFactory,
     preferenceControls: SettingsPreferenceControls,
     onBindingCleared: () -> Unit,
+    onClose: () -> Unit,
+    onTransactionVocabularyChanged: () -> Unit = {},
 ) {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = screenFactory.settingsViewModelFactory,
@@ -56,7 +62,7 @@ internal fun SettingsRoute(
             currentCurrency = preferenceControls.currentCurrency,
             showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
         ),
-        onSecondaryActiveChange = { shellState.settingsSecondaryActive = it },
+        navigation = SettingsDestinationNavigation(onCloseRoot = onClose),
         actions = SettingsRouteActions(
             onTestConnection = settingsViewModel::testConnection,
             onRunDiagnostics = settingsViewModel::runDiagnostics,
@@ -95,13 +101,11 @@ internal fun SettingsRoute(
             onBindingCleared = onBindingCleared,
             onBindingChanged = settingsViewModel::refreshLocalBindingState,
             onLedgerSwitched = settingsViewModel::sync,
-            onDashboardCardsChanged = shellState::markDashboardCardsChanged,
+            onTransactionVocabularyChanged = onTransactionVocabularyChanged,
         ),
         repositories = SettingsRouteRepositories(
             ledgerRepository = screenFactory.ledgerRepository,
             expenseRepository = screenFactory.repository,
-            reportsRepository = screenFactory.reportsRepository,
-            incomePlanRepository = screenFactory.incomePlanRepository,
             outboxRepository = screenFactory.outboxRepository,
             tagRepository = screenFactory.tagRepository,
             activeLedgerId = screenFactory.ledgerRepository.activeLedgerId(),

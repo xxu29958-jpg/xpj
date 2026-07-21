@@ -53,6 +53,7 @@ data class BudgetUiState(
 class BudgetViewModel(
     private val repository: BudgetActions,
     initialMonth: String = YearMonth.now().toString(),
+    private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
         BudgetUiState(
@@ -227,6 +228,7 @@ class BudgetViewModel(
                             canModify = repository.canModifyLedger(),
                         )
                     }
+                    onDataChanged()
                 }
                 .onFailure { error ->
                     _uiState.update {

@@ -8,7 +8,7 @@ import com.ticketbox.viewmodel.billSplitViewModelFactory
 
 /**
  * 拆账中心二级页路由（A3 IA）。与 [BudgetRoute] / [RecurringRoute] 同形——构建 VM + 渲染屏，
- * 返回交回 [MainShellState.closeStatsSecondaryPage]。
+ * 返回交回 [MainShellState.closeSecondaryPage]。
  *
  * 单独成文件而不并入 [StatsRoutes]：拆账是账本域功能（从账本动作区进入、背景走 Ledger surface），
  * 与统计/规划面不同源；放进 stats 命名的文件会误导读者。仍由 [MainNavGraph] 的二级页 overlay

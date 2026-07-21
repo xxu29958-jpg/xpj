@@ -4,13 +4,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -29,30 +29,35 @@ import com.ticketbox.viewmodel.ReceivablesViewModel
 
 /**
  * ADR-0049 P3b / ⑤c+⑤b-2 欠我的(应收) —— [com.ticketbox.ui.navigation.ReceivablesRoute] 内的 creditor
- * 发现 + 确认面。家人接受你发起的拆账后，你作为跨账本债权人的应收都汇总在这里。每行复用 [MemberDebtRow]
- * （communal 关系行：债务人名 + 「我帮你垫的…」关系主句 + open 时细进度条 + neutral/success 徽章永不红）。
+ * 发现 + 确认面。服务端汇总当前主体在所选账本内与跨账本的应收；成员关系行与 external 会计行复用
+ * [debtRowsSection]，客户端不从 owner-relative direction 推断主体角色。
  *
- * ⑤b-2 把 ⑤c-2 的「静态不可点」反转为可点：行 tap 进跨账本 debt detail，债权人在那里确认/拒绝对方在手机
- * App 发起的还款 proposal（§5.2 participant-scoped 路径）——这是翻 `DEBT_ROLLOUT` 后 creditor 唯一的
- * Android 确认入口。导航由 [com.ticketbox.ui.navigation.ReceivablesRoute] 持有（[onOpenReceivable] 回调），
- * §7.0 命名要对上的人但不催。镜像 [DebtListScreen] 的生活流骨架（[AppScrollableContent] + [AppPageHeader]
- * + [AppStatusBanner]）；overlay 自带 [BackHandler]（[[project_overlay_screen_needs_own_backhandler]]）。
+ * 行 tap 进入同一 Debt 的详情；跨账本 member creditor 可在那里确认/拒绝还款 proposal，external 与
+ * 同账本 member 行沿用既有详情能力。导航由 [com.ticketbox.ui.navigation.ReceivablesRoute] 持有。
  */
 @Composable
 fun ReceivablesScreen(
     viewModel: ReceivablesViewModel,
+    currency: CurrencyDisplay,
     onOpenReceivable: (Debt) -> Unit,
     onBack: () -> Unit,
+    chromeOverride: RelationsListChrome? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val resolvedChrome = chromeOverride ?: RelationsListChrome(
+        title = stringResource(R.string.receivables_topbar_title),
+        subtitle = stringResource(R.string.receivables_intro_body),
+        backText = stringResource(R.string.debt_list_topbar_back),
+        onBack = onBack,
+    )
 
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
-            role = AppPageRole.Stats,
-            title = stringResource(R.string.receivables_topbar_title),
-            subtitle = stringResource(R.string.receivables_intro_body),
-            backText = stringResource(R.string.debt_list_topbar_back),
-            onBack = onBack,
+            role = AppPageRole.Ledger,
+            title = resolvedChrome.title,
+            subtitle = resolvedChrome.subtitle,
+            backText = resolvedChrome.backText,
+            onBack = resolvedChrome.onBack,
             hasBottomBar = false,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
@@ -64,14 +69,22 @@ fun ReceivablesScreen(
             onRefresh = viewModel::refresh,
         ),
     ) {
+        resolvedChrome.domainNavigation?.let { navigation ->
+            item(key = "obligations-domain-navigation") { navigation() }
+        }
         readableListInlineError(hasRows = state.receivables.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
-        receivablesSection(state = state, onOpenReceivable = onOpenReceivable)
+        receivablesSection(
+            state = state,
+            currency = currency,
+            onOpenReceivable = onOpenReceivable,
+        )
     }
 }
 private fun LazyListScope.receivablesSection(
     state: ReceivablesUiState,
+    currency: CurrencyDisplay,
     onOpenReceivable: (Debt) -> Unit,
 ) {
     val bodyState = readableListBodyState(
@@ -88,12 +101,11 @@ private fun LazyListScope.receivablesSection(
         }
         return
     }
-    // 全部是 member 应收(viewer_is_debtor=false → creditor 侧「我帮你垫的」)。⑤b-2 起可点进跨账本详情确认
-    // 对方的还款。外币成员应收同样走 communal 行（无金额英雄，不受 FX 影响）；点进详情后外币会退回会计卡
-    // （MemberSharedThingCard 的 §2.6 防御），与同账本成员债详情一致。
-    items(state.receivables, key = { it.publicId }) { debt ->
-        MemberDebtRow(debt = debt, onClick = { onOpenReceivable(debt) })
-    }
+    debtRowsSection(
+        debts = state.receivables,
+        currency = currency,
+        onOpenDebt = onOpenReceivable,
+    )
 }
 
 @Composable

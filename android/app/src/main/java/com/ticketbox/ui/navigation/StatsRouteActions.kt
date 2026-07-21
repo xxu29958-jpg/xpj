@@ -3,7 +3,6 @@ package com.ticketbox.ui.navigation
 import com.ticketbox.ui.screens.StatsFilterActions
 import com.ticketbox.ui.screens.StatsReportActions
 import com.ticketbox.ui.screens.StatsScreenActions
-import com.ticketbox.ui.screens.stats.StatsPlanningActions
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.StatsReportsViewModel
 
@@ -18,17 +17,13 @@ internal fun statsScreenActions(
         onTagChange = monthly::setTag,
     ),
     onRefresh = { reloadAllStats(monthly, reports) },
-    planning = StatsPlanningActions(
-        onOpenSpendingGoal = { shellState.openStatsSecondary(StatsSecondaryPage.SpendingGoal) },
-        onOpenBudget = { shellState.openStatsSecondary(StatsSecondaryPage.Budget) },
-        onOpenRecurring = { shellState.openStatsSecondary(StatsSecondaryPage.Recurring) },
-        onOpenIncomePlans = { shellState.openStatsSecondary(StatsSecondaryPage.IncomePlans) },
-        onOpenDebtGoals = { shellState.openStatsSecondary(StatsSecondaryPage.DebtGoals) },
-    ),
+    onOpenDataQuality = shellState::openDataQualityInboxRedirect,
     reports = StatsReportActions(
         onDrillToLedger = { category ->
-            shellState.ledgerDrill.post(LedgerDrillRequest(month = month, category = category))
-            shellState.selectBottomTab(BottomTab.Ledger.key)
+            shellState.ledgerDrill.post(
+                LedgerDrillRequest.Category(month = month, category = category),
+            )
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Transactions)
         },
         onGranularityChange = reports::setGranularity,
         onRankingMetricChange = reports::setRankingMetric,

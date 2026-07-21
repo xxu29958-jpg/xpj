@@ -91,7 +91,10 @@ internal fun PendingExpenseReviewRow(
             .fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(metrics.rowPadding),
+            modifier = Modifier.padding(
+                horizontal = if (item.compact) AppSpacing.miniGap else metrics.rowPadding,
+                vertical = if (item.compact) AppSpacing.smallGap else metrics.rowPadding,
+            ),
             verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
         ) {
             AppAdaptiveContentActionStateRow(
@@ -113,7 +116,14 @@ internal fun PendingExpenseReviewRow(
                     PendingExpenseAmountBlock(
                         expense = item.expense,
                         actions = actions,
-                        modifier = amountModifier,
+                        modifier = if (stacked) {
+                            amountModifier
+                        } else {
+                            amountModifier.widthIn(
+                                min = AppAdaptiveAmountRowDefaults.statusMinWidth,
+                                max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
+                            )
+                        },
                         stacked = stacked,
                     )
                 },
@@ -149,12 +159,13 @@ private fun PendingExpenseLeadingMark(item: PendingExpenseReviewItem) {
 @Composable
 private fun RowScope.PendingExpenseTextBlock(item: PendingExpenseReviewItem) {
     val expense = item.expense
+    val merchant = pendingMerchantPresentation(expense)
     Column(
         modifier = Modifier.weight(1f),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
     ) {
         Text(
-            text = expense.merchant?.takeIf { it.isNotBlank() }
+            text = merchant.primaryText
                 ?: stringResource(R.string.pending_row_merchant_placeholder),
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleSmall,
@@ -199,12 +210,12 @@ private fun PendingExpenseAmountBlock(
     modifier: Modifier = Modifier,
     stacked: Boolean = false,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
     ) {
+        val currencyDisplay = LocalCurrencyDisplay.current
         PendingAmountValue(expense = expense, currencyDisplay = currencyDisplay)
         PendingExpenseExchangeMetaText(expense = expense, stacked = stacked)
         TextButton(
@@ -272,7 +283,9 @@ private fun PendingExpenseSignals(expense: Expense) {
     val tones = LocalStateTokens.current
     if (expense.pendingSync) PendingSignalText(stringResource(R.string.pending_row_signal_pending_sync), tones.info)
     if (expense.amountCents == null) PendingSignalText(stringResource(R.string.pending_row_signal_amount), tones.warn)
-    if (expense.merchant.isNullOrBlank()) PendingSignalText(stringResource(R.string.pending_row_signal_merchant), tones.warn)
+    if (pendingMerchantPresentation(expense).needsReview) {
+        PendingSignalText(stringResource(R.string.pending_row_signal_merchant), tones.warn)
+    }
     if (expense.category.isBlank()) PendingSignalText(stringResource(R.string.pending_row_signal_category), tones.warn)
     if (expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
         PendingSignalText(stringResource(R.string.pending_row_signal_duplicate), tones.info)

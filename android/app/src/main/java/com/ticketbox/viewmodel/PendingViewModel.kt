@@ -130,6 +130,7 @@ private data class PendingStateTransitionResultHandler(
 class PendingViewModel(
     internal val repository: PendingReviewActions,
     private val thumbnailLoader: PendingThumbnailLoader = PendingThumbnailLoader(repository),
+    internal val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
     internal val _uiState = MutableStateFlow(PendingUiState())
     val uiState: StateFlow<PendingUiState> = _uiState.asStateFlow()
@@ -361,6 +362,7 @@ class PendingViewModel(
                 _uiState.update { state ->
                     state.copy(uploading = false, message = UiText.res(R.string.pending_msg_upload_succeeded))
                 }
+                onDataChanged()
                 refresh()
             }
             .onFailure { error ->
@@ -436,6 +438,7 @@ class PendingViewModel(
                         is ExpenseStateOutcome.Queued -> messages.queued
                     }
                     _uiState.update { state -> resultHandler.reduceOutcome(state, outcome, message) }
+                    onDataChanged()
                     if (outcome is ExpenseStateOutcome.Synced) {
                         resultHandler.afterSyncedSuccess?.invoke(outcome.expense)
                     }
@@ -562,6 +565,7 @@ class PendingViewModel(
                             message = UiText.res(R.string.pending_msg_undo_restored),
                         )
                     }
+                    onDataChanged()
                     // V3 — afterRejected dropped the thumbnail; rehydrate
                     // so the restored row renders with its image immediately.
                     loadThumbnails(listOf(restored), generation)

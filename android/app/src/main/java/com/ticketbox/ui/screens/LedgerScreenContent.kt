@@ -10,21 +10,21 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import com.ticketbox.R
-import com.ticketbox.ui.components.AppDataAuthorityStrip
+import com.ticketbox.ui.components.AppAdaptivePaneScaffold
+import com.ticketbox.ui.components.AppAdaptivePanePurpose
+import com.ticketbox.ui.components.AppAdaptivePaneStructures
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppScrollableContentChrome
 import com.ticketbox.ui.components.AppScrollableContentLayout
 import com.ticketbox.ui.components.AppScrollableRefreshState
-import com.ticketbox.ui.components.DataAuthorityTone
+import com.ticketbox.ui.components.appAdaptiveSupportingPaneContent
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.screens.ledger.LedgerDaySectionActions
 import com.ticketbox.ui.screens.ledger.LedgerDaySectionState
 import com.ticketbox.ui.screens.ledger.LedgerEmptyOrFirstSync
-import com.ticketbox.ui.screens.ledger.LedgerFilterPanel
-import com.ticketbox.ui.screens.ledger.LedgerInlineStatusMessage
-import com.ticketbox.ui.screens.ledger.LedgerSelectionBar
+import com.ticketbox.ui.screens.ledger.LedgerHeader
 import com.ticketbox.ui.screens.ledger.ledgerDaySection
 import com.ticketbox.ui.screens.ledger.shouldCompactLedgerDayGroups
 import com.ticketbox.viewmodel.LedgerUiState
@@ -42,11 +42,56 @@ internal fun LedgerContent(
     val foldState = rememberLedgerDayFoldState(state)
     val compactDayGroups = !state.selectionMode &&
         shouldCompactLedgerDayGroups(groupedItems.size, state.items.size)
+    val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
+    val contentModel = LedgerAdaptiveContentModel(
+        groupedItems = groupedItems,
+        foldState = foldState,
+        compactDayGroups = compactDayGroups,
+        showSupportingPane = adaptivePolicy.showsSupportingPane,
+    )
 
+    AppAdaptivePaneScaffold(
+        structure = AppAdaptivePaneStructures.Transactions,
+        policy = adaptivePolicy,
+        primaryPane = {
+            LedgerPrimaryPane(
+                state = state,
+                actions = actions,
+                chromeState = chromeState,
+                contentModel = contentModel,
+            )
+        },
+        supportingPane = appAdaptiveSupportingPaneContent(
+            purpose = AppAdaptivePanePurpose.RegisterControls,
+        ) {
+            LedgerSupportingPane(
+                state = state,
+                actions = actions,
+                chromeState = chromeState,
+            )
+        },
+    )
+}
+
+private data class LedgerAdaptiveContentModel(
+    val groupedItems: List<LedgerExpenseGroup>,
+    val foldState: LedgerDayFoldState,
+    val compactDayGroups: Boolean,
+    val showSupportingPane: Boolean,
+)
+
+@Composable
+private fun LedgerPrimaryPane(
+    state: LedgerUiState,
+    actions: LedgerScreenActions,
+    chromeState: LedgerScreenChromeState,
+    contentModel: LedgerAdaptiveContentModel,
+) {
     AppScrollableContent(
         chrome = AppScrollableContentChrome(
             role = AppPageRole.Ledger,
             layout = AppScrollableContentLayout(
+                horizontalPadding = AppSpacing.cardPaddingSmall,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ),
         ),
@@ -55,18 +100,23 @@ internal fun LedgerContent(
             onRefresh = actions.onSync,
         ),
     ) {
-        item { LedgerTopChrome(state = state, actions = actions, chromeState = chromeState) }
-        val authorityTone = ledgerAuthorityTone(state)
-        if (authorityTone != DataAuthorityTone.Backend) {
-            item {
-                AppDataAuthorityStrip(
-                    tone = authorityTone,
-                    localCacheBodyRes = R.string.components_data_authority_ledger_cache_body,
+        item {
+            if (contentModel.showSupportingPane) {
+                LedgerHeader(state = state)
+            } else {
+                LedgerTopChrome(
+                    state = state,
+                    actions = actions,
+                    chromeState = chromeState,
+                    showSummaryHeader = true,
                 )
             }
         }
-        state.message?.let { message ->
-            item { LedgerInlineStatusMessage(message = message, tone = state.messageTone) }
+        val authorityTone = ledgerAuthorityTone(state)
+        if (!contentModel.showSupportingPane && ledgerStatusVisible(state, authorityTone)) {
+            item {
+                LedgerStatusContent(state = state, authorityTone = authorityTone)
+            }
         }
         if (state.items.isEmpty()) {
             item {
@@ -79,36 +129,11 @@ internal fun LedgerContent(
             }
         }
         ledgerDaySectionsContent(
-            groupedItems = groupedItems,
+            groupedItems = contentModel.groupedItems,
             state = state,
             actions = actions,
-            foldState = foldState,
-            compactDayGroups = compactDayGroups,
-        )
-    }
-}
-
-@Composable
-private fun LedgerTopChrome(
-    state: LedgerUiState,
-    actions: LedgerScreenActions,
-    chromeState: LedgerScreenChromeState,
-) {
-    if (state.selectionMode) {
-        LedgerSelectionBar(
-            selectedCount = state.selectedCount,
-            applying = state.applyingBatch,
-            onExit = actions.onExitSelection,
-            onSelectAll = actions.onSelectAllVisible,
-            onEdit = { chromeState.showBulkEdit = true },
-        )
-    } else {
-        LedgerFilterPanel(
-            state = state,
-            onOpenMonthPicker = { chromeState.showMonthPicker = true },
-            onOpenTools = { chromeState.showLedgerTools = true },
-            onManualAdd = { if (!state.readOnly) chromeState.showManualSheet = true },
-            onMonthChange = actions.onMonthChange,
+            foldState = contentModel.foldState,
+            compactDayGroups = contentModel.compactDayGroups,
         )
     }
 }
@@ -157,13 +182,6 @@ private fun rememberLedgerDayFoldState(state: LedgerUiState): LedgerDayFoldState
         state.items.size,
         saver = LedgerDayFoldStateSaver,
     ) { LedgerDayFoldState() }
-}
-
-private fun ledgerAuthorityTone(state: LedgerUiState): DataAuthorityTone = when {
-    state.readOnly -> DataAuthorityTone.ReadOnly
-    state.showPageRefresh -> DataAuthorityTone.Refreshing
-    state.syncedInCurrentSession -> DataAuthorityTone.Backend
-    else -> DataAuthorityTone.LocalCache
 }
 
 private fun ledgerDayExpanded(

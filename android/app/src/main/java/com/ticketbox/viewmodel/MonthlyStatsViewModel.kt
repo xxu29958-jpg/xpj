@@ -75,6 +75,8 @@ class MonthlyStatsViewModel(
                             recurringItems = emptyList(),
                             recurringCandidates = emptyList(),
                             dataQuality = null,
+                            dataQualityLoadState = DataQualityLoadState.Unknown,
+                            dataQualityError = null,
                             months = emptyList(),
                             monthsLoadState = StatsFilterOptionsLoadState.Unknown,
                             tags = emptyList(),
@@ -261,11 +263,32 @@ class MonthlyStatsViewModel(
 
     private fun loadDataQuality(snapshot: MonthlyStatsRefreshSnapshot) {
         viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    dataQualityLoadState = DataQualityLoadState.Loading,
+                    dataQualityError = null,
+                )
+            }
             val result = repository.dataQualitySummary()
             if (!snapshot.isCurrent()) return@launch
-            result.onSuccess { summary ->
-                _uiState.update { it.copy(dataQuality = summary) }
-            }
+            result
+                .onSuccess { summary ->
+                    _uiState.update {
+                        it.copy(
+                            dataQuality = summary,
+                            dataQualityLoadState = DataQualityLoadState.Loaded,
+                            dataQualityError = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            dataQualityLoadState = DataQualityLoadState.Failed,
+                            dataQualityError = error.toUiText(R.string.stats_data_quality_load_failed),
+                        )
+                    }
+                }
         }
     }
 

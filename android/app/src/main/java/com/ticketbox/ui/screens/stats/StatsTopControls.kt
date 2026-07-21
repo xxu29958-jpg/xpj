@@ -8,14 +8,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -29,70 +29,37 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.PrimaryStatsTabs
 import com.ticketbox.domain.model.StatsTab
-import com.ticketbox.domain.model.statsDashboardKeysForTab
-import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStatsTokens
-import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.StatsUiState
 
 private const val StatsTagFilterOptionLimit = 12
-
-internal object StatsPlanningMenuTestTags {
-    const val SpendingGoal = "stats_planning_menu_spending_goal"
-    const val Budget = "stats_planning_menu_budget"
-    const val Recurring = "stats_planning_menu_recurring"
-    const val IncomePlans = "stats_planning_menu_income_plans"
-    const val DebtGoals = "stats_planning_menu_debt_goals"
-}
 
 internal data class StatsTopPanelActions(
     val onOpenMonthPicker: () -> Unit,
     val onTagChange: (String) -> Unit,
     val onTabChange: (StatsTab) -> Unit,
-    val planning: StatsPlanningActions,
-)
-
-data class StatsPlanningActions(
-    val onOpenSpendingGoal: () -> Unit,
-    val onOpenBudget: () -> Unit,
-    val onOpenRecurring: () -> Unit,
-    val onOpenIncomePlans: () -> Unit,
-    val onOpenDebtGoals: () -> Unit,
 )
 
 @Composable
 internal fun StatsTopPanel(
     state: StatsUiState,
     selectedTab: StatsTab,
-    visibleDashboardKeys: List<String>,
     actions: StatsTopPanelActions,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-        AppPageHeader(
-            title = stringResource(R.string.stats_header_title),
-            action = {
-                StatsPlanningMenu(actions.planning)
-            },
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        StatsHeader()
         StatsFilterRow(
             state = state,
             onOpenMonthPicker = actions.onOpenMonthPicker,
@@ -100,117 +67,54 @@ internal fun StatsTopPanel(
         )
         StatsTabRow(
             selectedTab = selectedTab,
-            visibleDashboardKeys = visibleDashboardKeys,
-            tagFilterActive = state.selectedTag.isNotBlank(),
             onTabChange = actions.onTabChange,
         )
     }
 }
 
 @Composable
-private fun StatsPlanningMenu(actions: StatsPlanningActions) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Box {
-        StatsPlanningMenuTrigger(
-            expanded = menuOpen,
-            onOpen = { menuOpen = true },
-        )
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_spending_goal)) },
-                onClick = { menuOpen = false; actions.onOpenSpendingGoal() },
-                modifier = Modifier.testTag(StatsPlanningMenuTestTags.SpendingGoal),
+private fun StatsHeader() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            Text(
+                text = stringResource(R.string.stats_header_title),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
             )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_budget)) },
-                onClick = { menuOpen = false; actions.onOpenBudget() },
-                modifier = Modifier.testTag(StatsPlanningMenuTestTags.Budget),
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_recurring)) },
-                onClick = { menuOpen = false; actions.onOpenRecurring() },
-                modifier = Modifier.testTag(StatsPlanningMenuTestTags.Recurring),
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_income_plans)) },
-                onClick = { menuOpen = false; actions.onOpenIncomePlans() },
-                modifier = Modifier.testTag(StatsPlanningMenuTestTags.IncomePlans),
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.stats_header_open_debt_goals)) },
-                onClick = { menuOpen = false; actions.onOpenDebtGoals() },
-                modifier = Modifier.testTag(StatsPlanningMenuTestTags.DebtGoals),
+            Text(
+                text = stringResource(R.string.stats_header_subtitle),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
 }
 
 @Composable
-private fun StatsPlanningMenuTrigger(
-    expanded: Boolean,
-    onOpen: () -> Unit,
-) {
-    val visuals = LocalThemeVisuals.current
-    val controlTokens = LocalStatsTokens.current.control
-    val menuDescription = stringResource(R.string.stats_header_menu_planning_description)
-    val menuStateDescription = stringResource(
-        if (expanded) {
-            R.string.stats_header_menu_planning_expanded
-        } else {
-            R.string.stats_header_menu_planning_collapsed
-        },
-    )
-    Box(
-        modifier = Modifier
-            .clearAndSetSemantics {
-                contentDescription = menuDescription
-                stateDescription = menuStateDescription
-                role = Role.Button
-                onClick(action = {
-                    onOpen()
-                    true
-                })
-            }
-            .size(48.dp)
-            .clip(RoundedCornerShape(AppRadius.pill))
-            .background(visuals.chipSelected.copy(alpha = controlTokens.selectedAlpha))
-            .border(
-                width = controlTokens.borderWidth,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = controlTokens.borderAlpha),
-                shape = RoundedCornerShape(AppRadius.pill),
-            )
-            .clickable(role = Role.Button, onClick = onOpen),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Tune,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(AppSpacing.cardPadding),
-        )
-    }
-}
-
-@Composable
 private fun StatsTabRow(
     selectedTab: StatsTab,
-    visibleDashboardKeys: List<String>,
-    tagFilterActive: Boolean,
     onTabChange: (StatsTab) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        StatsTab.entries.forEach { tab ->
+        PrimaryStatsTabs.forEach { tab ->
             StatsTextTab(
                 label = statsTabLabel(tab),
                 selected = selectedTab == tab,
-                enabled = statsDashboardKeysForTab(
-                    tab,
-                    visibleDashboardKeys,
-                    tagFilterActive = tagFilterActive,
-                ).isNotEmpty(),
                 modifier = Modifier.weight(1f),
                 onClick = { onTabChange(tab) },
             )
@@ -238,42 +142,41 @@ private fun StatsFilterRow(
         optionLimit = StatsTagFilterOptionLimit,
     )
     if (tagControl.kind != StatsTagFilterControlKind.Hidden) {
-        AppAdaptiveEqualControlRow(
-            leading = { pillModifier ->
-                StatsSelectablePill(
-                    selected = true,
-                    onClick = onOpenMonthPicker,
-                    label = state.month.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
-                        ?: stringResource(R.string.stats_filter_all_months),
-                    modifier = pillModifier,
-                    trailingIcon = {
-                        FilterTrailingIcon(
-                            Icons.Filled.ExpandMore,
-                            stringResource(R.string.stats_filter_pick_month_description),
-                        )
-                    },
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        ) {
+            StatsSelectablePill(
+                selected = true,
+                onClick = onOpenMonthPicker,
+                label = state.month.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
+                    ?: stringResource(R.string.stats_filter_all_months),
+                modifier = Modifier.weight(1f),
+                trailingIcon = {
+                    FilterTrailingIcon(
+                        Icons.Filled.ExpandMore,
+                        stringResource(R.string.stats_filter_pick_month_description),
+                    )
+                },
+            )
+            when (tagControl.kind) {
+                StatsTagFilterControlKind.Menu -> StatsTagFilterMenu(
+                    tags = tagControl.choices,
+                    selectedTag = state.selectedTag,
+                    onTagChange = onTagChange,
+                    modifier = Modifier.weight(1f),
                 )
-            },
-            trailing = { pillModifier ->
-                when (tagControl.kind) {
-                    StatsTagFilterControlKind.Menu -> StatsTagFilterMenu(
-                        tags = tagControl.choices,
-                        selectedTag = state.selectedTag,
-                        onTagChange = onTagChange,
-                        modifier = pillModifier,
-                    )
-                    StatsTagFilterControlKind.Loading -> StatsTagStatusPill(
-                        label = stringResource(R.string.stats_filter_tags_loading),
-                        modifier = pillModifier,
-                    )
-                    StatsTagFilterControlKind.Failed -> StatsTagStatusPill(
-                        label = stringResource(R.string.stats_filter_tags_load_failed),
-                        modifier = pillModifier,
-                    )
-                    StatsTagFilterControlKind.Hidden -> Unit
-                }
-            },
-        )
+                StatsTagFilterControlKind.Loading -> StatsTagStatusPill(
+                    label = stringResource(R.string.stats_filter_tags_loading),
+                    modifier = Modifier.weight(1f),
+                )
+                StatsTagFilterControlKind.Failed -> StatsTagStatusPill(
+                    label = stringResource(R.string.stats_filter_tags_load_failed),
+                    modifier = Modifier.weight(1f),
+                )
+                StatsTagFilterControlKind.Hidden -> Unit
+            }
+        }
     } else {
         StatsSelectablePill(
             selected = true,
@@ -351,38 +254,49 @@ private fun StatsTagFilterMenu(
 private fun StatsTextTab(
     label: String,
     selected: Boolean,
-    enabled: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val controlTokens = LocalStatsTokens.current.control
-    val labelColor = when {
-        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-        selected -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    val labelColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
     }
     Column(
         modifier = modifier
-            .height(controlTokens.height + AppSpacing.tinyGap)
-            .clip(RoundedCornerShape(AppRadius.extraSmall))
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap, Alignment.CenterVertically),
+            .heightIn(min = AppSpacing.controlMinHeight)
+            .selectable(
+                selected = selected,
+                role = Role.Tab,
+                onClick = onClick,
+            )
+            .padding(horizontal = AppSpacing.miniGap),
+        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = label,
-            color = labelColor,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1,
-        )
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                color = labelColor,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+            )
+        }
         Box(
             modifier = Modifier
-                .height(AppSpacing.tinyGap)
-                .width(42.dp)
-                .clip(RoundedCornerShape(AppRadius.pill))
-                .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
+                .size(
+                    width = StatsTabIndicatorTokens.Width,
+                    height = StatsTabIndicatorTokens.Height,
+                )
+                .background(
+                    color = if (selected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
+                    shape = RoundedCornerShape(AppRadius.pill),
+                ),
         )
     }
 }
@@ -395,9 +309,8 @@ private fun StatsSelectablePill(
     modifier: Modifier = Modifier,
     trailingIcon: (@Composable () -> Unit)? = null,
 ) {
-    val visuals = LocalThemeVisuals.current
     val controlTokens = LocalStatsTokens.current.control
-    val shape = RoundedCornerShape(AppRadius.pill)
+    val shape = RoundedCornerShape(AppRadius.small)
     val labelColor = if (selected) {
         MaterialTheme.colorScheme.primary
     } else if (onClick == null) {
@@ -407,21 +320,15 @@ private fun StatsSelectablePill(
     }
     Row(
         modifier = modifier
-            .height(controlTokens.height)
+            .heightIn(min = AppSpacing.controlMinHeight)
             .clip(shape)
-            .background(
-                if (selected) {
-                    visuals.chipSelected.copy(alpha = controlTokens.selectedAlpha)
-                } else {
-                    MaterialTheme.colorScheme.surface.copy(alpha = controlTokens.unselectedAlpha)
-                },
-            )
+            .background(MaterialTheme.colorScheme.surface)
             .border(
                 width = controlTokens.borderWidth,
                 color = if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = controlTokens.borderAlpha)
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
                 } else {
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = controlTokens.borderAlpha)
+                    MaterialTheme.colorScheme.outlineVariant
                 },
                 shape = shape,
             )
@@ -453,4 +360,9 @@ private fun FilterTrailingIcon(
         contentDescription = contentDescription,
         modifier = Modifier.size(AppSpacing.cardPaddingSmall),
     )
+}
+
+private object StatsTabIndicatorTokens {
+    val Width = 22.dp
+    val Height = 2.dp
 }

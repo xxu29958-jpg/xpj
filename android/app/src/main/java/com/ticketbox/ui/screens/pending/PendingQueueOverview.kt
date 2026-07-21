@@ -40,6 +40,7 @@ internal data class PendingQueueOverviewModel(
     val readyCount: Int,
     val needsAmount: Int,
     val needsMerchant: Int,
+    val needsInformation: Int,
     val duplicate: Int,
     val priority: PendingQueuePriority,
     val evidence: PendingQueueEvidence,
@@ -60,6 +61,7 @@ internal fun pendingQueueOverviewModel(
         readyCount = ready,
         needsAmount = needsAmount,
         needsMerchant = needsMerchant,
+        needsInformation = counts.needsInformation.coerceAtLeast(0),
         duplicate = duplicate,
         priority = pendingQueuePriority(all, ready, needsAmount, needsMerchant, duplicate),
         evidence = evidence,
@@ -137,8 +139,7 @@ internal fun PendingQueueOverview(
                 )
             }
             if (model.hasReviewSignals) {
-                PendingQueueIssue(model.needsAmount, R.string.pending_queue_overview_amount_issue)
-                PendingQueueIssue(model.needsMerchant, R.string.pending_queue_overview_merchant_issue)
+                PendingQueueIssue(model.needsInformation, R.string.pending_queue_overview_missing_info_issue)
                 PendingQueueIssue(model.duplicate, R.string.pending_queue_overview_duplicate_issue)
             }
         }
@@ -184,7 +185,7 @@ private fun PendingQueueOverviewHeader(
 }
 
 private val PendingQueueOverviewModel.hasReviewSignals: Boolean
-    get() = needsAmount > 0 || needsMerchant > 0 || duplicate > 0
+    get() = needsInformation > 0 || duplicate > 0
 
 private val PendingQueueOverviewModel.shouldShowMetrics: Boolean
     get() = readyCount > 0 && reviewCount > 0

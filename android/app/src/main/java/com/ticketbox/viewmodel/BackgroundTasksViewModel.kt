@@ -27,19 +27,29 @@ data class BackgroundTasksUiState(
     val busyTaskId: String? = null,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
+    val canModify: Boolean = false,
 )
 
 class BackgroundTasksViewModel(
     private val repository: BackgroundTaskActions,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(BackgroundTasksUiState())
+    private val _uiState = MutableStateFlow(
+        BackgroundTasksUiState(canModify = repository.canModifyLedger()),
+    )
     val uiState: StateFlow<BackgroundTasksUiState> = _uiState.asStateFlow()
 
     fun refresh() {
         if (_uiState.value.loading) return
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, message = null, messageTone = MessageTone.Neutral) }
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                    canModify = repository.canModifyLedger(),
+                )
+            }
             repository.fetchBackgroundTasks()
                 .onSuccess { tasks ->
                     _uiState.update {
@@ -70,6 +80,7 @@ class BackgroundTasksViewModel(
 
     fun cancel(publicId: String) {
         val current = _uiState.value
+        if (!current.canModify) return
         if (current.busyTaskId != null) return
         if (current.tasks.firstOrNull { it.publicId == publicId }?.isCancellable != true) return
         viewModelScope.launch {

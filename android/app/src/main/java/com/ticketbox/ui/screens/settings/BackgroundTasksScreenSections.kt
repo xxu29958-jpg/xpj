@@ -19,13 +19,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.screens.tasks.BackgroundTaskRow
 
 @Composable
 internal fun BackgroundTasksOverview(summary: BackgroundTasksSummaryModel) {
@@ -61,10 +61,11 @@ internal fun BackgroundTasksRows(
     tasks: List<BackgroundTask>,
     loading: Boolean,
     busyTaskId: String?,
+    canModify: Boolean,
     onCancel: (String) -> Unit,
 ) {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-    SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+    SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.none)) {
         when {
             tasks.isEmpty() -> SettingsListStateSlot(
                 loading = loading,
@@ -84,6 +85,7 @@ internal fun BackgroundTasksRows(
                 BackgroundTaskRow(
                     task = task,
                     busy = busyTaskId == task.publicId,
+                    canModify = canModify,
                     onCancel = { onCancel(task.publicId) },
                 )
             }

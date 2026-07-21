@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 计划一级页：把未来意图组织为真实状态工作区，不展示技术实体名。 -->
+<!-- 218-B1：仅 PlanScreen / PlanOverviewComponents 所需键；预算建议与消费目标三段流的键随后续 slice 迁入。 -->
+<resources>
+    <string name="plan_page_title">计划</string>
+    <string name="plan_page_month_context">%1$s的预算、目标与固定安排</string>
+    <string name="plan_section_month">本月边界</string>
+    <string name="plan_budget_title">月度预算</string>
+    <string name="plan_budget_remaining_label">本月还可用</string>
+    <string name="plan_budget_over_label">本月已超出</string>
+    <string name="plan_budget_progress_meta">已用 %1$s / %2$s · %3$d%%</string>
+    <string name="plan_budget_loading">正在读取本月预算</string>
+    <string name="plan_budget_empty">还没有本月预算，先定一个可用范围</string>
+    <string name="plan_section_goals">目标</string>
+    <string name="plan_spending_goal_title">消费目标</string>
+    <string name="plan_spending_goal_subtitle">给总支出或某个分类设一个上限</string>
+    <string name="plan_section_ongoing">固定安排</string>
+    <string name="plan_recurring_title">固定支出</string>
+    <string name="plan_recurring_loading">正在读取周期安排</string>
+    <string name="plan_recurring_error">固定支出暂时无法读取</string>
+    <string name="plan_recurring_empty">还没有固定支出</string>
+    <string name="plan_recurring_empty_with_candidates">还没有固定支出 · 有 %1$d 项规律待确认</string>
+    <string name="plan_recurring_summary">%1$d 项生效 · 每期约 %2$s</string>
+    <string name="plan_recurring_summary_partial">%1$d 项生效 · 每期约 %2$s · 部分数据未更新</string>
+    <string name="plan_recurring_summary_with_candidates">%1$d 项生效 · 每期约 %2$s · %3$d 项待确认</string>
+    <string name="plan_income_title">收入计划</string>
+    <string name="plan_income_loading">正在读取收入安排</string>
+    <string name="plan_income_error">收入计划暂时无法读取</string>
+    <string name="plan_income_empty">还没有收入安排</string>
+    <string name="plan_income_summary">本月 %1$d 项有效 · 预计 %2$s · 历史 %3$d 条</string>
+    <string name="plan_action_wait">读取中</string>
+    <string name="plan_action_set">设置</string>
+    <string name="plan_action_adjust">调整</string>
+    <string name="plan_action_view">查看</string>
+    <string name="plan_action_manage">管理</string>
+</resources>

@@ -20,6 +20,17 @@ private val legacyCategoryAliases = mapOf(
     "吃饭" to "餐饮",
 )
 
+private val uncategorizedExpenseCategoryValues = setOf(
+    "",
+    "未分类",
+    "未分類",
+    "none",
+    "null",
+)
+
+fun isUncategorizedExpenseCategory(value: String?): Boolean =
+    value?.trim()?.lowercase().orEmpty() in uncategorizedExpenseCategoryValues
+
 fun normalizeExpenseCategory(value: String?): String {
     val cleaned = value?.trim()?.takeIf { it.isNotBlank() } ?: "其他"
     return legacyCategoryAliases[cleaned] ?: cleaned

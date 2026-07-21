@@ -72,12 +72,12 @@ import kotlinx.coroutines.delay
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
 private const val DebtFlashDismissMillis = 4000L
 
-/**
- * ADR-0049 §2 (slice 8) 欠款列表 + 新建外部欠款 —— Android 生活流，镜像 [IncomePlanScreen]：
- * 列表走 [AppScrollableContent]（in-content secondary header），反馈走页头位的
- * [AppStatusBanner]，新建入口是页头的 [PrimaryCtaButton] → 底部抽屉表单。方向 / 状态标签复用
- * [DebtGoalLabels] 的 §6 映射（应付 / 应收 / 未结清…），不端内分叉。overlay 自带 [BackHandler]。
- */
+data class DebtListScreenActions(
+    val onBack: () -> Unit,
+    val onOpenDebt: (Debt) -> Unit,
+    val onParseBillImage: () -> Unit,
+)
+
 private data class DebtListScreenCallbacks(
     val onBack: () -> Unit,
     val onOpenDebt: (Debt) -> Unit,
@@ -90,9 +90,8 @@ private data class DebtListScreenCallbacks(
 fun DebtListScreen(
     viewModel: DebtListViewModel,
     currency: CurrencyDisplay,
-    onBack: () -> Unit,
-    onOpenDebt: (Debt) -> Unit,
-    onParseBillImage: () -> Unit,
+    actions: DebtListScreenActions,
+    chromeOverride: RelationsListChrome? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
@@ -120,16 +119,21 @@ fun DebtListScreen(
     }
 
     val callbacks = DebtListScreenCallbacks(
-        onBack = onBack,
-        onOpenDebt = onOpenDebt,
-        onParseBillImage = onParseBillImage,
+        onBack = actions.onBack,
+        onOpenDebt = actions.onOpenDebt,
+        onParseBillImage = actions.onParseBillImage,
         onRefresh = viewModel::refresh,
         onAddDebt = {
             viewModel.resetDraft()
             showAddSheet = true
         },
     )
-    DebtListContent(state = state, currency = currency, callbacks = callbacks)
+    DebtListContent(
+        state = state,
+        currency = currency,
+        callbacks = callbacks,
+        chromeOverride = chromeOverride,
+    )
     if (showAddSheet) {
         DebtAddSheet(
             state = state,
@@ -146,14 +150,21 @@ private fun DebtListContent(
     state: DebtListUiState,
     currency: CurrencyDisplay,
     callbacks: DebtListScreenCallbacks,
+    chromeOverride: RelationsListChrome?,
 ) {
+    val resolvedChrome = chromeOverride ?: RelationsListChrome(
+        title = stringResource(R.string.debt_list_topbar_title),
+        subtitle = stringResource(R.string.debt_list_intro_body),
+        backText = stringResource(R.string.debt_list_topbar_back),
+        onBack = callbacks.onBack,
+    )
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
-            role = AppPageRole.Stats,
-            title = stringResource(R.string.debt_list_topbar_title),
-            subtitle = stringResource(R.string.debt_list_intro_body),
-            backText = stringResource(R.string.debt_list_topbar_back),
-            onBack = callbacks.onBack,
+            role = AppPageRole.Ledger,
+            title = resolvedChrome.title,
+            subtitle = resolvedChrome.subtitle,
+            backText = resolvedChrome.backText,
+            onBack = resolvedChrome.onBack,
             hasBottomBar = false,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
@@ -166,6 +177,9 @@ private fun DebtListContent(
         ),
         slots = AppSecondaryPageSlots(actions = debtListHeaderActions(state, callbacks)),
     ) {
+        resolvedChrome.domainNavigation?.let { navigation ->
+            item(key = "obligations-domain-navigation") { navigation() }
+        }
         state.flashMessage?.let { msg ->
             item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
         }
@@ -248,7 +262,7 @@ private fun LazyListScope.debtListSection(
     }
 }
 
-private fun LazyListScope.debtRowsSection(
+internal fun LazyListScope.debtRowsSection(
     debts: List<Debt>,
     currency: CurrencyDisplay,
     onOpenDebt: (Debt) -> Unit,

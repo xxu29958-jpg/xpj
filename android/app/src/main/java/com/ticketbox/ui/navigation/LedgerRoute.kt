@@ -28,7 +28,10 @@ internal fun LedgerRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
 ) {
-    val ledgerViewModel: LedgerViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
+    val ledgerFactory = remember(screenFactory, shellState) {
+        screenFactory.repositoryViewModelFactory(shellState::markInsightsDataChanged)
+    }
+    val ledgerViewModel: LedgerViewModel = viewModel(factory = ledgerFactory)
     val state by ledgerViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingExport by remember { mutableStateOf<CsvExport?>(null) }
@@ -38,6 +41,7 @@ internal fun LedgerRoute(
     val exportFailedMessage = stringResource(R.string.ledger_msg_export_failed)
 
     SyncLedgerAfterExpenseEdit(shellState, ledgerViewModel)
+    SyncLedgerVocabulary(shellState, ledgerViewModel)
     ApplyPendingLedgerDrill(shellState, ledgerViewModel)
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -85,11 +89,7 @@ private fun ledgerScreenActions(
     onClearFilters = ledgerViewModel::clearFilters,
     onSync = ledgerViewModel::sync,
     onExportCsv = ledgerViewModel::exportCsv,
-    onOpenBillSplit = { shellState.openStatsSecondary(StatsSecondaryPage.BillSplits) },
-    onOpenDebts = { shellState.openStatsSecondary(StatsSecondaryPage.Debts) },
-    onOpenReceivables = { shellState.openStatsSecondary(StatsSecondaryPage.Receivables) },
-    onOpenRepaymentDrafts = { shellState.openRepaymentDrafts() },
-    onOpenGlobalSearch = { shellState.openStatsSecondary(StatsSecondaryPage.GlobalSearch) },
+    onOpenGlobalSearch = { shellState.openSecondaryPage(ProductSecondaryPage.GlobalSearch) },
     onManualCreate = ledgerViewModel::createManualExpense,
     onViewModeChange = ledgerViewModel::setViewMode,
     onEdit = { navController.openExpense(it.id) },
@@ -116,6 +116,18 @@ private fun SyncLedgerAfterExpenseEdit(
 }
 
 @Composable
+private fun SyncLedgerVocabulary(
+    shellState: MainShellState,
+    ledgerViewModel: LedgerViewModel,
+) {
+    LaunchedEffect(shellState.transactionVocabularyRevision) {
+        if (shellState.transactionVocabularyRevision > 0) {
+            ledgerViewModel.refreshVocabulary()
+        }
+    }
+}
+
+@Composable
 private fun ApplyPendingLedgerDrill(
     shellState: MainShellState,
     ledgerViewModel: LedgerViewModel,
@@ -123,8 +135,12 @@ private fun ApplyPendingLedgerDrill(
     // §三报表钻取:消费统计页 post 的一次性(月, 分类)请求(取走即清,
     // tab 过场重组不会重复覆盖用户随后手改的筛选)。
     LaunchedEffect(shellState.ledgerDrill.pending) {
-        shellState.ledgerDrill.consume()?.let { request ->
-            ledgerViewModel.applyDrillFilter(month = request.month, category = request.category)
+        when (val request = shellState.ledgerDrill.consume()) {
+            is LedgerDrillRequest.Category ->
+                ledgerViewModel.applyDrillFilter(month = request.month, category = request.category)
+            is LedgerDrillRequest.DataQuality ->
+                ledgerViewModel.applyDataQualityFilter(request.filter)
+            null -> Unit
         }
     }
 }

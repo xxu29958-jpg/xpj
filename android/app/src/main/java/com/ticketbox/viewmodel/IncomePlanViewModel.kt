@@ -33,6 +33,7 @@ data class IncomePlanUiState(
     val activePlans: List<IncomePlan> = emptyList(),
     val archivedPlans: List<IncomePlan> = emptyList(),
     val totalActiveAmountCents: Long = 0L,
+    val currentMonthSummary: IncomePlanMonthSummary = IncomePlanMonthSummary(),
     val error: UiText? = null,
     val addDraft: IncomePlanDraftUi = IncomePlanDraftUi(),
     val isSubmitting: Boolean = false,
@@ -51,6 +52,34 @@ enum class IncomePlanLoadState {
     Loading,
     Loaded,
     Failed,
+}
+
+/** 计划域概览用的本月收入汇总（218-B1 自 #218 摘取；完整收入计划重构属后续 slice）。 */
+data class IncomePlanMonthSummary(
+    val effectivePlanCount: Int = 0,
+    val expectedAmountCents: Long = 0L,
+    val historicalRecordCount: Int = 0,
+)
+
+private fun incomePlanMonthSummary(
+    plans: List<IncomePlan>,
+    currentMonth: YearMonth,
+): IncomePlanMonthSummary {
+    val currentMonthLabel = currentMonth.toString()
+    val effectivePlans = plans.filter { plan ->
+        plan.frequency == IncomeFrequency.MONTHLY || plan.incomeMonth == currentMonthLabel
+    }
+    val historicalRecordCount = plans.count { plan ->
+        val incomeMonth = plan.incomeMonth?.let { value ->
+            runCatching { YearMonth.parse(value) }.getOrNull()
+        }
+        plan.frequency == IncomeFrequency.ONE_TIME && incomeMonth?.isBefore(currentMonth) == true
+    }
+    return IncomePlanMonthSummary(
+        effectivePlanCount = effectivePlans.size,
+        expectedAmountCents = effectivePlans.sumOf(IncomePlan::amountCents),
+        historicalRecordCount = historicalRecordCount,
+    )
 }
 
 data class IncomePlanDraftUi(
@@ -88,6 +117,7 @@ data class IncomePlanDraftUi(
 
 class IncomePlanViewModel(
     private val repository: IncomePlanActions,
+    private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(IncomePlanUiState(canModify = repository.canModifyLedger()))
@@ -120,6 +150,7 @@ class IncomePlanViewModel(
                         activePlans = listing.plans,
                         archivedPlans = archived.getOrDefault(emptyList()),
                         totalActiveAmountCents = listing.totalActiveAmountCents,
+                        currentMonthSummary = incomePlanMonthSummary(listing.plans, YearMonth.now()),
                         error = archivedError,
                     )
                 },
@@ -220,6 +251,7 @@ class IncomePlanViewModel(
                             addSucceeded = true,
                         )
                     }
+                    onDataChanged()
                     refresh()
                 },
                 onFailure = { err ->
@@ -258,6 +290,7 @@ class IncomePlanViewModel(
         result.fold(
             onSuccess = {
                 _state.update { it.copy(flashMessage = success) }
+                onDataChanged()
                 refresh()
             },
             onFailure = { err ->

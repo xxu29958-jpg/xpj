@@ -14,15 +14,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * ADR-0049 P3b / ⑤c (slice ⑤c-2) 欠我的(应收) —— 跨账本 member 应收的**只读发现面**。
+ * 欠我的(应收) —— 服务端 viewer-personal 应收的只读发现面。
  *
- * 家人接受你发起的拆账后，你作为跨账本债权人的那些应收（ledger-scoped 的 [DebtListViewModel] 看不到，
- * 因为 bill_split 成员债住在债务人的账本）汇总在这里。所有行都是 member 应收（服务端保证
- * `viewer_is_debtor=false`），纯只读（无 create / 无写）。
+ * 同账本 owner/member 应收与跨账本 member 债权人 shell 已由服务端按当前账号合并、去重；客户端
+ * 不根据 owner-relative direction 重建当前主体身份。结果可包含 external 与 member 行，纯只读。
  *
- * 镜像 [DebtListViewModel] 的 [loadGeneration] 单调代际守卫：被新 refresh 超越的慢加载直接丢弃。应收是
- * **账户作用域**（跨账本）、与活跃账本无关，故不像 DebtListViewModel 那样按账本清旧数据（无 reload）——
- * 只在每次（重新）进入 overlay 时 [refresh] 拉最新。
+ * 镜像 [DebtListViewModel] 的 [loadGeneration] 单调代际守卫。因为结果包含当前账本的同账本行，
+ * [reload] 会在每次进入时同步清掉上一个账本的可见数据后再拉取。
  */
 data class ReceivablesUiState(
     val isLoading: Boolean = false,
@@ -43,6 +41,11 @@ class ReceivablesViewModel(
     private var loadGeneration = 0L
 
     init {
+        refresh()
+    }
+
+    fun reload() {
+        _state.value = ReceivablesUiState()
         refresh()
     }
 

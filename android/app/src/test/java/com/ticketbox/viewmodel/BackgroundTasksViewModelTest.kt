@@ -117,6 +117,27 @@ class BackgroundTasksViewModelTest {
         assertEquals(0, repo.cancelCalls)
     }
 
+    @Test
+    fun viewerCanReadTasksButCannotRequestCancellation() = runTest(dispatcher) {
+        val running = task(publicId = "task-1")
+        val repo = FakeBackgroundTaskActions(
+            canModify = false,
+            fetchResult = Result.success(listOf(running)),
+            cancelResult = Result.success(running),
+        )
+        val vm = BackgroundTasksViewModel(repo)
+
+        vm.refresh()
+        runCurrent()
+        vm.cancel(running.publicId)
+        runCurrent()
+
+        assertFalse(vm.uiState.value.canModify)
+        assertEquals(listOf(running), vm.uiState.value.tasks)
+        assertEquals(1, repo.fetchCalls)
+        assertEquals(0, repo.cancelCalls)
+    }
+
     private fun task(
         publicId: String,
         status: String = BACKGROUND_TASK_RUNNING,
@@ -136,11 +157,14 @@ class BackgroundTasksViewModelTest {
     )
 
     private class FakeBackgroundTaskActions(
+        var canModify: Boolean = true,
         var fetchResult: Result<List<BackgroundTask>> = Result.success(emptyList()),
         var cancelResult: Result<BackgroundTask> = Result.failure(IllegalStateException()),
     ) : BackgroundTaskActions {
         var fetchCalls = 0
         var cancelCalls = 0
+
+        override fun canModifyLedger(): Boolean = canModify
 
         override suspend fun fetchBackgroundTasks(): Result<List<BackgroundTask>> {
             fetchCalls += 1

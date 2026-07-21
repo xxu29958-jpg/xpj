@@ -39,7 +39,16 @@ internal class MainScreenFactory(
         recurringRepository = repositories.recurringRepository,
         budgetRepository = repositories.budgetRepository,
         reportsRepository = repositories.reportsRepository,
-        repaymentDrafts = repositories.repaymentDraftRepository,
+    )
+
+    fun repositoryViewModelFactory(
+        onExpenseDataChanged: () -> Unit,
+    ): ViewModelProvider.Factory = createRepositoryViewModelFactory(
+        repository = repositories.repository,
+        recurringRepository = repositories.recurringRepository,
+        budgetRepository = repositories.budgetRepository,
+        reportsRepository = repositories.reportsRepository,
+        onExpenseDataChanged = onExpenseDataChanged,
     )
 }
 
