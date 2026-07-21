@@ -14,7 +14,7 @@ shell").
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -278,6 +278,120 @@ def list_debts(
                 update={"viewer_is_debtor": _viewer_is_debtor(debt, viewer_account_id)}
             )
         items.append(response)
+    return DebtListResponse(items=items)
+
+
+def _list_personal_ledger_debts(
+    db: Session,
+    *,
+    tenant_id: str,
+    account_id: int,
+    direction_for_owner: str,
+    direction_for_counterparty: str,
+) -> DebtListResponse:
+    """Return only obligations where ``account_id`` is the relevant party.
+
+    ``Debt.direction`` is owner-relative.  A personal lens therefore needs two
+    mirrored branches: the viewer may be the Debt owner, or the member
+    counterparty.  External rows have no account-backed counterparty and are
+    intentionally visible only to their owner.  This keeps a ledger writer from
+    inheriting another member's private "I owe / owed to me" list merely because
+    they can administer the shared ledger.
+    """
+    statement = (
+        ledger_scoped_select(Debt, tenant_id)
+        .where(
+            or_(
+                and_(
+                    Debt.owner_account_id == account_id,
+                    Debt.direction == direction_for_owner,
+                ),
+                and_(
+                    Debt.counterparty_type == "member",
+                    Debt.counterparty_account_id == account_id,
+                    Debt.direction == direction_for_counterparty,
+                ),
+            )
+        )
+        .order_by(Debt.status.asc(), Debt.created_at.asc(), Debt.id.asc())
+    )
+    debts = list(db.scalars(statement))
+    # When the viewer is the member counterparty, the stored label names that
+    # counterparty (the viewer).  The relationship row must name the other side,
+    # which is the Debt owner. Resolve those names in one query.
+    counterparty_view_debts = [
+        debt for debt in debts if debt.counterparty_account_id == account_id
+    ]
+    owner_names = _owner_display_names(
+        db,
+        {debt.owner_account_id for debt in counterparty_view_debts},
+    )
+    items: list[DebtResponse] = []
+    for debt in debts:
+        update: dict[str, object] = {
+            "viewer_is_debtor": _viewer_is_debtor(debt, account_id)
+        }
+        if debt.counterparty_account_id == account_id:
+            owner_name = owner_names.get(debt.owner_account_id)
+            if owner_name:
+                update["counterparty_label"] = owner_name
+        items.append(_debt_response_with_fold(db, debt).model_copy(update=update))
+    return DebtListResponse(items=items)
+
+
+def list_payables_for_account(
+    db: Session,
+    *,
+    tenant_id: str,
+    account_id: int,
+) -> DebtListResponse:
+    """Viewer-personal obligations the current account needs to repay.
+
+    Owner-relative ``i_owe`` and member-counterparty-relative ``owed_to_me`` are
+    the same payable fact viewed from opposite sides.  No third-party ledger
+    debt and no receivable can enter this result.
+    """
+    return _list_personal_ledger_debts(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        direction_for_owner="i_owe",
+        direction_for_counterparty="owed_to_me",
+    )
+
+
+def list_receivables_for_account(
+    db: Session,
+    *,
+    tenant_id: str,
+    account_id: int,
+) -> DebtListResponse:
+    """Viewer-personal receivables in the selected ledger plus cross-ledger ones.
+
+    Same-ledger owner-relative ``owed_to_me`` and member-counterparty-relative
+    ``i_owe`` are combined with the existing privacy-redacted cross-ledger
+    creditor discovery. This is the canonical product lens shared by Web and
+    ``GET /api/debts/receivables``; clients must not rebuild viewer roles from
+    owner-relative ``Debt.direction``.
+    """
+    local = _list_personal_ledger_debts(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        direction_for_owner="owed_to_me",
+        direction_for_counterparty="i_owe",
+    ).items
+    cross_ledger = list_member_receivables_for_account(
+        db,
+        account_id=account_id,
+    ).items
+    seen: set[str] = set()
+    items: list[DebtResponse] = []
+    for debt in [*local, *cross_ledger]:
+        if debt.public_id in seen:
+            continue
+        seen.add(debt.public_id)
+        items.append(debt)
     return DebtListResponse(items=items)
 
 

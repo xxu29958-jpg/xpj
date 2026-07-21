@@ -64,11 +64,14 @@ from app.services.debt_service._query import (
     get_participant_debt_response,
     list_debts,
     list_member_receivables_for_account,
+    list_payables_for_account,
+    list_receivables_for_account,
 )
 from app.services.debt_service._repayment import (
     get_repayment_public_id_for_idempotency,
     record_repayment,
 )
+from app.services.debt_service._repayment_activity import list_repayment_facts
 from app.services.debt_service._repayment_draft import (
     RepaymentDraftAuditRow,
     confirm_repayment_draft,
@@ -108,8 +111,11 @@ __all__ = [
     "latest_fact_at",
     "list_debts",
     "list_member_receivables_for_account",
+    "list_payables_for_account",
+    "list_receivables_for_account",
     "list_repayment_draft_audit_for_account",
     "list_repayment_drafts",
+    "list_repayment_facts",
     "list_repayment_proposals",
     "record_adjustment",
     "record_repayment",

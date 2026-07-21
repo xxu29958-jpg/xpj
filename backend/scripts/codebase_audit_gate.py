@@ -123,20 +123,20 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 77,
-    "mutate_token_exempted": 123,
+    "mutate_token_carriers": 84,
+    "mutate_token_exempted": 127,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 19,
-    "mutate_token_reason_create_row": 32,
+    "mutate_token_reason_create_row": 34,
     "mutate_token_reason_enqueue_task": 0,
     "mutate_token_reason_external_side_effect": 4,
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 4,
     "mutate_token_reason_session_rotation": 6,
-    "mutate_token_reason_terminal_flag_flip": 28,
+    "mutate_token_reason_terminal_flag_flip": 30,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2699,
+    "backend_pytest_count": 2727,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 
@@ -164,9 +164,9 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _ADR_0049_EXEMPTED_GRANDFATHER = (
-    122,
     123,
-)  # Desktop two-phase credential (PR #219): POST /api/auth/desktop/activate adds one session_rotation exemption — it carries attempt-proof replay instead of OCC (ledger row in _mutate_token_ledger.py). The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (121, 122) for the ADR-0053 web merchant catalog create.
+    127,
+)  # Debt idempotent command layer web adapters (218-C2): the four non-fold-changing web form routes (POST /web/debts create + three proposal intent routes) are exempted with the same reasons as their API twins — fold-changing web actions instead CARRY expected_row_version and are auto-detected carriers. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (122, 123) for the desktop two-phase credential (PR #219).
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``

@@ -1,13 +1,11 @@
-"""ADR-0049 P3b / ⑤c-1: cross-ledger member-Debt receivables ("money owed to me").
+"""ADR-0049 P3b / ⑤c-1: cross-ledger member-Debt creditor discovery.
 
-`GET /api/debts/receivables` (account-scoped, NOT ledger-scoped) lists the member
-Debts the authenticated account is the cross-ledger CREDITOR of — the receivable a
-bill_split sender cannot see via the ledger-scoped `GET /api/debts` (the Debt lives
-in the debtor's ledger). Each row is shell-redacted (`ledger_id=None`, §5.2/ADR-0029)
-and carries the DEBTOR's display name in `counterparty_label` so the creditor sees WHO
-owes them; `counterparty_account_id`/`direction` stay owner-relative so the row is
-byte-identical to the detail framing (list↔detail consistency). The same debtor-name
-enrichment is mirrored in `get_participant_debt_response` for the cross-ledger creditor.
+The low-level `list_member_receivables_for_account` helper lists only cross-ledger
+member Debts where the account is the creditor. `GET /api/debts/receivables` now
+combines that privacy-redacted discovery result with the selected ledger's personal
+receivables. Cross rows remain shell-redacted (`ledger_id=None`, §5.2/ADR-0029) and
+carry the DEBTOR's display name in `counterparty_label`; `counterparty_account_id`
+and owner-relative `direction` stay unchanged for list/detail consistency.
 
 Debts are seeded via `create_bill_split_debt` (the canonical §4 entry), so the rollout
 flag is irrelevant here.

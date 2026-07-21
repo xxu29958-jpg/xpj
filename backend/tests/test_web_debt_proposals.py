@@ -1,8 +1,7 @@
-"""/web/debts/{id} 成员还款 proposal 状态 + 过往历史 (ADR-0049 债务域 web 面 slice 2b).
+"""/web/debts/{id} 成员还款 proposal 完整收发箱 (ADR-0049 §3.2).
 
-只读：在途 pending 渲染成一行关系状态句 (web 描述性非 CTA)，已解决 proposal 沉降进「过往」
-(neutral，rejected/expired 不读作失败，永不红)。复用 ``list_repayment_proposals`` 无新端点。
-拆出独立文件 (proposal concern) 让 test_web_debts.py 留在 files_over_500 门下。
+债务人可发起/撤回，债权人可全额或部分确认/回复金额不符；在途状态与已解决「过往」仍保持
+communal/neutral 文案。HTML adapter 与 JSON API 复用同一 command/idempotency contract。
 """
 
 from __future__ import annotations
@@ -14,13 +13,17 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+import app.routes.web_debt_proposal_actions as proposal_routes
+import app.routes.web_debt_proposal_views as proposal_views
+import app.services.debt_proposal_command_service as proposal_commands
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember, MemberRepaymentProposal, Repayment
-from app.routes.web_debts import (
+from app.routes.web_debt_proposal_views import (
     _proposal_pending_line,
     _proposal_section,
     _resolved_proposal_row,
 )
+from app.services.debt_service import get_participant_debt_response
 from app.services.time_service import now_utc
 
 # Uses the shared ``web_client`` fixture (conftest.py) which bypasses the /web loopback
@@ -29,11 +32,18 @@ from app.services.time_service import now_utc
 _COMMITTED_STATUSES = {"confirmed", "partially_confirmed"}
 
 
+def test_web_proposal_adapter_delegates_to_shared_commands_and_views() -> None:
+    assert (
+        proposal_routes.create_repayment_proposal_idempotently
+        is proposal_commands.create_repayment_proposal_idempotently
+    )
+    assert proposal_routes._proposal_error_message
+    assert proposal_views._proposal_section is _proposal_section
+
+
 def _owner_account_id(db) -> int:
     owner_account_id = db.scalar(
-        select(LedgerMember.account_id)
-        .where(LedgerMember.ledger_id == "owner", LedgerMember.role == "owner")
-        .limit(1)
+        select(LedgerMember.account_id).where(LedgerMember.ledger_id == "owner", LedgerMember.role == "owner").limit(1)
     )
     assert owner_account_id is not None
     return owner_account_id
@@ -152,12 +162,156 @@ def _seed_proposal(
         return proposal.public_id
 
 
+def _proposal_form(**values: str) -> dict[str, str]:
+    return {
+        "csrf_token": "test-client-bypasses-middleware-check",
+        "ledger_id": "owner",
+        "idempotency_key": str(uuid4()),
+        **values,
+    }
+
+
+def test_web_debtor_can_create_replay_and_withdraw_proposal(
+    web_client: TestClient,
+) -> None:
+    public_id, debt_id, _owner_id, _member_id = _seed_member_debt_for_proposals(direction="i_owe")
+    create_form = _proposal_form(
+        amount_major="35.50",
+        note="刚刚转给你啦",
+    )
+
+    created = web_client.post(
+        f"/web/debts/{public_id}/repayment-proposals",
+        data=create_form,
+    )
+    replay = web_client.post(
+        f"/web/debts/{public_id}/repayment-proposals",
+        data=create_form,
+    )
+
+    assert created.status_code == 200
+    assert replay.status_code == 200
+    assert "已经发给 TA 啦" in created.text
+    with SessionLocal() as db:
+        proposals = db.scalars(select(MemberRepaymentProposal).where(MemberRepaymentProposal.debt_id == debt_id)).all()
+        assert len(proposals) == 1
+        proposal = proposals[0]
+        assert proposal.status == "pending"
+        assert proposal.proposed_amount_cents == 3_550
+        assert proposal.note == "刚刚转给你啦"
+        proposal_public_id = proposal.public_id
+
+    assert f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw" in created.text
+    withdrawn = web_client.post(
+        f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw",
+        data=_proposal_form(),
+    )
+    assert withdrawn.status_code == 200
+    assert "已经撤回啦" in withdrawn.text
+    assert f'action="/web/debts/{public_id}/repayment-proposals"' in withdrawn.text
+    with SessionLocal() as db:
+        proposal = db.scalar(
+            select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_public_id)
+        )
+        assert proposal is not None
+        assert proposal.status == "withdrawn"
+
+
+def test_web_creditor_can_partially_confirm_pending_proposal(
+    web_client: TestClient,
+) -> None:
+    public_id, debt_id, owner_id, member_id = _seed_member_debt_for_proposals(direction="owed_to_me")
+    proposal_public_id = _seed_proposal(
+        debt_id=debt_id,
+        debtor_id=member_id,
+        creditor_id=owner_id,
+        status="pending",
+        amount_cents=8_000,
+        resolved=False,
+    )
+    with SessionLocal() as db:
+        debt = db.get(Debt, debt_id)
+        assert debt is not None
+        before_version = debt.row_version
+
+    confirmed = web_client.post(
+        f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm",
+        data=_proposal_form(
+            amount_major="50.00",
+            expected_row_version=str(before_version),
+        ),
+    )
+
+    assert confirmed.status_code == 200
+    assert "收到啦，谢谢 TA" in confirmed.text
+    with SessionLocal() as db:
+        proposal = db.scalar(
+            select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_public_id)
+        )
+        debt = db.get(Debt, debt_id)
+        assert proposal is not None
+        assert debt is not None
+        assert proposal.status == "partially_confirmed"
+        assert proposal.confirmed_amount_cents == 5_000
+        assert debt.row_version == before_version + 1
+        fold = get_participant_debt_response(
+            db,
+            public_id=public_id,
+            ledger_id="owner",
+            account_id=owner_id,
+        )
+        assert fold.paid_amount_cents == 5_000
+        assert fold.remaining_amount_cents == 15_000
+
+
+def test_web_creditor_can_reply_amount_mismatch_without_changing_fold(
+    web_client: TestClient,
+) -> None:
+    public_id, debt_id, owner_id, member_id = _seed_member_debt_for_proposals(direction="owed_to_me")
+    proposal_public_id = _seed_proposal(
+        debt_id=debt_id,
+        debtor_id=member_id,
+        creditor_id=owner_id,
+        status="pending",
+        amount_cents=8_000,
+        resolved=False,
+    )
+    with SessionLocal() as db:
+        debt = db.get(Debt, debt_id)
+        assert debt is not None
+        before_version = debt.row_version
+
+    rejected = web_client.post(
+        f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject",
+        data=_proposal_form(),
+    )
+
+    assert rejected.status_code == 200
+    assert "金额对不上" in rejected.text
+    with SessionLocal() as db:
+        proposal = db.scalar(
+            select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_public_id)
+        )
+        debt = db.get(Debt, debt_id)
+        assert proposal is not None
+        assert debt is not None
+        assert proposal.status == "rejected"
+        assert debt.row_version == before_version
+        fold = get_participant_debt_response(
+            db,
+            public_id=public_id,
+            ledger_id="owner",
+            account_id=owner_id,
+        )
+        assert fold.paid_amount_cents == 0
+        assert fold.remaining_amount_cents == 20_000
+
+
 def test_web_debt_detail_pending_proposal_debtor_view(web_client: TestClient) -> None:
     # i_owe member debt → owner (the web viewer) is the debtor. A pending proposal renders as a
     # descriptive relational status line (web read-only, not a confirm CTA), never red.
     public_id, debt_id, owner_id, member_id = _seed_member_debt_for_proposals(direction="i_owe")
-    _seed_proposal(debt_id=debt_id, debtor_id=owner_id, creditor_id=member_id,
-                   status="pending", resolved=False)
+    _seed_proposal(debt_id=debt_id, debtor_id=owner_id, creditor_id=member_id, status="pending", resolved=False)
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     assert "你说你还了这一份，等家人确认一下" in resp.text  # debtor-side pending line
@@ -168,21 +322,35 @@ def test_web_debt_detail_pending_proposal_creditor_view(web_client: TestClient) 
     # owed_to_me member debt → owner (the web viewer) is the creditor → the descriptive line names
     # the amount the other side says they paid. (web read-only: confirm/reject happen in the App.)
     public_id, debt_id, owner_id, member_id = _seed_member_debt_for_proposals(direction="owed_to_me")
-    _seed_proposal(debt_id=debt_id, debtor_id=member_id, creditor_id=owner_id,
-                   status="pending", amount_cents=8000, resolved=False)
+    _seed_proposal(
+        debt_id=debt_id, debtor_id=member_id, creditor_id=owner_id, status="pending", amount_cents=8000, resolved=False
+    )
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     assert "TA 把 ¥80.00 那份给你啦，看看对不对" in resp.text  # creditor-side pending line w/ amount
+    assert f"/web/debts/{public_id}/repayment-proposals/" in resp.text
+    assert "/confirm" in resp.text
+    assert "/reject" in resp.text
+    assert 'value="80.00"' in resp.text
+    assert f"/web/debts/{public_id}/forgive" not in resp.text
 
 
 def test_web_debt_detail_resolved_history_is_sunk_and_neutral(web_client: TestClient) -> None:
     # Resolved proposals sink into 过往 with day-granularity dates + NEUTRAL pills; a rejected one
     # reads 在对账 (not 已拒绝/失败) and never danger (red-line ②). No list-level totals/counts.
     public_id, debt_id, owner_id, member_id = _seed_member_debt_for_proposals(direction="i_owe")
-    _seed_proposal(debt_id=debt_id, debtor_id=owner_id, creditor_id=member_id,
-                   status="confirmed", amount_cents=5000, note="微信转的", days_ago=2)
-    _seed_proposal(debt_id=debt_id, debtor_id=owner_id, creditor_id=member_id,
-                   status="rejected", amount_cents=3000, days_ago=1)
+    _seed_proposal(
+        debt_id=debt_id,
+        debtor_id=owner_id,
+        creditor_id=member_id,
+        status="confirmed",
+        amount_cents=5000,
+        note="微信转的",
+        days_ago=2,
+    )
+    _seed_proposal(
+        debt_id=debt_id, debtor_id=owner_id, creditor_id=member_id, status="rejected", amount_cents=3000, days_ago=1
+    )
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     assert "过往" in resp.text  # history block title
@@ -203,22 +371,29 @@ def test_web_debt_detail_resolved_history_is_sunk_and_neutral(web_client: TestCl
 def test_web_debt_detail_resolved_history_collapses_over_three(web_client: TestClient) -> None:
     public_id, debt_id, owner_id, member_id = _seed_member_debt_for_proposals(direction="i_owe")
     for i in range(5):
-        _seed_proposal(debt_id=debt_id, debtor_id=owner_id, creditor_id=member_id,
-                       status="withdrawn", amount_cents=1000 + i, days_ago=i)
+        _seed_proposal(
+            debt_id=debt_id,
+            debtor_id=owner_id,
+            creditor_id=member_id,
+            status="withdrawn",
+            amount_cents=1000 + i,
+            days_ago=i,
+        )
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     # First 3 shown inline, the rest behind a no-JS <details> "查看全部 5 条过往".
     assert "查看全部 5 条过往" in resp.text
-    assert "<details class=\"debt-history-more\">" in resp.text
+    assert '<details class="debt-history-more">' in resp.text
 
 
-def test_web_debt_detail_member_no_proposals_renders_no_section(web_client: TestClient) -> None:
-    # A member debt with zero proposals → the whole proposal section is omitted (no 过往 / status line).
+def test_web_debt_detail_member_no_proposals_renders_debtor_action(web_client: TestClient) -> None:
+    # A debtor with no pending proposal gets the real create form; history stays absent.
     public_id, _debt_id, _owner_id, _member_id = _seed_member_debt_for_proposals(direction="i_owe")
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     assert "过往" not in resp.text
-    assert "debt-proposal-status" not in resp.text
+    assert f'action="/web/debts/{public_id}/repayment-proposals"' in resp.text
+    assert "把这份给 TA" in resp.text
 
 
 def test_web_debt_detail_external_has_no_proposal_section(web_client: TestClient) -> None:
@@ -226,8 +401,7 @@ def test_web_debt_detail_external_has_no_proposal_section(web_client: TestClient
     # (the is_member route gate skips the query AND the template renders the proposal block only in
     # the {% if debt.is_member %} branch). Pins that external never surfaces the proposal section.
     public_id, debt_id, owner_id, other_id = _seed_external_debt()
-    _seed_proposal(debt_id=debt_id, debtor_id=owner_id, creditor_id=other_id,
-                   status="rejected", amount_cents=3000)
+    _seed_proposal(debt_id=debt_id, debtor_id=owner_id, creditor_id=other_id, status="rejected", amount_cents=3000)
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     assert "过往" not in resp.text
@@ -237,6 +411,7 @@ def test_web_debt_detail_external_has_no_proposal_section(web_client: TestClient
 
 def _stub_proposal(**overrides) -> SimpleNamespace:
     base = {
+        "public_id": str(uuid4()),
         "status": "confirmed",
         "proposed_amount_cents": 5000,
         "home_currency_code": "CNY",
@@ -269,18 +444,20 @@ def test_resolved_proposal_row_date_prefix_and_neutral_status() -> None:
 
 
 def test_proposal_section_splits_pending_and_collapses_resolved() -> None:
-    # None when entirely empty.
-    assert _proposal_section([], True) is None
+    empty = _proposal_section([], True, debt_status="open")
+    assert empty["can_propose"] is True
+    assert empty["pending"] is None
     # One pending + 4 resolved → pending line + first-3 visible / rest hidden, total label.
     pending = _stub_proposal(status="pending")
     resolved = [_stub_proposal(status="confirmed") for _ in range(4)]
-    section = _proposal_section([pending, *resolved], True)
-    assert section is not None
+    section = _proposal_section([pending, *resolved], True, debt_status="open")
     assert section["pending_line"] == "你说你还了这一份，等家人确认一下"
+    assert section["can_withdraw"] is True
+    assert section["pending"]["public_id"] == pending.public_id
     assert len(section["resolved_visible"]) == 3
     assert len(section["resolved_hidden"]) == 1
     assert section["history_expand_label"] == "查看全部 4 条过往"
     # Resolved-only (no pending) still renders history; pending_line is None.
-    resolved_only = _proposal_section(resolved, None)
+    resolved_only = _proposal_section(resolved, None, debt_status="open")
     assert resolved_only["pending_line"] is None
     assert resolved_only["has_resolved"] is True
