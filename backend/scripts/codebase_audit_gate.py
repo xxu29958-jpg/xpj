@@ -54,7 +54,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 215,  # Noisy lane; ratcheted to the current measured floor.
+    "unreferenced_modules": 214,  # Noisy lane; ratcheted to the current measured floor.
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -123,8 +123,8 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 84,
-    "mutate_token_exempted": 127,
+    "mutate_token_carriers": 85,
+    "mutate_token_exempted": 128,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 19,
@@ -134,9 +134,9 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 4,
     "mutate_token_reason_session_rotation": 6,
-    "mutate_token_reason_terminal_flag_flip": 30,
+    "mutate_token_reason_terminal_flag_flip": 31,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2726,
+    "backend_pytest_count": 2747,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 
@@ -164,9 +164,9 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _ADR_0049_EXEMPTED_GRANDFATHER = (
-    123,
     127,
-)  # Debt idempotent command layer web adapters (218-C2): the four non-fold-changing web form routes (POST /web/debts create + three proposal intent routes) are exempted with the same reasons as their API twins — fold-changing web actions instead CARRY expected_row_version and are auto-detected carriers. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (122, 123) for the desktop two-phase credential (PR #219).
+    128,
+)  # Actionable web repayment-draft review (218-C3): POST /web/repayment-drafts/{public_id}/dismiss is exempted with the same terminal_flag_flip reason as its /api twin (guarded status flip, no fold); the fold-changing web CONFIRM instead carries per-choice expected_row_version hidden fields and is auto-detected as a carrier (+1). The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (123, 127) for the 218-C2 debt command web adapters.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
