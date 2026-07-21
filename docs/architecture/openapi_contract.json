@@ -31780,7 +31780,7 @@
     },
     "/web/debts/new": {
       "get": {
-        "operationId": "web_new_debt_web_debts_new_get",
+        "operationId": "web_debt_new_web_debts_new_get",
         "parameters": [
           {
             "in": "query",
@@ -31821,7 +31821,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Web New Debt",
+        "summary": "Web Debt New",
         "tags": [
           "web"
         ]
@@ -31854,38 +31854,6 @@
                 }
               ],
               "title": "Ledger Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "msg",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Msg"
-            }
-          },
-          {
-            "in": "query",
-            "name": "flash_type",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Flash Type"
             }
           }
         ],
