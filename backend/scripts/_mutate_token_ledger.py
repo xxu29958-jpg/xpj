@@ -346,10 +346,11 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/merchants/aliases/{public_id}/undo": Exempt(
         "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")
     ),
-    "POST /web/pending/batch-reject": Exempt("batch_db_write", "expenses", ("expenses",)),
+    # 218-C5a: POST /web/pending/batch-reject 与 POST /web/review/bulk 现在携带
+    # 页面快照 expected_row_version(fail-closed 409),schema 自动判定为 carrier,
+    # 不再占用 batch_db_write 豁免。
     "POST /web/recurring/confirm-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /web/recurring/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
-    "POST /web/review/bulk": Exempt("batch_db_write", "expenses", ("expenses",)),
     # ADR-0049 slice C3: web twin of the /api dismiss above — same guarded
     # terminal flip on the same draft row, same touched tables. (The web
     # CONFIRM is fold-changing too and fences on the OCC token embedded in

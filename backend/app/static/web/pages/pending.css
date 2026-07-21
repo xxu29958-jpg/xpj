@@ -206,12 +206,17 @@
     place-items: center;
     cursor: pointer;
     flex-shrink: 0;
+    /* 原生 <input type=checkbox> 去掉系统外观，沿用下方自绘对勾（批11 快照硬化） */
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+    padding: 0;
 }
-.checkbox.checked {
+.checkbox:checked {
     background: var(--text-default);
     border-color: var(--text-default);
 }
-.checkbox.checked::after {
+.checkbox:checked::after {
     content: "";
     width: 8px;
     height: 4px;

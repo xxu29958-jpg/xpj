@@ -1,0 +1,129 @@
+<html lang="zh-CN">
+<head><meta charset="utf-8"></head>
+<body>
+  <main class="content">
+    <header class="page-header">待我处理</header>
+    <div class="exp-row" data-expense-id="1">
+      <input class="row-check"
+             id="check-1"
+             type="checkbox"
+             data-id="1"
+             data-row-version="11">
+      <a class="exp-row-detail"
+         id="row-1"
+         href="#row-1-navigation"
+         aria-current="true">第一笔</a>
+    </div>
+    <div class="exp-row" data-expense-id="2">
+      <input class="row-check"
+             id="check-2"
+             type="checkbox"
+             data-id="2"
+             data-row-version="12">
+      <a class="exp-row-detail"
+         id="row-2"
+         href="#row-2-navigation">第二笔</a>
+    </div>
+    <form data-bulk action="/web/review/bulk">
+      <input type="hidden" name="ledger_id" value="owner">
+      <span data-bulk-count>0</span>
+      <button id="bulk-clear" type="button" data-bulk-clear>取消选择</button>
+      <button id="bulk-submit" type="submit" name="action" value="confirm_ready">确认入账</button>
+    </form>
+  </main>
+  <script>
+    let fetchCall = 0;
+    window.fetch = async () => {
+      fetchCall += 1;
+      if (fetchCall === 1) {
+        return {
+          ok: true,
+          json: async () => ({
+            removed_ids: ["1"],
+            message: "已确认 1 条流水。",
+            flash_type: "success",
+            undo_items: [{id: "1", expected_row_version: "21"}]
+          })
+        };
+      }
+      return {
+        ok: false,
+        json: async () => ({
+          removed_ids: [],
+          message: "批量操作失败，请重试。",
+          flash_type: "error"
+        })
+      };
+    };
+  </script>
+  <script src="__BULK_BAR_URI__"></script>
+  <script>
+    (async () => {
+      const wait = () => new Promise((resolve) => setTimeout(resolve, 20));
+      const form = document.querySelector("[data-bulk]");
+      const submitter = document.getElementById("bulk-submit");
+      const submit = () => form.dispatchEvent(new SubmitEvent("submit", {
+        bubbles: true,
+        cancelable: true,
+        submitter
+      }));
+      const capture = () => {
+        const banner = document.getElementById("bulk-flash");
+        const undo = banner && banner.querySelector(".undo-banner-action");
+        const undoButton = undo && undo.querySelector("button");
+        return {
+          role: banner && banner.getAttribute("role"),
+          live: banner && banner.getAttribute("aria-live"),
+          atomic: banner && banner.getAttribute("aria-atomic"),
+          message: banner && banner.textContent,
+          undoLabel: undo && undo.getAttribute("aria-label"),
+          undoButtonLabel: undoButton && undoButton.getAttribute("aria-label")
+        };
+      };
+
+      window.TicketboxWeb.initBulkBar();
+      const firstRow = document.getElementById("row-1");
+      const firstCheck = document.getElementById("check-1");
+      firstCheck.click();
+      const blockedClick = new MouseEvent("click", {bubbles: true, cancelable: true});
+      const dispatchResult = firstRow.dispatchEvent(blockedClick);
+      await wait();
+      const batchMode = {
+        ariaDisabled: firstRow.getAttribute("aria-disabled"),
+        tabIndex: firstRow.getAttribute("tabindex"),
+        ariaCurrent: firstRow.getAttribute("aria-current"),
+        checkboxChecked: firstCheck.checked,
+        checkboxTabIndex: firstCheck.tabIndex,
+        navigationPrevented: blockedClick.defaultPrevented && !dispatchResult,
+        locationHash: window.location.hash
+      };
+
+      document.getElementById("bulk-clear").click();
+      const cleared = {
+        ariaDisabled: firstRow.getAttribute("aria-disabled"),
+        hasTabIndex: firstRow.hasAttribute("tabindex"),
+        ariaCurrent: firstRow.getAttribute("aria-current"),
+        checkboxChecked: firstCheck.checked,
+        activeElement: document.activeElement && document.activeElement.id,
+        clearButtonType: document.getElementById("bulk-clear").type,
+        formActive: form.classList.contains("on")
+      };
+
+      firstCheck.click();
+      submit();
+      await wait();
+      const successWithUndo = capture();
+
+      document.getElementById("check-2").click();
+      submit();
+      await wait();
+      window.__webConsumerProbe = {
+        batchMode,
+        cleared,
+        successWithUndo,
+        failure: capture()
+      };
+    })();
+  </script>
+</body>
+</html>
