@@ -9,13 +9,8 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -29,10 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import android.view.View
@@ -43,7 +35,6 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.design.LocalDashboardCardTokens
 import com.ticketbox.ui.design.LocalGoalTokens
 import com.ticketbox.ui.design.LocalSkeletonTokens
 import com.ticketbox.ui.design.LocalStateTokens
@@ -51,10 +42,8 @@ import com.ticketbox.ui.design.LocalStatsTokens
 import com.ticketbox.ui.design.LocalSwipeActionTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.SkeletonTokens
-import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.backgroundVisualsForSkin
 import com.ticketbox.ui.design.chartTokensForSkin
-import com.ticketbox.ui.design.dashboardCardTokensForSkin
 import com.ticketbox.ui.design.goalTokensForSkin
 import com.ticketbox.ui.design.skeletonTokensForSkin
 import com.ticketbox.ui.design.statsTokensForSkin
@@ -66,9 +55,8 @@ import com.valentinilk.shimmer.ShimmerTheme
 import com.valentinilk.shimmer.defaultShimmerTheme
 
 // Material3 colorScheme —— 核心槽位从 ThemeVisuals / StateTokens 派生(单一真相源,
-// 刷新调色板时自动跟随,不再静默漂移)。仅 M3 专属的 on-container 对比文字 /
-// tertiaryContainer 保留字面量(它们不对应任何共享 token,是 M3 的可读性计算值);
-// outline 系列用 primary 加 alpha 派生,RGB 跟随品牌色。
+// 刷新调色板时自动跟随,不再静默漂移)。M3 的 surface-container / inverse /
+// error-container 槽位也显式映射，避免底部面板、弹窗回落到默认紫调。
 // 取值保真性由 release_audit 的 token-parity lane + 提交前脚本逐槽位核对(0 漂移)。
 private val PaperScheme = run {
     val v = themeVisualsForSkin(AppSkin.Paper)
@@ -77,7 +65,7 @@ private val PaperScheme = run {
         primary = v.primary,
         onPrimary = v.textOnPrimary,
         primaryContainer = v.brandPrimaryBg,
-        onPrimaryContainer = Color(0xFF5A3A14),
+        onPrimaryContainer = v.primaryDark,
         secondary = v.textDefault,
         onSecondary = v.textOnPrimary,
         secondaryContainer = s.neutral.bg,
@@ -85,17 +73,30 @@ private val PaperScheme = run {
         tertiary = s.success.fg,
         onTertiary = v.textOnPrimary,
         tertiaryContainer = s.success.bg,
-        onTertiaryContainer = Color(0xFF2E4220),
+        onTertiaryContainer = s.success.fg,
         background = v.backgroundBottom,
         onBackground = v.textDefault,
         surface = v.solidCard,
         onSurface = v.textDefault,
         surfaceVariant = v.surfaceSunken,
         onSurfaceVariant = v.textMuted,
-        outline = v.primary.copy(alpha = 0x8F / 255f),
-        outlineVariant = v.primary.copy(alpha = 0x42 / 255f),
+        surfaceTint = v.primary,
+        inverseSurface = v.textDefault,
+        inverseOnSurface = v.solidCard,
+        surfaceBright = v.solidCard,
+        surfaceDim = v.backgroundBottom,
+        surfaceContainerLowest = v.solidCard,
+        surfaceContainerLow = v.backgroundTop,
+        surfaceContainer = v.surfaceSunken,
+        surfaceContainerHigh = v.receiptStub.footer,
+        surfaceContainerHighest = v.receiptStub.border,
+        outline = v.textMeta,
+        outlineVariant = v.receiptStub.border,
         error = s.danger.fg,
         onError = v.textOnPrimary,
+        errorContainer = s.danger.bg,
+        onErrorContainer = s.danger.fg,
+        scrim = Color.Black,
     )
 }
 
@@ -114,17 +115,30 @@ private val MonoScheme = run {
         tertiary = s.success.fg,
         onTertiary = v.textOnPrimary,
         tertiaryContainer = s.success.bg,
-        onTertiaryContainer = Color(0xFF15301C),
+        onTertiaryContainer = s.success.fg,
         background = v.backgroundBottom,
         onBackground = v.textDefault,
         surface = v.solidCard,
         onSurface = v.textDefault,
         surfaceVariant = v.surfaceSunken,
         onSurfaceVariant = v.textMuted,
-        outline = v.primary.copy(alpha = 0x99 / 255f),
-        outlineVariant = v.primary.copy(alpha = 0x33 / 255f),
+        surfaceTint = v.primary,
+        inverseSurface = v.textDefault,
+        inverseOnSurface = v.solidCard,
+        surfaceBright = v.solidCard,
+        surfaceDim = v.backgroundBottom,
+        surfaceContainerLowest = v.solidCard,
+        surfaceContainerLow = v.backgroundTop,
+        surfaceContainer = v.surfaceSunken,
+        surfaceContainerHigh = v.receiptStub.footer,
+        surfaceContainerHighest = v.receiptStub.border,
+        outline = v.textMeta,
+        outlineVariant = v.receiptStub.border,
         error = s.danger.fg,
         onError = v.textOnPrimary,
+        errorContainer = s.danger.bg,
+        onErrorContainer = s.danger.fg,
+        scrim = Color.Black,
     )
 }
 
@@ -134,36 +148,49 @@ private val MidnightScheme = run {
     darkColorScheme(
         primary = v.primary,
         onPrimary = v.textOnPrimary,
-        primaryContainer = v.accent,
-        onPrimaryContainer = Color(0xFFF0D9B3),
+        primaryContainer = v.brandPrimaryBg,
+        onPrimaryContainer = v.primary,
         secondary = v.primaryDark,
         onSecondary = v.textOnPrimary,
         secondaryContainer = v.surfaceRaised,
         onSecondaryContainer = v.textDefault,
         tertiary = s.success.fg,
         onTertiary = v.textOnPrimary,
-        tertiaryContainer = Color(0xFF2C3220),
-        onTertiaryContainer = Color(0xFFCCD9B8),
+        tertiaryContainer = s.success.bg,
+        onTertiaryContainer = s.success.fg,
         background = v.backgroundBottom,
         onBackground = v.textDefault,
         surface = v.solidCard,
         onSurface = v.textDefault,
         surfaceVariant = v.surfaceSunken,
         onSurfaceVariant = v.textMuted,
-        outline = v.primary.copy(alpha = 0xAA / 255f),
-        outlineVariant = v.primary.copy(alpha = 0x47 / 255f),
+        surfaceTint = v.primary,
+        inverseSurface = v.textDefault,
+        inverseOnSurface = v.backgroundBottom,
+        surfaceBright = v.surfaceRaised,
+        surfaceDim = v.backgroundBottom,
+        surfaceContainerLowest = v.backgroundBottom,
+        surfaceContainerLow = v.solidCard,
+        surfaceContainer = v.surfaceSunken,
+        surfaceContainerHigh = v.surfaceRaised,
+        surfaceContainerHighest = v.receiptStub.footer,
+        outline = v.textMeta,
+        outlineVariant = v.receiptStub.border,
         error = s.danger.fg,
         onError = v.textOnPrimary,
+        errorContainer = s.danger.bg,
+        onErrorContainer = s.danger.fg,
+        scrim = Color.Black,
     )
 }
 
 // M3 Shapes 派生自 [AppRadius] —— 不再硬编码 dp,与三端 design scale 真同步。
 // 映射规则:
-//   extraSmall (M3 Snackbar/Tooltip)     → AppRadius.extraSmall  ( 8dp)
-//   small      (M3 Button/Chip-like)     → AppRadius.small       (12dp)
-//   medium     (M3 Card)                 → AppRadius.medium      (20dp)
-//   large      (M3 BottomSheet)          → AppRadius.large       (28dp)
-//   extraLarge (M3 Dialog/Hero)          → AppRadius.hero        (36dp)
+//   extraSmall (M3 Snackbar/Tooltip)     → AppRadius.extraSmall  ( 6dp)
+//   small      (M3 Button/Chip-like)     → AppRadius.small       (10dp)
+//   medium     (M3 Card)                 → AppRadius.medium      (14dp)
+//   large      (M3 BottomSheet)          → AppRadius.large       (18dp)
+//   extraLarge (M3 Dialog/Hero)          → AppRadius.hero        (20dp)
 private val TicketboxShapes = Shapes(
     extraSmall = RoundedCornerShape(AppRadius.extraSmall),
     small      = RoundedCornerShape(AppRadius.small),
@@ -205,14 +232,17 @@ fun TicketboxTheme(
         typography = TicketboxTypography,
         shapes = TicketboxShapes,
     ) {
-        TicketboxAtmosphereBackground(skin = skin) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
             CompositionLocalProvider(
                 LocalContentColor provides MaterialTheme.colorScheme.onBackground,
                 LocalThemeVisuals provides themeVisualsForSkin(skin),
                 LocalStateTokens provides stateTokensForSkin(skin),
                 LocalChartTokens provides chartTokensForSkin(skin),
                 LocalGoalTokens provides goalTokensForSkin(skin),
-                LocalDashboardCardTokens provides dashboardCardTokensForSkin(skin),
                 LocalStatsTokens provides statsTokensForSkin(skin),
                 LocalSkeletonTokens provides skeletonTokens,
                 LocalShimmerTheme provides shimmerThemeFor(skeletonTokens),
@@ -257,149 +287,13 @@ fun TicketboxAtmosphereBackground(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit = {},
 ) {
-    val visuals = themeVisualsForSkin(skin)
-    val backgroundVisuals = backgroundVisualsForSkin(skin)
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(backgroundBrushForSkin(skin)),
     ) {
-        AtmosphereWash(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .offset(x = (-120).dp, y = (-120).dp)
-                .size(520.dp),
-            colors = listOf(
-                backgroundVisuals.topGlow.copy(alpha = backgroundVisuals.topGlowAlpha),
-                Color.Transparent,
-            ),
-        )
-        AtmosphereWash(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .offset(x = 160.dp, y = (-30).dp)
-                .size(560.dp),
-            colors = listOf(
-                backgroundVisuals.sideGlow.copy(alpha = backgroundVisuals.sideGlowAlpha),
-                Color.Transparent,
-            ),
-        )
-        when (skin) {
-            AppSkin.Paper -> {
-                AtmosphereWash(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 86.dp, y = (-36).dp)
-                        .size(360.dp),
-                    colors = listOf(
-                        Color(0xFFEAD8B8).copy(alpha = 0.30f),
-                        Color.Transparent,
-                    ),
-                )
-                MistBand(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(260.dp),
-                    colors = listOf(
-                        Color.Transparent,
-                        Color(0xFFE2D6C0).copy(alpha = 0.24f),
-                        Color(0xFFC8B895).copy(alpha = 0.16f),
-                    ),
-                )
-            }
-            AppSkin.Mono -> {
-                AtmosphereWash(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 76.dp, y = (-36).dp)
-                        .size(320.dp),
-                    colors = listOf(
-                        Color(0xFFE0DFDA).copy(alpha = 0.28f),
-                        Color.Transparent,
-                    ),
-                )
-                MistBand(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(240.dp),
-                    colors = listOf(
-                        Color.Transparent,
-                        Color(0xFFDADAD5).copy(alpha = 0.24f),
-                    ),
-                )
-            }
-            AppSkin.Midnight -> {
-                AtmosphereWash(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 74.dp, y = (-36).dp)
-                        .size(310.dp),
-                    colors = listOf(
-                        Color(0xFFD6B487).copy(alpha = 0.20f),
-                        Color.Transparent,
-                    ),
-                )
-                AtmosphereWash(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .offset(x = (-88).dp, y = 88.dp)
-                        .size(360.dp),
-                    colors = listOf(
-                        Color(0xFF8A6A3E).copy(alpha = 0.26f),
-                        Color.Transparent,
-                    ),
-                )
-            }
-        }
-        MistBand(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(210.dp),
-            colors = backgroundVisuals.bottomMist,
-        )
-        MistTextureOverlay(skin = skin, visuals = visuals)
         content()
     }
-}
-
-@Composable
-private fun AtmosphereWash(
-    modifier: Modifier,
-    colors: List<Color>,
-) {
-    Box(modifier = modifier.background(Brush.radialGradient(colors)))
-}
-
-@Composable
-private fun MistTextureOverlay(
-    skin: AppSkin,
-    visuals: ThemeVisuals,
-) {
-    val lineAlpha = if (skin == AppSkin.Midnight) 0.08f else 0.10f
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val lineColor = visuals.coolMist.copy(alpha = lineAlpha)
-        repeat(10) { index ->
-            val y = size.height * (0.12f + index * 0.085f)
-            drawLine(
-                color = lineColor,
-                start = Offset(x = size.width * -0.10f, y = y),
-                end = Offset(x = size.width * 1.10f, y = y + size.height * 0.035f),
-                strokeWidth = 1.1f,
-                cap = StrokeCap.Round,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MistBand(
-    modifier: Modifier,
-    colors: List<Color>,
-) {
-    Box(modifier = modifier.background(Brush.verticalGradient(colors)))
 }
 
 private tailrec fun Context.findActivity(): Activity? {

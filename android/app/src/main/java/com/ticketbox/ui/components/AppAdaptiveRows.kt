@@ -13,6 +13,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAmountRole
@@ -90,7 +91,12 @@ fun AppAdaptiveContentActionStateRow(
     action: @Composable (Modifier, Boolean) -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        when (resolveAppAdaptiveContentActionMode(maxWidth)) {
+        when (
+            resolveAppAdaptiveContentActionMode(
+                maxWidth = maxWidth,
+                fontScale = LocalDensity.current.fontScale,
+            )
+        ) {
             AppAdaptiveContentActionMode.Stacked -> {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -116,8 +122,11 @@ fun AppAdaptiveContentActionStateRow(
     }
 }
 
-internal fun resolveAppAdaptiveContentActionMode(maxWidth: Dp): AppAdaptiveContentActionMode =
-    if (maxWidth < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
+internal fun resolveAppAdaptiveContentActionMode(
+    maxWidth: Dp,
+    fontScale: Float = 1f,
+): AppAdaptiveContentActionMode =
+    if (maxWidth / fontScale.coerceAtLeast(1f) < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
         AppAdaptiveContentActionMode.Stacked
     } else {
         AppAdaptiveContentActionMode.Inline

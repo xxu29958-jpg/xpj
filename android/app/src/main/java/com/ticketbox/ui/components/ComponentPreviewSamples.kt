@@ -37,18 +37,18 @@ private fun AppVisualComponentsPreview() {
                 title = "待确认账单",
                 subtitle = "截图上传后不会自动入账",
             )
-            AppHeroCard {
+            AppContentCard {
                 Column(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
                         text = "等待你确认",
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         text = "0 张",
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = AppTextHierarchy.heading.weight,
                     )
@@ -111,15 +111,13 @@ private fun AppVisualComponentsPreview() {
                 onClick = {},
             )
             AppBottomNav(
-                // 对齐生产主底栏(MainShellState.BottomTab): 待确认/账本/洞察/设置。
-                // 标签走 stringResource(同生产 toBottomNavItem),避免硬编码中文(ADR-0044)。
-                // 选中 pending(居中、3 字最长标签)正是胶囊自适应宽度修复的关键场景。
+                // 对齐生产主底栏(MainShellState.BottomTab): 今日/待确认/账本/洞察/设置。
                 items = listOf(
-                    AppBottomNavItem("today", stringResource(R.string.nav_tab_today), Icons.Filled.Today),
-                    AppBottomNavItem("pending", stringResource(R.string.nav_tab_pending), Icons.Filled.CheckCircle),
-                    AppBottomNavItem("ledger", stringResource(R.string.nav_tab_ledger), Icons.AutoMirrored.Filled.ReceiptLong),
-                    AppBottomNavItem("insights", stringResource(R.string.nav_tab_insights), Icons.Filled.Insights),
-                    AppBottomNavItem("settings", stringResource(R.string.nav_tab_settings), Icons.Filled.Settings),
+                    AppPrimaryNavItem("today", stringResource(R.string.nav_tab_today), Icons.Filled.Today),
+                    AppPrimaryNavItem("pending", stringResource(R.string.nav_tab_pending), Icons.Filled.CheckCircle),
+                    AppPrimaryNavItem("ledger", stringResource(R.string.nav_tab_ledger), Icons.AutoMirrored.Filled.ReceiptLong),
+                    AppPrimaryNavItem("insights", stringResource(R.string.nav_tab_insights), Icons.Filled.Insights),
+                    AppPrimaryNavItem("settings", stringResource(R.string.nav_tab_settings), Icons.Filled.Settings),
                 ),
                 selectedKey = "today",
                 onSelect = {},
