@@ -23,14 +23,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 private const val LongPairedActionLabelLength = 8
 private const val LongPairedActionTotalLength = 13
@@ -188,12 +185,7 @@ private fun AppSheetHeader(
     Column(verticalArrangement = Arrangement.spacedBy(if (compact) AppSpacing.tinyGap else AppSpacing.miniGap)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = AppTextHierarchy.heading.size,
-                lineHeight = 24.sp,
-                letterSpacing = 0.sp,
-            ),
-            fontWeight = AppTextHierarchy.heading.weight,
+            style = MaterialTheme.typography.titleLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -201,12 +193,7 @@ private fun AppSheetHeader(
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = AppTextHierarchy.caption.size,
-                    lineHeight = 18.sp,
-                    letterSpacing = 0.sp,
-                ),
-                fontWeight = AppTextHierarchy.caption.weight,
+                style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

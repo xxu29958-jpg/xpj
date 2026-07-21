@@ -2,10 +2,10 @@ package com.ticketbox.ui.components
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -13,11 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 data class AppSecondaryPageChrome(
     val role: AppPageRole,
@@ -63,38 +61,20 @@ fun AppSecondaryPageHeader(
     onBack: (() -> Unit)?,
     actions: @Composable (() -> Unit)? = null,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         onBack?.let {
             AppBackButton(text = backText, onClick = it)
         }
-        AppSecondaryTitleBlock(title = title, subtitle = subtitle, actions = actions)
-    }
-}
-
-@Composable
-private fun AppSecondaryTitleBlock(
-    title: String,
-    subtitle: String?,
-    actions: @Composable (() -> Unit)?,
-) {
-    if (actions == null) {
-        AppSecondaryTitleText(title = title, subtitle = subtitle, modifier = Modifier.fillMaxWidth())
-        return
-    }
-
-    AppAdaptiveContentActionStateRow(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        content = {
-            AppSecondaryTitleText(title = title, subtitle = subtitle, modifier = Modifier.fillMaxWidth())
-        },
-    ) { actionModifier, stacked ->
-        Box(
-            modifier = actionModifier,
-            contentAlignment = if (stacked) Alignment.CenterStart else Alignment.CenterEnd,
-        ) {
-            actions()
-        }
+        AppSecondaryTitleText(
+            title = title,
+            subtitle = subtitle,
+            modifier = Modifier.weight(1f),
+        )
+        actions?.invoke()
     }
 }
 
@@ -110,12 +90,7 @@ private fun AppSecondaryTitleText(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = AppTextHierarchy.heading.size,
-                lineHeight = 24.sp,
-                letterSpacing = 0.sp,
-            ),
-            fontWeight = AppTextHierarchy.heading.weight,
+            style = MaterialTheme.typography.headlineLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -123,12 +98,7 @@ private fun AppSecondaryTitleText(
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.heavy),
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = AppTextHierarchy.caption.size,
-                    lineHeight = 18.sp,
-                    letterSpacing = 0.sp,
-                ),
-                fontWeight = AppTextHierarchy.caption.weight,
+                style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

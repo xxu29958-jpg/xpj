@@ -17,7 +17,7 @@ class AppPageScaffoldTest {
     fun pageRolesUseExpectedDensity() {
         assertEquals(PageDensity.Comfortable, PageRole.Pending.density)
         assertEquals(PageDensity.Comfortable, PageRole.Stats.density)
-        assertEquals(PageDensity.Comfortable, PageRole.Settings.density)
+        assertEquals(PageDensity.Compact, PageRole.Settings.density)
         assertEquals(PageDensity.Compact, PageRole.Ledger.density)
         assertEquals(PageDensity.Compact, PageRole.Edit.density)
     }
@@ -39,11 +39,30 @@ class AppPageScaffoldTest {
     }
 
     @Test
-    fun bottomPaddingUsesNamedBottomBarConstant() {
-        assertEquals(96f, AppPageDefaults.BottomBarHeight.value)
+    fun pageBottomPaddingContainsOnlyContentBreathingRoom() {
         assertEquals(
             AppSpacing.bottomContentPadding + AppSpacing.sectionGap + AppSpacing.cardGap,
             AppPageDefaults.BottomContentExtraPadding,
+        )
+    }
+
+    @Test
+    fun globalDomainBarOwnsPrimaryStatusInsetWithoutAffectingSecondaryPages() {
+        assertEquals(
+            0.dp,
+            resolveStatusPadding(
+                includeStatusBarPadding = true,
+                shellInsetHandled = true,
+                measuredStatusPadding = 24.dp,
+            ),
+        )
+        assertEquals(
+            24.dp,
+            resolveStatusPadding(
+                includeStatusBarPadding = true,
+                shellInsetHandled = false,
+                measuredStatusPadding = 24.dp,
+            ),
         )
     }
 
@@ -63,15 +82,15 @@ class AppPageScaffoldTest {
     fun adaptivePageModesUseSharedBreakpoints() {
         assertEquals(
             AppAdaptivePageMode.SingleColumn,
-            AppAdaptiveBreakpoints.pageModeFor(AppAdaptiveBreakpoints.singleColumnMaxWidth),
+            AppAdaptiveBreakpoints.pageModeFor(AppAdaptiveBreakpoints.mediumWidthMin - 1.dp),
         )
         assertEquals(
             AppAdaptivePageMode.WideContent,
-            AppAdaptiveBreakpoints.pageModeFor(AppAdaptiveBreakpoints.singleColumnMaxWidth + 1.dp),
+            AppAdaptiveBreakpoints.pageModeFor(AppAdaptiveBreakpoints.mediumWidthMin),
         )
         assertEquals(
             AppAdaptivePageMode.TwoPane,
-            AppAdaptiveBreakpoints.pageModeFor(AppAdaptiveBreakpoints.twoPaneMinWidth),
+            AppAdaptiveBreakpoints.pageModeFor(AppAdaptiveBreakpoints.expandedWidthMin),
         )
     }
 
@@ -81,21 +100,21 @@ class AppPageScaffoldTest {
             null,
             AppAdaptiveBreakpoints.contentMaxWidthFor(
                 policy = AppAdaptiveContentWidth.Secondary,
-                maxWidth = AppAdaptiveBreakpoints.singleColumnMaxWidth,
+                maxWidth = AppAdaptiveBreakpoints.mediumWidthMin - 1.dp,
             ),
         )
         assertEquals(
             AppAdaptiveBreakpoints.secondaryContentMaxWidth,
             AppAdaptiveBreakpoints.contentMaxWidthFor(
                 policy = AppAdaptiveContentWidth.Secondary,
-                maxWidth = AppAdaptiveBreakpoints.singleColumnMaxWidth + 1.dp,
+                maxWidth = AppAdaptiveBreakpoints.mediumWidthMin,
             ),
         )
         assertEquals(
             AppAdaptiveBreakpoints.twoPaneContentMaxWidth,
             AppAdaptiveBreakpoints.contentMaxWidthFor(
                 policy = AppAdaptiveContentWidth.TwoPane,
-                maxWidth = AppAdaptiveBreakpoints.twoPaneMinWidth,
+                maxWidth = AppAdaptiveBreakpoints.expandedWidthMin,
             ),
         )
     }

@@ -89,7 +89,7 @@ fun AppFilterChip(
     }
     Row(
         modifier = modifier
-            .defaultMinSize(minHeight = metrics.minHeight)
+            .defaultMinSize(minHeight = AppSpacing.controlMinHeight)
             .alpha(if (options.enabled) 1f else AppAlpha.strong)
             .clip(shape)
             .background(containerColor)
@@ -140,7 +140,6 @@ private fun AppFilterChipLabel(
 }
 
 private data class AppFilterChipMetrics(
-    val minHeight: Dp,
     val horizontalPadding: Dp,
     val verticalPadding: Dp,
     val iconGap: Dp,
@@ -166,7 +165,6 @@ private fun compactAppFilterChipMetrics(
 ): AppFilterChipMetrics {
     val longLabel = label.length >= 5
     return AppFilterChipMetrics(
-        minHeight = if (enlargedText) AppSpacing.controlMinHeight else 34.dp,
         horizontalPadding = compactFilterChipHorizontalPadding(longLabel, hasIcon),
         verticalPadding = if (enlargedText) AppSpacing.miniGap else AppSpacing.tinyGap,
         iconGap = AppSpacing.tinyGap,
@@ -180,7 +178,6 @@ private fun standardAppFilterChipMetrics(
 ): AppFilterChipMetrics {
     val longLabel = label.length >= 5
     return AppFilterChipMetrics(
-        minHeight = if (enlargedText) 44.dp else AppSpacing.controlMinHeight,
         horizontalPadding = standardFilterChipHorizontalPadding(longLabel, hasIcon),
         verticalPadding = if (enlargedText) AppSpacing.smallGap else AppSpacing.miniGap,
         iconGap = if (longLabel) AppSpacing.tinyGap else AppSpacing.miniGap,

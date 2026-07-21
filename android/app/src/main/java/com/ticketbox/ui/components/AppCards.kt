@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,38 +21,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 fun AppGlassCard(
     modifier: Modifier = Modifier,
     containerAlpha: Float = 0.96f,
-    radius: RoundedCornerShape = RoundedCornerShape(AppRadius.large),
+    radius: RoundedCornerShape = RoundedCornerShape(AppRadius.medium),
     content: @Composable () -> Unit,
 ) {
-    val resolvedAlpha = containerAlpha.coerceIn(0.88f, 1f)
+    val resolvedAlpha = containerAlpha.coerceIn(0.92f, 1f)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(radius)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.surface.copy(alpha = resolvedAlpha),
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = (resolvedAlpha * 0.52f).coerceIn(0.42f, 0.78f)),
-                    ),
-                ),
-            )
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = resolvedAlpha))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.heavy),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.opaque),
                 shape = radius,
             ),
     ) {
@@ -70,8 +59,8 @@ fun AppSolidCard(
     // need stronger separation from the immersive background.
     AppGlassCard(
         modifier = modifier,
-        containerAlpha = 0.98f,
-        radius = RoundedCornerShape(AppRadius.large),
+        containerAlpha = 1f,
+        radius = RoundedCornerShape(AppRadius.medium),
         content = content,
     )
 }
@@ -79,7 +68,7 @@ fun AppSolidCard(
 @Composable
 fun AppContentCard(
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(AppSpacing.cardPadding),
+    contentPadding: PaddingValues = PaddingValues(AppSpacing.cardPaddingSmall),
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(AppSpacing.contentGap),
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -150,50 +139,8 @@ fun AppEmptyStateCard(
 ) {
     AppGlassCard(
         modifier = modifier,
-        containerAlpha = 0.94f,
-        radius = RoundedCornerShape(AppRadius.large),
+        containerAlpha = 1f,
+        radius = RoundedCornerShape(AppRadius.medium),
         content = content,
     )
-}
-
-@Composable
-fun AppHeroCard(
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(AppRadius.hero)
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(
-                Brush.horizontalGradient(
-                    listOf(
-                        visuals.primary,
-                        visuals.primaryDark,
-                    ),
-                ),
-            )
-            .border(
-                width = 1.dp,
-                color = visuals.accent.copy(alpha = AppAlpha.medium),
-                shape = shape,
-            ),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = AppAlpha.faint),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.08f),
-                        ),
-                    ),
-                ),
-        )
-        content()
-    }
 }

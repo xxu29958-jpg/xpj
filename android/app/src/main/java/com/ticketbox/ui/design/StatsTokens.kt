@@ -6,21 +6,14 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
 
 data class StatsSurfaceTokens(
-    val hero: StatsSurfaceStyleTokens,
     val section: StatsSurfaceStyleTokens,
 )
 
 data class StatsSurfaceStyleTokens(
     val radius: Dp,
     val topAlpha: Float,
-    val bottomAlpha: Float,
     val borderAlpha: Float,
 )
-
-enum class StatsSurfaceTone {
-    Hero,
-    Section,
-}
 
 data class StatsControlTokens(
     val height: Dp,
@@ -35,6 +28,7 @@ data class StatsChartTokens(
     val overviewHeight: Dp,
     val monthlyHeight: Dp,
     val recentHeight: Dp,
+    val minimumRangeLabelWidth: Dp,
     val distributionHeight: Dp,
     val distribution: StatsDistributionTokens,
     val guideAlpha: Float,
@@ -81,21 +75,21 @@ data class StatsComparisonChartTokens(
 private fun paperStatsTokens(): StatsTokens =
     StatsTokens(
         surface = StatsSurfaceTokens(
-            hero = StatsSurfaceStyleTokens(radius = 18.dp, topAlpha = 0.42f, bottomAlpha = 0.12f, borderAlpha = 0.06f),
-            section = StatsSurfaceStyleTokens(radius = 0.dp, topAlpha = 0f, bottomAlpha = 0f, borderAlpha = 0f),
+            section = StatsSurfaceStyleTokens(radius = 12.dp, topAlpha = 1f, borderAlpha = 0.86f),
         ),
         control = StatsControlTokens(
             height = 34.dp,
             borderWidth = 1.dp,
             horizontalPadding = 12.dp,
-            selectedAlpha = 0.72f,
-            unselectedAlpha = 0.44f,
-            borderAlpha = 0.18f,
+            selectedAlpha = 1f,
+            unselectedAlpha = 1f,
+            borderAlpha = 0.58f,
         ),
         chart = StatsChartTokens(
             overviewHeight = 92.dp,
             monthlyHeight = 112.dp,
             recentHeight = 92.dp,
+            minimumRangeLabelWidth = StatsRangeLabelMinimumWidth,
             distributionHeight = 14.dp,
             distribution = defaultStatsDistributionTokens(),
             guideAlpha = 0.34f,
@@ -108,21 +102,21 @@ private fun paperStatsTokens(): StatsTokens =
 private fun monoStatsTokens(): StatsTokens =
     StatsTokens(
         surface = StatsSurfaceTokens(
-            hero = StatsSurfaceStyleTokens(radius = 18.dp, topAlpha = 0.40f, bottomAlpha = 0.12f, borderAlpha = 0.05f),
-            section = StatsSurfaceStyleTokens(radius = 0.dp, topAlpha = 0f, bottomAlpha = 0f, borderAlpha = 0f),
+            section = StatsSurfaceStyleTokens(radius = 12.dp, topAlpha = 1f, borderAlpha = 0.86f),
         ),
         control = StatsControlTokens(
             height = 34.dp,
             borderWidth = 1.dp,
             horizontalPadding = 12.dp,
-            selectedAlpha = 0.66f,
-            unselectedAlpha = 0.40f,
-            borderAlpha = 0.16f,
+            selectedAlpha = 1f,
+            unselectedAlpha = 1f,
+            borderAlpha = 0.56f,
         ),
         chart = StatsChartTokens(
             overviewHeight = 92.dp,
             monthlyHeight = 112.dp,
             recentHeight = 92.dp,
+            minimumRangeLabelWidth = StatsRangeLabelMinimumWidth,
             distributionHeight = 14.dp,
             distribution = defaultStatsDistributionTokens(),
             guideAlpha = 0.30f,
@@ -135,21 +129,21 @@ private fun monoStatsTokens(): StatsTokens =
 private fun midnightStatsTokens(): StatsTokens =
     StatsTokens(
         surface = StatsSurfaceTokens(
-            hero = StatsSurfaceStyleTokens(radius = 18.dp, topAlpha = 0.28f, bottomAlpha = 0.08f, borderAlpha = 0.06f),
-            section = StatsSurfaceStyleTokens(radius = 0.dp, topAlpha = 0f, bottomAlpha = 0f, borderAlpha = 0f),
+            section = StatsSurfaceStyleTokens(radius = 12.dp, topAlpha = 1f, borderAlpha = 0.86f),
         ),
         control = StatsControlTokens(
             height = 34.dp,
             borderWidth = 1.dp,
             horizontalPadding = 12.dp,
-            selectedAlpha = 0.42f,
-            unselectedAlpha = 0.16f,
-            borderAlpha = 0.16f,
+            selectedAlpha = 1f,
+            unselectedAlpha = 1f,
+            borderAlpha = 0.56f,
         ),
         chart = StatsChartTokens(
             overviewHeight = 92.dp,
             monthlyHeight = 112.dp,
             recentHeight = 92.dp,
+            minimumRangeLabelWidth = StatsRangeLabelMinimumWidth,
             distributionHeight = 14.dp,
             distribution = defaultStatsDistributionTokens(),
             guideAlpha = 0.34f,
@@ -184,3 +178,5 @@ private fun defaultStatsComparisonChartTokens(
         guideAlpha = guideAlpha,
         barAlpha = barAlpha,
     )
+
+private val StatsRangeLabelMinimumWidth = 60.dp

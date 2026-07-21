@@ -17,7 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
 import com.ticketbox.R
 import com.ticketbox.ui.appearance.background.SurfaceRole
-import com.ticketbox.ui.components.AppBottomNavItem
+import com.ticketbox.ui.components.AppPrimaryNavItem
 
 internal const val MAIN_ROUTE = "main"
 internal const val EXPENSE_ID_ARG = "expenseId"
@@ -147,7 +147,7 @@ internal val BottomTab.surfaceRole: SurfaceRole
     }
 
 @Composable
-internal fun BottomTab.toBottomNavItem(): AppBottomNavItem = AppBottomNavItem(
+internal fun BottomTab.toBottomNavItem(): AppPrimaryNavItem = AppPrimaryNavItem(
     key = key,
     label = stringResource(labelRes),
     icon = icon,

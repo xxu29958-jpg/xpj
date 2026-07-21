@@ -7,7 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
@@ -20,6 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.design.AppIconSize
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -36,26 +39,14 @@ fun SettingsEntryCard(
         modifier = modifier.clickable(onClick = onClick),
     ) {
         Row(
-            modifier = Modifier.padding(AppSpacing.cardPadding),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(23.dp),
-                )
-            }
+            SettingsEntryIcon(icon = icon)
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
                     text = title,
@@ -79,4 +70,29 @@ fun SettingsEntryCard(
             )
         }
     }
+}
+
+@Composable
+fun SettingsEntryIcon(
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(SettingsEntryIconTokens.ContainerSize)
+            .clip(RoundedCornerShape(AppRadius.extraSmall))
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(AppIconSize.compact),
+        )
+    }
+}
+
+private object SettingsEntryIconTokens {
+    val ContainerSize = 36.dp
 }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
@@ -34,8 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -45,15 +44,16 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 
-private const val ControlBorderIdleAlpha = 0.28f
-private const val ControlBorderPressedAlpha = 0.62f
-private const val ControlContainerIdleAlpha = 0.62f
-private const val ControlContainerPressedAlpha = 0.86f
+private const val ControlBorderIdleAlpha = 0.46f
+private const val ControlBorderPressedAlpha = 0.82f
+private const val ControlContainerIdleAlpha = 0.98f
+private const val ControlContainerPressedAlpha = 1f
 
 data class AppOutlinedButtonOptions(
     val enabled: Boolean = true,
@@ -73,22 +73,15 @@ fun AppPrimaryButton(
     onClick: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(AppRadius.pill)
+    val shape = RoundedCornerShape(AppRadius.small)
     Box(
         modifier = modifier
-            .height(48.dp)
+            .height(AppSpacing.controlMinHeight)
             .clip(shape)
-            .background(
-                Brush.horizontalGradient(
-                    listOf(
-                        visuals.primary.copy(alpha = 0.98f),
-                        visuals.primaryDark.copy(alpha = 0.98f),
-                    ),
-                ),
-            )
+            .background(visuals.primary)
             .border(
-                width = 1.dp,
-                color = visuals.accent.copy(alpha = 0.34f),
+                width = AppButtonTokens.BorderWidth,
+                color = visuals.primaryDark.copy(alpha = 0.74f),
                 shape = shape,
             )
             .alpha(if (enabled) 1f else 0.58f)
@@ -103,7 +96,7 @@ fun AppPrimaryButton(
                 imageVector = icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(AppIconSize.standard),
             )
             Text(
                 text = text,
@@ -134,8 +127,7 @@ fun AppBackButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = MaterialTheme.shapes.small
-    Row(
+    Box(
         modifier = modifier
             .clearAndSetSemantics {
                 contentDescription = text
@@ -145,27 +137,30 @@ fun AppBackButton(
                     true
                 })
             }
-            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-            .clip(shape)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(end = AppSpacing.compactGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
+            .size(AppSpacing.controlMinHeight)
+            .clip(CircleShape)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp),
-        )
-        Text(
-            text = text,
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Box(
+            modifier = Modifier
+                .size(AppButtonTokens.BackVisualSize)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .border(
+                    width = AppButtonTokens.BorderWidth,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(AppIconSize.standard),
+            )
+        }
     }
 }
 
@@ -189,7 +184,7 @@ fun QuietOutlinedButton(
         onClick = onClick,
     ) {
         leadingIcon?.let {
-            Icon(it, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(it, contentDescription = null, modifier = Modifier.size(AppIconSize.compact))
             Box(modifier = Modifier.width(AppSpacing.smallGap))
         }
         Text(
@@ -233,6 +228,7 @@ fun AppOutlinedButton(
         modifier = modifier.defaultMinSize(minHeight = AppSpacing.controlMinHeight),
         enabled = options.enabled,
         onClick = onClick,
+        shape = RoundedCornerShape(AppRadius.small),
         interactionSource = interactionSource,
         contentPadding = options.contentPadding,
         colors = ButtonDefaults.outlinedButtonColors(
@@ -241,26 +237,12 @@ fun AppOutlinedButton(
             containerColor = containerColor,
             disabledContainerColor = visuals.solidCard.copy(alpha = 0.38f),
         ),
-        border = BorderStroke(width = 1.dp, color = borderColor),
+        border = BorderStroke(width = AppButtonTokens.BorderWidth, color = borderColor),
         content = content,
     )
 }
 
-private fun Color.tonalDarken(multiplier: Float): Color {
-    return Color(
-        red = (red * multiplier).coerceIn(0f, 1f),
-        green = (green * multiplier).coerceIn(0f, 1f),
-        blue = (blue * multiplier).coerceIn(0f, 1f),
-        alpha = alpha,
-    )
-}
-
-private fun Color.blendTowards(target: Color, amount: Float): Color {
-    val clamped = amount.coerceIn(0f, 1f)
-    return Color(
-        red = red + (target.red - red) * clamped,
-        green = green + (target.green - green) * clamped,
-        blue = blue + (target.blue - blue) * clamped,
-        alpha = alpha + (target.alpha - alpha) * clamped,
-    )
+private object AppButtonTokens {
+    val BorderWidth = 1.dp
+    val BackVisualSize = 34.dp
 }

@@ -24,16 +24,15 @@ val LocalSkeletonTokens = compositionLocalOf { skeletonTokensForSkin(AppSkin.Def
 
 fun skeletonTokensForSkin(skin: AppSkin): SkeletonTokens = when (skin) {
     AppSkin.Paper -> SkeletonTokens(
-        base = Color(0x141C1A18),
+        base = Color(0x1417201C),
         shine = Color(0x33FFFFFF),
     )
     AppSkin.Mono -> SkeletonTokens(
-        base = Color(0x140E0E0C),
+        base = Color(0x14171B19),
         shine = Color(0x33FFFFFF),
     )
     AppSkin.Midnight -> SkeletonTokens(
-        // Midnight 必须用暖金 alpha，否则 shimmer 在深色底上几乎不可见
-        base = Color(0x0FD6B487),
-        shine = Color(0x1FD6B487),
+        base = Color(0x1469BFA4),
+        shine = Color(0x2469BFA4),
     )
 }

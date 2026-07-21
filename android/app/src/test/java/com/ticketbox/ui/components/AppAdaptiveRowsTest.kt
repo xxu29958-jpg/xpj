@@ -24,6 +24,13 @@ class AppAdaptiveRowsTest {
                 maxWidth = AppAdaptiveBreakpoints.contentActionInlineMinWidth,
             ),
         )
+        assertEquals(
+            AppAdaptiveContentActionMode.Stacked,
+            resolveAppAdaptiveContentActionMode(
+                maxWidth = AppAdaptiveBreakpoints.contentActionInlineMinWidth,
+                fontScale = 1.5f,
+            ),
+        )
     }
 
     @Test

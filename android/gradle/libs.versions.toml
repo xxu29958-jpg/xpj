@@ -25,6 +25,7 @@ kotlin = "2.3.21"
 ksp = "2.3.7"
 lifecycle = "2.10.0"
 lottie = "6.7.1"
+material3-adaptive = "1.2.0"
 moshi = "1.15.2"
 navigation = "2.9.8"
 okhttp = "5.3.2"
@@ -54,6 +55,8 @@ lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
 androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material3-adaptive = { module = "androidx.compose.material3.adaptive:adaptive", version.ref = "material3-adaptive" }
+androidx-compose-material3-adaptive-layout = { module = "androidx.compose.material3.adaptive:adaptive-layout", version.ref = "material3-adaptive" }
 androidx-compose-ui = { module = "androidx.compose.ui:ui" }
 androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }

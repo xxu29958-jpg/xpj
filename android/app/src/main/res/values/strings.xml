@@ -36,6 +36,7 @@
     <string name="nav_tab_pending">待确认</string>
     <string name="nav_tab_insights">洞察</string>
     <string name="nav_tab_settings">设置</string>
+    <string name="navigation_open_account">打开账户与设置</string>
 
     <!-- BiometricAuthManager：本地生物识别解锁的系统弹窗 + 错误文案（release REQUIRE_LOCAL_UNLOCK=true 时可见，经 onError→AppViewModel→LoginScreen） -->
     <string name="biometric_prompt_title">解锁小票夹</string>
