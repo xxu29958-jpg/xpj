@@ -257,8 +257,9 @@ def test_confirm_malformed_token_rerenders_422_anchored_and_marks_attempted(
 ) -> None:
     debt = _create_debt(web_client, identity.app_headers, label="花呗-可选欠款", principal_cents=50000)
     draft = _create_draft(web_client, identity.app_headers, merchant_label="花呗-保留行", amount_cents=10000)
+    key = str(uuid4())
 
-    response = _web_confirm(web_client, draft=draft, debt=debt, row_version="stale-token")
+    response = _web_confirm(web_client, draft=draft, debt=debt, row_version="stale-token", idempotency_key=key)
 
     assert response.status_code == 422
     assert "欠款信息已经失效，请刷新后重新选择。" in response.text
@@ -266,6 +267,7 @@ def test_confirm_malformed_token_rerenders_422_anchored_and_marks_attempted(
     assert 'role="alert"' in response.text  # 错误锚定到该 row (aria)
     assert "（刚才选择）" in response.text  # 尝试过的选项被回填标记，不靠用户猜
     assert 'name="idempotency_key"' in response.text  # 表单立即可重试
+    assert f'value="{key}"' in response.text  # 业务校验失败保留已提交键：重试仍命中同一 claim
     assert [item["public_id"] for item in _drafts_via_api(web_client, identity.app_headers, "pending")] == [
         draft["public_id"]
     ]

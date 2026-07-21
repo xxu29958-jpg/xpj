@@ -64,14 +64,16 @@ _STATUS_TONE = {"pending": "", "confirmed": "ok", "dismissed": "muted"}
 _SUGGESTION_PREFIX = "系统猜测对应:{}"
 _LINKED_PREFIX = "已记到:{}"
 _DRAFT_ERROR_MESSAGES = {
+    # 键必须与服务层真实抛出的错误码一致 (audit: 死键会让定制文案落空)。
     "debt_not_found": "这笔欠款不存在或不在当前账本。",
-    "state_conflict": "这笔欠款刚被更新过，请刷新后重新确认。",
+    "debt_overpay_rejected": "确认金额超过这笔欠款的剩余，请调整目标。",
+    "direct_fact_requires_external": "还款捕获只能记到外部欠款。",
+    "direct_fact_requires_manual": "这笔往来需要走成员确认，不能直接记入还款。",
+    "state_conflict": "这条还款捕获或欠款刚被更新过，请刷新后重新确认。",
     "idempotency_key_required": "页面凭据缺失，请刷新后重新提交。",
     "idempotency_key_reused": "这次提交已经生效，不需要重复操作。",
     "idempotency_key_in_progress": "同一笔确认正在处理中，请稍候刷新查看。",
-    "draft_not_found": "这条还款捕获不存在或已处理。",
-    "draft_already_confirmed": "这条还款捕获已记过账。",
-    "overpayment": "确认金额超过这笔欠款的剩余，请调整目标。",
+    "repayment_draft_not_found": "这条还款捕获不存在或已处理。",
 }
 
 
@@ -100,7 +102,12 @@ def _target_option(candidate, *, suggested_id: str | None, attempted_id: str | N
     }
 
 
-def _audit_row_view(row: RepaymentDraftAuditRow, *, attempted_target: str | None = None) -> dict:
+def _audit_row_view(
+    row: RepaymentDraftAuditRow,
+    *,
+    attempted_target: str | None = None,
+    preserved_idempotency_key: str | None = None,
+) -> dict:
     """一行审计记录的渲染视图；pending 行附带可操作上下文 (逐项候选 + 每行幂等键)。"""
 
     view: dict = {
@@ -118,7 +125,9 @@ def _audit_row_view(row: RepaymentDraftAuditRow, *, attempted_target: str | None
         name = row.linked_debt_label or _COUNTERPARTY_FALLBACK["external"]
         view["linked_line"] = _LINKED_PREFIX.format(name)
     elif row.status == "pending":
-        view["idempotency_key"] = str(uuid4())
+        # 422 原地重渲染时保留用户已提交的幂等键 (replay-conservative)，
+        # 仅在键本身失效 (required/reused) 时由调用方传 None 重新铸键。
+        view["idempotency_key"] = preserved_idempotency_key or str(uuid4())
         view["targets"] = [
             _target_option(candidate, suggested_id=row.suggested_debt_public_id, attempted_id=attempted_target)
             for candidate in row.target_debts
@@ -138,6 +147,7 @@ def _render_repayment_drafts(
     form_error: str | None = None,
     error_draft_public_id: str | None = None,
     attempted_target: str | None = None,
+    preserved_idempotency_key: str | None = None,
     flash_message: str | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
@@ -159,6 +169,9 @@ def _render_repayment_drafts(
         _audit_row_view(
             row,
             attempted_target=attempted_target if row.public_id == error_draft_public_id else None,
+            preserved_idempotency_key=(
+                preserved_idempotency_key if row.public_id == error_draft_public_id else None
+            ),
         )
         for row in rows
     ]
@@ -255,10 +268,17 @@ def web_confirm_repayment_draft(
         if isinstance(exc, AppError):
             message = _error_message(exc)
             status_code = exc.status_code
+            error_code = exc.error
         else:
             message = "请选择这笔还款对应的欠款。"
             status_code = 422
+            error_code = "invalid_request"
         if status_code == 422:
+            # 保留用户已提交的幂等键 (业务校验失败重放仍命中同一 claim)；
+            # 只有键本身失效时才重铸，避免用户重试撞上自己的 in-progress/reused。
+            preserved_key = (idempotency_key or "").strip() or None
+            if error_code in {"idempotency_key_required", "idempotency_key_reused"}:
+                preserved_key = None
             return _render_repayment_drafts(
                 request,
                 db,
@@ -267,6 +287,7 @@ def web_confirm_repayment_draft(
                 form_error=message,
                 error_draft_public_id=public_id,
                 attempted_target=attempted_target,
+                preserved_idempotency_key=preserved_key,
                 status_code=422,
             )
         return _action_redirect(selected_id, form_error=message)
