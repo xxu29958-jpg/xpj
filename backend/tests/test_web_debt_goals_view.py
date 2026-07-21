@@ -14,7 +14,7 @@ from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.routes.web_debt_goals import (
+from app.routes.web_debt_goal_views import (
     _counted_links,
     _debt_goal_view,
     _external_kpi_view,
@@ -77,18 +77,33 @@ def _eval(
     )
 
 
-def _goal(evaluation: DebtRepaymentEvaluation, *, name: str = "还清", public_id: str = "pub") -> SimpleNamespace:
-    """``_debt_goal_view`` reads only ``name`` / ``public_id`` / ``debt_repayment`` — stub the rest."""
-    return SimpleNamespace(name=name, public_id=public_id, debt_repayment=evaluation)
+def _goal(
+    evaluation: DebtRepaymentEvaluation,
+    *,
+    name: str = "还清",
+    public_id: str = "pub",
+    row_version: int = 1,
+    status: str = "active",
+) -> SimpleNamespace:
+    """Stub the goal fields projected by ``_debt_goal_view``."""
+    return SimpleNamespace(
+        name=name,
+        public_id=public_id,
+        row_version=row_version,
+        status=status,
+        debt_repayment=evaluation,
+    )
 
 
 def test_goal_composition_member_external_mixed_empty() -> None:
     assert _goal_composition([_link(counterparty_type="member")]) == "member"
     assert _goal_composition([_link(counterparty_type="external")]) == "external"
-    assert _goal_composition(
-        [_link(counterparty_type="member"), _link(counterparty_type="external")]
-    ) == "mixed"
+    assert _goal_composition([_link(counterparty_type="member"), _link(counterparty_type="external")]) == "mixed"
     assert _goal_composition([]) == "empty"
+
+
+def test_goal_composition_unknown_type_is_not_treated_as_external() -> None:
+    assert _goal_composition([_link(counterparty_type="future_type")]) == "mixed"
 
 
 def test_goal_composition_drops_voided_before_deciding() -> None:
@@ -139,14 +154,11 @@ def test_debt_goal_view_hides_amount_line_on_mixed_currency() -> None:
 
 def test_payoff_line_projected_stale_insufficient() -> None:
     projected = _payoff_line(
-        _eval(links=[_link(counterparty_type="external")], tracking_days=30,
-              projected_payoff_date=date(2026, 9, 1))
+        _eval(links=[_link(counterparty_type="external")], tracking_days=30, projected_payoff_date=date(2026, 9, 1))
     )
     assert projected["text"] == "按最近 30 天的进度，预计 2026 年 9 月前后还清"
     assert projected["tone"] == "neutral"
-    stale = _payoff_line(
-        _eval(links=[_link(counterparty_type="external")], days_since_last_activity=42)
-    )
+    stale = _payoff_line(_eval(links=[_link(counterparty_type="external")], days_since_last_activity=42))
     assert stale["text"] == "已 42 天没有更新，估算可能已过期"
     assert stale["tone"] == "warn"  # amber, never danger
     insufficient = _payoff_line(_eval(links=[_link(counterparty_type="external")]))
@@ -155,12 +167,15 @@ def test_payoff_line_projected_stale_insufficient() -> None:
 
 
 def test_external_kpi_three_state_tone_at_risk_is_amber_never_danger() -> None:
-    ahead = _external_kpi_view(_eval(links=[_link(counterparty_type="external")],
-                                     three_state="ahead", target_date=date(2027, 1, 1)))
-    on_track = _external_kpi_view(_eval(links=[_link(counterparty_type="external")],
-                                        three_state="on_track", target_date=date(2027, 1, 1)))
-    at_risk = _external_kpi_view(_eval(links=[_link(counterparty_type="external")],
-                                       three_state="at_risk", target_date=date(2027, 1, 1)))
+    ahead = _external_kpi_view(
+        _eval(links=[_link(counterparty_type="external")], three_state="ahead", target_date=date(2027, 1, 1))
+    )
+    on_track = _external_kpi_view(
+        _eval(links=[_link(counterparty_type="external")], three_state="on_track", target_date=date(2027, 1, 1))
+    )
+    at_risk = _external_kpi_view(
+        _eval(links=[_link(counterparty_type="external")], three_state="at_risk", target_date=date(2027, 1, 1))
+    )
     assert (ahead["three_state_label"], ahead["three_state_tone"]) == ("比计划提前", "ok")
     assert (on_track["three_state_label"], on_track["three_state_tone"]) == ("按计划进行", "")
     assert (at_risk["three_state_label"], at_risk["three_state_tone"]) == ("可能晚于计划", "amber")
@@ -175,13 +190,27 @@ def test_external_kpi_omits_three_state_and_target_when_absent() -> None:
     assert kpi["payoff"]["text"] == "还没有足够数据估算还清日期"
 
 
+def test_external_kpi_unknown_three_state_uses_product_fallback() -> None:
+    kpi = _external_kpi_view(
+        _eval(
+            links=[_link(counterparty_type="external")],
+            three_state="future_state",
+        )
+    )
+    assert kpi["three_state_label"] == "计划状态待确认"
+    assert kpi["three_state_tone"] == ""
+
+
 def test_goal_link_row_member_never_danger() -> None:
-    open_row = _goal_link_row(_link(counterparty_type="member", status="open",
-                                    principal=10000, remaining=4000, label="妈妈"))
-    cleared_row = _goal_link_row(_link(counterparty_type="member", status="cleared",
-                                       principal=10000, remaining=0, label="妈妈"))
-    voided_row = _goal_link_row(_link(counterparty_type="member", status="voided",
-                                      principal=10000, remaining=10000, label="弟弟"))
+    open_row = _goal_link_row(
+        _link(counterparty_type="member", status="open", principal=10000, remaining=4000, label="妈妈")
+    )
+    cleared_row = _goal_link_row(
+        _link(counterparty_type="member", status="cleared", principal=10000, remaining=0, label="妈妈")
+    )
+    voided_row = _goal_link_row(
+        _link(counterparty_type="member", status="voided", principal=10000, remaining=10000, label="弟弟")
+    )
     assert open_row["status_label"] == "进行中" and open_row["status_tone"] == ""
     assert open_row["note"] == "这件事已对上大半"  # ratio 0.6 → most
     assert open_row["show_bar"] is True and open_row["fraction_percent"] == 60
@@ -195,21 +224,49 @@ def test_goal_link_row_member_never_danger() -> None:
 
 
 def test_goal_link_row_external_meta_and_voided_danger() -> None:
-    external = _goal_link_row(_link(counterparty_type="external", status="open",
-                                    direction="i_owe", principal=50000, remaining=20000,
-                                    label="招商信用卡"))
+    external = _goal_link_row(
+        _link(
+            counterparty_type="external",
+            status="open",
+            direction="i_owe",
+            principal=50000,
+            remaining=20000,
+            label="招商信用卡",
+        )
+    )
     assert external["name"] == "招商信用卡"
     assert external["meta"] == "应付 · 剩余 ¥200.00 · 本金 ¥500.00"
     assert external["show_bar"] is True
-    voided_external = _goal_link_row(_link(counterparty_type="external", status="voided",
-                                           principal=50000, remaining=50000))
+    voided_external = _goal_link_row(
+        _link(counterparty_type="external", status="voided", principal=50000, remaining=50000)
+    )
     assert voided_external["status_label"] == "已作废" and voided_external["status_tone"] == "danger"
 
 
 def test_external_link_meta_owed_direction_label() -> None:
-    meta = _external_link_meta(_link(counterparty_type="external", direction="owed_to_me",
-                                     principal=10000, remaining=10000))
+    meta = _external_link_meta(
+        _link(counterparty_type="external", direction="owed_to_me", principal=10000, remaining=10000)
+    )
     assert meta.startswith("应收 · ")
+
+
+def test_goal_link_unknown_enums_use_neutral_product_fallbacks() -> None:
+    member = _goal_link_row(_link(counterparty_type="member", status="future_status"))
+    external = _goal_link_row(
+        _link(
+            counterparty_type="external",
+            status="future_status",
+            direction="future_direction",
+        )
+    )
+    assert member["status_label"] == "状态待确认"
+    assert member["status_tone"] == ""
+    assert member["note"] == "状态变化待确认"
+    assert member["show_bar"] is False
+    assert external["status_label"] == "状态待确认"
+    assert external["status_tone"] == ""
+    assert external["meta"].startswith("方向待确认 · ")
+    assert external["show_bar"] is False
 
 
 def test_member_link_note_open_progress_arms() -> None:
@@ -219,12 +276,8 @@ def test_member_link_note_open_progress_arms() -> None:
 
 
 def test_debt_goal_view_external_gates_kpi_mixed_and_member_excluded() -> None:
-    external_view = _debt_goal_view(
-        _goal(_eval(links=[_link(counterparty_type="external")]))
-    )
-    member_view = _debt_goal_view(
-        _goal(_eval(links=[_link(counterparty_type="member")]))
-    )
+    external_view = _debt_goal_view(_goal(_eval(links=[_link(counterparty_type="external")])))
+    member_view = _debt_goal_view(_goal(_eval(links=[_link(counterparty_type="member")])))
     mixed_view = _debt_goal_view(
         _goal(_eval(links=[_link(counterparty_type="member"), _link(counterparty_type="external")]))
     )
@@ -235,8 +288,13 @@ def test_debt_goal_view_external_gates_kpi_mixed_and_member_excluded() -> None:
 
 def test_debt_goal_view_all_voided_short_circuit() -> None:
     view = _debt_goal_view(
-        _goal(_eval(links=[_link(counterparty_type="external", status="voided")],
-                    evaluation_state="not_evaluable", needs_review=True))
+        _goal(
+            _eval(
+                links=[_link(counterparty_type="external", status="voided")],
+                evaluation_state="not_evaluable",
+                needs_review=True,
+            )
+        )
     )
     assert view["all_voided"] is True
     assert "headline" not in view and "kpi" not in view and "amount_line" not in view
@@ -247,13 +305,34 @@ def test_debt_goal_view_all_voided_short_circuit() -> None:
 def test_debt_goal_view_eval_badge_tones() -> None:
     in_progress = _debt_goal_view(_goal(_eval(links=[_link(counterparty_type="external")])))
     achieved = _debt_goal_view(
-        _goal(_eval(links=[_link(counterparty_type="external", status="cleared", remaining=0)],
-                    evaluation_state="achieved"))
+        _goal(
+            _eval(
+                links=[_link(counterparty_type="external", status="cleared", remaining=0)], evaluation_state="achieved"
+            )
+        )
     )
     not_evaluable = _debt_goal_view(
-        _goal(_eval(links=[_link(counterparty_type="external", status="voided")],
-                    evaluation_state="not_evaluable", needs_review=True))
+        _goal(
+            _eval(
+                links=[_link(counterparty_type="external", status="voided")],
+                evaluation_state="not_evaluable",
+                needs_review=True,
+            )
+        )
     )
     assert (in_progress["eval_label"], in_progress["eval_tone"]) == ("进行中", "")
     assert (achieved["eval_label"], achieved["eval_tone"]) == ("已达成", "ok")
     assert (not_evaluable["eval_label"], not_evaluable["eval_tone"]) == ("待复核", "amber")
+
+
+def test_debt_goal_view_unknown_eval_state_uses_product_fallback() -> None:
+    view = _debt_goal_view(
+        _goal(
+            _eval(
+                links=[_link(counterparty_type="external")],
+                evaluation_state="future_state",
+            )
+        )
+    )
+    assert view["eval_label"] == "目标状态待确认"
+    assert view["eval_tone"] == ""

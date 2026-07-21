@@ -73,7 +73,7 @@
     color: var(--state-warn-fg);
 }
 
-/* ── 复核提示 (needs_review)：琥珀 note，无钮 (复核在 App)，永不红 (§6.5 去-shame) ── */
+/* ── 复核提示 (needs_review)：琥珀 note + 复核动作 (保留存档 / 移除作废)，永不红 (§6.5 去-shame) ── */
 .dg-review {
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-card);
@@ -145,4 +145,28 @@
 .dg-link-meta {
     font-family: var(--font-num);
     font-variant-numeric: tabular-nums;
+}
+
+/* ── slice C4 写闭环：创建卡 + 勾选行 + 归档区 ── */
+.dg-create .dt-actions,
+.dg-card .debt-look .dt-actions,
+.dg-card form .dt-actions {
+    margin-top: var(--space-3);
+}
+.dg-choice {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--type-body-size);
+    color: var(--text-default);
+    cursor: pointer;
+}
+.dg-choice input[type="checkbox"] {
+    flex: none;
+}
+.dg-choice-name {
+    font-weight: 500;
+}
+.dg-archived {
+    margin-top: var(--space-5);
 }
