@@ -48,8 +48,9 @@ class RecycleBinViewModelTest {
         title: String = "旧工资",
         resourceId: String = "r1",
         rowVersion: Int? = 2,
+        kind: String = "income_plan",
     ) = RecycleBinItemDto(
-        kind = "income_plan",
+        kind = kind,
         kindLabel = "收入",
         resourceId = resourceId,
         title = title,
@@ -109,6 +110,33 @@ class RecycleBinViewModelTest {
             assertEquals(MessageTone.Success, state.messageTone)
             assertNull(state.busyItemKey)
             assertEquals(1, state.changedRevision)
+            // 收入记录恢复不改写确认流水行 —— 流水行 revision 保持 0。
+            assertEquals(0, state.expenseRowsRestoredRevision)
+        } finally {
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun restoreTagMutationBumpsExpenseRowsRevision() = runTest {
+        // tag_mutation 恢复会在后端重放确认流水的 Expense.tags 行，必须额外
+        // bump 流水行 revision，让账本行重同步（其余 kind 不 bump，见上测试）。
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi().apply {
+                recycleBinResult = RecycleBinListResponseDto(items = emptyList(), shortWindowCount = 0)
+                recycleBinRestoreResult = RecycleBinRestoreResponseDto(message = "标签改动已撤销。")
+            }
+            val vm = harness(api)
+            val item = recycleItem(kind = "tag_mutation").toDomain()
+
+            vm.restore(item)
+            val state = vm.uiState.first { it.message != null }
+
+            assertEquals("tag_mutation", api.recycleBinRestoreRequests.single().kind)
+            assertEquals(1, state.changedRevision)
+            assertEquals(1, state.expenseRowsRestoredRevision)
         } finally {
             advanceUntilIdle()
             Dispatchers.resetMain()

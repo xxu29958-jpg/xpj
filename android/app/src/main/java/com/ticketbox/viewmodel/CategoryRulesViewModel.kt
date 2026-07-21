@@ -31,7 +31,11 @@ data class CategoryRulesUiState(
     // ADR-0038 undo: the just-(soft-)deleted rule, surfaced as a 5s 撤销
     // affordance. Null when there is nothing to undo.
     val undoableRule: CategoryRule? = null,
+    // Rule CRUD — only the vocabulary dictionaries need a refresh.
     val changedRevision: Int = 0,
+    // Apply/rollback with actual changes — these rewrite the category on
+    // confirmed expense rows, so the ledger must re-sync its rows too.
+    val applicationRevision: Int = 0,
 )
 
 class CategoryRulesViewModel(
@@ -385,10 +389,10 @@ class CategoryRulesViewModel(
                                 UiText.res(R.string.category_rules_apply_changed, result.changedCount)
                             },
                             messageTone = if (result.changedCount == 0) MessageTone.Info else MessageTone.Success,
-                            changedRevision = if (result.changedCount > 0) {
-                                it.changedRevision + 1
+                            applicationRevision = if (result.changedCount > 0) {
+                                it.applicationRevision + 1
                             } else {
-                                it.changedRevision
+                                it.applicationRevision
                             },
                         )
                     }
@@ -425,10 +429,10 @@ class CategoryRulesViewModel(
                             busy = false,
                             message = UiText.res(R.string.category_rules_rollback_done, rollback.changed, rollback.skipped),
                             messageTone = MessageTone.Success,
-                            changedRevision = if (rollback.changed > 0) {
-                                it.changedRevision + 1
+                            applicationRevision = if (rollback.changed > 0) {
+                                it.applicationRevision + 1
                             } else {
-                                it.changedRevision
+                                it.applicationRevision
                             },
                         )
                     }

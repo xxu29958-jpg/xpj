@@ -41,4 +41,16 @@ class TransactionsLibraryViewModelKeyTest {
             transactionsLibraryViewModelKey("tag-directory", null),
         )
     }
+
+    @Test
+    fun recycleBinKeyIsLedgerScopedLikeTheOtherLibraryRoutes() {
+        assertEquals(
+            "transactions-library-recycle-bin-ledger-a",
+            transactionsLibraryViewModelKey("transactions-library-recycle-bin", "ledger-a"),
+        )
+        assertNotEquals(
+            transactionsLibraryViewModelKey("transactions-library-recycle-bin", "ledger-a"),
+            transactionsLibraryViewModelKey("transactions-library-recycle-bin", "ledger-b"),
+        )
+    }
 }

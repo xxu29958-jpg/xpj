@@ -176,6 +176,38 @@ class CategoryRulesViewModelTest {
         assertEquals(0, state.changedRevision)
     }
 
+    @Test
+    fun confirmApplyWithChangesBumpsApplicationRevisionOnly() = runTest(dispatcher) {
+        // 应用规则改写确认流水的分类：走 applicationRevision（流水行重同步），
+        // 不再 bump changedRevision（字典并未变化）。
+        val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
+        awaitInitialLoads(vm)
+
+        vm.previewApplyConfirmedRules()
+        vm.uiState.first { it.confirmedRulesPreview != null }
+        vm.confirmApplyConfirmedRules()
+        val state = vm.uiState.first { it.applicationRevision > 0 }
+        runCurrent()
+
+        assertEquals(1, state.applicationRevision)
+        assertEquals(0, state.changedRevision)
+        assertEquals(MessageTone.Success, state.messageTone)
+    }
+
+    @Test
+    fun rollbackWithChangesBumpsApplicationRevisionOnly() = runTest(dispatcher) {
+        val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
+        val application = awaitInitialLoads(vm).ruleApplications.single()
+
+        vm.rollbackRuleApplication(application)
+        val state = vm.uiState.first { it.applicationRevision > 0 }
+        runCurrent()
+
+        assertEquals(1, state.applicationRevision)
+        assertEquals(0, state.changedRevision)
+        assertEquals(MessageTone.Success, state.messageTone)
+    }
+
     private fun harness(api: ApiService): CategoryRulesViewModel {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")

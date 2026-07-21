@@ -66,6 +66,7 @@ internal fun NavGraphBuilder.transactionsLibraryGraph(
     screenFactory: MainScreenFactory,
     onVocabularyChanged: () -> Unit,
     onRestoreCompleted: () -> Unit,
+    onTransactionRowsChanged: () -> Unit,
 ) {
     navigation(
         startDestination = TRANSACTIONS_LIBRARY_OVERVIEW_ROUTE,
@@ -109,6 +110,7 @@ internal fun NavGraphBuilder.transactionsLibraryGraph(
                 navController = navController,
                 screenFactory = screenFactory,
                 onVocabularyChanged = onVocabularyChanged,
+                onTransactionRowsChanged = onTransactionRowsChanged,
             )
         }
         composable(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) {
@@ -116,6 +118,7 @@ internal fun NavGraphBuilder.transactionsLibraryGraph(
                 navController = navController,
                 screenFactory = screenFactory,
                 onRestoreCompleted = onRestoreCompleted,
+                onTransactionRowsChanged = onTransactionRowsChanged,
             )
         }
     }
@@ -134,13 +137,20 @@ private fun RecycleBinLibraryRoute(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
     onRestoreCompleted: () -> Unit,
+    onTransactionRowsChanged: () -> Unit,
 ) {
     val viewModel: RecycleBinViewModel = viewModel(
-        key = "transactions-library-recycle-bin",
+        key = transactionsLibraryViewModelKey(
+            "transactions-library-recycle-bin",
+            screenFactory.ledgerRepository.activeLedgerId(),
+        ),
         factory = recycleBinViewModelFactory(screenFactory.ledgerRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ReportSuccessfulLibraryWrites(viewModel.uiState, onRestoreCompleted) { it.changedRevision }
+    ReportSuccessfulLibraryWrites(viewModel.uiState, onTransactionRowsChanged) {
+        it.expenseRowsRestoredRevision
+    }
     RecycleBinScreen(
         viewModel = viewModel,
         onBack = navController::popBackStack,
@@ -194,6 +204,7 @@ private fun CategoryRulesLibraryRoute(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
     onVocabularyChanged: () -> Unit,
+    onTransactionRowsChanged: () -> Unit,
 ) {
     val viewModel: CategoryRulesViewModel = viewModel(
         key = transactionsLibraryViewModelKey(
@@ -204,6 +215,7 @@ private fun CategoryRulesLibraryRoute(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ReportSuccessfulLibraryWrites(viewModel.uiState, onVocabularyChanged) { it.changedRevision }
+    ReportSuccessfulLibraryWrites(viewModel.uiState, onTransactionRowsChanged) { it.applicationRevision }
     CategoryRulesScreen(
         state = CategoryRulesScreenState(
             rules = CategoryRulesRuleListState(

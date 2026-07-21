@@ -141,6 +141,10 @@ internal fun NavGraphBuilder.addTransactionRoutes(
             screenFactory = screenFactory,
             onVocabularyChanged = shellState::markTransactionVocabularyChanged,
             onRestoreCompleted = shellState::markRecycleBinRestoreCompleted,
+            // 规则应用/回滚与回收站 tag_mutation 恢复会原地改写确认流水行——语义
+            // 等同批量流水编辑完成，复用 expenseEditCompletionRevision 通道让账本
+            // 行重同步（同时失效洞察汇总）。
+            onTransactionRowsChanged = shellState::markExpenseEditCompleted,
         )
     }
 }
