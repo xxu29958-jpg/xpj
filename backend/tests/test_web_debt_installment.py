@@ -69,7 +69,7 @@ def test_web_debt_detail_installment_renders_schedule_card(web_client: TestClien
     resp = web_client.get(f"/web/debts/{debt['public_id']}")
     assert resp.status_code == 200
     body = resp.text
-    assert "debt-installment-surface" in body
+    assert "debt-installment-card" in body
     assert "分期计划" in body
     assert "共 12 期 · 每月一期" in body
     # 0 repayments → neutral 0/12 progress; the card NEVER claims 已还清 (that is status-gated).

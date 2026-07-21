@@ -1,111 +1,70 @@
 {% extends "base.html" %}
-{% block title %}我欠 · 小票夹{% endblock %}
-
+{% block title %}欠款 — 小票夹{% endblock %}
 {% block content %}
-{% set _q = '?ledger_id=' ~ selected_ledger_id %}
-{% set _tone = {
-  'ok': 'product-status--success',
-  'warn': 'product-status--warning',
-  'danger': 'product-status--danger',
-  'info': 'product-status--info'
-} %}
-<header class="product-page-header task-header">
-  <div class="product-page-heading">
-    <span class="product-eyebrow">往来</span>
-    <h1 class="page-title">我欠</h1>
-  </div>
-  <div class="task-header__command">
-    <p class="task-header__status">
-      {{ member_debts | length }} 笔家庭往来 · {{ external_debts | length }} 笔外部欠款
-    </p>
-    <div class="task-header__commands">
-      {% if can_write %}
-      <a class="product-button product-button--primary" href="/web/debts/new{{ _q }}">新增外部往来</a>
-      {% endif %}
-      <a class="product-button" href="/web/repayment-drafts{{ _q }}">还款复核</a>
-      <a class="product-button" href="/web/debt-goals{{ _q }}">还债计划</a>
-    </div>
-  </div>
-</header>
-
-<section class="obligation-summary" aria-label="往来概况">
-  <div class="obligation-summary-item">
-    <strong>{{ member_debts | length }}</strong>
-    <span>家庭往来</span>
-  </div>
-  <div class="obligation-summary-item">
-    <strong>{{ external_debts | length }}</strong>
-    <span>外部欠款</span>
-  </div>
-</section>
-
+<h1 class="page-title page-title--compact">欠款</h1>
+<p class="page-hint">读取自当前账本「{{ selected_ledger_name }}」。家人之间的款项按「一起处理这件事」呈现，外部欠款按方向、状态与本位币剩余排列；金额与手机 App 一致。{% if can_write %}打开任意一笔即可直接还款、调整或作废，所有提交走服务端幂等事务。{% else %}只读角色可以查看欠款明细；记账、还款或作废请联系拥有者或成员。{% endif %}</p>
 {% if not can_write %}
-<div class="product-feedback">
-  当前角色可查看关系、余额和清偿进度，修改动作由账本拥有者或成员完成。
+<div class="readonly-callout">只读角色可以查看欠款明细；记账、还款或作废请联系拥有者或成员。</div>
+{% endif %}
+{% if can_write %}
+<div class="debt-list-actions">
+  <a class="dt-btn" href="/web/debts/new?ledger_id={{ selected_ledger_id }}">新建欠款</a>
 </div>
 {% endif %}
 
+{% if member_debts or external_debts %}
 {% if member_debts %}
-<section class="debt-section" aria-labelledby="member-debts-title">
-  <h2 class="debt-section-title" id="member-debts-title">家庭往来</h2>
-  <div class="debt-list">
-    {% for debt in member_debts %}
-    <a class="debt-row debt-row--member{% if debt.recede %} is-receded{% endif %}"
-       href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
-       aria-label="{{ debt.name }}，{{ debt.member_headline }}，{{ debt.member_status_label }}">
-      <div class="debt-row-main">
-        <div class="debt-name">{{ debt.name }}</div>
-        <div class="debt-member-line">{{ debt.member_headline }}</div>
-        {% if debt.show_progress %}
-        <progress class="debt-progress debt-progress--row"
-                  max="100"
-                  value="{{ debt.ratio_percent }}"
-                  aria-label="{{ debt.progress_note }}"></progress>
-        {% endif %}
+<h2 class="debt-section-title">家人</h2>
+<div class="debt-list">
+  {% for debt in member_debts %}
+  {# 家人(成员)债 = communal 关系行：对手方名 + viewer-相对关系主句(无金额) + open 时细 success 进度条 +
+     状态徽章(neutral/success 永不红 — 红线②)。作废/已结清沉降(淡出，办完可追溯)。 #}
+  <a class="dt-card debt-row debt-row--member{% if debt.recede %} debt-card-sunk{% endif %}"
+     href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
+     aria-label="{{ debt.name }}，{{ debt.member_headline }}，{{ debt.member_status_label }}">
+    <div class="debt-row-main">
+      <div class="debt-name">{{ debt.name }}</div>
+      <div class="debt-member-line">{{ debt.member_headline }}</div>
+      {% if debt.show_progress %}
+      <div class="debt-progress debt-progress--row" role="img" aria-label="{{ debt.progress_note }}">
+        <div class="debt-progress-fill" style="width: {{ debt.ratio_percent }}%"></div>
       </div>
-      <div class="debt-row-side">
-        <span class="product-status {{ _tone.get(debt.member_status_tone, '') }}">{{ debt.member_status_label }}</span>
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-</section>
+      {% endif %}
+    </div>
+    <div class="debt-row-side">
+      <span class="dt-pill {{ debt.member_status_tone }}">{{ debt.member_status_label }}</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
 {% endif %}
-
 {% if external_debts %}
-<section class="debt-section" aria-labelledby="external-debts-title">
-  <h2 class="debt-section-title" id="external-debts-title">外部欠款</h2>
-  <div class="debt-list">
-    {% for debt in external_debts %}
-    <a class="debt-row{% if debt.recede %} is-receded{% endif %}"
-       href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
-       aria-label="{{ debt.name }}，{{ debt.direction_label }}，{{ debt.status_label }}，剩余 {{ debt.remaining_label }}">
-      <div class="debt-row-main">
-        <div class="debt-name">{{ debt.name }}</div>
-        <div class="debt-badges pill-row">
-          <span class="product-status">{{ debt.direction_label }}</span>
-          <span class="product-status {{ _tone.get(debt.status_tone, '') }}">{{ debt.status_label }}</span>
-        </div>
+<h2 class="debt-section-title">外部</h2>
+<div class="debt-list">
+  {% for debt in external_debts %}
+  {# 外部债 = businesslike 会计行：应付/应收 + 状态 + 本位币剩余 editorial 拆分英雄 + 本金脚注。 #}
+  <a class="dt-card debt-row" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
+     aria-label="{{ debt.name }}，{{ debt.direction_label }}，{{ debt.status_label }}，剩余 {{ debt.remaining_label }}">
+    <div class="debt-row-main">
+      <div class="debt-name">{{ debt.name }}</div>
+      <div class="debt-badges">
+        <span class="dt-pill">{{ debt.direction_label }}</span>
+        <span class="dt-pill {{ debt.status_tone }}">{{ debt.status_label }}</span>
       </div>
-      <div class="debt-row-amount">
-        <span class="dh-amt dh-amt--row" aria-hidden="true">
-          <span class="dh-cur">{{ debt.remaining_segments.cur }}</span><span class="dh-int">{{ debt.remaining_segments.int }}</span><span class="dh-dec">{{ debt.remaining_segments.dec }}</span>
-        </span>
-        <div class="debt-principal">本金 {{ debt.principal_label }}</div>
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-</section>
+    </div>
+    <div class="debt-row-amount">
+      <span class="dh-amt dh-amt--row" aria-hidden="true"><span class="dh-cur">{{ debt.remaining_segments.cur }}</span><span class="dh-int">{{ debt.remaining_segments.int }}</span><span class="dh-dec">{{ debt.remaining_segments.dec }}</span></span>
+      <div class="debt-principal">本金 {{ debt.principal_label }}</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
 {% endif %}
-
-{% if not member_debts and not external_debts %}
-<div class="product-state">
-  <div class="product-state-title">当前没有待清往来</div>
-  <div class="product-state-body">
-    需要你偿还的家庭拆账或外部欠款形成后，会在这里持续跟踪。
-  </div>
-  <a class="product-state-action" href="/web/bill-splits/inbox{{ _q }}">查看收到的拆账</a>
+{% else %}
+<div class="dt-card dt-card--empty">
+  <div class="empty-headline">还没有欠款记录</div>
+  <div class="empty-body">记一笔外部欠款后，这里会显示它的方向、金额和清偿进度。</div>
+  {% if can_write %}<a class="dt-btn" href="/web/debts/new?ledger_id={{ selected_ledger_id }}">新建欠款</a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

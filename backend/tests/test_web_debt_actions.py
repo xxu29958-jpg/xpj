@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 import app.routes.web_debt_actions as web_debt_action_routes
 import app.routes.web_debt_create as web_debt_create_routes
-import app.routes.web_debt_form_views as web_debt_form_views
+import app.routes.web_debts as web_debts_routes
 import app.services.debt_command_service as debt_command_service
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember
@@ -18,7 +18,7 @@ from app.models import Account, Debt, LedgerMember
 def test_web_debt_fact_adapters_delegate_to_shared_commands_and_views() -> None:
     assert web_debt_action_routes.record_repayment_idempotently is debt_command_service.record_repayment_idempotently
     assert web_debt_create_routes.create_debt_idempotently is debt_command_service.create_debt_idempotently
-    assert web_debt_create_routes._debt_create_context is web_debt_form_views._debt_create_context
+    assert web_debt_create_routes._debt_create_context is web_debts_routes._debt_create_context
 
 
 def _headers(identity) -> dict[str, str]:
@@ -407,7 +407,8 @@ def test_web_member_creditor_can_forgive_remaining(
     page = web_client.get(f"/web/debts/{public_id}?ledger_id=owner")
     assert page.status_code == 200
     assert f"/web/debts/{public_id}/forgive" in page.text
-    assert "免除剩余往来" in page.text
+    assert "免除这笔往来" in page.text
+    assert "免除剩余往来" not in page.text  # 红线②:成员卡不出现会计框
 
     current = _detail(web_client, identity=identity, public_id=public_id)
     forgiven = web_client.post(

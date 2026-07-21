@@ -1,7 +1,8 @@
-"""/web personal payables list, role-aware detail, and action affordances."""
+"""/web/debts page (ADR-0049 债务域 web 面 slice 1 — 只读欠款列表)."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -17,7 +18,6 @@ from app.routes.web_debts import (
     _member_headline,
     _split_debt_views,
 )
-from tests._web_debt_test_support import stub_debt as _stub_debt
 
 # Uses the shared ``web_client`` fixture (conftest.py) which bypasses the /web
 # loopback gate by overriding _require_local; the plain ``client`` fixture keeps
@@ -95,7 +95,7 @@ def test_web_debts_empty_renders(web_client: TestClient) -> None:
     assert resp.status_code == 200
     assert "欠款" in resp.text
     # Empty-state copy mirrors the Android debt_list_empty_* strings.
-    assert "当前没有待清往来" in resp.text
+    assert "还没有欠款记录" in resp.text
 
 
 def test_web_debts_lists_external_i_owe_open(web_client: TestClient, *, identity) -> None:
@@ -112,19 +112,14 @@ def test_web_debts_lists_external_i_owe_open(web_client: TestClient, *, identity
     assert '<span class="dh-int">500</span>' in resp.text
 
 
-def test_web_debts_moves_owed_to_me_into_receivables(
-    web_client: TestClient, *, identity
-) -> None:
+def test_web_debts_renders_owed_to_me_direction(web_client: TestClient, *, identity) -> None:
     _create_external_debt(
         web_client, identity=identity, direction="owed_to_me", label="同事借款"
     )
-    payables = web_client.get("/web/debts")
-    receivables = web_client.get("/web/receivables")
-    assert payables.status_code == 200
-    assert receivables.status_code == 200
-    assert "同事借款" not in payables.text
-    assert "同事借款" in receivables.text
-    assert "应收" in receivables.text
+    resp = web_client.get("/web/debts")
+    assert resp.status_code == 200
+    assert "同事借款" in resp.text
+    assert "应收" in resp.text  # owed_to_me direction label
 
 
 def test_web_debts_renders_cleared_status_and_zero_remaining(
@@ -141,7 +136,7 @@ def test_web_debts_renders_cleared_status_and_zero_remaining(
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert "已结清" in resp.text  # cleared status label
-    assert "product-status--success" in resp.text  # cleared → success tone class rendered
+    assert "dt-pill ok" in resp.text  # cleared → success tone class rendered
     # Remaining hero integer is now exactly 0 (the only dh-int in the row; principal
     # stays a plain footnote, so this precisely checks remaining == 0).
     assert '<span class="dh-int">0</span>' in resp.text
@@ -159,7 +154,7 @@ def test_web_debts_renders_voided_status(web_client: TestClient, *, identity) ->
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert "已作废" in resp.text  # voided status label
-    assert "product-status--danger" in resp.text  # voided → danger tone class rendered
+    assert "dt-pill danger" in resp.text  # voided → danger tone class rendered
 
 
 def _seed_third_party_member_debt() -> str:
@@ -200,7 +195,7 @@ def test_web_debts_lists_member_debt_communal(web_client: TestClient) -> None:
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert "家庭成员" in resp.text  # counterparty fallback name
-    assert '<h2 class="debt-section-title" id="member-debts-title">家庭往来</h2>' in resp.text
+    assert '<h2 class="debt-section-title">家人</h2>' in resp.text  # 家人 section header
     # Communal relational headline (viewer=owner=debtor, open, ratio 0).
     assert "你帮我垫了，慢慢还给你" in resp.text
     assert "进行中" in resp.text  # member open status badge (neutral)
@@ -208,7 +203,7 @@ def test_web_debts_lists_member_debt_communal(web_client: TestClient) -> None:
     assert "应付" not in resp.text
     assert "应收" not in resp.text
     # No external debts seeded → no 外部 section.
-    assert '<h2 class="debt-section-title" id="external-debts-title">外部欠款</h2>' not in resp.text
+    assert '<h2 class="debt-section-title">外部</h2>' not in resp.text
 
 
 def test_web_debts_groups_family_before_external(web_client: TestClient, *, identity) -> None:
@@ -218,8 +213,8 @@ def test_web_debts_groups_family_before_external(web_client: TestClient, *, iden
     _create_external_debt(web_client, identity=identity, direction="i_owe", label="招商信用卡")
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
-    fam = '<h2 class="debt-section-title" id="member-debts-title">家庭往来</h2>'
-    ext = '<h2 class="debt-section-title" id="external-debts-title">外部欠款</h2>'
+    fam = '<h2 class="debt-section-title">家人</h2>'
+    ext = '<h2 class="debt-section-title">外部</h2>'
     assert fam in resp.text
     assert ext in resp.text
     assert resp.text.index(fam) < resp.text.index(ext)  # 家人 before 外部
@@ -228,16 +223,43 @@ def test_web_debts_groups_family_before_external(web_client: TestClient, *, iden
     assert "应付" in resp.text  # external still uses the accounting direction label
 
 
-def test_web_debts_excludes_third_party_member_debt(web_client: TestClient) -> None:
-    # Personal payable/receivable lenses never inherit an obligation only because
-    # it happens to live in a ledger the viewer can administer.
+def test_web_debts_member_row_third_party_viewer(web_client: TestClient) -> None:
+    # The viewer (ledger owner) is neither the debtor nor the creditor → third-party relational
+    # framing, NOT the owner-relative "你帮我垫的" a direction-based row would wrongly show. This
+    # pins that the row honors the VIEWER's account, not the Debt's stored owner.
     _seed_third_party_member_debt()
-    payables = web_client.get("/web/debts")
-    receivables = web_client.get("/web/receivables")
-    assert payables.status_code == 200
-    assert receivables.status_code == 200
-    assert "妹妹" not in payables.text
-    assert "妹妹" not in receivables.text
+    resp = web_client.get("/web/debts")
+    assert resp.status_code == 200
+    assert "这件事还在进行中" in resp.text  # third-party headline
+    assert "你帮我垫" not in resp.text
+    assert "我帮你垫" not in resp.text
+    assert "dt-pill danger" not in resp.text  # never red for a member row
+
+
+def _stub_debt(**overrides) -> SimpleNamespace:
+    base = {
+        "public_id": "dbt_1",
+        "counterparty_label": "招商信用卡",
+        "counterparty_type": "external",
+        "direction": "i_owe",
+        "status": "open",
+        "remaining_amount_cents": 50000,
+        "principal_amount_cents": 50000,
+        "paid_amount_cents": 0,
+        "home_currency_code": "CNY",
+        "original_currency_code": None,
+        "viewer_is_debtor": None,
+        "is_forgiven": False,
+        # §B installment fields — defaulted so a plain external/member stub yields installment=None
+        # through _installment_view (non-installment → no schedule card); installment tests override them.
+        "debt_kind": "unspecified",
+        "installment_count": None,
+        "installment_period_months": None,
+        "installment_paid_count": None,
+        "installment_payoff_date": None,
+    }
+    base.update(overrides)
+    return SimpleNamespace(**base)
 
 
 def test_debt_view_maps_labels_tones_and_fallbacks() -> None:
@@ -360,15 +382,8 @@ def test_web_debt_detail_external_renders_summary(web_client: TestClient, *, ide
     # 1B premium: editorial display-split hero + businesslike repayment bar +
     # tracked (letter-spaced) card-title eyebrow (uppercase is a no-op on 剩余).
     assert "dh-amt--hero" in resp.text
-    assert "debt-progress" in resp.text
-    assert "账面摘要" in resp.text
-    # External/manual Debt exposes the three existing fact commands with the
-    # browser security + retry contract carried in every form.
-    for action in ("repayments", "adjustments", "void"):
-        assert f'action="/web/debts/{debt["public_id"]}/{action}"' in resp.text
-    assert resp.text.count('name="csrf_token"') >= 3
-    assert resp.text.count('name="expected_row_version"') >= 3
-    assert resp.text.count('name="idempotency_key"') >= 3
+    assert "debt-pay-bar" in resp.text
+    assert "card-title" in resp.text
     # The duplicate 剩余 ROW is removed (剩余 now lives only in the eyebrow/aria);
     # there must be no 剩余 row label left.
     assert "<span>剩余</span>" not in resp.text
@@ -376,23 +391,20 @@ def test_web_debt_detail_external_renders_summary(web_client: TestClient, *, ide
 
 def test_web_debt_detail_member_renders_communal(web_client: TestClient) -> None:
     # Owner viewing their own ledger's member debt → viewer resolves to a party
-    # → communal card: 一起处理 eyebrow + relational headline + relationship ledger, NO accounting
+    # → communal card: 一起处理 eyebrow + relational headline + 看看账, NO accounting
     # framing (应付/应收/剩余) and NO danger tone (red-line ②).
     public_id = _seed_member_debt(direction="i_owe", principal_cents=20000)
     detail = web_client.get(f"/web/debts/{public_id}")
     assert detail.status_code == 200
     assert "一起处理" in detail.text  # participant eyebrow (viewer resolved to a party)
-    assert "关系账面" in detail.text
-    assert "这件事一共" in detail.text
+    assert "看看账" in detail.text  # 看看账 expander
+    assert "这件事一共" in detail.text  # expander shows total, not remaining
     # Red lines: member detail must not show accounting framing or danger tone.
     assert "应付" not in detail.text
     assert "应收" not in detail.text
     assert "剩余" not in detail.text  # member card never surfaces remaining
-    assert "product-status--danger" not in detail.text  # never red for member debt
+    assert "dt-pill danger" not in detail.text  # never red for member debt
     assert "进行中" in detail.text  # member open status badge (neutral)
-    assert f"/web/debts/{public_id}/repayments" not in detail.text
-    assert f"/web/debts/{public_id}/adjustments" not in detail.text
-    assert f"/web/debts/{public_id}/void" not in detail.text
 
 
 def test_web_debt_detail_unknown_returns_404(web_client: TestClient) -> None:

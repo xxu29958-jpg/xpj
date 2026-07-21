@@ -14,11 +14,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 import app.routes.web_debt_proposal_actions as proposal_routes
-import app.routes.web_debt_proposal_views as proposal_views
+import app.routes.web_debts as web_debts_routes
 import app.services.debt_proposal_command_service as proposal_commands
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember, MemberRepaymentProposal, Repayment
-from app.routes.web_debt_proposal_views import (
+from app.routes._web_debt_write import (
     _proposal_pending_line,
     _proposal_section,
     _resolved_proposal_row,
@@ -38,7 +38,7 @@ def test_web_proposal_adapter_delegates_to_shared_commands_and_views() -> None:
         is proposal_commands.create_repayment_proposal_idempotently
     )
     assert proposal_routes._proposal_error_message
-    assert proposal_views._proposal_section is _proposal_section
+    assert web_debts_routes._proposal_section is _proposal_section
 
 
 def _owner_account_id(db) -> int:
@@ -444,13 +444,13 @@ def test_resolved_proposal_row_date_prefix_and_neutral_status() -> None:
 
 
 def test_proposal_section_splits_pending_and_collapses_resolved() -> None:
-    empty = _proposal_section([], True, debt_status="open")
+    empty = _proposal_section([], True)
     assert empty["can_propose"] is True
     assert empty["pending"] is None
     # One pending + 4 resolved → pending line + first-3 visible / rest hidden, total label.
     pending = _stub_proposal(status="pending")
     resolved = [_stub_proposal(status="confirmed") for _ in range(4)]
-    section = _proposal_section([pending, *resolved], True, debt_status="open")
+    section = _proposal_section([pending, *resolved], True, )
     assert section["pending_line"] == "你说你还了这一份，等家人确认一下"
     assert section["can_withdraw"] is True
     assert section["pending"]["public_id"] == pending.public_id
@@ -458,6 +458,6 @@ def test_proposal_section_splits_pending_and_collapses_resolved() -> None:
     assert len(section["resolved_hidden"]) == 1
     assert section["history_expand_label"] == "查看全部 4 条过往"
     # Resolved-only (no pending) still renders history; pending_line is None.
-    resolved_only = _proposal_section(resolved, None, debt_status="open")
+    resolved_only = _proposal_section(resolved, None, )
     assert resolved_only["pending_line"] is None
     assert resolved_only["has_resolved"] is True
