@@ -99,7 +99,19 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/data-quality"): "local-only-rendering",
     # Debts (ADR-0049 债务域 web 面 slice 1 列表 + slice 2a 只读详情)
     ("GET", "/web/debts"): "local-only-rendering",
+    ("GET", "/web/debts/new"): "local-only-rendering",
     ("GET", "/web/debts/{public_id}"): "local-only-rendering",
+    ("POST", "/web/debts"): "writer-only",
+    ("POST", "/web/debts/{public_id}/adjustments"): "writer-only",
+    ("POST", "/web/debts/{public_id}/forgive"): "writer-only",
+    ("POST", "/web/debts/{public_id}/kind"): "writer-only",
+    ("POST", "/web/debts/{public_id}/repayment-proposals"): "writer-only",
+    ("POST", "/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm"): "writer-only",
+    ("POST", "/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject"): "writer-only",
+    ("POST", "/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw"): "writer-only",
+    ("POST", "/web/debts/{public_id}/repayment-voids"): "writer-only",
+    ("POST", "/web/debts/{public_id}/repayments"): "writer-only",
+    ("POST", "/web/debts/{public_id}/void"): "writer-only",
     # Debt goals (ADR-0049 债务域 web 面 slice 4 还债目标进度只读)
     ("GET", "/web/debt-goals"): "local-only-rendering",
     # Repayment drafts (ADR-0049 债务域 web 面 slice C3 还款捕获可操作复核, account-scoped)

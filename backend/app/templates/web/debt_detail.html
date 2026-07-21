@@ -4,6 +4,12 @@
 <a class="debt-detail-back" href="/web/debts?ledger_id={{ selected_ledger_id }}">← 返回</a>
 <h1 class="page-title page-title--compact">{{ debt.name }}</h1>
 <p class="page-hint">{{ debt.direction_subtitle }}</p>
+{% if not debt.is_member %}
+<div class="debt-badges">
+  <span class="dt-pill">{{ debt.direction_subtitle }}</span>
+  <span class="dt-pill">{{ debt.kind_label }}</span>
+</div>
+{% endif %}
 
 {% if debt.is_member %}
 {# 家庭(成员)债 = communal 关系卡：无金额关系主句 + 件数进度 + 「看看账」展开，永不红 #}
@@ -26,7 +32,7 @@
   </details>
 </div>
 {# slice 2b：成员还款 proposal 状态 + 过往历史 (只读；在途一行关系状态句 + 已解决沉降，永不红) #}
-{% if proposals %}
+{% if proposals.pending_line or proposals.has_resolved %}
 {% if proposals.pending_line %}
 <div class="debt-proposal-status">{{ proposals.pending_line }}</div>
 {% endif %}
@@ -91,5 +97,224 @@
   <div class="debt-installment-per-period">{{ debt.installment.per_period_label }}</div>
 </div>
 {% endif %}
+{% endif %}
+
+{# 只读角色：安静事实提示 (沿用 readonly-callout 范式,不红)。 #}
+{% if not can_write %}
+<div class="readonly-callout">当前角色可查看欠款事实；还款、调整或作废请联系拥有者或成员。</div>
+{% endif %}
+
+{# ── 写面 (slice C2)：开放中的欠款 + 可写角色 → 处理动作区。
+   组件零新增：按钮 .dt-btn(+.primary/.danger)、输入 .dt-input(+wrap/prefix)、表单网格 .dt-form-grid/
+   .dt-form-row、按钮组 .dt-actions、提示 .callout-info(--danger)、<details> 复用 .debt-look chevron 范式、
+   记录行复用 .debt-history 沉降范式；新增仅两张布局类(.debt-secondary-actions/.debt-pending-actions)
+   与 .debt-choice 选择卡 (debts.css 内注明理由)。 #}
+{% if can_write and debt_open and action_keys %}
+<section class="dt-card debt-actions" aria-labelledby="debt-actions-title">
+  <div class="card-title" id="debt-actions-title">处理这笔欠款</div>
+  {% if form_error %}<div class="callout-info callout-info--danger" role="alert">{{ form_error }}</div>{% endif %}
+
+  <form method="post" action="/web/debts/{{ debt.public_id }}/repayments">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ action_keys.repay }}">
+    <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+    <div class="dt-form-grid">
+      <label class="dt-form-row">
+        <span>本次还款（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</span>
+        <span class="input-wrap">
+          <span class="input-prefix">{{ currency_input.currency_symbol }}</span>
+          <input class="dt-input with-prefix" name="amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" aria-label="还款金额" required>
+        </span>
+      </label>
+      <label class="dt-form-row">
+        <span>还款日</span>
+        <input class="dt-input" name="paid_at" type="date" value="{{ today }}" required>
+      </label>
+    </div>
+    <div class="dt-actions">
+      <button class="dt-btn primary" type="submit">记一笔还款</button>
+    </div>
+  </form>
+
+  <div class="debt-secondary-actions">
+    <details class="debt-look">
+      <summary>调整金额</summary>
+      <form class="debt-look-rows" method="post" action="/web/debts/{{ debt.public_id }}/adjustments">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="idempotency_key" value="{{ action_keys.adjust }}">
+        <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+        <div class="dt-form-grid">
+          <label class="dt-form-row">
+            <span>调整额（正数调增 / 负数调减）</span>
+            <input class="dt-input" name="amount_major" type="number" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="如 -10.00" required>
+          </label>
+          <label class="dt-form-row">
+            <span>原因（可选）</span>
+            <input class="dt-input" name="reason" type="text" maxlength="80" placeholder="比如：当时少算了一顿">
+          </label>
+        </div>
+        <div class="dt-actions">
+          <button class="dt-btn" type="submit">记录调整</button>
+        </div>
+      </form>
+    </details>
+
+    <details class="debt-look">
+      <summary>修改类型</summary>
+      <form class="debt-look-rows" method="post" action="/web/debts/{{ debt.public_id }}/kind">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="idempotency_key" value="{{ action_keys.kind }}">
+        <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+        <div class="dt-form-grid">
+          <label class="dt-form-row">
+            <span>新的类型</span>
+            <select class="dt-input" name="debt_kind" required>
+              <option value="one_off">一次结清</option>
+              <option value="revolving">循环往来</option>
+              <option value="installment">分期偿还</option>
+              <option value="unspecified">暂不指定</option>
+            </select>
+          </label>
+        </div>
+        <div class="dt-actions">
+          <button class="dt-btn" type="submit">保存类型</button>
+        </div>
+      </form>
+    </details>
+
+    {% if not debt.is_member or not pending_proposal %}
+    <details class="debt-look">
+      <summary>{{ '免除这笔往来' if debt.is_member else '免除剩余往来' }}</summary>
+      <form class="debt-look-rows" method="post" action="/web/debts/{{ debt.public_id }}/forgive">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="idempotency_key" value="{{ action_keys.forgive }}">
+        <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+        <p class="debt-note">{{ "免除后这件事按「已结清」处理，不再追讨。" if debt.is_member else "免除后这笔欠款按「已结清」处理，剩余金额不再追讨。" }}</p>
+        <div class="dt-actions">
+          <button class="dt-btn" type="submit">确认免除</button>
+        </div>
+      </form>
+    </details>
+    {% endif %}
+
+    <details class="debt-look debt-look--danger">
+      <summary>作废这笔欠款</summary>
+      <form class="debt-look-rows" method="post" action="/web/debts/{{ debt.public_id }}/void">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="idempotency_key" value="{{ action_keys.void }}">
+        <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+        <p class="debt-note">作废是不可逆的状态标记（记录保留），仅当这笔欠款本就记错时使用。</p>
+        <label class="dt-form-row">
+          <span>作废原因（可选）</span>
+          <input class="dt-input" name="reason" type="text" maxlength="80" placeholder="比如：重复记账">
+        </label>
+        <div class="dt-actions">
+          <button class="dt-btn danger" type="submit">确认作废</button>
+        </div>
+      </form>
+    </details>
+  </div>
+</section>
+{% endif %}
+
+{# 成员债：还款 proposal 动作（债务人发起 / 债权人确认与拒绝 / 发起人撤回），同一 .dt-btn/.dt-form-grid 体系。 #}
+{% if can_write and debt.is_member and debt_open and action_keys %}
+<section class="dt-card debt-actions" aria-labelledby="debt-proposal-actions-title">
+  <div class="card-title" id="debt-proposal-actions-title">还款确认</div>
+  {% if viewer_is_debtor and not pending_proposal %}
+  <form method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_create }}">
+    <div class="dt-form-grid">
+      <label class="dt-form-row">
+        <span>我还了（{{ currency_input.currency_code }}）</span>
+        <span class="input-wrap">
+          <span class="input-prefix">{{ currency_input.currency_symbol }}</span>
+          <input class="dt-input with-prefix" name="amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" aria-label="申报还款金额" required>
+        </span>
+      </label>
+      <label class="dt-form-row">
+        <span>留言（可选）</span>
+        <input class="dt-input" name="note" type="text" maxlength="80" placeholder="比如：先还一半">
+      </label>
+    </div>
+    <div class="dt-actions">
+      <button class="dt-btn primary" type="submit">把这份给 TA</button>
+    </div>
+  </form>
+  {% endif %}
+  {% if pending_proposal %}
+  <div class="debt-pending-actions">
+    {% if viewer_is_debtor == false %}
+    <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/confirm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_confirm }}">
+      <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+      <input class="dt-input" name="confirmed_amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）">
+      <button class="dt-btn primary" type="submit">确认到账</button>
+    </form>
+    <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/reject">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_reject }}">
+      <button class="dt-btn" type="submit">没收到</button>
+    </form>
+    {% endif %}
+    {% if viewer_is_debtor %}
+    <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/withdraw">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_withdraw }}">
+      <button class="dt-btn" type="submit">撤回我的还款确认</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{# 还款记录：复用 .debt-history 沉降行范式（金额/日期左栈 + 右侧状态 pill），作废中性划线不红。 #}
+{% if repayment_facts %}
+<section class="dt-card dt-card--static debt-history" aria-labelledby="debt-facts-title">
+  <div class="debt-history-title" id="debt-facts-title">还款记录</div>
+  {% for fact in repayment_facts %}
+  <div class="debt-history-row">
+    <div class="debt-history-main">
+      <span class="debt-history-amt{% if fact.is_voided %} debt-history-amt--voided{% endif %}">{{ fact.amount_label }}</span>
+      <span class="debt-history-date">{{ fact.date_text }}</span>
+      {% if fact.is_voided %}
+      <span class="debt-history-note">已作废{% if fact.void_reason %}：{{ fact.void_reason }}{% endif %}{% if fact.void_date_text %}（{{ fact.void_date_text }}）{% endif %}</span>
+      {% endif %}
+    </div>
+    <div class="debt-history-side">
+      <span class="dt-pill">{{ '已作废' if fact.is_voided else '已生效' }}</span>
+      {% if can_write and not fact.is_voided %}
+      <details class="debt-look debt-fact-void">
+        <summary>撤销</summary>
+        <form method="post" action="/web/debts/{{ debt.public_id }}/repayment-voids">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <input type="hidden" name="repayment_public_id" value="{{ fact.public_id }}">
+          <input type="hidden" name="idempotency_key" value="{{ fact.void_key }}">
+          <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+          <label class="dt-form-row">
+            <span>原因（可选）</span>
+            <input class="dt-input" name="reason" type="text" maxlength="80" placeholder="比如：记错金额">
+          </label>
+          <button class="dt-btn" type="submit">撤销这笔误记</button>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
 {% endif %}
 {% endblock %}

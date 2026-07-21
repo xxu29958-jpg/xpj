@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}新建欠款 — 小票夹{% endblock %}
+{% block content %}
+<a class="debt-detail-back" href="/web/debts?ledger_id={{ selected_ledger_id }}">← 返回欠款列表</a>
+<h1 class="page-title page-title--compact">新建欠款</h1>
+<p class="page-hint">记一笔和账本外的人之间的往来。所有提交走服务端幂等事务，重复点击不会记成两笔。</p>
+
+<section class="dt-card debt-create-card">
+  {% if form_error %}<div class="callout-info callout-info--danger" role="alert">{{ form_error }}</div>{% endif %}
+  <form class="debt-create-form" method="post" action="/web/debts">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+
+    <fieldset class="debt-choice-group">
+      <legend class="dt-form-row"><span>谁欠谁</span></legend>
+      <div class="debt-choice-row" role="radiogroup">
+        {% for option in direction_options %}
+        <label class="debt-choice">
+          <input type="radio" name="direction" value="{{ option.value }}"{% if values.direction == option.value or (not values.direction and loop.first) %} checked{% endif %}>
+          <span class="debt-choice-title">{{ option.label }}</span>
+          <span class="debt-choice-hint">{{ option.hint }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="dt-form-grid">
+      <label class="dt-form-row">
+        <span>对方</span>
+        <input class="dt-input" name="counterparty_label" type="text" maxlength="60" placeholder="比如：同事阿明" value="{{ values.counterparty_label or '' }}" required>
+      </label>
+      <label class="dt-form-row">
+        <span>币种</span>
+        <select class="dt-input" name="currency_code">
+          {% for code in currency_options %}
+          <option value="{{ code }}"{% if loop.first or values.currency_code == code %} selected{% endif %}>{{ code }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dt-form-row">
+        <span>金额（{{ currency_input.currency_code }}，{{ currency_input.amount_input_hint }}）</span>
+        <input class="dt-input" name="amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ values.amount_major or '' }}" required>
+        <span class="hint">外币按所选币种记账，服务端按发生日冻结汇率。</span>
+      </label>
+      <label class="dt-form-row">
+        <span>发生日期</span>
+        <input class="dt-input" name="event_time" type="date" value="{{ values.event_time or today }}" required>
+      </label>
+      <label class="dt-form-row">
+        <span>备注（可选）</span>
+        <input class="dt-input" name="note" type="text" maxlength="80" placeholder="比如：一起出差垫的" value="{{ values.note or '' }}">
+      </label>
+    </div>
+
+    <fieldset class="debt-choice-group">
+      <legend class="dt-form-row"><span>偿还方式</span></legend>
+      <div class="debt-choice-row debt-choice-row--three" role="radiogroup">
+        {% for option in kind_options %}
+        <label class="debt-choice">
+          <input type="radio" name="debt_kind" value="{{ option.value }}"{% if values.debt_kind == option.value or (not values.debt_kind and loop.first) %} checked{% endif %}>
+          <span class="debt-choice-title">{{ option.label }}</span>
+          <span class="debt-choice-hint">{{ option.hint }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="dt-form-grid">
+      <label class="dt-form-row">
+        <span>总期数（分期时填）</span>
+        <input class="dt-input" name="installment_count" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="如 12" value="{{ values.installment_count or '' }}">
+      </label>
+      <label class="dt-form-row">
+        <span>每期月数（分期时填）</span>
+        <input class="dt-input" name="installment_period_months" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="如 1" value="{{ values.installment_period_months or '' }}">
+      </label>
+    </div>
+
+    <div class="dt-actions">
+      <button class="dt-btn primary" type="submit">记下这笔欠款</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

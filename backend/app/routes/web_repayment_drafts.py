@@ -31,6 +31,7 @@ from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_debt_write import _day_label
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -107,7 +108,7 @@ def _audit_row_view(row: RepaymentDraftAuditRow, *, attempted_target: str | None
         "source_label": REPAYMENT_DRAFT_SOURCE_LABELS.get(row.source, row.source),
         "merchant": (row.merchant_label or "").strip() or None,
         "amount_label": _home_amount_label(row.amount_cents, row.home_currency_code),
-        "captured_label": _day_label_local(row.captured_at),
+        "captured_label": _day_label(row.captured_at),
         "status_label": _STATUS_LABELS.get(row.status, _STATUS_LABELS["pending"]),
         "status_tone": _STATUS_TONE.get(row.status, ""),
         "recede": row.status == "dismissed",
@@ -126,14 +127,6 @@ def _audit_row_view(row: RepaymentDraftAuditRow, *, attempted_target: str | None
             name = row.suggested_debt_label or _COUNTERPARTY_FALLBACK["external"]
             view["provenance"] = _SUGGESTION_PREFIX.format(name)
     return view
-
-
-def _day_label_local(value) -> str:
-    if value is None:
-        return ""
-    from app.services.spending_contract_service import accounting_zone
-
-    return value.astimezone(accounting_zone()).strftime("%Y-%m-%d")
 
 
 def _render_repayment_drafts(

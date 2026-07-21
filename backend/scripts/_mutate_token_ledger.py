@@ -257,6 +257,18 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject": Exempt(
         "terminal_flag_flip", "debts", _MEMBER_REPAYMENT_PROPOSAL
     ),
+    # Web form twins of the API entries above (same shared command service;
+    # the Idempotency-Key travels as a hidden per-render form field).
+    "POST /web/debts": Exempt("create_row", "debts", _DEBTS),
+    "POST /web/debts/{public_id}/repayment-proposals": Exempt(
+        "create_row", "debts", _MEMBER_REPAYMENT_PROPOSAL
+    ),
+    "POST /web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw": Exempt(
+        "terminal_flag_flip", "debts", _MEMBER_REPAYMENT_PROPOSAL
+    ),
+    "POST /web/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject": Exempt(
+        "terminal_flag_flip", "debts", _MEMBER_REPAYMENT_PROPOSAL
+    ),
     # ADR-0049 §杠杆③ (slice 3a): user dismisses a pending repayment draft. Flips the
     # status to a terminal ``dismissed`` via a ``SELECT ... FOR UPDATE`` + status guard
     # (the draft row serializes concurrent resolutions); commits no Repayment, so no

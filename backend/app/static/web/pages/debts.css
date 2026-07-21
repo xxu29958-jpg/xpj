@@ -343,3 +343,147 @@
     .dh-amt--hero .dh-int { font-size: var(--type-hero-size); }
     .dh-amt--hero .dh-dec { font-size: var(--type-subtitle-size); }
 }
+
+/* ── slice C2：债务写面 ─────────────────────────────────────────────────
+ * 原则：能复用全局组件就不新增类。已复用：.dt-btn(+.primary/.danger) 按钮、
+ * .dt-input(+.input-wrap/.input-prefix) 输入、.dt-form-grid/.dt-form-row/.dt-actions
+ * 表单网格(forms-row.css)、.callout-info(--danger) 错误提示、.debt-look chevron 折叠、
+ * .debt-history 沉降行。本文件只新增四处确无对应物的布局与状态变体，全部走 scale token。
+ */
+
+/* 动作区卡片与既有只读卡的节奏差：只读卡之间用 .debt-list 的 --space-3-5,
+   动作区是继内容卡之后的「下一段」,用大一档 --space-5 制造分段感 (照 .debt-section-title
+   的 --space-6 分组逻辑,但弱一级,因为同页连续非新分组)。 */
+.debt-actions {
+    margin-top: var(--space-5);
+}
+
+/* 次级动作折叠组：调整/类型/免除/作废这些低频动作不收成按钮墙(会跟主 CTA 抢层级),
+   全部走 .debt-look chevron 折叠,组间只留 --space-3 与一条发丝分界 (照 .debt-look-rows)。 */
+.debt-secondary-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-top: var(--space-5);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border-card); /* 1px 发丝分界 */
+}
+
+/* 作废区的 summary 用 danger 文本色提示破坏性(其它区仍 muted);这是全站唯一的
+   danger-text 折叠入口,理由:作废是不可逆状态标记,需要在折叠前即被识别 (红线①补充:
+   仅文本色,不加底色/边框,保持 quiet)。 */
+.debt-look--danger > summary {
+    color: var(--state-danger-fg);
+}
+
+/* 破坏性说明文字:复用 caption 层级,warn 而非 danger (警示但不宣判,永不红)。 */
+.debt-note {
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+    color: var(--state-warn-fg);
+    margin: 0;
+}
+
+/* proposal 动作行:确认金额输入与按钮同行排列;窄屏回列 (见底部媒体查询)。 */
+.debt-pending-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+.debt-inline-form {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+/* 还款记录作废行的金额:中性划线 (事实仍在,不再计入),配右侧「已作废」pill;
+   划线用 muted 而非 danger(永不红),与 .debt-card-sunk 的沉降逻辑一致。 */
+.debt-history-amt--voided {
+    text-decoration: line-through;
+    color: var(--text-meta);
+}
+
+/* 新建页选择卡 (方向/类型):全站第一种 card-radio 模式。理由:这两组选择决定整笔欠款
+   的语义骨架,单 select 会让「我欠 TA / TA 欠我」的关系方向变得不可见;卡片把 label+一句
+   白话 hint 同时给出,比 segmented control 更适合非连续选项。视觉走 .dt-card 同一 token
+   (border-input 静息 / control-border hover / brand-primary-bg 选中),选中态只换底不换框
+   粗细,避免跳动。 */
+.debt-create-card {
+    padding: var(--space-6);
+    max-width: 720px; /* 表单可读行宽 (§排版 65-75ch),超出后输入过长反而难扫 */
+}
+.debt-create-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+.debt-choice-group {
+    border: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+.debt-choice-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-3);
+}
+.debt-choice {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    cursor: pointer;
+    transition:
+        border-color var(--motion-fast) var(--ease-standard),
+        background-color var(--motion-fast) var(--ease-standard);
+}
+.debt-choice:hover { border-color: var(--control-border-hover); }
+.debt-choice:has(:focus-visible) {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px var(--brand-focus-ring);
+}
+.debt-choice:has(:checked) {
+    border-color: var(--control-border-active);
+    background: var(--brand-primary-bg);
+}
+.debt-choice input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.debt-choice-title {
+    font-size: var(--type-subtitle-size);
+    line-height: var(--type-subtitle-line);
+    font-weight: var(--type-subtitle-weight);
+}
+.debt-choice-hint {
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+    color: var(--text-muted);
+}
+
+@media (max-width: 720px) {
+    /* 动作行回列:确认金额与按钮上下排,输入撑满 (手指目标 ≥44px 可点域)。 */
+    .debt-pending-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .debt-inline-form,
+    .debt-inline-form .dt-btn {
+        width: 100%;
+    }
+}
+
+/* 列表页「新建欠款」入口:安静描边钮放标题区正下,与列表保持一档 --space-4 间距,
+   不用 primary —— 新建是偶发动作,主视觉留给欠款本身 (照 .debt-section-title 的 quiet 层级)。 */
+.debt-list-actions {
+    margin-bottom: var(--space-4);
+}
