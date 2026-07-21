@@ -227,6 +227,9 @@ class MainShellStateTest {
         assertNull(mainProductDestination("product/not-a-route"))
     }
 
+}
+
+class MainShellStateRevisionTest {
     @Test
     fun planAndExpenseMutationsInvalidateTheRightProductSummaries() {
         val state = MainShellState()
