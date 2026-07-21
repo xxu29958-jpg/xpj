@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.ticketbox.data.repository.ReceivablesActions
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -46,6 +47,7 @@ class ReceivablesScreenNavigationTest {
             TicketboxTheme(skin = AppSkin.Default) {
                 ReceivablesScreen(
                     viewModel = viewModel,
+                    currency = CurrencyDisplay.Base,
                     onOpenReceivable = { openedPublicId = it.publicId },
                     onBack = {},
                 )
