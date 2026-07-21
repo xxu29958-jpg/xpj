@@ -65,7 +65,10 @@ from app.routes import (
     web_categories,
     web_dashboard,
     web_data_quality,
+    web_debt_actions,
+    web_debt_create,
     web_debt_goals,
+    web_debt_proposal_actions,
     web_debts,
     web_duplicates,
     web_expense_edit,
@@ -357,6 +360,9 @@ app.include_router(web_goals.router)
 app.include_router(web_search.router)
 app.include_router(web_data_quality.router)
 app.include_router(web_debts.router)
+app.include_router(web_debt_create.router)
+app.include_router(web_debt_actions.router)
+app.include_router(web_debt_proposal_actions.router)
 app.include_router(web_debt_goals.router)
 app.include_router(web_repayment_drafts.router)
 app.include_router(web_recycle_bin.router)

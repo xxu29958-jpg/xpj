@@ -2,9 +2,14 @@
 {% block title %}欠款 — 小票夹{% endblock %}
 {% block content %}
 <h1 class="page-title page-title--compact">欠款</h1>
-<p class="page-hint">读取自当前账本「{{ selected_ledger_name }}」。家人之间的款项按「一起处理这件事」呈现，外部欠款按方向、状态与本位币剩余排列；金额与手机 App 一致。记一笔、还款、调整或作废请在手机 App 或本机操作。</p>
+<p class="page-hint">读取自当前账本「{{ selected_ledger_name }}」。家人之间的款项按「一起处理这件事」呈现，外部欠款按方向、状态与本位币剩余排列；金额与手机 App 一致。{% if can_write %}打开任意一笔即可直接还款、调整或作废，所有提交走服务端幂等事务。{% else %}只读角色可以查看欠款明细；记账、还款或作废请联系拥有者或成员。{% endif %}</p>
 {% if not can_write %}
 <div class="readonly-callout">只读角色可以查看欠款明细；记账、还款或作废请联系拥有者或成员。</div>
+{% endif %}
+{% if can_write %}
+<div class="debt-list-actions">
+  <a class="dt-btn" href="/web/debts/new?ledger_id={{ selected_ledger_id }}">新建欠款</a>
+</div>
 {% endif %}
 
 {% if member_debts or external_debts %}
@@ -59,6 +64,7 @@
 <div class="dt-card dt-card--empty">
   <div class="empty-headline">还没有欠款记录</div>
   <div class="empty-body">记一笔外部欠款后，这里会显示它的方向、金额和清偿进度。</div>
+  {% if can_write %}<a class="dt-btn" href="/web/debts/new?ledger_id={{ selected_ledger_id }}">新建欠款</a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

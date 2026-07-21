@@ -1444,6 +1444,37 @@
         "title": "Body_web_budgets_save_web_budgets_save_post",
         "type": "object"
       },
+      "Body_web_confirm_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__confirm_post": {
+        "properties": {
+          "amount_major": {
+            "default": "",
+            "title": "Amount Major",
+            "type": "string"
+          },
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_confirm_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__confirm_post",
+        "type": "object"
+      },
       "Body_web_confirm_web_expenses__expense_id__confirm_post": {
         "properties": {
           "expected_row_version": {
@@ -1522,6 +1553,98 @@
           "action"
         ],
         "title": "Body_web_confirmed_batch_update_web_confirmed_batch_update_post",
+        "type": "object"
+      },
+      "Body_web_create_debt_web_debts_post": {
+        "properties": {
+          "amount_major": {
+            "default": "",
+            "title": "Amount Major",
+            "type": "string"
+          },
+          "counterparty_label": {
+            "default": "",
+            "title": "Counterparty Label",
+            "type": "string"
+          },
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "currency_code": {
+            "default": "",
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "debt_kind": {
+            "default": "unspecified",
+            "title": "Debt Kind",
+            "type": "string"
+          },
+          "direction": {
+            "default": "",
+            "title": "Direction",
+            "type": "string"
+          },
+          "event_time": {
+            "default": "",
+            "title": "Event Time",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "installment_count": {
+            "default": "",
+            "title": "Installment Count",
+            "type": "string"
+          },
+          "installment_period_months": {
+            "default": "",
+            "title": "Installment Period Months",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_create_debt_web_debts_post",
+        "type": "object"
+      },
+      "Body_web_create_repayment_proposal_web_debts__public_id__repayment_proposals_post": {
+        "properties": {
+          "amount_major": {
+            "default": "",
+            "title": "Amount Major",
+            "type": "string"
+          },
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_create_repayment_proposal_web_debts__public_id__repayment_proposals_post",
         "type": "object"
       },
       "Body_web_dashboard_cards_reset_web_dashboard_cards_reset_post": {
@@ -1637,6 +1760,32 @@
           }
         },
         "title": "Body_web_expense_undo_web_expenses__expense_id__undo_post",
+        "type": "object"
+      },
+      "Body_web_forgive_member_debt_web_debts__public_id__forgive_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_forgive_member_debt_web_debts__public_id__forgive_post",
         "type": "object"
       },
       "Body_web_goals_archive_web_goals__public_id__archive_post": {
@@ -2032,6 +2181,73 @@
         "title": "Body_web_pending_batch_undo_web_pending_batch_undo_post",
         "type": "object"
       },
+      "Body_web_record_adjustment_web_debts__public_id__adjustments_post": {
+        "properties": {
+          "amount_major": {
+            "default": "",
+            "title": "Amount Major",
+            "type": "string"
+          },
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_record_adjustment_web_debts__public_id__adjustments_post",
+        "type": "object"
+      },
+      "Body_web_record_repayment_web_debts__public_id__repayments_post": {
+        "properties": {
+          "amount_major": {
+            "default": "",
+            "title": "Amount Major",
+            "type": "string"
+          },
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_record_repayment_web_debts__public_id__repayments_post",
+        "type": "object"
+      },
       "Body_web_recurring_archive_web_recurring__public_id__archive_post": {
         "properties": {
           "ledger_id": {
@@ -2111,6 +2327,27 @@
           }
         },
         "title": "Body_web_recurring_resume_web_recurring__public_id__resume_post",
+        "type": "object"
+      },
+      "Body_web_reject_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__reject_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_reject_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__reject_post",
         "type": "object"
       },
       "Body_web_reject_web_expenses__expense_id__reject_post": {
@@ -2389,6 +2626,37 @@
         "title": "Body_web_save_web_expenses__expense_id__save_post",
         "type": "object"
       },
+      "Body_web_set_debt_kind_web_debts__public_id__kind_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "debt_kind": {
+            "default": "",
+            "title": "Debt Kind",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_set_debt_kind_web_debts__public_id__kind_post",
+        "type": "object"
+      },
       "Body_web_split_accept_web_bill_splits__public_id__accept_post": {
         "properties": {
           "ledger_id": {
@@ -2604,6 +2872,94 @@
           }
         },
         "title": "Body_web_uncategorized_bulk_set_web_categories_uncategorized_bulk_set_post",
+        "type": "object"
+      },
+      "Body_web_void_debt_web_debts__public_id__void_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_void_debt_web_debts__public_id__void_post",
+        "type": "object"
+      },
+      "Body_web_void_repayment_web_debts__public_id__repayment_voids_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "repayment_public_id": {
+            "default": "",
+            "title": "Repayment Public Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_void_repayment_web_debts__public_id__repayment_voids_post",
+        "type": "object"
+      },
+      "Body_web_withdraw_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__withdraw_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_withdraw_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__withdraw_post",
         "type": "object"
       },
       "BootstrapOwnerRequest": {
@@ -31384,6 +31740,91 @@
         "tags": [
           "web"
         ]
+      },
+      "post": {
+        "operationId": "web_create_debt_web_debts_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_create_debt_web_debts_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Create Debt",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/new": {
+      "get": {
+        "operationId": "web_debt_new_web_debts_new_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt New",
+        "tags": [
+          "web"
+        ]
       }
     },
     "/web/debts/{public_id}": {
@@ -31439,6 +31880,523 @@
           }
         },
         "summary": "Web Debt Detail",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/adjustments": {
+      "post": {
+        "operationId": "web_record_adjustment_web_debts__public_id__adjustments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_record_adjustment_web_debts__public_id__adjustments_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Record Adjustment",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/forgive": {
+      "post": {
+        "operationId": "web_forgive_member_debt_web_debts__public_id__forgive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_forgive_member_debt_web_debts__public_id__forgive_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Forgive Member Debt",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/kind": {
+      "post": {
+        "operationId": "web_set_debt_kind_web_debts__public_id__kind_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_set_debt_kind_web_debts__public_id__kind_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Set Debt Kind",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/repayment-proposals": {
+      "post": {
+        "operationId": "web_create_repayment_proposal_web_debts__public_id__repayment_proposals_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_create_repayment_proposal_web_debts__public_id__repayment_proposals_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Create Repayment Proposal",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm": {
+      "post": {
+        "operationId": "web_confirm_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_confirm_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__confirm_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Confirm Repayment Proposal",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject": {
+      "post": {
+        "operationId": "web_reject_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_reject_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__reject_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Reject Repayment Proposal",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw": {
+      "post": {
+        "operationId": "web_withdraw_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_withdraw_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__withdraw_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Withdraw Repayment Proposal",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/repayment-voids": {
+      "post": {
+        "operationId": "web_void_repayment_web_debts__public_id__repayment_voids_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_void_repayment_web_debts__public_id__repayment_voids_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Void Repayment",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/repayments": {
+      "post": {
+        "operationId": "web_record_repayment_web_debts__public_id__repayments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_record_repayment_web_debts__public_id__repayments_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Record Repayment",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/void": {
+      "post": {
+        "operationId": "web_void_debt_web_debts__public_id__void_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_void_debt_web_debts__public_id__void_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Void Debt",
         "tags": [
           "web"
         ]

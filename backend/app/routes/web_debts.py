@@ -25,12 +25,21 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.routes._web_debt_write import (
+    _debt_action_keys,
+    _debt_create_context,
+    _debt_write_gate,
+    _fact_rows,
+    _proposal_section,
+)
 from app.routes.web_common import (
     LocalOnly,
     _amount_segments,
     _base_ctx,
+    _currency_input_view,
     _home_amount_label,
     _list_ledger_options,
+    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _sidebar_counts,
     templates,
@@ -38,10 +47,12 @@ from app.routes.web_common import (
 from app.services.debt_service import (
     get_participant_debt_response,
     list_debts,
+    list_repayment_facts,
     list_repayment_proposals,
 )
 from app.services.ledger_service import find_owner_account_id_for_ledger
 from app.services.spending_contract_service import accounting_zone
+from app.services.time_service import now_utc
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -53,6 +64,13 @@ _STATUS_LABELS = {"open": "未结清", "cleared": "已结清", "voided": "已作
 _STATUS_TONE = {"open": "", "cleared": "ok", "voided": "danger"}
 # 无 counterparty_label 时的回退名 (debt_goal_counterparty_member / _external)。
 _COUNTERPARTY_FALLBACK = {"member": "家庭成员", "external": "外部欠款"}
+# 详情页类型徽章 (三端同词：installment=分期还款，与 web 新建页及 Android 详情屏同步)。
+_DEBT_KIND_DETAIL_LABELS = {
+    "one_off": "一次结清",
+    "revolving": "循环往来",
+    "installment": "分期还款",
+    "unspecified": "暂不指定",
+}
 
 # ── 成员债 communal 文案 (slice 8e，逐字 port 自 MemberDebtLabels.kt + strings_stats_budget.xml) ──
 _MEMBER_NEAR_RATIO = 0.7  # ratio≥0.7 = 快两清档
@@ -309,6 +327,7 @@ def _detail_view(debt) -> dict:
         view.update(
             {
                 "direction_subtitle": _DIRECTION_LABELS.get(debt.direction, "应付"),
+                "kind_label": _DEBT_KIND_DETAIL_LABELS.get(debt.debt_kind, "暂不指定"),
                 "status_label": _STATUS_LABELS.get(status, "未结清"),
                 "status_tone": _STATUS_TONE.get(status, ""),
                 "remaining_segments": _amount_segments(debt.remaining_amount_cents, home),
@@ -320,72 +339,6 @@ def _detail_view(debt) -> dict:
             }
         )
     return view
-
-
-def _day_label(value) -> str:
-    """日粒度日期 (accounting tz Asia/Shanghai)，去对账味 (镜像 Android displayDate 到「日」)。"""
-    if value is None:
-        return ""
-    return value.astimezone(accounting_zone()).strftime("%Y-%m-%d")
-
-
-def _proposal_pending_line(pending, viewer_is_debtor: bool | None) -> str:
-    """在途 proposal 的一行关系状态句 (「谁该接下一步」)。
-
-    web 只读=描述非「立即确认」CTA：债务人侧「你说还了，等家人确认」、债权人侧「TA 说还了 ¥X，看看
-    对不对」、第三方中性。**不复用** Android 的 debt_proposal_creditor_pending (那条带「确认一下吧」动作
-    hint，web 没有确认钮、会误导)；确认/拒绝/撤回都在手机 App + /api。
-    """
-    if viewer_is_debtor is True:
-        return "你说你还了这一份，等家人确认一下"
-    if viewer_is_debtor is False:
-        amount = _home_amount_label(pending.proposed_amount_cents, pending.home_currency_code)
-        return f"TA 把 {amount} 那份给你啦，看看对不对"
-    return "他们之间有一笔正在确认"
-
-
-def _resolved_proposal_row(proposal) -> dict:
-    """已解决 proposal 的沉降行：冻结额 + 可选备注 + 日粒度日期(带状态前缀) + neutral 状态标签。
-
-    §3.4 已解决态一律 neutral (confirmed 不挑成 success/绿)、集合零汇总；rejected→「在对账」/ expired→
-    「这次没对上」不读作失败 (永不 danger)。逐字镜像 ResolvedProposalRow + resolvedDateText。
-    """
-    day = _day_label(proposal.resolved_at or proposal.created_at)
-    if proposal.status == "confirmed":
-        date_text = _PROPOSAL_DATE_CONFIRMED.format(day)
-    elif proposal.status == "partially_confirmed":
-        date_text = _PROPOSAL_DATE_PARTIAL.format(day)
-    else:
-        date_text = day
-    return {
-        "amount_label": _home_amount_label(proposal.proposed_amount_cents, proposal.home_currency_code),
-        "note": (proposal.note or "").strip() or None,
-        "date_text": date_text,
-        "status_label": _PROPOSAL_STATUS_LABELS.get(proposal.status, _PROPOSAL_STATUS_LABELS["pending"]),
-    }
-
-
-def _proposal_section(proposals, viewer_is_debtor: bool | None) -> dict | None:
-    """收发箱视图模型：在途 pending 一行状态句 + 已解决「过往」沉降 (折叠前 3 + 其余 <details>)。
-
-    在途 pending (≤1，one-pending-per-debt) 与已解决拆开 (§3.2 pending 不进历史，避免一件事出现两次)；
-    都为空则整段不渲染 (返回 None)。``proposals`` 是 list_repayment_proposals 的 newest-first 列表。
-    """
-    pending = next((p for p in proposals if p.status == "pending"), None)
-    resolved_rows = [_resolved_proposal_row(p) for p in proposals if p.status != "pending"]
-    if pending is None and not resolved_rows:
-        return None
-    return {
-        "pending_line": _proposal_pending_line(pending, viewer_is_debtor) if pending else None,
-        "history_title": _PROPOSAL_HISTORY_TITLE,
-        "resolved_visible": resolved_rows[:_PROPOSAL_HISTORY_COLLAPSED],
-        "resolved_hidden": resolved_rows[_PROPOSAL_HISTORY_COLLAPSED:],
-        # 「查看全部 N 条过往」N=已解决总数 (展开后前 3 + 其余 = 全部 N 可见，镜像 Android expand 文案)。
-        # 折叠走原生 <details> + CSS chevron 旋转 (无 JS)；不带「收起」文案——Android 那条是 JS toggle
-        # 才需翻转按钮文字，web 的 summary 文本在两态一致、靠 chevron 指示展开/收起。
-        "history_expand_label": f"查看全部 {len(resolved_rows)} 条过往",
-        "has_resolved": bool(resolved_rows),
-    }
 
 
 def _web_viewer_account_id(request: Request, db: Session, ledger_id: str) -> int | None:
@@ -423,9 +376,27 @@ def web_debts(
         page_title="欠款",
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
+    ctx["can_write"] = _debt_write_gate(options, selected_id)
     ctx["member_debts"] = member_debts
     ctx["external_debts"] = external_debts
     return templates.TemplateResponse(request=request, name="debts.html", context=ctx)
+
+
+@router.get("/debts/new", response_class=HTMLResponse)
+def web_debt_new(
+    request: Request,
+    ledger_id: str | None = None,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    return templates.TemplateResponse(
+        request=request,
+        name="debt_new.html",
+        context=_debt_create_context(request, db, options=options, selected_id=selected_id),
+    )
 
 
 @router.get("/debts/{public_id}", response_class=HTMLResponse)
@@ -457,6 +428,15 @@ def web_debt_detail(
     # no new endpoint). Only for the communal member card (use_member) with a resolvable viewer account
     # (loopback ledger with no active owner → account_id None → skip). The viewer here is already a
     # participant (get_participant_debt_response admitted them above), so list never re-404s.
+    # 写面 (slice C2)：开放中的欠款 + 可写角色才给动作面；每渲染一套幂等键。
+    can_write = _debt_write_gate(options, selected_id)
+    ctx["can_write"] = can_write
+    ctx["debt_open"] = debt.status == "open"
+    ctx["action_keys"] = _debt_action_keys() if can_write and debt.status == "open" else {}
+    # slice 2b: member proposal status + sunk 过往 history (read-only; reuses list_repayment_proposals,
+    # no new endpoint). Only for the communal member card (use_member) with a resolvable viewer account
+    # (loopback ledger with no active owner → account_id None → skip). The viewer here is already a
+    # participant (get_participant_debt_response admitted them above), so list never re-404s.
     proposals = None
     if detail["is_member"] and account_id is not None:
         items = list_repayment_proposals(
@@ -464,4 +444,22 @@ def web_debt_detail(
         ).items
         proposals = _proposal_section(items, debt.viewer_is_debtor)
     ctx["proposals"] = proposals
+    ctx["pending_proposal"] = proposals["pending"] if proposals else None
+    ctx["viewer_is_debtor"] = debt.viewer_is_debtor
+    ctx["currency_input"] = _currency_input_view(debt.home_currency_code)
+    ctx["expected_row_version"] = debt.row_version
+    ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
+    if account_id is not None:
+        ctx["repayment_facts"] = _fact_rows(
+            list_repayment_facts(
+                db,
+                tenant_id=selected_id,
+                actor_account_id=account_id,
+                public_id=public_id,
+                page=1,
+                page_size=20,
+            )
+        )
+    else:
+        ctx["repayment_facts"] = []
     return templates.TemplateResponse(request=request, name="debt_detail.html", context=ctx)

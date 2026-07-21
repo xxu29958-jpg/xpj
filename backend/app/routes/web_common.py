@@ -26,6 +26,7 @@ from app.network_boundary import require_owner_console_local
 from app.services import backup_service, bill_split_service, web_stats_service
 from app.services import owner_console_service as owner_svc
 from app.services.budget_service import get_monthly_budget
+from app.services.currency_common import currency_input_metadata
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.exchange_rate_service import home_currency_code
 from app.services.expense_service import list_pending
@@ -352,6 +353,11 @@ def _minor_amount_value(amount_minor: int | None, currency_code: str | None) -> 
 
 def _home_amount_label(amount_cents: int | None, currency_code: str | None) -> str:
     return _minor_amount_label(amount_cents, currency_code or home_currency_code())
+
+
+def _currency_input_view(currency_code: str | None) -> dict[str, object]:
+    """Currency-neutral major-unit input metadata for HTML number fields."""
+    return currency_input_metadata(currency_code or home_currency_code())
 
 
 def _amount_segments(amount_cents: int | None, currency_code: str | None) -> dict[str, str]:

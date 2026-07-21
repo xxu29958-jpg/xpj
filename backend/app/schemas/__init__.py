@@ -107,7 +107,10 @@ from app.schemas._debts import (
     MemberRepaymentProposalWithdrawRequest,
     RepaymentCreateRequest,
     RepaymentCreateResponse,
+    RepaymentFactListResponse,
+    RepaymentFactResponse,
     RepaymentVoidCreateRequest,
+    RepaymentVoidFactResponse,
 )
 from app.schemas._exchange import (
     ExchangeRateListResponse,
@@ -465,7 +468,10 @@ __all__ = [
     "RepaymentDraftDismissRequest",
     "RepaymentDraftListResponse",
     "RepaymentDraftResponse",
+    "RepaymentFactListResponse",
+    "RepaymentFactResponse",
     "RepaymentVoidCreateRequest",
+    "RepaymentVoidFactResponse",
     "RuleApplicationBatchResponse",
     "RuleApplicationListResponse",
     "RuleApplicationRollbackResponse",

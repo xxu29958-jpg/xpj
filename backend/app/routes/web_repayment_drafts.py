@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.routes._web_debt_write import _day_label
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -32,7 +33,7 @@ from app.routes.web_common import (
     _sidebar_counts,
     templates,
 )
-from app.routes.web_debts import _COUNTERPARTY_FALLBACK, _day_label, _web_viewer_account_id
+from app.routes.web_debts import _COUNTERPARTY_FALLBACK, _web_viewer_account_id
 from app.services.debt_service import (
     RepaymentDraftAuditRow,
     list_repayment_draft_audit_for_account,
