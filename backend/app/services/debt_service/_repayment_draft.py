@@ -181,11 +181,14 @@ def create_repayment_draft(
     tenant_id: str,
     actor_account_id: int,
 ) -> RepaymentDraft:
-    """Capture one pending repayment draft, deduped per tenant (ADR-0049 §杠杆③).
+    """Capture one pending repayment draft, deduped per account (ADR-0049 §杠杆③).
 
-    A re-posted notification (same identity/content/window) returns the existing draft
-    rather than inserting a twin — same content-dedup contract as the expense
-    notification-draft path, including the IntegrityError race fallback.
+    A re-posted notification (same identity/content/window) returns the ACTOR'S OWN
+    existing draft rather than inserting a twin — same content-dedup contract as the
+    expense notification-draft path, including the IntegrityError race fallback. The
+    idempotency domain is (tenant, created_by_account_id, key) (issue #224 / C3): both
+    the first-check and the race re-check filter ``created_by_account_id`` so a
+    co-member's same-key capture is neither returned (leak) nor collided with.
     """
     now = now_utc()
     source = _clean_repayment_source(payload.source)
@@ -205,7 +208,9 @@ def create_repayment_draft(
         notification_key=payload.notification_key,
     )
     existing = db.scalar(
-        ledger_scoped_select(RepaymentDraft, tenant_id).where(RepaymentDraft.draft_idempotency_key == idempotency_key)
+        ledger_scoped_select(RepaymentDraft, tenant_id)
+        .where(RepaymentDraft.created_by_account_id == actor_account_id)
+        .where(RepaymentDraft.draft_idempotency_key == idempotency_key)
     )
     if existing is not None:
         return existing
@@ -228,9 +233,9 @@ def create_repayment_draft(
     except IntegrityError:
         db.rollback()
         existing = db.scalar(
-            ledger_scoped_select(RepaymentDraft, tenant_id).where(
-                RepaymentDraft.draft_idempotency_key == idempotency_key
-            )
+            ledger_scoped_select(RepaymentDraft, tenant_id)
+            .where(RepaymentDraft.created_by_account_id == actor_account_id)
+            .where(RepaymentDraft.draft_idempotency_key == idempotency_key)
         )
         if existing is not None:
             return existing

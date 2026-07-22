@@ -15,7 +15,7 @@ from app.database import engine
 
 _PREVIOUS_REVISION = "20260711_0001"
 # Head pin follows the chain tip: each new head migration updates it.
-_HEAD_REVISION = "20260720_0001"
+_HEAD_REVISION = "20260722_0001"
 _ENROLLMENT_COLUMNS = {
     "id",
     "public_id",
