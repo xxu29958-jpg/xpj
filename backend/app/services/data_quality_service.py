@@ -131,6 +131,26 @@ def is_uncategorized_expense_category(value: str | None) -> bool:
     return value.strip(_KOTLIN_TRIM_CHARS).lower() in _UNCATEGORIZED_TOKENS
 
 
+def is_ready_to_confirm_row(
+    *,
+    amount_cents: int | None,
+    merchant: str | None,
+    category: str | None,
+    duplicate_status: str | None,
+    fx_status: str | None,
+) -> bool:
+    """Shared ready caliber (web pending filter + tab count + DQ link + web
+    bulk confirm): amount present + usable merchant + categorized +
+    non-suspected + fx-ready — exactly ``ready_to_confirm_categorized``."""
+    return (
+        amount_cents is not None
+        and is_usable_pending_merchant(merchant)
+        and not is_uncategorized_expense_category(category)
+        and (duplicate_status or "") != "suspected"
+        and fx_status == FX_STATUS_READY
+    )
+
+
 @dataclass(frozen=True)
 class DataQualitySummary:
     pending_total: int

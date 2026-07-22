@@ -35,6 +35,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.pendingMerchantPresentation
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout

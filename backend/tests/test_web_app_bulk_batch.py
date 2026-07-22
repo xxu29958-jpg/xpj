@@ -345,6 +345,15 @@ def test_web_pending_bulk_skips_t1_snapshot_after_t2_change(
 def test_web_bulk_confirm_ready_skips_missing_amount(web_client: TestClient, *, identity) -> None:
     no_amount = _create_pending(web_client, identity=identity)
     ready = _seed_pending_with_amount(web_client, "11.00", "Ready", identity=identity)
+    # Full ready caliber needs a real category and a clean duplicate flag —
+    # the second same-bytes upload gets flagged suspected, and both the
+    # 未分类 default and suspected rows are correctly skipped since round 7.
+    with SessionLocal() as db:
+        row = db.get(Expense, ready)
+        assert row is not None
+        row.category = "餐饮"
+        row.duplicate_status = "none"
+        db.commit()
     resp = web_client.post(
         "/web/review/bulk",
         data={

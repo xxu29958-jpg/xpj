@@ -3,6 +3,8 @@ package com.ticketbox.ui.screens.pending
 import androidx.annotation.StringRes
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.PendingPrimaryReviewAction
+import com.ticketbox.domain.model.pendingPrimaryReviewAction
 
 @StringRes
 internal fun pendingPrimaryActionLabelRes(expense: Expense): Int = when (pendingPrimaryReviewAction(expense)) {

@@ -14,6 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSheetAction
@@ -31,7 +32,7 @@ internal fun QuickCategorySheetContent(
     onDismiss: () -> Unit,
 ) {
     val saving = chrome.saving
-    val initial = expense.category.takeIf { it.isNotBlank() } ?: options.firstOrNull().orEmpty()
+    val initial = quickCategoryInitialSelection(expense.category)
     var selected by remember(expense.id) { mutableStateOf(initial) }
     var custom by remember(expense.id) { mutableStateOf("") }
 
@@ -115,3 +116,9 @@ private fun QuickCategoryCustomInput(
         modifier = Modifier.fillMaxWidth(),
     )
 }
+
+// 脏 token（未分类/未分類/none/null，大小写不敏感）不预填：命中值视为空，
+// 用户必须主动选择——否则原样保存会把非法 token 写回库（PR #230 round 7）。
+// blank 输入同样回落为空串（保存键禁用，等用户选择）。
+internal fun quickCategoryInitialSelection(category: String): String =
+    category.takeIf { it.isNotBlank() && !isUncategorizedExpenseCategory(it) }.orEmpty()

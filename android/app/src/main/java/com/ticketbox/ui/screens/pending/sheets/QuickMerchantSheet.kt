@@ -21,7 +21,7 @@ import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.screens.pending.pendingMerchantPresentation
+import com.ticketbox.domain.model.pendingMerchantPresentation
 
 @Composable
 internal fun QuickMerchantSheetContent(

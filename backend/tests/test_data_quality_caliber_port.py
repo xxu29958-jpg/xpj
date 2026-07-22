@@ -10,7 +10,12 @@ must redden one of them.
 """
 from __future__ import annotations
 
+from urllib.parse import unquote
+
+from _web_bulk_test_support import bulk_snapshot_fields as _bulk_snapshot_fields
+from api_contract_helpers import patch_expense
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -192,3 +197,98 @@ def test_web_ready_caliber_covers_fx_and_shared_category_tokens(
     resp = web_client.get("/web/data-quality?ledger_id=owner")
     assert resp.status_code == 200
     assert "1 条可批量确认" in resp.text
+
+
+def test_web_bulk_confirm_ready_applies_full_ready_caliber(web_client: TestClient, *, identity) -> None:
+    """PR #230 round 7: /web/review/bulk confirm_ready must skip every row the
+    ready filter would hide — not just missing-amount rows — with per-dimension
+    skip reasons (the pre-fix behavior confirmed none/null-category and
+    merchant-noise rows outright)."""
+    with SessionLocal() as db:
+        ready = Expense(
+            tenant_id="owner", amount_cents=100, merchant="星巴克", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        no_amount = Expense(
+            tenant_id="owner", amount_cents=None, merchant="麦当劳", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        noise_merchant = Expense(
+            tenant_id="owner", amount_cents=300, merchant="12:34", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        token_category = Expense(
+            tenant_id="owner", amount_cents=400, merchant="肯德基", category="none",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        suspected = Expense(
+            tenant_id="owner", amount_cents=500, merchant="汉堡王", category="餐饮",
+            source="pytest", status="pending", duplicate_status="suspected",
+        )
+        fx_blocked = Expense(
+            tenant_id="owner", amount_cents=600, merchant="必胜客", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+            fx_status=FX_STATUS_PENDING,
+        )
+        db.add_all([ready, no_amount, noise_merchant, token_category, suspected, fx_blocked])
+        db.commit()
+        ids = {
+            "ready": ready.id, "no_amount": no_amount.id, "noise": noise_merchant.id,
+            "token": token_category.id, "suspected": suspected.id, "fx": fx_blocked.id,
+        }
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={
+            "action": "confirm_ready",
+            "ledger_id": "owner",
+            **_bulk_snapshot_fields(web_client, list(ids.values()), identity=identity),
+            "filter": "all",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    message = unquote(resp.headers["location"])
+    for reason in ("缺金额", "缺商家", "缺分类", "疑似重复待裁决", "待汇率就绪"):
+        assert reason in message, f"skip reason missing from bulk message: {reason}"
+
+    with SessionLocal() as db:
+        states = {
+            row.id: row.status
+            for row in db.scalars(select(Expense).where(Expense.id.in_(ids.values())))
+        }
+    assert states[ids["ready"]] == "confirmed"
+    for key in ("no_amount", "noise", "token", "suspected", "fx"):
+        assert states[ids[key]] == "pending", f"row must stay pending: {key}"
+
+
+def test_update_expense_folds_dirty_category_tokens(client: TestClient, *, identity) -> None:
+    """PR #230 round 7: an explicit category write carrying a dirty legacy
+    token must not persist — the write path folds it to 「其他」 (valid writes
+    pass through untouched)."""
+    with SessionLocal() as db:
+        row = Expense(
+            tenant_id="owner", amount_cents=100, merchant="星巴克", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        db.add(row)
+        db.commit()
+        expense_id = row.id
+
+    for token in ("none", "未分類", "Null"):
+        response = patch_expense(
+            client, expense_id, headers=identity.app_headers, fields={"category": token}
+        )
+        assert response.status_code == 200, response.text
+        with SessionLocal() as db:
+            stored = db.get(Expense, expense_id)
+            assert stored is not None
+            assert stored.category == "其他", f"dirty token must fold to 其他: {token}"
+
+    response = patch_expense(
+        client, expense_id, headers=identity.app_headers, fields={"category": "交通"}
+    )
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        stored = db.get(Expense, expense_id)
+        assert stored is not None
+        assert stored.category == "交通"

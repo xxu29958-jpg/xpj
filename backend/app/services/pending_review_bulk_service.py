@@ -22,6 +22,11 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.schemas import ExpenseUpdateRequest
+from app.services.data_quality_service import (
+    is_ready_to_confirm_row,
+    is_uncategorized_expense_category,
+    is_usable_pending_merchant,
+)
 from app.services.expense_service import (
     confirm_expense,
     list_expenses_by_ids,
@@ -35,6 +40,10 @@ ALLOWED_ACTIONS = frozenset({"set_category", "set_merchant", "reject", "confirm_
 SKIP_REASON_CROSS_LEDGER = "不属于当前账本"
 SKIP_REASON_NOT_PENDING = "非待确认"
 SKIP_REASON_MISSING_AMOUNT = "缺金额"
+SKIP_REASON_MISSING_MERCHANT = "缺商家"
+SKIP_REASON_MISSING_CATEGORY = "缺分类"
+SKIP_REASON_SUSPECTED_DUPLICATE = "疑似重复待裁决"
+SKIP_REASON_FX_PENDING = "待汇率就绪"
 SKIP_REASON_NOT_SUSPECTED_DUPLICATE = "非疑似重复"
 SKIP_REASON_STALE = "页面内容已变化，请刷新后重新选择"
 
@@ -203,8 +212,17 @@ def _apply_confirm_ready(
     if row.status != "pending":
         result.bump(SKIP_REASON_NOT_PENDING)
         return
-    if row.amount_cents is None:
-        result.bump(SKIP_REASON_MISSING_AMOUNT)
+    # Full ready caliber (218-B3 round 7): the bulk action targets exactly the
+    # rows the ready filter/DQ link advertise — amount + usable merchant +
+    # categorized + non-suspected + fx-ready, not just amount.
+    if not is_ready_to_confirm_row(
+        amount_cents=row.amount_cents,
+        merchant=row.merchant,
+        category=row.category,
+        duplicate_status=row.duplicate_status,
+        fx_status=row.fx_status,
+    ):
+        result.bump(_confirm_skip_reason(row))
         return
     try:
         confirm_expense(
@@ -216,6 +234,19 @@ def _apply_confirm_ready(
         result.record_success(row.id)
     except AppError as exc:
         _record_action_error(result, exc, fallback="确认失败")
+
+
+def _confirm_skip_reason(row) -> str:
+    """Per-dimension skip label for confirm_ready (same checks, in fix order)."""
+    if row.amount_cents is None:
+        return SKIP_REASON_MISSING_AMOUNT
+    if not is_usable_pending_merchant(row.merchant):
+        return SKIP_REASON_MISSING_MERCHANT
+    if is_uncategorized_expense_category(row.category):
+        return SKIP_REASON_MISSING_CATEGORY
+    if (row.duplicate_status or "") == "suspected":
+        return SKIP_REASON_SUSPECTED_DUPLICATE
+    return SKIP_REASON_FX_PENDING
 
 
 def _apply_keep_duplicate(

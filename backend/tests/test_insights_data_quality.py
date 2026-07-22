@@ -69,8 +69,21 @@ def test_data_quality_missing_amount_and_merchant(client: TestClient, *, identit
 def test_data_quality_missing_category_counts_pending_and_confirmed(
     client: TestClient, *, identity,
 ) -> None:
-    eid = upload_png(client, identity=identity)
-    _patch(client, eid, amount_cents=500, merchant="A", category="未分类", identity=identity)
+    # Direct insert: the API write path folds dirty category tokens to 「其他」
+    # (round 7 defense), so seeding 未分类 via PATCH no longer persists it.
+    with SessionLocal() as db:
+        db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=500,
+                merchant="A",
+                category="未分类",
+                source="pytest",
+                status="pending",
+                duplicate_status="none",
+            )
+        )
+        db.commit()
     # Insert a confirmed row directly with NULL/empty category.
     insert_confirmed_expense(
         amount_cents=999,

@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.fx_constants import FX_STATUS_PENDING
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -28,7 +27,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
-from app.services.data_quality_service import is_uncategorized_expense_category
+from app.services.data_quality_service import is_ready_to_confirm_row, is_uncategorized_expense_category
 from app.services.expense_service import (
     fetch_expense_row_version_in_status,
     list_pending,
@@ -61,15 +60,14 @@ def _needs_category(view: dict) -> bool:
 
 
 def _is_ready(view: dict) -> bool:
-    """Ready caliber for filter + tab count + DQ link: amount + usable merchant
-    + categorized + non-duplicate + fx-ready (mirrors the 409 confirm-path
-    guard; equals ready_to_confirm_categorized)."""
-    return (
-        not view["needs_amount"]
-        and not view["needs_merchant"]
-        and not _needs_category(view)
-        and not view["is_duplicate"]
-        and view["fx_status"] != FX_STATUS_PENDING
+    """Ready caliber for filter + tab count + DQ link — delegates to
+    ``data_quality_service.is_ready_to_confirm_row`` (shared with bulk confirm)."""
+    return is_ready_to_confirm_row(
+        amount_cents=view["amount_cents"],
+        merchant=view["merchant"],
+        category=view.get("category"),
+        duplicate_status=view["duplicate_status"],
+        fx_status=view["fx_status"],
     )
 
 

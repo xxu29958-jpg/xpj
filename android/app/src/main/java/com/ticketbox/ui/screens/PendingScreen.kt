@@ -55,7 +55,6 @@ import com.ticketbox.ui.screens.pending.PendingExpenseReviewItem
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewRow
 import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.ui.screens.pending.PendingListBodyState
-import com.ticketbox.ui.screens.pending.PendingPrimaryReviewAction
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
 import com.ticketbox.ui.screens.pending.PendingQueueEvidence
 import com.ticketbox.ui.screens.pending.PendingQueueOverview
@@ -70,9 +69,10 @@ import com.ticketbox.ui.screens.pending.PendingTop
 import com.ticketbox.ui.screens.pending.PendingTopState
 import com.ticketbox.ui.screens.pending.UploadProgressCard
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
-import com.ticketbox.ui.screens.pending.pendingPrimaryReviewAction
-import com.ticketbox.ui.screens.pending.pendingMerchantPresentation
-import com.ticketbox.ui.screens.pending.pendingNeedsCategory
+import com.ticketbox.domain.model.PendingPrimaryReviewAction
+import com.ticketbox.domain.model.pendingPrimaryReviewAction
+import com.ticketbox.domain.model.pendingMerchantPresentation
+import com.ticketbox.domain.model.pendingNeedsCategory
 import com.ticketbox.ui.screens.pending.pendingListBodyState
 import com.ticketbox.ui.screens.pending.shouldShowNeedsReviewFilterBar
 import com.ticketbox.viewmodel.PendingUiState
