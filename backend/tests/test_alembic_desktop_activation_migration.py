@@ -14,7 +14,7 @@ from sqlalchemy import inspect, text
 from app.database import engine
 
 _PREVIOUS_REVISION = "20260715_0001"
-_HEAD_REVISION = "20260720_0001"
+_HEAD_REVISION = "20260722_0001"
 _ACTIVATION_COLUMNS = {
     "id",
     "public_id",

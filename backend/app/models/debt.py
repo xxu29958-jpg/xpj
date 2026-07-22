@@ -523,7 +523,8 @@ class RepaymentDraft(Base):
     ``Repayment`` is plain ``amount_cents``).
 
     Dedup mirrors the expense notification-draft path (``_notification_draft_key``): a
-    per-tenant ``draft_idempotency_key`` over the on-device per-post identity
+    per-account ``draft_idempotency_key`` (unique together with tenant +
+    ``created_by_account_id``) over the on-device per-post identity
     (SHA-256(``sbn.key`` | ``postTime``)) plus content + 30-min window, so a re-posted
     notification does not create a second draft. Every draft is stored UNLINKED; slice 3b's
     fuzzy match (label + amount → suggested Debt, :mod:`_repayment_draft_match`) is computed
@@ -546,10 +547,17 @@ class RepaymentDraft(Base):
             "(status = 'confirmed') = (committed_repayment_public_id IS NOT NULL)",
             name="ck_repayment_drafts_committed_iff_confirmed",
         ),
-        # Per-tenant content+identity dedup: a re-posted notification reduces to the
-        # same key and returns the existing draft instead of inserting a twin.
+        # Per-ACCOUNT (within the tenant) content+identity dedup: a re-posted
+        # notification from the same member reduces to the same key and returns that
+        # member's existing draft instead of inserting a twin. The account is part of
+        # the idempotency domain (issue #224 / C3): a capture is personal (§8 /
+        # privacy), so two members of one ledger may legitimately hold same-key drafts
+        # and neither collides with nor leaks into the other's.
         UniqueConstraint(
-            "tenant_id", "draft_idempotency_key", name="uq_repayment_drafts_idem"
+            "tenant_id",
+            "created_by_account_id",
+            "draft_idempotency_key",
+            name="uq_repayment_drafts_idem",
         ),
     )
 

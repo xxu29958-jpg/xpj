@@ -20,12 +20,16 @@ ledger scope or the actor scope would still pass them. This file is the missing 
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
-from app.models import Account, AuthToken, Device, Ledger, LedgerMember
+from app.models import Account, AuthToken, Device, Ledger, LedgerMember, RepaymentDraft
 from app.services.identity_service import hash_secret, new_session_token
 
 
@@ -277,3 +281,130 @@ def test_confirm_replay_with_different_actor_is_reused_not_hit(client: TestClien
     )
     assert replay.status_code == 422, replay.json()
     assert replay.json()["error"] == "idempotency_key_reused"
+
+
+# --- issue #224 (C3): the dedup idempotency domain is (tenant, account, key) ------
+
+# Byte-identical capture payload (fixed captured_at pins the 30-min window bucket), so
+# both posters derive the SAME draft_idempotency_key.
+_SHARED_CAPTURE = {
+    "source": "alipay",
+    "amount_cents": 12345,
+    "merchant_label": "花呗",
+    "notification_key": "shared-post-1",
+    "captured_at": "2026-07-01T08:00:00Z",
+}
+
+
+def _member_headers(*, name: str) -> dict[str, str]:
+    return _headers(
+        _mint_app_token(
+            account_id=_seed_member_account(name=name, ledger_id="owner"),
+            ledger_id="owner",
+        )
+    )
+
+
+def _inbox_ids(client: TestClient, headers: dict[str, str], *, status: str = "pending") -> set[str]:
+    listing = client.get(f"/api/repayment-drafts?status={status}", headers=headers).json()
+    return {d["public_id"] for d in listing["items"]}
+
+
+def test_same_key_cross_account_creates_distinct_drafts_no_leak(client: TestClient, *, identity) -> None:
+    # Two members of the SAME ledger post the byte-identical notification (same dedup key).
+    # Each must get their OWN pending draft — before the fix the tenant-wide unique constraint
+    # plus the account-less first-check returned the FIRST poster's draft to the second poster
+    # (cross-account leak of the draft + its public_id).
+    owner_resp = client.post("/api/repayment-drafts", headers=identity.app_headers, json=_SHARED_CAPTURE)
+    assert owner_resp.status_code == 201, owner_resp.json()
+    owner_draft = owner_resp.json()
+
+    member = _member_headers(name="ledger-owner-writer-2")
+    member_resp = client.post("/api/repayment-drafts", headers=member, json=_SHARED_CAPTURE)
+    assert member_resp.status_code == 201, member_resp.json()
+    member_draft = member_resp.json()
+
+    assert member_draft["public_id"] != owner_draft["public_id"]
+    # Neither capture leaks into the other's inbox.
+    assert _inbox_ids(client, identity.app_headers) == {owner_draft["public_id"]}
+    assert _inbox_ids(client, member) == {member_draft["public_id"]}
+
+
+def test_same_account_same_key_replay_hits_own_draft(client: TestClient, *, identity) -> None:
+    # Response-loss replay: the SAME account re-posting the identical notification gets its OWN
+    # existing draft back (HIT, never a twin) — and the HIT stays account-scoped even while a
+    # co-member holds a same-key draft (the lookup can never wander into the co-member's row).
+    first = client.post("/api/repayment-drafts", headers=identity.app_headers, json=_SHARED_CAPTURE)
+    assert first.status_code == 201, first.json()
+    member = _member_headers(name="ledger-owner-writer-2")
+    member_first = client.post("/api/repayment-drafts", headers=member, json=_SHARED_CAPTURE)
+    assert member_first.status_code == 201, member_first.json()
+
+    replay = client.post("/api/repayment-drafts", headers=identity.app_headers, json=_SHARED_CAPTURE)
+    assert replay.status_code == 201, replay.json()
+    assert replay.json()["public_id"] == first.json()["public_id"]
+
+    member_replay = client.post("/api/repayment-drafts", headers=member, json=_SHARED_CAPTURE)
+    assert member_replay.status_code == 201, member_replay.json()
+    assert member_replay.json()["public_id"] == member_first.json()["public_id"]
+
+    # Still exactly one pending draft per account — the replays inserted no twins.
+    assert _inbox_ids(client, identity.app_headers) == {first.json()["public_id"]}
+    assert _inbox_ids(client, member) == {member_first.json()["public_id"]}
+
+
+def test_repost_after_dismiss_returns_terminal_draft_not_resurrected(client: TestClient, *, identity) -> None:
+    # Terminal-state guard on the create path: re-posting the same notification after the draft
+    # was dismissed HITs the TERMINAL row (returns it unchanged) instead of resurrecting a fresh
+    # pending twin — a resolved capture can never come back as actionable.
+    created = client.post("/api/repayment-drafts", headers=identity.app_headers, json=_SHARED_CAPTURE)
+    assert created.status_code == 201, created.json()
+    dismiss = client.post(
+        f"/api/repayment-drafts/{created.json()['public_id']}/dismiss",
+        headers=identity.app_headers,
+        json={},
+    )
+    assert dismiss.status_code == 201, dismiss.json()
+
+    repost = client.post("/api/repayment-drafts", headers=identity.app_headers, json=_SHARED_CAPTURE)
+    assert repost.status_code == 201, repost.json()
+    assert repost.json()["public_id"] == created.json()["public_id"]
+    assert repost.json()["status"] == "dismissed"
+    assert created.json()["public_id"] not in _inbox_ids(client, identity.app_headers)
+
+
+def test_db_unique_constraint_is_account_scoped(client: TestClient, *, identity) -> None:
+    # Pin the DB backstop directly: (tenant_id, draft_idempotency_key) may repeat ACROSS
+    # accounts, but never twice for the SAME account. Before the fix the second insert here
+    # (different account, same tenant+key) violated the tenant-wide constraint.
+    captured = datetime(2026, 7, 1, 8, 0, tzinfo=UTC)
+    key = "ab" * 32
+
+    def _draft(account_id: int) -> RepaymentDraft:
+        return RepaymentDraft(
+            tenant_id="owner",
+            created_by_account_id=account_id,
+            source="alipay",
+            amount_cents=12345,
+            home_currency_code="CNY",
+            merchant_label="花呗",
+            captured_at=captured,
+            draft_idempotency_key=key,
+            status="pending",
+            created_at=captured,
+        )
+
+    with SessionLocal() as db:
+        owner_id = db.scalar(select(Account.id).order_by(Account.id.asc()).limit(1))
+        assert owner_id is not None
+        other = Account(display_name="rd-idem-scope")
+        db.add(other)
+        db.flush()
+
+        db.add(_draft(owner_id))
+        db.add(_draft(other.id))  # same tenant+key, DIFFERENT account → allowed
+        db.flush()
+
+        db.add(_draft(owner_id))  # same tenant+account+key → the backstop fires
+        with pytest.raises(IntegrityError), db.begin_nested():
+            db.flush()

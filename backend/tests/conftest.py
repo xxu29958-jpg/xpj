@@ -126,6 +126,7 @@ _PG_REAL_DB_NODES = (
     "tests/test_alembic_goal_debt_repayment_migration.py::",  # ADR-0049 §6 widen-goals alembic round-trip via engine.begin DDL
     "tests/test_alembic_goal_target_date_migration.py::",  # ADR-0049 §7.0/8e-6c add-target_date alembic round-trip via engine.begin DDL
     "tests/test_alembic_repayment_drafts_migration.py::",  # ADR-0049 §杠杆③ slice 3a add-repayment_drafts alembic round-trip via engine.begin DDL
+    "tests/test_alembic_repayment_draft_account_idem_migration.py::",  # issue #224 C3 account-scoped repayment_drafts idem alembic round-trip via engine.begin DDL
     "tests/test_alembic_debt_constraint_hardening_migration.py::",  # ADR-0049 #4 add FK + status<->committed CHECK alembic round-trip via engine.begin DDL
     "tests/test_alembic_debt_shape_checks_migration.py::",  # ADR-0049 P2 add Debt 母表 shape CHECK alembic round-trip via engine.begin DDL
     "tests/test_alembic_scheduler_leases_migration.py::",  # known-bugs 🟢#4 add scheduler_leases (typed timestamptz lease) alembic round-trip + app_meta cleanup via engine.begin DDL
