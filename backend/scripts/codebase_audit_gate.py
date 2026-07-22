@@ -54,7 +54,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 214,  # Noisy lane; ratcheted to the current measured floor.
+    "unreferenced_modules": 213,  # Noisy lane; ratcheted to the current measured floor.
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -137,7 +137,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_terminal_flag_flip": 31,
     "mutate_token_reason_upsert_bucket": 8,
 
-    "backend_pytest_count": 2801,
+    "backend_pytest_count": 2810,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 

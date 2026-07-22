@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 import yaml
+from ci_gap_job_scope import job_needs as _job_needs
+from ci_gap_job_scope import scoped_job_protection_scope as _scoped_job_protection_scope
 from ci_gap_powershell import (
     looks_like_powershell as _looks_like_powershell,
 )
@@ -171,17 +173,6 @@ def _effective_environment(*scopes: object) -> tuple[tuple[str, str], ...]:
     return tuple(effective)
 
 
-def _job_needs(raw_job: dict[object, object]) -> tuple[str, ...] | None:
-    value = raw_job.get("needs")
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        return (value,) if value else None
-    if isinstance(value, list) and all(isinstance(item, str) and item for item in value):
-        return tuple(value)
-    return None
-
-
 def _needs_graph_is_valid(
     job_name: object,
     jobs: dict[object, object],
@@ -288,6 +279,35 @@ def _workflow_step_command(
     )
 
 
+def _job_protection_scope(
+    *,
+    path: pathlib.Path,
+    workflow: dict[object, object],
+    job_name: object,
+    raw_job: dict[object, object],
+    jobs: dict[object, object],
+    event_name: str,
+    workflow_scope: str,
+    protected_only: bool,
+    protected_job_proof: dict[object, bool],
+) -> str | None:
+    if not protected_only:
+        return (
+            workflow_scope
+            if _condition_allows_event(raw_job.get("if"), event_name)
+            else None
+        )
+    if _protected_job_is_proven(
+        job_name,
+        jobs,
+        event_name,
+        memo=protected_job_proof,
+        visiting=set(),
+    ):
+        return workflow_scope
+    return _scoped_job_protection_scope(path, workflow, raw_job, jobs)
+
+
 def _iter_reachable_workflow_steps(
     workflow_dirs: pathlib.Path | list[pathlib.Path],
     *,
@@ -310,18 +330,18 @@ def _iter_reachable_workflow_steps(
         for job_name, raw_job in jobs.items():
             if not isinstance(raw_job, dict):
                 continue
-            job_is_reachable = (
-                _protected_job_is_proven(
-                    job_name,
-                    jobs,
-                    event_name,
-                    memo=protected_job_proof,
-                    visiting=set(),
-                )
-                if protected_only
-                else _condition_allows_event(raw_job.get("if"), event_name)
+            job_protection_scope = _job_protection_scope(
+                path=path,
+                workflow=workflow,
+                job_name=job_name,
+                raw_job=raw_job,
+                jobs=jobs,
+                event_name=event_name,
+                workflow_scope=protection_scope,
+                protected_only=protected_only,
+                protected_job_proof=protected_job_proof,
             )
-            if not job_is_reachable:
+            if job_protection_scope is None:
                 continue
             if _allows_failure(raw_job.get("continue-on-error")):
                 continue
@@ -347,7 +367,7 @@ def _iter_reachable_workflow_steps(
                         index,
                         raw_step,
                         job_shell,
-                        protection_scope,
+                        job_protection_scope,
                         _effective_environment(
                             workflow.get("env"),
                             raw_job.get("env"),

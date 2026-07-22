@@ -169,7 +169,7 @@ def missing_installer_hash_dataflow_by_platform(
         platform_commands = [
             command
             for command in _commands_for_platform(commands, platform)
-            if command.protection_scope == "full"
+            if command.protection_scope in {"full", "windows"}
         ]
         if not _hash_dataflow_is_valid(platform_commands, platform, segment_reader):
             missing.append(f"{platform}: installer hash output dataflow")
@@ -288,13 +288,13 @@ def missing_installer_publish_actions_by_platform(
         platform_commands = [
             command
             for command in _commands_for_platform(commands, platform)
-            if command.protection_scope == "full"
+            if command.protection_scope in {"full", "windows"}
         ]
         platform_actions = [
             action
             for action in actions
             if workflow_part in action.workflow.parts
-            and action.protection_scope == "full"
+            and action.protection_scope in {"full", "windows"}
         ]
         for required in REQUIRED_CI_ACTIONS_BY_PLATFORM[platform]:
             matching_actions = [

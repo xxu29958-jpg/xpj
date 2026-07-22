@@ -32,8 +32,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend:
-    name: Backend
+  scope:
+    name: CI scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      postgres: ${{ steps.scope.outputs.postgres }}
+      desktop: ${{ steps.scope.outputs.desktop }}
+      android: ${{ steps.scope.outputs.android }}
+      windows: ${{ steps.scope.outputs.windows }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Resolve heavy-job scope
+        id: scope
+        shell: bash
+        run: |
+          python -E -S backend/scripts/ci_scope.py \
+            --event "${{ github.event_name }}" \
+            --base "${{ github.event.pull_request.base.sha || '' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --output "$GITHUB_OUTPUT"
+
+  backend_contracts:
+    name: Backend contracts
     runs-on: windows-latest
     defaults:
       run:
@@ -90,6 +120,67 @@ jobs:
 
       - name: Lint
         run: ruff check app scripts tests packaging/tests
+
+      - name: CI scope contract
+        run: python -m pytest -q tests/test_ci_scope.py --noconftest -p no:cacheprovider
+
+      - name: Audit (release lanes)
+        # Single PR gate for every read-only audit (release_audit.py::LANES):
+        # service-graph cycles, CI-gap whitelist, codebase smell report, etc.
+        # Any lane returning non-zero fails the PR.
+        env:
+          XPJ_RELEASE_AUDIT_COMPACT: "1"
+          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
+          # PRs compare with the exact target SHA; main pushes compare with the
+          # pre-push SHA; manual runs must name the canonical divergence commit.
+          XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || inputs.adr_base_ref }}
+        run: python scripts\release_audit.py
+
+      - name: API contract
+        run: python scripts\check_api_contract.py
+
+      # NOTE: the business pytest suite AND the end-to-end smoke run on PostgreSQL in the
+      # backend-postgres job below. SQLite (the old dev dialect) was retired in
+      # the PG-only migration, so neither a bare pytest nor the threaded smoke
+      # server can run here — this Windows job is static checks only.
+
+      - name: Dependency vulnerability scan (pip-audit)
+        # Fail the PR on any known-vulnerable Python dependency. ``--strict``
+        # also fails on warnings (yanked package, etc.); ``--vulnerability-service
+        # osv`` uses the public OSV database (no auth).
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt -r ../desktop/requirements.txt
+
+  windows_packaging:
+    name: Windows release packaging
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+            desktop/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
 
       - name: Windows installer safety behavior
         run: python -m pytest -q packaging/tests -p no:cacheprovider
@@ -200,38 +291,44 @@ jobs:
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Audit (release lanes)
-        # Single PR gate for every read-only audit (release_audit.py::LANES):
-        # service-graph cycles, CI-gap whitelist, codebase smell report, etc.
-        # Any lane returning non-zero fails the PR.
+  backend:
+    name: Backend
+    needs:
+      - scope
+      - backend_contracts
+      - windows_packaging
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enforce required CI results
+        shell: bash
         env:
-          XPJ_RELEASE_AUDIT_COMPACT: "1"
-          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
-          # PRs compare with the exact target SHA; main pushes compare with the
-          # pre-push SHA; manual runs must name the canonical divergence commit.
-          XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || inputs.adr_base_ref }}
-        run: python scripts\release_audit.py
-
-      - name: API contract
-        run: python scripts\check_api_contract.py
-
-      # NOTE: the business pytest suite AND the end-to-end smoke run on PostgreSQL in the
-      # backend-postgres job below. SQLite (the old dev dialect) was retired in
-      # the PG-only migration, so neither a bare pytest nor the threaded smoke
-      # server can run here — this Windows job is static checks only.
-
-      - name: Dependency vulnerability scan (pip-audit)
-        # Fail the PR on any known-vulnerable Python dependency. ``--strict``
-        # also fails on warnings (yanked package, etc.); ``--vulnerability-service
-        # osv`` uses the public OSV database (no auth).
-        env:
-          PYTHONUTF8: "1"
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          BACKEND_CONTRACTS_RESULT: ${{ needs.backend_contracts.result }}
+          WINDOWS_PACKAGING_RESULT: ${{ needs.windows_packaging.result }}
         run: |
-          python -m pip install pip-audit
-          python -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt -r ../desktop/requirements.txt
+          if [ "$SCOPE_RESULT" != "success" ]; then
+            echo "::error::CI scope resolution did not succeed: $SCOPE_RESULT"
+            exit 1
+          fi
+          if [ "$BACKEND_CONTRACTS_RESULT" != "success" ]; then
+            echo "::error::Backend contracts did not succeed: $BACKEND_CONTRACTS_RESULT"
+            exit 1
+          fi
+          case "$WINDOWS_PACKAGING_RESULT" in
+            success|skipped) ;;
+            *)
+              echo "::error::Windows release packaging did not succeed: $WINDOWS_PACKAGING_RESULT"
+              exit 1
+              ;;
+          esac
+          echo "Required Backend CI results are valid."
 
   backend-postgres:
     name: Backend (PostgreSQL)
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     # ADR-0041: production-bound PostgreSQL engine end-to-end. Linux runner
     # because GitHub Actions service containers (Postgres) only attach to Linux.
     runs-on: ubuntu-latest
@@ -331,6 +428,8 @@ jobs:
 
   desktop-manager:
     name: Desktop manager
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.desktop != 'false') }}
     # The Windows tray/service manager (desktop/). Added after the original
     # ci.yml — pinned in _audit_ci_gap.py so the whole job can't silently vanish.
     runs-on: windows-latest
@@ -366,6 +465,8 @@ jobs:
 
   android:
     name: Android
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:

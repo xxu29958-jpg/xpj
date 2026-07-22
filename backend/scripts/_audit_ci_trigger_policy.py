@@ -6,6 +6,8 @@ import pathlib
 import re
 import sys
 
+from ci_gap_trigger_scope import ANDROID_PROTECTED_PATHS
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GITHUB_WORKFLOWS = ROOT / ".github" / "workflows"
 GITEA_WORKFLOWS = ROOT / ".gitea" / "workflows"
@@ -14,25 +16,11 @@ GITHUB_MAIN_ONLY = ("main",)
 GITEA_WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "codex/**")
 CODEQL_WEEKLY_CRON = "37 3 * * 1"
 GITHUB_CONNECTED_PATHS = (
-    "android/app/src/**",
-    "android/gradle/**",
-    "android/app/build.gradle.kts",
-    "android/build.gradle.kts",
-    "android/gradle.properties",
-    "android/gradlew",
-    "android/gradlew.bat",
-    "android/settings.gradle.kts",
+    *ANDROID_PROTECTED_PATHS,
     ".github/workflows/android-connected-test.yml",
 )
 GITEA_CONNECTED_PATHS = (
-    "android/app/src/**",
-    "android/gradle/**",
-    "android/app/build.gradle.kts",
-    "android/build.gradle.kts",
-    "android/gradle.properties",
-    "android/gradlew.bat",
-    "android/gradlew",
-    "android/settings.gradle.kts",
+    *ANDROID_PROTECTED_PATHS,
     ".gitea/workflows/android-connected.yml",
 )
 

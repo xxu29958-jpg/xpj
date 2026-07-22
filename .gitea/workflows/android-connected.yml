@@ -28,8 +28,8 @@ on:
       # could ship past the emulator lane untested (codex review P2 #7).
       - "android/build.gradle.kts"
       - "android/gradle.properties"
-      - "android/gradlew.bat"
       - "android/gradlew"
+      - "android/gradlew.bat"
       - "android/settings.gradle.kts"
       - ".gitea/workflows/android-connected.yml"
   workflow_dispatch:
