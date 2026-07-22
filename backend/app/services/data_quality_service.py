@@ -7,9 +7,15 @@ All metrics are read-only counters scoped by ``tenant_id``.
 Metric definitions:
 - ``pending_total``: rows with ``status = 'pending'``
 - ``missing_amount``: pending rows with ``amount_cents IS NULL``
-- ``missing_merchant``: pending rows with empty / whitespace merchant
-- ``missing_category``: pending or confirmed rows with empty / NULL /
-  ``'未分类'`` category — these are the rows that defeat stats slicing
+- ``missing_merchant``: pending rows whose merchant is UNUSABLE per the
+  inbox caliber ported from Android ``pendingMerchantPresentation``:
+  NULL/blank, fewer than two letter-or-digit characters, no letter at all,
+  or a pure OCR time/date noise string
+- ``missing_category``: pending or confirmed rows whose category is empty /
+  NULL / an uncategorized token (``'未分类'``, ``'未分類'``, ``'none'``,
+  ``'null'`` — after trim + lowercase, ported from Android
+  ``isUncategorizedExpenseCategory``) — these are the rows that defeat
+  stats slicing
 - ``missing_category_pending`` / ``missing_category_confirmed``: the
   ``missing_category`` total split by status. Clients route the two parts
   to different remediation surfaces (pending → inbox, confirmed → ledger),
@@ -20,16 +26,19 @@ Metric definitions:
   retention OR was never uploaded — affects auditability
 - ``oldest_pending_age_days``: days since the oldest pending row was
   ingested, ``None`` if none pending
-- ``ready_to_confirm``: pending rows with amount + merchant + non-duplicate
+- ``ready_to_confirm``: pending rows with amount + usable merchant +
+  fx-ready + non-duplicate (merchant usability per the same ported caliber)
 - ``ready_to_confirm_categorized``: ``ready_to_confirm`` rows that also have
-  a real category — the caliber the Android inbox "ready to confirm" filter
-  lands on (its quick-category step takes precedence over confirm for
+  a real category — exactly the Android inbox "ready to confirm" filter
+  caliber (its quick-category step takes precedence over confirm for
   uncategorized rows, so the mixed ``ready_to_confirm`` count would send
   users to a shorter list than advertised)
 """
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -40,6 +49,86 @@ from app.fx_constants import FX_STATUS_READY
 from app.models import Expense
 
 _UNCATEGORIZED_TOKENS = {"", "未分类", "未分類", "none", "null"}
+
+# ── Ported Android calibers ──────────────────────────────────────────────
+# The data-quality counters must land on exactly the rows the Android inbox
+# filters show, so the merchant-usability and category-token rules below are
+# line-for-line ports of `PendingScreenModels.kt` (pendingMerchantPresentation)
+# and `DefaultCategories.kt` (isUncategorizedExpenseCategory). Keep the two
+# sides in sync — shared sample sets in tests/test_data_quality_caliber_port.py
+# and PendingScreenModelsTest.kt / DefaultCategoriesTest.kt pin the equivalence.
+
+# Kotlin String.trim() strips Java whitespace + space chars: the ISO control
+# separators plus every Unicode Zs/Zl/Zp code point. Python str.strip() also
+# strips e.g. U+0085, so trim against this explicit set instead.
+_KOTLIN_TRIM_CHARS = "".join(
+    chr(cp) for cp in (
+        # Java whitespace control chars, then every Unicode Zs/Zl/Zp
+        # code point — written as code points so no invisible literals
+        # land in source.
+        0x20, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x1C, 0x1D, 0x1E, 0x1F,
+        0xA0, 0x1680, *range(0x2000, 0x200B), 0x2028, 0x2029, 0x202F, 0x205F, 0x3000,
+    )
+)
+
+# Same patterns and flags as PendingTimeNoise / PendingDateNoise. re.ASCII
+# pins \s and \d to the JVM default (ASCII-only; Python str patterns would
+# otherwise match Unicode whitespace/digits).
+_PENDING_TIME_NOISE = re.compile(
+    r"^\d{1,2}\s*[:：]\s*\d{2}(?:\s*[:：]\s*\d{2})?(?:\s*[AP]M)?$",
+    re.IGNORECASE | re.ASCII,
+)
+_PENDING_DATE_NOISE = re.compile(
+    r"^(?:\d{4}\s*[-/.年]\s*)?\d{1,2}\s*[-/.月]\s*\d{1,2}\s*日?"
+    r"(?:\s+周[一二三四五六日天])?(?:\s+\d{1,2}\s*[:：]\s*\d{2}(?:\s*[:：]\s*\d{2})?)?$",
+    re.IGNORECASE | re.ASCII,
+)
+
+
+def _utf16_units(value: str):
+    """Yield the string as Kotlin Char (UTF-16 code units) — a supplementary
+    code point is TWO units (neither a letter), matching the Android counts."""
+    data = value.encode("utf-16-le", errors="surrogatepass")
+    for i in range(0, len(data), 2):
+        yield chr(data[i] | (data[i + 1] << 8))
+
+
+def _is_kotlin_letter(ch: str) -> bool:
+    # Kotlin Char.isLetter(): Unicode general category L*.
+    return unicodedata.category(ch).startswith("L")
+
+
+def _is_kotlin_letter_or_digit(ch: str) -> bool:
+    # Kotlin Char.isLetterOrDigit(): Unicode general category L* or Nd.
+    category = unicodedata.category(ch)
+    return category.startswith("L") or category == "Nd"
+
+
+def is_usable_pending_merchant(value: str | None) -> bool:
+    """Port of Android ``pendingMerchantPresentation``: the negation of its
+    ``needsReview`` — trim, then require >= 2 letter-or-digit chars, >= 1
+    letter, and neither the time- nor the date-noise pattern."""
+    if value is None:
+        return False
+    trimmed = value.strip(_KOTLIN_TRIM_CHARS)
+    units = list(_utf16_units(trimmed))
+    meaningful_character_count = sum(1 for ch in units if _is_kotlin_letter_or_digit(ch))
+    merchant_letter_count = sum(1 for ch in units if _is_kotlin_letter(ch))
+    return (
+        meaningful_character_count >= 2
+        and merchant_letter_count >= 1
+        and not _PENDING_TIME_NOISE.match(trimmed)
+        and not _PENDING_DATE_NOISE.match(trimmed)
+    )
+
+
+def is_uncategorized_expense_category(value: str | None) -> bool:
+    """Port of Android ``isUncategorizedExpenseCategory``: trim → lowercase →
+    membership in the uncategorized token set (None behaves like Android's
+    ``?.`` chain: it falls through to the empty token)."""
+    if value is None:
+        return True
+    return value.strip(_KOTLIN_TRIM_CHARS).lower() in _UNCATEGORIZED_TOKENS
 
 
 @dataclass(frozen=True)
@@ -79,22 +168,43 @@ def _count(db: Session, stmt) -> int:
     return int(result or 0)
 
 
-def _ready_to_confirm_stmt(base, *, empty_merchant):
-    """Pending rows with amount + merchant + fx-ready + non-duplicate."""
+def _count_grouped(db: Session, stmt, predicate) -> int:
+    """Sum a GROUP BY row-count over the groups whose key passes ``predicate``.
+
+    The ported usability rules inspect Unicode categories and OCR-noise
+    patterns — not faithfully expressible in SQL — so evaluate them
+    Python-side over grouped keys. Traffic stays proportional to the number
+    of distinct merchant/category values, not to the number of rows.
+    """
+    total = 0
+    for row in db.execute(stmt):
+        *keys, n = row
+        if predicate(*keys):
+            total += int(n)
+    return total
+
+
+def _ready_to_confirm_filters(tenant_id: str) -> tuple:
+    """SQL-expressible part of the ready caliber: pending + amount + fx-ready
+    + non-duplicate (merchant/category calibers are applied Python-side)."""
     return (
-        base.where(Expense.status == "pending")
-        .where(Expense.amount_cents.is_not(None))
-        .where(Expense.fx_status == FX_STATUS_READY)
-        .where(~empty_merchant)
-        .where(Expense.duplicate_status != "suspected")
+        Expense.tenant_id == tenant_id,
+        Expense.status == "pending",
+        Expense.amount_cents.is_not(None),
+        Expense.fx_status == FX_STATUS_READY,
+        Expense.duplicate_status != "suspected",
     )
 
 
-def _missing_category_parts(db: Session, base, *, uncategorized) -> tuple[int, int]:
-    """Split the uncategorized count by status (pending → inbox, confirmed → ledger)."""
-    pending = _count(db, base.where(Expense.status == "pending").where(uncategorized))
-    confirmed = _count(db, base.where(Expense.status == "confirmed").where(uncategorized))
-    return pending, confirmed
+def _missing_category_part(db: Session, *, tenant_id: str, status: str) -> int:
+    """Uncategorized rows for one status (pending → inbox, confirmed → ledger)."""
+    return _count_grouped(
+        db,
+        select(Expense.category, func.count())
+        .where(Expense.tenant_id == tenant_id, Expense.status == status)
+        .group_by(Expense.category),
+        is_uncategorized_expense_category,
+    )
 
 
 def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
@@ -108,24 +218,16 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         base.where(Expense.status == "pending").where(Expense.amount_cents.is_(None)),
     )
 
-    empty_merchant = or_(
-        Expense.merchant.is_(None),
-        func.trim(Expense.merchant) == "",
-    )
-    missing_merchant = _count(
+    missing_merchant = _count_grouped(
         db,
-        base.where(Expense.status == "pending").where(empty_merchant),
+        select(Expense.merchant, func.count())
+        .where(Expense.tenant_id == tenant_id, Expense.status == "pending")
+        .group_by(Expense.merchant),
+        lambda merchant: not is_usable_pending_merchant(merchant),
     )
 
-    uncategorized = or_(
-        Expense.category.is_(None),
-        func.trim(Expense.category) == "",
-        Expense.category == "未分类",
-        Expense.category == "未分類",
-    )
-    missing_category_pending, missing_category_confirmed = _missing_category_parts(
-        db, base, uncategorized=uncategorized
-    )
+    missing_category_pending = _missing_category_part(db, tenant_id=tenant_id, status="pending")
+    missing_category_confirmed = _missing_category_part(db, tenant_id=tenant_id, status="confirmed")
     missing_category = missing_category_pending + missing_category_confirmed
 
     suspected_duplicates = _count(
@@ -140,11 +242,21 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         ),
     )
 
-    ready_to_confirm = _count(db, _ready_to_confirm_stmt(base, empty_merchant=empty_merchant))
-
-    ready_to_confirm_categorized = _count(
+    ready_filters = _ready_to_confirm_filters(tenant_id)
+    ready_to_confirm = _count_grouped(
         db,
-        _ready_to_confirm_stmt(base, empty_merchant=empty_merchant).where(~uncategorized),
+        select(Expense.merchant, func.count()).where(*ready_filters).group_by(Expense.merchant),
+        is_usable_pending_merchant,
+    )
+    ready_to_confirm_categorized = _count_grouped(
+        db,
+        select(Expense.merchant, Expense.category, func.count())
+        .where(*ready_filters)
+        .group_by(Expense.merchant, Expense.category),
+        lambda merchant, category: (
+            is_usable_pending_merchant(merchant)
+            and not is_uncategorized_expense_category(category)
+        ),
     )
 
     oldest_dt = db.scalar(

@@ -111,6 +111,42 @@ class PendingScreenModelsTest {
     }
 
     @Test
+    fun merchantUsabilitySharedSamples() {
+        // Shared with backend tests/test_data_quality_caliber_port.py — the
+        // data-quality counters port this exact rule; any drift must redden
+        // one of the two twins.
+        listOf(
+            null,
+            "",
+            "   ",
+            "A", // single letter: < 2 meaningful chars
+            "12", // digits only: no letter
+            "12:34",
+            "3:15 PM",
+            "12:30:45",
+            "2026-07-17 12:34",
+            "2026年7月17日 周五",
+            "7月22日",
+            "123456",
+            "18:04 0",
+            "——",
+        ).forEach { merchant ->
+            assertEquals(
+                null,
+                pendingMerchantPresentation(pendingExpense(merchant = merchant)).primaryText,
+                "must be unusable: $merchant",
+            )
+        }
+        listOf("苏宁", "7-Eleven", "3M", "85度C", "星巴克咖啡", "A1", "ab", " 星巴克咖啡 ").forEach { merchant ->
+            assertEquals(
+                merchant.trim(),
+                pendingMerchantPresentation(pendingExpense(merchant = merchant)).primaryText,
+                "must be usable: $merchant",
+            )
+        }
+    }
+
+    @Test
     fun primaryReviewActionKeepsEarlierBlockingWorkAheadOfLaterFields() {
         assertEquals(
             PendingPrimaryReviewAction.MissingAmount,

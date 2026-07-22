@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,14 @@ internal fun PendingOverviewCard(
                 metric = metric,
                 onClick = { onRemediate(metric.primaryRemediation) },
             )
+            metric.secondaryRemediation?.let { remediation ->
+                AppSecondaryButton(
+                    text = stringResource(R.string.stats_data_quality_open_uncategorized_transactions),
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = Icons.Default.ReceiptLong,
+                    onClick = { onRemediate(remediation) },
+                )
+            }
         }
         if (summary.pendingTotal > 0) {
             Text(
@@ -158,17 +167,20 @@ internal data class PendingOverviewMetric(
     @param:StringRes val labelRes: Int,
     val value: Int,
     val primaryRemediation: DataQualityRemediation,
+    val secondaryRemediation: DataQualityRemediation? = null,
 )
 
 internal fun pendingOverviewMetrics(summary: DataQualitySummary): List<PendingOverviewMetric> {
     val metrics = mutableListOf<PendingOverviewMetric>()
     // Inbox ReadyToConfirm routes uncategorized rows to quick-category before
-    // confirm, so the ready line uses the categorized caliber — the mixed
-    // backend ready_to_confirm would land on a shorter list than advertised.
-    if (summary.readyToConfirmCategorized > 0) {
+    // confirm, so the ready line uses the categorized caliber — the count the
+    // tap lands on. An N-1 backend doesn't send it: fall back to the
+    // aggregate ready count rather than dropping the line.
+    val readyCount = summary.readyToConfirmCategorized ?: summary.readyToConfirm
+    if (readyCount > 0) {
         metrics += PendingOverviewMetric(
             R.string.stats_pending_metric_ready,
-            summary.readyToConfirmCategorized,
+            readyCount,
             DataQualityRemediation.InboxReady,
         )
     }
@@ -186,23 +198,7 @@ internal fun pendingOverviewMetrics(summary: DataQualitySummary): List<PendingOv
             DataQualityRemediation.InboxMissingMerchant,
         )
     }
-    // Backend missing_category mixes pending + confirmed rows; each status has
-    // its own remediation surface, so show one line per part with the count
-    // that matches where the tap lands.
-    if (summary.missingCategoryPending > 0) {
-        metrics += PendingOverviewMetric(
-            R.string.stats_pending_metric_missing_category_pending,
-            summary.missingCategoryPending,
-            DataQualityRemediation.InboxMissingCategory,
-        )
-    }
-    if (summary.missingCategoryConfirmed > 0) {
-        metrics += PendingOverviewMetric(
-            R.string.stats_pending_metric_missing_category_confirmed,
-            summary.missingCategoryConfirmed,
-            DataQualityRemediation.TransactionsMissingCategory,
-        )
-    }
+    metrics += missingCategoryMetrics(summary)
     if (summary.suspectedDuplicates > 0) {
         metrics += PendingOverviewMetric(
             R.string.stats_pending_metric_duplicates,
@@ -218,4 +214,48 @@ internal fun pendingOverviewMetrics(summary: DataQualitySummary): List<PendingOv
         )
     }
     return metrics
+}
+
+// Backend missing_category mixes pending + confirmed rows; each status has
+// its own remediation surface, so a current backend reports the composition
+// and gets one line per part with the count that matches where the tap
+// lands. An N-1 backend only sends the mixed total — show the pre-split
+// single line with both remediation entries for it.
+private fun missingCategoryMetrics(summary: DataQualitySummary): List<PendingOverviewMetric> {
+    val pending = summary.missingCategoryPending
+    val confirmed = summary.missingCategoryConfirmed
+    if (pending == null || confirmed == null) {
+        return if (summary.missingCategory > 0) {
+            listOf(
+                PendingOverviewMetric(
+                    R.string.stats_pending_metric_missing_category,
+                    summary.missingCategory,
+                    DataQualityRemediation.InboxMissingCategory,
+                    DataQualityRemediation.TransactionsMissingCategory,
+                ),
+            )
+        } else {
+            emptyList()
+        }
+    }
+    return buildList {
+        if (pending > 0) {
+            add(
+                PendingOverviewMetric(
+                    R.string.stats_pending_metric_missing_category_pending,
+                    pending,
+                    DataQualityRemediation.InboxMissingCategory,
+                ),
+            )
+        }
+        if (confirmed > 0) {
+            add(
+                PendingOverviewMetric(
+                    R.string.stats_pending_metric_missing_category_confirmed,
+                    confirmed,
+                    DataQualityRemediation.TransactionsMissingCategory,
+                ),
+            )
+        }
+    }
 }

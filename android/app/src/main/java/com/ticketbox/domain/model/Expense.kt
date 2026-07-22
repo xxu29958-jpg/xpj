@@ -287,12 +287,14 @@ data class DataQualitySummary(
     val missingAmount: Int,
     val missingMerchant: Int,
     val missingCategory: Int,
-    val missingCategoryPending: Int,
-    val missingCategoryConfirmed: Int,
+    // Null when the backend predates the split (N-1) — callers must fall back
+    // to the aggregate missingCategory / readyToConfirm calibers.
+    val missingCategoryPending: Int? = null,
+    val missingCategoryConfirmed: Int? = null,
     val suspectedDuplicates: Int,
     val confirmedWithoutImage: Int,
     val readyToConfirm: Int,
-    val readyToConfirmCategorized: Int,
+    val readyToConfirmCategorized: Int? = null,
     val oldestPendingAgeDays: Int?,
     val generatedAt: String,
 )

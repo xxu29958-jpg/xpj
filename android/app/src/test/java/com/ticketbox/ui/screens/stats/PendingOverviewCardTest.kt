@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.stats
 
+import com.ticketbox.R
 import com.ticketbox.domain.model.DataQualitySummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -101,6 +102,42 @@ class PendingOverviewCardTest {
         assertNull(metrics.firstOrNull { it.primaryRemediation == DataQualityRemediation.TransactionsMissingCategory })
         val inboxLine = metrics.single { it.primaryRemediation == DataQualityRemediation.InboxMissingCategory }
         assertEquals(2, inboxLine.value)
+    }
+
+    @Test
+    fun missingCompositionFallsBackToAggregateCaliberDisplay() {
+        // N-1 backend: the split fields are absent (null) — keep the pre-split
+        // single mixed line with both remediation entries, and the aggregate
+        // ready count, instead of failing or dropping the lines.
+        val metrics = pendingOverviewMetrics(
+            baseSummary.copy(
+                missingCategory = 5,
+                missingCategoryPending = null,
+                missingCategoryConfirmed = null,
+                readyToConfirm = 6,
+                readyToConfirmCategorized = null,
+            ),
+        )
+
+        val missingLine = metrics.single { it.primaryRemediation == DataQualityRemediation.InboxMissingCategory }
+        assertEquals(5, missingLine.value)
+        assertEquals(R.string.stats_pending_metric_missing_category, missingLine.labelRes)
+        assertEquals(DataQualityRemediation.TransactionsMissingCategory, missingLine.secondaryRemediation)
+        val readyLine = metrics.single { it.primaryRemediation == DataQualityRemediation.InboxReady }
+        assertEquals(6, readyLine.value)
+    }
+
+    @Test
+    fun missingCompositionWithZeroAggregatesCreatesNoDeadActions() {
+        val metrics = pendingOverviewMetrics(
+            baseSummary.copy(
+                missingCategoryPending = null,
+                missingCategoryConfirmed = null,
+                readyToConfirmCategorized = null,
+            ),
+        )
+
+        assertEquals(emptyList(), metrics)
     }
 }
 

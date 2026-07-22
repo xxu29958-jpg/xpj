@@ -176,6 +176,7 @@
     <string name="stats_data_quality_empty_title">数据状态良好</string>
     <string name="stats_data_quality_empty_body">当前没有待确认、未分类、疑似重复或缺少凭证的记录。</string>
     <string name="stats_data_quality_open_inbox">查看待确认</string>
+    <string name="stats_data_quality_open_uncategorized_transactions">查看已确认未分类交易</string>
     <string name="stats_data_quality_remediation_inbox_hint">进入收件对应筛选处理</string>
     <string name="stats_data_quality_remediation_transactions_hint">进入流水问题筛选查看</string>
     <string name="stats_data_quality_remediation_content_description">打开处理入口</string>
@@ -793,6 +794,7 @@
     <string name="stats_pending_metric_ready">可确认</string>
     <string name="stats_pending_metric_missing_amount">缺金额</string>
     <string name="stats_pending_metric_missing_merchant">缺商家</string>
+    <string name="stats_pending_metric_missing_category">未分类</string>
     <string name="stats_pending_metric_missing_category_pending">待确认未分类</string>
     <string name="stats_pending_metric_missing_category_confirmed">已确认未分类</string>
     <string name="stats_pending_metric_duplicates">疑似重复</string>
