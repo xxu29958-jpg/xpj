@@ -184,11 +184,15 @@ def _count_grouped(db: Session, stmt, predicate) -> int:
     return total
 
 
-def _ready_to_confirm_filters(tenant_id: str) -> tuple:
+def _ready_to_confirm_filters() -> tuple:
     """SQL-expressible part of the ready caliber: pending + amount + fx-ready
-    + non-duplicate (merchant/category calibers are applied Python-side)."""
+    + non-duplicate (merchant/category calibers are applied Python-side).
+
+    The tenant predicate is deliberately NOT in here: each call site adds it
+    inline so the ledger-scope guard (tests/test_ledger_query_scope_guard.py,
+    per-statement AST walk) sees an explicit ``Expense.tenant_id`` comparison
+    inside the query statement itself."""
     return (
-        Expense.tenant_id == tenant_id,
         Expense.status == "pending",
         Expense.amount_cents.is_not(None),
         Expense.fx_status == FX_STATUS_READY,
@@ -205,6 +209,20 @@ def _missing_category_part(db: Session, *, tenant_id: str, status: str) -> int:
         .group_by(Expense.category),
         is_uncategorized_expense_category,
     )
+
+
+def _oldest_pending_age_days(db: Session, *, tenant_id: str) -> int | None:
+    """Days since the oldest pending row was ingested, ``None`` if none pending."""
+    oldest_dt = db.scalar(
+        select(func.min(Expense.created_at))
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.status == "pending")
+    )
+    if oldest_dt is None:
+        return None
+    oldest_dt_aware = oldest_dt.replace(tzinfo=UTC) if oldest_dt.tzinfo is None else oldest_dt
+    delta = datetime.now(tz=UTC) - oldest_dt_aware
+    return max(0, int(delta.total_seconds() // 86400))
 
 
 def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
@@ -242,16 +260,18 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         ),
     )
 
-    ready_filters = _ready_to_confirm_filters(tenant_id)
+    ready_filters = _ready_to_confirm_filters()
     ready_to_confirm = _count_grouped(
         db,
-        select(Expense.merchant, func.count()).where(*ready_filters).group_by(Expense.merchant),
+        select(Expense.merchant, func.count())
+        .where(Expense.tenant_id == tenant_id, *ready_filters)
+        .group_by(Expense.merchant),
         is_usable_pending_merchant,
     )
     ready_to_confirm_categorized = _count_grouped(
         db,
         select(Expense.merchant, Expense.category, func.count())
-        .where(*ready_filters)
+        .where(Expense.tenant_id == tenant_id, *ready_filters)
         .group_by(Expense.merchant, Expense.category),
         lambda merchant, category: (
             is_usable_pending_merchant(merchant)
@@ -259,18 +279,7 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         ),
     )
 
-    oldest_dt = db.scalar(
-        select(func.min(Expense.created_at))
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "pending")
-    )
-    oldest_pending_age_days: int | None
-    if oldest_dt is None:
-        oldest_pending_age_days = None
-    else:
-        oldest_dt_aware = oldest_dt.replace(tzinfo=UTC) if oldest_dt.tzinfo is None else oldest_dt
-        delta = datetime.now(tz=UTC) - oldest_dt_aware
-        oldest_pending_age_days = max(0, int(delta.total_seconds() // 86400))
+    oldest_pending_age_days = _oldest_pending_age_days(db, tenant_id=tenant_id)
 
     return DataQualitySummary(
         pending_total=pending_total,
