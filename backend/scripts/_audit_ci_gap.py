@@ -78,6 +78,20 @@ REQUIRED_GRADLE_TASKS_BY_PLATFORM = {
 PATH_SCOPED_RELEASE_TASKS = frozenset(
     {":app:assembleGrayRelease", ":app:assembleInternalRelease"}
 )
+_CI_INVOCATION_SCOPES = {
+    "pytest business full-suite lane": {"full", "postgres"},
+    "end-to-end smoke": {"full", "postgres"},
+    "backup/restore drill": {"full", "postgres"},
+    "pytest installer safety lane": {"full", "windows"},
+    "installer source preflight (Windows PowerShell 5.1)": {"full", "windows"},
+    "installer source preflight (PowerShell 7)": {"full", "windows"},
+    "frozen backend locked release build": {"full", "windows"},
+    "authoritative Inno installer compile": {"full", "windows"},
+    "atomic installer publish-unit verification": {"full", "windows"},
+    "desktop compileall": {"full", "desktop"},
+    "desktop ruff lint": {"full", "desktop"},
+    "desktop pytest": {"full", "desktop"},
+}
 
 def _is_line_continued(stripped_line: str) -> bool:
     return stripped_line.endswith("\\") or stripped_line.endswith("`")
@@ -278,11 +292,7 @@ def _missing_gradle_tasks_by_platform(
                 if task in PATH_SCOPED_RELEASE_TASKS
                 else platform_commands
             )
-            allowed_scopes = (
-                {"full", "android"}
-                if task == ":app:connectedGrayDebugAndroidTest"
-                else {"full"}
-            )
+            allowed_scopes = {"full", "android"}
             task_commands = [
                 command
                 for command in task_commands
@@ -299,26 +309,32 @@ def _missing_gradle_tasks_by_platform(
 
 
 def _missing_ci_invocations(commands: list[WorkflowCommand]) -> list[str]:
-    executable_segments = _iter_executable_command_segments(commands)
-    return [
-        required.label
-        for required in REQUIRED_CI_INVOCATIONS
-        if not any(required.matches(segment) for segment in executable_segments)
-    ]
+    missing: list[str] = []
+    for required in REQUIRED_CI_INVOCATIONS:
+        allowed_scopes = _CI_INVOCATION_SCOPES.get(required.label, {"full"})
+        executable_segments = _iter_executable_command_segments(
+            [command for command in commands if command.protection_scope in allowed_scopes]
+        )
+        if not any(required.matches(segment) for segment in executable_segments):
+            missing.append(required.label)
+    return missing
 
 
 def _missing_ci_invocations_by_platform(commands: list[WorkflowCommand]) -> list[str]:
     missing: list[str] = []
     for platform in PLATFORM_WORKFLOW_PARTS:
-        platform_commands = [
-            command
-            for command in _commands_for_platform(commands, platform)
-            if command.protection_scope == "full"
-        ]
+        platform_commands = _commands_for_platform(commands, platform)
         for label in _missing_ci_invocations(platform_commands):
             missing.append(f"{platform}: {label}")
-        executable_segments = _iter_executable_command_segments(platform_commands)
         for required in REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]:
+            allowed_scopes = _CI_INVOCATION_SCOPES.get(required.label, {"full"})
+            executable_segments = _iter_executable_command_segments(
+                [
+                    command
+                    for command in platform_commands
+                    if command.protection_scope in allowed_scopes
+                ]
+            )
             if not any(required.matches(segment) for segment in executable_segments):
                 missing.append(f"{platform}: {required.label}")
     return missing

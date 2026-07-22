@@ -5,7 +5,7 @@
 云端 workflow 文件：
 
 ```text
-.github/workflows/ci.yml                       # 主 CI：backend/static、PostgreSQL、desktop、Android unit/build、path-gated release APK
+.github/workflows/ci.yml                       # 主 CI：常驻快速合同 + 按域 PostgreSQL/Desktop/Android/Windows packaging
 .github/workflows/android-connected-test.yml   # path-filtered 云端模拟器 lane
 .github/workflows/codeql.yml                   # GitHub CodeQL 安全扫描
 ```
@@ -19,7 +19,7 @@
 
 触发条件：
 
-- GitHub: push 到 `main`，以及 pull_request 到 `main`。工作分支不再单独触发云端重型 push CI，避免同一 PR head 被 push + pull_request 跑两遍；PR 打开或更新时仍完整跑云端主路径。
+- GitHub: push 到 `main`，以及 pull_request 到 `main`。PR 始终跑 Backend 快速合同；PostgreSQL、Desktop、Android、Windows packaging 只在对应路径受影响时跑。`main`、手动运行、未知路径、空 diff 或分类失败均 fail closed 到全量。
 - local-Gitea: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`、`codex/**`
 - 手动 `workflow_dispatch`
 
@@ -29,7 +29,9 @@ GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 
 
 ## Job 清单（GitHub 主路径 + local-Gitea 降级）
 
-### backend-full（静态检查）
+### ci-scope + backend-contracts + Backend（常驻快速合同）
+
+`ci-scope` 用精确 PR base/head 做 NUL 分隔、禁 rename 推断的路径分类，只输出 `postgres / desktop / android / windows` 四个资源域。路径矩阵只有 `ci_gap_trigger_scope.py` 一份真源；job 仅在分类器成功且明确输出 `false` 时跳过。分类器内部无法比较时输出全量；scope 基础设施失败时全部重任务仍执行。
 
 ```powershell
 scripts\check_text_encoding.ps1 + check_dependency_versions.ps1 + 全部 .ps1 的 BOM/语法检查
@@ -40,17 +42,21 @@ python scripts\release_audit.py        # 自动发现全部 _audit_*.py lane
 pip-audit --strict（OSV 库）
 ```
 
-PG-only 之后该 job 没有数据库，不跑 pytest / smoke——全量测试都在 backend-postgres。
+`Backend contracts` 没有数据库，不跑业务 pytest / smoke；它保持每个 PR 都可达，负责验证分类器接线、CI gap、API 与静态合同。既有分支保护名 `Backend` 是无 checkout 的结果汇总器：scope、静态合同或按需 Windows packaging 任一失败，`Backend` 必须失败；Windows 域明确跳过时才接受 `skipped`。
 
-### backend-postgres（全量测试）
+### windows-packaging（按域）
 
-GitHub 主路径跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径跑在 Windows runner，用本机 PostgreSQL 安装经 `initdb` 起一次性临时实例（`:5433`，与生产集群 `:5432` 隔离）。两条路径都完成：起库 → `smoke_test.py` 端到端 → `postgres_backup_drill.py` 备份恢复演练（用真后端备份代码 dump smoke 灌好的库 → 校验归档 → 恢复进 `xpj_restore` → 行数对账；§6「没演练的备份=没备份」）→ 全量 pytest（`xpj_test` 库，与 smoke 的 `xpj_smoke` 分库）。Gitea 的 teardown 必须按 postmaster PID 定向拆库，否则 runner 的 post-step I/O drain 会报 `WaitDelay expired`。
+仅真实 Windows 产物输入变化时运行 packaging tests、PS5.1/PS7 preflight、冻结 Backend/Desktop 构建、Inno 编译和上传后字节回验。输入包括 Backend `app/`、`migrations/`、构建依赖与 provenance，Desktop `backend_manager/`、`packaging/`、构建依赖与脚本，以及安装器自身。整个 provenance 链必须位于同一 scoped job；Android、文档和纯测试改动不支付该成本。
 
-### desktop-manager
+### backend-postgres（按域全量测试）
+
+GitHub 主路径只在后端运行时/测试/迁移相关路径变化或全量 fallback 时启动，跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径仍跑完整 Windows 临时实例流程。两条路径都完成：起库 → smoke → 备份恢复演练 → 全量 pytest。
+
+### desktop-manager（按域）
 
 `desktop/`：compileall + ruff + pytest。
 
-### android-unit
+### android-unit（按域）
 
 ```powershell
 # 删最新 Room schema JSON + 强制 KSP 重生（漂移检测前置，--rerun-tasks 防 FROM-CACHE 跳过）
@@ -73,7 +79,7 @@ GitHub 云端 Android job 使用 hosted runner 的 Android SDK，并按需安装
 
 云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。
 
-`release_audit.py` 的 ci-gap lane 静态扫 `.github/workflows/*.yml` 和 `.gitea/workflows/*.yml`，钉住 11 个 gradle task（上述清单 + ksp regen + detekt 两变体 + 两个 release assemble + connected）与 10 个 backend 调用（release_audit / 全量 pytest / smoke / 备份恢复演练 / API contract / backend ruff / backend compileall，外加 desktop 三钉：compileall / ruff / pytest——此前整个 desktop job 被删都不会被发现），并额外钉住 GitHub Android release APK 必须同一次 Gradle 调用构建 gray/internal 两个 release 变体、不得插入 `gradlew --stop`，且 PR release APK 必须按 Android/CI 相关路径 gate，防止 backend-only PR 白跑 R8 或 release APK lane 退回两次冷启动慢路径。**改 CI lane 必须同步 `_audit_ci_gap.py` 的 REQUIRED 清单 / policy pins**，否则该 lane 立刻红。
+`release_audit.py` 的 ci-gap lane 静态扫两套 workflow，钉住 Gradle、后端、Desktop 与安装器数据流。scoped job 只有在完整 checkout、唯一分类输出、fail-closed 条件和无软失败均成立时才被计入；任意普通 `if` 不能冒充覆盖。安装器哈希、上传、下载和回验仍作为同一 Windows job 的有序原子链检查。
 
 ## 安全边界
 
