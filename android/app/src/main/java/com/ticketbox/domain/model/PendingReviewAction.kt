@@ -33,7 +33,7 @@ internal fun pendingMerchantPresentation(expense: Expense): PendingMerchantPrese
     return PendingMerchantPresentation(primaryText = primaryText)
 }
 
-private fun isUsablePendingMerchantText(value: String): Boolean {
+internal fun isUsablePendingMerchantText(value: String): Boolean {
     val meaningfulCharacterCount = value.count { it.isLetterOrDigit() }
     val merchantLetterCount = value.count { it.isLetter() }
     return meaningfulCharacterCount >= 2 &&

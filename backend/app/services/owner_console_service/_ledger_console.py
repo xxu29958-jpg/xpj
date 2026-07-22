@@ -81,6 +81,8 @@ class LedgerHealthVM:
     name: str
     is_default: bool
     pending: int
+    # Categorized caliber (218-B3): rows that also have a real category —
+    # matches the /web/data-quality ready action count the 体检 link lands on.
     ready_to_confirm: int
     suspected_duplicates: int
     missing_merchant: int
@@ -129,7 +131,7 @@ def list_ledger_health(db: Session) -> list[LedgerHealthVM]:
                 name=summary.name,
                 is_default=summary.is_default,
                 pending=dq.pending_total,
-                ready_to_confirm=dq.ready_to_confirm,
+                ready_to_confirm=dq.ready_to_confirm_categorized,
                 suspected_duplicates=dq.suspected_duplicates,
                 missing_merchant=dq.missing_merchant,
                 missing_category=dq.missing_category,

@@ -16,12 +16,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.isUsablePendingMerchantText
+import com.ticketbox.domain.model.pendingMerchantPresentation
 import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.domain.model.pendingMerchantPresentation
 
 @Composable
 internal fun QuickMerchantSheetContent(
@@ -35,6 +36,10 @@ internal fun QuickMerchantSheetContent(
         mutableStateOf(pendingMerchantPresentation(expense).primaryText.orEmpty())
     }
     val cleaned = value.trim()
+    val noiseLike = cleaned.isNotEmpty() && !isUsablePendingMerchantText(cleaned)
+    // 保存守卫与 QuickCategory 同型（PR #230 round 9）：噪音文本（时间/日期串、
+    // 单字符等）不允许"修好"一张票——保存键只在输入满足可用性判定才启用。
+    val saveEnabled = quickMerchantSaveEnabled(value)
     // P1-2: single-field sheet — auto-focus so the keyboard pops on open.
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -50,23 +55,14 @@ internal fun QuickMerchantSheetContent(
                 value = value,
                 placeholder = stringResource(R.string.pending_quick_merchant_placeholder),
                 enabled = !saving,
-                isError = value.isNotEmpty() && cleaned.isEmpty(),
+                isError = (value.isNotEmpty() && cleaned.isEmpty()) || noiseLike,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
             ),
             actions = AppTextInputActions(onValueChange = { value = it.take(40) }),
             modifier = Modifier.fillMaxWidth(),
             focusRequester = focusRequester,
             decorations = AppTextInputDecorations(
-                supportingText = if (value.isNotEmpty() && cleaned.isEmpty()) {
-                    {
-                        Text(
-                            stringResource(R.string.pending_quick_merchant_blank_error),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                } else {
-                    null
-                },
+                supportingText = quickMerchantSupportingText(value, cleaned, noiseLike),
             ),
         )
 
@@ -74,7 +70,7 @@ internal fun QuickMerchantSheetContent(
             chrome = chrome,
             primary = AppSheetAction(
                 text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_quick_merchant_save_button),
-                enabled = !saving && cleaned.isNotEmpty(),
+                enabled = !saving && saveEnabled,
                 onClick = { onSave(cleaned) },
             ),
             secondary = AppSheetAction(
@@ -84,4 +80,36 @@ internal fun QuickMerchantSheetContent(
             ),
         )
     }
+}
+
+internal fun quickMerchantSaveEnabled(value: String): Boolean {
+    val cleaned = value.trim()
+    // 单侧（客户端）守卫：merchant 是自由文本、可用性只是审阅启发式而非有效性
+    // 契约（与类目的封闭 token 表不同）——服务端对显式写入维持 main 的放行语义。
+    return cleaned.isNotEmpty() && isUsablePendingMerchantText(cleaned)
+}
+
+@Composable
+private fun quickMerchantSupportingText(
+    value: String,
+    cleaned: String,
+    noiseLike: Boolean,
+): (@Composable () -> Unit)? = when {
+    value.isNotEmpty() && cleaned.isEmpty() -> {
+        {
+            Text(
+                stringResource(R.string.pending_quick_merchant_blank_error),
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+    noiseLike -> {
+        {
+            Text(
+                stringResource(R.string.pending_quick_merchant_noise_error),
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+    else -> null
 }

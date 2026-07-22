@@ -122,6 +122,28 @@ class DataQualityNavigationContractTest {
     }
 
     @Test
+    fun inboxRemediationEntryResyncsPendingList() {
+        setContractContent(useRealInboxRoute = true)
+        composeRule.runOnIdle {
+            // The real PendingViewModel's init load fired exactly one sync.
+            assertEquals(1, apiProbe.pendingExpensesCallCount)
+        }
+
+        openDataQualityFromInsights()
+        composeRule.onNodeWithText(TEXT_MISSING_MERCHANT).performClick()
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(PrimaryDomain.Inbox.route, navController.currentDestination?.route)
+            // The targeted landing must fire a FRESH sync on the preserved
+            // ViewModel — without it the filtered list can be stale (PR #230 r9).
+            assertEquals(2, apiProbe.pendingExpensesCallCount)
+            // The real PendingScreen consumed the posted filter request.
+            assertNull(shellState.pendingFilterRequest.pending)
+        }
+    }
+
+    @Test
     fun dataQualityPageReloadsAfterOffPageRemediationRevisionBump() {
         setContractContent()
         openDataQualityFromInsights()
@@ -216,7 +238,7 @@ class DataQualityNavigationContractTest {
         }
     }
 
-    private fun setContractContent() {
+    private fun setContractContent(useRealInboxRoute: Boolean = false) {
         val harness = DataQualityConnectedHarness()
         apiProbe = harness.apiProbe
         probe = NavigationProbe()
@@ -229,6 +251,7 @@ class DataQualityNavigationContractTest {
                     navController = navController,
                     screenFactory = harness.screenFactory,
                     probe = probe,
+                    useRealInboxRoute = useRealInboxRoute,
                 )
             }
         }
@@ -279,6 +302,7 @@ private fun DataQualityContractScaffold(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
     probe: NavigationProbe,
+    useRealInboxRoute: Boolean,
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     ContractNavigationSync(
@@ -290,7 +314,17 @@ private fun DataQualityContractScaffold(
         navController = navController,
         startDestination = PrimaryDomain.Inbox.route,
     ) {
-        composable(PrimaryDomain.Inbox.route) { InboxRootProbe(shellState, probe) }
+        composable(PrimaryDomain.Inbox.route) {
+            if (useRealInboxRoute) {
+                PendingRoute(
+                    navController = navController,
+                    shellState = shellState,
+                    screenFactory = screenFactory,
+                )
+            } else {
+                InboxRootProbe(shellState, probe)
+            }
+        }
         composable(PrimaryDomain.Transactions.route) { TransactionsRootProbe(shellState, probe) }
         composable(PrimaryDomain.Insights.route) { InsightsRootProbe(shellState) }
         composable(ProductSecondaryPage.InsightsDataQuality.route) { entry ->

@@ -62,6 +62,10 @@ internal class DataQualityConnectedHarness : AutoCloseable {
                     probe.dataQualityCallCount += 1
                     probe.summary
                 }
+                "pendingExpenses" -> {
+                    probe.pendingExpensesCallCount += 1
+                    emptyList<Any>()
+                }
                 else -> Unhandled
             }
         }
@@ -153,6 +157,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
 
 internal class DataQualityApiProbe {
     var dataQualityCallCount = 0
+    var pendingExpensesCallCount = 0
 
     /** Two actionable remediation rows: 缺商家 (inbox) + 已确认无图 (transactions).
      * Mutable so tests can simulate off-page remediation changing the summary. */

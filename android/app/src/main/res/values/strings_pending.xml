@@ -181,6 +181,7 @@
     <string name="pending_quick_merchant_label">商家名称</string>
     <string name="pending_quick_merchant_placeholder">例如：星巴克 / 美团外卖</string>
     <string name="pending_quick_merchant_blank_error">不能只填空格</string>
+    <string name="pending_quick_merchant_noise_error">这看起来像时间或日期，不像商家名</string>
     <string name="pending_quick_merchant_save_button">保存商家</string>
 
     <!-- MissingAmountSheet -->

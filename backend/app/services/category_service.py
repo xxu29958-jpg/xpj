@@ -20,6 +20,7 @@ from app.services.category_preference_service import (
     category_preference_option_state,
     default_category_keys,
 )
+from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.spending_contract_service import month_bounds_utc, stat_time_expr
 
 # Re-exports — existing callers do
@@ -115,8 +116,19 @@ def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
 # ── /web/categories dashboard (v0.4-alpha3 slice 2 / M3 / T12-T13) ─────────
 
 
-# Categories considered "uncategorized" for the cleanup workflow.
-UNCATEGORIZED_CATEGORIES: tuple[str, ...] = ("", "其他", "未分类")
+def _is_cleanup_pending_category(value: str | None) -> bool:
+    """Triage-backlog caliber for the cleanup workflow: the shared
+    uncategorized tokens (blank / 未分类 / 未分類 / none / null,
+    case-insensitive, ported in data_quality_service) PLUS 「其他」.
+
+    The two legs have different intents, deliberately: data-quality's
+    missing_category treats 其他 as a valid user category (it doesn't defeat
+    stats slicing), while this workflow exists to triage the upload backlog —
+    and uploads default to 其他 (expense_service/_create), so the
+    not-yet-triaged rows live there. Keeping 其他 is codified by main's own
+    tests (test_web_categories_counts_pending_uncategorized /
+    test_web_uncategorized_lists_only_uncategorized)."""
+    return (value or "").strip() == "其他" or is_uncategorized_expense_category(value)
 
 
 @dataclass
@@ -141,7 +153,7 @@ def _display_category(key: str) -> str:
 
 
 def _is_uncategorized_category(key: str) -> bool:
-    return key in UNCATEGORIZED_CATEGORIES
+    return _is_cleanup_pending_category(key)
 
 
 def _pending_counts_by_category(db: Session, *, tenant_id: str) -> dict[str, int]:
@@ -271,12 +283,23 @@ def list_category_summary(
 
 
 def list_uncategorized_pending(db: Session, *, tenant_id: str) -> list[Expense]:
-    """Return pending rows whose category is empty / 其他 / 未分类."""
+    """Return pending rows in the triage backlog (see
+    ``_is_cleanup_pending_category``): blank / 其他 / 未分类 / 未分類 /
+    none / null, case-insensitive."""
+    categories = db.execute(
+        select(Expense.category)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.status == "pending")
+        .distinct()
+    ).scalars().all()
+    matching = [category for category in categories if _is_cleanup_pending_category(category)]
+    if not matching:
+        return []
     rows = db.execute(
         select(Expense)
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == "pending")
-        .where(Expense.category.in_(UNCATEGORIZED_CATEGORIES))
+        .where(Expense.category.in_(matching))
         .order_by(Expense.created_at.desc())
         .limit(200)
     ).scalars().all()

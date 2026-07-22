@@ -409,3 +409,33 @@ def test_web_categories_no_secret_leak(web_client: TestClient, *, identity) -> N
         assert identity.admin_token not in body
         assert identity.upload_key not in body
         assert str(BACKEND_ROOT) not in body
+
+
+def test_web_uncategorized_includes_dirty_tokens(web_client: TestClient, *, identity) -> None:
+    """218-B3 round 9: the cleanup workflow triages the shared dirty tokens
+    (未分類 / none / null, case-insensitive) in addition to the historic
+    blank / 其他 / 未分类 set — uploads keep landing in the backlog via the
+    其他 default, while real categories stay out."""
+    with SessionLocal() as db:
+        token_none = Expense(
+            tenant_id="owner", amount_cents=100, merchant="商家甲", category="none",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        token_trad = Expense(
+            tenant_id="owner", amount_cents=200, merchant="商家乙", category="未分類",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        categorized = Expense(
+            tenant_id="owner", amount_cents=300, merchant="商家丙", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        db.add_all([token_none, token_trad, categorized])
+        db.commit()
+        none_id, trad_id, cat_id = token_none.id, token_trad.id, categorized.id
+
+    resp = web_client.get("/web/categories/uncategorized?ledger_id=owner")
+    assert resp.status_code == 200
+    ids = set(re.findall(r'name="expense_ids" value="(\d+)"', resp.text))
+    assert str(none_id) in ids
+    assert str(trad_id) in ids
+    assert str(cat_id) not in ids
