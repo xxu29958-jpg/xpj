@@ -85,7 +85,9 @@ internal fun PendingRoute(
                     shellState.openSecondaryPage(ProductSecondaryPage.InboxProcessing)
                 },
                 onOpenRepaymentReview = shellState::openRepaymentDrafts,
-                onOpenDataQuality = shellState::openDataQualityInboxRedirect,
+                onOpenDataQuality = {
+                    shellState.openSecondaryPage(ProductSecondaryPage.InsightsDataQuality)
+                },
             ),
             filterRequest = shellState.pendingFilterRequest,
         ),

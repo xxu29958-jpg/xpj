@@ -17,7 +17,9 @@ internal fun statsScreenActions(
         onTagChange = monthly::setTag,
     ),
     onRefresh = { reloadAllStats(monthly, reports) },
-    onOpenDataQuality = shellState::openDataQualityInboxRedirect,
+    onOpenDataQuality = {
+        shellState.openSecondaryPage(ProductSecondaryPage.InsightsDataQuality)
+    },
     reports = StatsReportActions(
         onDrillToLedger = { category ->
             shellState.ledgerDrill.post(
