@@ -139,6 +139,7 @@ class MainActivity : FragmentActivity() {
         repaymentDraftRepository = repaymentDraftRepository,
         outboxRepository = outboxRepository,
         tagRepository = tagRepository,
+        categoryPreferenceRepository = categoryPreferenceRepository,
     )
 
     private fun AppContainer.ticketboxAppViewModelFactories(): TicketboxAppViewModelFactories =

@@ -26,6 +26,7 @@ internal data class LedgerScreenActions(
     val onSync: () -> Unit = {},
     val onExportCsv: () -> Unit = {},
     val onOpenGlobalSearch: () -> Unit = {},
+    val onOpenLibrary: () -> Unit = {},
     val onManualCreate: (ExpenseDraft) -> Unit = {},
     val onViewModeChange: (LedgerViewMode) -> Unit = {},
     val onEdit: (Expense) -> Unit = {},

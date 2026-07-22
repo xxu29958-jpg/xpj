@@ -5,6 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,17 +19,11 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
-import com.ticketbox.data.repository.TagRepository
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
-import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ImmersionMode
-import com.ticketbox.domain.model.MerchantAlias
-import com.ticketbox.domain.model.MerchantCatalog
-import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.NotificationPreferences
-import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.ui.appearance.background.BackgroundImageStore
 import com.ticketbox.ui.components.AppStatusBanner
@@ -43,69 +39,41 @@ import com.ticketbox.ui.screens.settings.BackgroundCropScreen
 import com.ticketbox.ui.screens.settings.BackgroundGalleryScreen
 import com.ticketbox.ui.screens.settings.BackgroundPreviewScreen
 import com.ticketbox.ui.screens.settings.BackgroundTasksScreen
-import com.ticketbox.ui.screens.settings.CategoryRulesApplicationActions
-import com.ticketbox.ui.screens.settings.CategoryRulesApplicationState
-import com.ticketbox.ui.screens.settings.CategoryRulesInteractionState
-import com.ticketbox.ui.screens.settings.CategoryRulesRuleActions
-import com.ticketbox.ui.screens.settings.CategoryRulesRuleListState
-import com.ticketbox.ui.screens.settings.CategoryRulesScreen
-import com.ticketbox.ui.screens.settings.CategoryRulesScreenActions
-import com.ticketbox.ui.screens.settings.CategoryRulesScreenState
-import com.ticketbox.ui.screens.settings.CategoryRulesStatusState
-import com.ticketbox.ui.screens.settings.CategoryRulesUndoActions
 import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
-import com.ticketbox.ui.screens.settings.MerchantAliasesAliasActions
-import com.ticketbox.ui.screens.settings.MerchantAliasesCatalogActions
-import com.ticketbox.ui.screens.settings.MerchantAliasesMergeSuggestionActions
-import com.ticketbox.ui.screens.settings.MerchantAliasesScreen
-import com.ticketbox.ui.screens.settings.MerchantAliasesScreenActions
-import com.ticketbox.ui.screens.settings.MerchantAliasesScreenState
-import com.ticketbox.ui.screens.settings.MerchantAliasesUndoActions
 import com.ticketbox.ui.screens.settings.MyDevicesScreen
 import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
-import com.ticketbox.ui.screens.settings.RecycleBinScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreenActions
 import com.ticketbox.ui.screens.settings.ServerSettingsScreenState
 import com.ticketbox.ui.screens.settings.SettingsRootAlertsAppearanceNavigationActions
-import com.ticketbox.ui.screens.settings.SettingsRootBookkeepingNavigationActions
 import com.ticketbox.ui.screens.settings.SettingsRootConnectionSystemNavigationActions
-import com.ticketbox.ui.screens.settings.SettingsRootDataToolsNavigationActions
+import com.ticketbox.ui.screens.settings.SettingsRootDataPrivacyNavigationActions
 import com.ticketbox.ui.screens.settings.SettingsRootLedgerFamilyNavigationActions
 import com.ticketbox.ui.screens.settings.SettingsRootNavigationActions
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
 import com.ticketbox.ui.screens.settings.SettingsRoute as SettingsDestination
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
-import com.ticketbox.ui.screens.settings.TagManagementScreen
 import com.ticketbox.viewmodel.AppearanceUiState
 import com.ticketbox.viewmodel.BackgroundTasksViewModel
-import com.ticketbox.viewmodel.CategoryRulesUiState
 import com.ticketbox.viewmodel.FamilyMembersViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
-import com.ticketbox.viewmodel.MerchantAliasUiState
 import com.ticketbox.viewmodel.MyDevicesViewModel
 import com.ticketbox.viewmodel.OutboxStatusViewModel
-import com.ticketbox.viewmodel.RecycleBinViewModel
 import com.ticketbox.viewmodel.SettingsUiState
-import com.ticketbox.viewmodel.TagManagementViewModel
 import com.ticketbox.viewmodel.backgroundTasksViewModelFactory
 import com.ticketbox.viewmodel.familyMembersViewModelFactory
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 import com.ticketbox.viewmodel.ledgerSwitcherViewModelFactory
 import com.ticketbox.viewmodel.myDevicesViewModelFactory
 import com.ticketbox.viewmodel.outboxStatusViewModelFactory
-import com.ticketbox.viewmodel.recycleBinViewModelFactory
-import com.ticketbox.viewmodel.tagManagementViewModelFactory
 
 internal data class SettingsRouteStates(
     val settings: SettingsUiState,
-    val rules: CategoryRulesUiState,
-    val merchant: MerchantAliasUiState,
     val appearance: AppearanceUiState,
 )
 
@@ -115,6 +83,11 @@ internal data class SettingsDestinationChromeState(
     val showAdvancedTools: Boolean,
 )
 
+internal data class SettingsDestinationNavigation(
+    val onSecondaryActiveChange: (Boolean) -> Unit = {},
+    val onCloseRoot: () -> Unit = {},
+)
+
 internal data class SettingsRouteActions(
     val onTestConnection: () -> Unit,
     val onRunDiagnostics: () -> Unit,
@@ -122,26 +95,6 @@ internal data class SettingsRouteActions(
     val onSync: () -> Unit,
     val onClearCache: () -> Unit,
     val onSaveNotificationPreferences: (NotificationPreferences) -> Unit,
-    val onCreateRule: (String, String, Int) -> Unit,
-    val onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
-    val onToggleRule: (CategoryRule) -> Unit,
-    val onDeleteRule: (CategoryRule) -> Unit,
-    val onUndoRuleDelete: () -> Unit,
-    val onDismissRuleUndo: () -> Unit,
-    val onCreateMerchantCatalog: (String) -> Unit,
-    val onRenameMerchantCatalog: (MerchantCatalog, String) -> Unit,
-    val onToggleMerchantCatalog: (MerchantCatalog) -> Unit,
-    val onMergeMerchantCatalog: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
-    val onDeleteMerchantCatalog: (MerchantCatalog) -> Unit,
-    val onCreateMerchantAlias: (String, String) -> Unit,
-    val onToggleMerchantAlias: (MerchantAlias) -> Unit,
-    val onDeleteMerchantAlias: (MerchantAlias) -> Unit,
-    val onUndoMerchantAlias: () -> Unit,
-    val onDismissMerchantAliasUndo: () -> Unit,
-    val onDismissMerchantCatalogMergeSuggestion: () -> Unit,
-    val onPreviewApplyConfirmedRules: () -> Unit,
-    val onConfirmApplyConfirmedRules: () -> Unit,
-    val onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
     val onSkinChange: (AppSkin) -> Unit,
     val onCurrencyChange: (CurrencyCode) -> Unit,
     val onApplyBackgroundSettings: (BackgroundSettings) -> Unit,
@@ -153,21 +106,13 @@ internal data class SettingsRouteActions(
     val onBindingCleared: () -> Unit,
     val onBindingChanged: () -> Unit,
     val onLedgerSwitched: () -> Unit,
-    // 标签提交后让洞察域重拉标签筛选 chips（镜像 218 的 transactionVocabularyRevision 通道；
-    // DashboardCards 通道随首页卡片设置页一并删除）。
-    val onTransactionVocabularyChanged: () -> Unit,
 )
 
 internal data class SettingsRouteRepositories(
     val ledgerRepository: LedgerRepository,
     val expenseRepository: ExpenseRepository,
     val outboxRepository: OutboxRepository,
-    val tagRepository: TagRepository,
     val activeLedgerId: String?,
-)
-
-internal data class SettingsDestinationNavigation(
-    val onCloseRoot: () -> Unit = {},
 )
 
 @Composable
@@ -187,6 +132,13 @@ internal fun SettingsDestinationHost(
     val backgroundCopyFailedMessage = stringResource(R.string.settings_background_copy_failed)
     val backgroundCustomTitle = stringResource(R.string.settings_background_custom_title)
     val backgroundCropFailedMessage = stringResource(R.string.settings_background_crop_failed)
+
+    LaunchedEffect(route) {
+        navigation.onSecondaryActiveChange(route != SettingsDestination.Root)
+    }
+    DisposableEffect(Unit) {
+        onDispose { navigation.onSecondaryActiveChange(false) }
+    }
 
     val backgroundPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
@@ -235,13 +187,7 @@ internal fun SettingsDestinationHost(
                     onOpenMyDevices = { route = SettingsDestination.MyDevices },
                     onOpenJoinFamilyLedger = { route = SettingsDestination.JoinFamilyLedger },
                 ),
-                bookkeeping = SettingsRootBookkeepingNavigationActions(
-                    onOpenCategoryRules = { route = SettingsDestination.CategoryRules },
-                    onOpenMerchantAliases = { route = SettingsDestination.MerchantAliases },
-                    onOpenTagManagement = { route = SettingsDestination.TagManagement },
-                    onOpenRecycleBin = { route = SettingsDestination.RecycleBin },
-                ),
-                dataTools = SettingsRootDataToolsNavigationActions(
+                dataPrivacy = SettingsRootDataPrivacyNavigationActions(
                     onOpenDataExport = { route = SettingsDestination.DataExport },
                 ),
                 alertsAppearance = SettingsRootAlertsAppearanceNavigationActions(
@@ -348,108 +294,6 @@ internal fun SettingsDestinationHost(
                 route = SettingsDestination.Appearance
             },
         )
-
-        SettingsDestination.CategoryRules -> CategoryRulesScreen(
-            state = CategoryRulesScreenState(
-                rules = CategoryRulesRuleListState(
-                    rules = states.rules.categoryRules,
-                    loading = states.rules.categoryRulesLoading,
-                ),
-                interaction = CategoryRulesInteractionState(
-                    busy = states.rules.busy,
-                    readOnly = !ledgerRoleCanModify(states.settings.role),
-                ),
-                status = CategoryRulesStatusState(
-                    message = states.rules.message,
-                    messageTone = states.rules.messageTone,
-                ),
-                applications = CategoryRulesApplicationState(
-                    history = states.rules.ruleApplications,
-                    loading = states.rules.ruleApplicationsLoading,
-                    confirmedPreview = states.rules.confirmedRulesPreview,
-                ),
-                undoableRule = states.rules.undoableRule,
-            ),
-            actions = CategoryRulesScreenActions(
-                onBack = { route = SettingsDestination.Root },
-                rules = CategoryRulesRuleActions(
-                    onCreate = actions.onCreateRule,
-                    onUpdate = actions.onUpdateRule,
-                    onToggle = actions.onToggleRule,
-                    onDelete = actions.onDeleteRule,
-                ),
-                applications = CategoryRulesApplicationActions(
-                    onPreviewApplyConfirmedRules = actions.onPreviewApplyConfirmedRules,
-                    onConfirmApplyConfirmedRules = actions.onConfirmApplyConfirmedRules,
-                    onRollbackRuleApplication = actions.onRollbackRuleApplication,
-                ),
-                undo = CategoryRulesUndoActions(
-                    onUndoDelete = actions.onUndoRuleDelete,
-                    onDismiss = actions.onDismissRuleUndo,
-                ),
-            ),
-        )
-
-        SettingsDestination.MerchantAliases -> MerchantAliasesScreen(
-            state = MerchantAliasesScreenState(
-                catalog = states.merchant.merchantCatalog,
-                aliases = states.merchant.merchantAliases,
-                busy = states.merchant.busy,
-                readOnly = !ledgerRoleCanModify(states.settings.role),
-                message = states.merchant.message,
-                messageTone = states.merchant.messageTone,
-                undoableAlias = states.merchant.undoableAlias,
-                mergeSuggestion = states.merchant.mergeSuggestion,
-            ),
-            actions = MerchantAliasesScreenActions(
-                onBack = { route = SettingsDestination.Root },
-                catalog = MerchantAliasesCatalogActions(
-                    onCreate = actions.onCreateMerchantCatalog,
-                    onRename = actions.onRenameMerchantCatalog,
-                    onToggle = actions.onToggleMerchantCatalog,
-                    onMerge = actions.onMergeMerchantCatalog,
-                    onDelete = actions.onDeleteMerchantCatalog,
-                ),
-                alias = MerchantAliasesAliasActions(
-                    onCreate = actions.onCreateMerchantAlias,
-                    onToggle = actions.onToggleMerchantAlias,
-                    onDelete = actions.onDeleteMerchantAlias,
-                ),
-                mergeSuggestion = MerchantAliasesMergeSuggestionActions(
-                    onDismiss = actions.onDismissMerchantCatalogMergeSuggestion,
-                ),
-                undo = MerchantAliasesUndoActions(
-                    onUndoDelete = actions.onUndoMerchantAlias,
-                    onDismiss = actions.onDismissMerchantAliasUndo,
-                ),
-            ),
-        )
-
-        SettingsDestination.TagManagement -> {
-            val vm: TagManagementViewModel = viewModel(
-                // Key by ledger so switching ledgers gets a fresh VM (fresh load),
-                // not the previous ledger's tags / undo handle / message.
-                key = "tag-management-${repositories.activeLedgerId ?: "none"}",
-                factory = tagManagementViewModelFactory(repositories.tagRepository),
-            )
-            TagManagementScreen(
-                viewModel = vm,
-                readOnly = !ledgerRoleCanModify(states.settings.role),
-                onBack = { route = SettingsDestination.Root },
-                // 标签提交后让洞察域重拉标签筛选 chips（transactionVocabularyRevision 通道）。
-                onTagsChanged = actions.onTransactionVocabularyChanged,
-            )
-        }
-
-        SettingsDestination.RecycleBin -> {
-            val vm: RecycleBinViewModel = viewModel(
-                factory = recycleBinViewModelFactory(repositories.ledgerRepository),
-            )
-            RecycleBinScreen(
-                viewModel = vm,
-                onBack = { route = SettingsDestination.Root },
-            )
-        }
 
         SettingsDestination.DataExport -> DataExportScreen(
             state = states.settings,

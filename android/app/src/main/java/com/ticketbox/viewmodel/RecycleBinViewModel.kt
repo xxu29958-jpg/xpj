@@ -22,6 +22,11 @@ data class RecycleBinUiState(
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
     val canModify: Boolean = false,
+    val changedRevision: Int = 0,
+    // Bumps only when a restore rewrote confirmed expense rows in place
+    // (tag_mutation undo replays Expense.tags) — the ledger must re-sync rows,
+    // not just the vocabulary dictionaries.
+    val expenseRowsRestoredRevision: Int = 0,
 )
 
 class RecycleBinViewModel(
@@ -84,7 +89,7 @@ class RecycleBinViewModel(
             }
             repository.restoreRecycleBinItem(item)
                 .onSuccess { message ->
-                    _uiState.update { it.withRestoredItemRemoved(key) }
+                    _uiState.update { it.withRestoredItemRemoved(item) }
                     repository.refreshRecycleBin()
                         .onSuccess { snapshot ->
                             _uiState.update {
@@ -127,12 +132,22 @@ class RecycleBinViewModel(
 
 fun RecycleBinItem.busyKey(): String = "$kind:$resourceId"
 
-private fun RecycleBinUiState.withRestoredItemRemoved(key: String): RecycleBinUiState {
-    val remainingItems = items.filterNot { it.busyKey() == key }
+// Server-side restore kinds that rewrite confirmed expense rows in place
+// (undo_tag_mutation replays Expense.tags on the linked expenses).
+private const val RECYCLE_BIN_KIND_EXPENSE_ROWS = "tag_mutation"
+
+private fun RecycleBinUiState.withRestoredItemRemoved(item: RecycleBinItem): RecycleBinUiState {
+    val remainingItems = items.filterNot { it.busyKey() == item.busyKey() }
     return copy(
         items = remainingItems,
         shortWindowCount = shortWindowCount.coerceIn(0, remainingItems.size),
         loadFailed = false,
         messageTone = MessageTone.Neutral,
+        changedRevision = changedRevision + 1,
+        expenseRowsRestoredRevision = if (item.kind == RECYCLE_BIN_KIND_EXPENSE_ROWS) {
+            expenseRowsRestoredRevision + 1
+        } else {
+            expenseRowsRestoredRevision
+        },
     )
 }

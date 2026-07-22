@@ -242,6 +242,7 @@
     <string name="recycle_bin_summary_limited_label">限期保留</string>
     <string name="recycle_bin_summary_long_label">长期归档</string>
     <string name="recycle_bin_summary_count">%1$d 项</string>
+    <string name="recycle_bin_summary_line">共 %1$d 项 · 限期保留 %2$d 项 · 长期归档 %3$d 项</string>
     <string name="recycle_bin_readonly_title">只读账本</string>
     <string name="recycle_bin_readonly_body">当前角色可以查看回收站；恢复项目需要拥有者或成员权限。</string>
     <string name="recycle_bin_loading_title">正在同步回收站</string>

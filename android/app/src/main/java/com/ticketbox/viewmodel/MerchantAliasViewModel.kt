@@ -33,6 +33,7 @@ data class MerchantAliasUiState(
     // ADR-0054: a key-changing rename collided with an existing active merchant;
     // the screen opens a user-confirmed merge dialog with the target preselected.
     val mergeSuggestion: MerchantCatalogMergeSuggestion? = null,
+    val changedRevision: Int = 0,
 )
 
 data class MerchantCatalogMergeSuggestion(
@@ -114,6 +115,7 @@ class MerchantAliasViewModel(
                             busy = false,
                             message = UiText.res(R.string.merchant_catalog_added),
                             messageTone = MessageTone.Success,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -157,6 +159,7 @@ class MerchantAliasViewModel(
                                 UiText.res(R.string.merchant_catalog_hidden)
                             },
                             messageTone = MessageTone.Success,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -194,6 +197,7 @@ class MerchantAliasViewModel(
                             busy = false,
                             message = UiText.res(R.string.merchant_catalog_renamed, updated.displayName),
                             messageTone = MessageTone.Success,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -285,6 +289,7 @@ class MerchantAliasViewModel(
                     UiText.res(R.string.merchant_catalog_merged, source.displayName, target.displayName)
                 },
                 messageTone = MessageTone.Success,
+                changedRevision = state.changedRevision + 1,
             )
         }
     }
@@ -309,6 +314,7 @@ class MerchantAliasViewModel(
                             merchantCatalog = state.merchantCatalog.filterNot { it.publicId == item.publicId },
                             message = UiText.res(R.string.merchant_catalog_deleted),
                             messageTone = MessageTone.Success,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -344,6 +350,7 @@ class MerchantAliasViewModel(
                             busy = false,
                             message = UiText.res(R.string.merchant_alias_added),
                             messageTone = MessageTone.Success,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -402,6 +409,7 @@ class MerchantAliasViewModel(
                                 .sortedMerchantAliases(),
                             message = message,
                             messageTone = tone,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -448,6 +456,7 @@ class MerchantAliasViewModel(
                             message = message,
                             messageTone = tone,
                             undoableAlias = undoable,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }
@@ -474,6 +483,7 @@ class MerchantAliasViewModel(
                             message = UiText.res(R.string.merchant_alias_restored),
                             messageTone = MessageTone.Success,
                             undoableAlias = null,
+                            changedRevision = state.changedRevision + 1,
                         )
                     }
                 }

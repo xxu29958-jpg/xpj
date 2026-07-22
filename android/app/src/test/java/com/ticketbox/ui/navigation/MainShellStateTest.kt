@@ -227,6 +227,9 @@ class MainShellStateTest {
         assertNull(mainProductDestination("product/not-a-route"))
     }
 
+}
+
+class MainShellStateRevisionTest {
     @Test
     fun planAndExpenseMutationsInvalidateTheRightProductSummaries() {
         val state = MainShellState()
@@ -252,6 +255,21 @@ class MainShellStateTest {
         assertEquals(1, state.transactionVocabularyRevision)
         assertEquals(1, state.insightsDataRevision)
         assertEquals(0, state.planDataRevision)
+        assertEquals(0, state.expenseEditCompletionRevision)
+    }
+
+    @Test
+    fun recycleBinRestoreInvalidatesVocabularyAndPlanButInsightsOnlyOnce() {
+        val state = MainShellState()
+
+        state.markRecycleBinRestoreCompleted()
+
+        // Restored rows can belong to the transactions vocabulary domain
+        // (category preferences) or the plan domain (budget / income plans /
+        // recurring / goals) — both channels must refresh.
+        assertEquals(1, state.transactionVocabularyRevision)
+        assertEquals(1, state.planDataRevision)
+        assertEquals(1, state.insightsDataRevision)
         assertEquals(0, state.expenseEditCompletionRevision)
     }
 }

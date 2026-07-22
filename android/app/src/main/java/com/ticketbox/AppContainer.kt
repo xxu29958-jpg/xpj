@@ -280,6 +280,7 @@ class AppContainer(context: Context) {
     val ruleRepository = repositories.ruleRepository
     val merchantRepository = repositories.merchantRepository
     val tagRepository = repositories.tagRepository
+    val categoryPreferenceRepository = repositories.categoryPreferenceRepository
 
     suspend fun replaceCredentialsForDebug(serverUrl: String, sessionToken: String) {
         repositories.replaceCredentialsForDebug(serverUrl, sessionToken)

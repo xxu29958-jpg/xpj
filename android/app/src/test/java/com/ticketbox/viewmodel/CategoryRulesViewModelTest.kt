@@ -129,6 +129,7 @@ class CategoryRulesViewModelTest {
         assertFalse(state.busy)
         assertEquals(MessageTone.Success, state.messageTone)
         assertEquals(listOf("高德"), state.categoryRules.map { it.keyword })
+        assertEquals(1, state.changedRevision)
     }
 
     @Test
@@ -152,6 +153,7 @@ class CategoryRulesViewModelTest {
 
         assertEquals(UiText.res(R.string.category_rules_apply_preview_failed), state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
+        assertEquals(0, state.changedRevision)
     }
 
     @Test
@@ -171,6 +173,39 @@ class CategoryRulesViewModelTest {
 
         assertEquals(UiText.res(R.string.category_rules_rollback_failed), state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
+        assertEquals(0, state.changedRevision)
+    }
+
+    @Test
+    fun confirmApplyWithChangesBumpsApplicationRevisionOnly() = runTest(dispatcher) {
+        // 应用规则改写确认流水的分类：走 applicationRevision（流水行重同步），
+        // 不再 bump changedRevision（字典并未变化）。
+        val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
+        awaitInitialLoads(vm)
+
+        vm.previewApplyConfirmedRules()
+        vm.uiState.first { it.confirmedRulesPreview != null }
+        vm.confirmApplyConfirmedRules()
+        val state = vm.uiState.first { it.applicationRevision > 0 }
+        runCurrent()
+
+        assertEquals(1, state.applicationRevision)
+        assertEquals(0, state.changedRevision)
+        assertEquals(MessageTone.Success, state.messageTone)
+    }
+
+    @Test
+    fun rollbackWithChangesBumpsApplicationRevisionOnly() = runTest(dispatcher) {
+        val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
+        val application = awaitInitialLoads(vm).ruleApplications.single()
+
+        vm.rollbackRuleApplication(application)
+        val state = vm.uiState.first { it.applicationRevision > 0 }
+        runCurrent()
+
+        assertEquals(1, state.applicationRevision)
+        assertEquals(0, state.changedRevision)
+        assertEquals(MessageTone.Success, state.messageTone)
     }
 
     private fun harness(api: ApiService): CategoryRulesViewModel {

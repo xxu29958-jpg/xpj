@@ -90,6 +90,9 @@ private fun ledgerScreenActions(
     onSync = ledgerViewModel::sync,
     onExportCsv = ledgerViewModel::exportCsv,
     onOpenGlobalSearch = { shellState.openSecondaryPage(ProductSecondaryPage.GlobalSearch) },
+    onOpenLibrary = {
+        shellState.openSecondaryPage(ProductSecondaryPage.TransactionsLibrary)
+    },
     onManualCreate = ledgerViewModel::createManualExpense,
     onViewModeChange = ledgerViewModel::setViewMode,
     onEdit = { navController.openExpense(it.id) },

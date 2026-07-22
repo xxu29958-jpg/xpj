@@ -190,6 +190,7 @@
     <string name="tag_management_readonly_title">只读模式</string>
     <string name="tag_management_readonly_hint">当前角色只能查看标签，不能重命名、合并或删除。</string>
     <string name="tag_management_section_overview">标签概览</string>
+    <string name="tag_management_semantics_note">新标签在账单编辑页创建；这里只用于整理与筛选，不会改变分类或入账事实。</string>
     <string name="tag_management_overview_total_label">全部</string>
     <string name="tag_management_overview_total_caption">标签</string>
     <string name="tag_management_overview_active_label">使用中</string>

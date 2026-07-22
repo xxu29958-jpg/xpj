@@ -124,6 +124,7 @@ private fun LedgerToolsSheetHost(
                 onSync = actions.onSync,
                 onExportCsv = actions.onExportCsv,
                 onOpenGlobalSearch = { openSecondaryPage(actions.onOpenGlobalSearch) },
+                onOpenLibrary = { openSecondaryPage(actions.onOpenLibrary) },
                 onDismiss = { chromeState.showLedgerTools = false },
             ),
         )

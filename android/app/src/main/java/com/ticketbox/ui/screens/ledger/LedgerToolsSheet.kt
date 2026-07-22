@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Search
@@ -63,6 +64,7 @@ internal data class LedgerToolsSheetActions(
     val onSync: () -> Unit,
     val onExportCsv: () -> Unit,
     val onOpenGlobalSearch: () -> Unit,
+    val onOpenLibrary: () -> Unit,
     val onDismiss: () -> Unit,
 )
 
@@ -99,6 +101,7 @@ internal fun LedgerToolsSheet(
             canExport = state.canExport,
             onSync = actions.onSync,
             onExportCsv = actions.onExportCsv,
+            onOpenLibrary = actions.onOpenLibrary,
         )
         LedgerToolsFooter(
             hasUserFilters = hasUserFilters,
@@ -231,8 +234,16 @@ private fun LedgerDataTools(
     canExport: Boolean,
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
+    onOpenLibrary: () -> Unit,
 ) {
     LedgerToolSection(title = stringResource(R.string.ledger_tools_actions_title)) {
+        LedgerInlineButton(
+            text = stringResource(R.string.ledger_tools_library),
+            modifier = Modifier.fillMaxWidth(),
+            enabled = true,
+            onClick = onOpenLibrary,
+            icon = Icons.Default.Category,
+        )
         AppAdaptiveEqualControlRow(
             leading = { actionModifier ->
                 LedgerInlineButton(

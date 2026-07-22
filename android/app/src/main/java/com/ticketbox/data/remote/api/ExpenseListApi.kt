@@ -1,6 +1,9 @@
 package com.ticketbox.data.remote.api
 
 import com.ticketbox.data.remote.dto.CategoriesDto
+import com.ticketbox.data.remote.dto.CategoryPreferenceDto
+import com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto
+import com.ticketbox.data.remote.dto.CategoryPreferenceTokenRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.MonthsDto
@@ -15,6 +18,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.Part
+import retrofit2.http.Path
 import retrofit2.http.POST
 import retrofit2.http.Query
 import retrofit2.http.Streaming
@@ -25,6 +29,15 @@ interface ExpenseListApi {
 
     @GET("api/expenses/categories")
     suspend fun categories(): CategoriesDto
+
+    @GET("api/expenses/categories/preferences")
+    suspend fun categoryPreferences(): CategoryPreferenceListResponseDto
+
+    @POST("api/expenses/categories/preferences/{publicId}/delete")
+    suspend fun deleteCategoryPreference(
+        @Path("publicId") publicId: String,
+        @Body request: CategoryPreferenceTokenRequestDto,
+    ): CategoryPreferenceDto
 
     @GET("api/expenses/tags")
     suspend fun tags(): TagsDto

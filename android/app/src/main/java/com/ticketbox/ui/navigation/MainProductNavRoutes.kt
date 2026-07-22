@@ -65,7 +65,6 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                 preferenceControls = workspaceControls.preferences,
                 onBindingCleared = workspaceControls.onBindingCleared,
                 onClose = onBack,
-                onTransactionVocabularyChanged = shellState::markTransactionVocabularyChanged,
             )
         }
     }
@@ -137,8 +136,16 @@ internal fun NavGraphBuilder.addTransactionRoutes(
                 onBack = onBack,
             )
         }
-        // 218-B1: 流水资料库（TransactionsLibrary cluster）属后续 slice；
-        // 分类规则 / 商家别名 / 标签 / 回收站暂留设置页（见 SettingsDestinationHost）。
+        transactionsLibraryGraph(
+            navController = navController,
+            screenFactory = screenFactory,
+            onVocabularyChanged = shellState::markTransactionVocabularyChanged,
+            onRestoreCompleted = shellState::markRecycleBinRestoreCompleted,
+            // 规则应用/回滚与回收站 tag_mutation 恢复会原地改写确认流水行——语义
+            // 等同批量流水编辑完成，复用 expenseEditCompletionRevision 通道让账本
+            // 行重同步（同时失效洞察汇总）。
+            onTransactionRowsChanged = shellState::markExpenseEditCompleted,
+        )
     }
 }
 
