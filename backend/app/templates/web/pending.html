@@ -105,7 +105,7 @@
       </div>
     </div>
     <div>
-      {% if e.category and e.category not in ['未分类', '其他'] %}
+      {% if e.category and e.category not in ['未分类', '其他'] and not e.needs_category %}
         <span class="exp-cat">{{ e.category }}</span>
       {% else %}
         <span class="exp-cat exp-cat-missing">— 待分类</span>
@@ -119,7 +119,9 @@
       {% set _flags = [] %}
       {% if e.needs_amount %}{% set _ = _flags.append(('danger', '缺金额')) %}{% endif %}
       {% if e.needs_merchant %}{% set _ = _flags.append(('warn', '缺商家')) %}{% endif %}
+      {% if e.needs_category %}{% set _ = _flags.append(('warn', '缺分类')) %}{% endif %}
       {% if e.is_duplicate %}{% set _ = _flags.append(('danger', '疑似重复')) %}{% endif %}
+      {% if e.fx_pending %}{% set _ = _flags.append(('warn', '待汇率')) %}{% endif %}
       {% if _flags %}
         <div class="pill-row">
           {% for cls, label in _flags %}<span class="dt-pill {{ cls }}">{{ label }}</span>{% endfor %}

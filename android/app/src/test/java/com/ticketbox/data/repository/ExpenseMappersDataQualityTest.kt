@@ -62,6 +62,29 @@ class ExpenseMappersDataQualityTest {
         assertEquals("none", expenseDto(category = "none").toDomain().category)
     }
 
+    @Test
+    fun draftToRequestOmitsCategoryWhenMissingInsteadOfWritingOther() {
+        // The shared PATCH mapper must not turn a missing category into an
+        // explicit 其他 write — that silently cleared the data-quality fact on
+        // any quick-fix or unrelated edit (PR #230 round 12).
+        assertNull(draft(category = null).toRequest(baseline = null).category)
+        assertNull(draft(category = "  ").toRequest(baseline = null).category)
+        assertEquals("餐饮", draft(category = "餐饮").toRequest(baseline = null).category)
+        // Alias still normalizes on explicit writes.
+        assertEquals("餐饮", draft(category = "吃饭").toRequest(baseline = null).category)
+    }
+
+    private fun draft(category: String?) = com.ticketbox.domain.model.ExpenseDraft(
+        amountCents = 1200L,
+        merchant = "星巴克",
+        category = category,
+        note = null,
+        expenseTime = "2026-05-20T12:00:00Z",
+        tags = null,
+        valueScore = null,
+        regretScore = null,
+    )
+
     private fun expenseDto(
         category: String = "餐饮",
         imagePath: String? = null,

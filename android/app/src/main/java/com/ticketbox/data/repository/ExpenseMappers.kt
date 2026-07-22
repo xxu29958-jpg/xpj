@@ -319,7 +319,10 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
         originalAmount = if (isCreate || amountChanged) submittedAmountText else null,
         spentAt = if (isCreate || timeChanged) expenseTime else null,
         merchant = merchant,
-        category = normalizeExpenseCategory(category),
+        // null/blank category stays OUT of the PATCH body (exclude_unset):
+        // writing 其他 here would silently erase the missing-category fact on
+        // every quick-fix/edit of an uncategorized row (PR #230 round 12).
+        category = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory),
         note = note,
         expenseTime = if (isCreate || timeChanged) expenseTime else null,
         tags = tags,

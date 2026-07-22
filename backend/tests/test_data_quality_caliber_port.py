@@ -292,3 +292,37 @@ def test_update_expense_folds_dirty_category_tokens(client: TestClient, *, ident
         stored = db.get(Expense, expense_id)
         assert stored is not None
         assert stored.category == "交通"
+
+
+def test_web_pending_row_surfaces_missing_category_and_suppresses_ready_pill(
+    web_client: TestClient, *, identity,
+) -> None:
+    """PR #230 round 12: a none/null-category row must show the 缺分类 signal
+    (same family as 缺金额/缺商家), never the green 可确认 pill, and must not
+    render the raw token as plain category text. fx-pending rows likewise get
+    待汇率 instead of 可确认 — the row pills now mirror the ready filter."""
+    with SessionLocal() as db:
+        dirty = Expense(
+            tenant_id="owner", amount_cents=100, merchant="星巴克", category="none",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        ready = Expense(
+            tenant_id="owner", amount_cents=200, merchant="麦当劳", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        fx_blocked = Expense(
+            tenant_id="owner", amount_cents=300, merchant="肯德基", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+            fx_status=FX_STATUS_PENDING,
+        )
+        db.add_all([dirty, ready, fx_blocked])
+        db.commit()
+
+    resp = web_client.get("/web/pending?ledger_id=owner")
+    assert resp.status_code == 200
+    assert "缺分类" in resp.text
+    assert "待汇率" in resp.text
+    # Only the genuinely ready row gets the green pill.
+    assert resp.text.count('class="dt-pill ok"') == 1
+    # The dirty row's cell shows the missing marker, not the raw token.
+    assert 'exp-cat">none</span>' not in resp.text

@@ -28,7 +28,7 @@ from app.services import owner_console_service as owner_svc
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_common import currency_input_metadata
 from app.services.dashboard_service import list_dashboard_cards
-from app.services.data_quality_service import is_usable_pending_merchant
+from app.services.data_quality_service import is_uncategorized_expense_category, is_usable_pending_merchant
 from app.services.exchange_rate_service import home_currency_code
 from app.services.expense_service import list_pending
 from app.services.goal_service import list_goals
@@ -448,6 +448,10 @@ def _expense_view(expense) -> dict:
     # time/date noise and other unusable merchants count as missing, not just
     # NULL/blank — see data_quality_service for the ported rules.
     needs_merchant = not is_usable_pending_merchant(expense.merchant)
+    # Same shared category caliber (round 12): dirty tokens (未分类/未分類/
+    # none/null) must surface as missing on the row, not render as plain text
+    # nor leave the row showing the green 可确认 pill the ready filter denies.
+    needs_category = is_uncategorized_expense_category(expense.category)
     is_duplicate = (getattr(expense, "duplicate_status", None) or "") == "suspected"
     return {
         "id": expense.id,
@@ -487,6 +491,8 @@ def _expense_view(expense) -> dict:
         "is_duplicate": is_duplicate,
         "needs_amount": needs_amount,
         "needs_merchant": needs_merchant,
+        "needs_category": needs_category,
+        "fx_pending": getattr(expense, "fx_status", "") == FX_STATUS_PENDING,
         "source_label": source_label,
         "is_split_received": is_split_received,
     }
