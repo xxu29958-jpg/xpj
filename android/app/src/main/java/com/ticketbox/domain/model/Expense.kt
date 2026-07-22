@@ -81,12 +81,6 @@ fun Expense.canInitiateBillSplit(readOnly: Boolean): Boolean =
         source != ExpenseSourceValues.BILL_SPLIT_RECEIVED &&
         !readOnly
 
-fun Expense.isPendingReadyToConfirmDirectly(): Boolean =
-    amountCents != null &&
-        !merchant.isNullOrBlank() &&
-        category.isNotBlank() &&
-        duplicateStatus != DuplicateStatusValues.SUSPECTED
-
 object DuplicateStatusValues {
     const val SUSPECTED = "suspected"
 }

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.fx_constants import FX_STATUS_PENDING
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -59,6 +60,19 @@ def _needs_category(view: dict) -> bool:
     return is_uncategorized_expense_category(view.get("category"))
 
 
+def _is_ready(view: dict) -> bool:
+    """Ready caliber for filter + tab count + DQ link: amount + usable merchant
+    + categorized + non-duplicate + fx-ready (mirrors the 409 confirm-path
+    guard; equals ready_to_confirm_categorized)."""
+    return (
+        not view["needs_amount"]
+        and not view["needs_merchant"]
+        and not _needs_category(view)
+        and not view["is_duplicate"]
+        and view["fx_status"] != FX_STATUS_PENDING
+    )
+
+
 def _matches_filter(view: dict, filter_key: str) -> bool:
     if filter_key == "all":
         return True
@@ -71,12 +85,7 @@ def _matches_filter(view: dict, filter_key: str) -> bool:
     if filter_key == "duplicate":
         return view["is_duplicate"]
     if filter_key == "ready":
-        return (
-            not view["needs_amount"]
-            and not view["needs_merchant"]
-            and not _needs_category(view)
-            and not view["is_duplicate"]
-        )
+        return _is_ready(view)
     return True
 
 
@@ -177,11 +186,7 @@ def web_pending(
     ctx["needs_merchant_count"] = sum(1 for it in raw_items if it["needs_merchant"])
     ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))
     ctx["suspected_duplicate_count"] = suspected_total
-    ctx["ready_count"] = sum(
-        1
-        for it in raw_items
-        if not it["needs_amount"] and not it["needs_merchant"] and not _needs_category(it) and not it["is_duplicate"]
-    )
+    ctx["ready_count"] = sum(1 for it in raw_items if _is_ready(it))
     return templates.TemplateResponse(request=request, name="pending.html", context=ctx)
 
 

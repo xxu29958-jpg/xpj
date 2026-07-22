@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens.pending
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseSourceValues
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.viewmodel.PendingListLoadState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -144,6 +145,25 @@ class PendingScreenModelsTest {
                 "must be usable: $merchant",
             )
         }
+    }
+
+    @Test
+    fun fxPendingRowsAreNotReadyAndKeepActionableFixesFirst() {
+        // fx-pending rows 409 on the server confirm path (main's
+        // _ensure_expense_can_confirm) — they must leave the ready set that
+        // the ReadyToConfirm filter and bulk confirm both read.
+        val fxPending = pendingExpense().copy(fxStatus = FxContract.StatusPending)
+        assertEquals(PendingPrimaryReviewAction.FxPending, pendingPrimaryReviewAction(fxPending))
+        assertEquals(
+            emptyList(),
+            applyNeedsReviewFilter(listOf(fxPending), NeedsReviewFilter.ReadyToConfirm),
+        )
+
+        // Other user-actionable issues still outrank the fx state.
+        val fxWithCategoryGap = pendingExpense(category = "").copy(fxStatus = FxContract.StatusPending)
+        assertEquals(PendingPrimaryReviewAction.QuickCategory, pendingPrimaryReviewAction(fxWithCategoryGap))
+        val fxWithMerchantGap = pendingExpense(merchant = "12:34").copy(fxStatus = FxContract.StatusPending)
+        assertEquals(PendingPrimaryReviewAction.QuickMerchant, pendingPrimaryReviewAction(fxWithMerchantGap))
     }
 
     @Test

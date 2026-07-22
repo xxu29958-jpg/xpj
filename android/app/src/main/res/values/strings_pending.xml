@@ -113,6 +113,7 @@
     <string name="pending_row_action_duplicate">核对重复</string>
     <string name="pending_row_action_category">补分类</string>
     <string name="pending_row_action_merchant">补商家</string>
+    <string name="pending_row_action_fx_pending">待汇率</string>
     <string name="pending_row_action_confirm">确认入账</string>
     <string name="pending_row_action_ignore">删除</string>
     <string name="pending_row_action_keep_duplicate">保留两笔</string>

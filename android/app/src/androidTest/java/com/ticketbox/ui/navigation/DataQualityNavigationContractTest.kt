@@ -122,6 +122,27 @@ class DataQualityNavigationContractTest {
     }
 
     @Test
+    fun rootlessReturnToRootDoesNotRestoreStaleSavedInsightsStack() {
+        setContractContent()
+        // 1) Build a saved Insights stack snapshot: Insights root + DQ page,
+        //    then switch away (SwitchBackStack pops both with saveState).
+        openDataQualityFromInsights()
+        selectDomain(PrimaryDomain.Inbox)
+        // 2) Cross-domain direct entry again: [Inbox, DQ] with NO Insights root.
+        composeRule.onNodeWithText(ENTRY_INBOX).performClick()
+        waitForNode(TEXT_MISSING_MERCHANT)
+
+        // 3) Reselecting the Insights tab hits the rootless ReturnToRoot
+        //    fallback — it must land on a FRESH root, not restore the stale
+        //    [Insights, DQ] snapshot saved in step 1.
+        selectDomain(PrimaryDomain.Insights)
+
+        assertEquals(PrimaryDomain.Insights.route, currentRoute())
+        assertEquals(PrimaryDomain.Insights, shellState.selectedDomain)
+        composeRule.onNodeWithText("insights-root").assertIsDisplayed()
+    }
+
+    @Test
     fun insightsTabReselectAfterDirectEntryLandsOnRealInsightsRoot() {
         setContractContent()
 

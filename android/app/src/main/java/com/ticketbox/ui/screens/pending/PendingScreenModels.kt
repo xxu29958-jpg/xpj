@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.pending
 
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.viewmodel.PendingListLoadState
 
@@ -27,6 +28,9 @@ internal enum class PendingPrimaryReviewAction {
     DuplicateReview,
     QuickCategory,
     QuickMerchant,
+    // Blocked on the exchange rate — the server confirm path 409s these rows
+    // (exchange_rate_pending), so they are never a ready/confirm target.
+    FxPending,
     Confirm,
 }
 
@@ -57,6 +61,9 @@ internal fun pendingPrimaryReviewAction(expense: Expense): PendingPrimaryReviewA
     expense.duplicateStatus == DuplicateStatusValues.SUSPECTED -> PendingPrimaryReviewAction.DuplicateReview
     pendingNeedsCategory(expense) -> PendingPrimaryReviewAction.QuickCategory
     pendingMerchantPresentation(expense).needsReview -> PendingPrimaryReviewAction.QuickMerchant
+    // fx 维度与后端 ready 口径/确认守卫一致（main 的 _ensure_expense_can_confirm
+    // 对 fx-pending 行抛 409）——此类行不进 ready 集、不进批量确认。
+    expense.fxStatus == FxContract.StatusPending -> PendingPrimaryReviewAction.FxPending
     else -> PendingPrimaryReviewAction.Confirm
 }
 

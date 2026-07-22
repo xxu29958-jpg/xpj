@@ -10,5 +10,6 @@ internal fun pendingPrimaryActionLabelRes(expense: Expense): Int = when (pending
     PendingPrimaryReviewAction.DuplicateReview -> R.string.pending_row_action_duplicate
     PendingPrimaryReviewAction.QuickCategory -> R.string.pending_row_action_category
     PendingPrimaryReviewAction.QuickMerchant -> R.string.pending_row_action_merchant
+    PendingPrimaryReviewAction.FxPending -> R.string.pending_row_action_fx_pending
     PendingPrimaryReviewAction.Confirm -> R.string.pending_row_action_confirm
 }

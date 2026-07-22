@@ -40,8 +40,8 @@
   </div>
   <div class="kpi-cell is-positive">
     <div class="label">可一键确认</div>
-    <div class="val">{{ summary.ready_to_confirm }}</div>
-    <div class="foot">金额 + 商家齐 + 非重复</div>
+    <div class="val">{{ summary.ready_to_confirm_categorized }}</div>
+    <div class="foot">金额 + 商家齐 + 有类目 + 非重复 + 汇率就绪</div>
   </div>
   <div class="kpi-cell">
     <div class="label">最久待确认</div>
@@ -73,9 +73,9 @@
       <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=duplicate">{% if can_write %}去人工裁决{% else %}查看疑似重复{% endif %} →</a>
     </li>
     {% endif %}
-    {% if summary.ready_to_confirm > 0 %}
+    {% if summary.ready_to_confirm_categorized > 0 %}
     <li>
-      <strong>{{ summary.ready_to_confirm }} 条可批量确认：</strong>
+      <strong>{{ summary.ready_to_confirm_categorized }} 条可批量确认：</strong>
       <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=ready">{% if can_write %}去待确认{% else %}查看可确认项{% endif %} →</a>
       <span class="hint">{% if can_write %}需手动勾选，不会自动确认{% else %}只读角色不能确认{% endif %}</span>
     </li>

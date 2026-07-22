@@ -148,6 +148,8 @@ fun PendingScreen(
             PendingPrimaryReviewAction.DuplicateReview -> reviewActions.duplicate.onOpenDuplicate(expense)
             PendingPrimaryReviewAction.QuickCategory -> reviewActions.quickFix.onQuickCategory(expense)
             PendingPrimaryReviewAction.QuickMerchant -> reviewActions.quickFix.onQuickMerchant(expense)
+            // 待汇率行不可确认（服务端 409），主操作落到编辑页查看/处理汇率上下文。
+            PendingPrimaryReviewAction.FxPending -> itemActions.onEdit(expense)
             PendingPrimaryReviewAction.Confirm -> {
                 haptics.confirm()
                 itemActions.onConfirm(expense)

@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.fx_constants import FX_STATUS_PENDING
 from app.models import Expense
 from app.services.data_quality_service import (
     is_uncategorized_expense_category,
@@ -150,3 +151,44 @@ def test_none_null_category_tokens_count_as_uncategorized(
     # ready-categorized — 'none'/'Null' rows drop out of that caliber.
     assert body["ready_to_confirm"] == 3
     assert body["ready_to_confirm_categorized"] == 1
+
+
+def test_web_ready_caliber_covers_fx_and_shared_category_tokens(
+    web_client: TestClient, *, identity,
+) -> None:
+    """PR #230 round 6: the web ready filter/tab count and the DQ page's ready
+    number share the ready_to_confirm_categorized caliber — fx-pending rows
+    (the confirm path 409s them) and uncategorized-token rows drop out."""
+    with SessionLocal() as db:
+        ready = Expense(
+            tenant_id="owner", amount_cents=100, merchant="星巴克", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        fx_blocked = Expense(
+            tenant_id="owner", amount_cents=200, merchant="麦当劳", category="餐饮",
+            source="pytest", status="pending", duplicate_status="none",
+            fx_status=FX_STATUS_PENDING,
+        )
+        token_blocked = Expense(
+            tenant_id="owner", amount_cents=300, merchant="肯德基", category="none",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        db.add_all([ready, fx_blocked, token_blocked])
+        db.commit()
+        ready_id, fx_id, token_id = ready.id, fx_blocked.id, token_blocked.id
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{ready_id}/edit" in resp.text
+    assert f"/web/expenses/{fx_id}/edit" not in resp.text
+    assert f"/web/expenses/{token_id}/edit" not in resp.text
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_category")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{token_id}/edit" in resp.text
+
+    # The DQ page advertises exactly what the ready link lands on (categorized
+    # caliber) — not the wider ready_to_confirm aggregate.
+    resp = web_client.get("/web/data-quality?ledger_id=owner")
+    assert resp.status_code == 200
+    assert "1 条可批量确认" in resp.text

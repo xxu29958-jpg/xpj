@@ -6,7 +6,8 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.domain.model.isPendingReadyToConfirmDirectly
+import com.ticketbox.ui.screens.pending.NeedsReviewFilter
+import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -213,7 +214,9 @@ fun PendingViewModel.confirmReadyExpenses() {
     if (blockReadOnlyWrite(closeSheet = true)) return
     val state = _uiState.value
     if (state.bulkConfirm.running) return
-    val ready = state.items.filter { it.isPendingReadyToConfirmDirectly() }
+    // 与 ReadyToConfirm 筛选同一谓词（含类目原值/商家可用性/fx 维度）——批量确认
+    // 的可确认集就是筛选落地点，杜绝两边对同一行 ready 判定不一致（PR #230）。
+    val ready = applyNeedsReviewFilter(state.items, NeedsReviewFilter.ReadyToConfirm)
     if (ready.isEmpty()) {
         _uiState.update { it.copy(message = UiText.res(R.string.pending_review_bulk_none_ready)) }
         return
