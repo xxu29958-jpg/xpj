@@ -659,6 +659,48 @@ class LedgerViewModelTest {
         )
         assertEquals(MessageTone.Info, state.messageTone)
     }
+
+    @Test
+    fun confirmedWithoutImageFilterReadsCacheImagePresence() = ledgerTest {
+        // The Room cache drops image_path; the filter must read the stored
+        // presence column, exactly like the backend's
+        // image_path IS NULL OR image_deleted_at IS NOT NULL.
+        val fake = FakeLedgerActions(
+            expenses = listOf(
+                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A").copy(hasImage = true),
+                expense(id = 2, amountCents = 1300, category = "餐饮", merchant = "B"),
+                expense(id = 3, amountCents = 1400, category = "餐饮", merchant = "C")
+                    .copy(hasImage = true, imageDeletedAt = "2026-05-01T00:00:00Z"),
+            ),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+
+        vm.applyDataQualityFilter(LedgerDataQualityFilter.ConfirmedWithoutImage)
+        advanceUntilIdle()
+
+        assertEquals(listOf(2L, 3L), vm.uiState.value.items.map { it.id })
+    }
+
+    @Test
+    fun missingCategoryFilterSeesRawServerCategoryThroughNormalization() = ledgerTest {
+        // Display-normalized 「其他」 must not hide a server-side blank category,
+        // and a raw categorized value must not be misflagged either.
+        val fake = FakeLedgerActions(
+            expenses = listOf(
+                expense(id = 1, amountCents = 1200, category = "其他", merchant = "A").copy(serverCategory = ""),
+                expense(id = 2, amountCents = 1300, category = "其他", merchant = "B").copy(serverCategory = "餐饮"),
+                expense(id = 3, amountCents = 1400, category = "未分类", merchant = "C"),
+            ),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+
+        vm.applyDataQualityFilter(LedgerDataQualityFilter.MissingCategory)
+        advanceUntilIdle()
+
+        assertEquals(listOf(1L, 3L), vm.uiState.value.items.map { it.id })
+    }
 }
 
 // Fixture expenses sit in 2026-05; tests pin monthFilter here so they stay

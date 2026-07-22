@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class, PendingMutationEntity::class],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -432,6 +432,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // 218-B3 data quality: expenses gains categoryRaw (server-stored category
+        // before display normalization) + hasImage (receipt-image presence), so the
+        // missing-category / confirmed-without-image filters on cached rows match
+        // the backend predicates. categoryRaw stays NULL for pre-existing rows
+        // (filters fall back to the normalized ``category`` until the next sync);
+        // hasImage backfills best-effort from the thumbnail columns and likewise
+        // self-heals on the next sync rewrite.
+        internal val MIGRATION_14_15_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE expenses ADD COLUMN categoryRaw TEXT",
+            "ALTER TABLE expenses ADD COLUMN hasImage INTEGER NOT NULL DEFAULT 0",
+            "UPDATE expenses SET hasImage = 1 WHERE thumbnailPath IS NOT NULL AND thumbnailDeletedAt IS NULL",
+        )
+
+        internal val Migration14To15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_14_15_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -453,6 +472,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration11To12,
                         Migration12To13,
                         Migration13To14,
+                        Migration14To15,
                     )
                     .build()
                     .also { instance = it }

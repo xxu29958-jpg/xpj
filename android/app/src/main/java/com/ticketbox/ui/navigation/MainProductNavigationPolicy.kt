@@ -71,7 +71,21 @@ internal fun NavHostController.navigatePrimaryDomain(
             }
         }
         is PrimaryDomainNavigationStrategy.ReturnToRoot -> {
-            popBackStack(strategy.route, inclusive = false)
+            if (!popBackStack(strategy.route, inclusive = false)) {
+                // Cross-domain direct entry (e.g. Inbox's data-quality chip opens the
+                // DQ page with NO Insights root on the stack): reselecting the owning
+                // tab computes ReturnToRoot, but there is no root to pop to and the
+                // pop no-ops — the user stays stuck on the secondary page under the
+                // wrong domain. Fall back to SwitchBackStack semantics so the tap
+                // always lands on a real domain root.
+                navigate(strategy.route) {
+                    popUpTo(graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
         }
         is PrimaryDomainNavigationStrategy.OpenRoot -> {
             clearBackStack(strategy.route)

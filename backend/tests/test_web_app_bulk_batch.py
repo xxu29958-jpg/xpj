@@ -45,6 +45,44 @@ def test_web_pending_filter_ready_excludes_missing_amount(web_client: TestClient
     assert f"/web/expenses/{pending_no_amount}/edit" not in resp.text
 
 
+def test_web_pending_merchant_caliber_matches_data_quality(web_client: TestClient, *, identity) -> None:
+    """PR #230: the web missing_merchant / ready filters share the data-quality
+    merchant-usability caliber — OCR time noise counts as a missing merchant,
+    not just NULL/blank."""
+    with SessionLocal() as db:
+        noise = Expense(
+            tenant_id="owner",
+            amount_cents=100,
+            merchant="12:34",
+            category="餐饮",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        usable = Expense(
+            tenant_id="owner",
+            amount_cents=200,
+            merchant="星巴克",
+            category="餐饮",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        db.add_all([noise, usable])
+        db.commit()
+        noise_id, usable_id = noise.id, usable.id
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_merchant")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{noise_id}/edit" in resp.text
+    assert f"/web/expenses/{usable_id}/edit" not in resp.text
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{noise_id}/edit" not in resp.text
+    assert f"/web/expenses/{usable_id}/edit" in resp.text
+
+
 def test_web_pending_filter_active_tab_marker(web_client: TestClient, *, identity) -> None:
     _create_pending(web_client, identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_amount")

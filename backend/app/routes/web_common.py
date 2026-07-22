@@ -28,6 +28,7 @@ from app.services import owner_console_service as owner_svc
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_common import currency_input_metadata
 from app.services.dashboard_service import list_dashboard_cards
+from app.services.data_quality_service import is_usable_pending_merchant
 from app.services.exchange_rate_service import home_currency_code
 from app.services.expense_service import list_pending
 from app.services.goal_service import list_goals
@@ -443,7 +444,10 @@ def _expense_view(expense) -> dict:
     # 兜底)。发起卡据此隐藏。
     is_split_received = source_raw == bill_split_service.SPLIT_RECEIVED_SOURCE
     needs_amount = expense.amount_cents is None
-    needs_merchant = not (expense.merchant or "").strip()
+    # Shared with the data-quality counters + Android inbox (PR #230): OCR
+    # time/date noise and other unusable merchants count as missing, not just
+    # NULL/blank — see data_quality_service for the ported rules.
+    needs_merchant = not is_usable_pending_merchant(expense.merchant)
     is_duplicate = (getattr(expense, "duplicate_status", None) or "") == "suspected"
     return {
         "id": expense.id,
@@ -578,7 +582,8 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     pending_rows = list_pending(db, ledger_id)
     pending_count = len(pending_rows)
     needs_amount = sum(1 for e in pending_rows if e.amount_cents is None)
-    needs_merchant = sum(1 for e in pending_rows if not (e.merchant or "").strip())
+    # Same shared merchant-usability caliber as the expense view above.
+    needs_merchant = sum(1 for e in pending_rows if not is_usable_pending_merchant(e.merchant))
     suspected = sum(
         1 for e in pending_rows if (getattr(e, "duplicate_status", None) or "") == "suspected"
     )

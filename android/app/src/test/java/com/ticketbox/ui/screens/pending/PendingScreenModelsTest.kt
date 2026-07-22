@@ -147,6 +147,27 @@ class PendingScreenModelsTest {
     }
 
     @Test
+    fun quickCategorySeesRawServerCategoryThroughNormalization() {
+        // Display-normalized 「其他」 must not hide a server-side blank category
+        // from the NeedsCategory surface (PR #230 round 4), and a raw
+        // categorized value must not be misflagged either.
+        val rawBlank = pendingExpense(category = "其他").copy(serverCategory = "")
+        assertEquals(PendingPrimaryReviewAction.QuickCategory, pendingPrimaryReviewAction(rawBlank))
+        assertEquals(listOf(rawBlank), applyNeedsReviewFilter(listOf(rawBlank), NeedsReviewFilter.NeedsCategory))
+
+        val rawCategorized = pendingExpense(category = "其他").copy(serverCategory = "餐饮")
+        assertEquals(PendingPrimaryReviewAction.Confirm, pendingPrimaryReviewAction(rawCategorized))
+        assertEquals(
+            emptyList(),
+            applyNeedsReviewFilter(listOf(rawCategorized), NeedsReviewFilter.NeedsCategory),
+        )
+
+        // No raw value (manual construction): falls back to the display value.
+        val legacy = pendingExpense(category = "未分类")
+        assertEquals(PendingPrimaryReviewAction.QuickCategory, pendingPrimaryReviewAction(legacy))
+    }
+
+    @Test
     fun primaryReviewActionKeepsEarlierBlockingWorkAheadOfLaterFields() {
         assertEquals(
             PendingPrimaryReviewAction.MissingAmount,

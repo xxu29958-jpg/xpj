@@ -25,10 +25,18 @@ data class Expense(
     val exchangeRateDate: String? = null,
     val exchangeRateSource: String? = null,
     val merchant: String?,
+    // Server-stored category BEFORE client display normalization; NULL when
+    // the value didn't come from the server DTO/cache (manual constructions) —
+    // data-quality filters read `serverCategory ?: category` so normalized
+    // blank/NULL rows stop hiding from the missing-category surfaces (218-B3).
+    val serverCategory: String? = null,
     val category: String,
     val note: String?,
     val source: String,
     val imagePath: String?,
+    // Presence of the original receipt image (cache-stored; the path itself
+    // isn't). Read by the confirmed-without-image data-quality filter.
+    val hasImage: Boolean = imagePath != null,
     val thumbnailPath: String?,
     val imageDeletedAt: String? = null,
     val thumbnailDeletedAt: String? = null,

@@ -46,9 +46,24 @@ data class ExpenseEntity(
     val exchangeRateSource: String? = null,
     val fxStatus: String = FxContract.StatusReady,
     val merchant: String?,
+    // Server-stored category BEFORE client display normalization (218-B3 data
+    // quality): ``category`` keeps the normalized display value (blank/NULL →
+    // 「其他」), while this column preserves the raw value so the data-quality
+    // filters (missing-category) see exactly what the backend counts. NULL for
+    // rows cached before v15 — filters fall back to ``category`` until the
+    // next sync rewrites the row.
+    val categoryRaw: String? = null,
     val category: String,
     val note: String?,
     val source: String,
+    // Presence of the original receipt image (DTO ``image_path`` non-blank at
+    // cache-write time). The cache never stores the path itself; the
+    // confirmed-without-image filter reads this column (OR ``imageDeletedAt``)
+    // so it matches the backend's ``image_path IS NULL OR image_deleted_at IS
+    // NOT NULL`` predicate instead of seeing a hardcoded null. Backfilled
+    // best-effort from ``thumbnailPath`` in v15, self-heals on next sync.
+    @ColumnInfo(defaultValue = "0")
+    val hasImage: Boolean = false,
     val thumbnailPath: String?,
     val imageDeletedAt: String? = null,
     val thumbnailDeletedAt: String? = null,

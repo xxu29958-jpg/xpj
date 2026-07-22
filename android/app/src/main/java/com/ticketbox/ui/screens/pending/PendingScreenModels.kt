@@ -60,8 +60,10 @@ internal fun pendingPrimaryReviewAction(expense: Expense): PendingPrimaryReviewA
     else -> PendingPrimaryReviewAction.Confirm
 }
 
+// 读服务端原值（serverCategory），缺省回退到展示值：归一化成「其他」的
+// blank/NULL 类目在后端 missing_category 计数里，这里必须同口径可见（PR #230）。
 internal fun pendingNeedsCategory(expense: Expense): Boolean =
-    isUncategorizedExpenseCategory(expense.category)
+    isUncategorizedExpenseCategory(expense.serverCategory ?: expense.category)
 
 private val PendingTimeNoise = Regex(
     pattern = """^\d{1,2}\s*[:：]\s*\d{2}(?:\s*[:：]\s*\d{2})?(?:\s*[AP]M)?$""",

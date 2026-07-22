@@ -249,9 +249,11 @@ class LedgerViewModel(
         )
         return when (state.dataQualityFilter) {
             LedgerDataQualityFilter.MissingCategory ->
-                normallyFiltered.filter { isUncategorizedExpenseCategory(it.category) }
+                // Same serverCategory-first caliber as the inbox (pendingNeedsCategory).
+                normallyFiltered.filter { isUncategorizedExpenseCategory(it.serverCategory ?: it.category) }
             LedgerDataQualityFilter.ConfirmedWithoutImage ->
-                normallyFiltered.filter { it.imagePath.isNullOrBlank() || it.imageDeletedAt != null }
+                // Mirrors the backend predicate: image_path IS NULL OR image_deleted_at IS NOT NULL.
+                normallyFiltered.filter { !it.hasImage || it.imageDeletedAt != null }
             null -> normallyFiltered
         }
     }

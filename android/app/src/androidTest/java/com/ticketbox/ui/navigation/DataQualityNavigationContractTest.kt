@@ -122,6 +122,23 @@ class DataQualityNavigationContractTest {
     }
 
     @Test
+    fun insightsTabReselectAfterDirectEntryLandsOnRealInsightsRoot() {
+        setContractContent()
+
+        composeRule.onNodeWithText(ENTRY_INBOX).performClick()
+        waitForNode(TEXT_MISSING_MERCHANT)
+
+        // Stack [Inbox, DQ] — no Insights root. Reselecting the owning tab
+        // computes ReturnToRoot; with nothing to pop to, the tap must land on
+        // a real domain root instead of no-op'ing on the secondary page.
+        selectDomain(PrimaryDomain.Insights)
+
+        assertEquals(PrimaryDomain.Insights.route, currentRoute())
+        assertEquals(PrimaryDomain.Insights, shellState.selectedDomain)
+        composeRule.onNodeWithText("insights-root").assertIsDisplayed()
+    }
+
+    @Test
     fun directEntryFromInboxChipWithoutInsightsRootRendersAndRemediates() {
         setContractContent()
 
