@@ -83,6 +83,55 @@ def test_web_pending_merchant_caliber_matches_data_quality(web_client: TestClien
     assert f"/web/expenses/{usable_id}/edit" in resp.text
 
 
+def test_web_pending_category_caliber_matches_data_quality(web_client: TestClient, *, identity) -> None:
+    """PR #230: the web missing_category / ready filters share the data-quality
+    uncategorized token set — literal none/null categories count as missing,
+    while 其他 remains a valid user-chosen category."""
+    with SessionLocal() as db:
+        token_none = Expense(
+            tenant_id="owner",
+            amount_cents=100,
+            merchant="商家甲",
+            category="none",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        token_null = Expense(
+            tenant_id="owner",
+            amount_cents=200,
+            merchant="商家乙",
+            category="NULL",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        other = Expense(
+            tenant_id="owner",
+            amount_cents=300,
+            merchant="商家丙",
+            category="其他",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        db.add_all([token_none, token_null, other])
+        db.commit()
+        none_id, null_id, other_id = token_none.id, token_null.id, other.id
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_category")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{none_id}/edit" in resp.text
+    assert f"/web/expenses/{null_id}/edit" in resp.text
+    assert f"/web/expenses/{other_id}/edit" not in resp.text
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{none_id}/edit" not in resp.text
+    assert f"/web/expenses/{null_id}/edit" not in resp.text
+    assert f"/web/expenses/{other_id}/edit" in resp.text
+
+
 def test_web_pending_filter_active_tab_marker(web_client: TestClient, *, identity) -> None:
     _create_pending(web_client, identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_amount")

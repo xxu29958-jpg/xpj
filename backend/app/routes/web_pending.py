@@ -27,6 +27,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
+from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.expense_service import (
     fetch_expense_row_version_in_status,
     list_pending,
@@ -52,11 +53,10 @@ _PENDING_FILTERS = {
 
 
 def _needs_category(view: dict) -> bool:
-    # 分类为空，或仍是默认占位「未分类」时视为待分类。
-    # 「其他」是用户可主动选择的合法分类，不能把它算进缺分类，
-    # 否则旧账单会被错误排除在 ready 筛选外。
-    cat = (view.get("category") or "").strip()
-    return cat == "" or cat == "未分类"
+    # 与 /api/insights/data-quality 共享口径（is_uncategorized_expense_category）：
+    # 空/未分类/未分類/none/null 均视为待分类；「其他」仍是用户可主动选择的
+    # 合法分类，不计入缺分类，否则旧账单会被错误排除在 ready 筛选外。
+    return is_uncategorized_expense_category(view.get("category"))
 
 
 def _matches_filter(view: dict, filter_key: str) -> bool:
