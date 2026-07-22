@@ -71,6 +71,13 @@ def _unique_names() -> set[str]:
     return {uc["name"] for uc in inspect(engine).get_unique_constraints("repayment_drafts")}
 
 
+def _idem_constraint_columns() -> list[str]:
+    for uc in inspect(engine).get_unique_constraints("repayment_drafts"):
+        if uc["name"] == "uq_repayment_drafts_idem":
+            return list(uc["column_names"])
+    raise AssertionError("uq_repayment_drafts_idem missing from repayment_drafts")
+
+
 def _index_names() -> set[str]:
     return {ix["name"] for ix in inspect(engine).get_indexes("repayment_drafts")}
 
@@ -87,6 +94,11 @@ def _assert_full_shape() -> None:
         f"missing CHECK(s): {_CHECK_CONSTRAINTS - _check_names()}"
     )
     assert "uq_repayment_drafts_idem" in _unique_names(), "missing dedup unique constraint"
+    # Issue #224 (C3): the dedup unique is ACCOUNT-scoped — assert the column set, not
+    # just the name, so a tenant-wide regression fails here. (After ``upgrade head``
+    # this shape comes from 20260617_0001's create_table + 20260722_0001's swap, so the
+    # full chain is validated, not only the ORM's create_all.)
+    assert _idem_constraint_columns() == ["tenant_id", "created_by_account_id", "draft_idempotency_key"]
     assert _index_names() >= _INDEXES, f"missing index(es): {_INDEXES - _index_names()}"
 
 

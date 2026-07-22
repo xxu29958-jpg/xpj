@@ -186,7 +186,8 @@ ALLOWLIST: dict[str, Exempt] = {
     ),
     # ADR-0049 §杠杆③ (slice 3a): the NLS captures a repayment notification and posts a
     # brand-new PENDING RepaymentDraft row — no prior version to fence; safe replay rests
-    # on the per-tenant content+identity dedup key (uq_repayment_drafts_idem), not an
+    # on the per-account content+identity dedup key (uq_repayment_drafts_idem over
+    # tenant + created_by_account_id + key, issue #224 C3), not an
     # expected_row_version token. NOT fold-changing (a captured draft is a review intent,
     # not a Repayment fact — the confirm route below IS fold-changing and carries the token).
     "POST /api/repayment-drafts": Exempt("create_row", "debts", _REPAYMENT_DRAFTS),
