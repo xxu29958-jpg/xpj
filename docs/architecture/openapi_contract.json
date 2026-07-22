@@ -4820,6 +4820,14 @@
             "title": "Missing Category",
             "type": "integer"
           },
+          "missing_category_confirmed": {
+            "title": "Missing Category Confirmed",
+            "type": "integer"
+          },
+          "missing_category_pending": {
+            "title": "Missing Category Pending",
+            "type": "integer"
+          },
           "missing_merchant": {
             "title": "Missing Merchant",
             "type": "integer"
@@ -4843,6 +4851,10 @@
             "title": "Ready To Confirm",
             "type": "integer"
           },
+          "ready_to_confirm_categorized": {
+            "title": "Ready To Confirm Categorized",
+            "type": "integer"
+          },
           "suspected_duplicates": {
             "title": "Suspected Duplicates",
             "type": "integer"
@@ -4853,9 +4865,12 @@
           "missing_amount",
           "missing_merchant",
           "missing_category",
+          "missing_category_pending",
+          "missing_category_confirmed",
           "suspected_duplicates",
           "confirmed_without_image",
           "ready_to_confirm",
+          "ready_to_confirm_categorized",
           "oldest_pending_age_days",
           "generated_at"
         ],

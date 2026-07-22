@@ -13,9 +13,12 @@ class DataQualityEntryCardTest {
             missingAmount = 0,
             missingMerchant = 0,
             missingCategory = 0,
+            missingCategoryPending = 0,
+            missingCategoryConfirmed = 0,
             suspectedDuplicates = 3,
             confirmedWithoutImage = 0,
             readyToConfirm = 0,
+            readyToConfirmCategorized = 0,
             oldestPendingAgeDays = null,
             generatedAt = "2026-07-18T00:00:00Z",
         )

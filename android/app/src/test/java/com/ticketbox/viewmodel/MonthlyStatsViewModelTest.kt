@@ -333,6 +333,61 @@ class MonthlyStatsViewModelTest {
 @OptIn(ExperimentalCoroutinesApi::class)
 class MonthlyStatsFilterOptionsViewModelTest {
     @Test
+    fun dataQualityLoadsEvenWhenMonthlyStatsFails() = statsTest {
+        // PR #230 round 12 review claimed the DQ load is bound to the monthly
+        // success path — pin the actual contract: the failure path also fires
+        // the supplemental DQ load (handleStatsFailure → loadSupplemental).
+        val stats = FakeStatsActions()
+        stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
+        stats.dataQualityResponder = {
+            Result.success(
+                DataQualitySummary(
+                    pendingTotal = 3,
+                    missingAmount = 0,
+                    missingMerchant = 2,
+                    missingCategory = 0,
+                    missingCategoryPending = 0,
+                    missingCategoryConfirmed = 0,
+                    suspectedDuplicates = 0,
+                    confirmedWithoutImage = 0,
+                    readyToConfirm = 0,
+                    readyToConfirmCategorized = 0,
+                    oldestPendingAgeDays = 1,
+                    generatedAt = "2026-05-13T00:00:00Z",
+                )
+            )
+        }
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(DataQualityLoadState.Loaded, state.dataQualityLoadState)
+        assertEquals(2, state.dataQuality?.missingMerchant)
+        // The monthly failure still surfaces its own error alongside.
+        assertNotNull(state.statsLoadError)
+    }
+
+    @Test
+    fun dataQualityFailureIsItsOwnErrorStateWhenStatsAlsoFail() = statsTest {
+        val stats = FakeStatsActions()
+        stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
+        stats.dataQualityResponder = { Result.failure(RuntimeException("dq offline")) }
+        val viewModel = MonthlyStatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(DataQualityLoadState.Failed, state.dataQualityLoadState)
+        assertNotNull(state.dataQualityError)
+        assertNull(state.dataQuality)
+    }
+
+    @Test
     fun filterOptionFailuresAreExplicitStatesNotLoadedEmptyFacts() = statsTest {
         val stats = FakeStatsActions()
         stats.monthListResult = Result.failure(RuntimeException("months offline"))
@@ -380,6 +435,7 @@ private class FakeStatsActions : StatsActions {
     var tagList: List<String> = emptyList()
     var tagListResult: Result<List<String>>? = null
     var monthlyStatsCalls = 0
+    var dataQualityResponder: (suspend () -> Result<DataQualitySummary>)? = null
 
     override fun observeActiveLedgerId(): Flow<String?> = ledgerFlow
 
@@ -410,19 +466,23 @@ private class FakeStatsActions : StatsActions {
     ): Result<List<Expense>> = Result.success(emptyList())
 
     override suspend fun dataQualitySummary(): Result<DataQualitySummary> =
-        Result.success(
-            DataQualitySummary(
-                pendingTotal = 0,
-                missingAmount = 0,
-                missingMerchant = 0,
-                missingCategory = 0,
-                suspectedDuplicates = 0,
-                confirmedWithoutImage = 0,
-                readyToConfirm = 0,
-                oldestPendingAgeDays = null,
-                generatedAt = "2026-05-13T00:00:00Z",
+        dataQualityResponder?.invoke()
+            ?: Result.success(
+                DataQualitySummary(
+                    pendingTotal = 0,
+                    missingAmount = 0,
+                    missingMerchant = 0,
+                    missingCategory = 0,
+                    missingCategoryPending = 0,
+                    missingCategoryConfirmed = 0,
+                    suspectedDuplicates = 0,
+                    confirmedWithoutImage = 0,
+                    readyToConfirm = 0,
+                    readyToConfirmCategorized = 0,
+                    oldestPendingAgeDays = null,
+                    generatedAt = "2026-05-13T00:00:00Z",
+                )
             )
-        )
 }
 
 private class FakeStatsRecurringActions : RecurringActions {

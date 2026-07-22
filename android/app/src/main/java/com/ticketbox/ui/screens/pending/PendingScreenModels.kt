@@ -1,8 +1,6 @@
 package com.ticketbox.ui.screens.pending
 
-import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.viewmodel.PendingListLoadState
 
 internal enum class PendingListBodyState {
@@ -21,56 +19,6 @@ internal fun pendingListBodyState(
     loadState == PendingListLoadState.Failed -> PendingListBodyState.LoadFailed
     else -> PendingListBodyState.Loading
 }
-
-internal enum class PendingPrimaryReviewAction {
-    MissingAmount,
-    DuplicateReview,
-    QuickCategory,
-    QuickMerchant,
-    Confirm,
-}
-
-internal data class PendingMerchantPresentation(
-    val primaryText: String?,
-) {
-    val needsReview: Boolean = primaryText == null
-}
-
-internal fun pendingMerchantPresentation(expense: Expense): PendingMerchantPresentation {
-    val primaryText = expense.merchant
-        ?.trim()
-        ?.takeIf(::isUsablePendingMerchantText)
-    return PendingMerchantPresentation(primaryText = primaryText)
-}
-
-private fun isUsablePendingMerchantText(value: String): Boolean {
-    val meaningfulCharacterCount = value.count { it.isLetterOrDigit() }
-    val merchantLetterCount = value.count { it.isLetter() }
-    return meaningfulCharacterCount >= 2 &&
-        merchantLetterCount >= 1 &&
-        !PendingTimeNoise.matches(value) &&
-        !PendingDateNoise.matches(value)
-}
-
-internal fun pendingPrimaryReviewAction(expense: Expense): PendingPrimaryReviewAction = when {
-    expense.amountCents == null -> PendingPrimaryReviewAction.MissingAmount
-    expense.duplicateStatus == DuplicateStatusValues.SUSPECTED -> PendingPrimaryReviewAction.DuplicateReview
-    pendingNeedsCategory(expense) -> PendingPrimaryReviewAction.QuickCategory
-    pendingMerchantPresentation(expense).needsReview -> PendingPrimaryReviewAction.QuickMerchant
-    else -> PendingPrimaryReviewAction.Confirm
-}
-
-internal fun pendingNeedsCategory(expense: Expense): Boolean =
-    isUncategorizedExpenseCategory(expense.category)
-
-private val PendingTimeNoise = Regex(
-    pattern = """^\d{1,2}\s*[:：]\s*\d{2}(?:\s*[:：]\s*\d{2})?(?:\s*[AP]M)?$""",
-    option = RegexOption.IGNORE_CASE,
-)
-
-private val PendingDateNoise = Regex(
-    pattern = """^(?:\d{4}\s*[-/.年]\s*)?\d{1,2}\s*[-/.月]\s*\d{1,2}\s*日?(?:\s+周[一二三四五六日天])?(?:\s+\d{1,2}\s*[:：]\s*\d{2}(?:\s*[:：]\s*\d{2})?)?$""",
-)
 
 data class PendingScreenChromeActions(
     val onRefresh: () -> Unit,

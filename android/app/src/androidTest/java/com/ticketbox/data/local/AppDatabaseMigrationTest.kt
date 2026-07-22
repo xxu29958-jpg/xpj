@@ -183,6 +183,56 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
+    fun migrate14To15AddsQualityColumnsBackfillingFromThumbnails() {
+        val name = "migration-14-15-test.db"
+        helper.createDatabase(name, 14).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO expenses (
+                    id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                    originalCurrencyCode, fxStatus, merchant, category, source, thumbnailPath,
+                    duplicateStatus, status, createdAt, rowVersion
+                ) VALUES (
+                    1, 'owner', 9, 'pub-9', 1500, 'CNY',
+                    'CNY', 'ready', '星巴克', '餐饮', '缓存', 'thumbnails/9.jpg',
+                    'none', 'confirmed', '2026-05-13T00:00:00Z', 1
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                """
+                INSERT INTO expenses (
+                    id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                    originalCurrencyCode, fxStatus, merchant, category, source,
+                    duplicateStatus, status, createdAt, rowVersion
+                ) VALUES (
+                    2, 'owner', 10, 'pub-10', 800, 'CNY',
+                    'CNY', 'ready', '麦当劳', '餐饮', '缓存',
+                    'none', 'confirmed', '2026-05-13T00:01:00Z', 1
+                )
+                """.trimIndent(),
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            name,
+            15,
+            true,
+            AppDatabase.Migration14To15,
+        )
+
+        db.query("SELECT hasImage, categoryRaw FROM expenses WHERE serverId = 9").use { cursor ->
+            assertTrue("the seeded row must survive migration", cursor.moveToFirst())
+            assertEquals("live thumbnail backfills hasImage = 1", 1L, cursor.getLong(0))
+            assertTrue("categoryRaw stays NULL until the next sync rewrite", cursor.isNull(1))
+        }
+        db.query("SELECT hasImage FROM expenses WHERE serverId = 10").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("no thumbnail defaults to hasImage = 0", 0L, cursor.getLong(0))
+        }
+    }
+
+    @Test
     fun migrate13To14PreservesLegacyIntentWithoutGuessingOwner() {
         val name = "migration-13-14-test.db"
         helper.createDatabase(name, 13).use { db ->

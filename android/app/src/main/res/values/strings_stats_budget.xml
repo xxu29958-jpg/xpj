@@ -795,6 +795,8 @@
     <string name="stats_pending_metric_missing_amount">缺金额</string>
     <string name="stats_pending_metric_missing_merchant">缺商家</string>
     <string name="stats_pending_metric_missing_category">未分类</string>
+    <string name="stats_pending_metric_missing_category_pending">待确认未分类</string>
+    <string name="stats_pending_metric_missing_category_confirmed">已确认未分类</string>
     <string name="stats_pending_metric_duplicates">疑似重复</string>
     <string name="stats_pending_metric_confirmed_without_image">已确认无图</string>
 

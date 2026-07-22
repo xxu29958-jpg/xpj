@@ -98,6 +98,7 @@
     <string name="ledger_msg_sync_done">更新完成</string>
     <string name="ledger_msg_sync_failed">暂时更新不了，正在显示离线数据。</string>
     <string name="ledger_msg_export_empty">没有可导出的已确认账单。请先确认几笔账单，或重新更新后再试。</string>
+    <string name="ledger_msg_export_data_quality_filter_active">数据质量筛选下暂不支持导出，请先清除筛选。</string>
     <string name="ledger_msg_export_pick_location">请选择保存位置</string>
     <string name="ledger_msg_export_failed">没有导出成功，可以换个保存位置再试。</string>
     <string name="ledger_msg_export_cancelled">已取消导出</string>
@@ -165,6 +166,7 @@
     <string name="ledger_tools_clear_filters">清除筛选</string>
     <string name="ledger_tools_done">完成</string>
     <string name="ledger_tools_no_export">当前没有可导出的已确认账单。</string>
+    <string name="ledger_tools_export_data_quality_filtered">数据质量筛选视图下不支持导出，清除筛选后恢复。</string>
     <string name="ledger_tools_tag_label">标签</string>
     <string name="ledger_tools_tag_all">全部标签</string>
     <string name="ledger_inline_filter_missing_category">未分类交易</string>

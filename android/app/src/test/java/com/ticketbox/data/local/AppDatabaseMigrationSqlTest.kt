@@ -62,6 +62,69 @@ class AppDatabaseMigrationSqlTest {
             "status TEXT NOT NULL, expenseTime TEXT, createdAt TEXT NOT NULL, confirmedAt TEXT, updatedAt TEXT, " +
             "rowVersion INTEGER NOT NULL DEFAULT 1)"
 
+    // v14 expenses schema (from schemas/.../14.json createSql): serverId nullable,
+    // clientRef present, no categoryRaw / hasImage yet.
+    private val v14Expenses =
+        "CREATE TABLE expenses (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, ledgerId TEXT NOT NULL, " +
+            "serverId INTEGER, publicId TEXT NOT NULL, amountCents INTEGER, homeCurrencyCode TEXT NOT NULL, " +
+            "originalCurrencyCode TEXT NOT NULL, originalAmountMinor INTEGER, exchangeRateToCny TEXT, " +
+            "exchangeRateDate TEXT, exchangeRateSource TEXT, fxStatus TEXT NOT NULL, merchant TEXT, " +
+            "category TEXT NOT NULL, note TEXT, source TEXT NOT NULL, thumbnailPath TEXT, imageDeletedAt TEXT, " +
+            "thumbnailDeletedAt TEXT, imageHash TEXT, rawText TEXT, confidence REAL, duplicateStatus TEXT NOT NULL, " +
+            "duplicateOfId INTEGER, duplicateReason TEXT, tags TEXT, valueScore INTEGER, regretScore INTEGER, " +
+            "status TEXT NOT NULL, expenseTime TEXT, createdAt TEXT NOT NULL, confirmedAt TEXT, updatedAt TEXT, " +
+            "rowVersion INTEGER NOT NULL DEFAULT 1, clientRef TEXT)"
+
+    @Test
+    fun migration14To15AddsQualityColumnsAndBackfillsHasImage() {
+        Class.forName("org.sqlite.JDBC")
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { conn ->
+            conn.createStatement().use { st ->
+                st.execute(v14Expenses)
+                // Live thumbnail ⇒ receipt image almost certainly present.
+                st.execute(
+                    "INSERT INTO expenses (ledgerId, serverId, publicId, homeCurrencyCode, originalCurrencyCode, " +
+                        "fxStatus, category, source, thumbnailPath, duplicateStatus, status, createdAt, rowVersion) VALUES " +
+                        "('owner', 9, 'pub-9', 'CNY', 'CNY', 'ready', '餐饮', '缓存', 'thumbnails/9.jpg', 'none', " +
+                        "'confirmed', '2026-05-13T00:00:00Z', 1)",
+                )
+                // Thumbnail present but deleted ⇒ no live image.
+                st.execute(
+                    "INSERT INTO expenses (ledgerId, serverId, publicId, homeCurrencyCode, originalCurrencyCode, " +
+                        "fxStatus, category, source, thumbnailPath, thumbnailDeletedAt, duplicateStatus, status, " +
+                        "createdAt, rowVersion) VALUES ('owner', 10, 'pub-10', 'CNY', 'CNY', 'ready', '餐饮', '缓存', " +
+                        "'thumbnails/10.jpg', '2026-05-01T00:00:00Z', 'none', 'confirmed', '2026-05-13T00:00:01Z', 1)",
+                )
+                // No thumbnail at all ⇒ nothing to infer from.
+                st.execute(
+                    "INSERT INTO expenses (ledgerId, serverId, publicId, homeCurrencyCode, originalCurrencyCode, " +
+                        "fxStatus, category, source, duplicateStatus, status, createdAt, rowVersion) VALUES " +
+                        "('owner', 11, 'pub-11', 'CNY', 'CNY', 'ready', '餐饮', '缓存', 'none', 'confirmed', " +
+                        "'2026-05-13T00:00:02Z', 1)",
+                )
+                AppDatabase.MIGRATION_14_15_STATEMENTS.forEach(st::execute)
+            }
+
+            val cols = conn.columns("expenses")
+            assertTrue(cols.contains("categoryRaw"), "expenses must gain a categoryRaw column")
+            assertTrue(cols.contains("hasImage"), "expenses must gain a hasImage column")
+            conn.query("SELECT hasImage, categoryRaw FROM expenses WHERE serverId = 9") { rs ->
+                assertTrue(rs.next(), "live-thumbnail row must survive")
+                assertEquals(1L, rs.getLong(1), "live thumbnail backfills hasImage = 1")
+                rs.getString(2)
+                assertTrue(rs.wasNull(), "categoryRaw stays NULL for pre-v15 rows (falls back until resync)")
+            }
+            conn.query("SELECT hasImage FROM expenses WHERE serverId = 10") { rs ->
+                assertTrue(rs.next())
+                assertEquals(0L, rs.getLong(1), "deleted thumbnail does not count as a live image")
+            }
+            conn.query("SELECT hasImage FROM expenses WHERE serverId = 11") { rs ->
+                assertTrue(rs.next())
+                assertEquals(0L, rs.getLong(1), "no thumbnail defaults to hasImage = 0")
+            }
+        }
+    }
+
     @Test
     fun migration10To11RunsAgainstSqliteAndProducesExpectedSchema() {
         Class.forName("org.sqlite.JDBC")

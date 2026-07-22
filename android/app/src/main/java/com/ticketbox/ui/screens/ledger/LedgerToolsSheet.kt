@@ -54,6 +54,15 @@ internal data class LedgerToolsSheetState(
     val canExport: Boolean,
 )
 
+// The data-quality drill counts as a user-visible filter here too: without it
+// the footer hid 清除筛选 for a DQ-only view while the export note in the same
+// sheet tells the user to clear the filter first.
+internal fun ledgerHasUserVisibleFilters(state: LedgerUiState): Boolean =
+    state.categoryFilter.isNotBlank() ||
+        state.tagFilter.isNotBlank() ||
+        state.query.isNotBlank() ||
+        state.dataQualityFilter != null
+
 @Immutable
 internal data class LedgerToolsSheetActions(
     val onCategoryChange: (String) -> Unit,
@@ -74,7 +83,7 @@ internal fun LedgerToolsSheet(
     actions: LedgerToolsSheetActions,
 ) {
     val ledger = state.ledger
-    val hasUserFilters = ledger.categoryFilter.isNotBlank() || ledger.tagFilter.isNotBlank() || ledger.query.isNotBlank()
+    val hasUserFilters = ledgerHasUserVisibleFilters(ledger)
     AppSheetScaffold(
         title = stringResource(R.string.ledger_tools_title),
         subtitle = stringResource(R.string.ledger_tools_subtitle),
@@ -272,6 +281,13 @@ private fun LedgerDataTools(
                 )
             },
         )
+        if (state.dataQualityFilter != null) {
+            Text(
+                text = stringResource(R.string.ledger_tools_export_data_quality_filtered),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 

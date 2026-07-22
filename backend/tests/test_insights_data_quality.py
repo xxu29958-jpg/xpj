@@ -28,9 +28,12 @@ def test_data_quality_empty(client: TestClient, *, identity) -> None:
     assert body["missing_amount"] == 0
     assert body["missing_merchant"] == 0
     assert body["missing_category"] == 0
+    assert body["missing_category_pending"] == 0
+    assert body["missing_category_confirmed"] == 0
     assert body["suspected_duplicates"] == 0
     assert body["confirmed_without_image"] == 0
     assert body["ready_to_confirm"] == 0
+    assert body["ready_to_confirm_categorized"] == 0
     assert body["oldest_pending_age_days"] is None
     assert "generated_at" in body and body["generated_at"]
 
@@ -66,8 +69,21 @@ def test_data_quality_missing_amount_and_merchant(client: TestClient, *, identit
 def test_data_quality_missing_category_counts_pending_and_confirmed(
     client: TestClient, *, identity,
 ) -> None:
-    eid = upload_png(client, identity=identity)
-    _patch(client, eid, amount_cents=500, merchant="A", category="未分类", identity=identity)
+    # Direct insert: the API write path folds dirty category tokens to 「其他」
+    # (round 7 defense), so seeding 未分类 via PATCH no longer persists it.
+    with SessionLocal() as db:
+        db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=500,
+                merchant="A",
+                category="未分类",
+                source="pytest",
+                status="pending",
+                duplicate_status="none",
+            )
+        )
+        db.commit()
     # Insert a confirmed row directly with NULL/empty category.
     insert_confirmed_expense(
         amount_cents=999,
@@ -81,6 +97,71 @@ def test_data_quality_missing_category_counts_pending_and_confirmed(
     body = response.json()
     # 1 pending (未分类) + 1 confirmed ("" category)
     assert body["missing_category"] == 2
+    assert body["missing_category_pending"] == 1
+    assert body["missing_category_confirmed"] == 1
+    assert (
+        body["missing_category"]
+        == body["missing_category_pending"] + body["missing_category_confirmed"]
+    )
+
+
+def test_data_quality_missing_category_confirmed_only_split(
+    client: TestClient, *, identity,
+) -> None:
+    """Confirmed-only composition: the inbox-bound pending part must be 0 so
+    clients don't route users to an empty inbox (PR #230 review)."""
+    insert_confirmed_expense(
+        amount_cents=999,
+        merchant="B",
+        category="未分类",
+        expense_time=datetime.now(tz=UTC) - timedelta(days=1),
+        confirmed_at=datetime.now(tz=UTC),
+    )
+
+    response = client.get("/api/insights/data-quality", headers=identity.app_headers)
+    body = response.json()
+    assert body["missing_category"] == 1
+    assert body["missing_category_pending"] == 0
+    assert body["missing_category_confirmed"] == 1
+
+
+def test_data_quality_ready_to_confirm_categorized_excludes_uncategorized(
+    client: TestClient, *, identity,
+) -> None:
+    """``ready_to_confirm`` doesn't look at category, but the Android inbox
+    ready-to-confirm filter routes uncategorized rows to quick-category
+    first — the categorized counter must exclude them (PR #230 review)."""
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=1000,
+                    merchant="Tokyo Store",
+                    category="餐饮",
+                    source="csv",
+                    status="pending",
+                    duplicate_status="none",
+                ),
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=2000,
+                    merchant="Osaka Store",
+                    category="未分类",
+                    source="csv",
+                    status="pending",
+                    duplicate_status="none",
+                ),
+            ]
+        )
+        db.commit()
+
+    response = client.get("/api/insights/data-quality", headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["pending_total"] == 2
+    assert body["ready_to_confirm"] == 2
+    assert body["ready_to_confirm_categorized"] == 1
 
 
 def test_data_quality_suspected_duplicates(client: TestClient, *, identity) -> None:

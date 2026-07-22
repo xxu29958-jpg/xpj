@@ -47,7 +47,7 @@ internal fun LedgerScreen(
     actions: LedgerScreenActions,
 ) {
     val chromeState = rememberLedgerScreenChromeState()
-    val canExport = state.items.isNotEmpty() && !state.exporting
+    val canExport = ledgerExportAvailable(state)
 
     LedgerScreenEffects(
         state = state,

@@ -14,6 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSheetAction
@@ -31,7 +32,7 @@ internal fun QuickCategorySheetContent(
     onDismiss: () -> Unit,
 ) {
     val saving = chrome.saving
-    val initial = expense.category.takeIf { it.isNotBlank() } ?: options.firstOrNull().orEmpty()
+    val initial = quickCategoryInitialSelection(expense.serverCategory, expense.category)
     var selected by remember(expense.id) { mutableStateOf(initial) }
     var custom by remember(expense.id) { mutableStateOf("") }
 
@@ -114,4 +115,16 @@ private fun QuickCategoryCustomInput(
         actions = AppTextInputActions(onValueChange = onCustomChange),
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+// 脏 token（未分类/未分類/none/null，大小写不敏感）不预填：命中值视为空，
+// 用户必须主动选择——否则原样保存会把非法 token 写回库（PR #230 round 7）。
+// 原始值为空白（展示被归一成「其他」）同样不预填——否则未改即保存会把
+// 「其他」写回，未做真实选择就消除了数据质量问题（PR #230 round 10）。
+// serverCategory 为 null（无原始值的非新鲜行）回退到展示值判定。
+internal fun quickCategoryInitialSelection(serverCategory: String?, displayCategory: String): String {
+    if (serverCategory != null && (serverCategory.isBlank() || isUncategorizedExpenseCategory(serverCategory))) {
+        return ""
+    }
+    return displayCategory.takeIf { it.isNotBlank() && !isUncategorizedExpenseCategory(it) }.orEmpty()
 }

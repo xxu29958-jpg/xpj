@@ -27,12 +27,21 @@ data class DataQualitySummaryDto(
     val missingMerchant: Int,
     @param:Json(name = "missing_category")
     val missingCategory: Int,
+    // N-1 compat: added after the field's first backend shipped — nullable with
+    // a default so an old backend's payload (which omits them) still decodes;
+    // null means "unknown composition, fall back to the aggregate caliber".
+    @param:Json(name = "missing_category_pending")
+    val missingCategoryPending: Int? = null,
+    @param:Json(name = "missing_category_confirmed")
+    val missingCategoryConfirmed: Int? = null,
     @param:Json(name = "suspected_duplicates")
     val suspectedDuplicates: Int,
     @param:Json(name = "confirmed_without_image")
     val confirmedWithoutImage: Int,
     @param:Json(name = "ready_to_confirm")
     val readyToConfirm: Int,
+    @param:Json(name = "ready_to_confirm_categorized")
+    val readyToConfirmCategorized: Int? = null,
     @param:Json(name = "oldest_pending_age_days")
     val oldestPendingAgeDays: Int?,
     @param:Json(name = "generated_at")

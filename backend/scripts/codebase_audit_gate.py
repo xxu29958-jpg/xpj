@@ -136,7 +136,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 6,
     "mutate_token_reason_terminal_flag_flip": 31,
     "mutate_token_reason_upsert_bucket": 8,
-    "backend_pytest_count": 2787,  # +5: issue #224 C3 repayment-draft account-scope tests.
+
+    "backend_pytest_count": 2801,
     "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
 

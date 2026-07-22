@@ -57,6 +57,16 @@ internal fun PendingRoute(
     val context = LocalContext.current
     val uploadScope = rememberCoroutineScope()
 
+    // Targeted entries (data-quality remediation) land on the PRESERVED
+    // PendingViewModel with only a client-side filter — unlike Transactions
+    // (applyDataQualityFilter syncs). Re-sync so the filtered list can't be
+    // stale when the data changed off-page (PR #230 round 9).
+    LaunchedEffect(shellState.pendingFilterRequest.pending) {
+        if (shellState.pendingFilterRequest.pending != null) {
+            pendingViewModel.refresh()
+        }
+    }
+
     LaunchedEffect(shellState.expenseEditCompletionRevision) {
         if (shellState.expenseEditCompletionRevision > 0) {
             pendingViewModel.refresh()
@@ -85,7 +95,9 @@ internal fun PendingRoute(
                     shellState.openSecondaryPage(ProductSecondaryPage.InboxProcessing)
                 },
                 onOpenRepaymentReview = shellState::openRepaymentDrafts,
-                onOpenDataQuality = shellState::openDataQualityInboxRedirect,
+                onOpenDataQuality = {
+                    shellState.openSecondaryPage(ProductSecondaryPage.InsightsDataQuality)
+                },
             ),
             filterRequest = shellState.pendingFilterRequest,
         ),

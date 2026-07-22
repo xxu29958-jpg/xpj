@@ -24,6 +24,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
+import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppAsyncImage
@@ -253,7 +254,7 @@ fun ExpenseEditScreen(
     }
     var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.merchant.orEmpty()) }
     var category by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(normalizeExpenseCategory(currentExpense.category))
+        mutableStateOf(editInitialCategory(currentExpense))
     }
     var note by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.note.orEmpty()) }
     var expenseTime by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
@@ -357,7 +358,11 @@ fun ExpenseEditScreen(
             // The backend's _clean_optional_text("") / normalize_tags("")
             // already treat "" as an explicit clear.
             merchant = merchant,
-            category = normalizeExpenseCategory(category),
+            // Blank category submits as null (NOT 其他): the PATCH is
+            // exclude_unset, so a row whose category is genuinely missing
+            // keeps that fact instead of being silently recategorized to the
+            // display fallback on any unrelated edit (PR #230 round 12).
+            category = category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) },
             note = note,
             expenseTime = expenseTime.ifBlank { null },
             tags = tags,
@@ -612,4 +617,15 @@ internal fun billSplitRemainingCents(state: ExpenseEditUiState): Long? {
         .filter { it.status == BillSplitStatusValues.INVITED || it.status == BillSplitStatusValues.ACCEPTED }
         .sumOf { it.amountCents }
     return (parent - active).coerceAtLeast(0L)
+}
+
+// Category init for the edit form reads the SERVER-STORED value: a row whose
+// raw category is blank / a dirty token (未分类/未分類/none/null) starts with
+// an EMPTY field — the display-normalized 「其他」 must not masquerade as a
+// real category, or any unrelated save would silently recategorize the row
+// (PR #230 round 12). Valid raw values initialize to the display
+// (alias-normalized) category.
+internal fun editInitialCategory(expense: Expense): String {
+    val raw = expense.serverCategory ?: expense.category
+    return if (isUncategorizedExpenseCategory(raw)) "" else expense.category
 }

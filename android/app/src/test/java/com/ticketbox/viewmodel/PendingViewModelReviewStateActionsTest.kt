@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -54,9 +55,39 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
     }
 
     @Test
+    fun confirmReadyExpensesUsesTheReadyToConfirmFilterCaliber() = review {
+        // Same predicate as the ReadyToConfirm inbox filter (PR #230 round 6):
+        // fx-pending (server 409s), merchant-noise and raw-blank-category rows
+        // must NOT be offered to bulk confirm even though they look complete.
+        val ready = expense(id = 10L, amountCents = 100L, merchant = "星巴克")
+        val fxPending = expense(id = 15L, amountCents = 100L, merchant = "麦当劳")
+            .copy(fxStatus = FxContract.StatusPending)
+        val noiseMerchant = expense(id = 16L, amountCents = 100L, merchant = "12:34")
+        val rawBlankCategory = expense(id = 17L, amountCents = 100L, merchant = "肯德基", category = "其他")
+            .copy(serverCategory = "")
+        val fake = FakeReviewActions(
+            pending = listOf(ready, fxPending, noiseMerchant, rawBlankCategory),
+        )
+        fake.confirmResponder = { id -> Result.success(ready.copy(id = id, status = "confirmed")) }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.confirmReadyExpenses()
+        advanceUntilIdle()
+
+        assertEquals(listOf(10L), fake.confirmedIds)
+        val state = vm.uiState.value
+        assertEquals(1, state.bulkConfirm.succeeded)
+        assertEquals(0, state.bulkConfirm.failed)
+        assertEquals(setOf(15L, 16L, 17L), state.items.map { it.id }.toSet())
+    }
+
+    @Test
     fun confirmReadyExpensesReportsPartialFailure() = review {
-        val a = expense(id = 20L, amountCents = 100L, merchant = "A")
-        val b = expense(id = 21L, amountCents = 100L, merchant = "B")
+        // Usable merchants (multi-char with a letter) so both rows are ready
+        // under the shared ReadyToConfirm caliber.
+        val a = expense(id = 20L, amountCents = 100L, merchant = "星巴克")
+        val b = expense(id = 21L, amountCents = 100L, merchant = "麦当劳")
         val fake = FakeReviewActions(pending = listOf(a, b))
         fake.confirmResponder = { id ->
             if (id == 21L) Result.failure(RuntimeException("server_error"))

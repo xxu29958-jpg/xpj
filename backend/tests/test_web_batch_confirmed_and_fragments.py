@@ -19,6 +19,9 @@ from _web_bulk_test_support import (
 from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
 
+from app.database import SessionLocal
+from app.models import Expense
+
 
 def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, identity) -> None:
     expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe", identity=identity)
@@ -116,7 +119,22 @@ def test_web_bulk_confirm_ready_fragment_returns_actioned_ids(web_client: TestCl
     skipped, stays pending, and is NOT in removed_ids (the client must not assume
     every selected row succeeded)."""
     no_amount = _create_pending(web_client, identity=identity)
-    ready = _seed_pending_with_amount(web_client, "11.00", "Ready", identity=identity)
+    # Seed the ready row via direct insert: the shared upload helper reuses one
+    # fixed PNG payload, so a second upload would be flagged duplicate=suspected
+    # and — now that confirm_ready requires the full ready predicate — skipped.
+    with SessionLocal() as db:
+        ready_expense = Expense(
+            tenant_id="owner",
+            amount_cents=1100,
+            merchant="Ready",
+            category="其他",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        db.add(ready_expense)
+        db.commit()
+        ready = ready_expense.id
     resp = web_client.post(
         "/web/review/bulk",
         data={

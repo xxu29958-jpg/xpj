@@ -45,6 +45,93 @@ def test_web_pending_filter_ready_excludes_missing_amount(web_client: TestClient
     assert f"/web/expenses/{pending_no_amount}/edit" not in resp.text
 
 
+def test_web_pending_merchant_caliber_matches_data_quality(web_client: TestClient, *, identity) -> None:
+    """PR #230: the web missing_merchant / ready filters share the data-quality
+    merchant-usability caliber — OCR time noise counts as a missing merchant,
+    not just NULL/blank."""
+    with SessionLocal() as db:
+        noise = Expense(
+            tenant_id="owner",
+            amount_cents=100,
+            merchant="12:34",
+            category="餐饮",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        usable = Expense(
+            tenant_id="owner",
+            amount_cents=200,
+            merchant="星巴克",
+            category="餐饮",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        db.add_all([noise, usable])
+        db.commit()
+        noise_id, usable_id = noise.id, usable.id
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_merchant")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{noise_id}/edit" in resp.text
+    assert f"/web/expenses/{usable_id}/edit" not in resp.text
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{noise_id}/edit" not in resp.text
+    assert f"/web/expenses/{usable_id}/edit" in resp.text
+
+
+def test_web_pending_category_caliber_matches_data_quality(web_client: TestClient, *, identity) -> None:
+    """PR #230: the web missing_category / ready filters share the data-quality
+    uncategorized token set — literal none/null categories count as missing,
+    while 其他 remains a valid user-chosen category."""
+    with SessionLocal() as db:
+        token_none = Expense(
+            tenant_id="owner",
+            amount_cents=100,
+            merchant="商家甲",
+            category="none",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        token_null = Expense(
+            tenant_id="owner",
+            amount_cents=200,
+            merchant="商家乙",
+            category="NULL",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        other = Expense(
+            tenant_id="owner",
+            amount_cents=300,
+            merchant="商家丙",
+            category="其他",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
+        )
+        db.add_all([token_none, token_null, other])
+        db.commit()
+        none_id, null_id, other_id = token_none.id, token_null.id, other.id
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_category")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{none_id}/edit" in resp.text
+    assert f"/web/expenses/{null_id}/edit" in resp.text
+    assert f"/web/expenses/{other_id}/edit" not in resp.text
+
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{none_id}/edit" not in resp.text
+    assert f"/web/expenses/{null_id}/edit" not in resp.text
+    assert f"/web/expenses/{other_id}/edit" in resp.text
+
+
 def test_web_pending_filter_active_tab_marker(web_client: TestClient, *, identity) -> None:
     _create_pending(web_client, identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_amount")
@@ -258,6 +345,15 @@ def test_web_pending_bulk_skips_t1_snapshot_after_t2_change(
 def test_web_bulk_confirm_ready_skips_missing_amount(web_client: TestClient, *, identity) -> None:
     no_amount = _create_pending(web_client, identity=identity)
     ready = _seed_pending_with_amount(web_client, "11.00", "Ready", identity=identity)
+    # Full ready caliber needs a real category and a clean duplicate flag —
+    # the second same-bytes upload gets flagged suspected, and both the
+    # 未分类 default and suspected rows are correctly skipped since round 7.
+    with SessionLocal() as db:
+        row = db.get(Expense, ready)
+        assert row is not None
+        row.category = "餐饮"
+        row.duplicate_status = "none"
+        db.commit()
     resp = web_client.post(
         "/web/review/bulk",
         data={

@@ -28,6 +28,7 @@ from app.fx_constants import FX_STATUS_PENDING
 from app.models import Expense
 from app.schemas import NotificationDraftCreateRequest
 from app.services.category_service import normalize_category
+from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.expense_query import EDITABLE_STATUSES  # re-exported
 from app.services.ocr_service import serialize_ocr_draft_fields
 from app.services.receipt_parse_service import parse_receipt_text
@@ -105,7 +106,15 @@ def _clean_text(value: str | None) -> str:
 
 
 def _clean_category(value: str | None) -> str:
-    return normalize_category(value)
+    cleaned = normalize_category(value)
+    # Defense (218-B3): dirty legacy tokens (未分类/未分類/none/null,
+    # case-insensitive) are not user-chosen categories — fold them into 「其他」
+    # so an explicit category write never re-persists an invalid token. Scoped
+    # to the expense write path; normalize_category keeps its stats/rule
+    # bucketing semantics untouched.
+    if is_uncategorized_expense_category(cleaned):
+        return "其他"
+    return cleaned
 
 
 def _clean_notification_source(value: str) -> str:

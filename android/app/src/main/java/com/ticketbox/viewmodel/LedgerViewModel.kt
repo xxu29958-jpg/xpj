@@ -249,9 +249,11 @@ class LedgerViewModel(
         )
         return when (state.dataQualityFilter) {
             LedgerDataQualityFilter.MissingCategory ->
-                normallyFiltered.filter { isUncategorizedExpenseCategory(it.category) }
+                // Same serverCategory-first caliber as the inbox (pendingNeedsCategory).
+                normallyFiltered.filter { isUncategorizedExpenseCategory(it.serverCategory ?: it.category) }
             LedgerDataQualityFilter.ConfirmedWithoutImage ->
-                normallyFiltered.filter { it.imagePath.isNullOrBlank() || it.imageDeletedAt != null }
+                // Mirrors the backend predicate: image_path IS NULL OR image_deleted_at IS NOT NULL.
+                normallyFiltered.filter { !it.hasImage || it.imageDeletedAt != null }
             null -> normallyFiltered
         }
     }
@@ -398,6 +400,18 @@ class LedgerViewModel(
     fun exportCsv() {
         viewModelScope.launch {
             val filters = _uiState.value
+            if (filters.dataQualityFilter != null) {
+                // The export endpoint only scopes by month/category/tag; the
+                // data-quality filter is client-side. Refuse rather than
+                // silently exporting the wider unfiltered scope.
+                _uiState.update {
+                    it.copy(
+                        message = UiText.res(R.string.ledger_msg_export_data_quality_filter_active),
+                        messageTone = MessageTone.Info,
+                    )
+                }
+                return@launch
+            }
             if (filters.items.isEmpty()) {
                 _uiState.update {
                     it.copy(

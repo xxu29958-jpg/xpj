@@ -25,10 +25,18 @@ data class Expense(
     val exchangeRateDate: String? = null,
     val exchangeRateSource: String? = null,
     val merchant: String?,
+    // Server-stored category BEFORE client display normalization; NULL when
+    // the value didn't come from the server DTO/cache (manual constructions) —
+    // data-quality filters read `serverCategory ?: category` so normalized
+    // blank/NULL rows stop hiding from the missing-category surfaces (218-B3).
+    val serverCategory: String? = null,
     val category: String,
     val note: String?,
     val source: String,
     val imagePath: String?,
+    // Presence of the original receipt image (cache-stored; the path itself
+    // isn't). Read by the confirmed-without-image data-quality filter.
+    val hasImage: Boolean = imagePath != null,
     val thumbnailPath: String?,
     val imageDeletedAt: String? = null,
     val thumbnailDeletedAt: String? = null,
@@ -72,12 +80,6 @@ fun Expense.canInitiateBillSplit(readOnly: Boolean): Boolean =
         amountCents != null &&
         source != ExpenseSourceValues.BILL_SPLIT_RECEIVED &&
         !readOnly
-
-fun Expense.isPendingReadyToConfirmDirectly(): Boolean =
-    amountCents != null &&
-        !merchant.isNullOrBlank() &&
-        category.isNotBlank() &&
-        duplicateStatus != DuplicateStatusValues.SUSPECTED
 
 object DuplicateStatusValues {
     const val SUSPECTED = "suspected"
@@ -287,9 +289,14 @@ data class DataQualitySummary(
     val missingAmount: Int,
     val missingMerchant: Int,
     val missingCategory: Int,
+    // Null when the backend predates the split (N-1) — callers must fall back
+    // to the aggregate missingCategory / readyToConfirm calibers.
+    val missingCategoryPending: Int? = null,
+    val missingCategoryConfirmed: Int? = null,
     val suspectedDuplicates: Int,
     val confirmedWithoutImage: Int,
     val readyToConfirm: Int,
+    val readyToConfirmCategorized: Int? = null,
     val oldestPendingAgeDays: Int?,
     val generatedAt: String,
 )

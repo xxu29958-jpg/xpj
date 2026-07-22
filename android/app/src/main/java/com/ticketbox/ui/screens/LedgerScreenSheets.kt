@@ -66,6 +66,12 @@ internal fun ledgerMonthPickerListState(loadState: LedgerMonthsLoadState): Month
     LedgerMonthsLoadState.Failed -> MonthPickerListState.Failed
 }
 
+// The CSV export endpoint only scopes by month/category/tag — the data-quality
+// filter is client-side, so exporting under it would silently dump the
+// unfiltered scope. Disable the affordance instead of mis-scoping the file.
+internal fun ledgerExportAvailable(state: LedgerUiState): Boolean =
+    state.items.isNotEmpty() && !state.exporting && state.dataQualityFilter == null
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LedgerManualSheetHost(

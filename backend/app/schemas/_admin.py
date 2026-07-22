@@ -31,9 +31,12 @@ class DataQualitySummaryResponse(BaseModel):
     missing_amount: int
     missing_merchant: int
     missing_category: int
+    missing_category_pending: int
+    missing_category_confirmed: int
     suspected_duplicates: int
     confirmed_without_image: int
     ready_to_confirm: int
+    ready_to_confirm_categorized: int
     oldest_pending_age_days: int | None
     generated_at: str
 

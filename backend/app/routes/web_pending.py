@@ -27,6 +27,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
+from app.services.data_quality_service import is_ready_to_confirm_row, is_uncategorized_expense_category
 from app.services.expense_service import (
     fetch_expense_row_version_in_status,
     list_pending,
@@ -52,11 +53,22 @@ _PENDING_FILTERS = {
 
 
 def _needs_category(view: dict) -> bool:
-    # 分类为空，或仍是默认占位「未分类」时视为待分类。
-    # 「其他」是用户可主动选择的合法分类，不能把它算进缺分类，
-    # 否则旧账单会被错误排除在 ready 筛选外。
-    cat = (view.get("category") or "").strip()
-    return cat == "" or cat == "未分类"
+    # 与 /api/insights/data-quality 共享口径（is_uncategorized_expense_category）：
+    # 空/未分类/未分類/none/null 均视为待分类；「其他」仍是用户可主动选择的
+    # 合法分类，不计入缺分类，否则旧账单会被错误排除在 ready 筛选外。
+    return is_uncategorized_expense_category(view.get("category"))
+
+
+def _is_ready(view: dict) -> bool:
+    """Ready caliber for filter + tab count + DQ link — delegates to
+    ``data_quality_service.is_ready_to_confirm_row`` (shared with bulk confirm)."""
+    return is_ready_to_confirm_row(
+        amount_cents=view["amount_cents"],
+        merchant=view["merchant"],
+        category=view.get("category"),
+        duplicate_status=view["duplicate_status"],
+        fx_status=view["fx_status"],
+    )
 
 
 def _matches_filter(view: dict, filter_key: str) -> bool:
@@ -71,12 +83,7 @@ def _matches_filter(view: dict, filter_key: str) -> bool:
     if filter_key == "duplicate":
         return view["is_duplicate"]
     if filter_key == "ready":
-        return (
-            not view["needs_amount"]
-            and not view["needs_merchant"]
-            and not _needs_category(view)
-            and not view["is_duplicate"]
-        )
+        return _is_ready(view)
     return True
 
 
@@ -177,11 +184,7 @@ def web_pending(
     ctx["needs_merchant_count"] = sum(1 for it in raw_items if it["needs_merchant"])
     ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))
     ctx["suspected_duplicate_count"] = suspected_total
-    ctx["ready_count"] = sum(
-        1
-        for it in raw_items
-        if not it["needs_amount"] and not it["needs_merchant"] and not _needs_category(it) and not it["is_duplicate"]
-    )
+    ctx["ready_count"] = sum(1 for it in raw_items if _is_ready(it))
     return templates.TemplateResponse(request=request, name="pending.html", context=ctx)
 
 

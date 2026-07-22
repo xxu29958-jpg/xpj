@@ -60,3 +60,28 @@ def test_owner_index_dq_no_secret_leak(local_client: TestClient, *, identity) ->
     assert identity.app_token not in body
     assert identity.admin_token not in body
     assert identity.upload_key not in body
+
+
+def test_owner_index_ready_stat_uses_categorized_caliber(local_client: TestClient, *, identity) -> None:
+    """PR #230 round 9: the 可一键入账 stat must match the /web/data-quality
+    ready action count (categorized) — the 未分类 row must not inflate it."""
+    from app.database import SessionLocal
+    from app.models import Expense
+
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                Expense(
+                    tenant_id="owner", amount_cents=100, merchant="星巴克", category="餐饮",
+                    source="pytest", status="pending", duplicate_status="none",
+                ),
+                Expense(
+                    tenant_id="owner", amount_cents=200, merchant="麦当劳", category="未分类",
+                    source="pytest", status="pending", duplicate_status="none",
+                ),
+            ]
+        )
+        db.commit()
+
+    body = local_client.get("/owner").text
+    assert '<div class="num">1</div>\n      <div class="label">可一键入账</div>' in body

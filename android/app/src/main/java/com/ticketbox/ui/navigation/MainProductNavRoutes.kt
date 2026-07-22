@@ -121,8 +121,17 @@ internal fun NavGraphBuilder.addPlanRoutes(
 internal fun NavGraphBuilder.addInsightsRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
-    // 218-B1: 数据质量屏属后续 slice；入口（洞察页 DataQualityEntryCard / 收件链接）
-    // 由 StatsRouteActions / PendingRoute 重定向到带筛选的 Inbox，这里不挂路由。
+    with(dependencies) {
+        composable(ProductSecondaryPage.InsightsDataQuality.route) { currentEntry ->
+            DataQualityRoute(
+                navController = navController,
+                currentEntry = currentEntry,
+                screenFactory = screenFactory,
+                shellState = shellState,
+                onBack = onBack,
+            )
+        }
+    }
 }
 
 internal fun NavGraphBuilder.addTransactionRoutes(

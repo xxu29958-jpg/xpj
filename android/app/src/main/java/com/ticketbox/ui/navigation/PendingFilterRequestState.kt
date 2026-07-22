@@ -25,13 +25,3 @@ internal class PendingFilterRequestState {
         return filter
     }
 }
-
-/**
- * 218-B1 stub：DataQualityScreen 属后续 slice，骨架阶段数据质量入口（洞察页
- * DataQualityEntryCard / 收件页链接）重定向到带「全部」复核筛选的 Inbox 根；
- * 后续 slice 换回 ProductSecondaryPage.InsightsDataQuality 真实路由。
- */
-internal fun MainShellState.openDataQualityInboxRedirect() {
-    pendingFilterRequest.post(NeedsReviewFilter.All)
-    openPrimaryDomainRoot(PrimaryDomain.Inbox)
-}

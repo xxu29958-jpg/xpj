@@ -24,6 +24,35 @@ class DefaultCategoriesTest {
     }
 
     @Test
+    fun uncategorizedTokenSharedSamples() {
+        // Shared with backend tests/test_data_quality_caliber_port.py — the
+        // data-quality counters port this exact rule; any drift must redden
+        // one of the two twins.
+        listOf(
+            null,
+            "",
+            "  ",
+            "未分类",
+            " 未分类 ",
+            "未分類",
+            "none",
+            "None",
+            "NONE",
+            "nOnE",
+            "null",
+            "NULL",
+            "Null",
+            " none ",
+            "\tnull\t",
+        ).forEach { category ->
+            assertTrue(isUncategorizedExpenseCategory(category), "must be uncategorized: $category")
+        }
+        listOf("其他", "餐饮", "nonee", "nullable", "未分类x").forEach { category ->
+            assertFalse(isUncategorizedExpenseCategory(category), "must be categorized: $category")
+        }
+    }
+
+    @Test
     fun mergesRemoteCategoriesBehindStableDefaults() {
         val merged = mergeExpenseCategories(listOf("吃饭", "宠物", "交通"))
 

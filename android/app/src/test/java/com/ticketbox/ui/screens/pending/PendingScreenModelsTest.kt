@@ -3,6 +3,10 @@ package com.ticketbox.ui.screens.pending
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseSourceValues
+import com.ticketbox.domain.model.FxContract
+import com.ticketbox.domain.model.PendingPrimaryReviewAction
+import com.ticketbox.domain.model.pendingMerchantPresentation
+import com.ticketbox.domain.model.pendingPrimaryReviewAction
 import com.ticketbox.viewmodel.PendingListLoadState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -108,6 +112,82 @@ class PendingScreenModelsTest {
             emptyList(),
             applyNeedsReviewFilter(listOf(invalidMerchant), NeedsReviewFilter.ReadyToConfirm),
         )
+    }
+
+    @Test
+    fun merchantUsabilitySharedSamples() {
+        // Shared with backend tests/test_data_quality_caliber_port.py — the
+        // data-quality counters port this exact rule; any drift must redden
+        // one of the two twins.
+        listOf(
+            null,
+            "",
+            "   ",
+            "A", // single letter: < 2 meaningful chars
+            "12", // digits only: no letter
+            "12:34",
+            "3:15 PM",
+            "12:30:45",
+            "2026-07-17 12:34",
+            "2026年7月17日 周五",
+            "7月22日",
+            "123456",
+            "18:04 0",
+            "——",
+        ).forEach { merchant ->
+            assertEquals(
+                null,
+                pendingMerchantPresentation(pendingExpense(merchant = merchant)).primaryText,
+                "must be unusable: $merchant",
+            )
+        }
+        listOf("苏宁", "7-Eleven", "3M", "85度C", "星巴克咖啡", "A1", "ab", " 星巴克咖啡 ").forEach { merchant ->
+            assertEquals(
+                merchant.trim(),
+                pendingMerchantPresentation(pendingExpense(merchant = merchant)).primaryText,
+                "must be usable: $merchant",
+            )
+        }
+    }
+
+    @Test
+    fun fxPendingRowsAreNotReadyAndKeepActionableFixesFirst() {
+        // fx-pending rows 409 on the server confirm path (main's
+        // _ensure_expense_can_confirm) — they must leave the ready set that
+        // the ReadyToConfirm filter and bulk confirm both read.
+        val fxPending = pendingExpense().copy(fxStatus = FxContract.StatusPending)
+        assertEquals(PendingPrimaryReviewAction.FxPending, pendingPrimaryReviewAction(fxPending))
+        assertEquals(
+            emptyList(),
+            applyNeedsReviewFilter(listOf(fxPending), NeedsReviewFilter.ReadyToConfirm),
+        )
+
+        // Other user-actionable issues still outrank the fx state.
+        val fxWithCategoryGap = pendingExpense(category = "").copy(fxStatus = FxContract.StatusPending)
+        assertEquals(PendingPrimaryReviewAction.QuickCategory, pendingPrimaryReviewAction(fxWithCategoryGap))
+        val fxWithMerchantGap = pendingExpense(merchant = "12:34").copy(fxStatus = FxContract.StatusPending)
+        assertEquals(PendingPrimaryReviewAction.QuickMerchant, pendingPrimaryReviewAction(fxWithMerchantGap))
+    }
+
+    @Test
+    fun quickCategorySeesRawServerCategoryThroughNormalization() {
+        // Display-normalized 「其他」 must not hide a server-side blank category
+        // from the NeedsCategory surface (PR #230 round 4), and a raw
+        // categorized value must not be misflagged either.
+        val rawBlank = pendingExpense(category = "其他").copy(serverCategory = "")
+        assertEquals(PendingPrimaryReviewAction.QuickCategory, pendingPrimaryReviewAction(rawBlank))
+        assertEquals(listOf(rawBlank), applyNeedsReviewFilter(listOf(rawBlank), NeedsReviewFilter.NeedsCategory))
+
+        val rawCategorized = pendingExpense(category = "其他").copy(serverCategory = "餐饮")
+        assertEquals(PendingPrimaryReviewAction.Confirm, pendingPrimaryReviewAction(rawCategorized))
+        assertEquals(
+            emptyList(),
+            applyNeedsReviewFilter(listOf(rawCategorized), NeedsReviewFilter.NeedsCategory),
+        )
+
+        // No raw value (manual construction): falls back to the display value.
+        val legacy = pendingExpense(category = "未分类")
+        assertEquals(PendingPrimaryReviewAction.QuickCategory, pendingPrimaryReviewAction(legacy))
     }
 
     @Test

@@ -35,6 +35,8 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.pendingMerchantPresentation
+import com.ticketbox.domain.model.pendingNeedsCategory
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
@@ -286,7 +288,7 @@ private fun PendingExpenseSignals(expense: Expense) {
     if (pendingMerchantPresentation(expense).needsReview) {
         PendingSignalText(stringResource(R.string.pending_row_signal_merchant), tones.warn)
     }
-    if (expense.category.isBlank()) PendingSignalText(stringResource(R.string.pending_row_signal_category), tones.warn)
+    if (pendingNeedsCategory(expense)) PendingSignalText(stringResource(R.string.pending_row_signal_category), tones.warn)
     if (expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
         PendingSignalText(stringResource(R.string.pending_row_signal_duplicate), tones.info)
     }

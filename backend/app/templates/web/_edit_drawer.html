@@ -31,7 +31,7 @@
     <div>金额：{% if e.amount_label %}{{ e.amount_label }}{% else %}<span class="text-danger">未识别</span>{% endif %}</div>
     {% if e.fx_meta %}<div>{{ e.fx_meta }}</div>{% endif %}
     <div>时间：{{ e.expense_time or '未填' }}</div>
-    <div>分类：{{ e.category }}</div>
+    <div>分类：{% if e.needs_category %}<span class="text-danger">待分类</span>{% else %}{{ e.category }}{% endif %}</div>
     {% if e.is_duplicate %}
     <div class="drawer-draft-card__pill"><span class="dt-pill danger">疑似重复</span></div>
     {% endif %}
@@ -49,7 +49,9 @@
         {% set _flags = [] %}
         {% if e.needs_amount %}{% set _ = _flags.append(('danger', '缺金额')) %}{% endif %}
         {% if e.needs_merchant %}{% set _ = _flags.append(('warn', '缺商家')) %}{% endif %}
+        {% if e.needs_category %}{% set _ = _flags.append(('warn', '缺分类')) %}{% endif %}
         {% if e.is_duplicate %}{% set _ = _flags.append(('danger', '疑似重复')) %}{% endif %}
+        {% if e.fx_pending %}{% set _ = _flags.append(('warn', '待汇率')) %}{% endif %}
         {% if _flags %}
           {% for cls, label in _flags %}<span class="dt-pill {{ cls }}">{{ label }}</span>{% endfor %}
         {% else %}
