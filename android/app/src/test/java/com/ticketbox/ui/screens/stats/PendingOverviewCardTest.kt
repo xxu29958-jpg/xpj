@@ -123,8 +123,9 @@ class PendingOverviewCardTest {
         assertEquals(5, missingLine.value)
         assertEquals(R.string.stats_pending_metric_missing_category, missingLine.labelRes)
         assertEquals(DataQualityRemediation.TransactionsMissingCategory, missingLine.secondaryRemediation)
-        val readyLine = metrics.single { it.primaryRemediation == DataQualityRemediation.InboxReady }
-        assertEquals(6, readyLine.value)
+        // N-1 缺 ready_to_confirm_categorized：旧聚合计数包含落地筛选会排除的行，
+        // 可行动 ready 行按 PROTOCOL_EVOLUTION 门控，不渲染（PR #230 round 11）。
+        assertEquals(0, metrics.count { it.primaryRemediation == DataQualityRemediation.InboxReady })
     }
 
     @Test

@@ -174,10 +174,11 @@ internal fun pendingOverviewMetrics(summary: DataQualitySummary): List<PendingOv
     val metrics = mutableListOf<PendingOverviewMetric>()
     // Inbox ReadyToConfirm routes uncategorized rows to quick-category before
     // confirm, so the ready line uses the categorized caliber — the count the
-    // tap lands on. An N-1 backend doesn't send it: fall back to the
-    // aggregate ready count rather than dropping the line.
-    val readyCount = summary.readyToConfirmCategorized ?: summary.readyToConfirm
-    if (readyCount > 0) {
+    // tap lands on. An N-1 backend doesn't send it; the legacy aggregate
+    // counts rows the destination excludes, so per PROTOCOL_EVOLUTION the
+    // actionable line is gated instead of advertising a mismatched route.
+    val readyCount = summary.readyToConfirmCategorized
+    if (readyCount != null && readyCount > 0) {
         metrics += PendingOverviewMetric(
             R.string.stats_pending_metric_ready,
             readyCount,
