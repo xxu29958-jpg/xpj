@@ -398,6 +398,18 @@ class LedgerViewModel(
     fun exportCsv() {
         viewModelScope.launch {
             val filters = _uiState.value
+            if (filters.dataQualityFilter != null) {
+                // The export endpoint only scopes by month/category/tag; the
+                // data-quality filter is client-side. Refuse rather than
+                // silently exporting the wider unfiltered scope.
+                _uiState.update {
+                    it.copy(
+                        message = UiText.res(R.string.ledger_msg_export_data_quality_filter_active),
+                        messageTone = MessageTone.Info,
+                    )
+                }
+                return@launch
+            }
             if (filters.items.isEmpty()) {
                 _uiState.update {
                     it.copy(

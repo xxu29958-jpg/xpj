@@ -272,6 +272,13 @@ private fun LedgerDataTools(
                 )
             },
         )
+        if (state.dataQualityFilter != null) {
+            Text(
+                text = stringResource(R.string.ledger_tools_export_data_quality_filtered),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 

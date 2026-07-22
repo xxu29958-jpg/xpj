@@ -10,12 +10,22 @@ Metric definitions:
 - ``missing_merchant``: pending rows with empty / whitespace merchant
 - ``missing_category``: pending or confirmed rows with empty / NULL /
   ``'未分类'`` category — these are the rows that defeat stats slicing
+- ``missing_category_pending`` / ``missing_category_confirmed``: the
+  ``missing_category`` total split by status. Clients route the two parts
+  to different remediation surfaces (pending → inbox, confirmed → ledger),
+  so they need the composition, not just the mixed total
+  (``missing_category == missing_category_pending + missing_category_confirmed``)
 - ``suspected_duplicates``: pending rows with ``duplicate_status = 'suspected'``
 - ``confirmed_without_image``: confirmed rows whose image was deleted by
   retention OR was never uploaded — affects auditability
 - ``oldest_pending_age_days``: days since the oldest pending row was
   ingested, ``None`` if none pending
 - ``ready_to_confirm``: pending rows with amount + merchant + non-duplicate
+- ``ready_to_confirm_categorized``: ``ready_to_confirm`` rows that also have
+  a real category — the caliber the Android inbox "ready to confirm" filter
+  lands on (its quick-category step takes precedence over confirm for
+  uncategorized rows, so the mixed ``ready_to_confirm`` count would send
+  users to a shorter list than advertised)
 """
 
 from __future__ import annotations
@@ -38,9 +48,12 @@ class DataQualitySummary:
     missing_amount: int
     missing_merchant: int
     missing_category: int
+    missing_category_pending: int
+    missing_category_confirmed: int
     suspected_duplicates: int
     confirmed_without_image: int
     ready_to_confirm: int
+    ready_to_confirm_categorized: int
     oldest_pending_age_days: int | None
     generated_at: datetime
 
@@ -50,9 +63,12 @@ class DataQualitySummary:
             "missing_amount": self.missing_amount,
             "missing_merchant": self.missing_merchant,
             "missing_category": self.missing_category,
+            "missing_category_pending": self.missing_category_pending,
+            "missing_category_confirmed": self.missing_category_confirmed,
             "suspected_duplicates": self.suspected_duplicates,
             "confirmed_without_image": self.confirmed_without_image,
             "ready_to_confirm": self.ready_to_confirm,
+            "ready_to_confirm_categorized": self.ready_to_confirm_categorized,
             "oldest_pending_age_days": self.oldest_pending_age_days,
             "generated_at": self.generated_at.isoformat(),
         }
@@ -61,6 +77,24 @@ class DataQualitySummary:
 def _count(db: Session, stmt) -> int:
     result = db.scalar(stmt)
     return int(result or 0)
+
+
+def _ready_to_confirm_stmt(base, *, empty_merchant):
+    """Pending rows with amount + merchant + fx-ready + non-duplicate."""
+    return (
+        base.where(Expense.status == "pending")
+        .where(Expense.amount_cents.is_not(None))
+        .where(Expense.fx_status == FX_STATUS_READY)
+        .where(~empty_merchant)
+        .where(Expense.duplicate_status != "suspected")
+    )
+
+
+def _missing_category_parts(db: Session, base, *, uncategorized) -> tuple[int, int]:
+    """Split the uncategorized count by status (pending → inbox, confirmed → ledger)."""
+    pending = _count(db, base.where(Expense.status == "pending").where(uncategorized))
+    confirmed = _count(db, base.where(Expense.status == "confirmed").where(uncategorized))
+    return pending, confirmed
 
 
 def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
@@ -89,10 +123,10 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         Expense.category == "未分类",
         Expense.category == "未分類",
     )
-    missing_category = _count(
-        db,
-        base.where(Expense.status.in_(("pending", "confirmed"))).where(uncategorized),
+    missing_category_pending, missing_category_confirmed = _missing_category_parts(
+        db, base, uncategorized=uncategorized
     )
+    missing_category = missing_category_pending + missing_category_confirmed
 
     suspected_duplicates = _count(
         db,
@@ -106,13 +140,11 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         ),
     )
 
-    ready_to_confirm = _count(
+    ready_to_confirm = _count(db, _ready_to_confirm_stmt(base, empty_merchant=empty_merchant))
+
+    ready_to_confirm_categorized = _count(
         db,
-        base.where(Expense.status == "pending")
-        .where(Expense.amount_cents.is_not(None))
-        .where(Expense.fx_status == FX_STATUS_READY)
-        .where(~empty_merchant)
-        .where(Expense.duplicate_status != "suspected"),
+        _ready_to_confirm_stmt(base, empty_merchant=empty_merchant).where(~uncategorized),
     )
 
     oldest_dt = db.scalar(
@@ -133,9 +165,12 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         missing_amount=missing_amount,
         missing_merchant=missing_merchant,
         missing_category=missing_category,
+        missing_category_pending=missing_category_pending,
+        missing_category_confirmed=missing_category_confirmed,
         suspected_duplicates=suspected_duplicates,
         confirmed_without_image=confirmed_without_image,
         ready_to_confirm=ready_to_confirm,
+        ready_to_confirm_categorized=ready_to_confirm_categorized,
         oldest_pending_age_days=oldest_pending_age_days,
         generated_at=datetime.now(tz=UTC),
     )

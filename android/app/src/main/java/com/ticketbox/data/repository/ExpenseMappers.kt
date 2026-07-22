@@ -385,9 +385,12 @@ fun DataQualitySummaryDto.toDomain(): DataQualitySummary = DataQualitySummary(
     missingAmount = missingAmount,
     missingMerchant = missingMerchant,
     missingCategory = missingCategory,
+    missingCategoryPending = missingCategoryPending,
+    missingCategoryConfirmed = missingCategoryConfirmed,
     suspectedDuplicates = suspectedDuplicates,
     confirmedWithoutImage = confirmedWithoutImage,
     readyToConfirm = readyToConfirm,
+    readyToConfirmCategorized = readyToConfirmCategorized,
     oldestPendingAgeDays = oldestPendingAgeDays,
     generatedAt = generatedAt,
 )

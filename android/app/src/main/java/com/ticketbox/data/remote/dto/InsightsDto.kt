@@ -27,12 +27,18 @@ data class DataQualitySummaryDto(
     val missingMerchant: Int,
     @param:Json(name = "missing_category")
     val missingCategory: Int,
+    @param:Json(name = "missing_category_pending")
+    val missingCategoryPending: Int,
+    @param:Json(name = "missing_category_confirmed")
+    val missingCategoryConfirmed: Int,
     @param:Json(name = "suspected_duplicates")
     val suspectedDuplicates: Int,
     @param:Json(name = "confirmed_without_image")
     val confirmedWithoutImage: Int,
     @param:Json(name = "ready_to_confirm")
     val readyToConfirm: Int,
+    @param:Json(name = "ready_to_confirm_categorized")
+    val readyToConfirmCategorized: Int,
     @param:Json(name = "oldest_pending_age_days")
     val oldestPendingAgeDays: Int?,
     @param:Json(name = "generated_at")

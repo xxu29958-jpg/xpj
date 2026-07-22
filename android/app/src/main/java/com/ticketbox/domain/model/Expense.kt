@@ -287,9 +287,12 @@ data class DataQualitySummary(
     val missingAmount: Int,
     val missingMerchant: Int,
     val missingCategory: Int,
+    val missingCategoryPending: Int,
+    val missingCategoryConfirmed: Int,
     val suspectedDuplicates: Int,
     val confirmedWithoutImage: Int,
     val readyToConfirm: Int,
+    val readyToConfirmCategorized: Int,
     val oldestPendingAgeDays: Int?,
     val generatedAt: String,
 )

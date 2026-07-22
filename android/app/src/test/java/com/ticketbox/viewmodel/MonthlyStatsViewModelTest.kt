@@ -416,9 +416,12 @@ private class FakeStatsActions : StatsActions {
                 missingAmount = 0,
                 missingMerchant = 0,
                 missingCategory = 0,
+                missingCategoryPending = 0,
+                missingCategoryConfirmed = 0,
                 suspectedDuplicates = 0,
                 confirmedWithoutImage = 0,
                 readyToConfirm = 0,
+                readyToConfirmCategorized = 0,
                 oldestPendingAgeDays = null,
                 generatedAt = "2026-05-13T00:00:00Z",
             )

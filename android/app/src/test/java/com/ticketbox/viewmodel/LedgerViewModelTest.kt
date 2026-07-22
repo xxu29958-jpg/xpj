@@ -633,6 +633,32 @@ class LedgerViewModelTest {
         assertEquals(LedgerMonthsLoadState.Failed, vm.uiState.value.monthsLoadState)
         assertEquals(listOf("2026-05"), vm.uiState.value.months)
     }
+
+    @Test
+    fun exportCsvRefusesWhileDataQualityFilterActive() = ledgerTest {
+        // The export endpoint only scopes by month/category/tag — under the
+        // client-side data-quality filter an export would silently dump the
+        // unfiltered scope, so the VM refuses with an explanation instead.
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "未分类", merchant = "A")),
+        )
+        val vm = LedgerViewModel(fake)
+        advanceUntilIdle()
+
+        vm.applyDataQualityFilter(LedgerDataQualityFilter.MissingCategory)
+        advanceUntilIdle()
+        vm.exportCsv()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(0, fake.exportCallCount)
+        assertFalse(state.exporting)
+        assertEquals(
+            UiText.res(R.string.ledger_msg_export_data_quality_filter_active),
+            state.message,
+        )
+        assertEquals(MessageTone.Info, state.messageTone)
+    }
 }
 
 // Fixture expenses sit in 2026-05; tests pin monthFilter here so they stay
@@ -664,6 +690,8 @@ private class FakeLedgerActions(
     var lastBatchTags: String? = null
         private set
     var syncCallCount = 0
+        private set
+    var exportCallCount = 0
         private set
     var syncGate: CompletableDeferred<Unit>? = null
     var monthResult: Result<List<String>> = Result.success(listOf("2026-05"))
@@ -699,7 +727,10 @@ private class FakeLedgerActions(
         month: String?,
         category: String?,
         tag: String?,
-    ): Result<CsvExport> = Result.success(CsvExport("ledger.csv", ByteArray(0)))
+    ): Result<CsvExport> {
+        exportCallCount++
+        return Result.success(CsvExport("ledger.csv", ByteArray(0)))
+    }
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> {
         manualCreate.failure?.let { return Result.failure(it) }
