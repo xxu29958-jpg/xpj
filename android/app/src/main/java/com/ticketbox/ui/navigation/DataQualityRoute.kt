@@ -1,8 +1,12 @@
 package com.ticketbox.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
@@ -34,6 +38,23 @@ internal fun DataQualityRoute(
         factory = screenFactory.repositoryViewModelFactory,
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Off-page remediation: while this page sits in the Insights saved stack,
+    // fixing rows in Inbox/Transactions bumps insightsDataRevision — but the
+    // preserved ViewModel never reloads on its own (StatsRoute's revision
+    // effect is only composed on the Insights root). Mirror that consumption
+    // here: the seen-marker initializes on first composition (the VM's own
+    // init load covers it) and only a LATER bump triggers a refresh, so
+    // revisiting without edits doesn't double-load (PR #230 round 8).
+    var seenInsightsDataRevision by rememberSaveable {
+        mutableStateOf(shellState.insightsDataRevision)
+    }
+    LaunchedEffect(shellState.insightsDataRevision) {
+        if (shellState.insightsDataRevision != seenInsightsDataRevision) {
+            seenInsightsDataRevision = shellState.insightsDataRevision
+            viewModel.refresh()
+        }
+    }
 
     DataQualityScreen(
         state = state,

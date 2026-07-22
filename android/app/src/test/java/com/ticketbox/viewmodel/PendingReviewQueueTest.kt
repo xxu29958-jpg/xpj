@@ -31,6 +31,38 @@ internal class PendingReviewQueueTest : PendingViewModelReviewTestBase() {
     }
 
     @Test
+    fun dirtyCategoryTokenAndMerchantNoiseEnterTheirQueues() {
+        // 与 QuickCategory/QuickMerchant 主判定同源（PR #230 round 8）：脏 token
+        // 类目行必须进类目队列、噪音商家行必须进商家队列，不再被 isBlank 漏判。
+        val dirtyTokenCategory = expense(id = 1L, category = "其他").copy(serverCategory = "none")
+        val normalizedBlankCategory = expense(id = 2L, category = "其他").copy(serverCategory = "")
+        val rawCleanCategory = expense(id = 3L, category = "其他").copy(serverCategory = "餐饮")
+        assertTrue(ReviewField.CATEGORY.isMissing(dirtyTokenCategory))
+        assertTrue(ReviewField.CATEGORY.isMissing(normalizedBlankCategory))
+        assertTrue(!ReviewField.CATEGORY.isMissing(rawCleanCategory))
+
+        val noiseMerchant = expense(id = 4L, merchant = "12:34")
+        val singleLetterMerchant = expense(id = 5L, merchant = "A")
+        val usableMerchant = expense(id = 6L, merchant = "3M")
+        assertTrue(ReviewField.MERCHANT.isMissing(noiseMerchant))
+        assertTrue(ReviewField.MERCHANT.isMissing(singleLetterMerchant))
+        assertTrue(!ReviewField.MERCHANT.isMissing(usableMerchant))
+
+        val categoryQueue = PendingReviewQueue.remaining(
+            listOf(dirtyTokenCategory, rawCleanCategory),
+            ReviewField.CATEGORY,
+            emptySet(),
+        )
+        assertEquals(listOf(1L), categoryQueue.map { it.id })
+        val merchantQueue = PendingReviewQueue.remaining(
+            listOf(noiseMerchant, usableMerchant),
+            ReviewField.MERCHANT,
+            emptySet(),
+        )
+        assertEquals(listOf(4L), merchantQueue.map { it.id })
+    }
+
+    @Test
     fun remainingCountsMissingFieldExcludingSkipped() {
         val items = listOf(missingMerchant(1L), hasMerchant(2L), missingMerchant(3L), missingMerchant(4L))
 

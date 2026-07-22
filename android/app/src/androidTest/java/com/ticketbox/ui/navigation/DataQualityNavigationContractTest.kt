@@ -122,6 +122,34 @@ class DataQualityNavigationContractTest {
     }
 
     @Test
+    fun dataQualityPageReloadsAfterOffPageRemediationRevisionBump() {
+        setContractContent()
+        openDataQualityFromInsights()
+        composeRule.runOnIdle {
+            assertEquals(1, apiProbe.dataQualityCallCount)
+        }
+
+        // Leave DQ in the Insights saved stack, then remediate elsewhere:
+        // production marks insightsDataRevision when Inbox/Transactions writes
+        // land (markInsightsDataChanged/markExpenseEditCompleted).
+        selectDomain(PrimaryDomain.Inbox)
+        composeRule.runOnIdle {
+            apiProbe.summary = apiProbe.summary.copy(missingMerchant = 0)
+            shellState.markInsightsDataChanged()
+        }
+
+        // Restoring the saved [Insights, DQ] stack must reload — the preserved
+        // ViewModel would otherwise show the stale count.
+        selectDomain(PrimaryDomain.Insights)
+        waitForNode(TEXT_CONFIRMED_WITHOUT_IMAGE)
+
+        composeRule.runOnIdle {
+            assertEquals(2, apiProbe.dataQualityCallCount)
+        }
+        composeRule.onNodeWithText(TEXT_MISSING_MERCHANT).assertDoesNotExist()
+    }
+
+    @Test
     fun rootlessReturnToRootDoesNotRestoreStaleSavedInsightsStack() {
         setContractContent()
         // 1) Build a saved Insights stack snapshot: Insights root + DQ page,

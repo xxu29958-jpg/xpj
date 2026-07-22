@@ -154,8 +154,9 @@ internal class DataQualityConnectedHarness : AutoCloseable {
 internal class DataQualityApiProbe {
     var dataQualityCallCount = 0
 
-    /** Two actionable remediation rows: 缺商家 (inbox) + 已确认无图 (transactions). */
-    val summary = DataQualitySummaryDto(
+    /** Two actionable remediation rows: 缺商家 (inbox) + 已确认无图 (transactions).
+     * Mutable so tests can simulate off-page remediation changing the summary. */
+    var summary = DataQualitySummaryDto(
         pendingTotal = 5,
         missingAmount = 0,
         missingMerchant = 2,
