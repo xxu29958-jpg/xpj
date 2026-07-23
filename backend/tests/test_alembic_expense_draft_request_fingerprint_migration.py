@@ -7,7 +7,7 @@ ship UNDETECTED by the deployment path. This drives it directly on PostgreSQL (t
 dialect): create_all → stamp head → downgrade past 20260622_0001 (drops the column) → upgrade
 to head (re-adds it), asserting the column's full shape (present + nullable) on both legs.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its own
+Marked ``real_db`` below because it issues DDL via its own
 ``engine.begin()`` connections outside the per-test transaction.
 """
 
@@ -15,9 +15,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+
+pytestmark = pytest.mark.real_db
 
 _COLUMN = "draft_request_fingerprint"
 

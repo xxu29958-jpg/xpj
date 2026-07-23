@@ -183,6 +183,7 @@ def test_confirm_removes_expense_from_pending_and_adds_confirmed(
     assert stats.json()["total_amount_cents"] == 1851
 
 
+@pytest.mark.real_db
 def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch, *, identity,

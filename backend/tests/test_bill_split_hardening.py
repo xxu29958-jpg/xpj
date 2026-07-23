@@ -50,6 +50,7 @@ def test_active_split_invitation_total_cannot_exceed_parent_expense(
     reason="row-lock contention is only observable on the PostgreSQL lane; "
     "FOR UPDATE is a no-op on SQLite",
 )
+@pytest.mark.real_db
 def test_create_invitation_row_locks_parent_expense(*, identity) -> None:
     """PG-only 债#1: ``create_invitation`` FOR-UPDATEs the parent expense so the
     active_split_total read + cap check + insert serialize against concurrent
@@ -216,6 +217,7 @@ def test_foreign_currency_split_lands_received_expense_in_home_currency() -> Non
         assert received.exchange_rate_date is not None
 
 
+@pytest.mark.real_db
 def test_two_sessions_accept_race_creates_single_received_expense(*, identity) -> None:
     """ADR-0038 PR-C: two sessions hold the same pre-accept ('invited') read
     of one invitation. session_a accepts (creates the received expense +

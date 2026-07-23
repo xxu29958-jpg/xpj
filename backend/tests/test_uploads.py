@@ -349,6 +349,7 @@ def test_upload_rejects_fake_heic_brand_without_decodable_image(
     assert _stored_upload_files() == []
 
 
+@pytest.mark.real_db
 def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(
     client: TestClient, *, identity,
 ) -> None:

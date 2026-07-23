@@ -23,7 +23,8 @@ jobs:
   checks:
     steps:
       - run: python scripts/release_audit.py
-      - run: python -m pytest tests -q -ra --tb=short -p no:cacheprovider
+      - run: python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 4
+      - run: python scripts/run_postgres_pytest_lane.py --lane real-db --workers 1
       - run: python -m pytest -q packaging/tests -p no:cacheprovider
       - run: powershell -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
@@ -117,7 +118,8 @@ jobs:
         f"{business}\ncmd /c exit 0",
     ):
         candidate = mod.WorkflowCommand(Path("ci.yml"), masked)
-        assert "pytest business full-suite lane" in mod._missing_ci_invocations([candidate])
+        assert "pytest ordinary business lane" in mod._missing_ci_invocations([candidate])
+        assert "pytest real-db serial lane" in mod._missing_ci_invocations([candidate])
 
 
 @pytest.mark.parametrize("platform", ["GitHub", "Gitea"])

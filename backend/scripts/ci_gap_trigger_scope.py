@@ -17,14 +17,31 @@ ANDROID_PROTECTED_PATHS = (
     "android/gradlew.bat",
     "android/settings.gradle.kts",
 )
-CI_HEAVY_SCOPES = ("postgres", "desktop", "android", "windows")
+CI_HEAVY_SCOPES = (
+    "postgres",
+    "backend_frozen",
+    "desktop",
+    "android",
+    "windows",
+)
 _FULL_PATHS = {
+    "backend/scripts/_audit_codebase.py",
     "backend/scripts/ci_scope.py",
+    "backend/scripts/codebase_audit_gate.py",
+    "backend/scripts/pr_delta_baselines.py",
+    "backend/scripts/postgres_release_policy.py",
     "backend/scripts/ci_gap_job_scope.py",
     "backend/scripts/ci_gap_trigger_scope.py",
     "backend/scripts/_audit_ci_gap.py",
     "backend/scripts/ci_gap_release_scope.py",
     "backend/scripts/ci_gap_required_commands.py",
+    "backend/scripts/release_audit.py",
+    "backend/scripts/report_qualification_sha.py",
+    "backend/scripts/verify_backend_ci_results.py",
+}
+_ALWAYS_ON_CONTRACT_PATHS = {
+    "backend/tests/test_backend_ci_results.py",
+    "backend/tests/test_postgres_ci_topology.py",
 }
 _FULL_PREFIXES = (".github/workflows/", ".gitea/workflows/")
 _CI_POLICY_PREFIXES = (
@@ -40,14 +57,26 @@ _WINDOWS_ONLY_BACKEND_FILES = {
     "backend/requirements-build.txt",
     "backend/requirements-build.lock",
     "backend/scripts/build_backend_exe.ps1",
+    "backend/scripts/start_test_pg.ps1",
+    "backend/scripts/stop_test_pg.ps1",
+    "backend/scripts/test_pg_ownership_contract.ps1",
+    "backend/scripts/test_pg_auth_contract.ps1",
+    "backend/scripts/test_pg_process_contract.ps1",
+    "backend/scripts/test_pg_storage_contract.ps1",
     "backend/scripts/windows_build_provenance.ps1",
     "backend/scripts/windows_backend_build_provenance.ps1",
+    "backend/tests/_infra/windows_tree.py",
 }
-_FROZEN_BACKEND_PREFIXES = ("backend/app/", "backend/migrations/")
-_FROZEN_BACKEND_FILES = {
+_POSTGRES_BACKEND_PREFIXES = ("backend/tests/", "backend/audit/")
+_POSTGRES_WINDOWS_BACKEND_PREFIXES = ("backend/app/", "backend/migrations/")
+_POSTGRES_WINDOWS_BACKEND_FILES = {
     "backend/alembic.ini",
-    "backend/requirements.txt",
     "backend/requirements-dev.txt",
+    "backend/scripts/test_postgres_contract.json",
+}
+_CROSS_RUNTIME_RELEASE_CONFIG = "backend/packaging/windows-release-config.json"
+_BACKEND_RELEASE_FILES = {
+    "backend/requirements.txt",
 }
 _FROZEN_DESKTOP_PREFIXES = (
     "desktop/backend_manager/",
@@ -60,6 +89,28 @@ _FROZEN_DESKTOP_FILES = {
     "desktop/requirements-build.txt",
     "desktop/requirements-build.lock",
 }
+_EXACT_SCOPE_RULES = {
+    **dict.fromkeys(_DOC_FILES, ()),
+    **dict.fromkeys(_WINDOWS_ONLY_BACKEND_FILES, ("windows",)),
+    **dict.fromkeys(_POSTGRES_WINDOWS_BACKEND_FILES, ("postgres", "windows")),
+    **dict.fromkeys(
+        _BACKEND_RELEASE_FILES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
+    **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
+    _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
+    "backend/app/version.py": ("postgres", "desktop", "windows"),
+    "backend/packaging/windows-build-toolchain.json": ("postgres", "windows"),
+}
+_PREFIX_SCOPE_RULES = (
+    (_DOC_PREFIXES, ()),
+    (("android/",), ("android",)),
+    (_FROZEN_DESKTOP_PREFIXES, ("desktop", "windows")),
+    (("desktop/",), ("desktop",)),
+    (_POSTGRES_WINDOWS_BACKEND_PREFIXES, ("postgres", "backend_frozen")),
+    (_WINDOWS_ONLY_BACKEND_PREFIXES, ("windows",)),
+    (_POSTGRES_BACKEND_PREFIXES, ("postgres",)),
+)
 _STATUS_FUNCTION = re.compile(r"(?i)\b(success|always|failure|cancelled)\s*\(")
 
 
@@ -67,11 +118,22 @@ def all_ci_scopes() -> dict[str, bool]:
     return dict.fromkeys(CI_HEAVY_SCOPES, True)
 
 
+def _scopes_for_path(path: str) -> tuple[str, ...] | None:
+    exact = _EXACT_SCOPE_RULES.get(path)
+    if exact is not None:
+        return exact
+    for prefixes, scopes in _PREFIX_SCOPE_RULES:
+        if path.startswith(prefixes):
+            return scopes
+    return None
+
+
 def classify_ci_paths(paths: Iterable[str]) -> dict[str, bool]:
     result = dict.fromkeys(CI_HEAVY_SCOPES, False)
     normalized = {path.replace("\\", "/") for path in paths if path}
     if not normalized:
         return all_ci_scopes()
+    normalized.difference_update(_ALWAYS_ON_CONTRACT_PATHS)
 
     for path in sorted(normalized):
         if path != path.strip():
@@ -82,29 +144,11 @@ def classify_ci_paths(paths: Iterable[str]) -> dict[str, bool]:
             or path.startswith(_CI_POLICY_PREFIXES)
         ):
             return all_ci_scopes()
-        if path in _DOC_FILES or path.startswith(_DOC_PREFIXES):
-            continue
-        if path.startswith("android/"):
-            result["android"] = True
-            continue
-        if path.startswith("desktop/"):
-            result["desktop"] = True
-            if path.startswith(_FROZEN_DESKTOP_PREFIXES) or path in _FROZEN_DESKTOP_FILES:
-                result["windows"] = True
-            continue
-        if path.startswith(_WINDOWS_ONLY_BACKEND_PREFIXES) or path in _WINDOWS_ONLY_BACKEND_FILES:
-            result["windows"] = True
-            continue
-        if path.startswith(_FROZEN_BACKEND_PREFIXES) or path in _FROZEN_BACKEND_FILES:
-            result["postgres"] = True
-            result["windows"] = True
-            if path == "backend/app/version.py":
-                result["desktop"] = True
-            continue
-        if path.startswith("backend/"):
-            result["postgres"] = True
-            continue
-        return all_ci_scopes()
+        scopes = _scopes_for_path(path)
+        if scopes is None:
+            return all_ci_scopes()
+        for scope in scopes:
+            result[scope] = True
     return result
 
 

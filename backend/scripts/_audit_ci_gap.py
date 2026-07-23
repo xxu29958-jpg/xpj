@@ -79,7 +79,8 @@ PATH_SCOPED_RELEASE_TASKS = frozenset(
     {":app:assembleGrayRelease", ":app:assembleInternalRelease"}
 )
 _CI_INVOCATION_SCOPES = {
-    "pytest business full-suite lane": {"full", "postgres"},
+    "pytest ordinary business lane": {"full", "postgres"},
+    "pytest real-db serial lane": {"full", "postgres"},
     "end-to-end smoke": {"full", "postgres"},
     "backup/restore drill": {"full", "postgres"},
     "pytest installer safety lane": {"full", "windows"},

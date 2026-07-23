@@ -4,7 +4,6 @@ import base64
 import json
 import os
 import secrets
-import shutil
 import socket
 import subprocess
 import sys
@@ -16,13 +15,18 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+if __package__:
+    from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
+    from scripts.write_test_postgres_env import render_environment
+else:
+    from test_postgres_contract import TEST_POSTGRES_CONTRACT
+    from write_test_postgres_env import render_environment
+
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 HOST = "127.0.0.1"
 SESSION_TOKEN = ""
 BOOTSTRAP_ADMIN_TOKEN = ""
 UPLOAD_PATH = ""
-
-
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
 )
@@ -135,24 +139,46 @@ def assert_error(result: ApiResult, status: int, code: str) -> None:
     assert_true(isinstance(payload.get("message"), str) and payload["message"], f"{code} message")
 
 
-def clean_smoke_runtime() -> None:
-    # PG-only (debt #4): the smoke runs against PostgreSQL (``xpj_smoke``); no
-    # local SQLite file is created, so only the upload dir needs clearing.
-    upload_dir = (BACKEND_ROOT / "uploads" / "smoke_test").resolve()
-    upload_root = (BACKEND_ROOT / "uploads").resolve()
-    for _ in range(20):
-        if not upload_dir.exists():
-            break
-        try:
-            upload_dir.relative_to(upload_root)
-            shutil.rmtree(upload_dir)
-            break
-        except PermissionError:
-            time.sleep(0.1)
+def smoke_database_route() -> tuple[str, str | None]:
+    configured = os.environ.get("SMOKE_DATABASE_URL")
+    if configured:
+        return configured, os.environ.get("PGPASSFILE")
+    local_postgres_environment = _local_postgres_environment()
+    return (
+        local_postgres_environment["SMOKE_DATABASE_URL"],
+        local_postgres_environment["PGPASSFILE"],
+    )
 
 
-def start_server(port: int) -> subprocess.Popen:
+def _local_postgres_environment() -> dict[str, str]:
+    port = TEST_POSTGRES_CONTRACT.ports.local
+    return render_environment(
+        host="localhost",
+        port=port,
+        admin_user="postgres",
+        application_user=TEST_POSTGRES_CONTRACT.application_role,
+        passfile=(
+            TEST_POSTGRES_CONTRACT.default_data_dir(port)
+            / TEST_POSTGRES_CONTRACT.passfile_name
+        ),
+        cluster_identity=TEST_POSTGRES_CONTRACT.local_database_identity(port),
+    )
+
+
+def start_server(
+    port: int,
+    *,
+    database_url: str,
+    passfile: str | None,
+) -> subprocess.Popen:
     env = os.environ.copy()
+    cluster_identity = env.get("XPJ_TEST_CLUSTER_IDENTITY")
+    if cluster_identity is None:
+        cluster_identity = _local_postgres_environment()[
+            "XPJ_TEST_CLUSTER_IDENTITY"
+        ]
+    if passfile:
+        env["PGPASSFILE"] = passfile
     env.update(
         {
             "UPLOAD_TOKEN": SMOKE_CREDENTIALS.upload,
@@ -161,11 +187,12 @@ def start_server(port: int) -> subprocess.Popen:
             # PG-only (debt #4): the smoke runs the full bootstrap → upload →
             # OCC-token → confirm flow against PostgreSQL. CI's backend-postgres
             # lane sets SMOKE_DATABASE_URL to its ephemeral cluster; a local run
-            # falls back to the throwaway test PG on :5438 (start_test_pg.ps1
-            # brings it up and creates xpj_smoke).
-            "DATABASE_URL": os.environ.get(
-                "SMOKE_DATABASE_URL", "postgresql+psycopg://postgres@localhost:5438/xpj_smoke"
-            ),
+            # falls back to the contract-defined local profile
+            # (start_test_pg.ps1 brings it up and creates xpj_smoke).
+            "DATABASE_URL": database_url,
+            "XPJ_TEST_CLUSTER_IDENTITY": cluster_identity,
+            "XPJ_SMOKE_HOST": HOST,
+            "XPJ_SMOKE_PORT": str(port),
             "UPLOAD_DIR": "uploads/smoke_test",
             "MAX_UPLOAD_SIZE_MB": "10",
             "DELETE_IMAGE_AFTER_CONFIRM": "false",
@@ -182,13 +209,7 @@ def start_server(port: int) -> subprocess.Popen:
         [
             sys.executable,
             "-m",
-            "uvicorn",
-            "app.main:app",
-            "--host",
-            HOST,
-            "--port",
-            str(port),
-            "--no-access-log",
+            "scripts.smoke_server",
         ],
         cwd=BACKEND_ROOT,
         env=env,
@@ -963,10 +984,10 @@ def run_smoke(base_url: str) -> None:
 
 
 def main() -> int:
-    clean_smoke_runtime()
+    database_url, passfile = smoke_database_route()
     port = free_port()
     base_url = f"http://{HOST}:{port}"
-    process = start_server(port)
+    process = start_server(port, database_url=database_url, passfile=passfile)
     try:
         wait_for_server(base_url, process)
         run_smoke(base_url)
@@ -982,7 +1003,6 @@ def main() -> int:
         if server_log:
             server_log.close()
         cleanup_server_log()
-        clean_smoke_runtime()
 
 
 if __name__ == "__main__":

@@ -44,6 +44,7 @@ Run from ``backend/``::
 
 from __future__ import annotations
 
+import os
 import pathlib
 import re
 import subprocess
@@ -73,6 +74,10 @@ from _audit_mutate_token_coverage import (  # noqa: E402 — sys.path bootstrap 
 )
 from _mutate_token_ledger import ALLOWLIST, REASON_CODES  # noqa: E402
 from codebase_audit_gate import evaluate_pr_delta_metrics  # noqa: E402
+from run_postgres_pytest_lane import (  # noqa: E402 — sys.path bootstrap above
+    build_pytest_collection_command,
+    child_environment,
+)
 
 
 def _count_mutate_token_metrics() -> dict[str, int]:
@@ -131,8 +136,9 @@ def _count_pytest_tests(target: str) -> int:
     An explicit positional target avoids relying on pyproject.toml's testpaths
     default, keeping business and installer contracts independently auditable.
     """
+    command = build_pytest_collection_command(target)
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", target, "--collect-only", "-q"],
+        command,
         cwd=_BACKEND_ROOT,
         capture_output=True,
         text=True,
@@ -140,6 +146,7 @@ def _count_pytest_tests(target: str) -> int:
         errors="replace",
         check=False,
         timeout=300,
+        env=child_environment(os.environ),
     )
     if result.returncode != 0:
         raise RuntimeError(

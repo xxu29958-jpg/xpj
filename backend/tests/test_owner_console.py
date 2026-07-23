@@ -11,6 +11,9 @@ Security invariants verified:
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +22,41 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routes.owner_console import _require_local
 from app.version import STATIC_ASSET_VERSION
+
+
+@contextmanager
+def _isolated_runtime_setting(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    baseline: str,
+) -> Iterator[None]:
+    """Restore the parent environment before clearing the Settings cache."""
+    from app import config as app_config
+
+    try:
+        with monkeypatch.context() as scoped:
+            scoped.setenv(name, baseline)
+            app_config.get_settings.cache_clear()
+            yield
+    finally:
+        app_config.get_settings.cache_clear()
+
+
+def test_isolated_runtime_setting_restores_parent_and_clears_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import config as app_config
+
+    name = "PUBLIC_BASE_URL"
+    parent = "https://parent.example"
+    monkeypatch.setenv(name, parent)
+    with _isolated_runtime_setting(monkeypatch, name, ""):
+        os.environ[name] = "https://runtime.example"
+        app_config.get_settings.cache_clear()
+        assert app_config.get_settings().public_base_url == "https://runtime.example"
+
+    assert os.environ[name] == parent
+    assert app_config.get_settings.cache_info().currsize == 0
 
 
 def _insert_external_console_device() -> str:
@@ -809,9 +847,11 @@ def test_owner_ai_advisor_confirmation_updates_runtime_env(
     fake_env = tmp_path / ".env"
     fake_env.write_text("", encoding="utf-8")
     monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
-    monkeypatch.delenv("BUDGET_ADVISOR_OWNER_CONFIRMED", raising=False)
-    app_config.get_settings.cache_clear()
-    try:
+    with _isolated_runtime_setting(
+        monkeypatch,
+        "BUDGET_ADVISOR_OWNER_CONFIRMED",
+        "false",
+    ):
         response = local_client.post(
             "/owner/ai-advisor/confirmation",
             data={"confirmed": "on"},
@@ -820,9 +860,6 @@ def test_owner_ai_advisor_confirmation_updates_runtime_env(
         assert response.status_code == 303
         assert "BUDGET_ADVISOR_OWNER_CONFIRMED=true" in fake_env.read_text(encoding="utf-8")
         assert app_config.get_settings().budget_advisor_owner_confirmed is True
-    finally:
-        monkeypatch.delenv("BUDGET_ADVISOR_OWNER_CONFIRMED", raising=False)
-        app_config.get_settings.cache_clear()
 
 
 def test_owner_algorithm_versions_inventory_and_withdraw(
@@ -1183,9 +1220,7 @@ def test_owner_settings_save_public_base_url_writes_env(
     fake_env = tmp_path / ".env"
     fake_env.write_text("OCR_PROVIDER=empty\nPUBLIC_BASE_URL=\n", encoding="utf-8")
     monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
-    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
-    app_config.get_settings.cache_clear()
-    try:
+    with _isolated_runtime_setting(monkeypatch, "PUBLIC_BASE_URL", ""):
         resp = local_client.post(
             "/owner/settings/public-base-url",
             data={"public_base_url": "https://api.zen70.cn/"},  # trailing slash dropped
@@ -1196,9 +1231,6 @@ def test_owner_settings_save_public_base_url_writes_env(
         assert "PUBLIC_BASE_URL=https://api.zen70.cn" in text
         # cache must be refreshed so subsequent reads see the new value
         assert app_config.get_settings().public_base_url == "https://api.zen70.cn"
-    finally:
-        monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
-        app_config.get_settings.cache_clear()
 
 
 def test_owner_settings_rejects_missing_scheme(
@@ -1406,15 +1438,12 @@ def test_owner_settings_trailing_slash_stripped(
     local_client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     """Trailing slash should be stripped; path /foo should be rejected."""
-    from app import config as app_config
     from app.services import runtime_settings_service as rss
 
     fake_env = tmp_path / ".env"
     fake_env.write_text("", encoding="utf-8")
     monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
-    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
-    app_config.get_settings.cache_clear()
-    try:
+    with _isolated_runtime_setting(monkeypatch, "PUBLIC_BASE_URL", ""):
         # bare trailing slash (no path segment) is accepted and stripped
         resp = local_client.post(
             "/owner/settings/public-base-url",
@@ -1423,6 +1452,3 @@ def test_owner_settings_trailing_slash_stripped(
         assert resp.status_code == 200
         text = fake_env.read_text(encoding="utf-8")
         assert "PUBLIC_BASE_URL=https://api.example.com\n" in text or "PUBLIC_BASE_URL=https://api.example.com" in text
-    finally:
-        monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
-        app_config.get_settings.cache_clear()

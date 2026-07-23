@@ -26,6 +26,11 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT  # noqa: E402
+from scripts.test_postgres_database import dedicated_test_database_lease  # noqa: E402
+
+_PG_RESTORE_TIMEOUT_SECONDS = 5 * 60
+
 
 def _counts(url: str) -> dict[str, int]:
     """Row count per PUBLIC table — the whole schema, not a hand-kept list.
@@ -64,29 +69,32 @@ def _pg_restore(dump_path: Path, restore_url: str) -> None:
     # errors to tolerate — any non-zero exit means objects (indexes,
     # constraints, tables) did not come back and the backup is not proven
     # restorable, even if the row counts of the tables that DID land match.
-    result = subprocess.run(
-        [
-            binary,
-            "--dbname",
-            connection.database_url,
-            "--no-owner",
-            "--exit-on-error",
-            str(dump_path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=_pg_tool_environment(connection.password),
-    )
+    with _pg_tool_environment(connection) as environment:
+        try:
+            result = subprocess.run(
+                [
+                    binary,
+                    "--no-password",
+                    "--dbname",
+                    connection.database_url,
+                    "--no-owner",
+                    "--exit-on-error",
+                    str(dump_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                timeout=_PG_RESTORE_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            raise SystemExit("FAIL drill: pg_restore could not complete") from None
     if result.returncode != 0:
-        raise SystemExit(
-            f"FAIL drill: pg_restore exited {result.returncode}; native diagnostics omitted"
-        )
+        raise SystemExit(f"FAIL drill: pg_restore exited {result.returncode}; native diagnostics omitted")
 
 
-def main() -> int:
-    source_url = os.environ["DRILL_SOURCE_URL"]
-    restore_url = os.environ["DRILL_RESTORE_URL"]
+def _run_drill(source_url: str, restore_url: str) -> int:
     os.environ["DATABASE_URL"] = source_url
 
     from app.services import backup_service
@@ -120,6 +128,30 @@ def main() -> int:
 
     print("\nPASS postgres backup/restore drill")
     return 0
+
+
+def main() -> int:
+    source_url = os.environ["DRILL_SOURCE_URL"]
+    restore_url = os.environ["DRILL_RESTORE_URL"]
+    passfile = os.environ.get("PGPASSFILE")
+    cluster_identity = os.environ["XPJ_TEST_CLUSTER_IDENTITY"]
+    with (
+        dedicated_test_database_lease(
+            source_url,
+            expected_database=TEST_POSTGRES_CONTRACT.smoke_database,
+            reset=False,
+            cluster_identity=cluster_identity,
+            passfile=passfile,
+        ),
+        dedicated_test_database_lease(
+            restore_url,
+            expected_database=TEST_POSTGRES_CONTRACT.restore_database,
+            reset=True,
+            cluster_identity=cluster_identity,
+            passfile=passfile,
+        ),
+    ):
+        return _run_drill(source_url, restore_url)
 
 
 if __name__ == "__main__":

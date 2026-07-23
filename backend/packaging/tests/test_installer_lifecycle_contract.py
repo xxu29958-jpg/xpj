@@ -176,7 +176,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         assert ". $LifecycleScript" in script
         assert ". $SafetyScript" in script
         assert ". $LockScript" in script
-    for script in (prepare, install):
+    for script in (prepare, install, uninstall):
         assert ". $DatabaseSafetyScript" in script
     assert ". $DatabaseScript" in install
     assert ". $BackendBootstrapScript" in install
@@ -612,7 +612,7 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
     assert "Assert-TicketboxPgServiceCommand" in direct_backup
     assert "Assert-TicketboxConnectedPostgresDataRoot" in direct_backup
     assert "Invoke-TicketboxPgDumpCustom" in direct_backup
-    assert "& $PgRestore --list" in direct_backup
+    assert "Invoke-TicketboxPgRestoreList" in direct_backup
     assert "Register-PgService" not in direct_backup
     assert "Initialize-PgClusterIfNeeded" not in direct_backup
 
@@ -1077,6 +1077,7 @@ def test_mutable_windows_runtime_policy_is_read_from_release_config() -> None:
     assert '"-X", "-w"' in database
     assert "--no-psqlrc" in database_safety
     assert "--no-password" in database_safety
+    assert "--lock-wait-timeout=30000" in database_safety
     assert "[System.IO.Path]::GetTempPath()" not in database
     assert "Set-TicketboxExactFileAcl" in database
     assert "Remove-TicketboxSensitiveFile $pwfile" in database
@@ -1098,6 +1099,7 @@ def test_mutable_windows_runtime_policy_is_read_from_release_config() -> None:
         "backend_health_request_timeout_ms",
         "bootstrap_request_timeout_ms",
         "secret_byte_count",
+        "database_tool_timeout_ms",
     ):
         assert name in config
         assert name in _read("windows_release_config.ps1")
@@ -1117,7 +1119,8 @@ def test_install_and_uninstall_share_fail_closed_service_ownership() -> None:
     assert "停止服务 $Name 失败" not in uninstall
     assert "Assert-TicketboxPgScmProcessAgreement" in uninstall
     assert "Remove-TicketboxPgServiceIfExists" in uninstall
-    assert "& $PgCtl status -D $PgData" in uninstall
+    assert "Invoke-TicketboxBoundedNativeProcess" in uninstall
+    assert "& $PgCtl status -D $PgData" not in uninstall
     assert uninstall.index("Assert-TicketboxPgScmProcessAgreement") < uninstall.index(
         'Write-Step "停止并删除后端服务"'
     )
@@ -3711,15 +3714,18 @@ $rejected = $false
 try {{ Read-TicketboxWindowsReleaseConfig '{literal(invalid_owner_channel_config_path)}' | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'non-canonical owner recovery capability was accepted in Windows release config' }}
 $localUrl = Assert-TicketboxLocalDatabaseUrl -DatabaseUrl 'postgresql+psycopg://ticketbox:secret@127.0.0.1:5432/ticketbox' -PgPort 5432
-if ($localUrl -ne 'postgresql://ticketbox:secret@127.0.0.1:5432/ticketbox') {{ throw 'local DB URL rejected' }}
+if ($localUrl -ne 'postgresql://ticketbox:secret@127.0.0.1:5432/ticketbox?require_auth=scram-sha-256') {{ throw 'local DB URL was not hardened' }}
 $connection = Get-TicketboxLocalDatabaseConnection -DatabaseUrl $localUrl -PgPort 5432 -ExpectedDatabase ticketbox -ExpectedRole ticketbox
-if ($connection.DatabaseUrl -match 'secret' -or $connection.Password -ne 'secret') {{ throw 'database password was not isolated' }}
+if ($connection.DatabaseUrl -match 'secret' -or $connection.Password -ne 'secret' -or $connection.DatabaseUrl -notmatch 'require_auth=scram-sha-256') {{ throw 'database password or authentication contract was not isolated' }}
 $rejected = $false
 try {{ Assert-TicketboxLocalDatabaseUrl -DatabaseUrl 'postgresql://ticketbox:secret@example.com:5432/ticketbox' -PgPort 5432 | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'external DB URL accepted' }}
 $rejected = $false
 try {{ Assert-TicketboxLocalDatabaseUrl -DatabaseUrl 'postgresql://ticketbox:secret@127.0.0.1:5432/ticketbox?hostaddr=203.0.113.7' -PgPort 5432 | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'libpq target override accepted' }}
+$rejected = $false
+try {{ Assert-TicketboxLocalDatabaseUrl -DatabaseUrl 'postgresql://ticketbox:secret@127.0.0.1:5432/ticketbox?require_auth=none' -PgPort 5432 | Out-Null }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'libpq authentication downgrade accepted' }}
 $rejected = $false
 try {{ Get-TicketboxLocalDatabaseConnection -DatabaseUrl 'postgresql://ticketbox:secret@127.0.0.1:5432/postgres' -PgPort 5432 -ExpectedDatabase ticketbox -ExpectedRole ticketbox | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'wrong application database accepted' }}

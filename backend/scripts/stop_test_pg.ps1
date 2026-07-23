@@ -4,45 +4,93 @@
   Stop and delete the throwaway test PostgreSQL started by start_test_pg.ps1.
 
 .DESCRIPTION
-  Kills ONLY the ephemeral cluster's own process tree by its postmaster PID
-  (read from <DataDir>\postmaster.pid) and removes the data directory. NEVER
-  kills postgres by binary path — the production cluster on 5432 shares the same
-  binaries — and never touches 5432 / 5433.
-
-  Mirrors the proven CI teardown (.gitea/workflows/windows-ci.yml): pg_ctl stop
-  hung ~60s on Windows, so force-kill the ephemeral postmaster's own PID tree.
+  Proves the listener, postmaster PID, executable and exact -D data directory,
+  then asks pg_ctl to perform a bounded fast shutdown. A force stop is only a
+  fallback after ownership is re-proved and uses pinned Process objects instead
+  of a reusable numeric PID. The production cluster on 5432 shares the same
+  binaries, so this script never kills by executable path.
 
 .PARAMETER Port
-  TCP port of the throwaway cluster. Default 5438.
+  TCP port of the throwaway cluster. Zero selects the contract profile.
 
 .PARAMETER DataDir
-  Cluster data directory. Default: $env:TEMP\xpj_pg_test<Port>.
+  Cluster data directory. Must be a non-reparse child of the dynamically
+  resolved protected test runtime root. Default: xpj_pg_test<Port> under it.
+
+.PARAMETER AllowCiPort
+  Selects the contract's Gitea profile. Reserved host ports always fail.
 #>
 [CmdletBinding()]
 param(
-    [int]$Port = 5438,
-    [string]$DataDir = (Join-Path $env:TEMP "xpj_pg_test$Port")
+    [int]$Port = 0,
+    [string]$DataDir = '',
+    [switch]$AllowCiPort
 )
 
-if ($Port -eq 5432 -or $Port -eq 5433) {
-    throw "Refusing port ${Port}: 5432 is prod, 5433 is CI. This script only tears down the throwaway test cluster."
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'test_pg_storage_contract.ps1')
+. (Join-Path $PSScriptRoot 'test_pg_auth_contract.ps1')
+$contract = Get-XpjTestPostgresContract
+$giteaPort = [int]$contract.ports.gitea
+$localPort = [int]$contract.ports.local
+$forbiddenHostPorts = @($contract.forbidden_host_ports | ForEach-Object { [int]$_ })
+if ($Port -eq 0) { $Port = if ($AllowCiPort) { $giteaPort } else { $localPort } }
+if ([string]::IsNullOrWhiteSpace($DataDir)) {
+    $DataDir = Get-XpjTestPostgresDefaultDataDir -Port $Port
+}
+$DataDir = Resolve-XpjTestPostgresDataDir -DataDir $DataDir
+
+if ($Port -in $forbiddenHostPorts -or ($Port -eq $giteaPort -and -not $AllowCiPort)) {
+    throw "Refusing port ${Port}: reserved host ports are forbidden and the Gitea port requires the CI lifecycle switch."
+}
+if ($AllowCiPort -and $Port -ne $giteaPort) {
+    throw "The CI lifecycle switch is valid only for the configured Gitea port $giteaPort."
 }
 
-$pidfile = Join-Path $DataDir "postmaster.pid"
-if (Test-Path -LiteralPath $pidfile) {
-    $pmpid = (Get-Content -Encoding UTF8 -LiteralPath $pidfile -TotalCount 1 -ErrorAction SilentlyContinue)
-    if ($pmpid) {
-        & taskkill /F /T /PID $pmpid | Out-Null
-        Write-Host "Stopped ephemeral PostgreSQL (postmaster PID $pmpid)"
+$lifecycleLock = Enter-XpjTestPostgresLifecycleLock -DataDir $DataDir -Port $Port
+try {
+    $pendingProvisioning = Resolve-XpjTestPostgresProvisioning -DataDir $DataDir -Port $Port
+    if ($null -ne $pendingProvisioning) {
+        Remove-XpjTestPostgresBootstrapPasswordFileIfPresent `
+            -DataDir $pendingProvisioning.Provisioning.StagingDir
+        if (-not $pendingProvisioning.Completed) {
+            Remove-XpjTestPostgresProvisioningGeneration `
+                -DataDir $DataDir `
+                -Port $Port `
+                -InstanceId $pendingProvisioning.Provisioning.InstanceId
+            Write-Host "Removed the proven interrupted PostgreSQL provisioning generation."
+        }
     }
+    Remove-XpjTestPostgresBootstrapPasswordFileIfPresent -DataDir $DataDir
+    $markerPaths = Get-XpjTestPostgresOwnershipMarkerPaths -DataDir $DataDir
+    $deletionPath = Get-XpjTestPostgresDeletionMarkerPath -DataDir $DataDir
+    $dataKind = Get-TicketboxPathEntryKindNoFollow -Path $DataDir
+    $hostKind = Get-TicketboxPathEntryKindNoFollow -Path $markerPaths.Host
+    $deletionKind = Get-TicketboxPathEntryKindNoFollow -Path $deletionPath
+    if (
+        $dataKind -eq 'Missing' -and
+        $hostKind -eq 'Missing' -and
+        $deletionKind -eq 'Missing'
+    ) {
+        Write-Host 'Test PostgreSQL cluster is already absent.'
+        return
+    }
+    $postgresBin = if ($deletionKind -eq 'File') {
+        [string](
+            Read-XpjTestPostgresDeletionMarker -DataDir $DataDir -Port $Port
+        ).PostgresBin
+    }
+    elseif ($hostKind -eq 'File') {
+        [string](Update-XpjTestPostgresOwnershipSchema -DataDir $DataDir -AllowProvisioning).PostgresBin
+    }
+    else {
+        throw "Refusing to stop a PostgreSQL data directory without a host ownership marker or deletion receipt: $DataDir"
+    }
+    $postgresExe = Join-Path $postgresBin 'postgres.exe'
+    Remove-XpjTestPostgresCluster -DataDir $DataDir -Port $Port -PostgresExe $postgresExe
 }
-else {
-    Write-Host "No $pidfile — nothing to stop."
-}
-
-if (Test-Path $DataDir) {
-    Remove-Item -Recurse -Force $DataDir -ErrorAction SilentlyContinue
-    Write-Host "Removed data dir $DataDir"
+finally {
+    Exit-XpjTestPostgresLifecycleLock -Mutex $lifecycleLock
 }
 
 $global:LASTEXITCODE = 0

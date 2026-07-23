@@ -38,9 +38,13 @@ jobs:
     timeout-minutes: 5
     outputs:
       postgres: ${{ steps.scope.outputs.postgres }}
+      backend_frozen: ${{ steps.scope.outputs.backend_frozen }}
       desktop: ${{ steps.scope.outputs.desktop }}
       android: ${{ steps.scope.outputs.android }}
       windows: ${{ steps.scope.outputs.windows }}
+      postgres_matrix: ${{ steps.scope.outputs.postgres_matrix }}
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -51,6 +55,13 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
       - name: Resolve heavy-job scope
         id: scope
@@ -65,6 +76,10 @@ jobs:
   backend_contracts:
     name: Backend contracts
     runs-on: windows-latest
+    timeout-minutes: 12
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     defaults:
       run:
         working-directory: backend
@@ -110,6 +125,14 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
+      - name: Verify qualification SHA
+        id: qualification
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -121,8 +144,13 @@ jobs:
       - name: Lint
         run: ruff check app scripts tests packaging/tests
 
-      - name: CI scope contract
-        run: python -m pytest -q tests/test_ci_scope.py --noconftest -p no:cacheprovider
+      - name: CI orchestration contracts
+        run: >-
+          python -m pytest -q
+          tests/test_ci_scope.py
+          tests/test_backend_ci_results.py
+          tests/test_postgres_ci_topology.py
+          --noconftest -p no:cacheprovider
 
       - name: Audit (release lanes)
         # Single PR gate for every read-only audit (release_audit.py::LANES):
@@ -154,12 +182,54 @@ jobs:
           python -m pip install pip-audit
           python -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt -r ../desktop/requirements.txt
 
+  backend_frozen:
+    name: Frozen backend smoke
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.backend_frozen != 'false') }}
+    runs-on: windows-latest
+    timeout-minutes: 12
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults:
+      run:
+        working-directory: backend
+        shell: powershell
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Cache pinned frozen-backend toolchain archives
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: backend/build/windows-toolchain/archives
+          key: windows-backend-toolchain-${{ hashFiles('backend/packaging/windows-build-toolchain.json', 'backend/requirements-build.lock', 'backend/packaging/prepare_windows_build_toolchain.ps1') }}
+
+      - name: Frozen backend locked smoke build
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
+
   windows_packaging:
     name: Windows release packaging
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 20
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     defaults:
       run:
         working-directory: backend
@@ -176,6 +246,14 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
             desktop/requirements.txt
+
+      - name: Verify qualification SHA
+        id: qualification
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -296,54 +374,74 @@ jobs:
     needs:
       - scope
       - backend_contracts
+      - backend_frozen
       - windows_packaging
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
       - name: Enforce required CI results
-        shell: bash
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
+          BACKEND_FROZEN_SCOPE: ${{ needs.scope.outputs.backend_frozen }}
+          WINDOWS_SCOPE: ${{ needs.scope.outputs.windows }}
           BACKEND_CONTRACTS_RESULT: ${{ needs.backend_contracts.result }}
+          BACKEND_FROZEN_RESULT: ${{ needs.backend_frozen.result }}
           WINDOWS_PACKAGING_RESULT: ${{ needs.windows_packaging.result }}
-        run: |
-          if [ "$SCOPE_RESULT" != "success" ]; then
-            echo "::error::CI scope resolution did not succeed: $SCOPE_RESULT"
-            exit 1
-          fi
-          if [ "$BACKEND_CONTRACTS_RESULT" != "success" ]; then
-            echo "::error::Backend contracts did not succeed: $BACKEND_CONTRACTS_RESULT"
-            exit 1
-          fi
-          case "$WINDOWS_PACKAGING_RESULT" in
-            success|skipped) ;;
-            *)
-              echo "::error::Windows release packaging did not succeed: $WINDOWS_PACKAGING_RESULT"
-              exit 1
-              ;;
-          esac
-          echo "Required Backend CI results are valid."
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          BACKEND_CONTRACTS_SHA: ${{ needs.backend_contracts.outputs.qualification_sha }}
+          BACKEND_CONTRACTS_SOURCE_SHA: ${{ needs.backend_contracts.outputs.qualification_source_sha }}
+          BACKEND_FROZEN_SHA: ${{ needs.backend_frozen.outputs.qualification_sha }}
+          BACKEND_FROZEN_SOURCE_SHA: ${{ needs.backend_frozen.outputs.qualification_source_sha }}
+          WINDOWS_PACKAGING_SHA: ${{ needs.windows_packaging.outputs.qualification_sha }}
+          WINDOWS_PACKAGING_SOURCE_SHA: ${{ needs.windows_packaging.outputs.qualification_source_sha }}
+        run: python -E -S backend/scripts/verify_backend_ci_results.py
 
-  backend-postgres:
-    name: Backend (PostgreSQL)
+  backend_postgres_ordinary:
+    name: Backend PostgreSQL / ordinary
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
-    # ADR-0041: production-bound PostgreSQL engine end-to-end. Linux runner
-    # because GitHub Actions service containers (Postgres) only attach to Linux.
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 12
+    strategy: &postgres_test_strategy
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.postgres_matrix) }}
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     defaults:
       run:
         working-directory: backend
         shell: bash
     services:
-      postgres:
-        image: postgres:17
+      postgres: &postgres_test_service
+        image: ${{ matrix.postgres-image }}
         env:
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_PASSWORD: &postgres_test_password xpj-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+          POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
         ports:
-          - 5432:5432
+          - 5432/tcp
         # CI speed-up: data dir on tmpfs (RAM). The PG suite is I/O-bound
         # (hundreds of MB of checkpoints/WAL under fsync); a RAM-backed data
         # dir makes those ~free. Safe — this DB is ephemeral per run.
@@ -357,7 +455,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - name: Set up Python
+      - &postgres_setup_python
+        name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
@@ -366,65 +465,177 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
-      - name: Install PostgreSQL 17 client
-        # ubuntu-latest's default apt has no postgresql-client-17 (PG17 lives in
-        # PGDG); pg_dump/pg_restore in the backup drill must match the PG17
-        # service-container server. (codex first hit this on the live cloud run.)
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-17
-          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
-          export PATH="/usr/lib/postgresql/17/bin:$PATH"
-          pg_dump --version
-          pg_restore --version
+      - &postgres_qualification
+        name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
+      - &postgres_load_contract
+        name: Load test PostgreSQL contract
+        env:
+          TEST_POSTGRES_PASSWORD: *postgres_test_password
+          TEST_POSTGRES_APPLICATION_PASSWORD: xpj-app-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python -E -S -m scripts.write_test_postgres_env --host localhost --port "${{ job.services.postgres.ports[5432] }}" --admin-user postgres --admin-password-env TEST_POSTGRES_PASSWORD --application-password-env TEST_POSTGRES_APPLICATION_PASSWORD --passfile "$RUNNER_TEMP/xpj-pgpass-${GITHUB_RUN_ID}-${GITHUB_JOB}" --output "$GITHUB_ENV"
+
+      - &postgres_install_dependencies
+        name: Install dependencies
         run: |
           python -m venv .ci-venv
           ./.ci-venv/bin/python -m pip install --upgrade pip
           ./.ci-venv/bin/python -m pip install -r requirements-dev.txt
 
-      - name: Create test databases
-        env:
-          PGPASSWORD: postgres
-        run: |
-          createdb -h localhost -p 5432 -U postgres xpj_smoke
-          createdb -h localhost -p 5432 -U postgres xpj_test
-          createdb -h localhost -p 5432 -U postgres xpj_restore
+      - name: Prepare ordinary lane database
+        env: &postgres_prepare_environment
+          XPJ_TEST_APPLICATION_PASSWORD: xpj-app-${{ github.run_id }}-${{ github.run_attempt }}
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --expected-major "${{ matrix.postgres-major }}"
 
-      - name: Verify PostgreSQL is reachable
-        # Guard against a vacuous green: assert SMOKE_DATABASE_URL is Postgres
-        # and connect, so a dropped/renamed var fails loud here instead of the
-        # smoke silently falling back to a non-PG default.
-        env:
-          SMOKE_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
-        run: ./.ci-venv/bin/python -c "import os, psycopg; u = os.environ['SMOKE_DATABASE_URL']; assert u.startswith('postgresql'), u; psycopg.connect(u.replace('+psycopg','')).close(); print('PG reachable:', u.rsplit('@', 1)[-1])"
+      - name: PostgreSQL parallel pytest lane
+        # Ordinary tests own one database/data root per fixed xdist worker.
+        run: ./.ci-venv/bin/python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 4
+
+      - &postgres_remove_passfile
+        name: Remove PostgreSQL passfile
+        if: ${{ always() }}
+        run: rm -f -- "$PGPASSFILE"
+
+  backend_postgres_real_db:
+    name: Backend PostgreSQL / real-db
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy: *postgres_test_strategy
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    services:
+      postgres: *postgres_test_service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - *postgres_setup_python
+      - *postgres_qualification
+      - *postgres_load_contract
+      - *postgres_install_dependencies
+
+      - name: Prepare real-db lane database
+        env: *postgres_prepare_environment
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --expected-major "${{ matrix.postgres-major }}"
+
+      - name: PostgreSQL real-db serial pytest lane
+        run: ./.ci-venv/bin/python scripts/run_postgres_pytest_lane.py --lane real-db --workers 1
+
+      - *postgres_remove_passfile
+
+  backend_postgres_recovery:
+    name: Backend PostgreSQL / smoke + recovery
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy: *postgres_test_strategy
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    services:
+      postgres: *postgres_test_service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - *postgres_setup_python
+      - *postgres_qualification
+      - *postgres_load_contract
+
+      - name: Install supported PostgreSQL client
+        # The backup tools must match the service-container major selected by
+        # this job's supported-base matrix coordinate.
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo apt-get update
+          sudo apt-get install -y "postgresql-client-${{ matrix.postgres-major }}"
+          echo "/usr/lib/postgresql/${{ matrix.postgres-major }}/bin" >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/${{ matrix.postgres-major }}/bin:$PATH"
+          pg_dump --version
+          pg_restore --version
+
+      - *postgres_install_dependencies
+
+      - name: Prepare smoke and recovery databases
+        env: *postgres_prepare_environment
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role smoke --role restore --expected-major "${{ matrix.postgres-major }}"
 
       - name: PostgreSQL end-to-end smoke (ADR-0041)
-        env:
-          SMOKE_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
         run: ./.ci-venv/bin/python scripts/smoke_test.py
 
       - name: PostgreSQL backup/restore recovery drill (ADR-0041 phase-2)
-        # ENGINEERING_RULES §6: a backup without a restore drill is no backup.
-        # Dump smoke DB through the real backup code, validate the archive,
-        # restore into a fresh DB, assert key tables round-tripped. Runs before
-        # the pytest suite mutates xpj_smoke; uses its own xpj_restore.
-        env:
-          DRILL_SOURCE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
-          DRILL_RESTORE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_restore
+        # A backup without a restore drill is not qualification evidence. Dump
+        # xpj_smoke through production backup code, restore into xpj_restore,
+        # then compare the expected data before this ephemeral job exits.
         run: ./.ci-venv/bin/python scripts/postgres_backup_drill.py
 
-      - name: PostgreSQL pytest suite (ADR-0041)
-        # Full suite against real PostgreSQL — the comprehensive dialect catch
-        # the happy-path smoke can't reach. -ra summarises non-passing; --tb=short
-        # keeps each diagnosable.
+      - *postgres_remove_passfile
+
+  backend-postgres:
+    name: Backend (PostgreSQL)
+    needs:
+      - scope
+      - backend_postgres_ordinary
+      - backend_postgres_real_db
+      - backend_postgres_recovery
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
         env:
-          XPJ_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_test
-        run: ./.ci-venv/bin/python -m pytest tests -q -ra --tb=short -p no:cacheprovider
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Enforce PostgreSQL lane results
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          POSTGRES_SCOPE: ${{ needs.scope.outputs.postgres }}
+          ORDINARY_RESULT: ${{ needs.backend_postgres_ordinary.result }}
+          REAL_DB_RESULT: ${{ needs.backend_postgres_real_db.result }}
+          RECOVERY_RESULT: ${{ needs.backend_postgres_recovery.result }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          ORDINARY_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_sha }}
+          ORDINARY_SOURCE_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_source_sha }}
+          REAL_DB_SHA: ${{ needs.backend_postgres_real_db.outputs.qualification_sha }}
+          REAL_DB_SOURCE_SHA: ${{ needs.backend_postgres_real_db.outputs.qualification_source_sha }}
+          RECOVERY_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_sha }}
+          RECOVERY_SOURCE_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_source_sha }}
+        run: python -E -S backend/scripts/verify_postgres_ci_results.py
 
   desktop-manager:
     name: Desktop manager

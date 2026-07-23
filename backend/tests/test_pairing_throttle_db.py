@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -70,6 +71,7 @@ def test_successful_pair_clears_throttle_rows(
         assert remaining == []
 
 
+@pytest.mark.real_db
 def test_concurrent_failures_cannot_overshoot_pairing_limit(identity) -> None:
     remote_id = "pytest-concurrent-pairing-throttle"
 

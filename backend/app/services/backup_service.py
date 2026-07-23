@@ -30,6 +30,10 @@ from sqlalchemy.exc import ArgumentError
 from app.config import DATA_ROOT, get_settings
 from app.errors import AppError
 from app.services.postgres_backup_validation_service import find_pg_binary, is_postgres_backup_valid
+from app.services.secure_file import (
+    hold_protected_file_for_read,
+    write_protected_file_exclusive,
+)
 from app.services.time_service import now_utc
 
 # Backups live under the writable data dir (DATA_ROOT/backups). In a frozen EXE
@@ -38,6 +42,8 @@ from app.services.time_service import now_utc
 _BACKUP_DIR = DATA_ROOT / "backups"
 _PREFIX = "ticketbox-"
 _SUFFIX = ".dump"
+_PG_DUMP_TIMEOUT_SECONDS = 5 * 60
+_PG_DUMP_LOCK_WAIT_MILLISECONDS = 30_000
 
 _logger = logging.getLogger(__name__)
 
@@ -53,6 +59,10 @@ class BackupEntry:
 @dataclass(frozen=True)
 class _PgToolConnection:
     database_url: str
+    username: str
+    host: str
+    port: int
+    database: str
     password: str | None
 
 
@@ -245,20 +255,31 @@ def _run_pg_dump(*, prefix: str, kind: str) -> BackupEntry:
     target = directory / f"{prefix}-{stamp}-{uuid4().hex[:8]}{_SUFFIX}"
     temp_target = directory / f".{target.name}.tmp-{uuid4().hex}"
     try:
-        result = subprocess.run(  # noqa: S603 (binary resolved from PATH/override, fixed args)
-            [
-                _pg_dump_binary(),
-                "--format=custom",
-                "--file",
-                str(temp_target),
-                "--dbname",
-                connection.database_url,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=_pg_tool_environment(connection.password),
-        )
+        try:
+            with _pg_tool_environment(connection) as environment:
+                result = subprocess.run(  # noqa: S603 (resolved binary, fixed args)
+                    [
+                        _pg_dump_binary(),
+                        "--no-password",
+                        f"--lock-wait-timeout={_PG_DUMP_LOCK_WAIT_MILLISECONDS}",
+                        "--format=custom",
+                        "--file",
+                        str(temp_target),
+                        "--dbname",
+                        connection.database_url,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    env=environment,
+                    stdin=subprocess.DEVNULL,
+                    timeout=_PG_DUMP_TIMEOUT_SECONDS,
+                )
+        except (OSError, subprocess.TimeoutExpired):
+            _logger.warning("pg_dump could not complete; diagnostic output omitted")
+            raise AppError(
+                "server_error", "数据库备份未在安全时限内完成。", status_code=500
+            ) from None
         if result.returncode != 0:
             # Native diagnostics may repeat connection material. Keep them out of
             # logs entirely; the return code is enough for the operator-facing gate.
@@ -297,6 +318,10 @@ def _pg_tool_connection(database_url: str) -> _PgToolConnection:
     query = dict(parsed.query)
     if any(key.casefold() in {"password", "sslpassword"} for key in query):
         raise AppError("server_error", "数据库备份配置无效。", status_code=500)
+    if query.get("require_auth") != "scram-sha-256":
+        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
+    if not parsed.username or not parsed.host or not parsed.database:
+        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
 
     try:
         passwordless = URL.create(
@@ -312,17 +337,65 @@ def _pg_tool_connection(database_url: str) -> _PgToolConnection:
         raise AppError("server_error", "数据库备份配置无效。", status_code=500) from None
     return _PgToolConnection(
         database_url=rendered_url,
+        username=parsed.username,
+        host=parsed.host,
+        port=parsed.port or 5432,
+        database=parsed.database,
         password=password,
     )
 
 
-def _pg_tool_environment(password: str | None) -> dict[str, str]:
+def _escape_pgpass(value: str) -> str:
+    return value.replace("\\", "\\\\").replace(":", "\\:")
+
+
+@contextlib.contextmanager
+def _validated_inherited_passfile() -> Iterator[Path]:
+    raw = os.environ.get("PGPASSFILE")
+    if not raw:
+        raise AppError("server_error", "数据库备份凭据不可用。", status_code=500)
+    try:
+        protected_file = hold_protected_file_for_read(Path(raw))
+        resolved = protected_file.__enter__()
+    except (OSError, ValueError):
+        raise AppError("server_error", "数据库备份凭据不可用。", status_code=500) from None
+    try:
+        yield resolved
+    finally:
+        protected_file.__exit__(None, None, None)
+
+
+@contextlib.contextmanager
+def _pg_tool_environment(connection: _PgToolConnection) -> Iterator[dict[str, str]]:
     environment = os.environ.copy()
-    if password is None:
-        environment.pop("PGPASSWORD", None)
-    else:
-        environment["PGPASSWORD"] = password
-    return environment
+    environment.pop("PGPASSWORD", None)
+    environment.pop("PGPASSFILE", None)
+    if connection.password is None:
+        with _validated_inherited_passfile() as passfile:
+            environment["PGPASSFILE"] = str(passfile)
+            yield environment
+        return
+
+    passfile = _backup_dir() / f".pgpass-{os.getpid()}-{uuid4().hex}"
+    line = ":".join(
+        _escape_pgpass(value)
+        for value in (
+            connection.host,
+            str(connection.port),
+            connection.database,
+            connection.username,
+            connection.password,
+        )
+    )
+    published = False
+    try:
+        write_protected_file_exclusive(passfile, f"{line}\n")
+        environment["PGPASSFILE"] = str(passfile.resolve())
+        published = True
+        yield environment
+    finally:
+        if published or passfile.exists():
+            passfile.unlink(missing_ok=True)
 
 
 def _pg_dump_binary() -> str:

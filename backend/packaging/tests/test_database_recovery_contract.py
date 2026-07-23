@@ -124,6 +124,27 @@ public static class TicketboxNativeStub
 
         if (executable == "psql")
         {
+            if (!String.IsNullOrEmpty(Environment.GetEnvironmentVariable("PGPASSWORD")))
+            {
+                return 26;
+            }
+            string passfile = Environment.GetEnvironmentVariable("PGPASSFILE");
+            if (String.IsNullOrEmpty(passfile) || !File.Exists(passfile))
+            {
+                return 27;
+            }
+            bool requiresScram = false;
+            foreach (string argument in args)
+            {
+                if (argument.Contains("require_auth=scram-sha-256"))
+                {
+                    requiresScram = true;
+                }
+            }
+            if (!requiresScram)
+            {
+                return 28;
+            }
             Console.In.ReadToEnd();
             string mode = Environment.GetEnvironmentVariable("TICKETBOX_TEST_NATIVE_MODE");
             if (mode == "stderr")
@@ -214,10 +235,13 @@ def test_bootstrap_recovery_static_contract() -> None:
     assert env_write < app_connection_check < recovery_cleanup
 
     assert '"-tAc", $Sql' not in database
-    assert '"-p", "$PgPort", "-d", $Database, "-tA"' in database
-    assert "$out = $Sql | & $psql @args 2>&1" in database
-    assert '$env:PGPASSWORD = $Password' in database
-    assert 'throw "psql 执行失败（db=$Database, exit=$rc）。"' in database
+    assert '"--dbname", $ProtectedDatabaseUrl, "-tA"' in database
+    assert "Invoke-TicketboxBoundedNativeProcess" in database
+    assert '-StandardInputText ($Sql + "`n")' in database
+    assert "$out = $Sql | & $psql @args 2>&1" not in database
+    assert "Invoke-TicketboxWithPgPassFile" in database
+    assert '$env:PGPASSWORD = $Password' not in database
+    assert 'throw "psql 执行失败（db=$Database, exit=$($result.ExitCode)）。"' in database
     assert '$Sql`n$out' not in database
     assert '$State.SuperuserPassword 2>&1' not in database
 
@@ -348,6 +372,7 @@ $DbName = 'ticketbox'
 $DbRole = 'ticketbox'
 $SecretByteCount = 32
 $StopTimeoutMs = 25000
+$DatabaseToolTimeoutMs = 10000
 $BackendPort = 8000
 $Timezone = 'Asia/Shanghai'
 $PublicBaseUrl = ''
@@ -454,11 +479,13 @@ function Assert-TicketboxConnectedPostgresDataRoot {
         [string]$DatabaseUrl,
         [string]$ExpectedDataRoot,
         [int]$ExpectedPort,
-        [string]$Password
+        [string]$Password,
+        [int]$TimeoutMilliseconds
     )
     if ($Password -cne $state.RolePassword) { throw 'application role password mismatch' }
     if ($ExpectedDataRoot -cne $PgData) { throw 'data root mismatch' }
     if ($ExpectedPort -ne $PgPort) { throw 'port mismatch' }
+    if ($TimeoutMilliseconds -le 0) { throw 'database tool timeout missing' }
 }
 
 $crashed = $false
@@ -621,12 +648,16 @@ def test_invoke_psql_sanitizes_ps51_native_stderr(tmp_path: Path) -> None:
         harness = tmp_path / f"psql-native-stderr-{index}.ps1"
         script = r"""
 $ErrorActionPreference = 'Stop'
+. '__INSTALLATION_SAFETY__'
+. '__DATABASE_SAFETY__'
 . '__DATABASE_SCRIPT__'
 $PgBin = '__PG_BIN__'
 $PgPort = 5544
+$DatabaseToolTimeoutMs = 10000
 $env:TICKETBOX_TEST_ARGV_TRACE = '__TRACE_PATH__'
 $env:TICKETBOX_TEST_NATIVE_MODE = 'stderr'
 $env:PGPASSWORD = 'parent-password-sentinel'
+$env:PGPASSFILE = 'parent-passfile-sentinel'
 $caught = $false
 try {
     Invoke-Psql 'postgres' 'SELECT sql-secret-sentinel' 'pg-password-sentinel' | Out-Null
@@ -648,6 +679,7 @@ catch {
 if (-not $caught) { throw 'native psql failure was not caught' }
 if ($ErrorActionPreference -ne 'Stop') { throw 'ErrorActionPreference was not restored' }
 if ($env:PGPASSWORD -cne 'parent-password-sentinel') { throw 'PGPASSWORD was not restored' }
+if ($env:PGPASSFILE -cne 'parent-passfile-sentinel') { throw 'PGPASSFILE was not restored' }
 $trace = Get-Content -LiteralPath '__TRACE_PATH__' -Raw -Encoding UTF8
 foreach ($secret in @('sql-secret-sentinel', 'pg-password-sentinel', 'parent-password-sentinel')) {
     if ($trace.Contains($secret)) { throw 'secret appeared in psql argv' }
@@ -658,8 +690,11 @@ $output = Invoke-Psql 'postgres' 'SELECT 1' 'pg-password-sentinel'
 if ($output -cne '1') { throw 'successful psql stdout was not returned' }
 if ($ErrorActionPreference -ne 'Stop') { throw 'success changed ErrorActionPreference' }
 if ($env:PGPASSWORD -cne 'parent-password-sentinel') { throw 'success changed PGPASSWORD' }
+if ($env:PGPASSFILE -cne 'parent-passfile-sentinel') { throw 'success changed PGPASSFILE' }
 """
         replacements = {
+            "__INSTALLATION_SAFETY__": _ps_literal(INSTALLATION_SAFETY_SCRIPT),
+            "__DATABASE_SAFETY__": _ps_literal(DATABASE_SAFETY_SCRIPT),
             "__DATABASE_SCRIPT__": _ps_literal(DATABASE_SCRIPT),
             "__PG_BIN__": _ps_literal(pg_bin),
             "__TRACE_PATH__": _ps_literal(trace_path),

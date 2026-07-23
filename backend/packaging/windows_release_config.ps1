@@ -106,6 +106,7 @@ function Read-TicketboxWindowsReleaseConfig {
         Assert-TicketboxReleaseConfigInteger $config $name 10 10000 | Out-Null
     }
     Assert-TicketboxReleaseConfigInteger $config "secret_byte_count" 32 1024 | Out-Null
+    Assert-TicketboxReleaseConfigInteger $config "database_tool_timeout_ms" 10000 3600000 | Out-Null
     Assert-TicketboxReleaseConfigInteger $config "scm_failure_reset_seconds" 1 86400 | Out-Null
 
     $restartDelays = @($config.scm_restart_delays_ms)

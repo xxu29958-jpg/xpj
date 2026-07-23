@@ -45,6 +45,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+_REQUIRED_LANES = frozenset(
+    {
+        ("pr-delta-metrics", "_audit_pr_delta_metrics.py"),
+    }
+)
+
 
 def _configure_utf8_stdio() -> None:
     # Windows CI runs Python with cp1252 stdout by default; audit output
@@ -78,6 +84,10 @@ def _discover_lanes(scripts_dir: Path) -> list[tuple[str, str]]:
             continue
         label = stem.removeprefix("_audit_").replace("_", "-")
         lanes.append((label, path.name))
+    missing = _REQUIRED_LANES.difference(lanes)
+    if missing:
+        details = ", ".join(filename for _label, filename in sorted(missing))
+        raise RuntimeError(f"required release audit lane is missing: {details}")
     return lanes
 
 

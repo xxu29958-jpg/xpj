@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select, text
 
 from app.database import SessionLocal, engine
@@ -27,6 +28,8 @@ from migrations.versions.bb00c453bf29_backfill_expense_raw_text_to_ocr_facts imp
     LEGACY_PROVIDER,
     _backfill_legacy_raw_text,
 )
+
+pytestmark = pytest.mark.real_db
 
 
 def _seed_expense(

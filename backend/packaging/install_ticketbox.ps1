@@ -493,14 +493,19 @@ function Read-InteractivePassword(
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $InstallationSafetyScript = Join-Path $ScriptDir "windows_installation_safety.ps1"
 $LifecycleLockScript = Join-Path $ScriptDir "windows_lifecycle_lock.ps1"
+$DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
 if (-not (Test-Path -LiteralPath $InstallationSafetyScript -PathType Leaf)) {
     throw "缺少 Windows 安装安全脚本：$InstallationSafetyScript"
 }
 if (-not (Test-Path -LiteralPath $LifecycleLockScript -PathType Leaf)) {
     throw "缺少 Windows 生命周期锁脚本：$LifecycleLockScript"
 }
+if (-not (Test-Path -LiteralPath $DatabaseSafetyScript -PathType Leaf)) {
+    throw "缺少 Windows 数据库安全脚本：$DatabaseSafetyScript"
+}
 . $InstallationSafetyScript
 . $LifecycleLockScript
+. $DatabaseSafetyScript
 $ReleaseConfigScript = Join-Path $ScriptDir "windows_release_config.ps1"
 $ReleaseConfigPath = Join-Path $ScriptDir "windows-release-config.json"
 if (-not (Test-Path -LiteralPath $ReleaseConfigScript -PathType Leaf)) {
@@ -508,6 +513,7 @@ if (-not (Test-Path -LiteralPath $ReleaseConfigScript -PathType Leaf)) {
 }
 . $ReleaseConfigScript
 $ReleaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
+$DatabaseToolTimeoutMs = [int]$ReleaseConfig.database_tool_timeout_ms
 if (-not $PSBoundParameters.ContainsKey("DbPort")) {
     $DbPort = [int]$ReleaseConfig.default_pg_port
 }
@@ -611,80 +617,58 @@ function Find-Psql {
 # 用指定角色/口令跑一条 SQL；返回 stdout（修剪）。失败即抛。
 function Invoke-Sql {
     param([string]$User, [string]$Password, [string]$Database, [string]$Sql, [switch]$Quiet)
-    $prev = $env:PGPASSWORD
-    $env:PGPASSWORD = $Password
-    try {
-        $psqlArgs = @("-X", "-w", "-v", "ON_ERROR_STOP=1", "-U", $User, "-h", $DbHost, "-p", "$DbPort", "-d", $Database, "-tA")
-        $nativeErrorPreference = $ErrorActionPreference
-        $hadNativeExitPreference = Test-Path Variable:PSNativeCommandUseErrorActionPreference
-        if ($hadNativeExitPreference) {
-            $nativeExitPreference = $PSNativeCommandUseErrorActionPreference
-            $PSNativeCommandUseErrorActionPreference = $false
-        }
-        $ErrorActionPreference = "Continue"
-        $out = $null
-        $rc = -1
-        try {
-            $out = $Sql | & $Psql @psqlArgs 2>&1
-            $rc = $LASTEXITCODE
-        }
-        finally {
-            $ErrorActionPreference = $nativeErrorPreference
-            if ($hadNativeExitPreference) {
-                $PSNativeCommandUseErrorActionPreference = $nativeExitPreference
-            }
-            else {
-                Remove-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Local -ErrorAction SilentlyContinue
+    $databaseUrl = "postgresql://$([System.Uri]::EscapeDataString($User))@${DbHost}:${DbPort}/$([System.Uri]::EscapeDataString($Database))?require_auth=scram-sha-256"
+    $result = Invoke-TicketboxWithPgPassFile `
+        -DatabaseUrl $databaseUrl `
+        -Password $Password `
+        -Action {
+            param([string]$ProtectedDatabaseUrl)
+            $psqlArgs = @(
+                "-X", "-w", "-v", "ON_ERROR_STOP=1",
+                "--dbname", $ProtectedDatabaseUrl, "-tA"
+            )
+            $commandResult = Invoke-TicketboxBoundedNativeProcess `
+                -FilePath $Psql `
+                -Arguments $psqlArgs `
+                -StandardInputText ($Sql + "`n") `
+                -TimeoutMilliseconds $DatabaseToolTimeoutMs `
+                -Label "psql database command"
+            return [pscustomobject]@{
+                Output = @($commandResult.StandardOutput -split "`r?`n")
+                ExitCode = $commandResult.ExitCode
             }
         }
-        if ($rc -ne 0) {
-            if ($Quiet) { return $null }
-            throw "psql 执行失败（user=$User, db=$Database, exit=$rc）。"
-        }
-        return ($out | Out-String).Trim()
+    if ($result.ExitCode -ne 0) {
+        if ($Quiet) { return $null }
+        throw "psql 执行失败（user=$User, db=$Database, exit=$($result.ExitCode)）。"
     }
-    finally {
-        if ($null -eq $prev) { Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue } else { $env:PGPASSWORD = $prev }
-    }
+    return ($result.Output | Out-String).Trim()
 }
 
 function Invoke-SqlFile {
     param([string]$User, [string]$Password, [string]$Database, [string]$Path)
-    $prev = $env:PGPASSWORD
-    $env:PGPASSWORD = $Password
-    try {
-        $psqlArgs = @(
-            "-X", "-w", "-v", "ON_ERROR_STOP=1", "-U", $User, "-h", $DbHost,
-            "-p", "$DbPort", "-d", $Database, "-f", $Path
-        )
-        $nativeErrorPreference = $ErrorActionPreference
-        $hadNativeExitPreference = Test-Path Variable:PSNativeCommandUseErrorActionPreference
-        if ($hadNativeExitPreference) {
-            $nativeExitPreference = $PSNativeCommandUseErrorActionPreference
-            $PSNativeCommandUseErrorActionPreference = $false
-        }
-        $ErrorActionPreference = "Continue"
-        $out = $null
-        $rc = -1
-        try {
-            $out = & $Psql @psqlArgs 2>&1
-            $rc = $LASTEXITCODE
-        }
-        finally {
-            $ErrorActionPreference = $nativeErrorPreference
-            if ($hadNativeExitPreference) {
-                $PSNativeCommandUseErrorActionPreference = $nativeExitPreference
-            }
-            else {
-                Remove-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Local -ErrorAction SilentlyContinue
+    $databaseUrl = "postgresql://$([System.Uri]::EscapeDataString($User))@${DbHost}:${DbPort}/$([System.Uri]::EscapeDataString($Database))?require_auth=scram-sha-256"
+    $result = Invoke-TicketboxWithPgPassFile `
+        -DatabaseUrl $databaseUrl `
+        -Password $Password `
+        -Action {
+            param([string]$ProtectedDatabaseUrl)
+            $psqlArgs = @(
+                "-X", "-w", "-v", "ON_ERROR_STOP=1",
+                "--dbname", $ProtectedDatabaseUrl, "-f", $Path
+            )
+            $commandResult = Invoke-TicketboxBoundedNativeProcess `
+                -FilePath $Psql `
+                -Arguments $psqlArgs `
+                -TimeoutMilliseconds $DatabaseToolTimeoutMs `
+                -Label "psql SQL-file command"
+            return [pscustomobject]@{
+                Output = @($commandResult.StandardOutput -split "`r?`n")
+                ExitCode = $commandResult.ExitCode
             }
         }
-        if ($rc -ne 0) {
-            throw "psql 文件执行失败（user=$User, db=$Database, exit=$rc）。"
-        }
-    }
-    finally {
-        if ($null -eq $prev) { Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue } else { $env:PGPASSWORD = $prev }
+    if ($result.ExitCode -ne 0) {
+        throw "psql 文件执行失败（user=$User, db=$Database, exit=$($result.ExitCode)）。"
     }
 }
 
@@ -1508,7 +1492,7 @@ else {
 Write-Step "生成配置 .env（$EnvPath）"
 $databaseRole = [System.Uri]::EscapeDataString($DbRole)
 $databasePassword = [System.Uri]::EscapeDataString($rolePwd)
-$databaseUrl = "postgresql+psycopg://${databaseRole}:${databasePassword}@${DbHost}:${DbPort}/${DbName}"
+$databaseUrl = "postgresql+psycopg://${databaseRole}:${databasePassword}@${DbHost}:${DbPort}/${DbName}?require_auth=scram-sha-256"
 $baseEnv = @(
     "DATABASE_URL=$databaseUrl",
     "TICKETBOX_HOST=127.0.0.1",

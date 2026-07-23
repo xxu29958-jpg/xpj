@@ -23,10 +23,16 @@ full policy history and CODE-2026-07-01 for provenance-comment cleanup.
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 
 from adr_contract_git import has_auditable_ci_context, select_ratchet_base
+from pr_delta_baselines import (
+    TEST_COUNT_BASELINES,
+    git_show_text,
+    load_current_test_count_baselines,
+    parse_count_baseline,
+    strict_baseline_literal,
+)
 
 DebtCounts = dict[str, int]
 
@@ -108,11 +114,10 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # ADR-0038 PR-Δ verification baseline (strict equality + ratchet)
 # ---------------------------------------------------------------------------
 
-# Baselines and policies all live in the gate file. The audit lane
-# (``_audit_pr_delta_metrics.py``) only emits counter actuals and calls
-# the public ``evaluate_pr_delta_metrics(counts)`` API; it doesn't
-# import baseline internals or know which keys are ratcheted. This
-# split is permanent — producers stay pure-data.
+# Policies and structural baselines live in this gate. Test counts live beside
+# the responsibility that owns them, so a backend test bump cannot accidentally
+# trigger Android/Desktop/Windows qualification. The audit lane
+# (``_audit_pr_delta_metrics.py``) remains a pure-data producer.
 #
 # Cut-over PRs (PR-A/B/C/D etc) declare expected Δ by bumping these
 # entries in the SAME diff that changes the actual counters. Both
@@ -136,10 +141,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 6,
     "mutate_token_reason_terminal_flag_flip": 31,
     "mutate_token_reason_upsert_bucket": 8,
-
-    "backend_pytest_count": 2810,
-    "installer_pytest_count": 105,  # Includes Manager packaging and maintenance-gate contracts.
 }
+STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 
 # Android ``@Test`` count is enforced separately by the Android CI lane
 # (``:app:assertAndroidTestCountEqualsBaseline`` gradle task against
@@ -147,9 +150,10 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 # intentionally avoided: each side enforces its own contract, at the cost of
 # cut-over PRs that touch both sides needing to update both baseline files.
 # Android count is NOT listed here.
-# UP-only keys cannot drop vs base; strict equality alone could miss lockstep
-# baseline/actual reductions. ``backend_pytest_count`` is strict-only, while
-# the release-critical installer behavior suite is also a monotonic floor.
+# Total test counts are reconciliation signals, not coverage proofs. Strict
+# equality declares every change. Backend consolidation may lower its declared
+# count only when review proves the removed cases had no independent risk model;
+# the existing installer suite remains a release-critical monotonic floor.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset(
     {
         "installer_pytest_count",
@@ -204,31 +208,33 @@ def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
     if git_ref is None:
         return (False, {})
     backend_root = Path(__file__).resolve().parent.parent
-    try:
-        content = subprocess.check_output(
-            ["git", "show", f"{git_ref}:backend/scripts/codebase_audit_gate.py"],
-            cwd=backend_root,
-            text=True,
-            encoding="utf-8",  # Windows GBK default mangles Chinese in file content
-            errors="replace",
-            stderr=subprocess.DEVNULL,
-            timeout=30,
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+    content = git_show_text(
+        git_ref,
+        "backend/scripts/codebase_audit_gate.py",
+        cwd=backend_root,
+    )
+    if content is None:
         return (False, {})
-    namespace: dict = {}
     try:
-        # Trusted source (our own gate file at base). exec is safer than
-        # AST extraction here because the dict literal could change form
-        # across PRs and AST patterns would couple to syntax shape.
-        exec(content, namespace)  # noqa: S102 — trusted source
-    except Exception:  # noqa: BLE001 — base may have an import error; treat as unreadable
+        baseline = strict_baseline_literal(content)
+    except (SyntaxError, ValueError):
         return (False, {})
-    baseline = namespace.get("STRICT_EQUALITY_BASELINE")
-    if not isinstance(baseline, dict):
+    if baseline is None:
         # File readable but variable missing → integral-bootstrap state
         # (this is exactly the prep PR's situation against main).
         return (True, {})
+    for key, path in TEST_COUNT_BASELINES.items():
+        count_text = git_show_text(git_ref, path.as_posix(), cwd=backend_root)
+        if count_text is not None:
+            try:
+                baseline[key] = parse_count_baseline(
+                    count_text,
+                    source=f"{git_ref}:{path.as_posix()}",
+                )
+            except RuntimeError:
+                return (False, {})
+        # Before the baseline files existed, both counters lived in the gate
+        # literal. Keeping that value makes this data migration auditable.
     return (True, baseline)
 
 
@@ -310,7 +316,7 @@ def _print_strict_equality_failures(
             print(f"  - {key}")
     if mismatches:
         print(
-            "FAIL: actual != current baseline. Update STRICT_EQUALITY_BASELINE "
+            "FAIL: actual != current baseline. Update the owning baseline "
             "in the SAME PR if change is intentional; otherwise the PR has an "
             "undeclared regression. Both directions fail:"
         )

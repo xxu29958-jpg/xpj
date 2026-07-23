@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from tests._infra.identity import TestIdentity
 
 
+@pytest.mark.real_db
 def test_two_sessions_bootstrap_recovery_avoids_device_token_deadlock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -65,6 +66,7 @@ def test_two_sessions_bootstrap_recovery_avoids_device_token_deadlock(
     assert_pre_authenticated_credential_mints_fail_after_rotation(monkeypatch)
 
 
+@pytest.mark.real_db
 def test_two_sessions_ordinary_revocations_serialize_credential_mints(
     monkeypatch: pytest.MonkeyPatch,
     identity: TestIdentity,
@@ -76,6 +78,7 @@ def test_two_sessions_ordinary_revocations_serialize_credential_mints(
     )
 
 
+@pytest.mark.real_db
 def test_two_sessions_cleanup_waits_for_device_recovery(
     monkeypatch: pytest.MonkeyPatch,
     identity: TestIdentity,
@@ -86,6 +89,7 @@ def test_two_sessions_cleanup_waits_for_device_recovery(
     )
 
 
+@pytest.mark.real_db
 def test_two_sessions_switch_revalidates_target_before_default_change(
     monkeypatch: pytest.MonkeyPatch,
     identity: TestIdentity,
@@ -121,16 +125,19 @@ def test_owner_transfer_invalidates_precomputed_admin_upload_scope(
     assert_owner_transfer_invalidates_precomputed_admin_scope(identity)
 
 
+@pytest.mark.real_db
 def test_bootstrap_owner_rotates_credentials_after_listener_exposure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     assert_exposed_secret_rotation(monkeypatch)
 
 
+@pytest.mark.real_db
 def test_two_sessions_distinct_bootstrap_secrets_create_one_identity() -> None:
     assert_distinct_bootstrap_secrets_create_one_identity()
 
 
+@pytest.mark.real_db
 def test_exposed_bootstrap_principal_blocks_sensitive_identity_mutations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -177,6 +184,7 @@ def test_exposed_bootstrap_principal_blocks_sensitive_identity_mutations(
         get_settings.cache_clear()
 
 
+@pytest.mark.real_db
 def test_replacement_pairing_collision_is_reported_before_rotation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

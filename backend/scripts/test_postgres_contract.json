@@ -1,0 +1,20 @@
+{
+  "schema_version": 7,
+  "application_role": "xpj_test_app",
+  "base_database": "xpj_test",
+  "smoke_database": "xpj_smoke",
+  "restore_database": "xpj_restore",
+  "cluster_marker": "xpj-test-cluster-v1",
+  "worker_marker_prefix": "xpj-test-worker-v1:",
+  "ownership_marker_name": ".xpj-test-postgres-owner.json",
+  "deletion_marker_name": ".xpj-test-postgres-deletion.json",
+  "credential_name": ".xpj-test-postgres-password",
+  "passfile_name": ".xpj-test-postgres.pgpass",
+  "runtime_root_name": "xpj-test-postgres",
+  "runtime_parent": "local_app_data",
+  "ports": {
+    "gitea": 5433,
+    "local": 5438
+  },
+  "forbidden_host_ports": [5432]
+}

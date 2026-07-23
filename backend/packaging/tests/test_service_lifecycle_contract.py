@@ -12,6 +12,70 @@ def _read(name: str) -> str:
     return (PACKAGING / name).read_text(encoding="utf-8-sig")
 
 
+def _ps_literal(path: str | Path) -> str:
+    return str(path).replace("'", "''")
+
+
+def test_database_tools_are_bounded_under_powershell_51_and_7(tmp_path: Path) -> None:
+    installation_safety = PACKAGING / "windows_installation_safety.ps1"
+    database_safety = PACKAGING / "windows_database_safety.ps1"
+    for index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"bounded-native-{index}.ps1"
+        harness.write_text(
+            f"""
+. '{_ps_literal(installation_safety)}'
+. '{_ps_literal(database_safety)}'
+$success = Invoke-TicketboxBoundedNativeProcess `
+    -FilePath '{_ps_literal(engine)}' `
+    -Arguments @('-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '[Console]::Out.Write([Console]::In.ReadToEnd())') `
+    -StandardInputText 'bounded input' `
+    -TimeoutMilliseconds 10000 `
+    -Label 'bounded success probe'
+$watch = [System.Diagnostics.Stopwatch]::StartNew()
+$timedOut = $false
+try {{
+    Invoke-TicketboxBoundedNativeProcess `
+        -FilePath '{_ps_literal(engine)}' `
+        -Arguments @('-NoLogo', '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 30') `
+        -TimeoutMilliseconds 1000 `
+        -Label 'bounded timeout probe' | Out-Null
+}}
+catch {{
+    $timedOut = $_.Exception.Message -like '*超过允许*'
+}}
+$watch.Stop()
+if (-not $timedOut) {{ throw 'bounded process timeout was not enforced' }}
+if ($watch.ElapsedMilliseconds -ge 10000) {{ throw 'bounded process timeout exceeded its kill budget' }}
+[ordered]@{{
+    ExitCode = $success.ExitCode
+    Output = $success.StandardOutput
+    TimedOut = $timedOut
+}} | ConvertTo-Json -Compress
+""",
+            encoding="utf-8-sig",
+        )
+        completed = subprocess.run(  # noqa: S603
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                str(harness),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert '"ExitCode":0' in completed.stdout
+        assert '"Output":"bounded input"' in completed.stdout
+        assert '"TimedOut":true' in completed.stdout
+
+
 def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> None:
     lifecycle = _read("windows_service_contract.ps1") + "\n" + _read(
         "windows_service_lifecycle.ps1"
@@ -178,15 +242,23 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
 
     database = _read("windows_bundled_database.ps1")
     assert '"-tAc", $Sql' not in database
-    assert '"-p", "$PgPort", "-d", $Database, "-tA"' in database
-    assert "$out = $Sql | & $psql @args 2>&1" in database
+    assert '"--dbname", $ProtectedDatabaseUrl, "-tA"' in database
+    assert "Invoke-TicketboxWithPgPassFile" in database
+    assert "require_auth=scram-sha-256" in database
+    assert "Invoke-TicketboxBoundedNativeProcess" in database
+    assert '-StandardInputText ($Sql + "`n")' in database
+    assert "$out = $Sql | & $psql @args 2>&1" not in database
     assert '：$Sql`n$out' not in database
-    assert 'throw "psql 执行失败（db=$Database, exit=$rc）。"' in database
+    assert 'throw "psql 执行失败（db=$Database, exit=$($result.ExitCode)）。"' in database
 
     legacy_installer = _read("install_ticketbox.ps1")
     assert '"-tAc", $Sql' not in legacy_installer
-    assert '"-d", $Database, "-tA")' in legacy_installer
-    assert "$out = $Sql | & $Psql @psqlArgs 2>&1" in legacy_installer
+    assert '"--dbname", $ProtectedDatabaseUrl, "-tA"' in legacy_installer
+    assert "Invoke-TicketboxWithPgPassFile" in legacy_installer
+    assert "require_auth=scram-sha-256" in legacy_installer
+    assert "Invoke-TicketboxBoundedNativeProcess" in legacy_installer
+    assert '-StandardInputText ($Sql + "`n")' in legacy_installer
+    assert "$out = $Sql | & $Psql @psqlArgs 2>&1" not in legacy_installer
     assert '：$Sql"' not in legacy_installer
 
 
@@ -196,7 +268,7 @@ def test_pre_upgrade_backup_uses_old_tools_before_stopping_postgres() -> None:
     upgrade_try = prepare.index("try {", prepare.index("$backupRequired"))
     stop_backend = prepare.index("Disable-TicketboxOwnedServiceIfExists", upgrade_try)
     dump_database = prepare.index("Invoke-TicketboxPgDumpCustom")
-    verify_dump = prepare.index("& $PgRestore --list")
+    verify_dump = prepare.index("Invoke-TicketboxPgRestoreList")
     stop_postgres = prepare.index("Disable-TicketboxOwnedServiceIfExists", dump_database)
     assert stop_backend < dump_database < verify_dump < stop_postgres
     backend_prepare = prepare[
@@ -212,7 +284,8 @@ def test_pre_upgrade_backup_uses_old_tools_before_stopping_postgres() -> None:
     assert "Assert-TicketboxConnectedPostgresDataRoot" in prepare
     assert "Get-TicketboxLocalDatabaseConnection" in prepare
     assert "Assert-ExpectedServiceConfiguration" in prepare
-    assert "& $PgCtl status -D $PgData" in prepare
+    assert "Invoke-TicketboxBoundedNativeProcess" in prepare
+    assert "& $PgCtl status -D $PgData" not in prepare
     assert 'Wait-TicketboxServiceSettledState -Name $PgServiceName' in prepare
     assert "InstalledReleaseConfigPath" in prepare
     assert "LifecycleReceiptPath" in prepare

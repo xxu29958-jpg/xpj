@@ -14,27 +14,81 @@ import json
 import os
 from pathlib import Path
 
+from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
+from scripts.write_test_postgres_env import render_environment
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
-TEST_RUN_ID = f"pid_{os.getpid()}"
 TEST_UPLOAD_TOKEN = "pytest-upload-token"
 TEST_APP_TOKEN = "pytest-app-token"
 TEST_ADMIN_TOKEN = "pytest-admin-token"
 TEST_TENANT_UPLOAD_TOKEN = "pytest-tenant-upload-token"
 TEST_TENANT_APP_TOKEN = "pytest-tenant-app-token"
-TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / f"pytest_test_{TEST_RUN_ID}"
-TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
-
-
 # Lane (PG-only — debt #4, building on ADR-0041). PostgreSQL is the only lane:
 # prod / dev / test share the engine so dialect drift can't hide.
 # - XPJ_TEST_DATABASE_URL set  -> that engine verbatim (CI's ephemeral PG, or any
 #   explicit override).
-# - default                    -> local throwaway PostgreSQL on :5438, brought up
-#   by backend/scripts/start_test_pg.ps1.
-_database_url = (
-    os.environ.get("XPJ_TEST_DATABASE_URL")
-    or "postgresql+psycopg://postgres@localhost:5438/xpj_test"
+# - default                    -> contract-defined local throwaway PostgreSQL,
+#   brought up by backend/scripts/start_test_pg.ps1.
+_explicit_database_url = os.environ.get("XPJ_TEST_DATABASE_URL")
+_explicit_admin_url = os.environ.get("XPJ_TEST_ADMIN_URL")
+if (_explicit_database_url is None) != (_explicit_admin_url is None):
+    raise RuntimeError(
+        "XPJ_TEST_DATABASE_URL and XPJ_TEST_ADMIN_URL must be supplied together"
+    )
+if _explicit_database_url is None:
+    _local_postgres_environment = render_environment(
+        host="localhost",
+        port=TEST_POSTGRES_CONTRACT.ports.local,
+        admin_user="postgres",
+        application_user=TEST_POSTGRES_CONTRACT.application_role,
+        passfile=TEST_POSTGRES_CONTRACT.default_data_dir(
+            TEST_POSTGRES_CONTRACT.ports.local
+        )
+        / TEST_POSTGRES_CONTRACT.passfile_name,
+        cluster_identity=TEST_POSTGRES_CONTRACT.local_database_identity(
+            TEST_POSTGRES_CONTRACT.ports.local
+        ),
+    )
+    BASE_TEST_DATABASE_URL = _local_postgres_environment["XPJ_TEST_DATABASE_URL"]
+    ADMIN_TEST_DATABASE_URL = _local_postgres_environment["XPJ_TEST_ADMIN_URL"]
+    os.environ.setdefault("PGPASSFILE", _local_postgres_environment["PGPASSFILE"])
+    os.environ.setdefault(
+        "XPJ_TEST_DATABASE_URL",
+        _local_postgres_environment["XPJ_TEST_DATABASE_URL"],
+    )
+    os.environ.setdefault(
+        "XPJ_TEST_CLUSTER_IDENTITY",
+        _local_postgres_environment["XPJ_TEST_CLUSTER_IDENTITY"],
+    )
+    os.environ.setdefault(
+        "XPJ_TEST_ADMIN_URL",
+        _local_postgres_environment["XPJ_TEST_ADMIN_URL"],
+    )
+else:
+    BASE_TEST_DATABASE_URL = _explicit_database_url
+    ADMIN_TEST_DATABASE_URL = _explicit_admin_url
+from tests._infra.worker_db import (  # noqa: E402
+    sealed_test_database_url,
+    worker_database_from_environment,
 )
+
+WORKER_DATABASE = worker_database_from_environment(
+    BASE_TEST_DATABASE_URL,
+    ADMIN_TEST_DATABASE_URL,
+)
+_database_url = (
+    WORKER_DATABASE.database_url
+    if WORKER_DATABASE
+    else sealed_test_database_url(BASE_TEST_DATABASE_URL)
+)
+TEST_RUN_ID = (
+    WORKER_DATABASE.runtime_id
+    if WORKER_DATABASE
+    else f"pid_{os.getpid()}"
+)
+TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / f"pytest_test_{TEST_RUN_ID}"
+TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
+TEST_DATA_DIR = BACKEND_ROOT / "ticketbox-data" / "pytest" / TEST_RUN_ID
 
 os.environ.update(
     {
@@ -42,7 +96,10 @@ os.environ.update(
         "APP_TOKEN": TEST_APP_TOKEN,
         "ADMIN_TOKEN": TEST_ADMIN_TOKEN,
         "DATABASE_URL": _database_url,
-        "UPLOAD_DIR": TEST_UPLOAD_RELATIVE,
+        "TICKETBOX_DATA_DIR": str(TEST_DATA_DIR.resolve()),
+        # Keep legacy relative DB references stable while the writable upload
+        # directory itself is isolated per process/worker.
+        "UPLOAD_DIR": str(TEST_UPLOAD_DIR.resolve()),
         "MAX_UPLOAD_SIZE_MB": "10",
         "DELETE_IMAGE_AFTER_CONFIRM": "false",
         "GENERATE_THUMBNAIL": "true",

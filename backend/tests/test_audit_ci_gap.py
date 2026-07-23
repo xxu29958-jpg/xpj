@@ -4,6 +4,21 @@ from pathlib import Path
 
 from tests._infra.ci_gap import load_ci_gap_audit as _load
 
+_POSTGRES_REQUIRED_WORKFLOW = """
+name: Backend PostgreSQL
+jobs:
+  backend-postgres:
+    steps:
+      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\smoke_test.py
+      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\postgres_backup_drill.py
+      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\run_postgres_pytest_lane.py --lane ordinary --workers 4
+      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\run_postgres_pytest_lane.py --lane real-db --workers 1
+  android:
+    steps:
+      - run: ./gradlew --no-daemon :app:kspGrayDebugKotlin --rerun-tasks
+      - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
+"""
+
 
 def test_ci_gap_scans_run_commands_not_comments(tmp_path: Path) -> None:
     mod = _load()
@@ -24,7 +39,6 @@ jobs:
 """,
         encoding="utf-8",
     )
-
     commands = mod._iter_workflow_run_commands(workflows)
 
     # YAML step comments AND #-commented lines inside the run body are both
@@ -32,7 +46,8 @@ jobs:
     # ``-p no:cacheprovider`` anchor, so every requirement is missing.
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
-        "pytest business full-suite lane",
+        "pytest ordinary business lane",
+        "pytest real-db serial lane",
         "pytest installer safety lane",
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
@@ -74,19 +89,7 @@ jobs:
         encoding="utf-8",
     )
     (workflows / "backend-postgres.yml").write_text(
-        """
-name: Backend PostgreSQL
-jobs:
-  backend-postgres:
-    steps:
-      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\smoke_test.py
-      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\postgres_backup_drill.py
-      - run: .\\.ci-venv\\Scripts\\python.exe -m pytest tests -q -ra --tb=short -p no:cacheprovider
-  android:
-    steps:
-      - run: ./gradlew --no-daemon :app:kspGrayDebugKotlin --rerun-tasks
-      - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
-""",
+        _POSTGRES_REQUIRED_WORKFLOW,
         encoding="utf-8",
     )
     (workflows / "android-connected.yml").write_text(
@@ -105,15 +108,17 @@ jobs:
     assert mod._missing_ci_invocations(commands) == []
     assert mod._missing_gradle_tasks(commands) == []
     installer_only = [command for command in commands if "packaging/tests" in command.text]
-    assert "pytest business full-suite lane" in mod._missing_ci_invocations(installer_only)
+    assert "pytest ordinary business lane" in mod._missing_ci_invocations(installer_only)
+    assert "pytest real-db serial lane" in mod._missing_ci_invocations(installer_only)
     assert "pytest installer safety lane" not in mod._missing_ci_invocations(installer_only)
     business_only = [
         command
         for command in commands
-        if "-m pytest" in command.text and "packaging/tests" not in command.text
+        if "run_postgres_pytest_lane.py" in command.text
     ]
     assert "pytest installer safety lane" in mod._missing_ci_invocations(business_only)
-    assert "pytest business full-suite lane" not in mod._missing_ci_invocations(business_only)
+    assert "pytest ordinary business lane" not in mod._missing_ci_invocations(business_only)
+    assert "pytest real-db serial lane" not in mod._missing_ci_invocations(business_only)
     narrowed_business = mod.WorkflowCommand(
         Path("ci.yml"),
         "python -m pytest tests/test_audit_ci_gap.py -q -ra --tb=short -p no:cacheprovider",
@@ -122,7 +127,8 @@ jobs:
         Path("ci.yml"),
         "python -m pytest -q packaging/tests -p no:cacheprovider -k version",
     )
-    assert "pytest business full-suite lane" in mod._missing_ci_invocations([narrowed_business])
+    assert "pytest ordinary business lane" in mod._missing_ci_invocations([narrowed_business])
+    assert "pytest real-db serial lane" in mod._missing_ci_invocations([narrowed_business])
     assert "pytest installer safety lane" in mod._missing_ci_invocations([filtered_installer])
 
 
@@ -155,7 +161,8 @@ jobs:
 
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
-        "pytest business full-suite lane",
+        "pytest ordinary business lane",
+        "pytest real-db serial lane",
         "pytest installer safety lane",
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
@@ -322,7 +329,8 @@ jobs:
 
     assert mod._missing_ci_invocations(commands) == [
         "release audit aggregator",
-        "pytest business full-suite lane",
+        "pytest ordinary business lane",
+        "pytest real-db serial lane",
         "pytest installer safety lane",
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",

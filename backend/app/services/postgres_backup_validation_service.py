@@ -33,6 +33,7 @@ _PROGRAM_FILES = os.getenv("PROGRAMFILES")
 _PG_INSTALL_ROOT: Path | None = (
     Path(_PROGRAM_FILES) / "PostgreSQL" if _PROGRAM_FILES else None
 )
+_PG_RESTORE_LIST_TIMEOUT_SECONDS = 60
 
 
 def _install_version_key(binary_path: Path) -> tuple[int, ...]:
@@ -96,7 +97,11 @@ def validate_postgres_backup_file(path: Path | str) -> None:
             capture_output=True,
             text=True,
             check=False,
+            stdin=subprocess.DEVNULL,
+            timeout=_PG_RESTORE_LIST_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired as exc:
+        raise PostgresBackupValidationError("pg_restore --list timed out") from exc
     except OSError as exc:
         raise PostgresBackupValidationError(f"pg_restore could not run: {exc}") from exc
 

@@ -35,6 +35,7 @@
   "postgres_ready_poll_interval_ms": 1000,
   "pre_upgrade_postgres_ready_timeout_ms": 60000,
   "pre_upgrade_postgres_ready_poll_interval_ms": 500,
+  "database_tool_timeout_ms": 600000,
   "backend_ready_timeout_ms": 120000,
   "backend_ready_poll_interval_ms": 1000,
   "backend_health_request_timeout_ms": 2000,

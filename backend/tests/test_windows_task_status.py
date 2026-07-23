@@ -18,31 +18,77 @@ from app.routes.owner_console import _require_local
 from app.services import windows_task_status_service as wts
 
 
+def _assert_backup_script_contract(
+    completed: subprocess.CompletedProcess[str],
+    *,
+    capture_path: Path,
+    explicit_offsite: Path,
+) -> None:
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    result = json.loads([line for line in completed.stdout.splitlines() if line.strip()][-1])
+    capture = json.loads(capture_path.read_text(encoding="utf-8-sig"))
+    arguments = capture["Arguments"]
+    assert capture["PgPassword"] is None
+    assert capture["PassFileExists"] is True
+    assert capture["PassFileText"] == "localhost:5432:db:ticketbox:p@ss\\:word/?#%\n"
+    assert capture["TimeoutMilliseconds"] == 600_000
+    assert capture["Label"] == "pg_dump"
+    assert not Path(capture["PassFile"]).exists()
+    assert "p@ss:word/?#%" not in arguments
+    assert "p%40ss%3Aword%2F%3F%23%25" not in " ".join(arguments)
+    assert "--no-password" in arguments
+    assert "--lock-wait-timeout=30000" in arguments
+    assert arguments[arguments.index("--dbname") + 1] == (
+        "postgresql://ticketbox@localhost:5432/db?require_auth=scram-sha-256"
+    )
+    assert result["ParentPassword"] == "parent-password"
+    assert result["ParentPassFile"] == "parent-passfile"
+    assert result["DefaultOffsite"] is None
+    assert result["EnabledOffsite"] == str(explicit_offsite)
+    assert result["MissingDirectoryFailed"] is True
+    assert result["EncodedQueryPasswordFailed"] is True
+
+
 def _run_backup_script_contract(engine: str, script_path: Path, tmp_path: Path) -> None:
-    fake_dump = tmp_path / "fake_pg_dump.ps1"
     capture_path = tmp_path / "pg_dump_capture.json"
     target_path = tmp_path / "scheduled.dump"
     explicit_offsite = tmp_path / "explicit-offsite"
-    fake_dump.write_text(
-        """$capture = [ordered]@{ Arguments = @($args); PgPassword = $env:PGPASSWORD }
-$capture | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:XPJ_BACKUP_CAPTURE -Encoding UTF8
-$fileIndex = [Array]::IndexOf([object[]]$args, '--file')
-[System.IO.File]::WriteAllBytes([string]$args[$fileIndex + 1], [byte[]](1, 2, 3))
-exit 0
-""",
-        encoding="utf-8-sig",
-    )
     harness = tmp_path / f"backup_contract_{Path(engine).stem}.ps1"
     harness.write_text(
         fr""". '{script_path}'
-function Get-PgDumpBinary {{ return '{fake_dump}' }}
+function Get-PgDumpBinary {{ return '{engine}' }}
+function Invoke-TicketboxBoundedNativeProcess {{
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [int]$TimeoutMilliseconds,
+        [string]$Label
+    )
+    $passFile = $env:PGPASSFILE
+    $passFileText = [System.IO.File]::ReadAllText($passFile, [System.Text.Encoding]::UTF8)
+    $capture = [ordered]@{{
+        Arguments = @($Arguments)
+        PgPassword = $env:PGPASSWORD
+        PassFile = $passFile
+        PassFileExists = Test-Path -LiteralPath $passFile
+        PassFileText = $passFileText
+        TimeoutMilliseconds = $TimeoutMilliseconds
+        Label = $Label
+    }}
+    $capture | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:XPJ_BACKUP_CAPTURE -Encoding UTF8
+    $fileIndex = [Array]::IndexOf([object[]]$Arguments, '--file')
+    [System.IO.File]::WriteAllBytes([string]$Arguments[$fileIndex + 1], [byte[]](1, 2, 3))
+    return [pscustomobject]@{{ ExitCode = 0; StandardOutput = ''; StandardError = '' }}
+}}
 function Test-PostgresBackup {{ param([string]$Path) }}
 $env:XPJ_BACKUP_CAPTURE = '{capture_path}'
 $env:PGPASSWORD = 'parent-password'
+$env:PGPASSFILE = 'parent-passfile'
 Backup-PostgresDatabase `
-    -DatabaseUrl 'postgresql+psycopg://ticketbox:p%40ss%3Aword%2F%3F%23%25@localhost:5432/db' `
+    -DatabaseUrl 'postgresql+psycopg://ticketbox:p%40ss%3Aword%2F%3F%23%25@localhost:5432/db?require_auth=scram-sha-256' `
     -TargetPath '{target_path}'
 $parentPassword = $env:PGPASSWORD
+$parentPassFile = $env:PGPASSFILE
 $env:OneDrive = '{tmp_path / "automatic-onedrive"}'
 Remove-Item Env:\XPJ_OFFSITE_BACKUP_ENABLED -ErrorAction SilentlyContinue
 Remove-Item Env:\XPJ_OFFSITE_BACKUP_DIR -ErrorAction SilentlyContinue
@@ -55,10 +101,11 @@ $missingDirectoryFailed = $false
 try {{ Get-OffsiteBackupDir | Out-Null }} catch {{ $missingDirectoryFailed = $true }}
 $encodedQueryPasswordFailed = $false
 try {{
-    ConvertTo-PgDumpConnection -Url 'postgresql://ticketbox@localhost/db?%70assword=query-secret'
+    ConvertTo-PgDumpConnection -Url 'postgresql://ticketbox@localhost/db?require_auth=scram-sha-256&%70assword=query-secret'
 }} catch {{ $encodedQueryPasswordFailed = $true }}
 [ordered]@{{
     ParentPassword = $parentPassword
+    ParentPassFile = $parentPassFile
     DefaultOffsite = $defaultOffsite
     EnabledOffsite = $enabledOffsite
     MissingDirectoryFailed = $missingDirectoryFailed
@@ -75,19 +122,11 @@ try {{
         errors="replace",
         check=False,
     )
-    assert completed.returncode == 0, completed.stderr or completed.stdout
-    result = json.loads([line for line in completed.stdout.splitlines() if line.strip()][-1])
-    capture = json.loads(capture_path.read_text(encoding="utf-8-sig"))
-    arguments = capture["Arguments"]
-    assert capture["PgPassword"] == "p@ss:word/?#%"
-    assert "p@ss:word/?#%" not in arguments
-    assert "p%40ss%3Aword%2F%3F%23%25" not in " ".join(arguments)
-    assert arguments[arguments.index("--dbname") + 1] == "postgresql://ticketbox@localhost:5432/db"
-    assert result["ParentPassword"] == "parent-password"
-    assert result["DefaultOffsite"] is None
-    assert result["EnabledOffsite"] == str(explicit_offsite)
-    assert result["MissingDirectoryFailed"] is True
-    assert result["EncodedQueryPasswordFailed"] is True
+    _assert_backup_script_contract(
+        completed,
+        capture_path=capture_path,
+        explicit_offsite=explicit_offsite,
+    )
 
 
 @pytest.fixture()
@@ -221,6 +260,9 @@ def test_db_maintenance_scripts_resolve_configured_database_url(tmp_path: Path) 
     maintenance_text = (
         project_root / "scripts" / "maintenance_ticketbox.ps1"
     ).read_text(encoding="utf-8-sig")
+    task_text = (project_root / "scripts" / "install_windows_tasks.ps1").read_text(
+        encoding="utf-8-sig"
+    )
 
     # backup_database.ps1 is the dialect single-source: read DATABASE_URL, require
     # PostgreSQL, dump via pg_dump and validate via pg_restore --list.
@@ -228,7 +270,10 @@ def test_db_maintenance_scripts_resolve_configured_database_url(tmp_path: Path) 
     assert "app.services.postgres_backup_validation_service" in backup_text
     assert "ConvertTo-PgDumpConnection" in backup_text
     assert "XPJ_OFFSITE_BACKUP_ENABLED" in backup_text
-    assert "--dbname $connection.DatabaseUrl" in backup_text
+    assert "--dbname', $ProtectedDatabaseUrl" in backup_text
+    assert "Invoke-TicketboxBoundedNativeProcess" in backup_text
+    assert "--no-password" in backup_text
+    assert "--lock-wait-timeout=30000" in backup_text
     assert "--dbname $libpqUrl" not in backup_text
     assert "Join-Path $env:OneDrive" not in backup_text
     assert "SpecialFolder]::ProgramFiles" in backup_text
@@ -241,6 +286,8 @@ def test_db_maintenance_scripts_resolve_configured_database_url(tmp_path: Path) 
     # The scheduled maintenance task delegates its backup to backup_database.ps1
     # rather than resolving the database itself.
     assert "backup_database.ps1" in maintenance_text
+    assert "BackupTaskExecutionTimeLimitMinutes" in task_text
+    assert "-ExecutionTimeLimit (New-TimeSpan -Minutes $BackupTaskExecutionTimeLimitMinutes)" in task_text
 
     # PostgreSQL-only (ADR-0041): neither script keeps the retired SQLite backup/
     # validation path or a hardcoded SQLite file path.
@@ -258,7 +305,6 @@ def test_db_maintenance_scripts_resolve_configured_database_url(tmp_path: Path) 
 def test_windows_postgres_discovery_uses_os_program_files_contract() -> None:
     project_root = Path(__file__).resolve().parents[2]
     script_paths = (
-        project_root / "backend" / "scripts" / "start_test_pg.ps1",
         project_root / "backend" / "scripts" / "backup_database.ps1",
         project_root / "backend" / "packaging" / "install_ticketbox.ps1",
     )

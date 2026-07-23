@@ -352,6 +352,7 @@ def _seed_committed_draft(*, amount_cents: int) -> str:
     reason="row-lock contention is only observable on the PostgreSQL lane; "
     "FOR UPDATE is a no-op on SQLite",
 )
+@pytest.mark.real_db
 def test_two_sessions_confirm_serializes_on_draft_row(*, identity) -> None:
     """Session A holds FOR UPDATE on the draft row; session B's confirm blocks on it.
     A short ``lock_timeout`` turns the contention into a deterministic OperationalError
@@ -396,6 +397,7 @@ def test_two_sessions_confirm_serializes_on_draft_row(*, identity) -> None:
     engine.dialect.name != "postgresql",
     reason="cross-session committed-state visibility needs the real PostgreSQL lane",
 )
+@pytest.mark.real_db
 def test_two_sessions_confirm_serialize_then_second_rechecks(*, identity) -> None:
     """Serialize-then-recheck: A confirms a draft (records one repayment), B confirming
     the SAME draft sees it non-pending → 409, so the captured repayment is recorded exactly

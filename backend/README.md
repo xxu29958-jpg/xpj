@@ -59,7 +59,7 @@ v0.3 不再在 `.env` 中配置 `UPLOAD_TOKEN`、`APP_TOKEN`、`ADMIN_TOKEN` 或
 示例：
 
 ```env
-DATABASE_URL=postgresql+psycopg://ticketbox:replace-with-strong-password@localhost:5432/ticketbox
+DATABASE_URL=postgresql+psycopg://ticketbox:replace-with-strong-password@localhost:5432/ticketbox?require_auth=scram-sha-256
 UPLOAD_DIR=uploads
 MAX_UPLOAD_SIZE_MB=10
 DELETE_IMAGE_AFTER_CONFIRM=false

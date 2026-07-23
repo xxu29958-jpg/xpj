@@ -2,7 +2,9 @@
     [switch]$SkipBackend,
     [switch]$SkipAndroid,
     [switch]$SkipSmoke,
-    [switch]$SkipLint
+    [switch]$SkipLint,
+    [ValidateSet("ordinary", "full")]
+    [string]$BackendTestDepth = "full"
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +14,21 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
 $AndroidRoot = Join-Path $ProjectRoot "android"
+$PostgresScriptsRoot = Join-Path $BackendRoot "scripts"
+
+$BackendPostgresEnvironmentNames = @(
+    "XPJ_TEST_BASE_DATABASE",
+    "XPJ_TEST_SMOKE_DATABASE",
+    "XPJ_TEST_RESTORE_DATABASE",
+    "XPJ_TEST_APPLICATION_ROLE",
+    "XPJ_TEST_CLUSTER_IDENTITY",
+    "XPJ_TEST_ADMIN_URL",
+    "XPJ_TEST_DATABASE_URL",
+    "SMOKE_DATABASE_URL",
+    "DRILL_SOURCE_URL",
+    "DRILL_RESTORE_URL",
+    "PGPASSFILE"
+)
 
 function Invoke-Checked {
     param(
@@ -23,6 +40,7 @@ function Invoke-Checked {
         [string]$WorkingDirectory
     )
 
+    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
     Write-Host ""
     Write-Host ">>> $FilePath $($Arguments -join ' ')"
     Push-Location $WorkingDirectory
@@ -33,7 +51,73 @@ function Invoke-Checked {
         }
     }
     finally {
+        $stopwatch.Stop()
         Pop-Location
+    }
+    Write-Host ("<<< completed in {0:c}" -f $stopwatch.Elapsed)
+}
+
+function Import-BackendTestPostgresEnvironment {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Python
+    )
+
+    . (Join-Path $PostgresScriptsRoot "test_pg_storage_contract.ps1")
+    . (Join-Path $PostgresScriptsRoot "test_pg_auth_contract.ps1")
+    $contract = Get-XpjTestPostgresContract
+    $port = [int]$contract.ports.local
+    $dataDir = Get-XpjTestPostgresDefaultDataDir -Port $port
+    $passfile = Assert-XpjTestPostgresAuthenticationFiles -DataDir $dataDir -Port $port
+    $environmentFile = [IO.Path]::GetTempFileName()
+    try {
+        Invoke-Checked -FilePath $Python -Arguments @(
+            "-E",
+            "-S",
+            "-m",
+            "scripts.write_test_postgres_env",
+            "--host",
+            "localhost",
+            "--port-profile",
+            "local",
+            "--admin-user",
+            "postgres",
+            "--existing-passfile",
+            $passfile,
+            "--output",
+            $environmentFile
+        ) -WorkingDirectory $BackendRoot
+
+        $values = @{}
+        foreach ($line in [IO.File]::ReadAllLines($environmentFile, [Text.Encoding]::UTF8)) {
+            if ($line -notmatch '^(?<Name>[A-Z][A-Z0-9_]*)=(?<Value>.*)$') {
+                throw "测试 PostgreSQL 环境包含无效记录。"
+            }
+            if ($values.ContainsKey($Matches.Name)) {
+                throw "测试 PostgreSQL 环境包含重复字段：$($Matches.Name)"
+            }
+            $values[$Matches.Name] = $Matches.Value
+        }
+        $missing = @($BackendPostgresEnvironmentNames | Where-Object { -not $values.ContainsKey($_) })
+        $unexpected = @($values.Keys | Where-Object { $_ -notin $BackendPostgresEnvironmentNames })
+        if ($missing.Count -gt 0 -or $unexpected.Count -gt 0) {
+            throw "测试 PostgreSQL 环境合同不匹配。缺失=$($missing -join ',')；多余=$($unexpected -join ',')"
+        }
+
+        foreach ($item in @(Get-ChildItem Env: -ErrorAction SilentlyContinue)) {
+            if ($item.Name -match '^PG') {
+                Remove-Item "Env:$($item.Name)" -ErrorAction SilentlyContinue
+            }
+        }
+        foreach ($name in $BackendPostgresEnvironmentNames) {
+            [Environment]::SetEnvironmentVariable($name, [string]$values[$name], "Process")
+        }
+        foreach ($name in @("TEST_POSTGRES_PASSWORD", "TEST_POSTGRES_APPLICATION_PASSWORD", "XPJ_TEST_APPLICATION_PASSWORD")) {
+            [Environment]::SetEnvironmentVariable($name, $null, "Process")
+        }
+    }
+    finally {
+        Remove-Item -Force -LiteralPath $environmentFile -ErrorAction SilentlyContinue
     }
 }
 
@@ -60,8 +144,14 @@ function Ensure-LocalAndroidEnvironment {
         $env:ANDROID_HOME = (Resolve-Path -LiteralPath $localSdk).Path
     }
 
-    $adoptiumRoot = "C:\Program Files\Eclipse Adoptium"
-    if (-not $env:JAVA_HOME -and (Test-Path -LiteralPath $adoptiumRoot)) {
+    $programFiles = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
+    $adoptiumRoot = if ([string]::IsNullOrWhiteSpace($programFiles)) {
+        ""
+    }
+    else {
+        Join-Path $programFiles "Eclipse Adoptium"
+    }
+    if (-not $env:JAVA_HOME -and $adoptiumRoot -and (Test-Path -LiteralPath $adoptiumRoot)) {
         $jdk = Get-ChildItem -LiteralPath $adoptiumRoot -Directory -ErrorAction SilentlyContinue |
             Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "bin\java.exe") } |
             Sort-Object Name -Descending |
@@ -70,8 +160,14 @@ function Ensure-LocalAndroidEnvironment {
             $env:JAVA_HOME = $jdk.FullName
         }
     }
-    $localJava = Join-Path $env:LOCALAPPDATA "Programs\Kimi\runtime"
-    if (-not $env:JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $localJava "bin\java.exe"))) {
+    $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    $localJava = if ([string]::IsNullOrWhiteSpace($localAppData)) {
+        ""
+    }
+    else {
+        Join-Path $localAppData "Programs\Kimi\runtime"
+    }
+    if (-not $env:JAVA_HOME -and $localJava -and (Test-Path -LiteralPath (Join-Path $localJava "bin\java.exe"))) {
         $env:JAVA_HOME = $localJava
     }
 
@@ -137,9 +233,9 @@ if (-not $SkipBackend) {
     if (-not $SkipLint) {
         Invoke-Checked -FilePath $tools.Ruff -Arguments @("check", "app", "scripts", "tests") -WorkingDirectory $BackendRoot
     }
-    # PG-only test lane (debt #4): the default pytest lane targets the throwaway
-    # PostgreSQL on :5438. Bring it up (idempotent); left running for fast repeat
-    # runs — tear down with backend\scripts\stop_test_pg.ps1 when done.
+    # The local entry point consumes the same lane and connection authorities as CI.
+    # The disposable cluster remains running for fast repeat runs; stop it through
+    # backend\scripts\stop_test_pg.ps1 when local verification is complete.
     Invoke-Checked -FilePath "powershell.exe" -Arguments @(
         "-NoProfile",
         "-ExecutionPolicy",
@@ -147,11 +243,30 @@ if (-not $SkipBackend) {
         "-File",
         (Join-Path $BackendRoot "scripts\start_test_pg.ps1")
     ) -WorkingDirectory $BackendRoot
-    Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "pytest") -WorkingDirectory $BackendRoot
+    Import-BackendTestPostgresEnvironment -Python $tools.Python
+    Invoke-Checked -FilePath $tools.Python -Arguments @(
+        "scripts\run_postgres_pytest_lane.py",
+        "--lane",
+        "ordinary",
+        "--workers",
+        "4"
+    ) -WorkingDirectory $BackendRoot
+    if ($BackendTestDepth -eq "full") {
+        Invoke-Checked -FilePath $tools.Python -Arguments @(
+            "scripts\run_postgres_pytest_lane.py",
+            "--lane",
+            "real-db",
+            "--workers",
+            "1"
+        ) -WorkingDirectory $BackendRoot
+    }
     Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\check_api_contract.py") -WorkingDirectory $BackendRoot
-    Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot
-    if (-not $SkipSmoke) {
-        Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\smoke_test.py") -WorkingDirectory $BackendRoot
+    if ($BackendTestDepth -eq "full") {
+        Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot
+        if (-not $SkipSmoke) {
+            Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\smoke_test.py") -WorkingDirectory $BackendRoot
+            Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\postgres_backup_drill.py") -WorkingDirectory $BackendRoot
+        }
     }
 }
 else {

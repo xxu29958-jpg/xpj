@@ -72,6 +72,7 @@ $BackendReadyTimeoutMs = [int]$ReleaseConfig.backend_ready_timeout_ms
 $BackendReadyPollIntervalMs = [int]$ReleaseConfig.backend_ready_poll_interval_ms
 $BackendHealthRequestTimeoutMs = [int]$ReleaseConfig.backend_health_request_timeout_ms
 $BootstrapRequestTimeoutMs = [int]$ReleaseConfig.bootstrap_request_timeout_ms
+$DatabaseToolTimeoutMs = [int]$ReleaseConfig.database_tool_timeout_ms
 $SecretByteCount = [int]$ReleaseConfig.secret_byte_count
 $ScmFailureResetSeconds = [int]$ReleaseConfig.scm_failure_reset_seconds
 $ScmRestartActions = @($ReleaseConfig.scm_restart_delays_ms | ForEach-Object { "restart/$([int]$_)" }) -join "/"
@@ -676,15 +677,12 @@ function Assert-TicketboxPgClusterStoppedAfterFailure {
     if (-not (Test-Path -LiteralPath (Join-Path $PgData "PG_VERSION") -PathType Leaf)) {
         return
     }
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        & $PgCtl status -D $PgData 2>$null | Out-Null
-        $rc = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $previousPreference
-    }
+    $statusResult = Invoke-TicketboxBoundedNativeProcess `
+        -FilePath $PgCtl `
+        -Arguments @('status', '-D', $PgData) `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs `
+        -Label 'pg_ctl install-compensation verification'
+    $rc = $statusResult.ExitCode
     if ($rc -eq 0) {
         throw "安装失败补偿后 PostgreSQL 数据簇仍在运行。"
     }

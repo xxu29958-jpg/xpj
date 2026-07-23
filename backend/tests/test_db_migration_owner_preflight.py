@@ -9,7 +9,7 @@ error before Alembic ``upgrade``.
 
 These tests switch PostgreSQL roles to exercise the block, the membership/owner
 exemptions, AND the call-site wiring, so they need real cross-connection commits
-(``real_db``; registered centrally in conftest ``_PG_REAL_DB_NODES``). The
+(``real_db``; declared below). The
 ``real_db`` reset recreates every public table owned by the connecting
 (superuser) role, which is the substrate for the block case. Note CI's
 PostgreSQL service uses password auth while the local throwaway cluster uses
@@ -18,6 +18,8 @@ trust — the role is created with a password (ignored under trust) for both.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
@@ -25,13 +27,11 @@ from sqlalchemy.engine import make_url
 from app.database import DatabaseMigrationPreflightError, _assert_role_can_alter_existing_schema
 from app.database._core import settings
 
+pytestmark = pytest.mark.real_db
+
 _GUARD_ROLE = "xpj_owner_preflight_role"
-# CI's PostgreSQL (the postgres:17 service container) uses PASSWORD auth, while
-# the local throwaway cluster (start_test_pg.ps1) uses ``--auth=trust``. So the
-# role must be created WITH a password and connected WITH it: a password is
-# simply ignored under trust auth, making this portable to both environments.
-# (An earlier trust-only version passed locally but failed CI with
-# "password authentication failed".)
+# Both local and cloud test clusters require SCRAM. This one-off role receives a
+# dedicated password because the assertion must connect as the constrained role.
 _GUARD_PW = "xpj_preflight_test_pw"  # throwaway test-role secret, not real
 
 
@@ -42,11 +42,21 @@ def _engine_as(role: str):
     return create_engine(url)
 
 
+def _admin_engine():
+    admin_url = make_url(os.environ["XPJ_TEST_ADMIN_URL"]).set(
+        database=make_url(settings.database_url).database,
+    )
+    return create_engine(
+        admin_url,
+        isolation_level="AUTOCOMMIT",
+    )
+
+
 @pytest.fixture
 def guard_role():
     """A throwaway non-superuser LOGIN role with no relationship to the table
     owner — i.e. the cut-over trap victim role (DML only, cannot ALTER)."""
-    admin = create_engine(settings.database_url, isolation_level="AUTOCOMMIT")
+    admin = _admin_engine()
 
     def _drop() -> None:
         with admin.connect() as conn:
@@ -86,7 +96,7 @@ def test_owner_preflight_allows_member_of_owner_role(guard_role):
     """Granting the role membership in the table-owner role lets it ALTER, so
     the guard must NOT raise — pins the ``pg_has_role(... 'MEMBER')`` exemption
     (delete that clause and this case starts raising)."""
-    admin = create_engine(settings.database_url, isolation_level="AUTOCOMMIT")
+    admin = _admin_engine()
     try:
         with admin.connect() as conn:
             owner = conn.scalar(
@@ -111,7 +121,7 @@ def test_owner_preflight_allows_member_of_owner_role(guard_role):
 
 def test_owner_preflight_blocks_noinherit_member_of_owner_role(guard_role):
     """Membership alone is not ALTER authority when the login is NOINHERIT."""
-    admin = create_engine(settings.database_url, isolation_level="AUTOCOMMIT")
+    admin = _admin_engine()
     try:
         with admin.connect() as conn:
             owner = conn.scalar(

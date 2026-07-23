@@ -17,8 +17,7 @@ _ANDROID_PATHS = """
 """
 
 
-def _scoped_workflow() -> str:
-    return """
+_SCOPED_WORKFLOW = """
 on:
   pull_request:
     branches: [main]
@@ -29,9 +28,13 @@ jobs:
     timeout-minutes: 5
     outputs:
       postgres: ${{ steps.scope.outputs.postgres }}
+      backend_frozen: ${{ steps.scope.outputs.backend_frozen }}
       desktop: ${{ steps.scope.outputs.desktop }}
       android: ${{ steps.scope.outputs.android }}
       windows: ${{ steps.scope.outputs.windows }}
+      postgres_matrix: ${{ steps.scope.outputs.postgres_matrix }}
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -39,6 +42,12 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.11"
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
       - id: scope
         shell: bash
         run: |
@@ -48,11 +57,25 @@ jobs:
             --head "${{ github.event.pull_request.head.sha || github.sha }}" \
             --output "$GITHUB_OUTPUT"
   backend_contracts:
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     steps:
       - run: python scripts/release_audit.py
+  backend_frozen:
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.backend_frozen != 'false') }}
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    steps:
+      - run: powershell -File backend/scripts/build_backend_exe.ps1 -Clean
   windows_packaging:
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     steps:
       - run: python -m pytest packaging/tests -q
   backend:
@@ -60,34 +83,43 @@ jobs:
     needs:
       - scope
       - backend_contracts
+      - backend_frozen
       - windows_packaging
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
       - name: Enforce required CI results
-        shell: bash
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
+          BACKEND_FROZEN_SCOPE: ${{ needs.scope.outputs.backend_frozen }}
+          WINDOWS_SCOPE: ${{ needs.scope.outputs.windows }}
           BACKEND_CONTRACTS_RESULT: ${{ needs.backend_contracts.result }}
+          BACKEND_FROZEN_RESULT: ${{ needs.backend_frozen.result }}
           WINDOWS_PACKAGING_RESULT: ${{ needs.windows_packaging.result }}
-        run: |
-          if [ "$SCOPE_RESULT" != "success" ]; then
-            echo "::error::CI scope resolution did not succeed: $SCOPE_RESULT"
-            exit 1
-          fi
-          if [ "$BACKEND_CONTRACTS_RESULT" != "success" ]; then
-            echo "::error::Backend contracts did not succeed: $BACKEND_CONTRACTS_RESULT"
-            exit 1
-          fi
-          case "$WINDOWS_PACKAGING_RESULT" in
-            success|skipped) ;;
-            *)
-              echo "::error::Windows release packaging did not succeed: $WINDOWS_PACKAGING_RESULT"
-              exit 1
-              ;;
-          esac
-          echo "Required Backend CI results are valid."
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          BACKEND_CONTRACTS_SHA: ${{ needs.backend_contracts.outputs.qualification_sha }}
+          BACKEND_CONTRACTS_SOURCE_SHA: ${{ needs.backend_contracts.outputs.qualification_source_sha }}
+          BACKEND_FROZEN_SHA: ${{ needs.backend_frozen.outputs.qualification_sha }}
+          BACKEND_FROZEN_SOURCE_SHA: ${{ needs.backend_frozen.outputs.qualification_source_sha }}
+          WINDOWS_PACKAGING_SHA: ${{ needs.windows_packaging.outputs.qualification_sha }}
+          WINDOWS_PACKAGING_SOURCE_SHA: ${{ needs.windows_packaging.outputs.qualification_source_sha }}
+        run: python -E -S backend/scripts/verify_backend_ci_results.py
   backend-postgres:
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
@@ -96,21 +128,9 @@ jobs:
 """
 
 
-def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
-    mod = load_ci_gap_audit()
-    workflows = tmp_path / ".github" / "workflows"
-    workflows.mkdir(parents=True)
-    workflow = workflows / "ci.yml"
-    valid = _scoped_workflow()
-    workflow.write_text(valid, encoding="utf-8")
-
-    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-    postgres = [command for command in commands if command.job == "backend-postgres"]
-
-    assert len(postgres) == 1
-    assert postgres[0].protection_scope == "postgres"
-
-    mutations = (
+def _scope_regressions(valid: str) -> tuple[str, ...]:
+    return (
+        valid.replace("timeout-minutes: 5", "timeout-minutes: 6", 1),
         valid.replace("fetch-depth: 0", "fetch-depth: 1"),
         valid.replace(
             "if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}",
@@ -124,6 +144,12 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
             "postgres: ${{ steps.scope.outputs.postgres }}",
             "postgres: ${{ steps.scope.outputs.android }}",
         ),
+        valid.replace(
+            "qualification_sha: ${{ steps.qualification.outputs.sha }}",
+            "qualification_sha: ${{ steps.scope.outputs.postgres }}",
+        ),
+        valid.replace("report_qualification_sha.py", "ci_scope.py", 1),
+        valid.replace('--expected "$EXPECTED_SHA"', '--expected "${{ github.event.before }}"', 1),
         valid.replace('--output "$GITHUB_OUTPUT"', '--output "$GITHUB_ENV"'),
         valid.replace("python -E -S backend/scripts/ci_scope.py", "python backend/scripts/ci_scope.py"),
         valid.replace(
@@ -139,8 +165,8 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
             '            --output "$GITHUB_OUTPUT" || true',
         ),
         valid.replace(
-            '          echo "Required Backend CI results are valid."',
-            "          exit 0\n          exit 1",
+            "run: python -E -S backend/scripts/verify_backend_ci_results.py",
+            "run: python -E -S backend/scripts/report_qualification_sha.py",
         ),
         valid.replace(
             "      - scope\n      - backend_contracts",
@@ -163,12 +189,48 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
             1,
         ),
         valid.replace(
-            "      - name: Enforce required CI results\n        shell: bash",
-            "      - name: Enforce required CI results\n        shell: bash\n"
-            "        working-directory: backend",
+            "      - name: Enforce required CI results\n        env:",
+            "      - name: Enforce required CI results\n"
+            "        working-directory: backend\n        env:",
         ),
     )
-    for index, mutated in enumerate(mutations):
+
+
+def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
+    mod = load_ci_gap_audit()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    workflow = workflows / "ci.yml"
+    valid = _SCOPED_WORKFLOW
+    workflow.write_text(valid, encoding="utf-8")
+
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    postgres = [command for command in commands if command.job == "backend-postgres"]
+
+    assert len(postgres) == 1
+    assert postgres[0].protection_scope == "postgres"
+
+    extensible = valid.replace(
+        "  backend_contracts:\n",
+        "      - name: Report resolved scope\n"
+        "        run: echo scope-complete\n"
+        "  backend_contracts:\n",
+        1,
+    ).replace(
+        "  backend-postgres:\n",
+        "      - name: Report required gate\n"
+        "        run: echo backend-complete\n"
+        "  backend-postgres:\n",
+        1,
+    )
+    workflow.write_text(extensible, encoding="utf-8")
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    assert any(
+        command.job == "backend-postgres" and command.protection_scope == "postgres"
+        for command in commands
+    )
+
+    for index, mutated in enumerate(_scope_regressions(valid)):
         assert mutated != valid, index
         workflow.write_text(mutated, encoding="utf-8")
         commands = mod._iter_workflow_run_commands(workflows, protected_only=True)

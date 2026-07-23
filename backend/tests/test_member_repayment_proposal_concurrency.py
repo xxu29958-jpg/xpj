@@ -2,8 +2,7 @@
 
 Two §11 invariants need real independent connections (one shared savepoint
 connection cannot model the partial-index wait or the parent-Debt FOR UPDATE
-lock contention), so conftest auto-marks these ``test_two_sessions_*`` tests
-``real_db`` via the ``::test_two_sessions`` nodeid pattern.
+lock contention), so the module declares ``real_db``.
 
 1. The ``uq_mrp_one_pending_per_debt`` partial UNIQUE index is the §3.2
    one-pending-per-Debt backstop: two concurrent creates that both read "no
@@ -37,6 +36,8 @@ from app.schemas import (
     MemberRepaymentProposalCreateRequest,
 )
 from app.services import debt_service
+
+pytestmark = pytest.mark.real_db
 
 
 def _owner_account_id() -> int:

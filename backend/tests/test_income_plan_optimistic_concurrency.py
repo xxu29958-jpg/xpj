@@ -99,6 +99,7 @@ def test_income_plan_patch_unknown_returns_404(
     assert response.status_code == 404, response.text
 
 
+@pytest.mark.real_db
 def test_two_sessions_income_plan_patch_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:
@@ -239,6 +240,7 @@ def test_income_plan_restore_with_stale_token_returns_409(
     assert stale.json()["error"] == "state_conflict"
 
 
+@pytest.mark.real_db
 def test_two_sessions_archive_race_idempotent_no_double_write(
     client: TestClient, *, identity
 ) -> None:

@@ -9,7 +9,7 @@ legacy ``tags`` rows → upgrade to head, forcing the add-nullable → backfill-
 
 Ported (PG-only) from the retired ``test_database_migration_tags.py``; the
 legacy-SQLite-migrator half of that file went with ``migrate_sqlite_schema``.
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its
+Marked ``real_db`` below because it issues DDL via its
 own ``engine.begin()`` connections outside the per-test transaction.
 """
 
@@ -18,9 +18,12 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine, seed_identity_data
+
+pytestmark = pytest.mark.real_db
 
 
 def _table_names() -> set[str]:
