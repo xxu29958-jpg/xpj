@@ -20,7 +20,7 @@ home-server 后端跑在本机 PostgreSQL 上（ADR-0041，PG-only，SQLite 已�
 ```powershell
 cd E:\projects\xiaopiaojia\backend
 .\scripts\start_test_pg.ps1                    # 幂等起 :5438 隔离实例，自建 xpj_test / xpj_smoke
-$env:DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_smoke"
+$env:DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_smoke?require_auth=scram-sha-256"
 # ...起后端做预览 / 配对...
 .\scripts\stop_test_pg.ps1                      # 用完销毁
 ```

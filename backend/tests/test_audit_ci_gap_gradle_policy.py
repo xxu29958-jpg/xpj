@@ -190,6 +190,23 @@ def _assert_gradle_failure_masking_is_rejected(mod: object) -> None:
         shell="powershell",
     )
     assert ":app:testGrayDebugUnitTest" in mod._missing_gradle_tasks([swallowed])
+    for arguments in (
+        ":app:testGrayDebugUnitTest -m",
+        "--dry-run :app:testGrayDebugUnitTest",
+        ":app:testGrayDebugUnitTest --task-graph",
+        ":app:testGrayDebugUnitTest -x testGrayDebugUnitTest",
+        ":app:testGrayDebugUnitTest -x:app:testGrayDebugUnitTest",
+        ":app:testGrayDebugUnitTest --exclude-task=:app:testGrayDebugUnitTest",
+        ":app:testGrayDebugUnitTest -x :app:tGDU",
+        ":app:testGrayDebugUnitTest --exclude-task unrelatedTask",
+    ):
+        non_executing = mod.WorkflowCommand(
+            Path("C:/.github/workflows/ci.yml"),
+            f"./gradlew --no-daemon {arguments}",
+        )
+        assert ":app:testGrayDebugUnitTest" in mod._missing_gradle_tasks(
+            [non_executing]
+        )
 
 
 def test_ci_gap_gradle_catch_must_propagate_guard_failure() -> None:

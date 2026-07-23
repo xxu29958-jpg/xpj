@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import stat
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -103,14 +104,22 @@ def test_pg_tool_connection_removes_credentials_from_arguments() -> None:
     assert backup_service.write_protected_file_exclusive is secure_file.write_protected_file_exclusive
     connection = backup_service._pg_tool_connection(_DATABASE_URL)  # noqa: SLF001
     assert connection.database_url == (
-        "postgresql://ticketbox@localhost:5432/ticketbox?require_auth=scram-sha-256&sslmode=require"
+        "postgresql://ticketbox@localhost:5432/ticketbox?connect_timeout=5&"
+        "require_auth=scram-sha-256&sslmode=require"
     )
     assert connection.password == _DECODED_PASSWORD
-    with pytest.raises(AppError) as query_password_error:
-        backup_service._pg_tool_connection(  # noqa: SLF001
-            "postgresql://ticketbox@localhost/ticketbox?password=query-secret"
-        )
-    assert "query-secret" not in str(query_password_error.value)
+    for unsafe_query in (
+        "password=query-secret",
+        "passfile=other.pgpass&require_auth=scram-sha-256",
+        "service=production&require_auth=scram-sha-256",
+        "hostaddr=203.0.113.7&require_auth=scram-sha-256",
+        "connect_timeout=0&require_auth=scram-sha-256",
+    ):
+        with pytest.raises(AppError) as query_error:
+            backup_service._pg_tool_connection(  # noqa: SLF001
+                f"postgresql://ticketbox@localhost/ticketbox?{unsafe_query}"
+            )
+        assert "query-secret" not in str(query_error.value)
 
 
 def test_pg_dump_uses_noninteractive_ephemeral_passfile(tmp_path, monkeypatch) -> None:
@@ -129,7 +138,16 @@ def test_pg_dump_uses_noninteractive_ephemeral_passfile(tmp_path, monkeypatch) -
         return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
 
     _configure_pg_dump(tmp_path, monkeypatch, fake_run)
-    monkeypatch.setenv("PGPASSWORD", "parent-password")
+    poisoned = {
+        "DATABASE_URL": "postgresql://ambient-secret@production.example/finance",
+        "PGHOST": "production.example",
+        "PGHOSTADDR": "203.0.113.7",
+        "PGPASSWORD": "parent-password",
+        "PGPORT": "6543",
+        "PGSERVICE": "production",
+    }
+    for key, value in poisoned.items():
+        monkeypatch.setenv(key, value)
 
     backup_service._run_pg_dump(prefix="ticketbox-manual", kind="manual")  # noqa: SLF001
     arguments = observed["arguments"]
@@ -140,10 +158,10 @@ def test_pg_dump_uses_noninteractive_ephemeral_passfile(tmp_path, monkeypatch) -
     assert _ENCODED_PASSWORD not in " ".join(arguments)
     assert "--no-password" in arguments
     assert "--lock-wait-timeout=30000" in arguments
-    assert "PGPASSWORD" not in environment
+    assert not set(poisoned) & set(environment)
     assert observed["passfile_text"] == "localhost:5432:ticketbox:ticketbox:p@ss\\:word/?#%\n"
     assert not Path(observed["passfile"]).exists()
-    assert os.environ["PGPASSWORD"] == "parent-password"
+    assert all(os.environ[key] == value for key, value in poisoned.items())
 
 
 def test_passwordless_pg_tools_require_a_valid_inherited_passfile(tmp_path, monkeypatch) -> None:
@@ -174,6 +192,35 @@ def test_passwordless_pg_tools_require_a_valid_inherited_passfile(tmp_path, monk
         assert passwordless_environment["PGPASSFILE"] == str(inherited_passfile.resolve())
     assert inherited_passfile.exists()
     assert os.environ["PGPASSFILE"] == str(inherited_passfile.resolve())
+    if os.name != "nt":
+        effective_uid = os.geteuid()
+        foreign_directory = SimpleNamespace(
+            st_mode=stat.S_IFDIR | 0o755,
+            st_uid=effective_uid + 1,
+        )
+        with pytest.raises(PermissionError, match="untrusted owner"):
+            secure_file._validate_unix_directory_entry(  # noqa: SLF001
+                foreign_directory,
+                child_owner=effective_uid,
+            )
+        foreign_directory.st_mode = stat.S_IFDIR | stat.S_ISVTX | 0o777
+        with pytest.raises(PermissionError, match="untrusted owner"):
+            secure_file._validate_unix_directory_entry(  # noqa: SLF001
+                foreign_directory,
+                child_owner=effective_uid,
+            )
+        unsafe_directory = tmp_path / "other-user-mutable"
+        unsafe_directory.mkdir()
+        unsafe_directory.chmod(0o777)
+        unsafe_passfile = unsafe_directory / "inherited.pgpass"
+        unsafe_passfile.write_text("inherited-secret\n", encoding="utf-8")
+        unsafe_passfile.chmod(0o600)
+        monkeypatch.setenv("PGPASSFILE", str(unsafe_passfile.resolve()))
+        with (
+            pytest.raises(AppError, match="凭据不可用"),
+            backup_service._pg_tool_environment(passwordless),  # noqa: SLF001
+        ):
+            pass
     monkeypatch.delenv("PGPASSFILE")
     with (
         pytest.raises(AppError, match="凭据不可用"),

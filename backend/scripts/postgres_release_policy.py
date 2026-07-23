@@ -31,6 +31,12 @@ class PostgresReleasePolicy:
     current_major: int
     service_image: str
 
+    def __post_init__(self) -> None:
+        if self.supported_majors != (self.current_major,):
+            raise ValueError(
+                "PostgreSQL CI requires one pinned service image for every supported major"
+            )
+
     def matrix_json(self) -> str:
         return json.dumps(
             {
@@ -135,6 +141,10 @@ def load_postgres_release_policy(
     pinned_runtime, service_image = _pinned_postgres_source(toolchain_path)
     if not minimum <= pinned_runtime < maximum:
         raise RuntimeError("pinned PostgreSQL runtime is outside the release policy")
+    if majors != (pinned_runtime[0],):
+        raise RuntimeError(
+            "PostgreSQL release policy spans majors without one pinned CI image per major"
+        )
     return PostgresReleasePolicy(
         minimum=minimum,
         maximum_exclusive=maximum,

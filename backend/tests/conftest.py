@@ -206,7 +206,7 @@ def _assert_xdist_lane_contract(session: pytest.Session) -> None:
     if lane != PARALLEL_POSTGRES_PYTEST_LANE:
         raise pytest.UsageError(
             "xdist is allowed only through the declared ordinary PostgreSQL lane; "
-            "use scripts/run_postgres_pytest_lane.py --lane ordinary --workers 2"
+            "use python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 2"
         )
 
 

@@ -191,36 +191,47 @@ function Invoke-TicketboxBoundedNativeProcess {
     }
 }
 
+function Remove-TicketboxProtectedPgPassArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$FullControlAccounts,
+        [Parameter(Mandatory = $true)][string]$OwnerAccount,
+        [ValidateRange(1, 1048576)][int]$MaximumBytes = 65536
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    Assert-NoTicketboxAncestorReparsePoints $fullPath
+    if ((Get-TicketboxPathEntryKindNoFollow -Path $fullPath) -cne 'File') {
+        throw "PostgreSQL 临时凭据不是普通文件：$fullPath"
+    }
+    $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    if (
+        ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        $item.Length -gt $MaximumBytes
+    ) {
+        throw "PostgreSQL 临时凭据的类型或大小无效：$fullPath"
+    }
+    Assert-TicketboxExactFileAcl `
+        -Path $fullPath `
+        -Accounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    Remove-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    if ((Get-TicketboxPathEntryKindNoFollow -Path $fullPath) -cne 'Missing') {
+        throw "无法清理 PostgreSQL 临时凭据：$fullPath"
+    }
+}
+
 function Get-TicketboxProtectedPgPassDirectory {
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
-    $isElevated = $principal.IsInRole(
-        [System.Security.Principal.WindowsBuiltInRole]::Administrator
+    $parent = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::LocalApplicationData
     )
-    if ($isElevated) {
-        $parent = [Environment]::GetFolderPath(
-            [Environment+SpecialFolder]::CommonProgramFiles
-        )
-        $accounts = @("SYSTEM", "BUILTIN\Administrators")
-        $ownerAccount = "SYSTEM"
-        $root = Join-Path $parent "Ticketbox"
-        Initialize-TicketboxProtectedDirectoryAtomically `
-            -Path $root `
-            -FullControlAccounts $accounts `
-            -OwnerAccount $ownerAccount | Out-Null
-        $directory = Join-Path $root "installer-secrets"
-    }
-    else {
-        $parent = [Environment]::GetFolderPath(
-            [Environment+SpecialFolder]::LocalApplicationData
-        )
-        $accounts = @($identity.User.Value)
-        $ownerAccount = $identity.User.Value
-        $directory = Join-Path $parent "TicketboxInstallerSecrets"
-    }
     if ([string]::IsNullOrWhiteSpace($parent)) {
         throw "Windows 未提供受保护的本机凭据根目录。"
     }
+    $accounts = @($identity.User.Value)
+    $ownerAccount = $identity.User.Value
+    $directory = Join-Path $parent "TicketboxInstallerSecrets"
     Initialize-TicketboxProtectedDirectoryAtomically `
         -Path $directory `
         -FullControlAccounts $accounts `
@@ -230,7 +241,9 @@ function Get-TicketboxProtectedPgPassDirectory {
     # passfile while still recovering crash residue deterministically.
     $staleBefore = [DateTime]::UtcNow.AddHours(-2)
     foreach ($item in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
-        if ($item.Name -notlike '.ticketbox-pgpass-*') {
+        $isPassfile = $item.Name -like '.ticketbox-pgpass-*'
+        $isLegacyStaging = $item.Name -like '.ticketbox-protected-*.tmp'
+        if (-not $isPassfile -and -not $isLegacyStaging) {
             throw "PostgreSQL 临时凭据目录含有未知对象：$($item.FullName)"
         }
         if ((Get-TicketboxPathEntryKindNoFollow -Path $item.FullName) -cne 'File') {
@@ -241,7 +254,7 @@ function Get-TicketboxProtectedPgPassDirectory {
             -Accounts $accounts `
             -OwnerAccount $ownerAccount
         if ($item.LastWriteTimeUtc -lt $staleBefore) {
-            Remove-TicketboxProtectedUtf8Artifact `
+            Remove-TicketboxProtectedPgPassArtifact `
                 -Path $item.FullName `
                 -FullControlAccounts $accounts `
                 -OwnerAccount $ownerAccount
@@ -281,11 +294,33 @@ function New-TicketboxProtectedPgPassFile {
     $port = if ($builder.Port -gt 0) { $builder.Port } else { 5432 }
     $fields = @($builder.Host, [string]$port, $database, $username, $Password) |
         ForEach-Object { ConvertTo-TicketboxPgPassField ([string]$_) }
-    Write-TicketboxProtectedUtf8FileDurable `
-        -Path $passfile `
-        -Text (($fields -join ':') + "`n") `
+    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes(
+        (($fields -join ':') + "`n")
+    )
+    $security = New-TicketboxProtectedFileSecurity `
         -FullControlAccounts $directory.FullControlAccounts `
-        -OwnerAccount $directory.OwnerAccount | Out-Null
+        -OwnerAccount $directory.OwnerAccount
+    try {
+        $stream = New-TicketboxProtectedFileStream -Path $passfile -Security $security
+        try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+        }
+        finally { $stream.Dispose() }
+        Assert-TicketboxExactFileAcl `
+            -Path $passfile `
+            -Accounts $directory.FullControlAccounts `
+            -OwnerAccount $directory.OwnerAccount
+    }
+    catch {
+        if (Test-Path -LiteralPath $passfile -PathType Leaf) {
+            Remove-TicketboxProtectedPgPassArtifact `
+                -Path $passfile `
+                -FullControlAccounts $directory.FullControlAccounts `
+                -OwnerAccount $directory.OwnerAccount
+        }
+        throw
+    }
     return [pscustomobject]@{
         Path = $passfile
         FullControlAccounts = $directory.FullControlAccounts
@@ -304,37 +339,47 @@ function Invoke-TicketboxWithPgPassFile {
     $protected = New-TicketboxProtectedPgPassFile `
         -DatabaseUrl $DatabaseUrl `
         -Password $Password
-    $hadPgPassword = Test-Path Env:PGPASSWORD
-    $previousPgPassword = $env:PGPASSWORD
-    $hadPgPassFile = Test-Path Env:PGPASSFILE
-    $previousPgPassFile = $env:PGPASSFILE
+    $previousPgEnvironment = @{}
+    foreach ($item in @(Get-ChildItem Env: -ErrorAction SilentlyContinue)) {
+        if ($item.Name -match '^(?i)PG') {
+            $previousPgEnvironment[$item.Name] = [string]$item.Value
+        }
+    }
+    $actionResult = $null
     try {
-        Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+        foreach ($name in @($previousPgEnvironment.Keys)) {
+            Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+        }
         $env:PGPASSFILE = $protected.Path
-        return & $Action $protected.DatabaseUrl
+        $actionResults = @(& $Action $protected.DatabaseUrl)
+        if ($actionResults.Count -ne 1) {
+            throw "PostgreSQL 受保护操作必须返回且仅返回一个结果。"
+        }
+        $actionResult = $actionResults[0]
     }
     finally {
         try {
-            Remove-TicketboxProtectedUtf8Artifact `
+            Remove-TicketboxProtectedPgPassArtifact `
                 -Path $protected.Path `
                 -FullControlAccounts $protected.FullControlAccounts `
                 -OwnerAccount $protected.OwnerAccount
         }
         finally {
-            if ($hadPgPassword) {
-                $env:PGPASSWORD = $previousPgPassword
+            foreach ($item in @(Get-ChildItem Env: -ErrorAction SilentlyContinue)) {
+                if ($item.Name -match '^(?i)PG') {
+                    Remove-Item "Env:$($item.Name)" -ErrorAction SilentlyContinue
+                }
             }
-            else {
-                Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
-            }
-            if ($hadPgPassFile) {
-                $env:PGPASSFILE = $previousPgPassFile
-            }
-            else {
-                Remove-Item Env:PGPASSFILE -ErrorAction SilentlyContinue
+            foreach ($entry in $previousPgEnvironment.GetEnumerator()) {
+                [Environment]::SetEnvironmentVariable(
+                    [string]$entry.Key,
+                    [string]$entry.Value,
+                    'Process'
+                )
             }
         }
     }
+    return $actionResult
 }
 
 function Invoke-TicketboxPgDumpCustom {

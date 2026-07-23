@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
+from ci_audit_provider import PLATFORM_WORKFLOW_PARTS
 from ci_gap_required_commands import (
     REQUIRED_CI_ACTIONS_BY_PLATFORM,
     REQUIRED_CI_INVOCATIONS_BY_PLATFORM,
@@ -13,7 +14,6 @@ from ci_gap_required_commands import (
 )
 from ci_gap_workflow_parser import WorkflowAction, WorkflowCommand
 
-PLATFORM_WORKFLOW_PARTS = {"GitHub": ".github", "Gitea": ".gitea"}
 CommandSegmentReader = Callable[[list[WorkflowCommand]], list[str]]
 _HASH_OUTPUT_REFERENCE = re.compile(
     r"^\$\{\{\s*steps\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.installer_sha256\s*\}\}$"
@@ -163,9 +163,10 @@ def missing_installer_hash_dataflow_by_platform(
     commands: list[WorkflowCommand],
     *,
     segment_reader: CommandSegmentReader,
+    platforms: tuple[str, ...] = tuple(PLATFORM_WORKFLOW_PARTS),
 ) -> list[str]:
     missing: list[str] = []
-    for platform in PLATFORM_WORKFLOW_PARTS:
+    for platform in platforms:
         platform_commands = [
             command
             for command in _commands_for_platform(commands, platform)
@@ -282,9 +283,11 @@ def missing_installer_publish_actions_by_platform(
     actions: list[WorkflowAction],
     *,
     segment_reader: CommandSegmentReader,
+    platforms: tuple[str, ...] = tuple(PLATFORM_WORKFLOW_PARTS),
 ) -> list[str]:
     missing: list[str] = []
-    for platform, workflow_part in PLATFORM_WORKFLOW_PARTS.items():
+    for platform in platforms:
+        workflow_part = PLATFORM_WORKFLOW_PARTS[platform]
         platform_commands = [
             command
             for command in _commands_for_platform(commands, platform)

@@ -310,6 +310,7 @@ def test_runtime_cleanup_propagates_filesystem_failure(
 
         monkeypatch.setattr(windows_tree, "remove_tree_exact", deny_cleanup)
     else:
+        deny_cleanup.avoids_symlink_attacks = True
         monkeypatch.setattr(test_db.shutil, "rmtree", deny_cleanup)
 
     with pytest.raises(PermissionError, match="denied"):

@@ -98,6 +98,13 @@ jobs:
         working-directory: backend
         run: .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests -p no:cacheprovider
 
+      - name: Windows database maintenance contract
+        working-directory: backend
+        run: >-
+          .\.ci-venv\Scripts\python.exe -m pytest -q
+          tests/test_windows_task_status.py::test_db_maintenance_scripts_resolve_configured_database_url
+          --noconftest --strict-markers -p no:cacheprovider -o addopts=
+
       - name: Installer source preflight (Windows PowerShell 5.1)
         working-directory: backend
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
@@ -227,6 +234,7 @@ jobs:
         working-directory: backend
         env:
           XPJ_RELEASE_AUDIT_COMPACT: "1"
+          XPJ_CI_AUDIT_PROVIDER: gitea
           XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
         run: .\.ci-venv\Scripts\python.exe scripts\release_audit.py
 
@@ -361,10 +369,10 @@ jobs:
             # markers preserve the same test-set boundary as GitHub without
             # importing GitHub's xdist performance topology here.
             Write-Host "--- PostgreSQL ordinary serial pytest lane ---"
-            .\.ci-venv\Scripts\python.exe scripts\run_postgres_pytest_lane.py --lane ordinary --workers 1
+            .\.ci-venv\Scripts\python.exe -m scripts.run_postgres_pytest_lane --lane ordinary --workers 1
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL ordinary serial pytest lane failed" }
             Write-Host "--- PostgreSQL real-db serial pytest lane ---"
-            .\.ci-venv\Scripts\python.exe scripts\run_postgres_pytest_lane.py --lane real-db --workers 1
+            .\.ci-venv\Scripts\python.exe -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL real-db serial pytest lane failed" }
           }
           finally {

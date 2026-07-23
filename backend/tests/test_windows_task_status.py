@@ -297,9 +297,14 @@ def test_db_maintenance_scripts_resolve_configured_database_url(tmp_path: Path) 
         assert "sqlite_backup_validation_service" not in text
         assert "Backup-SqliteDatabase" not in text
 
-    engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
-    for engine in engines:
-        _run_backup_script_contract(engine, project_root / "backend/scripts/backup_database.ps1", tmp_path)
+    if sys.platform == "win32":
+        engines = [path for name in ("powershell", "pwsh") if (path := shutil.which(name))]
+        for engine in engines:
+            _run_backup_script_contract(
+                engine,
+                project_root / "backend/scripts/backup_database.ps1",
+                tmp_path,
+            )
 
 
 def test_windows_postgres_discovery_uses_os_program_files_contract() -> None:

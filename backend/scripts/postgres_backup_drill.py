@@ -11,8 +11,8 @@ with identical row counts.
 Runs on the backend-postgres CI lane right after the smoke test (which populates
 the source DB). Not needed locally.
 
-    DRILL_SOURCE_URL=postgresql+psycopg://...:.../xpj_smoke \
-    DRILL_RESTORE_URL=postgresql+psycopg://...:.../xpj_restore \
+    DRILL_SOURCE_URL=postgresql+psycopg://...:.../xpj_smoke?require_auth=scram-sha-256 \
+    DRILL_RESTORE_URL=postgresql+psycopg://...:.../xpj_restore?require_auth=scram-sha-256 \
         python scripts/postgres_backup_drill.py
 """
 

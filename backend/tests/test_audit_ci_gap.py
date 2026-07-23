@@ -11,8 +11,8 @@ jobs:
     steps:
       - run: .\\.ci-venv\\Scripts\\python.exe scripts\\smoke_test.py
       - run: .\\.ci-venv\\Scripts\\python.exe scripts\\postgres_backup_drill.py
-      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\run_postgres_pytest_lane.py --lane ordinary --workers 4
-      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\run_postgres_pytest_lane.py --lane real-db --workers 1
+      - run: .\\.ci-venv\\Scripts\\python.exe -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4
+      - run: .\\.ci-venv\\Scripts\\python.exe -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
   android:
     steps:
       - run: ./gradlew --no-daemon :app:kspGrayDebugKotlin --rerun-tasks
@@ -114,7 +114,7 @@ jobs:
     business_only = [
         command
         for command in commands
-        if "run_postgres_pytest_lane.py" in command.text
+        if "scripts.run_postgres_pytest_lane" in command.text
     ]
     assert "pytest installer safety lane" in mod._missing_ci_invocations(business_only)
     assert "pytest ordinary business lane" not in mod._missing_ci_invocations(business_only)

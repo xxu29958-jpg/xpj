@@ -25,7 +25,7 @@ _POSTGRES_JOB_IDS = (
 _SCOPE_IF = (
     "${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}"
 )
-_LANE_RUNNER = "scripts/run_postgres_pytest_lane.py"
+_LANE_RUNNER = "scripts.run_postgres_pytest_lane"
 _SETUP_PYTHON = "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
 
 
@@ -162,6 +162,7 @@ def _assert_lane(
     runner = shlex.split(steps[runner_step]["run"], posix=True)
     assert runner == [
         "./.ci-venv/bin/python",
+        "-m",
         _LANE_RUNNER,
         "--lane",
         lane,
@@ -272,7 +273,9 @@ def _assert_postgres_aggregator(job: object) -> None:
 
 def _assert_local_verify_uses_postgres_authorities() -> None:
     script = (_ROOT / "scripts" / "verify_project.ps1").read_text(encoding="utf-8-sig")
-    assert '"scripts\\run_postgres_pytest_lane.py"' in script
+    assert '"scripts.run_postgres_pytest_lane"' in script
+    assert script.count('"-m",\n        "scripts.run_postgres_pytest_lane"') == 1
+    assert script.count('"-m",\n            "scripts.run_postgres_pytest_lane"') == 1
     assert '"ordinary"' in script
     assert '"real-db"' in script
     assert '"scripts.write_test_postgres_env"' in script
@@ -325,6 +328,15 @@ def test_postgres_lane_runner_is_the_single_pytest_command_authority() -> None:
         validate_lane_collection(lane="ordinary", selected_real_db=[False, True])
     with pytest.raises(ValueError, match="selected an ordinary test"):
         validate_lane_collection(lane="real-db", selected_real_db=[True, False])
+
+    module_entry = subprocess.run(
+        [sys.executable, "-m", "scripts.run_postgres_pytest_lane", "--help"],
+        cwd=_ROOT / "backend",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert module_entry.returncode == 0, module_entry.stderr
 
     _assert_local_verify_uses_postgres_authorities()
 
@@ -405,10 +417,10 @@ def test_gitea_keeps_the_shared_lane_runner_without_scope_modernization() -> Non
     postgres = jobs["backend-postgres"]
     assert isinstance(postgres, dict)
     lane = next(step["run"] for step in postgres["steps"] if step["name"].startswith("PostgreSQL lane"))
-    commands = [line.strip() for line in lane.splitlines() if _LANE_RUNNER.replace("/", "\\") in line]
+    commands = [line.strip() for line in lane.splitlines() if _LANE_RUNNER in line]
     assert commands == [
-        ".\\.ci-venv\\Scripts\\python.exe scripts\\run_postgres_pytest_lane.py --lane ordinary --workers 1",
-        ".\\.ci-venv\\Scripts\\python.exe scripts\\run_postgres_pytest_lane.py --lane real-db --workers 1",
+        ".\\.ci-venv\\Scripts\\python.exe -m scripts.run_postgres_pytest_lane --lane ordinary --workers 1",
+        ".\\.ci-venv\\Scripts\\python.exe -m scripts.run_postgres_pytest_lane --lane real-db --workers 1",
     ]
     assert "$ciPort = [int]$contract.ports.gitea" in lane
     assert "$null = Initialize-XpjTestPostgresRuntimeRoot" in lane
@@ -441,14 +453,15 @@ def test_ci_gap_lane_matchers_accept_only_the_repository_runner_contract() -> No
     real_db = next(
         required for required in mod.REQUIRED_CI_INVOCATIONS if required.label == "pytest real-db serial lane"
     )
-    assert ordinary.matches("python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 4")
-    assert ordinary.matches("python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 1")
-    assert real_db.matches("python scripts/run_postgres_pytest_lane.py --lane real-db --workers 1")
+    assert ordinary.matches("python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4")
+    assert ordinary.matches("python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 1")
+    assert real_db.matches("python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1")
     for command in (
         "python -m pytest tests -m real_db",
-        "python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 4 --ignore tests/x.py",
-        "python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 5",
-        "python scripts/run_postgres_pytest_lane.py --lane real-db --workers 2",
+        "python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 4",
+        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --ignore tests/x.py",
+        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 5",
+        "python -m scripts.run_postgres_pytest_lane --lane real-db --workers 2",
     ):
         assert not ordinary.matches(command)
         assert not real_db.matches(command)

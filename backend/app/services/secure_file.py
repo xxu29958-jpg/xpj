@@ -80,6 +80,48 @@ class _AccessAllowedAce(ctypes.Structure):
     ]
 
 
+def _validate_unix_directory_entry(
+    directory: os.stat_result,
+    *,
+    child_owner: int,
+) -> None:
+    if not stat.S_ISDIR(directory.st_mode):
+        raise ValueError("protected file parent chain contains a non-directory")
+    effective_uid = os.geteuid()
+    if directory.st_uid not in {0, effective_uid}:
+        raise PermissionError("protected file parent directory has an untrusted owner")
+    if directory.st_mode & 0o022 and (
+        not directory.st_mode & stat.S_ISVTX or child_owner != effective_uid
+    ):
+        raise PermissionError("protected file parent directory is mutable by another user")
+
+
+@contextlib.contextmanager
+def _open_unix_parent(path: Path) -> Iterator[tuple[int, os.stat_result, str]]:
+    lexical = Path(os.path.abspath(path))
+    if not path.is_absolute() or not lexical.anchor or not lexical.name:
+        raise ValueError("protected file path must be an absolute file path")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(lexical.anchor, flags)
+    try:
+        current = os.fstat(descriptor)
+        for component in lexical.parts[1:-1]:
+            child_descriptor = os.open(component, flags, dir_fd=descriptor)
+            try:
+                child = os.fstat(child_descriptor)
+                _validate_unix_directory_entry(current, child_owner=child.st_uid)
+            except (OSError, ValueError):
+                os.close(child_descriptor)
+                raise
+            os.close(descriptor)
+            descriptor = child_descriptor
+            current = child
+        yield descriptor, current, lexical.name
+    finally:
+        os.close(descriptor)
+
+
 def _configure_advapi32(advapi32: object) -> None:
     advapi32.OpenProcessToken.argtypes = [
         wintypes.HANDLE,
@@ -209,7 +251,7 @@ def _current_process_sid(advapi32: object, kernel32: object) -> str:
 
 def _protected_security_descriptor(advapi32: object, sid: str) -> ctypes.c_void_p:
     descriptor = ctypes.c_void_p()
-    sddl = f"D:P(A;;FA;;;{sid})(A;;FA;;;SY)(A;;FA;;;BA)"
+    sddl = f"O:{sid}D:P(A;;FA;;;{sid})(A;;FA;;;SY)(A;;FA;;;BA)"
     if not advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
         sddl,
         _SDDL_REVISION_1,
@@ -370,26 +412,24 @@ def hold_protected_file_for_read(path: Path) -> Iterator[Path]:
             yield resolved
         return
 
-    metadata = os.lstat(path)
-    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-        raise ValueError("protected file must be a regular non-symlink file")
-    resolved = path.resolve(strict=True)
-    lexical = Path(os.path.abspath(path))
-    if os.path.normcase(str(lexical)) != os.path.normcase(str(resolved)):
-        raise ValueError("protected file path traverses a symlink")
-    if stat.S_IMODE(metadata.st_mode) & 0o077:
-        raise PermissionError("protected file permissions are too broad")
-    if hasattr(os, "geteuid") and metadata.st_uid != os.geteuid():
-        raise PermissionError("protected file owner does not match the current user")
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags)
-    try:
-        opened = os.fstat(descriptor)
-        if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
-            raise OSError("protected file changed while it was being opened")
-        yield resolved
-    finally:
-        os.close(descriptor)
+    with _open_unix_parent(path) as (parent, parent_metadata, name):
+        descriptor = os.open(name, flags, dir_fd=parent)
+        try:
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("protected file must be a regular non-symlink file")
+            if stat.S_IMODE(metadata.st_mode) & 0o077:
+                raise PermissionError("protected file permissions are too broad")
+            if metadata.st_uid != os.geteuid():
+                raise PermissionError("protected file owner does not match the current user")
+            _validate_unix_directory_entry(parent_metadata, child_owner=metadata.st_uid)
+            visible = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if (visible.st_dev, visible.st_ino) != (metadata.st_dev, metadata.st_ino):
+                raise OSError("protected file changed while it was being opened")
+            yield Path(os.path.abspath(path))
+        finally:
+            os.close(descriptor)
 
 
 def _write_windows_file(
@@ -449,8 +489,10 @@ def write_protected_file_exclusive(path: Path, text: str) -> None:
         return
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags, 0o600)
-    with os.fdopen(descriptor, "wb") as output:
-        output.write(payload)
-        output.flush()
-        os.fsync(output.fileno())
+    with _open_unix_parent(path) as (parent, parent_metadata, name):
+        _validate_unix_directory_entry(parent_metadata, child_owner=os.geteuid())
+        descriptor = os.open(name, flags, 0o600, dir_fd=parent)
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(payload)
+            output.flush()
+            os.fsync(output.fileno())

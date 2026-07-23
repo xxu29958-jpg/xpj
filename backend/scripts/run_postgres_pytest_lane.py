@@ -11,9 +11,13 @@ import argparse
 import os
 import subprocess
 import sys
+import uuid
 from collections.abc import Mapping, Sequence
 
 from sqlalchemy.engine import make_url
+
+from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
+from scripts.write_test_postgres_env import render_environment
 
 _PYTEST_CONTRACT_ARGS = (
     "-q",
@@ -46,6 +50,8 @@ _LIBPQ_ROUTE_ENV = {
     "PGSSLMODE",
     "PGUSER",
     "TEST_POSTGRES_PASSWORD",
+    "TEST_POSTGRES_APPLICATION_PASSWORD",
+    "XPJ_TEST_APPLICATION_PASSWORD",
 }
 
 
@@ -146,6 +152,36 @@ def child_environment(source: Mapping[str, str]) -> dict[str, str]:
     else:
         raise RuntimeError("PostgreSQL lane requires an explicit authentication contract")
     environment["PYTEST_ADDOPTS"] = ""
+    return environment
+
+
+def collection_environment(source: Mapping[str, str]) -> dict[str, str]:
+    """Build a non-connecting pytest collection context without a live cluster."""
+    environment = child_environment(source)
+    contract = TEST_POSTGRES_CONTRACT
+    identity = contract.database_identity(
+        str(uuid.uuid5(uuid.NAMESPACE_OID, f"{contract.cluster_marker}:collection"))
+    )
+    values = render_environment(
+        host="localhost",
+        port=contract.ports.local,
+        admin_user="postgres",
+        application_user=contract.application_role,
+        passfile=contract.default_data_dir(contract.ports.local)
+        / contract.passfile_name,
+        cluster_identity=identity,
+    )
+    environment.update(
+        {
+            key: values[key]
+            for key in (
+                "XPJ_TEST_CLUSTER_IDENTITY",
+                "XPJ_TEST_DATABASE_URL",
+                "XPJ_TEST_ADMIN_URL",
+            )
+        }
+    )
+    environment.pop("PGPASSFILE", None)
     return environment
 
 

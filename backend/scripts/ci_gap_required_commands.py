@@ -48,18 +48,17 @@ def _command_tokens(command: str) -> tuple[str, ...]:
 
 def _postgres_lane_invocation(command: str) -> tuple[str, int] | None:
     tokens = _command_tokens(command)
-    if len(tokens) != 6:
+    if len(tokens) != 7:
         return None
     executable = tokens[0].replace("\\", "/").lower().rsplit("/", 1)[-1]
-    script = tokens[1].replace("\\", "/").lower().removeprefix("./")
     if executable not in {"python", "python.exe"}:
         return None
-    if script != "scripts/run_postgres_pytest_lane.py":
+    if tokens[1:3] != ("-m", "scripts.run_postgres_pytest_lane"):
         return None
-    if tokens[2] != "--lane" or tokens[4] != "--workers":
+    if tokens[3] != "--lane" or tokens[5] != "--workers":
         return None
     try:
-        return tokens[3], int(tokens[5])
+        return tokens[4], int(tokens[6])
     except ValueError:
         return None
 
@@ -186,12 +185,12 @@ REQUIRED_CI_INVOCATIONS = (
     ),
     RequiredCommand(
         "pytest ordinary business lane",
-        re.compile(_PYTHON_PREFIX + r"scripts[\\/]+run_postgres_pytest_lane\.py\b"),
+        re.compile(_PYTHON_PREFIX + r"-m\s+scripts\.run_postgres_pytest_lane\b"),
         matcher=_matches_ordinary_pytest,
     ),
     RequiredCommand(
         "pytest real-db serial lane",
-        re.compile(_PYTHON_PREFIX + r"scripts[\\/]+run_postgres_pytest_lane\.py\b"),
+        re.compile(_PYTHON_PREFIX + r"-m\s+scripts\.run_postgres_pytest_lane\b"),
         matcher=_matches_real_db_pytest,
     ),
     RequiredCommand(

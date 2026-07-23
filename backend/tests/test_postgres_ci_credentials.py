@@ -10,7 +10,7 @@ import pytest
 
 import scripts.test_postgres_database as test_database
 from app.database._core import _postgres_connect_args
-from scripts.run_postgres_pytest_lane import child_environment
+from scripts.run_postgres_pytest_lane import child_environment, collection_environment
 from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
 from scripts.test_postgres_database import validated_test_postgres_conninfo
 from scripts.write_test_postgres_env import existing_passfile, render_environment, write_passfile
@@ -97,6 +97,8 @@ def test_lane_runner_scrubs_ambient_libpq_routes_but_keeps_passfile() -> None:
         "PGREQUIREAUTH": "none",
         "PGPASSWORD": "ambient-secret",
         "TEST_POSTGRES_PASSWORD": "job-scoped-secret",
+        "TEST_POSTGRES_APPLICATION_PASSWORD": "application-secret",
+        "XPJ_TEST_APPLICATION_PASSWORD": "prepared-role-secret",
         "PGPASSFILE": "ephemeral-passfile",
         "XPJ_TEST_DATABASE_URL": (
             f"postgresql+psycopg://postgres@localhost:{test_port}/"
@@ -123,6 +125,8 @@ def test_lane_runner_scrubs_ambient_libpq_routes_but_keeps_passfile() -> None:
             "PGSERVICE",
             "PGPASSWORD",
             "TEST_POSTGRES_PASSWORD",
+            "TEST_POSTGRES_APPLICATION_PASSWORD",
+            "XPJ_TEST_APPLICATION_PASSWORD",
         }
         & result.keys()
     )
@@ -144,6 +148,18 @@ def test_lane_runner_scrubs_ambient_libpq_routes_but_keeps_passfile() -> None:
     ].replace("scram-sha-256", "none")
     with pytest.raises(RuntimeError, match="same authentication"):
         child_environment(mismatched_authentication)
+
+    collection = collection_environment(source)
+    assert collection["KEEP_ME"] == "yes"
+    assert collection["PYTEST_ADDOPTS"] == ""
+    assert "PGPASSFILE" not in collection
+    assert "TEST_POSTGRES_APPLICATION_PASSWORD" not in collection
+    assert "XPJ_TEST_APPLICATION_PASSWORD" not in collection
+    assert TEST_POSTGRES_CONTRACT.require_database_identity(
+        collection["XPJ_TEST_CLUSTER_IDENTITY"]
+    )
+    assert "require_auth=scram-sha-256" in collection["XPJ_TEST_DATABASE_URL"]
+    assert "require_auth=scram-sha-256" in collection["XPJ_TEST_ADMIN_URL"]
 
 
 def test_ci_environment_uses_passwordless_scram_urls_and_private_passfile(tmp_path: Path) -> None:

@@ -4,11 +4,24 @@ from __future__ import annotations
 
 import pathlib
 import sys
-from dataclasses import dataclass
-from hashlib import sha256
 
+from ci_audit_provider import (
+    PLATFORM_WORKFLOW_PARTS,
+    selected_ci_platforms,
+    workflow_dirs_for_platforms,
+)
 from ci_gap_action_pins import (
     github_external_uses_pin_violations as _github_external_uses_pin_violations,
+)
+from ci_gap_command_contract import (
+    REQUIRED_GRADLE_TASKS,
+    GradleInvocation,
+    _gradle_invocation_has_tokens,
+    _iter_executable_command_segments,
+    _iter_gradle_invocations,
+)
+from ci_gap_command_contract import (
+    _missing_gradle_tasks as _command_missing_gradle_tasks,
 )
 from ci_gap_installer_artifact import (
     missing_installer_hash_dataflow_by_platform as _evaluate_installer_hash_dataflow,
@@ -16,29 +29,8 @@ from ci_gap_installer_artifact import (
 from ci_gap_installer_artifact import (
     missing_installer_publish_actions_by_platform as _evaluate_installer_publish_actions,
 )
-from ci_gap_powershell import (
-    is_native_failure_propagation_guard as _is_native_failure_propagation_guard,
-)
-from ci_gap_powershell import looks_like_powershell as _looks_like_powershell
-from ci_gap_powershell import (
-    powershell_ast_propagates_failure as _powershell_ast_propagates_failure,
-)
 from ci_gap_release_scope import release_apk_scope_policy_violations
 from ci_gap_required_commands import REQUIRED_CI_INVOCATIONS, REQUIRED_CI_INVOCATIONS_BY_PLATFORM
-from ci_gap_shell import (
-    has_unquoted_shell_separator as _has_unquoted_shell_separator,
-)
-from ci_gap_shell import (
-    is_output_command as _is_output_command,
-)
-from ci_gap_shell import (
-    shell_tokens as _shell_tokens,
-)
-from ci_gap_shell import shell_without_heredoc_literals
-from ci_gap_shell import (
-    split_shell_command_segments as _split_shell_command_segments,
-)
-from ci_gap_shell import strip_inline_shell_comment as _strip_inline_shell_comment
 from ci_gap_workflow_parser import (
     WorkflowAction,
     WorkflowCommand,
@@ -47,30 +39,6 @@ from ci_gap_workflow_parser import (
     _locate_workflow_dirs,
 )
 
-
-@dataclass(frozen=True)
-class GradleInvocation:
-    workflow: pathlib.Path
-    tokens: tuple[str, ...]
-
-
-REQUIRED_GRADLE_TASKS = [
-    ":app:testGrayDebugUnitTest",
-    ":app:assertAndroidTestCountEqualsBaseline",
-    ":app:lintGrayDebug",
-    # Kotlin complexity gate (CODE_QUALITY_STANDARDS.md six thresholds) —
-    ":app:detektGrayDebug",
-    ":app:detektGrayDebugUnitTest",
-    ":app:assembleGrayDebug",
-    ":app:assembleInternalDebug",
-    ":app:assembleGrayRelease",
-    ":app:assembleInternalRelease",
-    ":app:kspGrayDebugKotlin --rerun-tasks",
-    # Runs on the path-filtered emulator lane (android-connected.yml) —
-    ":app:connectedGrayDebugAndroidTest",
-]
-
-PLATFORM_WORKFLOW_PARTS = {"GitHub": ".github", "Gitea": ".gitea"}
 REQUIRED_GRADLE_TASKS_BY_PLATFORM = {
     "GitHub": tuple(REQUIRED_GRADLE_TASKS),
     "Gitea": tuple(REQUIRED_GRADLE_TASKS),
@@ -78,6 +46,7 @@ REQUIRED_GRADLE_TASKS_BY_PLATFORM = {
 PATH_SCOPED_RELEASE_TASKS = frozenset(
     {":app:assembleGrayRelease", ":app:assembleInternalRelease"}
 )
+_missing_gradle_tasks = _command_missing_gradle_tasks
 _CI_INVOCATION_SCOPES = {
     "pytest ordinary business lane": {"full", "postgres"},
     "pytest real-db serial lane": {"full", "postgres"},
@@ -94,185 +63,6 @@ _CI_INVOCATION_SCOPES = {
     "desktop pytest": {"full", "desktop"},
 }
 
-def _is_line_continued(stripped_line: str) -> bool:
-    return stripped_line.endswith("\\") or stripped_line.endswith("`")
-
-
-def _line_without_continuation(stripped_line: str) -> str:
-    return stripped_line[:-1].strip() if _is_line_continued(stripped_line) else stripped_line
-
-
-def _is_gradle_executable(token: str) -> bool:
-    normalized = token.strip("'\"").replace("\\", "/").lower()
-    return normalized in {"gradlew", "./gradlew", ".//gradlew", ".\\gradlew.bat", "gradlew.bat", "./gradlew.bat"}
-
-
-def _contains_gradle_executable(line: str) -> bool:
-    return any(_is_gradle_executable(token) for token in _shell_tokens(line))
-
-
-def _looks_like_gradle_arg_fragment(stripped_line: str) -> bool:
-    return stripped_line.startswith(("-", ":"))
-
-
-def _folded_command_text(text: str) -> str:
-    paragraphs: list[list[str]] = [[]]
-    for line in text.splitlines():
-        if stripped := line.strip():
-            paragraphs[-1].append(stripped)
-        elif paragraphs[-1]:
-            paragraphs.append([])
-    return "\n".join(" ".join(paragraph) for paragraph in paragraphs if paragraph)
-
-
-def _logical_command_lines(text: str, *, folded: bool) -> list[str]:
-    if folded:
-        text = _folded_command_text(text)
-        folded = False
-    text = shell_without_heredoc_literals(text)
-    lines: list[str] = []
-    buffer = ""
-    buffer_has_gradle = False
-    buffer_continues = False
-    for raw_line in text.splitlines():
-        stripped = _strip_inline_shell_comment(raw_line.strip()).strip()
-        if not stripped:
-            if buffer:
-                lines.append(buffer)
-                buffer = ""
-                buffer_has_gradle = False
-                buffer_continues = False
-            continue
-        piece = _line_without_continuation(stripped)
-        should_join = buffer_continues or (folded and buffer_has_gradle and _looks_like_gradle_arg_fragment(stripped))
-        if buffer and should_join:
-            buffer = f"{buffer} {piece}"
-        else:
-            if buffer:
-                lines.append(buffer)
-            buffer = piece
-
-        buffer_continues = _is_line_continued(stripped)
-        buffer_has_gradle = _contains_gradle_executable(buffer)
-        if not buffer_continues and not buffer_has_gradle:
-            lines.append(buffer)
-            buffer = ""
-
-    if buffer:
-        lines.append(buffer)
-    return lines
-
-
-def _gradle_invocation_from_segment(
-    workflow: pathlib.Path,
-    segment: str,
-    *,
-    require_direct: bool,
-) -> GradleInvocation | None:
-    if _is_output_command(segment.strip()):
-        return None
-    tokens = _shell_tokens(segment)
-    executable_index = next((index for index, token in enumerate(tokens) if _is_gradle_executable(token)), None)
-    if executable_index is None or (require_direct and executable_index != 0):
-        return None
-    return GradleInvocation(workflow, tokens[executable_index:])
-
-
-def _gradle_invocations_from_line(
-    workflow: pathlib.Path,
-    line: str,
-    *,
-    require_failure_propagation: bool = True,
-) -> list[GradleInvocation]:
-    if require_failure_propagation and _has_unquoted_shell_separator(line):
-        return []
-    invocations = (
-        _gradle_invocation_from_segment(
-            workflow,
-            segment,
-            require_direct=require_failure_propagation,
-        )
-        for segment in _split_shell_command_segments(line)
-    )
-    return [invocation for invocation in invocations if invocation is not None]
-
-
-def _gradle_line_propagates_failure(lines: list[str], index: int) -> bool:
-    if index == len(lines) - 1:
-        return True
-    return _is_native_failure_propagation_guard(lines[index + 1])
-
-
-def _command_passes_powershell_ast(command: WorkflowCommand) -> bool:
-    text_digest = sha256(command.text.encode("utf-8")).hexdigest()
-    if command.powershell_ast_digest == text_digest:
-        return True
-    if not _looks_like_powershell(shell=command.shell, command=command.text):
-        return True
-    return _powershell_ast_propagates_failure(command.text)
-
-
-def _iter_gradle_invocations(
-    commands: list[WorkflowCommand],
-    *,
-    require_failure_propagation: bool = True,
-) -> list[GradleInvocation]:
-    invocations: list[GradleInvocation] = []
-    for command in commands:
-        if require_failure_propagation and not _command_passes_powershell_ast(command):
-            continue
-        lines = _logical_command_lines(command.text, folded=command.folded)
-        for index, line in enumerate(lines):
-            parsed = _gradle_invocations_from_line(
-                command.workflow,
-                line,
-                require_failure_propagation=require_failure_propagation,
-            )
-            if require_failure_propagation and not _gradle_line_propagates_failure(
-                lines, index
-            ):
-                continue
-            invocations.extend(parsed)
-    return invocations
-
-
-def _iter_executable_command_segments(commands: list[WorkflowCommand]) -> list[str]:
-    segments: list[str] = []
-    for command in commands:
-        if not _command_passes_powershell_ast(command):
-            continue
-        executable_lines = [
-            line
-            for line in _logical_command_lines(command.text, folded=command.folded)
-            if not _is_output_command(line.strip())
-        ]
-        if len(executable_lines) != 1:
-            for index, line in enumerate(executable_lines[:-1]):
-                if (
-                    not _has_unquoted_shell_separator(line)
-                    and _is_native_failure_propagation_guard(executable_lines[index + 1])
-                ):
-                    segments.append(line)
-            continue
-        if not _has_unquoted_shell_separator(executable_lines[0]):
-            segments.append(executable_lines[0])
-    return segments
-
-
-def _gradle_invocation_has_tokens(invocation: GradleInvocation, required: tuple[str, ...]) -> bool:
-    token_set = set(invocation.tokens)
-    return all(token in token_set for token in required)
-
-
-def _missing_gradle_tasks(commands: list[WorkflowCommand]) -> list[str]:
-    invocations = _iter_gradle_invocations(commands)
-    return [
-        task
-        for task in REQUIRED_GRADLE_TASKS
-        if not any(_gradle_invocation_has_tokens(invocation, tuple(task.split())) for invocation in invocations)
-    ]
-
-
 def _commands_for_platform(commands: list[WorkflowCommand], platform: str) -> list[WorkflowCommand]:
     return [command for command in commands if PLATFORM_WORKFLOW_PARTS[platform] in command.workflow.parts]
 
@@ -281,10 +71,12 @@ def _missing_gradle_tasks_by_platform(
     commands: list[WorkflowCommand],
     *,
     path_scoped_commands: list[WorkflowCommand] | None = None,
+    platforms: tuple[str, ...] = tuple(PLATFORM_WORKFLOW_PARTS),
 ) -> list[str]:
     missing: list[str] = []
     scoped_commands = path_scoped_commands if path_scoped_commands is not None else commands
-    for platform, required_tasks in REQUIRED_GRADLE_TASKS_BY_PLATFORM.items():
+    for platform in platforms:
+        required_tasks = REQUIRED_GRADLE_TASKS_BY_PLATFORM[platform]
         platform_commands = _commands_for_platform(commands, platform)
         platform_scoped_commands = _commands_for_platform(scoped_commands, platform)
         for task in required_tasks:
@@ -321,9 +113,13 @@ def _missing_ci_invocations(commands: list[WorkflowCommand]) -> list[str]:
     return missing
 
 
-def _missing_ci_invocations_by_platform(commands: list[WorkflowCommand]) -> list[str]:
+def _missing_ci_invocations_by_platform(
+    commands: list[WorkflowCommand],
+    *,
+    platforms: tuple[str, ...] = tuple(PLATFORM_WORKFLOW_PARTS),
+) -> list[str]:
     missing: list[str] = []
-    for platform in PLATFORM_WORKFLOW_PARTS:
+    for platform in platforms:
         platform_commands = _commands_for_platform(commands, platform)
         for label in _missing_ci_invocations(platform_commands):
             missing.append(f"{platform}: {label}")
@@ -343,20 +139,27 @@ def _missing_ci_invocations_by_platform(commands: list[WorkflowCommand]) -> list
 
 def _missing_installer_hash_dataflow_by_platform(
     commands: list[WorkflowCommand],
+    *,
+    platforms: tuple[str, ...] = tuple(PLATFORM_WORKFLOW_PARTS),
 ) -> list[str]:
     return _evaluate_installer_hash_dataflow(
         commands,
         segment_reader=_iter_executable_command_segments,
+        platforms=platforms,
     )
 
 
 def _missing_installer_publish_actions_by_platform(
-    commands: list[WorkflowCommand], actions: list[WorkflowAction]
+    commands: list[WorkflowCommand],
+    actions: list[WorkflowAction],
+    *,
+    platforms: tuple[str, ...] = tuple(PLATFORM_WORKFLOW_PARTS),
 ) -> list[str]:
     return _evaluate_installer_publish_actions(
         commands,
         actions,
         segment_reader=_iter_executable_command_segments,
+        platforms=platforms,
     )
 
 
@@ -435,42 +238,115 @@ def _gitea_ci_release_apk_policy_violations(commands: list[WorkflowCommand]) -> 
     ]
 
 
+def _missing_selected_workflow_directory(
+    workflow_dirs: list[pathlib.Path],
+    platforms: tuple[str, ...],
+) -> str | None:
+    for platform in platforms:
+        workflow_part = PLATFORM_WORKFLOW_PARTS[platform]
+        if not any(
+            workflow_part in path.parts and "workflows" in path.parts
+            for path in workflow_dirs
+        ):
+            return workflow_part
+    return None
+
+
+def _selected_provider_policy_violations(
+    path_scoped_commands: list[WorkflowCommand],
+    workflow_dirs: list[pathlib.Path],
+    platforms: tuple[str, ...],
+) -> list[str]:
+    violations: list[str] = []
+    if "GitHub" in platforms:
+        violations.extend(_github_ci_release_apk_policy_violations(path_scoped_commands))
+        violations.extend(_github_external_uses_pin_violations(workflow_dirs))
+    if "Gitea" in platforms:
+        violations.extend(_gitea_ci_release_apk_policy_violations(path_scoped_commands))
+    violations.extend(
+        release_apk_scope_policy_violations(
+            {command.workflow for command in path_scoped_commands},
+            platforms=platforms,
+        )
+    )
+    return violations
+
+
+def _collect_missing_contracts(
+    commands: list[WorkflowCommand],
+    actions: list[WorkflowAction],
+    path_scoped_commands: list[WorkflowCommand],
+    workflow_dirs: list[pathlib.Path],
+    platforms: tuple[str, ...],
+) -> list[str]:
+    missing = [
+        f"gradle task: {task}"
+        for task in _missing_gradle_tasks_by_platform(
+            commands,
+            path_scoped_commands=path_scoped_commands,
+            platforms=platforms,
+        )
+    ]
+    missing.extend(
+        f"ci invocation: {invocation}"
+        for invocation in _missing_ci_invocations_by_platform(
+            commands,
+            platforms=platforms,
+        )
+    )
+    missing.extend(
+        f"ci dataflow: {dataflow}"
+        for dataflow in _missing_installer_hash_dataflow_by_platform(
+            commands,
+            platforms=platforms,
+        )
+    )
+    missing.extend(
+        f"ci action: {action}"
+        for action in _missing_installer_publish_actions_by_platform(
+            commands,
+            actions,
+            platforms=platforms,
+        )
+    )
+    missing.extend(
+        f"ci policy: {violation}"
+        for violation in _selected_provider_policy_violations(
+            path_scoped_commands,
+            workflow_dirs,
+            platforms,
+        )
+    )
+    return missing
+
+
 def main() -> int:
-    workflow_dirs = _locate_workflow_dirs()
+    try:
+        platforms = selected_ci_platforms()
+    except ValueError as exc:
+        print(f"CI gap audit: FAIL - {exc}")
+        return 1
+    workflow_dirs = workflow_dirs_for_platforms(_locate_workflow_dirs(), platforms)
     if not workflow_dirs:
-        print("CI gap audit: FAIL - no Actions workflow directory found")
+        print("CI gap audit: FAIL - no selected Actions workflow directory found")
         return 1
 
     workflow_labels = ", ".join(str(path) for path in workflow_dirs)
-    if not any(".github" in path.parts and "workflows" in path.parts for path in workflow_dirs):
-        print("CI gap audit: FAIL - .github/workflows/ directory not found")
+    missing_workflow_part = _missing_selected_workflow_directory(workflow_dirs, platforms)
+    if missing_workflow_part is not None:
+        print(f"CI gap audit: FAIL - {missing_workflow_part}/workflows/ directory not found")
         return 1
 
     commands = _iter_workflow_run_commands(workflow_dirs, protected_only=True)
     actions = _iter_workflow_actions(workflow_dirs, protected_only=True)
     path_scoped_commands = _iter_workflow_run_commands(workflow_dirs)
-    missing: list[str] = []
-    for task in _missing_gradle_tasks_by_platform(
+    missing = _collect_missing_contracts(
         commands,
-        path_scoped_commands=path_scoped_commands,
-    ):
-        missing.append(f"gradle task: {task}")
-    for invocation in _missing_ci_invocations_by_platform(commands):
-        missing.append(f"ci invocation: {invocation}")
-    for dataflow in _missing_installer_hash_dataflow_by_platform(commands):
-        missing.append(f"ci dataflow: {dataflow}")
-    for action in _missing_installer_publish_actions_by_platform(commands, actions):
-        missing.append(f"ci action: {action}")
-    for violation in _github_ci_release_apk_policy_violations(path_scoped_commands):
-        missing.append(f"ci policy: {violation}")
-    for violation in _gitea_ci_release_apk_policy_violations(path_scoped_commands):
-        missing.append(f"ci policy: {violation}")
-    for violation in _github_external_uses_pin_violations(workflow_dirs):
-        missing.append(f"ci policy: {violation}")
-    for violation in release_apk_scope_policy_violations(
-        {command.workflow for command in path_scoped_commands}
-    ):
-        missing.append(f"ci policy: {violation}")
+        actions,
+        path_scoped_commands,
+        workflow_dirs,
+        platforms,
+    )
 
     if missing:
         print("=== CI gap audit: FAIL ===")
@@ -480,8 +356,8 @@ def main() -> int:
 
     print(
         f"=== CI gap audit: OK ({len(REQUIRED_GRADLE_TASKS)} gradle tasks + "
-        f"{len(REQUIRED_CI_INVOCATIONS)} backend invocations per platform + dual-platform release APK "
-        f"+ installer artifact parity and external uses SHA-pin policies verified independently across "
+        f"{len(REQUIRED_CI_INVOCATIONS)} backend invocations per selected platform + release APK "
+        f"+ installer artifact and provider-specific policies verified across "
         f"Actions workflows: {workflow_labels}) ==="
     )
     return 0

@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.report_qualification_sha import _checkout_parent_shas
+
 _ROOT = Path(__file__).resolve().parents[2]
 _REPORTER = _ROOT / "backend" / "scripts" / "report_qualification_sha.py"
 
@@ -56,7 +58,9 @@ def test_qualification_sha_reporter_uses_actual_checkout(tmp_path: Path) -> None
         f"sha={expected}\nsource_sha={expected}\n"
     )
 
-    parent = _git_revision("HEAD^")
+    parents = _checkout_parent_shas()
+    assert parents
+    parent = parents[0]
     parent_output = tmp_path / "parent-github-output"
     _run_reporter(parent_output, expected=expected, source=parent, check=True)
     assert parent_output.read_text(encoding="utf-8") == (

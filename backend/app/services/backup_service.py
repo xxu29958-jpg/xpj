@@ -44,6 +44,22 @@ _PREFIX = "ticketbox-"
 _SUFFIX = ".dump"
 _PG_DUMP_TIMEOUT_SECONDS = 5 * 60
 _PG_DUMP_LOCK_WAIT_MILLISECONDS = 30_000
+_PG_TOOL_QUERY_KEYS = frozenset(
+    {"connect_timeout", "options", "require_auth", "sslmode"}
+)
+_PG_TOOL_SSL_MODES = frozenset(
+    {"allow", "disable", "prefer", "require", "verify-ca", "verify-full"}
+)
+_DATABASE_URL_ENVIRONMENT = frozenset(
+    {
+        "DATABASE_URL",
+        "DRILL_RESTORE_URL",
+        "DRILL_SOURCE_URL",
+        "SMOKE_DATABASE_URL",
+        "XPJ_TEST_ADMIN_URL",
+        "XPJ_TEST_DATABASE_URL",
+    }
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -315,12 +331,29 @@ def _pg_tool_connection(database_url: str) -> _PgToolConnection:
         raise AppError("server_error", "数据库备份配置无效。", status_code=500)
 
     password = parsed.password
-    query = dict(parsed.query)
-    if any(key.casefold() in {"password", "sslpassword"} for key in query):
-        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
+    query: dict[str, str] = {}
+    for raw_key, raw_value in parsed.query.items():
+        key = raw_key.casefold()
+        if (
+            key in query
+            or key not in _PG_TOOL_QUERY_KEYS
+            or not isinstance(raw_value, str)
+            or any(character in raw_value for character in "\x00\r\n")
+        ):
+            raise AppError("server_error", "数据库备份配置无效。", status_code=500)
+        query[key] = raw_value
     if query.get("require_auth") != "scram-sha-256":
         raise AppError("server_error", "数据库备份配置无效。", status_code=500)
     if not parsed.username or not parsed.host or not parsed.database:
+        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
+    query.setdefault("connect_timeout", "5")
+    query.setdefault("sslmode", "prefer")
+    try:
+        if not 1 <= int(query["connect_timeout"]) <= 30:
+            raise ValueError
+    except ValueError:
+        raise AppError("server_error", "数据库备份配置无效。", status_code=500) from None
+    if query.get("sslmode", "prefer") not in _PG_TOOL_SSL_MODES:
         raise AppError("server_error", "数据库备份配置无效。", status_code=500)
 
     try:
@@ -328,7 +361,7 @@ def _pg_tool_connection(database_url: str) -> _PgToolConnection:
             drivername="postgresql",
             username=parsed.username,
             host=parsed.host,
-            port=parsed.port,
+            port=parsed.port or 5432,
             database=parsed.database,
             query=query,
         )
@@ -367,9 +400,12 @@ def _validated_inherited_passfile() -> Iterator[Path]:
 
 @contextlib.contextmanager
 def _pg_tool_environment(connection: _PgToolConnection) -> Iterator[dict[str, str]]:
-    environment = os.environ.copy()
-    environment.pop("PGPASSWORD", None)
-    environment.pop("PGPASSFILE", None)
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith("PG")
+        and key.upper() not in _DATABASE_URL_ENVIRONMENT
+    }
     if connection.password is None:
         with _validated_inherited_passfile() as passfile:
             environment["PGPASSFILE"] = str(passfile)
@@ -390,9 +426,10 @@ def _pg_tool_environment(connection: _PgToolConnection) -> Iterator[dict[str, st
     published = False
     try:
         write_protected_file_exclusive(passfile, f"{line}\n")
-        environment["PGPASSFILE"] = str(passfile.resolve())
         published = True
-        yield environment
+        with hold_protected_file_for_read(passfile) as protected_passfile:
+            environment["PGPASSFILE"] = str(protected_passfile)
+            yield environment
     finally:
         if published or passfile.exists():
             passfile.unlink(missing_ok=True)

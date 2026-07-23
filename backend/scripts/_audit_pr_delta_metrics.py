@@ -76,7 +76,7 @@ from _mutate_token_ledger import ALLOWLIST, REASON_CODES  # noqa: E402
 from codebase_audit_gate import evaluate_pr_delta_metrics  # noqa: E402
 from run_postgres_pytest_lane import (  # noqa: E402 — sys.path bootstrap above
     build_pytest_collection_command,
-    child_environment,
+    collection_environment,
 )
 
 
@@ -146,7 +146,7 @@ def _count_pytest_tests(target: str) -> int:
         errors="replace",
         check=False,
         timeout=300,
-        env=child_environment(os.environ),
+        env=collection_environment(os.environ),
     )
     if result.returncode != 0:
         raise RuntimeError(

@@ -52,7 +52,7 @@ pip-audit --strict（OSV 库）
 
 ### backend-postgres（按域全量测试）
 
-GitHub 是发布验收权威。后端运行时、测试、迁移相关路径变化或全量 fallback 时，ordinary、`real_db`、smoke + recovery 三个独立 job 各自使用隔离的 PostgreSQL service container；三个责任域保持显式 job，受支持的 PostgreSQL major 从 `packaging/windows-release-config.json` 的版本区间动态生成共享小范围 matrix。稳定汇总检查 `Backend (PostgreSQL)` 必须核对三个结果和实际 checkout SHA。
+GitHub 是发布验收与合并权威；Gitea 是离线镜像和自检后备，Gitea-only 失败不阻断 GitHub 合并。后端运行时、测试、迁移相关路径变化或全量 fallback 时，ordinary、`real_db`、smoke + recovery 三个独立 job 各自使用隔离的 PostgreSQL service container；三个责任域保持显式 job。当前只支持安装器钉住的单一 PostgreSQL major，matrix 从发布配置和固定 service image 动态生成；未来扩展多个 major 前，必须先为每个 major 提供独立固定镜像。稳定汇总检查 `Backend (PostgreSQL)` 必须核对三个结果和实际 checkout SHA。
 
 ordinary lane 执行完整测试树中所有未标记 `real_db` 的用例，并为每个 xdist worker 动态创建独立数据库、文件根和租约；`real_db` lane 串行执行显式标记的真实提交、跨连接、DDL 与 migration 测试；smoke + recovery lane 执行真实 `pg_dump` / restore drill。分类权威只有测试源码 marker，禁止维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试不需要同步第二份“分类清单”。
 

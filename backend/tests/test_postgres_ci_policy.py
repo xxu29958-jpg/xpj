@@ -64,23 +64,22 @@ def test_release_policy_covers_the_pinned_windows_postgres_artifact() -> None:
         POSTGRES_RELEASE_POLICY.verify_server_version("170009", expected_major=17)
     with pytest.raises(RuntimeError, match="outside the release policy"):
         POSTGRES_RELEASE_POLICY.verify_server_version("170010", expected_major=18)
-    multi_major_policy = PostgresReleasePolicy(
-        minimum=(17, 10, 0),
-        maximum_exclusive=(19, 0, 0),
-        supported_majors=(17, 18),
-        current_major=18,
-        service_image="postgres:18.0@sha256:" + ("a" * 64),
-    )
-    assert json.loads(multi_major_policy.matrix_json()) == {
+    assert json.loads(POSTGRES_RELEASE_POLICY.matrix_json()) == {
         "include": [
             {
-                "postgres-major": "18",
-                "postgres-image": "postgres:18.0@sha256:" + ("a" * 64),
+                "postgres-major": str(POSTGRES_RELEASE_POLICY.current_major),
+                "postgres-image": POSTGRES_RELEASE_POLICY.service_image,
             }
         ]
     }
-    with pytest.raises(RuntimeError, match="matrix coordinate"):
-        multi_major_policy.verify_server_version("180000", expected_major=17)
+    with pytest.raises(ValueError, match="one pinned service image"):
+        PostgresReleasePolicy(
+            minimum=(17, 10, 0),
+            maximum_exclusive=(19, 0, 0),
+            supported_majors=(17, 18),
+            current_major=18,
+            service_image="postgres:18.0@sha256:" + ("a" * 64),
+        )
 
 
 @pytest.mark.parametrize("scope", ["true", "false"])

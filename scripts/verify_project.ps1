@@ -245,7 +245,8 @@ if (-not $SkipBackend) {
     ) -WorkingDirectory $BackendRoot
     Import-BackendTestPostgresEnvironment -Python $tools.Python
     Invoke-Checked -FilePath $tools.Python -Arguments @(
-        "scripts\run_postgres_pytest_lane.py",
+        "-m",
+        "scripts.run_postgres_pytest_lane",
         "--lane",
         "ordinary",
         "--workers",
@@ -253,7 +254,8 @@ if (-not $SkipBackend) {
     ) -WorkingDirectory $BackendRoot
     if ($BackendTestDepth -eq "full") {
         Invoke-Checked -FilePath $tools.Python -Arguments @(
-            "scripts\run_postgres_pytest_lane.py",
+            "-m",
+            "scripts.run_postgres_pytest_lane",
             "--lane",
             "real-db",
             "--workers",

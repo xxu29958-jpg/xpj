@@ -6,6 +6,7 @@ import pathlib
 import re
 import sys
 
+from ci_audit_provider import selected_ci_platforms
 from ci_gap_trigger_scope import ANDROID_PROTECTED_PATHS
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -138,9 +139,16 @@ def _audit_gitea_fallback_policy(failures: list[str]) -> None:
 
 
 def main() -> int:
+    try:
+        platforms = selected_ci_platforms()
+    except ValueError as exc:
+        print(f"=== CI trigger policy audit: FAIL ===\n  {exc}")
+        return 1
     failures: list[str] = []
-    _audit_github_main_pr_policy(failures)
-    _audit_gitea_fallback_policy(failures)
+    if "GitHub" in platforms:
+        _audit_github_main_pr_policy(failures)
+    if "Gitea" in platforms:
+        _audit_gitea_fallback_policy(failures)
     if failures:
         print("=== CI trigger policy audit: FAIL ===")
         for failure in failures:
@@ -148,8 +156,7 @@ def main() -> int:
         return 1
 
     print(
-        "PASS: CI trigger policy pinned "
-        "(GitHub PR/main-push, CodeQL schedule/manual, Gitea fallback work branches)."
+        "PASS: selected CI provider trigger policy is pinned."
     )
     return 0
 
