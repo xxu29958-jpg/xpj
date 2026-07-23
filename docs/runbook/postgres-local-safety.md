@@ -20,7 +20,7 @@ home-server 后端跑在本机 PostgreSQL 上（ADR-0041，PG-only，SQLite 已�
 ```powershell
 cd E:\projects\xiaopiaojia\backend
 .\scripts\start_test_pg.ps1                    # 幂等起 :5438 隔离实例，自建 xpj_test / xpj_smoke
-$env:DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_smoke"
+$env:DATABASE_URL = "postgresql+psycopg://postgres@localhost:5438/xpj_smoke?require_auth=scram-sha-256"
 # ...起后端做预览 / 配对...
 .\scripts\stop_test_pg.ps1                      # 用完销毁
 ```
@@ -116,7 +116,7 @@ WHERE schemaname = 'public' AND tableowner <> 'ticketbox';
 
 预防（恢复 / 灌库时两者缺一不可）：`pg_restore --no-owner` **且以应用角色 `ticketbox` 连接**——见 `docs/runbook/POSTGRES_MIGRATION.md` §2 / §3。
 
-> postgres 密码丢失时的执行法（trust 窗口）属安全弱化，分类器会拦，须用户授权或用户亲跑：备份 `pg_hba.conf` → 把 `127.0.0.1/32` 两行临时改 `trust` → 重启服务 → 免密跑 SQL → **finally 无条件还原 `pg_hba` 并重启**（绝不能留 `trust`）。临时脚本纯 ASCII、不进 git、跑完即删，并设 `$env:PGCLIENTENCODING=UTF8`。详见 `project_pg_cutover_table_owner_trap` 记忆。
+> 不再手工改 `pg_hba.conf` 开 `trust` 窗口。旧测试簇迁移只能走生命周期锁保护的 `no-challenge bootstrap`，随后必须以全新连接和 `require_auth=scram-sha-256` 重新证明；正式安装凭据丢失进入受管恢复流程，不能临时降级认证。
 
 ### 铁律
 **任何向 `ticketbox` 灌数据 / 建表都以应用角色 `ticketbox` 连接、`pg_restore` 带 `--no-owner`；「迁移失败 / 启动止于迁移行」先查 PG 服务端日志 + `pg_tables` owner，错位用 `fix_table_owners.sql` 归位。**
@@ -148,7 +148,8 @@ PG-only 瘦身后 SQLite 方言分支已全删。若再写 `if dialect == "sqlit
 
 逐站点核验后，与真实文件不符 / 需澄清的记忆陈述：
 
-- `project_gitea_runner_pg_isolation` 称本地 throwaway datadir 在 `$env:TEMP\xpj_pg_ci_<run_id>`——那是 **CI** 临时实例（`:5433`）的命名。本地 `start_test_pg.ps1`（`:5438`）的 datadir 实际是 `$env:TEMP\xpj_pg_test<Port>`（如 `xpj_pg_test5438`）。两者是不同实例、不同命名，本文按真实脚本写。
+- Gitea（`:5433`）与本地测试（`:5438`）的数据目录都由 `test_postgres_contract.json` 的 `runtime_parent`、`runtime_root_name` 和端口动态派生；Windows 通过系统 `LocalApplicationData` 已知目录解析受保护运行根，不读取调用方可改写的 `TEMP` 路径。
+- 删除数据目录前先持久化受保护的 deletion receipt；进程中断后，下一次 start/stop 只能续完同一删除事务，不能把半删除目录重新当作可复用集群。
 - 同条记忆称「`start_test_pg.ps1` 脚本自身拒 5432/5433」——已核实属实：两个脚本入口均有 `if ($Port -eq 5432 -or $Port -eq 5433) { throw ... }`。
 - `feedback_backend_start_runs_migrations_on_user_db` 称起后端 = `init_db` 跑 alembic 到 head——属当时启动行为描述，本文按「documented 启动行为」呈现；操作面以「先覆盖 `DATABASE_URL` 到 `:5438`」这条可执行护栏为准，未逐行复核 lifespan 当前实现。
 

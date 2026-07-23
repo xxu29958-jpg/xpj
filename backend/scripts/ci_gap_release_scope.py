@@ -5,6 +5,7 @@ from __future__ import annotations
 import pathlib
 import re
 
+from ci_audit_provider import PLATFORM_WORKFLOW_PARTS
 from ci_gap_powershell import (
     powershell_statement_depths,
     powershell_without_here_string_literals,
@@ -392,9 +393,16 @@ def _find_workflow(workflow_paths: set[pathlib.Path], root: str, name: str) -> p
     return sorted(matches, key=str)[0] if matches else None
 
 
-def release_apk_scope_policy_violations(workflow_paths: set[pathlib.Path]) -> list[str]:
+def release_apk_scope_policy_violations(
+    workflow_paths: set[pathlib.Path],
+    *,
+    platforms: tuple[str, ...] = tuple(PLATFORM_WORKFLOW_PARTS),
+) -> list[str]:
     violations: list[str] = []
+    selected_roots = {PLATFORM_WORKFLOW_PARTS[platform] for platform in platforms}
     for root, name, github in _EXPECTED_WORKFLOWS:
+        if root not in selected_roots:
+            continue
         label = f"{root}/workflows/{name}"
         path = _find_workflow(workflow_paths, root, name)
         if path is None:

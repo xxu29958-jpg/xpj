@@ -85,6 +85,17 @@ def test_release_audit_discovers_adr_contract_lane() -> None:
     assert ("adr-registry", "_audit_adr_registry.py") not in lanes
 
 
+def test_release_audit_rejects_missing_pr_delta_lane(tmp_path: Path) -> None:
+    mod = importlib.reload(importlib.import_module("release_audit"))
+
+    try:
+        mod._discover_lanes(tmp_path)
+    except RuntimeError as exc:
+        assert "_audit_pr_delta_metrics.py" in str(exc)
+    else:
+        raise AssertionError("missing required release audit lane was accepted")
+
+
 def test_adr_contract_gate_is_present_in_a_clean_git_clone() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     result = subprocess.run(
@@ -152,6 +163,9 @@ def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
     capsys,
 ) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    assert "backend_pytest_count" not in mod.BASELINE_RATCHET_UP
+    assert "installer_pytest_count" in mod.BASELINE_RATCHET_UP
+    assert "mutate_token_carriers" in mod.BASELINE_RATCHET_UP
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", {"backend_pytest_count": 2403})
     monkeypatch.setenv("XPJ_AUDIT_BASE_REF", "0123456789abcdef")
     monkeypatch.delenv("GITHUB_BASE_REF", raising=False)

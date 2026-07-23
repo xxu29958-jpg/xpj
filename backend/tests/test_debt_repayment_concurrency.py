@@ -1,9 +1,8 @@
 """ADR-0049 §2.1 / F8 true-concurrency: two repayments cannot both pass an
 over-remaining fold check.
 
-These ``test_two_sessions_*`` tests need real independent connections (one shared
-savepoint connection cannot model FOR UPDATE lock contention), so conftest
-auto-marks them ``real_db`` via the ``::test_two_sessions`` nodeid pattern.
+These tests need real independent connections (one shared savepoint connection
+cannot model FOR UPDATE lock contention), so the module declares ``real_db``.
 
 The §2.1 serialization武器 is ``lock_and_fold``'s ``SELECT Debt ... FOR UPDATE``:
 a second writer physically blocks until the first COMMITs, then recomputes
@@ -23,6 +22,8 @@ from app.database import SessionLocal, engine
 from app.models import Account, Debt, Repayment
 from app.schemas import DebtCreateRequest, RepaymentCreateRequest
 from app.services import debt_service
+
+pytestmark = pytest.mark.real_db
 
 
 def _owner_account_id() -> int:

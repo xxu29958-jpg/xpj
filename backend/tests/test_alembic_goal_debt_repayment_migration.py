@@ -8,7 +8,7 @@ on PostgreSQL (the prod dialect): create_all → stamp head → downgrade past
 ``debt_goal_links``) → upgrade to head (re-widens). Pins that the migration is a
 faithful, round-tripping transform of the legacy shape into the slice-6 shape.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its
+Marked ``real_db`` below because it issues DDL via its
 own ``engine.begin()`` connections outside the per-test transaction.
 """
 
@@ -16,9 +16,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+
+pytestmark = pytest.mark.real_db
 
 _NEW_GOAL_COLUMNS = (
     "goal_version",

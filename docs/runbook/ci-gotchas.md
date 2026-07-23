@@ -58,7 +58,7 @@ body: { "ref": "<分支名>" }
 
 **症状**：`gh pr checks N` 里看到旧提交的 Android job 显示 `fail`，常是跑一段时间后报 `##[error]The operation was canceled.`，误判真红。
 
-**根因**：GitHub 工作分支 push 不再触发重型 CI，正常 PR head 只有 pull_request 这一套；但同一 PR 连续 push 时，workflow 的 `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` 仍会**取消旧 head run**。被取消的旧 job 在 `gh pr checks` 显示 `fail` = **良性，非真红**。authoritative run = 最新 / 未被取消 / 跑完 pass 的那个。本仓**无强制 branch protection**，所以 `mergeStateStatus=UNSTABLE` + `mergeable=MERGEABLE` 即可合。
+**根因**：GitHub 工作分支 push 不再触发重型 CI，正常 PR head 只有 pull_request 这一套；但同一 PR 连续 push 时，workflow 的 `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` 仍会**取消旧 head run**。被取消的旧 job 在 `gh pr checks` 显示 `fail` = **良性，非真红**。authoritative run = 最新 / 未被取消 / 跑完 pass 的那个。`main` 已启用 strict branch protection、管理员同样受约束，并要求线性历史；只允许当前精确 head 的必需检查全部通过后合并。
 
 **正确做法**：
 - 盯 CI 用**后台轮询脚本**（bash `run_in_background`，`gh pr checks N` 轮到 pending==0 再数 fail），别死等、别信 `gh pr checks --watch`。
@@ -69,23 +69,23 @@ body: { "ref": "<分支名>" }
 
 ---
 
-## 坑 4：`gh pr merge N --auto` 在本仓 = 立即合，不等绿
+## 坑 4：不要把 `--auto` 当作本地等待器
 
-**症状**：想「等 CI 绿了自动合」用了 `--auto`，结果 checks 全 pending 时 PR **当即被 merge**（2026-06-20 实测）。
+**症状**：旧配置下 `--auto` 曾在 checks pending 时立即合并；当前仓库已启用 required checks，但保护设置会变，旧经验不能当现行合同。
 
-**根因**：`--auto` 依赖 **required status checks** 来「等」；本仓**无强制 branch protection / 无 required check**，没有可等的对象 → PR 一 `MERGEABLE` 就立刻合。
+**根因**：`--auto` 的行为由 GitHub 仓库设置和分支保护共同决定，不是 CI 工作流文件本身的保证。
 
 **正确做法**：
-- 要「等绿再合」**别用 `--auto`**：后台 `gh pr checks N --watch` settle 后，亲自核实实质门（坑 3 那串）真绿，再手动：
+- 要「等绿再合」先核对 branch protection API 与精确 head checks；settle 后再带 expected head SHA 手动合并：
 
 ```
-gh pr merge N --merge --delete-branch
+gh pr merge N --squash --delete-branch --match-head-commit <exact-head-sha>
 ```
 
-- `--auto` 只在「确信代码已验过、只差形式跑完」时当快捷方式用（如干净 rebase replay）。
+- 不用 `--auto` 代替本次任务的显式验收和 exact-head 核对。
 - merge 需用户显式「合并」授权。
 
-**铁律**：本仓 `--auto` ≠ 等绿；想等绿就 watch settle 后手动 `gh pr merge`。
+**铁律**：分支保护与 exact-head required checks 是合并合同；Gitea-only 失败不是 GitHub 合并阻断项。
 
 ---
 
@@ -181,7 +181,7 @@ git push gitee main                  # 推 cloud mirror
 
 2. **`project_ci_branch_trigger.md` 整篇以 `.gitea/workflows/windows-ci.yml` 为「the」trigger 真相**。该描述对 gitea 准确，但本仓**主 CI 是 GitHub Actions**——GitHub 侧有 `pull_request` trigger（纯建 PR 会触发，与该记忆「没 pull_request trigger，纯建 PR 不触发」相反）。文档已分两套列清。
 
-3. **backend-postgres 运行环境**：`project_github_actions_ci_behavior.md` / HANDOFF 未区分。真实情况——**GitHub `ci.yml` 的 `Backend (PostgreSQL)` 跑在 `ubuntu-latest` + PG17 service 容器（:5432，tmpfs）**；**gitea `windows-ci.yml` 的同名 job 跑在 windows-latest + initdb 起的 ephemeral 集群（:5433）**。HANDOFF 提到的 `:5433` 仅属 gitea 侧，GitHub 侧是 service 容器 :5432。
+3. **backend-postgres 运行环境**：`project_github_actions_ci_behavior.md` / HANDOFF 未区分。真实情况——GitHub `ci.yml` 的 ordinary、`real_db`、smoke + recovery 三个 job 各自在 `ubuntu-latest` 使用发布策略动态生成的 PostgreSQL service matrix；容器内使用 PostgreSQL 标准端口，runner 宿主端口由 GitHub 动态分配并从 `job.services.postgres.ports` 读取。三个结果和 checkout SHA 汇总为稳定检查 `Backend (PostgreSQL)`。gitea `windows-ci.yml` 的同名 job 跑在 Windows + initdb 起的 SCRAM ephemeral 集群，端口从测试合同读取；HANDOFF 中的固定端口说明仅属旧实现。
 
 4. **CodeQL trigger**：记忆只笼统说「Analyze×4」。真实 `codeql.yml` 的 **push 只触发 `main`**，外加 `pull_request: main` 和 `schedule: cron "37 3 * * 1"`；工作分支靠 PR 的 `pull_request` 事件触发 CodeQL。4 条 Analyze job 名核实无误：`actions` / `javascript-typescript` / `python` / `java-kotlin`。
 

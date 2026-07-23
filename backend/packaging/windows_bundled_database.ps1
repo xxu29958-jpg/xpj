@@ -154,6 +154,20 @@ function Read-EnvMap([string]$Path) {
     return $map
 }
 
+function Set-EnvDatabaseUrl([string]$Path, [string]$DatabaseUrl) {
+    $lines = @(Get-Content -LiteralPath $Path -Encoding UTF8)
+    $matches = @(
+        for ($index = 0; $index -lt $lines.Count; $index++) {
+            if ([string]$lines[$index] -match '^\s*DATABASE_URL\s*=') { $index }
+        }
+    )
+    if ($matches.Count -ne 1) {
+        throw ".env 必须且只能包含一条 DATABASE_URL。"
+    }
+    $lines[$matches[0]] = "DATABASE_URL=$DatabaseUrl"
+    Write-EnvNoBom -Path $Path -Lines $lines
+}
+
 function New-BaseEnvLines([string]$DatabaseUrl) {
     $shutdownTimeoutSeconds = ConvertTo-TicketboxTimeoutSeconds $StopTimeoutMs
     $lines = @(
@@ -176,64 +190,61 @@ function Invoke-Psql([string]$Database, [string]$Sql, [string]$Password) {
     if ([string]::IsNullOrWhiteSpace($Password)) {
         throw "批处理 psql 必须使用显式非空口令。"
     }
-    $hadPgPassword = Test-Path Env:PGPASSWORD
-    $previousPgPassword = $env:PGPASSWORD
-    $env:PGPASSWORD = $Password
-    try {
-        $psql = Join-Path $PgBin "psql.exe"
-        $args = @(
-            "-X", "-w", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-h", "127.0.0.1",
-            "-p", "$PgPort", "-d", $Database, "-tA"
-        )
-        $nativeErrorPreference = $ErrorActionPreference
-        $nativeInvocationFailed = $false
-        $out = @()
-        $rc = $null
-        $ErrorActionPreference = "Continue"
-        try {
-            try {
-                $global:LASTEXITCODE = $null
-                $out = $Sql | & $psql @args 2>&1
-                $rc = $global:LASTEXITCODE
-            }
-            catch {
-                $nativeInvocationFailed = $true
-                $rc = $global:LASTEXITCODE
+    $encodedDatabase = [System.Uri]::EscapeDataString($Database)
+    $databaseUrl = "postgresql://postgres@127.0.0.1:${PgPort}/${encodedDatabase}?require_auth=scram-sha-256"
+    $psql = Join-Path $PgBin "psql.exe"
+    $result = Invoke-TicketboxWithPgPassFile `
+        -DatabaseUrl $databaseUrl `
+        -Password $Password `
+        -Action {
+            param([string]$ProtectedDatabaseUrl)
+            $args = @(
+                "-X", "-w", "-v", "ON_ERROR_STOP=1",
+                "--dbname", $ProtectedDatabaseUrl, "-tA"
+            )
+            $commandResult = Invoke-TicketboxBoundedNativeProcess `
+                -FilePath $psql `
+                -Arguments $args `
+                -StandardInputText ($Sql + "`n") `
+                -TimeoutMilliseconds $DatabaseToolTimeoutMs `
+                -Label "psql database command"
+            return [pscustomobject]@{
+                Output = @($commandResult.StandardOutput -split "`r?`n")
+                ExitCode = $commandResult.ExitCode
             }
         }
-        finally {
-            $ErrorActionPreference = $nativeErrorPreference
-        }
-        if ($nativeInvocationFailed -or $null -eq $rc -or $rc -ne 0) {
-            throw "psql 执行失败（db=$Database, exit=$rc）。"
-        }
-        $stdout = @($out | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
-        return ($stdout | Out-String).Trim()
+    if ($null -eq $result.ExitCode -or $result.ExitCode -ne 0) {
+        throw "psql 执行失败（db=$Database, exit=$($result.ExitCode)）。"
     }
-    finally {
-        if ($hadPgPassword) {
-            $env:PGPASSWORD = $previousPgPassword
-        }
-        else {
-            Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
-        }
-    }
+    return ($result.Output | Out-String).Trim()
 }
 
 function Test-PgDataProcessReady([int]$ProbeTimeoutSeconds) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        & (Join-Path $PgBin "pg_ctl.exe") status -D $PgData 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
+        $probeTimeoutMilliseconds = [int][Math]::Min(
+            [long]$DatabaseToolTimeoutMs,
+            [long][Math]::Max(1000, $ProbeTimeoutSeconds * 1000)
+        )
+        $statusResult = Invoke-TicketboxBoundedNativeProcess `
+            -FilePath (Join-Path $PgBin "pg_ctl.exe") `
+            -Arguments @('status', '-D', $PgData) `
+            -TimeoutMilliseconds $probeTimeoutMilliseconds `
+            -Label 'pg_ctl readiness status'
+        if ($statusResult.ExitCode -ne 0) {
             return $false
         }
         $pidLines = @(Get-Content -LiteralPath (Join-Path $PgData "postmaster.pid") -ErrorAction SilentlyContinue)
         if ($pidLines.Count -lt 4 -or $pidLines[3].Trim() -ne [string]$PgPort) {
             return $false
         }
-        & (Join-Path $PgBin "pg_isready.exe") -h 127.0.0.1 -p $PgPort -q -t $ProbeTimeoutSeconds | Out-Null
-        return $LASTEXITCODE -eq 0
+        $readyResult = Invoke-TicketboxBoundedNativeProcess `
+            -FilePath (Join-Path $PgBin "pg_isready.exe") `
+            -Arguments @('-h', '127.0.0.1', '-p', [string]$PgPort, '-q', '-t', [string]$ProbeTimeoutSeconds) `
+            -TimeoutMilliseconds $probeTimeoutMilliseconds `
+            -Label 'pg_isready readiness probe'
+        return $readyResult.ExitCode -eq 0
     }
     finally {
         $ErrorActionPreference = $prev
@@ -662,28 +673,21 @@ function Initialize-PgClusterIfNeeded {
     Write-Step "初始化 PostgreSQL 簇"
     New-Item -ItemType Directory -Force -Path $PgData | Out-Null
     [void](Get-OrCreatePostgresBootstrapRecoveryState)
-    $nativeErrorPreference = $ErrorActionPreference
-    $nativeInvocationFailed = $false
-    $rc = $null
-    $ErrorActionPreference = "Continue"
-    try {
-        try {
-            $global:LASTEXITCODE = $null
-            & (Join-Path $PgBin "initdb.exe") -D $PgData -U postgres `
-                --auth-local=scram-sha-256 --auth-host=scram-sha-256 `
-                --encoding=UTF8 --no-locale --pwfile=$pwfile 2>&1 | Out-Null
-            $rc = $global:LASTEXITCODE
-        }
-        catch {
-            $nativeInvocationFailed = $true
-            $rc = $global:LASTEXITCODE
-        }
-    }
-    finally {
-        $ErrorActionPreference = $nativeErrorPreference
-    }
-    if ($nativeInvocationFailed -or $null -eq $rc -or $rc -ne 0) {
-        throw "initdb 失败（exit=$rc）。"
+    $initResult = Invoke-TicketboxBoundedNativeProcess `
+        -FilePath (Join-Path $PgBin "initdb.exe") `
+        -Arguments @(
+            '-D', $PgData,
+            '-U', 'postgres',
+            '--auth-local=scram-sha-256',
+            '--auth-host=scram-sha-256',
+            '--encoding=UTF8',
+            '--no-locale',
+            "--pwfile=$pwfile"
+        ) `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs `
+        -Label 'initdb'
+    if ($initResult.ExitCode -ne 0) {
+        throw "initdb 失败（exit=$($initResult.ExitCode)）。"
     }
     if (-not (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)) {
         throw "initdb 未生成 PG_VERSION，拒绝继续。"
@@ -706,6 +710,12 @@ function Prepare-DatabaseIfNeeded([object]$BootstrapState) {
             -PgPort $PgPort `
             -ExpectedDatabase $DbName `
             -ExpectedRole $DbRole
+        if ($existingEnv["DATABASE_URL"] -cne $connection.PersistedDatabaseUrl) {
+            Set-EnvDatabaseUrl `
+                -Path $EnvPath `
+                -DatabaseUrl $connection.PersistedDatabaseUrl
+            $existingEnv = Read-EnvMap $EnvPath
+        }
         if ($null -ne $recoveryState) {
             if ($connection.Password -cne $recoveryState.RolePassword -or
                 -not $existingEnv.ContainsKey("ENABLE_HTTP_BOOTSTRAP") -or
@@ -720,12 +730,13 @@ function Prepare-DatabaseIfNeeded([object]$BootstrapState) {
             -DatabaseUrl $connection.DatabaseUrl `
             -ExpectedDataRoot $PgData `
             -ExpectedPort $PgPort `
-            -Password $connection.Password
+            -Password $connection.Password `
+            -TimeoutMilliseconds $DatabaseToolTimeoutMs
         if ($null -ne $recoveryState) {
             Remove-TicketboxSensitiveFile $pwfile
         }
         Write-Ok "发现既有 .env，沿用 DATABASE_URL。"
-        return $existingEnv["DATABASE_URL"]
+        return $connection.PersistedDatabaseUrl
     }
     if ($null -eq $recoveryState) {
         throw "既有 PostgreSQL 簇缺少 $EnvPath，且没有安全 bootstrap 恢复文件，拒绝继续。"
@@ -758,7 +769,7 @@ function Prepare-DatabaseIfNeeded([object]$BootstrapState) {
     elseif ($databaseOwner -cne $DbRole) {
         throw "既有应用数据库 owner 不是预期角色，拒绝接管。"
     }
-    $databaseUrl = "postgresql+psycopg://${DbRole}:${rolePassword}@127.0.0.1:${PgPort}/${DbName}"
+    $databaseUrl = "postgresql+psycopg://${DbRole}:${rolePassword}@127.0.0.1:${PgPort}/${DbName}?require_auth=scram-sha-256"
     $lines = (New-BaseEnvLines $databaseUrl) + @(
         "ENABLE_HTTP_BOOTSTRAP=true",
         "HTTP_BOOTSTRAP_SECRET=$($recoveryState.HttpBootstrapSecret)"
@@ -783,7 +794,8 @@ function Prepare-DatabaseIfNeeded([object]$BootstrapState) {
         -DatabaseUrl $connection.DatabaseUrl `
         -ExpectedDataRoot $PgData `
         -ExpectedPort $PgPort `
-        -Password $connection.Password
+        -Password $connection.Password `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs
     Remove-TicketboxSensitiveFile $pwfile
     Write-Ok "已写入首次安装 .env。"
     return $databaseUrl
@@ -852,7 +864,8 @@ function Invoke-TicketboxPreservedDataReinstallBackup {
         -DatabaseUrl $connection.DatabaseUrl `
         -ExpectedDataRoot $PgData `
         -ExpectedPort $PgPort `
-        -Password $connection.Password
+        -Password $connection.Password `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs
 
     $backupPath = ""
     $stamp = Get-Date -Format "yyyyMMdd-HHmmssfff"
@@ -864,7 +877,8 @@ function Invoke-TicketboxPreservedDataReinstallBackup {
         -PgDumpPath $PgDump `
         -DatabaseUrl $connection.DatabaseUrl `
         -OutputPath $temporary `
-        -Password $connection.Password
+        -Password $connection.Password `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs
     if ($dumpResult -ne 0) {
         Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
         throw "保留数据重装的升级前 pg_dump 失败。"
@@ -876,8 +890,10 @@ function Invoke-TicketboxPreservedDataReinstallBackup {
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        & $PgRestore --list $temporary 2>&1 | Out-Null
-        $restoreRc = $LASTEXITCODE
+        $restoreRc = Invoke-TicketboxPgRestoreList `
+            -PgRestorePath $PgRestore `
+            -ArchivePath $temporary `
+            -TimeoutMilliseconds $DatabaseToolTimeoutMs
     }
     finally {
         $ErrorActionPreference = $previousPreference
@@ -932,7 +948,8 @@ function Invoke-PreUpgradeBackupIfNeeded {
         -DatabaseUrl $connection.DatabaseUrl `
         -ExpectedDataRoot $PgData `
         -ExpectedPort $PgPort `
-        -Password $connection.Password
+        -Password $connection.Password `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs
 
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -942,7 +959,8 @@ function Invoke-PreUpgradeBackupIfNeeded {
         -PgDumpPath (Join-Path $PgBin "pg_dump.exe") `
         -DatabaseUrl $connection.DatabaseUrl `
         -OutputPath $temp `
-        -Password $connection.Password
+        -Password $connection.Password `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs
     if ($dumpResult -ne 0) {
         Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
         throw "升级前 pg_dump 失败，拒绝启动新后端。请检查 $LogDir 与 PostgreSQL 服务。"
@@ -950,8 +968,10 @@ function Invoke-PreUpgradeBackupIfNeeded {
     $nativeErrorPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        & (Join-Path $PgBin "pg_restore.exe") --list $temp 2>&1 | Out-Null
-        $restoreRc = $LASTEXITCODE
+        $restoreRc = Invoke-TicketboxPgRestoreList `
+            -PgRestorePath (Join-Path $PgBin "pg_restore.exe") `
+            -ArchivePath $temp `
+            -TimeoutMilliseconds $DatabaseToolTimeoutMs
     }
     finally {
         $ErrorActionPreference = $nativeErrorPreference

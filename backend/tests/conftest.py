@@ -14,23 +14,91 @@ modules. This file only defines the fixtures and the session-end hook.
 
 from __future__ import annotations
 
+import os
+from contextlib import ExitStack
+
+import psycopg
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
+from xdist import is_xdist_controller
+
+from scripts.run_postgres_pytest_lane import (
+    PARALLEL_POSTGRES_PYTEST_LANE,
+    POSTGRES_PYTEST_LANE_DEST,
+    POSTGRES_PYTEST_LANE_MARKERS,
+    POSTGRES_PYTEST_LANE_OPTION,
+    validate_lane_collection,
+)
 
 # Importing tests._infra.env sets os.environ before any app.* import.
-from fastapi.testclient import TestClient
-
 from tests._infra import env  # noqa: F401
 from tests._infra.client import make_test_client
 from tests._infra.db import (
+    cleanup_orphan_test_runtimes,
     cleanup_runtime,
+    cleanup_test_runtime,
+    host_runtime_lease,
     reset_db_state,
     transactional_isolation,
 )
 from tests._infra.identity import TestIdentity, seed_identity
+from tests._infra.worker_db import (
+    WorkerDatabase,
+    drop_worker_database,
+    provision_worker_database,
+    serial_database_lease,
+    verify_worker_database,
+    worker_database,
+)
+
+_CONTROLLER_STACK: ExitStack | None = None
+_CONTROLLER_DATABASES: dict[str, WorkerDatabase] = {}
+_CONTROLLER_NODES: dict[str, object] = {}
+_CLEANUP_ERRORS = (OSError, RuntimeError, ValueError, psycopg.Error, SQLAlchemyError)
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    group = parser.getgroup("xpj-postgres")
+    group.addoption(
+        POSTGRES_PYTEST_LANE_OPTION,
+        action="store",
+        choices=tuple(POSTGRES_PYTEST_LANE_MARKERS),
+        default=None,
+        dest=POSTGRES_PYTEST_LANE_DEST,
+        help="declare the PostgreSQL responsibility lane selected by the runner",
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _isolation_schema():
+def _database_runtime():
+    """Own the generated worker DB, or serialize access to the base DB."""
+    database = env.WORKER_DATABASE
+    if database is None:
+        with ExitStack() as stack:
+            stack.enter_context(host_runtime_lease())
+            stack.enter_context(
+                serial_database_lease(
+                    env.ADMIN_TEST_DATABASE_URL,
+                    cleanup_runtime=cleanup_test_runtime,
+                )
+            )
+            cleanup_orphan_test_runtimes()
+            try:
+                yield
+            finally:
+                cleanup_runtime()
+        return
+
+    verify_worker_database(database)
+    try:
+        yield
+    finally:
+        cleanup_runtime()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolation_schema(_database_runtime):
     """Build schema + base seed ONCE for the session (PostgreSQL isolation lane).
 
     Per-test ``_db_isolation`` then wraps each test in a rolled-back transaction
@@ -108,102 +176,160 @@ def pytest_configure(config: pytest.Config) -> None:
         "tests that need real cross-connection commits — concurrency, true "
         "background-thread work.",
     )
+    worker_input = getattr(config, "workerinput", None)
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+    run_uid = os.environ.get("PYTEST_XDIST_TESTRUNUID")
+    if worker_input is None:
+        if worker_id is not None or run_uid is not None:
+            raise pytest.UsageError("xdist environment present outside an xdist worker")
+        return
+    if worker_id != worker_input.get("workerid") or run_uid != worker_input.get("testrunuid"):
+        raise pytest.UsageError("xdist environment does not match worker runtime identity")
+    if env.WORKER_DATABASE is None:
+        raise pytest.UsageError("xdist worker database was not derived before app import")
+    if worker_input.get("xpj_worker_database_name") != env.WORKER_DATABASE.name:
+        raise pytest.UsageError("xdist worker database does not match controller ownership")
 
 
-# Tests that cannot run under the PostgreSQL lane's per-test transaction-rollback
-# isolation, marked ``real_db`` centrally (one auditable place) instead of
-# scattering ``@pytest.mark.real_db`` across the suite. Matched as substrings of
-# ``item.nodeid`` (a trailing ``::`` pins a whole module; otherwise a test prefix).
-_PG_REAL_DB_NODES = (
-    # Schema/engine manipulation: drop_all / init_db / engine.begin / create_engine
-    # / reset_db_state auto-commit DDL OUTSIDE the per-test transaction while the
-    # re-seed lands in the rolled-back savepoint — so the committed baseline would
-    # be destroyed for every later test. Must run against a real committed DB.
-    "tests/test_ocr_facts_backfill_step3.py::",  # _backfill_legacy_raw_text via engine.begin
-    "tests/test_app_meta_service.py::",  # reset_db_state (fresh-DB schema-version seeding)
-    "tests/test_alembic_tag_migration.py::",  # alembic up/down round-trip via engine.begin DDL
-    "tests/test_alembic_debt_idempotency_unique_migration.py::",  # alembic up/down round-trip via engine.begin DDL
-    "tests/test_alembic_goal_debt_repayment_migration.py::",  # ADR-0049 §6 widen-goals alembic round-trip via engine.begin DDL
-    "tests/test_alembic_goal_target_date_migration.py::",  # ADR-0049 §7.0/8e-6c add-target_date alembic round-trip via engine.begin DDL
-    "tests/test_alembic_repayment_drafts_migration.py::",  # ADR-0049 §杠杆③ slice 3a add-repayment_drafts alembic round-trip via engine.begin DDL
-    "tests/test_alembic_repayment_draft_account_idem_migration.py::",  # issue #224 C3 account-scoped repayment_drafts idem alembic round-trip via engine.begin DDL
-    "tests/test_alembic_debt_constraint_hardening_migration.py::",  # ADR-0049 #4 add FK + status<->committed CHECK alembic round-trip via engine.begin DDL
-    "tests/test_alembic_debt_shape_checks_migration.py::",  # ADR-0049 P2 add Debt 母表 shape CHECK alembic round-trip via engine.begin DDL
-    "tests/test_alembic_scheduler_leases_migration.py::",  # known-bugs 🟢#4 add scheduler_leases (typed timestamptz lease) alembic round-trip + app_meta cleanup via engine.begin DDL
-    "tests/test_alembic_debt_kind_migration.py::",  # ADR-0049 8e-6e add debts.debt_kind (NOT NULL server-default + CHECK) alembic round-trip via engine.begin DDL
-    "tests/test_alembic_debt_installment_migration.py::",  # ADR-0049 §B add debts.installment_count/_period_months (nullable + paired CHECK) alembic round-trip via engine.begin DDL
-    "tests/test_alembic_expense_draft_request_fingerprint_migration.py::",  # issue #65 slice 1 add expenses.draft_request_fingerprint (nullable) alembic round-trip via engine.begin DDL
-    "tests/test_alembic_expense_row_version_check_migration.py::",  # finding-三摊 Slice B add ck_expenses_row_version_positive CHECK alembic round-trip via engine.begin DDL
-    "tests/test_alembic_income_frequency_migration.py::",  # 20260629 income monthly/one_time fields alembic round-trip via engine.begin DDL
-    "tests/test_alembic_category_preferences_migration.py::",  # ADR-0052 slice 3 category_preferences alembic round-trip via engine.begin DDL
-    "tests/test_alembic_merchant_catalog_migration.py::",  # ADR-0053 merchant_catalog alembic round-trip via engine.begin DDL
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_accepts_valid_secret",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_rolls_back_if_pairing_creation_fails",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_delayed_recovery_rejects_expired_pairing",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_finalizes_after_pairing_is_used",
-    "tests/test_auth_bootstrap.py::test_bootstrap_owner_recovery_rejects_revoked_admin",
-    "tests/test_auth_bootstrap_concurrency.py::test_bootstrap_owner_rotates_credentials_after_listener_exposure",
-    "tests/test_auth_bootstrap_concurrency.py::test_replacement_pairing_collision_is_reported_before_rotation",
-    "tests/test_uploads_no_auto_move.py::test_init_db_does_not_move_legacy_uploads",
-    "tests/test_db_migration_owner_preflight.py::",  # P1: CREATE/DROP ROLE + separate-engine role switching to exercise the migration owner-trap pre-flight guard
-    "tests/test_alembic_runtime_schema_reconcile.py::",  # v1.2 baseline/reconcile CHECK round-trip via engine.begin DDL
-    "tests/test_alembic_pairing_attempts_migration.py::",  # pairing transaction + stable server/data identity round-trip
-    "tests/test_alembic_desktop_activation_migration.py::",  # desktop pending scope + activation receipts round-trip
-    "tests/test_desktop_activation.py::test_concurrent_activate_replays_converge",  # two-thread activation race needs real committed connections
-    "tests/test_db_migration_backup_gate.py::",  # P1: stamp alembic_version below head via separate engine.begin connection to exercise the pre-migration backup gate
-    # True concurrency: need real independent connections (2-session races, FOR
-    # UPDATE lock contention) that one shared savepoint connection cannot model.
-    # Every race test follows the ``test_two_sessions_*`` naming convention, so a
-    # single nodeid pattern catches them across all *_optimistic_concurrency.py.
-    "::test_two_sessions",
-    "tests/test_bill_split_hardening.py::test_create_invitation_row_locks_parent_expense",
-    "tests/test_bill_split_debt_linkage.py::test_debt_failure_rolls_back_whole_accept",  # real rollback across the accept transaction
-    "tests/test_background_task_claim.py::",  # claim atomicity across sessions
-    "tests/test_background_tasks.py::",  # real background-task handler execution
-    "tests/test_pairing_throttle_db.py::test_concurrent_failures_cannot_overshoot_pairing_limit",
-    # Stale-OCC-token tests stage the conflict with a second concurrent session
-    # (bumping row_version), which the shared savepoint connection can't model
-    # (psycopg "savepoint does not exist").
-    "tests/test_expenses_reject.py::test_stale_reject_cannot_overwrite_confirmed_expense",
-    "tests/test_expenses_ocr_routes.py::test_retry_ocr_rejects_stale_pending_snapshot",
-    "tests/test_merchant_alias_optimistic_concurrency.py::test_delete_alias_with_stale_token_after_concurrent_patch",
-    "tests/test_merchant_alias_optimistic_concurrency.py::test_delete_then_patch_race_resolves_to_404",
-    # Background enrichment (thumbnail / auto-OCR fact) is a FastAPI BackgroundTask
-    # run in a threadpool thread; its writes on the shared connection don't land
-    # back in the test's savepoint. These assert on that enriched output.
-    "tests/test_ocr_facts.py::test_upload_link_auto_ocr_writes_fact",
-    "tests/test_ocr_facts.py::test_android_upload_auto_ocr_writes_fact",
-    "tests/test_uploads.py::test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail",
-    "tests/test_expenses_upload_confirm.py::test_confirm_delete_after_confirm_hides_image_and_thumbnail",
-    # Legacy upload-path migration runs DDL/UPDATE via engine.begin (its own
-    # connection), outside the test transaction.
-    "tests/test_tenant_isolation.py::test_legacy_upload_paths_migrate_into_current_tenant_dir",
-    "tests/test_tenant_isolation.py::test_legacy_upload_migration_leaves_database_only_reference_untouched",
-    "tests/test_tenant_isolation.py::test_legacy_upload_migration_rename_failure_keeps_original_file_and_path",
-    # A read-only outer ``with SessionLocal()`` wraps a helper that commits a
-    # role change; on the shared connection the outer session's close-rollback
-    # discards the nested commit, so the demotion is lost (got 201, want 403).
-    "tests/test_family_ledger_permissions.py::test_member_cannot_create_invitation",
-    "tests/test_family_ledger_permissions.py::test_viewer_cannot_create_invitation",
-    # signal-hash suppression: seeds expenses + rejects (subject_id=1) and asserts
-    # the suggestion is suppressed. Passes alone and under real_db, but fails after
-    # earlier learning tests in the full run — it depends on a clean per-test DB
-    # (deterministic sequences / no residual state) that the rollback model, which
-    # leaves PG sequences advanced across tests, doesn't provide.
-    "tests/test_learning_signal_hash.py::test_backfilled_row_via_signal_hash_suppresses_suggestion",
-    "tests/test_learning_signal_hash.py::test_category_reject_via_signal_hash_suppresses_suggestion",
-)
+def pytest_collection_finish(session: pytest.Session) -> None:
+    """Prove that the runner's declared lane matches the selected markers."""
+    lane = session.config.getoption(POSTGRES_PYTEST_LANE_DEST)
+    selected_real_db = ["real_db" in item.keywords for item in session.items]
+    try:
+        validate_lane_collection(lane=lane, selected_real_db=selected_real_db)
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    real_db = pytest.mark.real_db
-    for item in items:
-        # PostgreSQL isolation opt-outs (see _PG_REAL_DB_NODES). The nodeid uses
-        # forward slashes on every OS.
-        nodeid = item.nodeid.replace("\\", "/")
-        if any(pattern in nodeid for pattern in _PG_REAL_DB_NODES):
-            item.add_marker(real_db)
+def _assert_xdist_lane_contract(session: pytest.Session) -> None:
+    lane = session.config.getoption(POSTGRES_PYTEST_LANE_DEST)
+    if lane != PARALLEL_POSTGRES_PYTEST_LANE:
+        raise pytest.UsageError(
+            "xdist is allowed only through the declared ordinary PostgreSQL lane; "
+            "use python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 2"
+        )
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Acquire one cluster lease before xdist starts any worker."""
+    global _CONTROLLER_STACK
+    if not is_xdist_controller(session):
+        return
+    _assert_xdist_lane_contract(session)
+    if _CONTROLLER_STACK is not None:
+        raise pytest.UsageError("xdist controller database runtime already exists")
+    stack = ExitStack()
+    try:
+        stack.enter_context(host_runtime_lease())
+        stack.enter_context(
+            serial_database_lease(
+                env.ADMIN_TEST_DATABASE_URL,
+                cleanup_runtime=cleanup_test_runtime,
+            )
+        )
+        cleanup_orphan_test_runtimes()
+    except _CLEANUP_ERRORS:
+        stack.close()
+        raise
+    _CONTROLLER_STACK = stack
+
+
+def pytest_configure_node(node) -> None:
+    """Controller creates each worker DB before the worker process starts."""
+    if _CONTROLLER_STACK is None:
+        raise pytest.UsageError("xdist controller does not own the test cluster")
+    worker_id = node.workerinput["workerid"]
+    if worker_id in _CONTROLLER_NODES:
+        raise pytest.UsageError(f"duplicate xdist worker runtime: {worker_id}")
+    _CONTROLLER_NODES[worker_id] = node
+    database = worker_database(
+        env.BASE_TEST_DATABASE_URL,
+        env.ADMIN_TEST_DATABASE_URL,
+        worker_id,
+        node.workerinput["testrunuid"],
+    )
+    provisioned = False
+    try:
+        provision_worker_database(database)
+        provisioned = True
+    finally:
+        if not provisioned:
+            _CONTROLLER_NODES.pop(worker_id, None)
+            node.ensure_teardown()
+    _CONTROLLER_DATABASES[database.name] = database
+    node.workerinput["xpj_worker_database_name"] = database.name
+
+
+def pytest_testnodedown(node, error) -> None:
+    """Controller-side cleanup for a worker that died before fixture teardown."""
+    _CONTROLLER_NODES.pop(node.workerinput.get("workerid"), None)
+    name = node.workerinput.get("xpj_worker_database_name")
+    database = _CONTROLLER_DATABASES.get(name)
+    if database is None:
+        return
+    _cleanup_worker_resources(database)
+    del _CONTROLLER_DATABASES[database.name]
+
+
+def _cleanup_worker_resources(database: WorkerDatabase) -> None:
+    first_error: Exception | None = None
+    try:
+        cleanup_test_runtime(database.runtime_id)
+    except _CLEANUP_ERRORS as exc:
+        first_error = exc
+    try:
+        if first_error is None:
+            drop_worker_database(database)
+    except _CLEANUP_ERRORS as exc:
+        first_error = first_error or exc
+    if first_error is not None:
+        raise first_error
+
+
+def _finalize_controller_runtime() -> None:
+    global _CONTROLLER_STACK
+    if _CONTROLLER_STACK is None and not _CONTROLLER_DATABASES and not _CONTROLLER_NODES:
+        return
+
+    first_error: Exception | None = None
+    try:
+        for node in tuple(_CONTROLLER_NODES.values()):
+            try:
+                node.ensure_teardown()
+            except _CLEANUP_ERRORS as exc:
+                first_error = first_error or exc
+        for database in tuple(_CONTROLLER_DATABASES.values()):
+            try:
+                _cleanup_worker_resources(database)
+                del _CONTROLLER_DATABASES[database.name]
+            except _CLEANUP_ERRORS as exc:
+                first_error = first_error or exc
+        try:
+            cleanup_runtime()
+        except _CLEANUP_ERRORS as exc:
+            first_error = first_error or exc
+    finally:
+        stack = _CONTROLLER_STACK
+        _CONTROLLER_STACK = None
+        _CONTROLLER_DATABASES.clear()
+        _CONTROLLER_NODES.clear()
+        if stack is not None:
+            try:
+                stack.close()
+            except _CLEANUP_ERRORS as exc:
+                first_error = first_error or exc
+    if first_error is not None:
+        raise first_error
+
+
+@pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    cleanup_runtime()
+    if is_xdist_controller(session):
+        _finalize_controller_runtime()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Recover controller resources when startup fails before sessionfinish."""
+    _finalize_controller_runtime()

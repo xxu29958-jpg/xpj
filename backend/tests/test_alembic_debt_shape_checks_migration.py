@@ -11,7 +11,7 @@ one (not just the constraint NAME) — so a same-name migration↔ORM divergence
 predicate, the exact failure mode the single-source design guards and which no machine diff
 otherwise enforces) fails HERE.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``): it issues DDL via its own ``engine.begin()``
+Marked ``real_db`` below: it issues DDL via its own ``engine.begin()``
 connections outside the per-test transaction.
 """
 
@@ -19,9 +19,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+
+pytestmark = pytest.mark.real_db
 
 _PRIOR_HEAD = "20260618_0001"
 _REVISION = "20260619_0001"

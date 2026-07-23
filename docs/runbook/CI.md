@@ -31,26 +31,36 @@ GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 
 
 ### ci-scope + backend-contracts + Backend（常驻快速合同）
 
-`ci-scope` 用精确 PR base/head 做 NUL 分隔、禁 rename 推断的路径分类，只输出 `postgres / desktop / android / windows` 四个资源域。路径矩阵只有 `ci_gap_trigger_scope.py` 一份真源；job 仅在分类器成功且明确输出 `false` 时跳过。分类器内部无法比较时输出全量；scope 基础设施失败时全部重任务仍执行。
+`ci-scope` 用精确 PR base/head 做 NUL 分隔、禁 rename 推断的路径分类，输出 `postgres / desktop / android / windows` 四个资源域、由发布策略生成的 PostgreSQL matrix 和实际 checkout SHA。路径分类只有 `ci_gap_trigger_scope.py` 一份真源；job 仅在分类器成功且明确输出 `false` 时跳过。分类器无法比较时输出全量；scope job 本身失败时不得静默跳过或汇总为绿色，必需检查直接失败。
 
 ```powershell
 scripts\check_text_encoding.ps1 + check_dependency_versions.ps1 + 全部 .ps1 的 BOM/语法检查
-python -m compileall app scripts tests
-ruff check app scripts tests
+python -m compileall app scripts tests packaging/tests
+ruff check app scripts tests packaging/tests
 python scripts\check_api_contract.py
 python scripts\release_audit.py        # 自动发现全部 _audit_*.py lane
 pip-audit --strict（OSV 库）
 ```
 
-`Backend contracts` 没有数据库，不跑业务 pytest / smoke；它保持每个 PR 都可达，负责验证分类器接线、CI gap、API 与静态合同。既有分支保护名 `Backend` 是无 checkout 的结果汇总器：scope、静态合同或按需 Windows packaging 任一失败，`Backend` 必须失败；Windows 域明确跳过时才接受 `skipped`。
+`Backend contracts` 没有数据库，不跑业务 pytest / smoke；它保持每个 PR 都可达，并有 12 分钟硬上限，负责验证分类器接线、CI 聚合器、PostgreSQL job 拓扑、CI gap、API 与静态合同。既有分支保护名 `Backend` 汇总 scope、静态合同和按需 Windows packaging，并逐项核对实际 checkout SHA。Windows 域为 `true` 时必须成功且 SHA 一致；明确为 `false` 时才接受无 SHA 的 `skipped`。
 
 ### windows-packaging（按域）
 
-仅真实 Windows 产物输入变化时运行 packaging tests、PS5.1/PS7 preflight、冻结 Backend/Desktop 构建、Inno 编译和上传后字节回验。输入包括 Backend `app/`、`migrations/`、构建依赖与 provenance，Desktop `backend_manager/`、`packaging/`、构建依赖与脚本，以及安装器自身。整个 provenance 链必须位于同一 scoped job；Android、文档和纯测试改动不支付该成本。
+仅 Windows 宿主、安装器、冻结构建依赖、发布版本、migration 或 Desktop 产物合同变化时运行 packaging tests、PS5.1/PS7 preflight、冻结 Backend/Desktop 构建、Inno 编译和上传后字节回验。普通 Backend `app/` 与测试变更只进入 PostgreSQL/快速合同；`requirements-dev.txt`、测试 PostgreSQL 跨运行时合同和 Windows runtime-tree helper 同时触发其真实消费者。共享的 `windows-release-config.json` 同时触发 PostgreSQL、Desktop 与 Windows 三个消费者域。`main`、手动运行和未知影响仍 fail closed 到包含 Windows 产物的全量。整个 provenance 链必须位于同一 scoped job，不能把上传后字节回验拆成另一份权威；GitHub 重型发布 job 的硬上限为 20 分钟，是否达标仍以 exact-head 实际耗时为准。
+
+安装器测试数量由 `backend/packaging/audit/test_count_baseline.txt` 归 Windows 域维护；增加 packaging 测试不会反向触发 Android/Desktop。Windows 句柄绑定删除和临时 PostgreSQL 生命周期行为也在该 lane 真正执行，不以 Linux 上的 skip 代替证明。
 
 ### backend-postgres（按域全量测试）
 
-GitHub 主路径只在后端运行时/测试/迁移相关路径变化或全量 fallback 时启动，跑在 `ubuntu-latest`，使用 PG17 service container（localhost `:5432`，数据目录 tmpfs）。local-Gitea 降级路径仍跑完整 Windows 临时实例流程。两条路径都完成：起库 → smoke → 备份恢复演练 → 全量 pytest。
+GitHub 是发布验收与合并权威；Gitea 是离线镜像和自检后备，Gitea-only 失败不阻断 GitHub 合并。后端运行时、测试、迁移相关路径变化或全量 fallback 时，ordinary、`real_db`、smoke + recovery 三个独立 job 各自使用隔离的 PostgreSQL service container；三个责任域保持显式 job。当前只支持安装器钉住的单一 PostgreSQL major，matrix 从发布配置和固定 service image 动态生成；未来扩展多个 major 前，必须先为每个 major 提供独立固定镜像。稳定汇总检查 `Backend (PostgreSQL)` 必须核对三个结果和实际 checkout SHA。
+
+ordinary lane 执行完整测试树中所有未标记 `real_db` 的用例，并为每个 xdist worker 动态创建独立数据库、文件根和租约；`real_db` lane 串行执行显式标记的真实提交、跨连接、DDL 与 migration 测试；smoke + recovery lane 执行真实 `pg_dump` / restore drill。分类权威只有测试源码 marker，禁止维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试不需要同步第二份“分类清单”。
+
+后端测试数量只在 `backend/audit/test_count_baseline.txt` 维护。它是严格对账信号，不是覆盖率或分类权威：新增测试与源码同 commit 提高基线；base ratchet 同时阻止一个 PR 删除测试并下调自己的可编辑基线。测试整合必须先保留或补上独立风险证明，不能为了变绿改小数字。总数仍不能证明语义质量，因为“删除高价值测试、补同数量低价值参数化用例”也能骗过它，所以机器计数与代码审计缺一不可。该文件与测试源码同属 PostgreSQL 域；`codebase_audit_gate.py` 只保留政策，不再因正常增测把 PR 放大成全端构建。
+
+GitHub PostgreSQL service container 按共享 matrix 的受支持 major 启动，并接收本次运行派生的密码；建库前还读取真实 `server_version_num`，同时验证 matrix major 与发布策略的完整版本区间。runner 侧只有 passfile 生成 step 接收原始密码，后续测试进程只消费短命 passfile并要求 SCRAM-SHA-256；密码不得进入 URL、命令参数或日志。local-Gitea 的 Windows 测试簇也从 `initdb --pwfile` 直接建立 SCRAM，受保护凭据文件是簇生命周期内的权威，测试、smoke 和备份恢复只消费受保护 passfile。每个 GitHub PostgreSQL job 的目标门槛是 runner elapsed time 不超过 12 分钟；最终以 exact-head 云端记录为准，`timeout-minutes` 不是达标证据。
+
+测试 PG 的数据库名、marker、密钥文件名、固定 `gitea/local` 端口和宿主禁用端口只从 `test_postgres_contract.json` 读取。GitHub 按官方 service-container 合同把容器内 PostgreSQL 端口映射到 runner 随机空闲端口，并从 `job.services.postgres.ports` 动态注入；它不是第三个固定宿主端口 profile。Windows 临时 PG 只接受 OS 临时目录下以 `xpj_pg_` 开头的目录；start/stop 共同消费宿主与数据目录双所有权标记、端口级跨会话 lease、精确进程代际和句柄绑定删除。新簇只从同一发布策略允许的本机 binary 中选择，并用 `postgres --version` 校验完整版本区间；marker 记录实际 binary root，因此安装新大版本后，旧测试簇仍由原版本安全停止，不会交给新 major 误接管。Gitea 使用稳定的端口级 DataDir；前一 run 异常退出后，新 run 在持有同一 lease 时清理已证明归属的遗留实例再重建。无标记目录、文件、junction/reparse point 或无法证明归属的 PostgreSQL 进程均 fail closed。
 
 ### desktop-manager（按域）
 
@@ -83,7 +93,7 @@ GitHub 云端 Android job 使用 hosted runner 的 Android SDK，并按需安装
 
 ## 安全边界
 
-CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`、`backend/backups/`、`android/app/build/` 由 `.gitignore` 排除，不进仓库。临时 PG 实例 trust 认证但只 listen localhost，每 run 用完即弃。
+CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`、`backend/backups/`、`android/app/build/` 由 `.gitignore` 排除，不进仓库。GitHub 与 local-Gitea 的临时 PG 都强制 SCRAM；Windows 侧凭据和 passfile 只存在于受保护的临时测试簇生命周期内。
 
 ## 常见失败点
 
@@ -91,7 +101,8 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 - pip-audit SSL EOF：网络 flake，rerun 整个 run 即绿。
 - OWASP dependency-check NVD 超时：`ci.yml` 先跑 `dependencyCheckUpdate`，只有这个独立 NVD 更新阶段超时才降级为 warning，并删除半成品缓存；`dependencyCheckAnalyze -PdependencyCheckAutoUpdate=false` 离线扫描阶段超时或失败仍按真实 CVE、腐坏缓存或未知 scanner fatal 处理。
 - `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android 测试而没同步 bump `android/audit/test_count_baseline.txt`。
-- `WaitDelay expired before I/O complete`：临时 PG 没拆干净，teardown 必须按 postmaster PID 杀进程树（绝不按二进制路径杀——生产 PG 同机共享二进制），详见 workflow 内注释。
+- `backend_pytest_count` / `installer_pytest_count` 红：分别更新 `backend/audit/test_count_baseline.txt` / `backend/packaging/audit/test_count_baseline.txt`；不要改 gate 代码里的数字。
+- `WaitDelay expired before I/O complete`：临时 PG 没拆干净；teardown 先要求 `pg_ctl` 成功且已固定的进程句柄全部退出，超时后只处理同一已验证进程代际，绝不按二进制路径批量杀，详见 workflow 内注释。
 - `.ps1` 检查失败：确认仍是 UTF-8 with BOM、无 PS 5.1 语法错误。
 
 ## CI 是合并底线

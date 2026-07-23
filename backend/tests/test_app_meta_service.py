@@ -19,6 +19,8 @@ from app.services.app_meta_service import _version_tuple
 from app.version import BACKEND_VERSION
 from tests._infra.db import reset_db_state
 
+pytestmark = pytest.mark.real_db
+
 
 @pytest.fixture(autouse=True)
 def _fresh_db():

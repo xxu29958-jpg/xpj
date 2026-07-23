@@ -180,6 +180,7 @@ def test_acknowledge_mismatch_with_fresh_token_succeeds(
     assert response.json()["items_sum_status"] == "mismatch_acknowledged"
 
 
+@pytest.mark.real_db
 def test_two_sessions_acknowledge_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:

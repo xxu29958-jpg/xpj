@@ -1578,6 +1578,7 @@ public static class TicketboxExactTreeDeleteNativeMethods
     private const uint FileAttributeReparsePoint = 0x00000400;
     private const int FileDispositionInfo = 4;
     private const int FileAttributeTagInfo = 9;
+    private const int FileIdInfo = 18;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct FILE_ATTRIBUTE_TAG_INFO
@@ -1591,6 +1592,20 @@ public static class TicketboxExactTreeDeleteNativeMethods
     {
         [MarshalAs(UnmanagedType.Bool)]
         public bool DeleteFile;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FILE_ID_128
+    {
+        public ulong LowPart;
+        public ulong HighPart;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FILE_ID_INFO
+    {
+        public ulong VolumeSerialNumber;
+        public FILE_ID_128 FileId;
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -1609,6 +1624,17 @@ public static class TicketboxExactTreeDeleteNativeMethods
         SafeFileHandle file,
         int informationClass,
         out FILE_ATTRIBUTE_TAG_INFO information,
+        uint bufferSize);
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "GetFileInformationByHandleEx",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileIdInformationByHandleEx(
+        SafeFileHandle file,
+        int informationClass,
+        out FILE_ID_INFO information,
         uint bufferSize);
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -1680,6 +1706,51 @@ public static class TicketboxExactTreeDeleteNativeMethods
                 return 3;
             }
             return (attributes.FileAttributes & FileAttributeDirectory) != 0 ? 2 : 1;
+        }
+    }
+
+    public static string[] GetDirectoryIdentity(string path)
+    {
+        string fullPath = NormalizePath(path);
+        using (SafeFileHandle handle = CreateFile(
+            fullPath,
+            FileReadAttributes,
+            FileShareRead | FileShareWrite | FileShareDelete,
+            IntPtr.Zero,
+            OpenExisting,
+            FileFlagBackupSemantics | FileFlagOpenReparsePoint,
+            IntPtr.Zero))
+        {
+            if (handle.IsInvalid)
+            {
+                int error = Marshal.GetLastWin32Error();
+                throw new Win32Exception(
+                    error,
+                    "Unable to open the directory identity target: " + fullPath);
+            }
+            VerifyExactPath(handle, fullPath);
+            FILE_ATTRIBUTE_TAG_INFO attributes = ReadAttributes(handle, fullPath);
+            if ((attributes.FileAttributes & FileAttributeReparsePoint) != 0 ||
+                (attributes.FileAttributes & FileAttributeDirectory) == 0)
+            {
+                throw new IOException(
+                    "Directory identity target is not a plain directory: " + fullPath);
+            }
+            FILE_ID_INFO identity;
+            if (!GetFileIdInformationByHandleEx(
+                handle,
+                FileIdInfo,
+                out identity,
+                (uint)Marshal.SizeOf(typeof(FILE_ID_INFO))))
+            {
+                ThrowLastWin32("Unable to read the directory identity", fullPath);
+            }
+            return new string[]
+            {
+                identity.VolumeSerialNumber.ToString("X16"),
+                identity.FileId.HighPart.ToString("X16") +
+                    identity.FileId.LowPart.ToString("X16")
+            };
         }
     }
 

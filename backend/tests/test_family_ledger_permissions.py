@@ -170,6 +170,7 @@ def test_owner_can_create_invitation_and_token_is_returned_once(client: TestClie
     assert "invite_token" not in listed_body["invitations"][0]
 
 
+@pytest.mark.real_db
 def test_member_cannot_create_invitation(client: TestClient, *, identity) -> None:
     family_id = _create_family_ledger(client, identity=identity)
     family_app = _switch_to(client, family_id, identity.app_headers)
@@ -188,6 +189,7 @@ def test_member_cannot_create_invitation(client: TestClient, *, identity) -> Non
     assert resp.json()["error"] == "permission_denied"
 
 
+@pytest.mark.real_db
 def test_viewer_cannot_create_invitation(client: TestClient, *, identity) -> None:
     family_id = _create_family_ledger(client, identity=identity)
     family_app = _switch_to(client, family_id, identity.app_headers)

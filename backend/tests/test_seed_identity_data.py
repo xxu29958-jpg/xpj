@@ -10,6 +10,7 @@ from app.database import _seed as seed_mod
 from app.errors import DataIntegrityError
 
 
+@pytest.mark.real_db
 def test_collect_legacy_tenant_ids_uses_one_union_and_skips_missing_tables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

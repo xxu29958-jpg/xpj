@@ -74,6 +74,7 @@ def test_reject_confirmed_expense_removes_from_confirmed_ledger(
     assert stats.json()["total_amount_cents"] == 0
 
 
+@pytest.mark.real_db
 def test_stale_reject_cannot_overwrite_confirmed_expense(client: TestClient, *, identity) -> None:
     expense_id = upload_png(client, identity=identity)
     response = patch_expense(

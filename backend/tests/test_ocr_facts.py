@@ -254,6 +254,7 @@ def _enable_mock_auto_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ocr_apply, "get_settings", lambda: settings)
 
 
+@pytest.mark.real_db
 def test_upload_link_auto_ocr_writes_fact(
     client, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:
@@ -272,6 +273,7 @@ def test_upload_link_auto_ocr_writes_fact(
     assert rows[0].parsed_amount_cents == 1851
 
 
+@pytest.mark.real_db
 def test_android_upload_auto_ocr_writes_fact(
     client, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:

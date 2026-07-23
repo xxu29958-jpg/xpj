@@ -52,6 +52,11 @@ def test_each_provider_is_independently_required(tmp_path: Path, missing_provide
     ]
 
     assert mod.missing_provider_audits(dirs) == [missing_provider]
+    selected_platform = "Gitea" if missing_provider == ".github" else "GitHub"
+    assert mod.missing_provider_audits(
+        dirs,
+        platforms=(selected_platform,),
+    ) == []
 
 
 def test_non_executing_text_cannot_fake_dependency_audit(tmp_path: Path) -> None:

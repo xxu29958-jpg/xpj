@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import BACKEND_ROOT, get_settings
@@ -23,6 +23,27 @@ __all__ = [
     "settings",
     "wait_for_db",
 ]
+
+
+class _DatabaseAuthenticationContractError(RuntimeError):
+    pass
+
+
+def _postgres_connect_args(database_url: str) -> dict[str, object]:
+    """Add the UTC session contract without discarding sealed URL options."""
+    query = make_url(database_url).query
+    configured_options = query.get("options")
+    if configured_options is not None and not isinstance(configured_options, str):
+        raise ValueError("PostgreSQL DATABASE_URL options must be singular")
+    options = " ".join(
+        part
+        for part in (configured_options, "-c timezone=utc")
+        if part is not None and part.strip()
+    )
+    connect_args: dict[str, object] = {"options": options}
+    if "connect_timeout" not in query:
+        connect_args["connect_timeout"] = 10
+    return connect_args
 
 
 settings = get_settings()
@@ -42,11 +63,16 @@ settings = get_settings()
 # contract dump (``scripts/check_api_contract.py``) spins up purely to
 # introspect the schema without a database server.
 if settings.database_url.startswith("postgresql"):
+    authentication = make_url(settings.database_url).query.get("require_auth")
+    if authentication != "scram-sha-256":
+        raise _DatabaseAuthenticationContractError(
+            "PostgreSQL DATABASE_URL must require SCRAM-SHA-256 authentication"
+        )
     # ``connect_timeout`` (libpq, seconds): a hung connect to a not-yet-ready PG
     # service fails fast and feeds wait_for_db's retry loop instead of blocking
     # startup indefinitely (ADR-0047: PG-as-Windows-service can be RUNNING before
     # it accepts connections).
-    connect_args: dict[str, object] = {"options": "-c timezone=utc", "connect_timeout": 10}
+    connect_args = _postgres_connect_args(settings.database_url)
 else:
     connect_args = {}
 engine = create_engine(

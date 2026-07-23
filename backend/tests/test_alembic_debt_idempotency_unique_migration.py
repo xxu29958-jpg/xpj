@@ -9,7 +9,7 @@ them directly on PostgreSQL (the prod dialect): stamp head → downgrade past 00
 Pins that the forward migration removes exactly the slice-1 fact-table uniques
 and round-trips, and that ``create_all`` no longer carries them.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via
+Marked ``real_db`` below because it issues DDL via
 its own ``engine.begin()`` connections outside the per-test transaction.
 """
 
@@ -17,9 +17,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+
+pytestmark = pytest.mark.real_db
 
 # table -> the slice-1 global idempotency_key unique constraint name.
 _FACT_IDEMPOTENCY_UNIQUES = {

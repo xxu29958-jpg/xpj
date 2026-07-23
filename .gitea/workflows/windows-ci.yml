@@ -98,6 +98,13 @@ jobs:
         working-directory: backend
         run: .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests -p no:cacheprovider
 
+      - name: Windows database maintenance contract
+        working-directory: backend
+        run: >-
+          .\.ci-venv\Scripts\python.exe -m pytest -q
+          tests/test_windows_task_status.py::test_db_maintenance_scripts_resolve_configured_database_url
+          --noconftest --strict-markers -p no:cacheprovider -o addopts=
+
       - name: Installer source preflight (Windows PowerShell 5.1)
         working-directory: backend
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
@@ -227,6 +234,7 @@ jobs:
         working-directory: backend
         env:
           XPJ_RELEASE_AUDIT_COMPACT: "1"
+          XPJ_CI_AUDIT_PROVIDER: gitea
           XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
         run: .\.ci-venv\Scripts\python.exe scripts\release_audit.py
 
@@ -243,11 +251,10 @@ jobs:
     # PG-only (debt #4): PostgreSQL is the only engine, so this lane runs the
     # full pytest suite + the end-to-end smoke on it; backend-full above runs
     # static checks only (no DB server). The original lane was
-    # .github/workflows/ci.yml on a Linux runner with a
-    # postgres service container — dead since the GitHub→Gitea move. The gitea
-    # runner is Windows + no Docker, so we spin an ephemeral PostgreSQL via the
-    # locally-installed initdb (PG 17 on the home-server runner) on port 5433, so
-    # it never touches the prod cluster on 5432. The cluster is started, used and
+    # GitHub's Linux service-container lanes are the primary merge authority.
+    # This offline-capable Windows mirror has no Docker, so it spins an ephemeral PostgreSQL via the
+    # locally-installed policy-compatible initdb on the contract's
+    # Gitea port, isolated from reserved host ports. The cluster is started, used and
     # stopped inside a single step's try/finally (see the WaitDelay note below).
     runs-on: windows-latest
     timeout-minutes: 40
@@ -291,40 +298,51 @@ jobs:
           .\.ci-venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 
       - name: PostgreSQL lane — ephemeral cluster + smoke + suite
-        # initdb spins a throwaway PG (PG 17 on the runner) on :5433, isolated
-        # from the prod cluster on :5432. start + smoke + suite + stop run in ONE
+        # initdb spins a throwaway policy-compatible PG on the contract's
+        # Gitea profile. start + smoke + suite + stop run in ONE
         # step with the stop in a finally on purpose: the postmaster is a
         # long-lived child that inherits this step's stdio, and the gitea runner
         # post-step I/O drain waits for that handle to close — if the postmaster
         # is still alive at step exit the drain fails with "WaitDelay expired
         # before I/O complete" (the first red run). Stopping it inside the
-        # finally guarantees it is gone before the PowerShell exits. xpj_test
-        # (suite) is separate from xpj_smoke so the smoke's rows never collide.
+        # finally guarantees it is gone before the PowerShell exits. The shared
+        # process helper uses pg_ctl for a controlled stop and only falls back
+        # to already-pinned process handles after exact ownership revalidation.
         run: |
-          # Numeric version sort: a lingering 9.x client must not beat 17 by string order ("9" > "1").
-          $pgctl = Get-ChildItem 'C:\Program Files\PostgreSQL\*\bin\pg_ctl.exe' -ErrorAction SilentlyContinue | Sort-Object { $v = 0.0; if ([double]::TryParse($_.Directory.Parent.Name, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$v)) { $v } else { -1.0 } } -Descending | Select-Object -First 1
-          if (-not $pgctl) { throw "PostgreSQL not installed on runner (expected C:\Program Files\PostgreSQL\<ver>\bin)" }
-          $pgbin = $pgctl.DirectoryName
+          . .\scripts\test_pg_process_contract.ps1
+          $contract = Get-XpjTestPostgresContract
+          $ciPort = [int]$contract.ports.gitea
           $runid = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { 'local' }
-          $datadir = Join-Path $env:TEMP "xpj_pg_ci_$runid"
-          if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir }
-          $pmpid = $null
+          $attempt = if ($env:GITHUB_RUN_ATTEMPT) { $env:GITHUB_RUN_ATTEMPT } else { '1' }
+          $coordinate = [Regex]::Replace("${runid}_${attempt}", '[^A-Za-z0-9._-]', '_').ToLowerInvariant()
+          $null = Initialize-XpjTestPostgresRuntimeRoot
+          $datadir = Get-XpjTestPostgresDefaultDataDir -Port $ciPort
+          $connectionEnv = Join-Path $env:TEMP "xpj_pg_ci_$coordinate.env"
+          Remove-Item -LiteralPath $connectionEnv -Force -ErrorAction SilentlyContinue
+          "XPJ_GITEA_TEST_PG_DATA_DIR=$datadir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $suiteLease = Enter-XpjTestPostgresLifecycleLock -DataDir $datadir -Port $ciPort
           try {
-            & "$pgbin\initdb.exe" -D $datadir -U postgres --auth=trust -E UTF8 --locale=C | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "initdb failed" }
-            & "$pgbin\pg_ctl.exe" -D $datadir -o "-p 5433 -c listen_addresses=localhost" -l "$datadir\server.log" -w start
-            if ($LASTEXITCODE -ne 0) { if (Test-Path "$datadir\server.log") { Get-Content "$datadir\server.log" }; throw "pg_ctl start failed" }
-            $pmpid = (Get-Content (Join-Path $datadir "postmaster.pid") -TotalCount 1 -ErrorAction SilentlyContinue)
-            & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_smoke
-            if ($LASTEXITCODE -ne 0) { throw "createdb xpj_smoke failed" }
-            & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_test
-            if ($LASTEXITCODE -ne 0) { throw "createdb xpj_test failed" }
-            & "$pgbin\createdb.exe" -h localhost -p 5433 -U postgres xpj_restore
-            if ($LASTEXITCODE -ne 0) { throw "createdb xpj_restore failed" }
-            Write-Host "ephemeral PostgreSQL up on 127.0.0.1:5433 (xpj_smoke + xpj_test + xpj_restore)"
+            # A killed prior run abandons the suite lease but may leave its
+            # exact owned cluster alive. Reset that disposable state before
+            # provisioning this run; foreign listeners still fail closed.
+            & .\scripts\stop_test_pg.ps1 -Port $ciPort -DataDir $datadir -AllowCiPort
+            & .\scripts\start_test_pg.ps1 -Port $ciPort -DataDir $datadir -AllowCiPort
+            if ($LASTEXITCODE -ne 0) { throw "test PostgreSQL lifecycle start failed" }
+
+            $passfile = Join-Path $datadir ([string]$contract.passfile_name)
+            .\.ci-venv\Scripts\python.exe -m scripts.write_test_postgres_env --host localhost --port-profile gitea --admin-user postgres --existing-passfile $passfile --output $connectionEnv
+            if ($LASTEXITCODE -ne 0) { throw "test PostgreSQL connection contract generation failed" }
+            foreach ($line in [IO.File]::ReadAllLines($connectionEnv)) {
+              $separator = $line.IndexOf('=')
+              if ($separator -le 0) { throw "malformed test PostgreSQL connection contract" }
+              [Environment]::SetEnvironmentVariable(
+                $line.Substring(0, $separator),
+                $line.Substring($separator + 1),
+                [EnvironmentVariableTarget]::Process
+              )
+            }
 
             # Reachability guard: fail loud if the URL ever silently falls back to SQLite.
-            $env:SMOKE_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_smoke"
             .\.ci-venv\Scripts\python.exe -c "import os, psycopg; u = os.environ['SMOKE_DATABASE_URL']; assert u.startswith('postgresql'), u; psycopg.connect(u.replace('+psycopg','')).close(); print('PG reachable:', u.rsplit('@',1)[-1])"
             if ($LASTEXITCODE -ne 0) { throw "PG reachability guard failed" }
 
@@ -344,28 +362,31 @@ jobs:
             # mutates anything; pg_restore resolves via the same Program Files
             # glob as pg_dump (not on the runner's PATH).
             Write-Host "--- PostgreSQL backup/restore drill ---"
-            $env:DRILL_SOURCE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_smoke"
-            $env:DRILL_RESTORE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_restore"
             .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL backup/restore drill failed" }
 
-            # Full suite on real PG — the only engine now (debt #4). Own xpj_test
-            # DB (separate from xpj_smoke) so the smoke's rows never collide.
-            Write-Host "--- PostgreSQL pytest suite ---"
-            $env:XPJ_TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5433/xpj_test"
-            .\.ci-venv\Scripts\python.exe -m pytest tests -q -ra --tb=short -p no:cacheprovider
-            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL pytest suite failed" }
+            # Keep the offline single-runner mirror serial. Source-local real_db
+            # markers preserve the same test-set boundary as GitHub without
+            # importing GitHub's xdist performance topology here.
+            Write-Host "--- PostgreSQL ordinary serial pytest lane ---"
+            .\.ci-venv\Scripts\python.exe -m scripts.run_postgres_pytest_lane --lane ordinary --workers 1
+            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL ordinary serial pytest lane failed" }
+            Write-Host "--- PostgreSQL real-db serial pytest lane ---"
+            .\.ci-venv\Scripts\python.exe -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
+            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL real-db serial pytest lane failed" }
           }
           finally {
-            # Teardown MUST leave no live postgres (else the runner's post-step I/O
-            # drain hits "WaitDelay expired") and MUST NOT fail the step on its own
-            # hiccups. pg_ctl stop -m fast hung 60s on Windows (run 28), so force-kill
-            # the ephemeral cluster's OWN process tree by its postmaster PID. NEVER
-            # kill by binary path — the prod PG on :5432 shares these binaries.
-            if ($pmpid) { & taskkill /F /T /PID $pmpid | Out-Null }
-            if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir -ErrorAction SilentlyContinue }
-            $global:LASTEXITCODE = 0
-            Write-Host "ephemeral PostgreSQL torn down"
+            try {
+              Remove-Item -LiteralPath $connectionEnv -Force -ErrorAction SilentlyContinue
+              # Teardown uses the same marker, process-generation, pg_ctl and exact
+              # handle-bound deletion contract as local PS5.1/PS7 lifecycle tests.
+              & .\scripts\stop_test_pg.ps1 -Port $ciPort -DataDir $datadir -AllowCiPort
+              if ($LASTEXITCODE -ne 0) { throw "test PostgreSQL lifecycle stop failed" }
+              Write-Host "ephemeral PostgreSQL torn down"
+            }
+            finally {
+              Exit-XpjTestPostgresLifecycleLock -Mutex $suiteLease
+            }
           }
 
       - name: Stop ephemeral PostgreSQL (backstop)
@@ -375,15 +396,12 @@ jobs:
         # only cleans up after an abnormal kill (e.g. job timeout) that skipped
         # the finally — it never runs the WaitDelay-prevention path.
         run: |
-          $runid = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { 'local' }
-          $datadir = Join-Path $env:TEMP "xpj_pg_ci_$runid"
-          $pidfile = Join-Path $datadir "postmaster.pid"
-          if (Test-Path $pidfile) {
-            $pmpid = (Get-Content $pidfile -TotalCount 1 -ErrorAction SilentlyContinue)
-            if ($pmpid) { & taskkill /F /T /PID $pmpid | Out-Null }
+          . .\scripts\test_pg_process_contract.ps1
+          $ciPort = [int](Get-XpjTestPostgresContract).ports.gitea
+          $datadir = $env:XPJ_GITEA_TEST_PG_DATA_DIR
+          if (-not [string]::IsNullOrWhiteSpace($datadir)) {
+            & .\scripts\stop_test_pg.ps1 -Port $ciPort -DataDir $datadir -AllowCiPort
           }
-          if (Test-Path $datadir) { Remove-Item -Recurse -Force $datadir -ErrorAction SilentlyContinue }
-          $global:LASTEXITCODE = 0
 
   desktop-manager:
     name: Desktop manager

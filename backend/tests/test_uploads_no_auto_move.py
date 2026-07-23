@@ -13,6 +13,7 @@ contract:
 
 from __future__ import annotations
 
+import pytest
 from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
 
@@ -22,6 +23,7 @@ from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_DIR
 
 
+@pytest.mark.real_db
 def test_init_db_does_not_move_legacy_uploads(client: TestClient) -> None:
     """Pre-existing legacy ``uploads/YYYY/MM/foo.png`` files must stay put
     after ``init_db`` runs again. Re-running init_db is what start-up does.

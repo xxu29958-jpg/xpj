@@ -230,11 +230,12 @@ def test_password_file_native_psql_and_bootstrap_contracts_are_fail_closed() -> 
     assert "Assert-SimpleSqlIdentifier $DbName" in script
     assert '@{ Value = $PublicBaseUrl; Name = "PublicBaseUrl" }' in script
 
-    assert script.count("& $Psql @psqlArgs 2>&1") == 2
+    assert script.count("Invoke-TicketboxBoundedNativeProcess") >= 2
+    assert "& $Psql @psqlArgs 2>&1" not in script
+    assert '-StandardInputText ($Sql + "`n")' in script
+    assert "$DatabaseToolTimeoutMs = [int]$ReleaseConfig.database_tool_timeout_ms" in script
     assert '"-X", "-w"' in script
-    assert "$rc = $LASTEXITCODE" in script
-    assert "PSNativeCommandUseErrorActionPreference = $false" in script
-    assert "exit=$rc" in script
+    assert "exit=$($result.ExitCode)" in script
     assert "：$Sql" not in script
 
     assert "Get-NetTCPConnection -State Listen" in script
@@ -477,17 +478,34 @@ if (-not $mappedDriveRejected) { throw 'mapped network drive was accepted' }
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows native-command behavior contract")
 def test_native_psql_stderr_and_exit_code_are_sanitized_under_stop(tmp_path: Path) -> None:
     body = _function_loader(("Invoke-Sql", "Invoke-SqlFile"))
+    body += f"""
+. '{_ps_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_ps_literal(PACKAGING / "windows_database_safety.ps1")}'
+"""
     body += r"""
-$fakePsql = Join-Path $args[0] ("fake-psql-$PID.cmd")
-[System.IO.File]::WriteAllLines(
-    $fakePsql,
-    @('@echo off', 'echo native-secret-marker 1>&2', 'exit /b 23'),
-    [System.Text.Encoding]::ASCII
-)
-$Psql = $fakePsql
-$DbHost = '127.0.0.1'
-$DbPort = 5432
+    $Psql = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    $DbHost = '127.0.0.1'
+    $DbPort = 5432
+    $DatabaseToolTimeoutMs = 10000
+    function Invoke-TicketboxBoundedNativeProcess {
+        param(
+            [string]$FilePath,
+            [string[]]$Arguments,
+            [int]$TimeoutMilliseconds,
+            [string]$Label,
+            [AllowEmptyString()][string]$StandardInputText
+        )
+        if (($Arguments -join ' ') -match 'password-secret-marker|sql-secret-marker|sql-file-secret-marker') {
+            throw 'database secret reached native argv'
+        }
+        return [pscustomobject]@{
+            ExitCode = 23
+            StandardOutput = ''
+            StandardError = 'native-secret-marker'
+        }
+    }
 $env:PGPASSWORD = 'original-environment-value'
+$env:PGPASSFILE = 'original-passfile-value'
 $PSNativeCommandUseErrorActionPreference = $true
 $caught = $false
 try {
@@ -518,9 +536,9 @@ catch {
 }
 if (-not $fileCaught) { throw 'native psql file failure was not raised' }
 if ($env:PGPASSWORD -cne 'original-environment-value') { throw 'PGPASSWORD was not restored' }
+if ($env:PGPASSFILE -cne 'original-passfile-value') { throw 'PGPASSFILE was not restored' }
 if (-not $PSNativeCommandUseErrorActionPreference) { throw 'native preference was not restored' }
-Remove-Item -LiteralPath $fakePsql -Force
-Remove-Item -LiteralPath $sqlFile -Force
+    Remove-Item -LiteralPath $sqlFile -Force
 """
     _run_harness(
         tmp_path,

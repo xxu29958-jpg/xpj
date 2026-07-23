@@ -284,6 +284,7 @@ def test_foreign_parent_debt_stays_home_shape(
     assert debt.source_id == public_id
 
 
+@pytest.mark.real_db
 def test_debt_failure_rolls_back_whole_accept(
     client: TestClient, *, identity, debt_rollout_on, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -322,6 +323,7 @@ def test_debt_failure_rolls_back_whole_accept(
     assert _debts_for(public_id) == []  # no Debt
 
 
+@pytest.mark.real_db
 def test_two_sessions_accept_race_creates_single_debt(
     client: TestClient, *, identity, debt_rollout_on
 ) -> None:
@@ -335,9 +337,9 @@ def test_two_sessions_accept_race_creates_single_debt(
     # invitation and returns session_a's expense WITHOUT reaching
     # create_bill_split_debt. That lost-claim branch is the dangerous path where a
     # second Debt could be attempted; uq_debts_source is its structural backstop.
-    # Net: exactly ONE Debt and ONE received expense. real_db (the
-    # ``test_two_sessions`` naming auto-marks it) so each session is a real
-    # committed transaction; expire_on_commit=False keeps session_b's stale
+    # Net: exactly ONE Debt and ONE received expense. The explicit real_db mark
+    # gives each session a real committed transaction; expire_on_commit=False
+    # keeps session_b's stale
     # 'invited' read, exercising the lost-claim recovery branch (not the settled
     # fast path).
     receiver_id = _seed_receiver(name="B-acc-race", ledger_id="receiver_accrace")

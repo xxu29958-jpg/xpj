@@ -32,7 +32,7 @@ def _condition_branch_is_proven(branch: str, event_name: str) -> bool:
         return False
     for predicate in predicates:
         lowered = predicate.lower()
-        if lowered in {"true", "success()", "always()"}:
+        if lowered in {"true", "success()", "always()", "!cancelled()"}:
             continue
         match = comparison.fullmatch(predicate)
         if match is None:

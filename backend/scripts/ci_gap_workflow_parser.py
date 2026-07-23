@@ -10,6 +10,10 @@ from hashlib import sha256
 import yaml
 from ci_gap_job_scope import job_needs as _job_needs
 from ci_gap_job_scope import scoped_job_protection_scope as _scoped_job_protection_scope
+from ci_gap_job_scope import scoped_step_protection_scope as _scoped_step_protection_scope
+from ci_gap_job_scope import (
+    scoped_step_requires_prior_success as _scoped_step_requires_prior_success,
+)
 from ci_gap_powershell import (
     looks_like_powershell as _looks_like_powershell,
 )
@@ -308,6 +312,32 @@ def _job_protection_scope(
     return _scoped_job_protection_scope(path, workflow, raw_job, jobs)
 
 
+def _step_protection_scope(
+    *,
+    path: pathlib.Path,
+    workflow: dict[object, object],
+    raw_job: dict[object, object],
+    raw_step: dict[object, object],
+    jobs: dict[object, object],
+    event_name: str,
+    job_scope: str,
+    protected_only: bool,
+) -> str | None:
+    if _condition_allows_event(
+        raw_step.get("if"),
+        event_name,
+        require_proof=protected_only,
+    ):
+        return job_scope
+    return _scoped_step_protection_scope(
+        path,
+        workflow,
+        raw_job,
+        raw_step,
+        jobs,
+    )
+
+
 def _iter_reachable_workflow_steps(
     workflow_dirs: pathlib.Path | list[pathlib.Path],
     *,
@@ -352,11 +382,17 @@ def _iter_reachable_workflow_steps(
             for index, raw_step in enumerate(steps):
                 if not isinstance(raw_step, dict):
                     continue
-                if not _condition_allows_event(
-                    raw_step.get("if"),
-                    event_name,
-                    require_proof=protected_only,
-                ):
+                step_protection_scope = _step_protection_scope(
+                    path=path,
+                    workflow=workflow,
+                    raw_job=raw_job,
+                    raw_step=raw_step,
+                    jobs=jobs,
+                    event_name=event_name,
+                    job_scope=job_protection_scope,
+                    protected_only=protected_only,
+                )
+                if step_protection_scope is None:
                     continue
                 if _allows_failure(raw_step.get("continue-on-error")):
                     continue
@@ -367,7 +403,7 @@ def _iter_reachable_workflow_steps(
                         index,
                         raw_step,
                         job_shell,
-                        job_protection_scope,
+                        step_protection_scope,
                         _effective_environment(
                             workflow.get("env"),
                             raw_job.get("env"),
@@ -433,7 +469,10 @@ def _iter_workflow_actions(
                 job=str(job_name),
                 step=str(raw_step.get("name", index)),
                 step_index=index,
-                requires_prior_success=workflow_action_requires_prior_success(raw_step.get("if")),
+                requires_prior_success=(
+                    workflow_action_requires_prior_success(raw_step.get("if"))
+                    or _scoped_step_requires_prior_success(raw_step.get("if"))
+                ),
                 protection_scope=protection_scope,
                 environment=environment,
             )

@@ -288,7 +288,10 @@ PLACEHOLDER_SECRETS = frozenset({PLACEHOLDER_UPLOAD_TOKEN, PLACEHOLDER_APP_TOKEN
 # is exactly the 2026-06-04 cut-over setup that left tables owned by ``postgres``
 # and bricked startup for ~4 days (see docs/runbook/POSTGRES_MIGRATION.md §3 and
 # the table-owner trap). Real deployments MUST set DATABASE_URL to the app role.
-DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5432/ticketbox"
+DEFAULT_DATABASE_URL = (
+    "postgresql+psycopg://postgres@localhost:5432/ticketbox"
+    "?require_auth=scram-sha-256"
+)
 
 
 def database_url_is_default_fallback() -> bool:

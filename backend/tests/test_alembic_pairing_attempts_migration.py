@@ -13,6 +13,8 @@ from sqlalchemy.engine import Connection
 
 from app.database import engine
 
+pytestmark = pytest.mark.real_db
+
 _PREVIOUS_REVISION = "20260711_0001"
 # Head pin follows the chain tip: each new head migration updates it.
 _HEAD_REVISION = "20260722_0001"

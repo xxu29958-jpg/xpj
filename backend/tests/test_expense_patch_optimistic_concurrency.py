@@ -138,6 +138,7 @@ def test_patch_unknown_expense_returns_404(
 # updated_at = expected`` predicate rejects the second one here.
 
 
+@pytest.mark.real_db
 def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:
@@ -186,6 +187,7 @@ def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
         session_b.close()
 
 
+@pytest.mark.real_db
 def test_two_sessions_concurrent_reject_then_patch_resolves_to_404(
     client: TestClient, *, identity
 ) -> None:

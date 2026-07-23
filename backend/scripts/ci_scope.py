@@ -12,8 +12,10 @@ from pathlib import Path
 
 if __package__:
     from .ci_gap_trigger_scope import CI_HEAVY_SCOPES, all_ci_scopes, classify_ci_paths
+    from .postgres_release_policy import POSTGRES_RELEASE_POLICY
 else:
     from ci_gap_trigger_scope import CI_HEAVY_SCOPES, all_ci_scopes, classify_ci_paths
+    from postgres_release_policy import POSTGRES_RELEASE_POLICY
 
 
 def changed_paths(base: str, head: str) -> list[str]:
@@ -33,6 +35,7 @@ def write_outputs(path: Path, scopes: dict[str, bool]) -> None:
     with path.open("a", encoding="utf-8", newline="\n") as output:
         for scope in CI_HEAVY_SCOPES:
             output.write(f"{scope}={'true' if scopes[scope] else 'false'}\n")
+        output.write(f"postgres_matrix={POSTGRES_RELEASE_POLICY.matrix_json()}\n")
 
 
 def main() -> int:
@@ -44,7 +47,7 @@ def main() -> int:
     args = parser.parse_args()
 
     scopes = all_ci_scopes()
-    if args.event == "pull_request" and args.base and args.head:
+    if args.event in {"pull_request", "push"} and args.base and args.head:
         try:
             paths = changed_paths(args.base, args.head)
         except (OSError, subprocess.CalledProcessError) as exc:

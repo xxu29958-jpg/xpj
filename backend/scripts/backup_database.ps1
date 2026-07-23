@@ -1,11 +1,22 @@
 ﻿param(
-    [int]$Keep = 30
+    [int]$Keep = 30,
+    [ValidateRange(10, 3600)][int]$DatabaseToolTimeoutSeconds = 600
 )
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $BackendRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$WindowsSafetyScript = Join-Path $BackendRoot "packaging\windows_installation_safety.ps1"
+if (-not (Test-Path -LiteralPath $WindowsSafetyScript -PathType Leaf)) {
+    throw "缺少 Windows 受保护文件实现：$WindowsSafetyScript"
+}
+. $WindowsSafetyScript
+$DatabaseSafetyScript = Join-Path $BackendRoot "packaging\windows_database_safety.ps1"
+if (-not (Test-Path -LiteralPath $DatabaseSafetyScript -PathType Leaf)) {
+    throw "缺少 Windows 数据库安全实现：$DatabaseSafetyScript"
+}
+. $DatabaseSafetyScript
 # 备份目录跟随数据根:冻结 EXE / 显式 override 经 TICKETBOX_DATA_DIR 指定,否则 = backend 根
 # （与 app.config.DATA_ROOT / backup_service._BACKUP_DIR 一致,保证"备份可恢复"闭环跨部署形态成立）。
 $DataRoot = if ([string]::IsNullOrWhiteSpace($env:TICKETBOX_DATA_DIR)) { $BackendRoot } else { $env:TICKETBOX_DATA_DIR }
@@ -66,27 +77,43 @@ function Get-DatabaseUrl {
     return $url
 }
 
-function Assert-NoPasswordQuery {
+function Assert-DatabaseQueryContract {
     param(
         [Parameter(Mandatory = $true)]
         [AllowEmptyString()]
         [string]$Query
     )
 
+    $requireAuthValues = @()
     foreach ($part in $Query.TrimStart('?').Split('&')) {
         if ([string]::IsNullOrWhiteSpace($part)) {
             continue
         }
-        $encodedKey = $part.Split(@('='), 2)[0]
+        $separatorIndex = $part.IndexOf('=')
+        if ($separatorIndex -lt 0) {
+            $encodedKey = $part
+            $encodedValue = ""
+        }
+        else {
+            $encodedKey = $part.Substring(0, $separatorIndex)
+            $encodedValue = $part.Substring($separatorIndex + 1)
+        }
         try {
             $key = [System.Uri]::UnescapeDataString($encodedKey)
+            $value = [System.Uri]::UnescapeDataString($encodedValue)
         }
         catch {
             throw "DATABASE_URL 查询参数格式无效。"
         }
-        if ($key -in @("password", "sslpassword")) {
+        if ($key.ToLowerInvariant() -in @("password", "sslpassword")) {
             throw "DATABASE_URL 不得通过查询参数传递数据库口令。"
         }
+        if ($key.Equals("require_auth", [System.StringComparison]::OrdinalIgnoreCase)) {
+            $requireAuthValues += $value
+        }
+    }
+    if ($requireAuthValues.Count -ne 1 -or $requireAuthValues[0] -cne "scram-sha-256") {
+        throw "DATABASE_URL 必须精确要求 require_auth=scram-sha-256。"
     }
 }
 
@@ -102,7 +129,17 @@ function ConvertTo-PgDumpConnection {
     if ($builder.Scheme -notmatch '^postgresql(?:\+\w+)?$') {
         throw "备份脚本只支持 PostgreSQL。"
     }
-    Assert-NoPasswordQuery -Query $builder.Query.ToLowerInvariant()
+    Assert-DatabaseQueryContract -Query $builder.Query
+
+    $username = [System.Uri]::UnescapeDataString($builder.UserName)
+    $database = [System.Uri]::UnescapeDataString($builder.Path.TrimStart('/'))
+    if (
+        [string]::IsNullOrWhiteSpace($username) -or
+        [string]::IsNullOrWhiteSpace($builder.Host) -or
+        [string]::IsNullOrWhiteSpace($database)
+    ) {
+        throw "DATABASE_URL 缺少 PostgreSQL 用户、主机或数据库。"
+    }
 
     $password = $null
     if (-not [string]::IsNullOrEmpty($builder.Password)) {
@@ -112,6 +149,10 @@ function ConvertTo-PgDumpConnection {
     $builder.Password = ""
     return [pscustomobject]@{
         DatabaseUrl = $builder.Uri.AbsoluteUri
+        Username = $username
+        Host = $builder.Host
+        Port = if ($builder.Port -gt 0) { $builder.Port } else { 5432 }
+        Database = $database
         Password = $password
     }
 }
@@ -190,8 +231,12 @@ function Test-PostgresBackup {
         else {
             $env:PYTHONPATH = "$BackendRoot;$previousPythonPath"
         }
-        & $python -m app.services.postgres_backup_validation_service $Path
-        if ($LASTEXITCODE -ne 0) {
+        $result = Invoke-TicketboxBoundedNativeProcess `
+            -FilePath $python `
+            -Arguments @('-m', 'app.services.postgres_backup_validation_service', $Path) `
+            -TimeoutMilliseconds ($DatabaseToolTimeoutSeconds * 1000) `
+            -Label 'PostgreSQL 备份校验'
+        if ($result.ExitCode -ne 0) {
             throw "PostgreSQL 备份校验失败：$Path"
         }
     }
@@ -214,28 +259,29 @@ function Backup-PostgresDatabase {
     $pgDump = Get-PgDumpBinary
     $connection = ConvertTo-PgDumpConnection -Url $DatabaseUrl
     $tempPath = "$TargetPath.tmp-$PID"
-    $hadPgPassword = Test-Path Env:\PGPASSWORD
-    $previousPgPassword = [Environment]::GetEnvironmentVariable("PGPASSWORD")
     try {
-        try {
-            if ($null -eq $connection.Password) {
-                Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
-            }
-            else {
-                $env:PGPASSWORD = $connection.Password
-            }
-            & $pgDump --format=custom --file $tempPath --dbname $connection.DatabaseUrl *> $null
-            if ($LASTEXITCODE -ne 0) {
-                throw "pg_dump 失败。"
-            }
+        if ($null -eq $connection.Password) {
+            throw "计划备份要求 DATABASE_URL 提供受保护配置中的数据库口令。"
         }
-        finally {
-            if ($hadPgPassword) {
-                $env:PGPASSWORD = $previousPgPassword
+        $result = Invoke-TicketboxWithPgPassFile `
+            -DatabaseUrl $connection.DatabaseUrl `
+            -Password $connection.Password `
+            -Action {
+                param([string]$ProtectedDatabaseUrl)
+                return Invoke-TicketboxBoundedNativeProcess `
+                    -FilePath $pgDump `
+                    -Arguments @(
+                        '--no-password',
+                        '--lock-wait-timeout=30000',
+                        '--format=custom',
+                        '--file', $tempPath,
+                        '--dbname', $ProtectedDatabaseUrl
+                    ) `
+                    -TimeoutMilliseconds ($DatabaseToolTimeoutSeconds * 1000) `
+                    -Label 'pg_dump'
             }
-            else {
-                Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
-            }
+        if ($result.ExitCode -ne 0) {
+            throw "pg_dump 失败。"
         }
         Test-PostgresBackup -Path $tempPath
         Move-Item -LiteralPath $tempPath -Destination $TargetPath -Force

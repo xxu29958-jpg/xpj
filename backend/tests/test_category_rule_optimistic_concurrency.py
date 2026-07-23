@@ -168,6 +168,7 @@ def test_delete_category_rule_without_expected_row_version_returns_422(
 # rejects the second writer here.
 
 
+@pytest.mark.real_db
 def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:
@@ -211,6 +212,7 @@ def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
         session_b.close()
 
 
+@pytest.mark.real_db
 def test_two_sessions_concurrent_delete_then_update_resolves_to_404_or_409(
     client: TestClient, *, identity
 ) -> None:

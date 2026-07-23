@@ -13,7 +13,7 @@ account-scoped one), asserting the constraint COLUMN SET at every step — not j
 the name, so a shape regression fails HERE (mirrors the sibling alembic round-trip
 tests).
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its
+Marked ``real_db`` below because it issues DDL via its
 own ``engine.begin()`` connections outside the per-test transaction.
 """
 
@@ -21,9 +21,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+
+pytestmark = pytest.mark.real_db
 
 _ACCOUNT_SCOPED_COLUMNS = ["tenant_id", "created_by_account_id", "draft_idempotency_key"]
 _TENANT_SCOPED_COLUMNS = ["tenant_id", "draft_idempotency_key"]

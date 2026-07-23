@@ -17,7 +17,7 @@ The ``create_all`` step is ALSO the only automated proof that the nullable circu
 fresh DB — without ``use_alter=True`` on the committed_repayment_id side it would raise
 CircularDependencyError at table-sort time.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``): it issues DDL via its own
+Marked ``real_db`` below: it issues DDL via its own
 ``engine.begin()`` connections outside the per-test transaction.
 """
 
@@ -25,9 +25,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+
+pytestmark = pytest.mark.real_db
 
 _PRIOR_HEAD = "20260617_0001"
 _REVISION = "20260618_0001"

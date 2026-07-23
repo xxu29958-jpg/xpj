@@ -6,7 +6,7 @@ normal path. This drives it directly on PostgreSQL (the prod dialect): create_al
 head → downgrade past 20260616_0002 (drops ``target_date``) → upgrade to head (re-adds it).
 Pins the single-step nullable ADD as a faithful, round-tripping transform.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its own
+Marked ``real_db`` below because it issues DDL via its own
 ``engine.begin()`` connections outside the per-test transaction.
 """
 
@@ -14,9 +14,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+
+pytestmark = pytest.mark.real_db
 
 
 def _goals_columns() -> set[str]:

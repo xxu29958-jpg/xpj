@@ -42,6 +42,7 @@ if ($ReleaseConfigPath.Trim().Length -eq 0) {
     $ReleaseConfigPath = Join-Path $ScriptDir "windows-release-config.json"
 }
 $TargetReleaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
+$DatabaseToolTimeoutMs = [int]$TargetReleaseConfig.database_tool_timeout_ms
 $HasPersistedInstalledReleaseConfig = $false
 $InstalledReleaseConfig = $TargetReleaseConfig | ConvertTo-Json -Depth 8 | ConvertFrom-Json
 
@@ -688,16 +689,28 @@ function Test-PgDataProcessReady([int]$ProbeTimeoutSeconds) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        & $PgCtl status -D $PgData 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
+        $probeTimeoutMilliseconds = [int][Math]::Min(
+            [long]$DatabaseToolTimeoutMs,
+            [long][Math]::Max(1000, $ProbeTimeoutSeconds * 1000)
+        )
+        $statusResult = Invoke-TicketboxBoundedNativeProcess `
+            -FilePath $PgCtl `
+            -Arguments @('status', '-D', $PgData) `
+            -TimeoutMilliseconds $probeTimeoutMilliseconds `
+            -Label 'pg_ctl pre-upgrade readiness status'
+        if ($statusResult.ExitCode -ne 0) {
             return $false
         }
         $pidLines = @(Get-Content -LiteralPath (Join-Path $PgData "postmaster.pid") -ErrorAction SilentlyContinue)
         if ($pidLines.Count -lt 4 -or $pidLines[3].Trim() -ne [string]$PgPort) {
             return $false
         }
-        & $PgReady -h 127.0.0.1 -p $PgPort -q -t $ProbeTimeoutSeconds 2>$null
-        return $LASTEXITCODE -eq 0
+        $readyResult = Invoke-TicketboxBoundedNativeProcess `
+            -FilePath $PgReady `
+            -Arguments @('-h', '127.0.0.1', '-p', [string]$PgPort, '-q', '-t', [string]$ProbeTimeoutSeconds) `
+            -TimeoutMilliseconds $probeTimeoutMilliseconds `
+            -Label 'pg_isready pre-upgrade readiness probe'
+        return $readyResult.ExitCode -eq 0
     }
     finally {
         $ErrorActionPreference = $prev
@@ -825,15 +838,12 @@ function Assert-TicketboxPgClusterStopped {
     if (-not (Test-Path -LiteralPath $PgCtl -PathType Leaf)) {
         throw "缺少 pg_ctl.exe，无法确认 PostgreSQL 已真正停止。"
     }
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        & $PgCtl status -D $PgData 2>$null | Out-Null
-        $rc = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $previousPreference
-    }
+    $statusResult = Invoke-TicketboxBoundedNativeProcess `
+        -FilePath $PgCtl `
+        -Arguments @('status', '-D', $PgData) `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs `
+        -Label 'pg_ctl stopped-state verification'
+    $rc = $statusResult.ExitCode
     if ($rc -eq 0) {
         throw "Windows 服务已停止，但 PostgreSQL 数据簇进程仍在运行。"
     }
@@ -1462,7 +1472,8 @@ try {
                 -DatabaseUrl $connection.DatabaseUrl `
                 -ExpectedDataRoot $PgData `
                 -ExpectedPort $PgPort `
-                -Password $connection.Password
+                -Password $connection.Password `
+                -TimeoutMilliseconds $DatabaseToolTimeoutMs
 
             New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
             Set-TicketboxExactDirectoryAcl `
@@ -1475,7 +1486,8 @@ try {
                 -PgDumpPath $PgDump `
                 -DatabaseUrl $connection.DatabaseUrl `
                 -OutputPath $temp `
-                -Password $connection.Password
+                -Password $connection.Password `
+                -TimeoutMilliseconds $DatabaseToolTimeoutMs
             if ($dumpResult -ne 0) {
                 Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
                 throw "升级前 pg_dump 失败，旧程序保持不变。"
@@ -1487,8 +1499,10 @@ try {
             $previousPreference = $ErrorActionPreference
             $ErrorActionPreference = "Continue"
             try {
-                & $PgRestore --list $temp 2>&1 | Out-Null
-                $restoreRc = $LASTEXITCODE
+                $restoreRc = Invoke-TicketboxPgRestoreList `
+                    -PgRestorePath $PgRestore `
+                    -ArchivePath $temp `
+                    -TimeoutMilliseconds $DatabaseToolTimeoutMs
             }
             finally {
                 $ErrorActionPreference = $previousPreference

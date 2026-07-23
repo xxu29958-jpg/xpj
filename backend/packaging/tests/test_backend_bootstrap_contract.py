@@ -761,7 +761,8 @@ def test_maintenance_failure_writes_credential_free_durable_result(tmp_path: Pat
             "TICKETBOX_EXPOSED_BOOTSTRAP_SECRET": exposed_secret,
             "TICKETBOX_REPLACEMENT_BOOTSTRAP_SECRET": replacement_secret,
             "DATABASE_URL": (
-                "postgresql+psycopg://postgres@127.0.0.1:1/xpj_test?connect_timeout=1"
+                "postgresql+psycopg://postgres@127.0.0.1:1/xpj_test"
+                "?connect_timeout=1&require_auth=scram-sha-256"
             ),
             "PYTHONPATH": str(PACKAGING.parent),
         }

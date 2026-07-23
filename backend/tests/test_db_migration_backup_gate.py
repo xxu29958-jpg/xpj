@@ -9,6 +9,8 @@ from sqlalchemy import inspect, text
 
 from app.database._lifecycle import DatabaseLifecycleKind
 
+pytestmark = pytest.mark.real_db
+
 _PREVIOUS_HEAD = "20260630_0002"
 
 

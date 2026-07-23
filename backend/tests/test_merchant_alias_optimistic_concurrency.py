@@ -110,6 +110,7 @@ def test_merchant_alias_delete_with_stale_token_returns_409(
     assert response.json()["error"] == "state_conflict"
 
 
+@pytest.mark.real_db
 def test_two_sessions_patch_alias_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:
@@ -156,6 +157,7 @@ def test_two_sessions_patch_alias_race_only_first_writer_wins(
     assert matched[0]["enabled"] is False
 
 
+@pytest.mark.real_db
 def test_delete_alias_with_stale_token_after_concurrent_patch(
     client: TestClient, *, identity
 ) -> None:
@@ -200,6 +202,7 @@ def test_delete_alias_with_stale_token_after_concurrent_patch(
     assert len(matched) == 1
 
 
+@pytest.mark.real_db
 def test_delete_then_patch_race_resolves_to_404(
     client: TestClient, *, identity
 ) -> None:

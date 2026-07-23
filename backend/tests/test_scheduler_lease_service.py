@@ -94,6 +94,7 @@ def test_scheduler_lease_transaction_error_is_exported() -> None:
     ).__all__
 
 
+@pytest.mark.real_db
 def test_two_sessions_concurrent_claim_yields_single_winner() -> None:
     """Two workers racing to claim a brand-new lease: exactly one wins.
 
@@ -101,8 +102,8 @@ def test_two_sessions_concurrent_claim_yields_single_winner() -> None:
     expires_at <= now RETURNING name`` is the whole serialization武器. On the
     fresh-row race both threads attempt the INSERT; Postgres lets exactly one
     insert and routes the other into DO UPDATE, where its ``WHERE`` re-checks
-    against the just-written future ``expires_at`` and matches nothing. Marked
-    real_db (``::test_two_sessions``) so each thread gets a real independent
+    against the just-written future ``expires_at`` and matches nothing. The
+    explicit real_db mark gives each thread a real independent
     connection — one shared savepoint connection cannot model the contention.
     """
     barrier = threading.Barrier(2)

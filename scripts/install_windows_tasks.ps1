@@ -8,6 +8,8 @@
     [string]$BoundaryCheckTime = "04:00",
     [int]$BackupRetentionDays = 30,
     [int]$BoundaryLogRetentionDays = 14,
+    [ValidateRange(1, 1440)][int]$BackupTaskExecutionTimeLimitMinutes = 30,
+    [ValidateRange(1, 1440)][int]$BoundaryTaskExecutionTimeLimitMinutes = 15,
     [string]$CloudflaredPath = "",
     [string]$CloudflaredArguments = "",
     [switch]$SkipTunnel,
@@ -26,11 +28,11 @@ $StartBackendScript = Join-Path $ProjectRoot "scripts\start_backend.ps1"
 $MaintenanceScript = Join-Path $ProjectRoot "scripts\maintenance_ticketbox.ps1"
 $BoundaryCheckScript = Join-Path $ProjectRoot "scripts\scheduled_public_boundary_check.ps1"
 
-function New-TaskSettings {
+function New-TaskSettings([TimeSpan]$ExecutionTimeLimit) {
     New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
         -DontStopIfGoingOnBatteries `
-        -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
+        -ExecutionTimeLimit $ExecutionTimeLimit `
         -RestartCount 3 `
         -RestartInterval (New-TimeSpan -Minutes 1)
 }
@@ -49,7 +51,7 @@ function Register-LogonTask {
         -TaskName $TaskName `
         -Action $action `
         -Trigger $trigger `
-        -Settings (New-TaskSettings) `
+        -Settings (New-TaskSettings -ExecutionTimeLimit (New-TimeSpan -Hours 0)) `
         -Description $Description `
         -Force | Out-Null
     Write-Host "OK   已创建任务计划：$TaskName"
@@ -61,7 +63,8 @@ function Register-DailyTask {
         [Parameter(Mandatory = $true)][string]$Execute,
         [Parameter(Mandatory = $true)][string]$Argument,
         [Parameter(Mandatory = $true)][datetime]$At,
-        [Parameter(Mandatory = $true)][string]$Description
+        [Parameter(Mandatory = $true)][string]$Description,
+        [Parameter(Mandatory = $true)][TimeSpan]$ExecutionTimeLimit
     )
 
     $action = New-ScheduledTaskAction -Execute $Execute -Argument $Argument
@@ -70,7 +73,7 @@ function Register-DailyTask {
         -TaskName $TaskName `
         -Action $action `
         -Trigger $trigger `
-        -Settings (New-TaskSettings) `
+        -Settings (New-TaskSettings -ExecutionTimeLimit $ExecutionTimeLimit) `
         -Description $Description `
         -Force | Out-Null
     Write-Host "OK   已创建每日任务：$TaskName ($($At.ToString('HH:mm')))"
@@ -222,7 +225,8 @@ if (-not $SkipBackup) {
         -Execute "powershell.exe" `
         -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$MaintenanceScript`" -Backup -BackupRetentionDays $BackupRetentionDays" `
         -At (Resolve-BackupTime) `
-        -Description "Daily database backup for 小票夹, keep $BackupRetentionDays days"
+        -Description "Daily database backup for 小票夹, keep $BackupRetentionDays days" `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes $BackupTaskExecutionTimeLimitMinutes)
 }
 else {
     Write-Host "SKIP 备份任务：已指定 -SkipBackup。"
@@ -234,7 +238,8 @@ if (-not $SkipBoundaryCheck) {
         -Execute "powershell.exe" `
         -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$BoundaryCheckScript`" -LogRetentionDays $BoundaryLogRetentionDays" `
         -At (Resolve-BoundaryCheckTime) `
-        -Description "Daily public-boundary probe for 小票夹 (check_public_boundary.ps1)"
+        -Description "Daily public-boundary probe for 小票夹 (check_public_boundary.ps1)" `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes $BoundaryTaskExecutionTimeLimitMinutes)
 }
 else {
     Write-Host "SKIP 公网边界检查任务：已指定 -SkipBoundaryCheck。"

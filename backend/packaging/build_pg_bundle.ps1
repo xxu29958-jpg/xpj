@@ -63,6 +63,14 @@ if (-not (Test-Path -LiteralPath $BuildProvenanceScript -PathType Leaf)) {
     throw "缺少 Windows build provenance helper：$BuildProvenanceScript"
 }
 . $BuildProvenanceScript
+$InstallationSafetyScript = Join-Path $ScriptDir "windows_installation_safety.ps1"
+$DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
+foreach ($requiredScript in @($InstallationSafetyScript, $DatabaseSafetyScript)) {
+    if (-not (Test-Path -LiteralPath $requiredScript -PathType Leaf)) {
+        throw "缺少 PostgreSQL 安全 helper：$requiredScript"
+    }
+    . $requiredScript
+}
 if ($OutDir.Trim().Length -eq 0) { $OutDir = Join-Path $ScriptDir "vendor\pg" }
 $VendorRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "vendor"))
 $OutDir = [System.IO.Path]::GetFullPath($OutDir)
@@ -435,18 +443,34 @@ if ($Verify) {
     $cluster = Join-Path $verifyRoot "cluster"
     $pwfile = Join-Path $verifyRoot "pw.txt"
     $logfile = Join-Path $verifyRoot "postgres.log"
+    $smokePassword = [Guid]::NewGuid().ToString("N")
     Write-Step "独立冒烟：initdb 一次性簇 @ 127.0.0.1:$VerifyPort（簇=$cluster）"
     if (Test-Path -LiteralPath $cluster) {
         # 上次跑泄漏的同端口簇：尽量清；清不掉（被进程占用）给清晰错误，别让 initdb 报含糊的"非空目录"。
         Remove-TicketboxVendorPath $cluster
         if (Test-Path -LiteralPath $cluster) { throw "残留簇目录无法清除（可能有进程占用）：$cluster。先停掉占用进程再重试。" }
     }
-    "smokepw" | Out-File -LiteralPath $pwfile -Encoding ascii -NoNewline
+    $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $pwfile `
+        -Text $smokePassword `
+        -FullControlAccounts @($currentSid) `
+        -OwnerAccount $currentSid | Out-Null
     $errlog = "$logfile.err"
     $server = $null
     try {
-        & (Join-Path $bin "initdb.exe") -D $cluster -U postgres --auth=trust --encoding=UTF8 --no-locale --pwfile=$pwfile | Out-Null
+        & (Join-Path $bin "initdb.exe") `
+            -D $cluster `
+            -U postgres `
+            --auth=scram-sha-256 `
+            --encoding=UTF8 `
+            --no-locale `
+            --pwfile=$pwfile | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "initdb 失败（exit=$LASTEXITCODE）。" }
+        Remove-TicketboxProtectedUtf8Artifact `
+            -Path $pwfile `
+            -FullControlAccounts @($currentSid) `
+            -OwnerAccount $currentSid
         # 直接用 Start-Process 拉起 postgres.exe（**不经 pg_ctl、不经 PowerShell 管道**）：
         # 经 pg_ctl 起 + `| Out-Null` 会挂死——pg_ctl 派生的 postgres 继承管道写端，`| Out-Null`
         # 永等子进程退出。Start-Process 把子进程 stdio 重定向到文件、完全脱离父管道，无此问题。
@@ -462,13 +486,26 @@ if ($Verify) {
             Start-Sleep -Milliseconds 500
         }
         if (-not $ready) { throw "PG 未在超时内接受连接（端口 $VerifyPort）；日志：$errlog" }
-        try {
-            $env:PGPASSWORD = "smokepw"
-            $ver = & (Join-Path $bin "psql.exe") -U postgres -h 127.0.0.1 -p $VerifyPort -d postgres -tAc "SELECT version()"
-            if ($LASTEXITCODE -ne 0) { throw "psql 查询失败（exit=$LASTEXITCODE）。" }
-            Write-Ok ("冒烟 OK：{0}" -f ($ver | Out-String).Trim())
-        }
-        finally { Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue }
+        $smokeUrl = "postgresql://postgres@127.0.0.1:${VerifyPort}/postgres?require_auth=scram-sha-256"
+        $probe = Invoke-TicketboxWithPgPassFile `
+            -DatabaseUrl $smokeUrl `
+            -Password $smokePassword `
+            -Action {
+                param([string]$ProtectedDatabaseUrl)
+                $commandOutput = & (Join-Path $bin "psql.exe") `
+                    --no-psqlrc `
+                    --no-password `
+                    --dbname $ProtectedDatabaseUrl `
+                    --tuples-only `
+                    --no-align `
+                    --command "SELECT version()"
+                return [pscustomobject]@{
+                    Output = @($commandOutput)
+                    ExitCode = $LASTEXITCODE
+                }
+            }
+        if ($probe.ExitCode -ne 0) { throw "psql 查询失败（exit=$($probe.ExitCode)）。" }
+        Write-Ok ("冒烟 OK：{0}" -f ($probe.Output | Out-String).Trim())
     }
     finally {
         # PS 5.1 坑：native 命令写 stderr + 重定向会被包成 NativeCommandError，在

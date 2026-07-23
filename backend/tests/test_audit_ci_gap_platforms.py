@@ -3,14 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from tests._infra.ci_gap import load_ci_gap_audit
+from tests._infra.ci_gap import assert_ci_provider_selection_contract, load_ci_gap_audit
 from tests._infra.ci_gap_installer import (
     write_installer_workflow as _write_installer_workflow,
 )
 
 
 def test_ci_gap_platform_buckets_reject_union_masking_mutation(tmp_path: Path) -> None:
-    """Complementary platform workflows must not combine into a false green."""
     mod = load_ci_gap_audit()
     github = tmp_path / ".github" / "workflows"
     gitea = tmp_path / ".gitea" / "workflows"
@@ -23,7 +22,8 @@ jobs:
   checks:
     steps:
       - run: python scripts/release_audit.py
-      - run: python -m pytest tests -q -ra --tb=short -p no:cacheprovider
+      - run: python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4
+      - run: python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
       - run: python -m pytest -q packaging/tests -p no:cacheprovider
       - run: powershell -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
@@ -59,6 +59,10 @@ jobs:
     assert "Gitea: installer source preflight (Windows PowerShell 5.1)" in platform_missing
     assert "Gitea: installer source preflight (PowerShell 7)" in platform_missing
     assert "Gitea: frozen backend locked release build" in platform_missing
+    github_only = mod._missing_ci_invocations_by_platform(commands, platforms=("GitHub",))
+    assert all(not entry.startswith("Gitea:") for entry in github_only)
+    assert "GitHub: end-to-end smoke" in github_only
+    assert_ci_provider_selection_contract(mod)
 
 
 def test_gitea_platform_requires_connected_android_lane() -> None:
@@ -117,7 +121,8 @@ jobs:
         f"{business}\ncmd /c exit 0",
     ):
         candidate = mod.WorkflowCommand(Path("ci.yml"), masked)
-        assert "pytest business full-suite lane" in mod._missing_ci_invocations([candidate])
+        assert "pytest ordinary business lane" in mod._missing_ci_invocations([candidate])
+        assert "pytest real-db serial lane" in mod._missing_ci_invocations([candidate])
 
 
 @pytest.mark.parametrize("platform", ["GitHub", "Gitea"])

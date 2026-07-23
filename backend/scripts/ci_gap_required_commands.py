@@ -46,6 +46,32 @@ def _command_tokens(command: str) -> tuple[str, ...]:
     return tokens[1:] if tokens and tokens[0] == "&" else tokens
 
 
+def _postgres_lane_invocation(command: str) -> tuple[str, int] | None:
+    tokens = _command_tokens(command)
+    if len(tokens) != 7:
+        return None
+    executable = tokens[0].replace("\\", "/").lower().rsplit("/", 1)[-1]
+    if executable not in {"python", "python.exe"}:
+        return None
+    if tokens[1:3] != ("-m", "scripts.run_postgres_pytest_lane"):
+        return None
+    if tokens[3] != "--lane" or tokens[5] != "--workers":
+        return None
+    try:
+        return tokens[4], int(tokens[6])
+    except ValueError:
+        return None
+
+
+def _matches_ordinary_pytest(command: str) -> bool:
+    invocation = _postgres_lane_invocation(command)
+    return invocation is not None and invocation[0] == "ordinary" and 1 <= invocation[1] <= 4
+
+
+def _matches_real_db_pytest(command: str) -> bool:
+    return _postgres_lane_invocation(command) == ("real-db", 1)
+
+
 def _powershell_file_invocation(
     command: str,
     *,
@@ -158,11 +184,14 @@ REQUIRED_CI_INVOCATIONS = (
         re.compile(_PYTHON_PREFIX + r"scripts[\\/]+release_audit\.py\b"),
     ),
     RequiredCommand(
-        "pytest business full-suite lane",
-        re.compile(
-            _PYTEST_LINE
-            + r"tests\s+-q\s+-ra\s+--tb=short\s+-p\s+no:cacheprovider\s*$"
-        ),
+        "pytest ordinary business lane",
+        re.compile(_PYTHON_PREFIX + r"-m\s+scripts\.run_postgres_pytest_lane\b"),
+        matcher=_matches_ordinary_pytest,
+    ),
+    RequiredCommand(
+        "pytest real-db serial lane",
+        re.compile(_PYTHON_PREFIX + r"-m\s+scripts\.run_postgres_pytest_lane\b"),
+        matcher=_matches_real_db_pytest,
     ),
     RequiredCommand(
         "pytest installer safety lane",

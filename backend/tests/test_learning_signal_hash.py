@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.database import SessionLocal
 from app.models import Expense, LedgerLearningEvent
 from app.services.learning_service import (
@@ -90,6 +92,7 @@ def test_event_without_marker_keeps_signal_columns_null(*, identity) -> None:
         assert row.signal_payload is None
 
 
+@pytest.mark.real_db
 def test_category_reject_via_signal_hash_suppresses_suggestion(
     *, identity,
 ) -> None:
@@ -212,6 +215,7 @@ def test_legacy_rows_with_null_signal_hash_no_longer_counted(
         assert result.category == "餐饮"
 
 
+@pytest.mark.real_db
 def test_backfilled_row_via_signal_hash_suppresses_suggestion(
     *, identity,
 ) -> None:

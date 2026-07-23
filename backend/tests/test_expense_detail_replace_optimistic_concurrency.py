@@ -99,6 +99,7 @@ def test_replace_items_with_stale_updated_at_returns_409_and_keeps_rows(
     assert [item["name"] for item in listed.json()["items"]] == ["First"]
 
 
+@pytest.mark.real_db
 def test_two_sessions_replace_items_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:
@@ -189,6 +190,7 @@ def test_replace_splits_with_stale_updated_at_returns_409_and_keeps_rows(
     assert [item["note"] for item in listed.json()["splits"]] == ["First"]
 
 
+@pytest.mark.real_db
 def test_two_sessions_replace_splits_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:

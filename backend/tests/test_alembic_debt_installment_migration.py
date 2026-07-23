@@ -9,7 +9,7 @@ directly on PostgreSQL (the prod dialect): create_all → stamp head → downgra
 NULLABLE and the CHECK is back — not just that the names exist, so a flipped nullability / a
 typo'd CHECK in the migration fails HERE.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its own
+Marked ``real_db`` below because it issues DDL via its own
 ``engine.begin()`` connections outside the per-test transaction.
 """
 
@@ -17,9 +17,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+
+pytestmark = pytest.mark.real_db
 
 _COLS = ("installment_count", "installment_period_months")
 _CHECK = "ck_debts_installment_valid"

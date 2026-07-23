@@ -17,7 +17,7 @@
 - 应用运行态用最小权限角色（`ticketbox`）。`backend\.env`（**不带 BOM**）的 `DATABASE_URL` 指向它：
 
   ```text
-  DATABASE_URL=postgresql+psycopg://ticketbox:<强口令>@localhost:5432/ticketbox
+  DATABASE_URL=postgresql+psycopg://ticketbox:<强口令>@localhost:5432/ticketbox?require_auth=scram-sha-256
   ```
 
   起服后客户端用 `GET /api/auth/check` 确认 token 有效（不要用 `/api/health` 判断，见 AGENTS.md）。
@@ -54,7 +54,7 @@ CREATE DATABASE ticketbox OWNER ticketbox ENCODING 'UTF8';
 
 ```powershell
 # 把归档灌进新建的空库（--no-owner 让对象归到连接角色 ticketbox）：
-pg_restore --no-owner --dbname "postgresql://ticketbox:<强口令>@localhost:5432/ticketbox" `
+pg_restore --no-owner --dbname "postgresql://ticketbox:<强口令>@localhost:5432/ticketbox?require_auth=scram-sha-256" `
   "<DATA_ROOT>\backups\ticketbox-YYYYMMDD-HHMMSS.dump"
 powershell -ExecutionPolicy Bypass -File scripts\start_backend.ps1
 powershell -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict

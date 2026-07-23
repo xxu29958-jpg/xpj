@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.database import SessionLocal
 from app.models import BackgroundTask
 from app.services import background_task_service as bgtasks
+
+pytestmark = pytest.mark.real_db
 
 
 def test_claim_queued_task_is_db_atomic(*, identity) -> None:

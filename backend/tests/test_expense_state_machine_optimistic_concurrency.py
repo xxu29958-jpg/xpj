@@ -280,6 +280,7 @@ def test_mark_not_duplicate_without_expected_row_version_returns_422(
 # Python-side comparison (which two sessions can race past).
 
 
+@pytest.mark.real_db
 def test_two_sessions_seeing_same_updated_at_only_first_confirm_wins(
     client: TestClient, *, identity
 ) -> None:
@@ -323,6 +324,7 @@ def test_two_sessions_seeing_same_updated_at_only_first_confirm_wins(
         session_b.close()
 
 
+@pytest.mark.real_db
 def test_two_sessions_concurrent_reject_then_confirm_resolves_to_404(
     client: TestClient, *, identity
 ) -> None:
@@ -360,6 +362,7 @@ def test_two_sessions_concurrent_reject_then_confirm_resolves_to_404(
         session_b.close()
 
 
+@pytest.mark.real_db
 def test_two_sessions_mark_not_duplicate_race(
     client: TestClient, *, identity
 ) -> None:

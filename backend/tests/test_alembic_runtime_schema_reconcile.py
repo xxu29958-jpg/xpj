@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
 from alembic import command
 from sqlalchemy import inspect, text
 
 from app.database import engine, load_alembic_context
+
+pytestmark = pytest.mark.real_db
 
 _CONSTRAINT = "ck_auth_tokens_scope_valid"
 _PREVIOUS_REVISION = "20260630_0002"

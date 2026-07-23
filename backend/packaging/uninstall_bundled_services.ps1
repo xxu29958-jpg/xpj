@@ -39,6 +39,7 @@ $BackendServiceName = [string]$ReleaseConfig.backend_service_name
 $OwnerRecoveryChannel = [string]$ReleaseConfig.owner_recovery_channel
 $StopTimeoutMs = [int]$ReleaseConfig.stop_timeout_ms
 $RestartDelayMs = [int]$ReleaseConfig.restart_delay_ms
+$DatabaseToolTimeoutMs = [int]$ReleaseConfig.database_tool_timeout_ms
 $ServiceWaitArguments = @{
     TimeoutMilliseconds = [int]$ReleaseConfig.service_state_timeout_ms
     PollMilliseconds = [int]$ReleaseConfig.service_poll_interval_ms
@@ -53,6 +54,11 @@ if (-not (Test-Path -LiteralPath $SafetyScript -PathType Leaf)) {
     throw "缺少 Windows 安装安全脚本：$SafetyScript"
 }
 . $SafetyScript
+$DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
+if (-not (Test-Path -LiteralPath $DatabaseSafetyScript -PathType Leaf)) {
+    throw "缺少 Windows 数据库安全脚本：$DatabaseSafetyScript"
+}
+. $DatabaseSafetyScript
 $LockScript = Join-Path $ScriptDir "windows_lifecycle_lock.ps1"
 if (-not (Test-Path -LiteralPath $LockScript -PathType Leaf)) {
     throw "缺少 Windows 生命周期锁脚本：$LockScript"
@@ -373,22 +379,19 @@ function Test-TicketboxPgClusterRunning {
     if (-not (Test-Path -LiteralPath $PgCtl -PathType Leaf)) {
         throw "发现 PostgreSQL PID 文件但缺少 pg_ctl.exe，无法验证数据簇是否仍在运行：$PgData"
     }
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        $output = & $PgCtl status -D $PgData 2>&1
-        $rc = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $previousPreference
-    }
+    $statusResult = Invoke-TicketboxBoundedNativeProcess `
+        -FilePath $PgCtl `
+        -Arguments @('status', '-D', $PgData) `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs `
+        -Label 'pg_ctl uninstall-state verification'
+    $rc = $statusResult.ExitCode
     if ($rc -eq 0) {
         return $true
     }
     if ($rc -eq 3) {
         return $false
     }
-    throw "pg_ctl 无法确认 PostgreSQL 数据簇状态（exit=$rc）：`n$output"
+    throw "pg_ctl 无法确认 PostgreSQL 数据簇状态（exit=$rc）。"
 }
 
 function Assert-TicketboxPgScmProcessAgreement {

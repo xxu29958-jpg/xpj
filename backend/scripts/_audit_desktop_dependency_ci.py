@@ -1,4 +1,4 @@
-"""Require a real Desktop dependency audit in both GitHub and Gitea CI."""
+"""Require a real Desktop dependency audit in each selected CI provider."""
 
 from __future__ import annotations
 
@@ -6,17 +6,16 @@ import pathlib
 import re
 import sys
 
-from _audit_ci_gap import (
+from ci_audit_provider import PLATFORM_WORKFLOW_PARTS, selected_ci_platforms
+from ci_gap_command_contract import (
     _is_output_command,
-    _iter_workflow_run_commands,
-    _locate_workflow_dirs,
     _logical_command_lines,
     _shell_tokens,
     _split_shell_command_segments,
 )
+from ci_gap_workflow_parser import _iter_workflow_run_commands, _locate_workflow_dirs
 
 _DESKTOP_REQUIREMENT = re.compile(r"^\.\.[\\/]desktop[\\/]requirements\.txt$")
-_PROVIDERS = (".github", ".gitea")
 
 
 def _has_desktop_requirement(tokens: tuple[str, ...]) -> bool:
@@ -44,10 +43,15 @@ def _is_live_desktop_audit(segment: str) -> bool:
     return (module_form or direct_form) and _has_desktop_requirement(tokens)
 
 
-def missing_provider_audits(workflow_dirs: list[pathlib.Path]) -> list[str]:
+def missing_provider_audits(
+    workflow_dirs: list[pathlib.Path],
+    *,
+    platforms: tuple[str, ...] = tuple(PLATFORM_WORKFLOW_PARTS),
+) -> list[str]:
     commands = _iter_workflow_run_commands(workflow_dirs)
     missing: list[str] = []
-    for provider in _PROVIDERS:
+    for platform in platforms:
+        provider = PLATFORM_WORKFLOW_PARTS[platform]
         found = any(
             _is_live_desktop_audit(segment)
             for command in commands
@@ -61,11 +65,16 @@ def missing_provider_audits(workflow_dirs: list[pathlib.Path]) -> list[str]:
 
 
 def main() -> int:
-    missing = missing_provider_audits(_locate_workflow_dirs())
+    try:
+        platforms = selected_ci_platforms()
+    except ValueError as exc:
+        print(f"Desktop dependency CI audit: FAIL - {exc}")
+        return 1
+    missing = missing_provider_audits(_locate_workflow_dirs(), platforms=platforms)
     if missing:
         print(f"Desktop dependency CI audit: FAIL - missing live pip-audit in {', '.join(missing)}")
         return 1
-    print("Desktop dependency CI audit: PASS - GitHub and Gitea both audit desktop/requirements.txt")
+    print("Desktop dependency CI audit: PASS - selected provider audits desktop/requirements.txt")
     return 0
 
 

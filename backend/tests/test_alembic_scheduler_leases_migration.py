@@ -12,7 +12,7 @@ columns / nullability / primary key — not just that the table name exists.
 It also pins the one-way ``app_meta`` cleanup: a pre-table ``scheduler_lease:*`` row
 is removed by the upgrade while an unrelated key (``schema_version``) survives.
 
-Marked ``real_db`` (conftest ``_PG_REAL_DB_NODES``) because it issues DDL via its
+Marked ``real_db`` below because it issues DDL via its
 own ``engine.begin()`` connections outside the per-test transaction.
 """
 
@@ -20,9 +20,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+
+pytestmark = pytest.mark.real_db
 
 _NOT_NULL_COLUMNS = ("name", "expires_at", "updated_at")
 
