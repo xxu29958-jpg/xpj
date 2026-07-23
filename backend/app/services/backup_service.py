@@ -14,6 +14,7 @@ command (``pg_restore`` per the Postgres runbook).
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import logging
 import os
 import subprocess
@@ -45,7 +46,7 @@ _SUFFIX = ".dump"
 _PG_DUMP_TIMEOUT_SECONDS = 5 * 60
 _PG_DUMP_LOCK_WAIT_MILLISECONDS = 30_000
 _PG_TOOL_QUERY_KEYS = frozenset(
-    {"connect_timeout", "options", "require_auth", "sslmode"}
+    {"connect_timeout", "hostaddr", "options", "require_auth", "sslmode"}
 )
 _PG_TOOL_SSL_MODES = frozenset(
     {"allow", "disable", "prefer", "require", "verify-ca", "verify-full"}
@@ -351,6 +352,17 @@ def _pg_tool_connection(database_url: str) -> _PgToolConnection:
     try:
         if not 1 <= int(query["connect_timeout"]) <= 30:
             raise ValueError
+        if "hostaddr" in query:
+            host_address = ipaddress.ip_address(query["hostaddr"])
+            host = parsed.host.casefold()
+            if host == "localhost":
+                if host_address not in {
+                    ipaddress.ip_address("127.0.0.1"),
+                    ipaddress.ip_address("::1"),
+                }:
+                    raise ValueError
+            elif host_address != ipaddress.ip_address(host):
+                raise ValueError
     except ValueError:
         raise AppError("server_error", "数据库备份配置无效。", status_code=500) from None
     if query.get("sslmode", "prefer") not in _PG_TOOL_SSL_MODES:

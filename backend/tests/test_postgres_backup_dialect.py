@@ -108,11 +108,22 @@ def test_pg_tool_connection_removes_credentials_from_arguments() -> None:
         "require_auth=scram-sha-256&sslmode=require"
     )
     assert connection.password == _DECODED_PASSWORD
+    loopback_connection = backup_service._pg_tool_connection(  # noqa: SLF001
+        "postgresql://ticketbox@localhost/ticketbox?"
+        "hostaddr=127.0.0.1&require_auth=scram-sha-256"
+    )
+    assert "hostaddr=127.0.0.1" in loopback_connection.database_url
+    exact_ip_connection = backup_service._pg_tool_connection(  # noqa: SLF001
+        "postgresql://ticketbox@127.0.0.1/ticketbox?"
+        "hostaddr=127.0.0.1&require_auth=scram-sha-256"
+    )
+    assert "hostaddr=127.0.0.1" in exact_ip_connection.database_url
     for unsafe_query in (
         "password=query-secret",
         "passfile=other.pgpass&require_auth=scram-sha-256",
         "service=production&require_auth=scram-sha-256",
         "hostaddr=203.0.113.7&require_auth=scram-sha-256",
+        "hostaddr=127.0.0.2&require_auth=scram-sha-256",
         "connect_timeout=0&require_auth=scram-sha-256",
     ):
         with pytest.raises(AppError) as query_error:
@@ -120,6 +131,11 @@ def test_pg_tool_connection_removes_credentials_from_arguments() -> None:
                 f"postgresql://ticketbox@localhost/ticketbox?{unsafe_query}"
             )
         assert "query-secret" not in str(query_error.value)
+    with pytest.raises(AppError):
+        backup_service._pg_tool_connection(  # noqa: SLF001
+            "postgresql://ticketbox@db.example/ticketbox?"
+            "hostaddr=203.0.113.7&require_auth=scram-sha-256"
+        )
 
 
 def test_pg_dump_uses_noninteractive_ephemeral_passfile(tmp_path, monkeypatch) -> None:
