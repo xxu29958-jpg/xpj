@@ -17,6 +17,27 @@ def _validated_sha(value: str, label: str) -> str:
     return value
 
 
+def _checkout_parent_shas() -> tuple[str, ...]:
+    """Read raw commit headers so shallow checkout boundaries cannot hide parents."""
+    parent_result = subprocess.run(
+        ["git", "cat-file", "-p", "HEAD^{commit}"],
+        cwd=_REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    headers, separator, _message = parent_result.stdout.partition("\n\n")
+    if not separator:
+        raise RuntimeError("qualification checkout commit object is malformed")
+    parents = tuple(
+        _validated_sha(line.removeprefix("parent "), "qualification parent SHA")
+        for line in headers.splitlines()
+        if line.startswith("parent ")
+    )
+    return parents
+
+
 def report_qualification_sha(
     expected_sha: str,
     source_sha: str,
@@ -37,20 +58,11 @@ def report_qualification_sha(
         raise RuntimeError(
             f"qualification checkout mismatch: expected={expected_sha} actual={actual_sha}"
         )
-    if source_sha != actual_sha:
-        parent_result = subprocess.run(
-            ["git", "show", "-s", "--format=%P", "HEAD"],
-            cwd=_REPOSITORY_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
+    if source_sha != actual_sha and source_sha not in _checkout_parent_shas():
+        raise RuntimeError(
+            "qualification source is not a direct parent of the checkout: "
+            f"source={source_sha} checkout={actual_sha}"
         )
-        if source_sha not in parent_result.stdout.strip().split():
-            raise RuntimeError(
-                "qualification source is not a direct parent of the checkout: "
-                f"source={source_sha} checkout={actual_sha}"
-            )
     with output_path.open("a", encoding="utf-8", newline="\n") as output:
         output.write(f"sha={actual_sha}\n")
         output.write(f"source_sha={source_sha}\n")
