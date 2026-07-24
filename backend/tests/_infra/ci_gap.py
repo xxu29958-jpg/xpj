@@ -5,19 +5,29 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
-_MODULE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "_audit_ci_gap.py"
+_SCRIPTS_ROOT = Path(__file__).resolve().parents[2] / "scripts"
 
 
-def load_ci_gap_audit() -> object:
+def load_ci_script(script_name: str, *, module_name: str | None = None) -> ModuleType:
+    relative = Path(script_name)
+    if relative.name != script_name or relative.suffix != ".py":
+        raise ValueError(f"CI script name must be one Python filename: {script_name!r}")
+    module_path = _SCRIPTS_ROOT / relative
+    if not module_path.is_file():
+        raise ValueError(f"CI script does not exist: {script_name}")
+
     old_path = list(sys.path)
-    module_dir = str(_MODULE_PATH.parent)
+    module_dir = str(_SCRIPTS_ROOT)
     if module_dir not in sys.path:
         sys.path.insert(0, module_dir)
     try:
-        spec = importlib.util.spec_from_file_location("_audit_ci_gap", _MODULE_PATH)
+        spec = importlib.util.spec_from_file_location(
+            module_name or f"_ci_contract_{relative.stem}", module_path
+        )
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
@@ -25,6 +35,10 @@ def load_ci_gap_audit() -> object:
         return module
     finally:
         sys.path[:] = old_path
+
+
+def load_ci_gap_audit() -> ModuleType:
+    return load_ci_script("_audit_ci_gap.py", module_name="_audit_ci_gap")
 
 
 def assert_ci_provider_selection_contract(mod: object) -> None:

@@ -39,10 +39,7 @@ _FULL_PATHS = {
     "backend/scripts/report_qualification_sha.py",
     "backend/scripts/verify_backend_ci_results.py",
 }
-_ALWAYS_ON_CONTRACT_PATHS = {
-    "backend/tests/test_backend_ci_results.py",
-    "backend/tests/test_postgres_ci_topology.py",
-}
+_ALWAYS_ON_CONTRACT_PREFIX = "backend/tests/ci_contracts/"
 _FULL_PREFIXES = (".github/workflows/", ".gitea/workflows/")
 _CI_POLICY_PREFIXES = (
     "backend/scripts/ci_gap_",
@@ -133,11 +130,13 @@ def classify_ci_paths(paths: Iterable[str]) -> dict[str, bool]:
     normalized = {path.replace("\\", "/") for path in paths if path}
     if not normalized:
         return all_ci_scopes()
-    normalized.difference_update(_ALWAYS_ON_CONTRACT_PATHS)
+    if any(path != path.strip() for path in normalized):
+        return all_ci_scopes()
+    normalized = {
+        path for path in normalized if not path.startswith(_ALWAYS_ON_CONTRACT_PREFIX)
+    }
 
     for path in sorted(normalized):
-        if path != path.strip():
-            return all_ci_scopes()
         if (
             path in _FULL_PATHS
             or path.startswith(_FULL_PREFIXES)

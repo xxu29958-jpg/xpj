@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 import yaml
 
 from scripts.verify_backend_ci_results import verify
-
-_ROOT = Path(__file__).resolve().parents[2]
+from tests._infra.paths import REPOSITORY_ROOT as _ROOT
 
 
 def _jobs() -> dict[str, object]:

@@ -72,6 +72,17 @@ def _matches_real_db_pytest(command: str) -> bool:
     return _postgres_lane_invocation(command) == ("real-db", 1)
 
 
+def _matches_ci_contract_runner(command: str) -> bool:
+    tokens = _command_tokens(command)
+    if len(tokens) != 2:
+        return False
+    executable = tokens[0].replace("\\", "/").lower().rsplit("/", 1)[-1]
+    script = tokens[1].replace("\\", "/").lower().removeprefix("./")
+    return executable in {"python", "python.exe"} and script == (
+        "scripts/run_ci_contract_tests.py"
+    )
+
+
 def _powershell_file_invocation(
     command: str,
     *,
@@ -285,6 +296,17 @@ _REQUIRED_INNO_BUILD_INVOCATIONS = (
 REQUIRED_CI_INVOCATIONS_BY_PLATFORM = {
     "GitHub": _REQUIRED_INNO_BUILD_INVOCATIONS,
     "Gitea": _REQUIRED_INNO_BUILD_INVOCATIONS,
+}
+
+REQUIRED_CI_GATES_BY_PLATFORM = {
+    "GitHub": (
+        RequiredCommand(
+            "CI orchestration contract runner",
+            re.compile(_PYTHON_PREFIX + r"scripts[\\/]+run_ci_contract_tests\.py\b"),
+            matcher=_matches_ci_contract_runner,
+        ),
+    ),
+    "Gitea": (),
 }
 
 REQUIRED_INSTALLER_POST_UPLOAD_INVOCATION_BY_PLATFORM = {

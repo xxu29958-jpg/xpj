@@ -5,8 +5,8 @@ import sys
 from pathlib import Path
 
 from scripts.report_qualification_sha import _checkout_parent_shas
+from tests._infra.paths import REPOSITORY_ROOT as _ROOT
 
-_ROOT = Path(__file__).resolve().parents[2]
 _REPORTER = _ROOT / "backend" / "scripts" / "report_qualification_sha.py"
 
 

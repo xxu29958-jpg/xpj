@@ -14,8 +14,8 @@ from scripts.run_postgres_pytest_lane import (
     validate_lane_collection,
 )
 from tests._infra.ci_gap import load_ci_gap_audit
+from tests._infra.paths import REPOSITORY_ROOT as _ROOT
 
-_ROOT = Path(__file__).resolve().parents[2]
 _CI_JOB_TIMEOUT_CEILING_MINUTES = 12
 _POSTGRES_JOB_IDS = (
     "backend_postgres_ordinary",

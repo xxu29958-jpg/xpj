@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests._infra.ci_gap import load_ci_gap_audit
+from tests._infra.ci_gap import load_ci_gap_audit, load_ci_script
+
+trigger_policy = load_ci_script("_audit_ci_trigger_policy.py")
 
 _ANDROID_PATHS = """
       - android/app/src/**
@@ -126,6 +128,28 @@ jobs:
     steps:
       - run: python -m pytest tests -q -ra --tb=short -p no:cacheprovider
 """
+
+
+def test_trigger_policy_uses_only_the_top_level_on_mapping(tmp_path: Path) -> None:
+    workflow = tmp_path / "spoofed.yml"
+    workflow.write_text(
+        """
+on:
+  workflow_dispatch:
+jobs:
+  checks:
+    steps:
+      - run: |
+          pull_request:
+            branches: [main]
+            paths: [android/**]
+""",
+        encoding="utf-8",
+    )
+
+    assert not trigger_policy._event_present(workflow, "pull_request")
+    assert trigger_policy._branches(workflow, "pull_request") == ()
+    assert trigger_policy._paths(workflow, "pull_request") == ()
 
 
 def _scope_regressions(valid: str) -> tuple[str, ...]:
@@ -269,6 +293,38 @@ def test_windows_scope_protects_real_installer_provenance(tmp_path: Path) -> Non
     assert hash_label in mod._missing_installer_hash_dataflow_by_platform(commands)
     assert upload_label in mod._missing_installer_publish_actions_by_platform(
         commands, actions
+    )
+
+
+def test_github_ci_gap_pins_the_closed_contract_runner(tmp_path: Path) -> None:
+    mod = load_ci_gap_audit()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    workflow = workflows / "ci.yml"
+    source = (
+        Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+    workflow.write_text(source, encoding="utf-8")
+    label = "GitHub: CI orchestration contract runner"
+
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    assert label not in mod._missing_ci_invocations_by_platform(
+        commands,
+        platforms=("GitHub",),
+    )
+
+    workflow.write_text(
+        source.replace(
+            "python scripts/run_ci_contract_tests.py",
+            "python -m pytest -q tests/ci_contracts/test_backend_ci_results.py",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    assert label in mod._missing_ci_invocations_by_platform(
+        commands,
+        platforms=("GitHub",),
     )
 
 
