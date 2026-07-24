@@ -110,9 +110,9 @@ gh pr merge N --squash --delete-branch --match-head-commit <exact-head-sha>
 
 **根因**：该步下载 NVD 漏洞库，撞 NVD API 网关超时即 flake。它是 Android job 的**最后一个大步**——能跑到 OWASP，说明 compile / unit test / lint / detekt×2 / count baseline / debug+release APK 全已过。
 
-**正确做法**：workflow 按日恢复只读缓存。有 API key 且当天无已验证缓存时，在独立候选库强制刷新，离线分析成功后才保存；fork/Dependabot 没有 secret 时，只能扫描 48 小时内的已验证缓存副本。在线刷新失败、缓存过期/损坏、离线分析失败或 CVSS 超阈值都必须红。不要用 `continue-on-error` 或“无数据也绿”掩盖扫描缺失。
+**正确做法**：独立 `main`/定时 workflow 按 Dependency-Check 插件版本生成不可变 artifact；PR 经 GitHub Actions API 选择 48 小时内成功 `main` run 的精确 artifact ID，并由官方 download action 校验摘要。没有可信 artifact 时，有 key 的同仓运行只在隔离目录现场刷新并扫描，不把 PR 结果发布成权威；fork/Dependabot 无 key 则失败。在线刷新、来源、摘要、离线分析或 CVSS 超阈值任一失败都必须红。
 
-**铁律**：缓存只能由“刷新成功 + 离线分析成功”产生；绿灯必须代表新鲜、已验证的 NVD 数据完成了真实扫描。
+**铁律**：PR 永远不能写下一次扫描的 NVD 权威；绿灯必须代表来自可信 `main` 运行的新鲜不可变 artifact，或本次运行用 key 完成的隔离刷新与真实扫描。
 
 ---
 
@@ -182,4 +182,4 @@ git push gitee main                  # 推 cloud mirror
 
 5. **emulator AVD/路径**：gitea `android-connected.yml` 用 runner 宿主用户级 AVD `ticketbox_api36_host`（与记忆一致）；但 **GitHub `android-connected-test.yml` 用 `reactivecircus/android-emulator-runner@v2` 动态起 pixel_6 / api-36，无 `ticketbox_api36_host`**。HANDOFF 把宿主 AVD 当成两端通用，实为 gitea 专属。
 
-（其余记忆陈述——Gradle daemon 共享、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。OWASP 已改为按日验证缓存；无 key 仅允许新鲜缓存离线扫描，不再跳过。）
+（其余记忆陈述——Gradle daemon 共享、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。OWASP 已改为可信 `main` artifact；无 key 仅允许新鲜、来源可证的 artifact 离线扫描，不再跳过。）

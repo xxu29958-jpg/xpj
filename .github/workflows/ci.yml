@@ -682,6 +682,9 @@ jobs:
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
     defaults:
       run:
         working-directory: android
@@ -852,42 +855,47 @@ jobs:
             echo "OK signing certificate $apk"
           done
 
-      - name: NVD cache key (UTC date)
-        id: nvd-key
+      - name: Resolve Dependency-Check version
+        id: dependency-check-version
         run: |
           version="$(python -c 'import tomllib; print(tomllib.load(open("gradle/libs.versions.toml", "rb"))["plugins"]["owasp-dependency-check"]["version"])')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
-      - name: Restore validated OWASP NVD database
-        id: nvd-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Resolve trusted main NVD artifact
+        id: nvd-source
+        working-directory: ${{ github.workspace }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python backend/scripts/resolve_nvd_artifact.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow nvd-database.yml \
+            --branch main \
+            --artifact "ticketbox-nvd-database-v${{ steps.dependency-check-version.outputs.version }}" \
+            --api-url "$GITHUB_API_URL" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Download trusted main NVD artifact
+        if: steps.nvd-source.outputs.found == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
+          artifact-ids: ${{ steps.nvd-source.outputs.artifact_id }}
           path: ~/.gradle/dependency-check-data
-          key: nvd-v${{ steps.nvd-key.outputs.version }}-${{ runner.os }}-${{ steps.nvd-key.outputs.date }}
-          restore-keys: |
-            nvd-v${{ steps.nvd-key.outputs.version }}-${{ runner.os }}-
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.nvd-source.outputs.run_id }}
+          digest-mismatch: error
 
       - name: Dependency vulnerability scan
-        id: dependency-audit
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
-          python ../backend/scripts/android_dependency_audit.py \
+          python ../backend/scripts/android_dependency_audit.py scan \
             --gradlew "$PWD/gradlew" \
             --trusted-dir "$HOME/.gradle/dependency-check-data" \
             --work-dir "$HOME/.gradle/dependency-check-work" \
-            --cache-hit "${{ steps.nvd-cache.outputs.cache-hit }}" \
-            --output "$GITHUB_OUTPUT" \
+            --artifact-present "${{ steps.nvd-source.outputs.found }}" \
             --log owasp-output.log
-
-      - name: Save validated OWASP NVD database
-        id: nvd-cache-save
-        if: steps.dependency-audit.outputs.cache-save == 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.gradle/dependency-check-data
-          key: nvd-v${{ steps.nvd-key.outputs.version }}-${{ runner.os }}-${{ steps.nvd-key.outputs.date }}
 
       - name: Upload gray debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

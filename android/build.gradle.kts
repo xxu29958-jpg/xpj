@@ -24,8 +24,8 @@ val dependencyCheckAutoUpdate =
         .map { it.toBoolean() }
         .orElse(true)
 
-// Default to the cacheable Gradle user-home database. CI may override the
-// directory to refresh an isolated candidate without mutating last-known-good data.
+// Default to Gradle user home for local use. CI always overrides this with either
+// an immutable main artifact copy or an isolated per-run refresh directory.
 val dependencyCheckDataDir =
     providers.gradleProperty("dependencyCheckDataDir")
         .map { rootProject.file(it).absolutePath }
@@ -44,9 +44,8 @@ dependencyCheck {
     // OWASP recommends an NVD API key to avoid throttling; CI injects it and
     // local runs can use either an environment variable or a Gradle property.
     nvd.apiKey = nvdApiKey.orEmpty()
-    // CI forces this to zero only while producing a new daily candidate. Exact
-    // cache hits and secretless fork PRs perform an offline scan of a bounded,
-    // previously validated database copy.
+    // CI forces this to zero only while producing or directly refreshing data.
+    // Artifact consumers disable updates and scan a bounded, validated copy.
     autoUpdate = dependencyCheckAutoUpdate.get()
     nvd.validForHours = dependencyCheckNvdValidForHours
     data.directory = dependencyCheckDataDir
