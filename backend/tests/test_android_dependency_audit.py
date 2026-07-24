@@ -57,6 +57,9 @@ def test_real_producer_contract_covers_every_declared_input() -> None:
     assert files == sorted(files)
     assert len(files) == len(set(files))
     assert all((REPOSITORY_ROOT / path).is_file() for path in files)
+    assert {"android/gradlew", "android/gradle/wrapper/gradle-wrapper.jar"} <= set(
+        files
+    )
     digest = dependency_audit._producer_contract_digest(
         REPOSITORY_ROOT,
         CONTRACT_PATH,
@@ -280,3 +283,20 @@ def test_producer_workflow_is_main_only_and_has_no_failure_log_artifact() -> Non
     assert "--plugin-version" in producer
     assert "--contract-digest" in producer
     assert not any("failure" in step.get("name", "").lower() for step in steps)
+
+
+def test_existing_pr_scan_uses_the_same_aggregate_app_scope() -> None:
+    workflow = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    android = workflow["jobs"]["android"]
+    scan = next(
+        step
+        for step in android["steps"]
+        if step["name"] == "Dependency vulnerability scan (OWASP dependency-check)"
+    )
+
+    assert "dependencyCheckAggregate" in scan["run"]
+    assert "dependencyCheckAnalyze" not in scan["run"]

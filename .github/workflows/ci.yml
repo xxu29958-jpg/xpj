@@ -924,13 +924,13 @@ jobs:
           fi
 
           start=$(date +%s)
-          timeout -k 1m 10m ./gradlew --no-daemon --max-workers=2 dependencyCheckAnalyze -PdependencyCheckAutoUpdate=false -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee -a owasp-output.log
-          analyze_rc=${PIPESTATUS[0]}
+          timeout -k 1m 10m ./gradlew --no-daemon --max-workers=2 dependencyCheckAggregate -PdependencyCheckAutoUpdate=false -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee -a owasp-output.log
+          aggregate_rc=${PIPESTATUS[0]}
           elapsed=$(( $(date +%s) - start ))
-          if [ "$analyze_rc" -eq 124 ] || { [ "$analyze_rc" -eq 137 ] && [ "$elapsed" -ge 600 ]; }; then
-            echo "OWASP_ANALYZE_TIMED_OUT (dependency-check offline analysis exceeded the 10m bound; rc=$analyze_rc elapsed=${elapsed}s)" | tee -a owasp-output.log
+          if [ "$aggregate_rc" -eq 124 ] || { [ "$aggregate_rc" -eq 137 ] && [ "$elapsed" -ge 600 ]; }; then
+            echo "OWASP_AGGREGATE_TIMED_OUT (dependency-check offline aggregate exceeded the 10m bound; rc=$aggregate_rc elapsed=${elapsed}s)" | tee -a owasp-output.log
           fi
-          exit "$analyze_rc"
+          exit "$aggregate_rc"
 
       - name: Enforce OWASP CVE findings (tolerate only NVD-data outages)
         if: ${{ env.NVD_API_KEY != '' }}
@@ -978,7 +978,7 @@ jobs:
             echo "::warning::OWASP dependency-check timed out while updating the NVD CVE data. Tolerated as an external NVD-data outage; substantive Android gates already ran, and the partial dependency-check data dir was removed to avoid caching a poisoned DB."
             exit 0
           fi
-          if [ -f "$log" ] && grep -q "OWASP_ANALYZE_TIMED_OUT" "$log"; then
+          if [ -f "$log" ] && grep -q "OWASP_AGGREGATE_TIMED_OUT" "$log"; then
             echo "::error::OWASP dependency-check offline analysis exceeded its 10m bound after NVD update succeeded. Failing safe (red): this is not an NVD data-source outage and could hide a real finding."
             exit 1
           fi
