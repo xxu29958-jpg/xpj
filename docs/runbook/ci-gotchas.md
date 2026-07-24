@@ -111,9 +111,9 @@ gh pr merge N --squash --delete-branch --match-head-commit <exact-head-sha>
 
 **根因**：该步下载 NVD 漏洞库，撞 NVD API 网关超时即 flake。它是 Android job 的**最后一个大步**——能跑到 OWASP，说明 compile / unit test / lint / detekt×2 / count baseline / debug+release APK 全已过。
 
-**正确做法**：独立 `main`/定时 workflow 按 Dependency-Check 插件版本生成不可变 artifact；PR 经 GitHub Actions API 选择 48 小时内成功 `main` run 的精确 artifact ID，并由官方 download action 校验摘要。没有可信 artifact 时，有 key 的同仓运行只在隔离目录现场刷新并扫描，不把 PR 结果发布成权威；fork/Dependabot 无 key 则失败。在线刷新、来源、摘要、离线分析或 CVSS 超阈值任一失败都必须红。
+**正确做法**：独立 `main`/定时 workflow 按 Dependency-Check 插件版本生成不可变 artifact；PR 经 GitHub Actions API 选择 48 小时内成功 `main` run 的精确 artifact ID，并由官方 download action 校验摘要。PR 永不接收 NVD key。生产器首次落库时，只有 base 确实不存在该 workflow 的 PR 可以进入一次性 bootstrap；合入后 main 生产器完成首轮更新与真实扫描，产物成功后重跑同一 main SHA。此后缺 artifact、在线更新、来源、摘要、两条 Release 配置覆盖、离线分析或 CVSS 超阈值任一失败都必须红。
 
-**铁律**：PR 永远不能写下一次扫描的 NVD 权威；绿灯必须代表来自可信 `main` 运行的新鲜不可变 artifact，或本次运行用 key 完成的隔离刷新与真实扫描。
+**铁律**：NVD key 只属于 main 生产器；PR 不能读取、刷新或发布 NVD 权威。除一次性且可证明的生产器 bootstrap 外，绿灯必须消费可信 main 的新鲜不可变 artifact。
 
 ---
 

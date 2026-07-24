@@ -714,8 +714,9 @@ jobs:
       - name: Resolve Dependency-Check version
         id: dependency-check-version
         run: |
-          version="$(python -c 'import tomllib; print(tomllib.load(open("gradle/libs.versions.toml", "rb"))["plugins"]["owasp-dependency-check"]["version"])')"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          python ../backend/scripts/android_dependency_audit.py metadata \
+            --catalog gradle/libs.versions.toml \
+            --output "$GITHUB_OUTPUT"
 
       - name: Resolve trusted main NVD artifact
         id: nvd-source
@@ -727,20 +728,33 @@ jobs:
             --repository "$GITHUB_REPOSITORY" \
             --workflow nvd-database.yml \
             --branch main \
-            --artifact "ticketbox-nvd-database-v${{ steps.dependency-check-version.outputs.version }}" \
+            --artifact "${{ steps.dependency-check-version.outputs.artifact }}" \
             --api-url "$GITHUB_API_URL" \
             --output "$GITHUB_OUTPUT"
 
       - name: Require dependency audit source
-        if: steps.nvd-source.outputs.found != 'true'
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        if: steps.nvd-source.outputs.found != 'true' && steps.nvd-source.outputs.producer_available == 'true'
         run: |
-          if [ -z "$NVD_API_KEY" ]; then
-            echo "::error::A trusted NVD artifact or NVD_API_KEY is required."
+          echo "::error::The main-owned NVD producer exists but has no fresh trusted artifact."
+          exit 1
+
+      - name: Authorize first producer bootstrap
+        if: steps.nvd-source.outputs.found != 'true' && steps.nvd-source.outputs.producer_available != 'true'
+        working-directory: ${{ github.workspace }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] || [ -z "$BASE_SHA" ]; then
+            echo "::error::Missing NVD producer is allowed only for its first pull-request bootstrap."
             exit 1
           fi
-          echo "No trusted artifact exists yet; isolated bootstrap is authorized."
+          if git cat-file -e "$BASE_SHA:.github/workflows/nvd-database.yml" 2>/dev/null; then
+            echo "::error::The base already contains the producer; a missing artifact must fail closed."
+            exit 1
+          fi
+          test -f .github/workflows/nvd-database.yml
+          echo "::notice::One-time producer bootstrap: no secret is exposed to PR code. Main will produce and validate the first artifact before CI is rerun."
 
       - name: Download trusted main NVD artifact
         if: steps.nvd-source.outputs.found == 'true'
@@ -898,8 +912,7 @@ jobs:
           done
 
       - name: Dependency vulnerability scan
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        if: steps.nvd-source.outputs.found == 'true'
         run: |
           python ../backend/scripts/android_dependency_audit.py scan \
             --gradlew "$PWD/gradlew" \

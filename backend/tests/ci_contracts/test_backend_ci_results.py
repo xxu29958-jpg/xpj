@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import pytest
-import yaml
 
 from scripts.verify_backend_ci_results import verify
+from tests._infra.ci_gap import load_ci_script
 from tests._infra.paths import REPOSITORY_ROOT as _ROOT
+
+workflow_yaml = load_ci_script("ci_gap_workflow_yaml.py")
 
 
 def _jobs() -> dict[str, object]:
-    workflow = yaml.safe_load(
-        (_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = workflow_yaml.load_workflow(
+        _ROOT / ".github" / "workflows" / "ci.yml"
     )
     return workflow["jobs"]
 

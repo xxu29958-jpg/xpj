@@ -6,14 +6,13 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 from scripts.run_postgres_pytest_lane import (
     build_pytest_collection_command,
     build_pytest_command,
     validate_lane_collection,
 )
-from tests._infra.ci_gap import load_ci_gap_audit
+from tests._infra.ci_gap import load_ci_gap_audit, load_ci_script
 from tests._infra.paths import REPOSITORY_ROOT as _ROOT
 
 _CI_JOB_TIMEOUT_CEILING_MINUTES = 12
@@ -27,10 +26,11 @@ _SCOPE_IF = (
 )
 _LANE_RUNNER = "scripts.run_postgres_pytest_lane"
 _SETUP_PYTHON = "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
+workflow_yaml = load_ci_script("ci_gap_workflow_yaml.py")
 
 
 def _workflow_jobs(path: Path) -> dict[str, object]:
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    loaded = workflow_yaml.load_workflow(path)
     assert isinstance(loaded, dict)
     jobs = loaded.get("jobs")
     assert isinstance(jobs, dict)
@@ -406,7 +406,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
 
 def test_gitea_keeps_the_shared_lane_runner_without_scope_modernization() -> None:
     workflow_path = _ROOT / ".gitea" / "workflows" / "windows-ci.yml"
-    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    workflow = workflow_yaml.load_workflow(workflow_path)
     assert "concurrency" not in workflow
     jobs = workflow["jobs"]
     assert "scope" not in jobs

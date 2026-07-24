@@ -37,7 +37,6 @@ def test_trusted_main_artifact_scans_only_a_copy(tmp_path: Path) -> None:
         trusted=trusted,
         work=tmp_path / "work",
         artifact_present=True,
-        has_api_key=False,
         run_task=run_task,
     ) == "trusted-artifact"
     assert (trusted / "11.0" / "odc.mv.db").read_text(encoding="utf-8") == "trusted"
@@ -58,18 +57,20 @@ def test_secretless_audit_rejects_malformed_artifact(
             trusted=trusted,
             work=tmp_path / "work",
             artifact_present=True,
-            has_api_key=False,
             run_task=lambda _task, _database: 0,
         )
 
 
-def test_secretless_audit_requires_a_trusted_artifact(tmp_path: Path) -> None:
-    with pytest.raises(dependency_audit.AuditError, match="artifact or NVD_API_KEY"):
+def test_consumer_requires_a_trusted_main_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NVD_API_KEY", "must-not-authorize-a-pr-consumer")
+    with pytest.raises(dependency_audit.AuditError, match="trusted main NVD artifact"):
         dependency_audit.run_dependency_audit(
             trusted=tmp_path / "missing",
             work=tmp_path / "work",
             artifact_present=False,
-            has_api_key=False,
             run_task=lambda _task, _database: 0,
         )
 
@@ -86,38 +87,36 @@ def test_audit_refuses_existing_work_directory_without_deleting_it(
         dependency_audit.run_dependency_audit(
             trusted=tmp_path / "missing",
             work=work,
-            artifact_present=False,
-            has_api_key=True,
+            artifact_present=True,
             run_task=lambda _task, _database: 0,
         )
 
     assert marker.read_text(encoding="utf-8") == "keep"
 
 
-def test_audit_refuses_symlink_work_directory(tmp_path: Path) -> None:
-    target = tmp_path / "target"
-    target.mkdir()
-    marker = target / "keep.txt"
-    marker.write_text("keep", encoding="utf-8")
+def test_audit_refuses_symlink_work_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     link = tmp_path / "work-link"
-    try:
-        link.symlink_to(target, target_is_directory=True)
-    except OSError:
-        pytest.skip("directory symlinks are unavailable")
+    original_is_symlink = Path.is_symlink
+    monkeypatch.setattr(
+        Path,
+        "is_symlink",
+        lambda path: path == link or original_is_symlink(path),
+    )
 
     with pytest.raises(dependency_audit.AuditError, match="must not already exist"):
         dependency_audit.run_dependency_audit(
             trusted=tmp_path / "missing",
             work=link,
-            artifact_present=False,
-            has_api_key=True,
+            artifact_present=True,
             run_task=lambda _task, _database: 0,
         )
+    assert not link.exists()
 
-    assert marker.read_text(encoding="utf-8") == "keep"
 
-
-def test_keyed_audit_refreshes_in_isolation_when_artifact_is_invalid(
+def test_consumer_rejects_invalid_artifact_without_refresh(
     tmp_path: Path,
 ) -> None:
     trusted = tmp_path / "trusted"
@@ -126,21 +125,20 @@ def test_keyed_audit_refreshes_in_isolation_when_artifact_is_invalid(
     marker.write_text("do not mutate", encoding="utf-8")
     observed: list[str] = []
 
-    def run_task(task: str, database: Path) -> int:
+    def run_task(task: str, _database: Path) -> int:
         observed.append(task)
-        if task == "dependencyCheckUpdate":
-            _seed_database(database, "fresh")
         return 0
 
-    assert dependency_audit.run_dependency_audit(
-        trusted=trusted,
-        work=tmp_path / "work",
-        artifact_present=True,
-        has_api_key=True,
-        run_task=run_task,
-    ) == "live-refresh"
-    assert observed == ["dependencyCheckUpdate", dependency_audit.SCAN_TASK]
+    with pytest.raises(dependency_audit.ArtifactError):
+        dependency_audit.run_dependency_audit(
+            trusted=trusted,
+            work=tmp_path / "work",
+            artifact_present=True,
+            run_task=run_task,
+        )
+    assert observed == []
     assert marker.read_text(encoding="utf-8") == "do not mutate"
+    assert not (tmp_path / "work").exists()
 
 
 @pytest.mark.parametrize("failed_task", ["dependencyCheckUpdate", dependency_audit.SCAN_TASK])
@@ -148,21 +146,18 @@ def test_failed_refresh_removes_partial_candidate(
     tmp_path: Path,
     failed_task: str,
 ) -> None:
-    work = tmp_path / "work"
+    output = tmp_path / "output"
 
     def run_task(task: str, database: Path) -> int:
         _seed_database(database, "partial")
         return 1 if task == failed_task else 0
 
     with pytest.raises(dependency_audit.AuditError):
-        dependency_audit.run_dependency_audit(
-            trusted=tmp_path / "missing",
-            work=work,
-            artifact_present=False,
-            has_api_key=True,
+        dependency_audit.produce_dependency_database(
+            output=output,
             run_task=run_task,
         )
-    assert not (work / "candidate").exists()
+    assert not output.exists()
 
 
 def test_producer_publishes_only_after_update_and_analysis(tmp_path: Path) -> None:
@@ -221,8 +216,9 @@ def test_gradle_adapter_forces_refresh_and_offline_analysis(
             {
                 "dependencies": [
                     {
-                        "packages": [
-                            {"id": "pkg:maven/com.squareup.retrofit2/retrofit@3.0.0"}
+                        "projectReferences": [
+                            "app:grayReleaseRuntimeClasspath",
+                            "app:internalReleaseRuntimeClasspath",
                         ]
                     }
                 ]
@@ -230,15 +226,16 @@ def test_gradle_adapter_forces_refresh_and_offline_analysis(
         ),
         encoding="utf-8",
     )
-    catalog = android_root / "gradle" / "libs.versions.toml"
-    catalog.parent.mkdir(parents=True)
-    catalog.write_text(
-        """
-[versions]
-retrofit = "3.0.0"
-[libraries]
-retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
-""".strip(),
+    scope = android_root / "build" / "reports" / "dependency-check-scope.json"
+    scope.write_text(
+        json.dumps(
+            {
+                "projectReferences": [
+                    "app:grayReleaseRuntimeClasspath",
+                    "app:internalReleaseRuntimeClasspath",
+                ]
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -305,15 +302,17 @@ def test_terminated_gradle_process_has_a_bounded_output_drain() -> None:
     assert "could not be drained" in output
 
 
-def test_dependency_report_must_contain_the_catalog_app_anchor(tmp_path: Path) -> None:
-    catalog = tmp_path / "libs.versions.toml"
-    catalog.write_text(
-        """
-[versions]
-retrofit = "3.0.0"
-[libraries]
-retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
-""".strip(),
+def test_dependency_report_must_cover_every_gradle_scan_scope(tmp_path: Path) -> None:
+    scope = tmp_path / "dependency-check-scope.json"
+    scope.write_text(
+        json.dumps(
+            {
+                "projectReferences": [
+                    "app:grayReleaseRuntimeClasspath",
+                    "app:internalReleaseRuntimeClasspath",
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     report = tmp_path / "dependency-check-report.json"
@@ -321,15 +320,43 @@ retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit
         json.dumps(
             {
                 "dependencies": [
-                    {"packages": [{"id": "pkg:maven/com.example/other@1.0"}]}
+                    {"projectReferences": ["app:grayReleaseRuntimeClasspath"]}
                 ]
             }
         ),
         encoding="utf-8",
     )
 
-    with pytest.raises(dependency_audit.AuditError, match="Android app anchor"):
-        dependency_audit._require_app_dependency_report(report, catalog)
+    with pytest.raises(dependency_audit.AuditError, match="exact Gradle scan scope"):
+        dependency_audit._require_app_dependency_report(report, scope)
+
+
+def test_dependency_metadata_resolves_direct_and_referenced_versions(
+    tmp_path: Path,
+) -> None:
+    catalog = tmp_path / "libs.versions.toml"
+    catalog.write_text(
+        """
+[versions]
+dependency-check = "12.2.2"
+[plugins]
+owasp-dependency-check = { id = "org.owasp.dependencycheck", version.ref = "dependency-check" }
+""".strip(),
+        encoding="utf-8",
+    )
+    assert dependency_audit._dependency_artifact_metadata(catalog) == {
+        "version": "12.2.2",
+        "artifact": "ticketbox-nvd-database-v12.2.2",
+    }
+
+    catalog.write_text(
+        """
+[plugins]
+owasp-dependency-check = { id = "org.owasp.dependencycheck", version = "13.0.0" }
+""".strip(),
+        encoding="utf-8",
+    )
+    assert dependency_audit._dependency_artifact_metadata(catalog)["version"] == "13.0.0"
 
 
 def test_workflows_publish_on_main_and_consume_versioned_immutable_artifacts() -> None:
@@ -344,15 +371,21 @@ def test_workflows_publish_on_main_and_consume_versioned_immutable_artifacts() -
     by_id = {step.get("id"): step for step in steps if step.get("id")}
 
     assert android["permissions"] == {"actions": "read", "contents": "read"}
+    assert "NVD_API_KEY" not in json.dumps(android)
     assert not any("actions/cache" in step.get("uses", "") for step in steps)
     resolver = by_id["nvd-source"]
     assert "resolve_nvd_artifact.py" in resolver["run"]
-    assert "ticketbox-nvd-database-v${{" in resolver["run"]
+    assert "steps.dependency-check-version.outputs.artifact" in resolver["run"]
     assert resolver["env"] == {"GITHUB_TOKEN": "${{ github.token }}"}
     sdk_setup = next(step for step in steps if step["name"] == "Install Android SDK packages")
     assert steps.index(resolver) < steps.index(sdk_setup)
     preflight = next(step for step in steps if step["name"] == "Require dependency audit source")
-    assert preflight["if"] == "steps.nvd-source.outputs.found != 'true'"
+    assert "producer_available == 'true'" in preflight["if"]
+    bootstrap = next(
+        step for step in steps if step["name"] == "Authorize first producer bootstrap"
+    )
+    assert "producer_available != 'true'" in bootstrap["if"]
+    assert "git cat-file -e" in bootstrap["run"]
     downloader = next(
         step for step in steps if "actions/download-artifact@" in step.get("uses", "")
     )
@@ -362,6 +395,8 @@ def test_workflows_publish_on_main_and_consume_versioned_immutable_artifacts() -
     )
     assert downloader["with"]["digest-mismatch"] == "error"
     audit = next(step for step in steps if step["name"] == "Dependency vulnerability scan")
+    assert audit["if"] == "steps.nvd-source.outputs.found == 'true'"
+    assert "NVD_API_KEY" not in audit.get("env", {})
     command = shlex.split(audit["run"].replace("\\\n", " "))
     assert command[:3] == [
         "python",
@@ -375,8 +410,9 @@ def test_workflows_publish_on_main_and_consume_versioned_immutable_artifacts() -
     produce_steps = produce["steps"]
     assert producer["permissions"] == {"actions": "read", "contents": "read"}
     assert "pull_request" not in producer["on"]
+    assert "backend/scripts/resolve_nvd_artifact.py" in producer["on"]["push"]["paths"]
     assert produce["if"] == "github.ref == 'refs/heads/main'"
-    assert produce["timeout-minutes"] == 40
+    assert produce["timeout-minutes"] == 45
     assert producer["concurrency"]["group"] == "android-nvd-database-${{ github.ref }}"
     checkout = next(step for step in produce_steps if step["name"] == "Checkout main")
     assert checkout["with"]["ref"] == "${{ github.sha }}"
@@ -393,6 +429,6 @@ def test_workflows_publish_on_main_and_consume_versioned_immutable_artifacts() -
         step for step in produce_steps if "actions/upload-artifact@" in step.get("uses", "")
     )
     assert uploader["with"]["name"] == (
-        "ticketbox-nvd-database-v${{ steps.dependency-check-version.outputs.version }}"
+        "${{ steps.dependency-check-version.outputs.artifact }}"
     )
     assert uploader["with"]["if-no-files-found"] == "error"

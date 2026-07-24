@@ -10,6 +10,7 @@ on:
     paths:
       - ".github/workflows/nvd-database.yml"
       - "backend/scripts/android_dependency_audit.py"
+      - "backend/scripts/resolve_nvd_artifact.py"
       - "android/build.gradle.kts"
       - "android/gradle/libs.versions.toml"
 
@@ -26,7 +27,7 @@ jobs:
     name: Produce trusted NVD database
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     env:
       TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
     steps:
@@ -58,10 +59,10 @@ jobs:
 
       - name: Resolve Dependency-Check version
         id: dependency-check-version
-        working-directory: android
         run: |
-          version="$(python -c 'import tomllib; print(tomllib.load(open("gradle/libs.versions.toml", "rb"))["plugins"]["owasp-dependency-check"]["version"])')"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          python backend/scripts/android_dependency_audit.py metadata \
+            --catalog android/gradle/libs.versions.toml \
+            --output "$GITHUB_OUTPUT"
 
       - name: Resolve previous trusted NVD artifact
         id: nvd-seed
@@ -72,7 +73,7 @@ jobs:
             --repository "$GITHUB_REPOSITORY" \
             --workflow nvd-database.yml \
             --branch main \
-            --artifact "ticketbox-nvd-database-v${{ steps.dependency-check-version.outputs.version }}" \
+            --artifact "${{ steps.dependency-check-version.outputs.artifact }}" \
             --api-url "$GITHUB_API_URL" \
             --output "$GITHUB_OUTPUT"
 
@@ -102,7 +103,7 @@ jobs:
       - name: Upload immutable NVD artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ticketbox-nvd-database-v${{ steps.dependency-check-version.outputs.version }}
+          name: ${{ steps.dependency-check-version.outputs.artifact }}
           path: ${{ runner.temp }}/ticketbox-nvd-database
           if-no-files-found: error
           retention-days: 3

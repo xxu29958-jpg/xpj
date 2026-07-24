@@ -134,6 +134,17 @@ def test_resolver_treats_unmerged_producer_workflow_as_bootstrap() -> None:
         raise resolver.ResourceNotFoundError("not merged yet")
 
     assert _resolve(missing) is None
+    state = resolver.resolve_artifact_state(
+        repository="owner/repo",
+        workflow="nvd-database.yml",
+        branch="main",
+        artifact_name="ticketbox-nvd-database-v12",
+        api_url="https://api.github.test",
+        get_json=missing,
+        now=NOW,
+    )
+    assert state.producer_available is False
+    assert state.reference is None
 
 
 @pytest.mark.parametrize(

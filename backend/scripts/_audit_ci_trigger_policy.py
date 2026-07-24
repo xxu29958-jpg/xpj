@@ -28,6 +28,7 @@ GITEA_CONNECTED_PATHS = (
 GITHUB_NVD_PATHS = (
     ".github/workflows/nvd-database.yml",
     "backend/scripts/android_dependency_audit.py",
+    "backend/scripts/resolve_nvd_artifact.py",
     "android/build.gradle.kts",
     "android/gradle/libs.versions.toml",
 )

@@ -11,7 +11,6 @@ import signal
 import subprocess
 import sys
 import tomllib
-import urllib.parse
 from collections.abc import Callable
 from pathlib import Path
 
@@ -28,7 +27,8 @@ TaskRunner = Callable[[str, Path], int]
 SCAN_TASK = "dependencyCheckAggregate"
 UPDATE_TIMEOUT_SECONDS = 22 * 60
 SCAN_TIMEOUT_SECONDS = 10 * 60
-APP_DEPENDENCY_CATALOG_ALIAS = "retrofit"
+DEPENDENCY_CHECK_PLUGIN_ALIAS = "owasp-dependency-check"
+DEPENDENCY_CHECK_ARTIFACT_PREFIX = "ticketbox-nvd-database-v"
 
 
 def _absolute_path(path: Path) -> Path:
@@ -74,71 +74,75 @@ def _require_database_payload(database: Path) -> None:
         raise ArtifactError("the NVD artifact must contain one database payload")
 
 
-def _catalog_library_coordinate(
-    catalog: Path,
-    alias: str,
-) -> tuple[str, str, str]:
+def _catalog_plugin_version(catalog: Path, alias: str) -> str:
     try:
         with catalog.open("rb") as handle:
             payload = tomllib.load(handle)
-        library = payload["libraries"][alias]
-        module = library["module"]
-        version_spec = library["version"]
+        plugin = payload["plugins"][alias]
+        version_spec = plugin["version"]
         version = (
             version_spec
             if isinstance(version_spec, str)
             else payload["versions"][version_spec["ref"]]
         )
     except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as exc:
-        raise AuditError("the Android dependency catalog anchor is invalid") from exc
-    if (
-        not isinstance(module, str)
-        or module.count(":") != 1
-        or not isinstance(version, str)
-        or not version
+        raise AuditError("the Dependency-Check plugin version is invalid") from exc
+    if not isinstance(version, str) or not version or any(
+        character not in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz._-"
+        for character in version
     ):
-        raise AuditError("the Android dependency catalog anchor is invalid")
-    group, artifact = module.split(":", maxsplit=1)
-    if not group or not artifact:
-        raise AuditError("the Android dependency catalog anchor is invalid")
-    return group, artifact, version
+        raise AuditError("the Dependency-Check plugin version is invalid")
+    return version
 
 
-def _maven_package_coordinate(package_id: object) -> tuple[str, str, str] | None:
-    if not isinstance(package_id, str) or not package_id.startswith("pkg:maven/"):
-        return None
-    coordinate = package_id.removeprefix("pkg:maven/")
-    coordinate = coordinate.split("?", maxsplit=1)[0].split("#", maxsplit=1)[0]
-    module, separator, version = coordinate.rpartition("@")
-    parts = module.split("/")
-    if separator != "@" or len(parts) != 2 or not version:
-        return None
-    group, artifact = (urllib.parse.unquote(part) for part in parts)
-    return group, artifact, urllib.parse.unquote(version)
+def _dependency_artifact_metadata(catalog: Path) -> dict[str, str]:
+    version = _catalog_plugin_version(catalog, DEPENDENCY_CHECK_PLUGIN_ALIAS)
+    return {
+        "version": version,
+        "artifact": f"{DEPENDENCY_CHECK_ARTIFACT_PREFIX}{version}",
+    }
 
 
-def _require_app_dependency_report(report: Path, catalog: Path) -> None:
-    expected = _catalog_library_coordinate(catalog, APP_DEPENDENCY_CATALOG_ALIAS)
+def _project_references(payload: object, *, label: str) -> set[str]:
+    if not isinstance(payload, dict):
+        raise AuditError(f"the {label} is not an object")
+    references = payload.get("projectReferences")
+    if (
+        not isinstance(references, list)
+        or not references
+        or any(not isinstance(reference, str) or not reference for reference in references)
+        or len(set(references)) != len(references)
+    ):
+        raise AuditError(f"the {label} has invalid project references")
+    return set(references)
+
+
+def _require_app_dependency_report(report: Path, scope_contract: Path) -> None:
     try:
         payload = json.loads(report.read_text(encoding="utf-8"))
+        expected_payload = json.loads(scope_contract.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        raise AuditError("the aggregate dependency report is missing or invalid") from exc
+        raise AuditError("the aggregate dependency report contract is missing or invalid") from exc
+    expected = _project_references(expected_payload, label="Gradle scan scope contract")
     dependencies = payload.get("dependencies") if isinstance(payload, dict) else None
     if not isinstance(dependencies, list):
         raise AuditError("the aggregate dependency report has no dependency inventory")
+    observed: set[str] = set()
     for dependency in dependencies:
-        packages = dependency.get("packages") if isinstance(dependency, dict) else None
-        if not isinstance(packages, list):
+        if not isinstance(dependency, dict):
             continue
-        if any(
-            _maven_package_coordinate(package.get("id")) == expected
-            for package in packages
-            if isinstance(package, dict)
+        references = dependency.get("projectReferences")
+        if references is None:
+            continue
+        if not isinstance(references, list) or any(
+            not isinstance(reference, str) or not reference for reference in references
         ):
-            return
-    raise AuditError(
-        "the aggregate dependency report did not include the Android app anchor"
-    )
+            raise AuditError("the aggregate dependency report has invalid project references")
+        observed.update(references)
+    if observed != expected:
+        raise AuditError(
+            "the aggregate dependency report did not cover the exact Gradle scan scope"
+        )
 
 
 def _copy_database(source: Path, target: Path) -> None:
@@ -192,26 +196,18 @@ def run_dependency_audit(
     trusted: Path,
     work: Path,
     artifact_present: bool,
-    has_api_key: bool,
     run_task: TaskRunner,
 ) -> str:
-    """Scan a trusted main artifact, or refresh isolated data for this run."""
-    if not artifact_present and not has_api_key:
-        raise AuditError("a trusted NVD artifact or NVD_API_KEY is required")
+    """Scan an immutable artifact produced by the trusted main workflow."""
+    if not artifact_present:
+        raise AuditError("a trusted main NVD artifact is required")
     _create_owned_directory(work, label="NVD audit work directory")
-    if artifact_present:
-        try:
-            _analyze_copy(trusted, work / "scan", run_task)
-        except ArtifactError:
-            if not has_api_key:
-                raise
-            print("Trusted NVD artifact is unusable; refreshing isolated data.")
-        else:
-            return "trusted-artifact"
-    if not has_api_key:
-        raise AuditError("a trusted NVD artifact or NVD_API_KEY is required")
-    _refresh_and_analyze(work / "candidate", run_task)
-    return "live-refresh"
+    try:
+        _analyze_copy(trusted, work / "scan", run_task)
+    except (AuditError, OSError):
+        _remove_owned_directory(work)
+        raise
+    return "trusted-artifact"
 
 
 def produce_dependency_database(
@@ -308,7 +304,7 @@ def _run_gradle_factory(
             try:
                 _require_app_dependency_report(
                     gradlew.parent / "build" / "reports" / "dependency-check-report.json",
-                    gradlew.parent / "gradle" / "libs.versions.toml",
+                    gradlew.parent / "build" / "reports" / "dependency-check-scope.json",
                 )
             except AuditError as exc:
                 output += f"\n{exc}\n"
@@ -348,12 +344,26 @@ def _build_parser() -> argparse.ArgumentParser:
     produce.add_argument("--output-dir", type=Path, required=True)
     produce.add_argument("--seed-dir", type=Path, required=True)
     produce.add_argument("--seed-present", required=True)
+
+    metadata = commands.add_parser("metadata")
+    metadata.add_argument("--catalog", type=Path, required=True)
+    metadata.add_argument("--output", type=Path, required=True)
     return parser
 
 
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
+    if args.command == "metadata":
+        try:
+            values = _dependency_artifact_metadata(args.catalog)
+            with args.output.open("a", encoding="utf-8") as handle:
+                for key, value in values.items():
+                    handle.write(f"{key}={value}\n")
+            return 0
+        except (AuditError, OSError) as exc:
+            print(f"Android dependency metadata failed: {exc}", file=sys.stderr)
+            return 1
     gradlew = args.gradlew.resolve()
     args.log.parent.mkdir(parents=True, exist_ok=True)
     args.log.write_text("", encoding="utf-8")
@@ -388,7 +398,6 @@ def main() -> int:
             trusted=trusted,
             work=work,
             artifact_present=_parse_bool(args.artifact_present),
-            has_api_key=bool(os.environ.get("NVD_API_KEY", "").strip()),
             run_task=run_task,
         )
         print(f"Android dependency audit completed via {mode}.")

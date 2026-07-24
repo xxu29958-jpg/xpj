@@ -39,6 +39,12 @@ class ArtifactReference:
     artifact_id: int
 
 
+@dataclass(frozen=True)
+class ResolutionResult:
+    producer_available: bool
+    reference: ArtifactReference | None
+
+
 def _github_json_getter(token: str) -> JsonGetter:
     def get_json(url: str) -> dict[str, Any]:
         request = urllib.request.Request(
@@ -154,7 +160,7 @@ def _reference_from_run(
     )
 
 
-def resolve_artifact(
+def resolve_artifact_state(
     *,
     repository: str,
     workflow: str,
@@ -164,7 +170,7 @@ def resolve_artifact(
     get_json: JsonGetter,
     now: datetime | None = None,
     max_age_hours: int = 48,
-) -> ArtifactReference | None:
+) -> ResolutionResult:
     if repository.count("/") != 1 or repository.strip("/") != repository:
         raise ResolutionError("repository must use owner/name form")
     if not workflow.endswith((".yml", ".yaml")) or "/" in workflow:
@@ -195,7 +201,7 @@ def resolve_artifact(
     try:
         runs_payload = get_json(runs_url)
     except ResourceNotFoundError:
-        return None
+        return ResolutionResult(producer_available=False, reference=None)
     runs = runs_payload.get("workflow_runs")
     if not isinstance(runs, list):
         raise ResolutionError("GitHub Actions workflow runs are missing")
@@ -222,21 +228,47 @@ def resolve_artifact(
             get_json=get_json,
         )
         if reference is not None:
-            return reference
-    return None
+            return ResolutionResult(producer_available=True, reference=reference)
+    return ResolutionResult(producer_available=True, reference=None)
 
 
-def _write_output(path: Path, reference: ArtifactReference | None) -> None:
+def resolve_artifact(
+    *,
+    repository: str,
+    workflow: str,
+    branch: str,
+    artifact_name: str,
+    api_url: str,
+    get_json: JsonGetter,
+    now: datetime | None = None,
+    max_age_hours: int = 48,
+) -> ArtifactReference | None:
+    return resolve_artifact_state(
+        repository=repository,
+        workflow=workflow,
+        branch=branch,
+        artifact_name=artifact_name,
+        api_url=api_url,
+        get_json=get_json,
+        now=now,
+        max_age_hours=max_age_hours,
+    ).reference
+
+
+def _write_output(path: Path, result: ResolutionResult) -> None:
+    reference = result.reference
     values: dict[str, str]
     if reference is None:
         values = {
             "found": "false",
+            "producer_available": str(result.producer_available).lower(),
             "run_id": "",
             "artifact_id": "",
         }
     else:
         values = {
             "found": "true",
+            "producer_available": "true",
             "run_id": str(reference.run_id),
             "artifact_id": str(reference.artifact_id),
         }
@@ -259,7 +291,7 @@ def main() -> int:
     if not token:
         parser.error("GITHUB_TOKEN is required")
     try:
-        reference = resolve_artifact(
+        result = resolve_artifact_state(
             repository=args.repository,
             workflow=args.workflow,
             branch=args.branch,
@@ -271,13 +303,15 @@ def main() -> int:
     except ResolutionError as exc:
         print(f"NVD artifact resolution failed: {exc}", file=sys.stderr)
         return 1
-    _write_output(args.output, reference)
-    if reference is None:
-        print("No fresh trusted NVD artifact was found; the audit must refresh or fail.")
+    _write_output(args.output, result)
+    if not result.producer_available:
+        print("The trusted NVD producer is not present on main yet.")
+    elif result.reference is None:
+        print("No fresh trusted NVD artifact was found; the audit must fail closed.")
     else:
         print(
             "Resolved trusted NVD artifact "
-            f"{reference.artifact_id} from main run {reference.run_id}."
+            f"{result.reference.artifact_id} from main run {result.reference.run_id}."
         )
     return 0
 

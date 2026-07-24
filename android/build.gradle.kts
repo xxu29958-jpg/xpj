@@ -1,3 +1,5 @@
+import groovy.json.JsonOutput
+
 plugins {
     alias(libs.plugins.android.application) apply false
     // issue #64 A1: declared apply-false at the root so the :macrobenchmark and
@@ -38,16 +40,20 @@ val dependencyCheckFailBuildOnCvss =
     providers.gradleProperty("dependencyCheckFailBuildOnCVSS")
         .map(String::toFloat)
         .getOrElse(7.0f)
+val dependencyCheckScanProject = ":app"
+val dependencyCheckScanConfigurations = listOf(
+    "grayReleaseRuntimeClasspath",
+    "internalReleaseRuntimeClasspath",
+)
+val dependencyCheckScopeContract =
+    layout.buildDirectory.file("reports/dependency-check-scope.json")
 
 dependencyCheck {
     failBuildOnCVSS = dependencyCheckFailBuildOnCvss
     // The root plugin owns one aggregate report, but only the shipped Android
     // application and its release runtime classpaths belong in the SCA gate.
-    scanProjects = listOf(":app")
-    scanConfigurations = listOf(
-        "grayReleaseRuntimeClasspath",
-        "internalReleaseRuntimeClasspath",
-    )
+    scanProjects = listOf(dependencyCheckScanProject)
+    scanConfigurations = dependencyCheckScanConfigurations
     // Keep failOnError=true: unreadable data, scanner failures, and findings at
     // or above the threshold must all fail the audit rather than become a no-op.
     formats = listOf("HTML", "JSON")
@@ -60,4 +66,26 @@ dependencyCheck {
     autoUpdate = dependencyCheckAutoUpdate.get()
     nvd.validForHours = dependencyCheckNvdValidForHours
     data.directory = dependencyCheckDataDir
+}
+
+val writeDependencyCheckScopeContract =
+    tasks.register("writeDependencyCheckScopeContract") {
+        outputs.file(dependencyCheckScopeContract)
+        doLast {
+            val reportProject = dependencyCheckScanProject.removePrefix(":")
+            val references = dependencyCheckScanConfigurations.map { configuration ->
+                "$reportProject:$configuration"
+            }
+            val output = dependencyCheckScopeContract.get().asFile
+            output.parentFile.mkdirs()
+            output.writeText(
+                JsonOutput.prettyPrint(
+                    JsonOutput.toJson(mapOf("projectReferences" to references)),
+                ) + "\n",
+            )
+        }
+    }
+
+tasks.named("dependencyCheckAggregate") {
+    dependsOn(writeDependencyCheckScopeContract)
 }
