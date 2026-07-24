@@ -14,13 +14,15 @@ import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
+import nvd_artifact_contract as nvd_contract
 
-class AuditError(RuntimeError):
-    """The dependency audit could not prove a safe result."""
-
-
-class ArtifactError(AuditError):
-    """The downloaded artifact does not contain a usable NVD database."""
+ARTIFACT_MANIFEST_NAME = nvd_contract.ARTIFACT_MANIFEST_NAME
+ArtifactError = nvd_contract.ArtifactError
+AuditError = nvd_contract.AuditError
+_producer_contract_digest = nvd_contract.producer_contract_digest
+_require_artifact_payload = nvd_contract.require_artifact_payload
+_require_database_payload = nvd_contract.require_database_payload
+_write_artifact_manifest = nvd_contract.write_artifact_manifest
 
 
 TaskRunner = Callable[[str, Path], int]
@@ -59,21 +61,6 @@ def _remove_owned_directory(path: Path) -> None:
     shutil.rmtree(path)
 
 
-def _require_database_payload(database: Path) -> None:
-    if database.is_symlink() or not database.is_dir():
-        raise ArtifactError("no trusted NVD artifact is available")
-    entries = list(database.rglob("*"))
-    if any(entry.is_symlink() for entry in entries):
-        raise ArtifactError("the NVD artifact contains a symbolic link")
-    payloads = [
-        path
-        for path in entries
-        if path.is_file() and path.name == "odc.mv.db" and path.stat().st_size > 0
-    ]
-    if len(payloads) != 1:
-        raise ArtifactError("the NVD artifact must contain one database payload")
-
-
 def _catalog_plugin_version(catalog: Path, alias: str) -> str:
     try:
         with catalog.open("rb") as handle:
@@ -95,11 +82,18 @@ def _catalog_plugin_version(catalog: Path, alias: str) -> str:
     return version
 
 
-def _dependency_artifact_metadata(catalog: Path) -> dict[str, str]:
+def _dependency_artifact_metadata(
+    catalog: Path,
+    *,
+    repository_root: Path,
+    contract: Path,
+) -> dict[str, str]:
     version = _catalog_plugin_version(catalog, DEPENDENCY_CHECK_PLUGIN_ALIAS)
+    contract_digest = _producer_contract_digest(repository_root, contract)
     return {
         "version": version,
-        "artifact": f"{DEPENDENCY_CHECK_ARTIFACT_PREFIX}{version}",
+        "contract_digest": contract_digest,
+        "artifact": f"{DEPENDENCY_CHECK_ARTIFACT_PREFIX}{version}-{contract_digest}",
     }
 
 
@@ -145,8 +139,18 @@ def _require_app_dependency_report(report: Path, scope_contract: Path) -> None:
         )
 
 
-def _copy_database(source: Path, target: Path) -> None:
-    _require_database_payload(source)
+def _copy_database(
+    source: Path,
+    target: Path,
+    *,
+    plugin_version: str,
+    contract_digest: str,
+) -> None:
+    _require_artifact_payload(
+        source,
+        plugin_version=plugin_version,
+        contract_digest=contract_digest,
+    )
     _create_owned_directory(
         target,
         label="NVD scan directory",
@@ -159,8 +163,20 @@ def _copy_database(source: Path, target: Path) -> None:
         raise ArtifactError("the NVD artifact could not be copied") from exc
 
 
-def _analyze_copy(trusted: Path, scan: Path, run_task: TaskRunner) -> None:
-    _copy_database(trusted, scan)
+def _analyze_copy(
+    trusted: Path,
+    scan: Path,
+    run_task: TaskRunner,
+    *,
+    plugin_version: str,
+    contract_digest: str,
+) -> None:
+    _copy_database(
+        trusted,
+        scan,
+        plugin_version=plugin_version,
+        contract_digest=contract_digest,
+    )
     if run_task(SCAN_TASK, scan) != 0:
         raise AuditError("dependency analysis failed")
 
@@ -169,13 +185,20 @@ def _refresh_and_analyze(
     destination: Path,
     run_task: TaskRunner,
     *,
+    plugin_version: str,
+    contract_digest: str,
     seed: Path | None = None,
 ) -> None:
     if seed is None:
         _create_owned_directory(destination, label="NVD refresh directory")
     else:
         try:
-            _copy_database(seed, destination)
+            _copy_database(
+                seed,
+                destination,
+                plugin_version=plugin_version,
+                contract_digest=contract_digest,
+            )
         except ArtifactError:
             print("Previous trusted NVD artifact is unusable; rebuilding from empty data.")
             _create_owned_directory(destination, label="NVD refresh directory")
@@ -186,6 +209,11 @@ def _refresh_and_analyze(
         if run_task(SCAN_TASK, destination) != 0:
             raise AuditError("dependency analysis failed")
         _require_database_payload(destination)
+        _write_artifact_manifest(
+            destination,
+            plugin_version=plugin_version,
+            contract_digest=contract_digest,
+        )
     except (AuditError, OSError):
         _remove_owned_directory(destination)
         raise
@@ -197,13 +225,21 @@ def run_dependency_audit(
     work: Path,
     artifact_present: bool,
     run_task: TaskRunner,
+    plugin_version: str,
+    contract_digest: str,
 ) -> str:
     """Scan an immutable artifact produced by the trusted main workflow."""
     if not artifact_present:
         raise AuditError("a trusted main NVD artifact is required")
     _create_owned_directory(work, label="NVD audit work directory")
     try:
-        _analyze_copy(trusted, work / "scan", run_task)
+        _analyze_copy(
+            trusted,
+            work / "scan",
+            run_task,
+            plugin_version=plugin_version,
+            contract_digest=contract_digest,
+        )
     except (AuditError, OSError):
         _remove_owned_directory(work)
         raise
@@ -215,9 +251,17 @@ def produce_dependency_database(
     output: Path,
     seed: Path | None = None,
     run_task: TaskRunner,
+    plugin_version: str,
+    contract_digest: str,
 ) -> None:
     """Produce a validated database for upload by the trusted main workflow."""
-    _refresh_and_analyze(output, run_task, seed=seed)
+    _refresh_and_analyze(
+        output,
+        run_task,
+        plugin_version=plugin_version,
+        contract_digest=contract_digest,
+        seed=seed,
+    )
 
 
 def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
@@ -327,6 +371,8 @@ def _parse_bool(value: str) -> bool:
 def _add_gradle_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--gradlew", type=Path, required=True)
     parser.add_argument("--log", type=Path, required=True)
+    parser.add_argument("--plugin-version", required=True)
+    parser.add_argument("--contract-digest", required=True)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -347,6 +393,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     metadata = commands.add_parser("metadata")
     metadata.add_argument("--catalog", type=Path, required=True)
+    metadata.add_argument("--repository-root", type=Path, required=True)
+    metadata.add_argument("--contract", type=Path, required=True)
     metadata.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -356,7 +404,11 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "metadata":
         try:
-            values = _dependency_artifact_metadata(args.catalog)
+            values = _dependency_artifact_metadata(
+                args.catalog,
+                repository_root=args.repository_root,
+                contract=args.contract,
+            )
             with args.output.open("a", encoding="utf-8") as handle:
                 for key, value in values.items():
                     handle.write(f"{key}={value}\n")
@@ -381,6 +433,8 @@ def main() -> int:
                 output=_absolute_path(args.output_dir),
                 seed=_absolute_path(args.seed_dir) if seed_present else None,
                 run_task=run_task,
+                plugin_version=args.plugin_version,
+                contract_digest=args.contract_digest,
             )
             return 0
 
@@ -399,6 +453,8 @@ def main() -> int:
             work=work,
             artifact_present=_parse_bool(args.artifact_present),
             run_task=run_task,
+            plugin_version=args.plugin_version,
+            contract_digest=args.contract_digest,
         )
         print(f"Android dependency audit completed via {mode}.")
         return 0

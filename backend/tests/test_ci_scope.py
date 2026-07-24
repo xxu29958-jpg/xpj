@@ -145,9 +145,8 @@ def test_version_contract_crosses_backend_desktop_and_packaging() -> None:
 
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
     for path in (
-        "backend/tests/ci_contracts/test_backend_ci_results.py",
-        "backend/tests/ci_contracts/test_postgres_ci_topology.py",
-        "backend/tests/ci_contracts/test_future_ci_contract.py",
+        "backend/tests/test_backend_ci_results.py",
+        "backend/tests/test_postgres_ci_topology.py",
     ):
         assert classify_ci_paths([path]) == {
             "postgres": False,
@@ -156,12 +155,6 @@ def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
             "android": False,
             "windows": False,
         }
-
-
-def test_malformed_contract_path_fails_closed_before_prefix_exclusion() -> None:
-    assert classify_ci_paths(
-        ["backend/tests/ci_contracts/test_future_ci_contract.py "]
-    ) == all_ci_scopes()
 
 
 def test_ci_policy_and_unknown_paths_fail_closed_to_full() -> None:

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import pathlib
+import re
 from dataclasses import dataclass
 from hashlib import sha256
 
+import yaml
 from ci_gap_job_scope import job_needs as _job_needs
 from ci_gap_job_scope import scoped_job_protection_scope as _scoped_job_protection_scope
 from ci_gap_job_scope import scoped_step_protection_scope as _scoped_step_protection_scope
@@ -25,7 +27,6 @@ from ci_gap_workflow_conditions import condition_allows_event as _condition_allo
 from ci_gap_workflow_conditions import (
     condition_guarantees_after_needs as _condition_guarantees_after_needs,
 )
-from ci_gap_workflow_yaml import load_workflow as _load_workflow
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,34 @@ WorkflowStep = tuple[
 
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 _SCRIPT_EXECUTING_ACTIONS = {"reactivecircus/android-emulator-runner"}
+
+
+class _WorkflowLoader(yaml.SafeLoader):
+    """YAML 1.2-ish loader that does not coerce the workflow key ``on`` to bool."""
+
+
+_WorkflowLoader.yaml_implicit_resolvers = {
+    key: list(value) for key, value in yaml.SafeLoader.yaml_implicit_resolvers.items()
+}
+for first_character, resolvers in _WorkflowLoader.yaml_implicit_resolvers.items():
+    _WorkflowLoader.yaml_implicit_resolvers[first_character] = [
+        entry for entry in resolvers if entry[0] != "tag:yaml.org,2002:bool"
+    ]
+_WorkflowLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:bool",
+    re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$"),
+    list("tTfF"),
+)
+
+
+def _load_workflow(path: pathlib.Path) -> dict[object, object]:
+    try:
+        value = yaml.load(path.read_text(encoding="utf-8"), Loader=_WorkflowLoader)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid workflow YAML: {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"workflow root must be a mapping: {path}")
+    return value
 
 
 def _required_protection_event(path: pathlib.Path) -> str:

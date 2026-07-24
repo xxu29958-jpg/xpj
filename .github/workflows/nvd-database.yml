@@ -9,10 +9,16 @@ on:
       - main
     paths:
       - ".github/workflows/nvd-database.yml"
+      - "backend/scripts/nvd_producer_contract.json"
       - "backend/scripts/android_dependency_audit.py"
+      - "backend/scripts/nvd_artifact_contract.py"
       - "backend/scripts/resolve_nvd_artifact.py"
+      - "android/app/build.gradle.kts"
       - "android/build.gradle.kts"
+      - "android/config/dependency-check/suppressions.xml"
       - "android/gradle/libs.versions.toml"
+      - "android/gradle/wrapper/gradle-wrapper.properties"
+      - "android/settings.gradle.kts"
 
 permissions:
   actions: read
@@ -42,6 +48,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
       - name: Install Android SDK packages
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
@@ -62,6 +71,8 @@ jobs:
         run: |
           python backend/scripts/android_dependency_audit.py metadata \
             --catalog android/gradle/libs.versions.toml \
+            --repository-root . \
+            --contract backend/scripts/nvd_producer_contract.json \
             --output "$GITHUB_OUTPUT"
 
       - name: Resolve previous trusted NVD artifact
@@ -98,7 +109,9 @@ jobs:
             --seed-dir "$RUNNER_TEMP/ticketbox-nvd-seed" \
             --seed-present "${{ steps.nvd-seed.outputs.found }}" \
             --output-dir "$RUNNER_TEMP/ticketbox-nvd-database" \
-            --log owasp-output.log
+            --log owasp-output.log \
+            --plugin-version "${{ steps.dependency-check-version.outputs.version }}" \
+            --contract-digest "${{ steps.dependency-check-version.outputs.contract_digest }}"
 
       - name: Upload immutable NVD artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -107,12 +120,3 @@ jobs:
           path: ${{ runner.temp }}/ticketbox-nvd-database
           if-no-files-found: error
           retention-days: 3
-
-      - name: Upload producer log on failure
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: nvd-producer-failure-${{ github.run_id }}
-          path: android/owasp-output.log
-          if-no-files-found: ignore
-          retention-days: 7

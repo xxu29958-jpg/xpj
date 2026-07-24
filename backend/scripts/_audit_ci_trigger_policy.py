@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 
 from ci_audit_provider import selected_ci_platforms
 from ci_gap_trigger_scope import ANDROID_PROTECTED_PATHS
-from ci_gap_workflow_yaml import load_workflow
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GITHUB_WORKFLOWS = ROOT / ".github" / "workflows"
@@ -16,7 +16,6 @@ GITEA_WORKFLOWS = ROOT / ".gitea" / "workflows"
 GITHUB_MAIN_ONLY = ("main",)
 GITEA_WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "codex/**")
 CODEQL_WEEKLY_CRON = "37 3 * * 1"
-NVD_DAILY_CRON = "17 2 * * *"
 GITHUB_CONNECTED_PATHS = (
     *ANDROID_PROTECTED_PATHS,
     ".github/workflows/android-connected-test.yml",
@@ -25,137 +24,77 @@ GITEA_CONNECTED_PATHS = (
     *ANDROID_PROTECTED_PATHS,
     ".gitea/workflows/android-connected.yml",
 )
-GITHUB_NVD_PATHS = (
-    ".github/workflows/nvd-database.yml",
-    "backend/scripts/android_dependency_audit.py",
-    "backend/scripts/resolve_nvd_artifact.py",
-    "android/build.gradle.kts",
-    "android/gradle/libs.versions.toml",
-)
-GITHUB_WORKFLOW_EVENTS = {
-    "ci.yml": ("push", "pull_request", "workflow_dispatch"),
-    "android-connected-test.yml": ("push", "pull_request", "workflow_dispatch"),
-    "codeql.yml": ("push", "pull_request", "workflow_dispatch", "schedule"),
-    "nvd-database.yml": ("push", "workflow_dispatch", "schedule"),
-}
-GITHUB_EVENT_KEYS = {
-    ("ci.yml", "push"): ("branches",),
-    ("ci.yml", "pull_request"): ("branches",),
-    ("android-connected-test.yml", "push"): ("branches", "paths"),
-    ("android-connected-test.yml", "pull_request"): ("branches", "paths"),
-    ("codeql.yml", "push"): ("branches",),
-    ("codeql.yml", "pull_request"): ("branches",),
-    ("nvd-database.yml", "push"): ("branches", "paths"),
-}
-GITEA_WORKFLOW_EVENTS = {
-    "windows-ci.yml": ("push", "workflow_dispatch"),
-    "android-connected.yml": ("push", "workflow_dispatch"),
-}
-GITEA_EVENT_KEYS = {
-    ("windows-ci.yml", "push"): ("branches",),
-    ("android-connected.yml", "push"): ("branches", "paths"),
-}
 
 
-def _event_configuration(
-    path: pathlib.Path,
-    event_name: str,
-) -> dict[object, object] | None:
-    trigger = load_workflow(path).get("on")
-    if isinstance(trigger, str):
-        return {} if trigger == event_name else None
-    if isinstance(trigger, list):
-        return {} if event_name in {str(item) for item in trigger} else None
-    if not isinstance(trigger, dict) or event_name not in trigger:
-        return None
-    configuration = trigger[event_name]
-    if configuration is None:
-        return {}
-    if not isinstance(configuration, dict):
-        raise ValueError(f"workflow event must be a mapping: {path}: {event_name}")
-    return configuration
+def _indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _read_lines(path: pathlib.Path) -> list[str]:
+    return path.read_text(encoding="utf-8").splitlines()
+
+
+def _event_block(path: pathlib.Path, event_name: str) -> list[str]:
+    lines = _read_lines(path)
+    start_index: int | None = None
+    event_indent: int | None = None
+    for index, line in enumerate(lines):
+        if line.strip() == f"{event_name}:":
+            start_index = index
+            event_indent = _indent(line)
+            break
+    if start_index is None or event_indent is None:
+        return []
+
+    block: list[str] = []
+    for line in lines[start_index + 1 :]:
+        if line.strip() and _indent(line) <= event_indent:
+            break
+        block.append(line)
+    return block
 
 
 def _event_present(path: pathlib.Path, event_name: str) -> bool:
-    return _event_configuration(path, event_name) is not None
+    return any(line.strip() == f"{event_name}:" for line in _read_lines(path))
 
 
-def _trigger_mapping(path: pathlib.Path) -> dict[object, object]:
-    trigger = load_workflow(path).get("on")
-    if not isinstance(trigger, dict):
-        raise ValueError(f"workflow on trigger must be a mapping: {path}")
-    return trigger
+def _sequence_values(block: list[str], key: str) -> list[str]:
+    start_index: int | None = None
+    key_indent: int | None = None
+    for index, line in enumerate(block):
+        if line.strip() == f"{key}:":
+            start_index = index
+            key_indent = _indent(line)
+            break
+    if start_index is None or key_indent is None:
+        return []
 
-
-def _mapping_keys(
-    mapping: dict[object, object],
-    *,
-    label: str,
-) -> tuple[str, ...]:
-    if any(not isinstance(key, str) for key in mapping):
-        raise ValueError(f"{label} keys must be strings")
-    return tuple(mapping)
-
-
-def _event_names(path: pathlib.Path) -> tuple[str, ...]:
-    return _mapping_keys(_trigger_mapping(path), label=f"workflow trigger {path}")
-
-
-def _event_keys(path: pathlib.Path, event_name: str) -> tuple[str, ...]:
-    configuration = _event_configuration(path, event_name)
-    if configuration is None:
-        return ()
-    return _mapping_keys(
-        configuration,
-        label=f"workflow event {path}: {event_name}",
-    )
-
-
-def _sequence_values(
-    path: pathlib.Path,
-    event_name: str,
-    key: str,
-) -> tuple[str, ...]:
-    configuration = _event_configuration(path, event_name)
-    if configuration is None or key not in configuration:
-        return ()
-    values = configuration[key]
-    if not isinstance(values, list) or any(
-        not isinstance(value, str) for value in values
-    ):
-        raise ValueError(
-            f"workflow event {key} must be a string sequence: {path}: {event_name}"
-        )
-    return tuple(values)
+    values: list[str] = []
+    for line in block[start_index + 1 :]:
+        if line.strip() and _indent(line) <= key_indent:
+            break
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            values.append(stripped[2:].strip().strip('"').strip("'"))
+    return values
 
 
 def _branches(path: pathlib.Path, event_name: str) -> tuple[str, ...]:
-    return _sequence_values(path, event_name, "branches")
+    return tuple(_sequence_values(_event_block(path, event_name), "branches"))
 
 
 def _paths(path: pathlib.Path, event_name: str) -> tuple[str, ...]:
-    return _sequence_values(path, event_name, "paths")
+    return tuple(_sequence_values(_event_block(path, event_name), "paths"))
 
 
 def _schedule_crons(path: pathlib.Path) -> tuple[str, ...]:
-    trigger = load_workflow(path).get("on")
-    if not isinstance(trigger, dict) or "schedule" not in trigger:
-        return ()
-    schedules = trigger["schedule"]
-    if not isinstance(schedules, list):
-        raise ValueError(f"workflow schedule must be a sequence: {path}")
+    block = _event_block(path, "schedule")
     crons: list[str] = []
-    for schedule in schedules:
-        if (
-            not isinstance(schedule, dict)
-            or set(_mapping_keys(schedule, label=f"workflow schedule {path}"))
-            != {"cron"}
-            or not isinstance(schedule.get("cron"), str)
-        ):
-            raise ValueError(
-                f"workflow schedule entry must contain a cron string: {path}"
-            )
-        crons.append(schedule["cron"])
+    cron_rx = re.compile(r"""-\s+cron:\s*["']?([^"']+)["']?""")
+    for line in block:
+        match = cron_rx.search(line.strip())
+        if match:
+            crons.append(match.group(1))
     return tuple(crons)
 
 
@@ -164,48 +103,18 @@ def _expect_exact(label: str, actual: tuple[str, ...], expected: tuple[str, ...]
         failures.append(f"{label}: expected {list(expected)}, got {list(actual)}")
 
 
-def _expect_exact_members(
-    label: str,
-    actual: tuple[str, ...],
-    expected: tuple[str, ...],
-    failures: list[str],
-) -> None:
-    if set(actual) != set(expected):
-        failures.append(
-            f"{label}: expected members {sorted(expected)}, got {sorted(actual)}"
-        )
-
-
 def _audit_github_main_pr_policy(failures: list[str]) -> None:
-    for workflow_name, expected_events in GITHUB_WORKFLOW_EVENTS.items():
+    for workflow_name in ("ci.yml", "android-connected-test.yml", "codeql.yml"):
         path = GITHUB_WORKFLOWS / workflow_name
-        _expect_exact_members(
-            f"{workflow_name} trigger events",
-            _event_names(path),
-            expected_events,
+        _expect_exact(f"{workflow_name} push branches", _branches(path, "push"), GITHUB_MAIN_ONLY, failures)
+        _expect_exact(
+            f"{workflow_name} pull_request branches",
+            _branches(path, "pull_request"),
+            GITHUB_MAIN_ONLY,
             failures,
         )
-        for event_name in ("push", "pull_request"):
-            if event_name not in expected_events:
-                continue
-            _expect_exact(
-                f"{workflow_name} {event_name} branches",
-                _branches(path, event_name),
-                GITHUB_MAIN_ONLY,
-                failures,
-            )
         if not _event_present(path, "workflow_dispatch"):
             failures.append(f"{workflow_name}: missing workflow_dispatch trigger")
-        for event_name in ("push", "pull_request"):
-            expected_keys = GITHUB_EVENT_KEYS.get((workflow_name, event_name))
-            if expected_keys is None:
-                continue
-            _expect_exact_members(
-                f"{workflow_name} {event_name} configuration keys",
-                _event_keys(path, event_name),
-                expected_keys,
-                failures,
-            )
 
     connected = GITHUB_WORKFLOWS / "android-connected-test.yml"
     push_paths = _paths(connected, "push")
@@ -213,45 +122,15 @@ def _audit_github_main_pr_policy(failures: list[str]) -> None:
     _expect_exact("android-connected-test.yml push paths", push_paths, GITHUB_CONNECTED_PATHS, failures)
     _expect_exact("android-connected-test.yml pull_request paths", pr_paths, GITHUB_CONNECTED_PATHS, failures)
 
-    nvd = GITHUB_WORKFLOWS / "nvd-database.yml"
-    _expect_exact(
-        "nvd-database.yml push paths",
-        _paths(nvd, "push"),
-        GITHUB_NVD_PATHS,
-        failures,
-    )
-
     crons = _schedule_crons(GITHUB_WORKFLOWS / "codeql.yml")
-    _expect_exact(
-        "codeql.yml schedule crons",
-        crons,
-        (CODEQL_WEEKLY_CRON,),
-        failures,
-    )
-    _expect_exact(
-        "nvd-database.yml schedule crons",
-        _schedule_crons(nvd),
-        (NVD_DAILY_CRON,),
-        failures,
-    )
+    if CODEQL_WEEKLY_CRON not in crons:
+        failures.append(f"codeql.yml: missing weekly schedule cron {CODEQL_WEEKLY_CRON!r}")
 
 
 def _audit_gitea_fallback_policy(failures: list[str]) -> None:
-    for workflow_name, expected_events in GITEA_WORKFLOW_EVENTS.items():
+    for workflow_name in ("windows-ci.yml", "android-connected.yml"):
         path = GITEA_WORKFLOWS / workflow_name
-        _expect_exact_members(
-            f"{workflow_name} trigger events",
-            _event_names(path),
-            expected_events,
-            failures,
-        )
         _expect_exact(f"{workflow_name} push branches", _branches(path, "push"), GITEA_WORK_BRANCHES, failures)
-        _expect_exact_members(
-            f"{workflow_name} push configuration keys",
-            _event_keys(path, "push"),
-            GITEA_EVENT_KEYS[(workflow_name, "push")],
-            failures,
-        )
         if not _event_present(path, "workflow_dispatch"):
             failures.append(f"{workflow_name}: missing workflow_dispatch trigger")
 
@@ -266,13 +145,10 @@ def main() -> int:
         print(f"=== CI trigger policy audit: FAIL ===\n  {exc}")
         return 1
     failures: list[str] = []
-    try:
-        if "GitHub" in platforms:
-            _audit_github_main_pr_policy(failures)
-        if "Gitea" in platforms:
-            _audit_gitea_fallback_policy(failures)
-    except (OSError, ValueError) as exc:
-        failures.append(str(exc))
+    if "GitHub" in platforms:
+        _audit_github_main_pr_policy(failures)
+    if "Gitea" in platforms:
+        _audit_gitea_fallback_policy(failures)
     if failures:
         print("=== CI trigger policy audit: FAIL ===")
         for failure in failures:

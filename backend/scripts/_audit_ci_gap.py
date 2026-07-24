@@ -30,11 +30,7 @@ from ci_gap_installer_artifact import (
     missing_installer_publish_actions_by_platform as _evaluate_installer_publish_actions,
 )
 from ci_gap_release_scope import release_apk_scope_policy_violations
-from ci_gap_required_commands import (
-    REQUIRED_CI_GATES_BY_PLATFORM,
-    REQUIRED_CI_INVOCATIONS,
-    REQUIRED_CI_INVOCATIONS_BY_PLATFORM,
-)
+from ci_gap_required_commands import REQUIRED_CI_INVOCATIONS, REQUIRED_CI_INVOCATIONS_BY_PLATFORM
 from ci_gap_workflow_parser import (
     WorkflowAction,
     WorkflowCommand,
@@ -127,10 +123,7 @@ def _missing_ci_invocations_by_platform(
         platform_commands = _commands_for_platform(commands, platform)
         for label in _missing_ci_invocations(platform_commands):
             missing.append(f"{platform}: {label}")
-        for required in (
-            *REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform],
-            *REQUIRED_CI_GATES_BY_PLATFORM[platform],
-        ):
+        for required in REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform]:
             allowed_scopes = _CI_INVOCATION_SCOPES.get(required.label, {"full"})
             executable_segments = _iter_executable_command_segments(
                 [

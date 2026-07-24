@@ -2,7 +2,7 @@
 
 > 把反复踩中的 CI 工具坑固化成一篇查得到的 runbook。**做这几类活前先读**：跑本地重型 Gradle 验证（`--stop` / classes.jar 锁）、起或改 CI lane、判一条 CI run 是真红还是良性、合 PR（`gh pr merge` / gitea `merge`）、连发合并后核验、三端同步。
 >
-> 本仓 CI 真相：**主 CI 在 GitHub Actions（origin `xxu29958-jpg/xpj`，云端）**，四条 workflow `.github/workflows/{ci,android-connected-test,codeql,nvd-database}.yml`；自托管 **gitea（`localhost:3000/codex/xiaopiaojia`）是次要兜底**，两条 workflow `.gitea/workflows/{windows-ci,android-connected}.yml`，常没起。两套 workflow 的 job 覆盖 / audit 覆盖刻意对齐，但 trigger 面有意不同（GitHub 走 PR/main-push，Gitea 走白名单 push + 手动），且**运行环境、merge API、日志拿法不同**——别把 gitea 的事实套到 GitHub 上，反之亦然。
+> 本仓 CI 真相：**主 CI 在 GitHub Actions（origin `xxu29958-jpg/xpj`，云端）**，三条 workflow `.github/workflows/{ci,android-connected-test,codeql}.yml`；自托管 **gitea（`localhost:3000/codex/xiaopiaojia`）是次要兜底**，两条 workflow `.gitea/workflows/{windows-ci,android-connected}.yml`，常没起。两套 workflow 的 job 覆盖 / audit 覆盖刻意对齐，但 trigger 面有意不同（GitHub 走 PR/main-push，Gitea 走白名单 push + 手动），且**运行环境、merge API、日志拿法不同**——别把 gitea 的事实套到 GitHub 上，反之亦然。
 
 ---
 
@@ -31,7 +31,6 @@
 # GitHub .github/workflows/ci.yml        →  pull_request: main; push: main; workflow_dispatch
 # GitHub android-connected-test.yml      →  pull_request: main + paths; push: main + paths; workflow_dispatch
 # GitHub codeql.yml                       →  pull_request: main; push: main; workflow_dispatch; schedule cron "37 3 * * 1"
-# GitHub nvd-database.yml                 →  push: main + paths; workflow_dispatch; schedule cron "17 2 * * *"
 # gitea  .gitea/workflows/windows-ci.yml →  main, feat/**, fix/**, perf/**, refactor/**, codex/**
 # gitea  android-connected.yml            →  同 windows-ci + paths 过滤
 ```
@@ -64,7 +63,7 @@ body: { "ref": "<分支名>" }
 **正确做法**：
 - 盯 CI 用**后台轮询脚本**（bash `run_in_background`，`gh pr checks N` 轮到 pending==0 再数 fail），别死等、别信 `gh pr checks --watch`。
 - 红 triage：先 `gh run view --job <id>` 看哪步 ✗，再 `gh run view --job <id> --log` 全日志搜 `^e: `(detekt finding)/ `FAILED` / `failures="[1-9]` / `error:` 定位文件:行。别被被取消 run 的「fail」唬住，也别把 workflow 里 `echo "::error::..."` 的守卫定义文本当真错。
-- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。OWASP 属于 `Android` 门，必须完成真实扫描。
+- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。OWASP 数据源 flake **非 required、不挡合**。
 
 **铁律**：被 concurrency 取消的旧 run 的 `fail` 是噪声；只认最新 head 那条 run。
 
@@ -107,13 +106,18 @@ gh pr merge N --squash --delete-branch --match-head-commit <exact-head-sha>
 
 ## 坑 6：OWASP / NVD dependency-check 步在 NVD 网关超时上 flake
 
-**症状**：Android job 卡在 dependency-check，日志出现 NVD 520/524、更新超时，或 `NvdCveClient` 的空响应异常。
+**症状**：Android job 卡在 `Dependency vulnerability scan (OWASP dependency-check)` 步，日志出现 `NvdApiException: Status Code 520/524`、`Checking for updates and analyzing dependencies for vulnerabilities` 后长时间无进展，或 `OWASP_NVD_UPDATE_TIMED_OUT`，NVD 服务抖动时一天复发数次。
 
 **根因**：该步下载 NVD 漏洞库，撞 NVD API 网关超时即 flake。它是 Android job 的**最后一个大步**——能跑到 OWASP，说明 compile / unit test / lint / detekt×2 / count baseline / debug+release APK 全已过。
 
-**正确做法**：独立 `main`/定时 workflow 按 Dependency-Check 插件版本生成不可变 artifact；PR 经 GitHub Actions API 选择 48 小时内成功 `main` run 的精确 artifact ID，并由官方 download action 校验摘要。PR 永不接收 NVD key。生产器首次落库时，只有 base 确实不存在该 workflow 的 PR 可以进入一次性 bootstrap；合入后 main 生产器完成首轮更新与真实扫描，产物成功后重跑同一 main SHA。此后缺 artifact、在线更新、来源、摘要、两条 Release 配置覆盖、离线分析或 CVSS 超阈值任一失败都必须红。
+**正确做法**：
+- **OWASP NVD 数据源 timeout 已在 `ci.yml` 内窄放行**：workflow 先跑 `dependencyCheckUpdate`，只有这个独立 NVD 更新阶段超时才降级为 warning，并删除半成品 H2 DB；更新成功后再跑 `dependencyCheckAnalyze -PdependencyCheckAutoUpdate=false` 离线扫描。
+- **OWASP 仍红、其余全绿 = 先按真红 triage**：红在 Enforce 且不是 `OWASP_NVD_UPDATE_TIMED_OUT` 时，说明不是已知 NVD 数据源 flake。真实 CVE、腐坏缓存、未知 scanner fatal、离线 analyze timeout 仍红。
+- **别提议加全局 `continue-on-error`**：跳过机制已内建——步带 `if: ${{ env.NVD_API_KEY != '' }}`，配对一个「scan skipped」warning 步处理空 key。要强制跳过得删 `NVD_API_KEY` repo secret，**但该值 write-only、删了只有用户能重加**，先确认。
+- 缓存修复已落地（main@`9d627e02`）：`android/build.gradle.kts` `nvd.validForHours=24` + `data.directory = Gradle user home`；`ci.yml` android job 用 `actions/cache@v4` 缓存 `~/.gradle/dependency-check-data`（UTC-day key + `restore-keys`）。**warm cache（<24h）让插件整个 SKIP NVD 调用** → rerun / 同日 run 零 NVD I/O。缓存按 GitHub Actions scope 规则：**main 的 cache 才能惠及其它 PR**，需一次成功完整下载 bootstrap。NVD 真宕机时缓存也救不了，得等 NVD 恢复一次下载。
+- 改 `build.gradle.kts` 的 dependencyCheck 配置块，本地用 `./gradlew help` 验（求值 block 不跑 OWASP）。
 
-**铁律**：NVD key 只属于 main 生产器；PR 不能读取、刷新或发布 NVD 权威。除一次性且可证明的生产器 bootstrap 外，绿灯必须消费可信 main 的新鲜不可变 artifact。
+**铁律**：OWASP update 阶段的 520/524 / NVD timeout 是数据源 flake，workflow 只对这个外部数据源阶段放 warning；离线 analyze 阶段仍 fail-closed。别加全局 `continue-on-error`，跳过分支已内建。
 
 ---
 
@@ -183,4 +187,4 @@ git push gitee main                  # 推 cloud mirror
 
 5. **emulator AVD/路径**：gitea `android-connected.yml` 用 runner 宿主用户级 AVD `ticketbox_api36_host`（与记忆一致）；但 **GitHub `android-connected-test.yml` 用 `reactivecircus/android-emulator-runner@v2` 动态起 pixel_6 / api-36，无 `ticketbox_api36_host`**。HANDOFF 把宿主 AVD 当成两端通用，实为 gitea 专属。
 
-（其余记忆陈述——Gradle daemon 共享、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。OWASP 已改为可信 `main` artifact；无 key 仅允许新鲜、来源可证的 artifact 离线扫描，不再跳过。）
+（其余记忆陈述——Gradle daemon 共享、OWASP `if NVD_API_KEY != ''` 跳过分支 + `actions/cache@v4` + `validForHours=24`、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。）

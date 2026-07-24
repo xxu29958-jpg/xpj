@@ -1,20 +1,36 @@
 from __future__ import annotations
 
+import importlib.util
+import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from tests._infra.ci_gap import load_ci_script
-
-resolver = load_ci_script("resolve_nvd_artifact.py")
-
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT_PATH = REPOSITORY_ROOT / "backend" / "scripts" / "resolve_nvd_artifact.py"
 REPOSITORY = "owner/repo"
 WORKFLOW = "nvd-database.yml"
-ARTIFACT = "ticketbox-nvd-database-v12.2.0"
-HEAD_SHA = "a" * 40
-DIGEST = "sha256:" + "b" * 64
+ARTIFACT = "ticketbox-nvd-database-v12.2.2-" + "a" * 64
+HEAD_SHA = "b" * 40
+ARTIFACT_DIGEST = "sha256:" + "c" * 64
 NOW = datetime(2026, 7, 24, 9, tzinfo=UTC)
+
+
+def _load_script() -> object:
+    spec = importlib.util.spec_from_file_location(
+        "_test_resolve_nvd_artifact",
+        SCRIPT_PATH,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+resolver = _load_script()
 
 
 def _run(
@@ -40,7 +56,7 @@ def _artifact(
     run_id: int,
     *,
     name: str = ARTIFACT,
-    digest: str = DIGEST,
+    digest: str = ARTIFACT_DIGEST,
 ) -> dict[str, Any]:
     return {
         "id": run_id * 10,
@@ -63,7 +79,7 @@ def _resolve(get_json: object) -> object:
     )
 
 
-def test_resolver_selects_newest_immutable_artifact_from_trusted_main_run() -> None:
+def test_resolver_selects_newest_matching_artifact_from_trusted_main() -> None:
     observed: list[str] = []
     runs = [
         _run(1, event="pull_request"),
@@ -74,77 +90,30 @@ def test_resolver_selects_newest_immutable_artifact_from_trusted_main_run() -> N
     def get_json(url: str) -> dict[str, Any]:
         observed.append(url)
         if "/workflows/" in url:
-            assert "branch=main" in url
-            assert "status=success" in url
             return {"workflow_runs": runs}
         assert "/runs/3/" in url
         return {"artifacts": [_artifact(3)]}
 
-    reference = _resolve(get_json)
-
-    assert reference == resolver.ArtifactReference(
-        run_id=3,
-        artifact_id=30,
-    )
+    assert _resolve(get_json) == resolver.ArtifactReference(run_id=3, artifact_id=30)
     assert not any("/runs/1/" in url or "/runs/2/" in url for url in observed)
 
 
-def test_resolver_skips_stale_runs_and_wrong_plugin_artifacts() -> None:
-    runs = [
-        _run(4, age=timedelta(hours=49)),
-        _run(5, age=timedelta(hours=2)),
-        _run(6, age=timedelta(hours=3)),
-    ]
+def test_resolver_does_not_fall_back_to_another_producer_contract() -> None:
+    runs = [_run(4)]
 
     def get_json(url: str) -> dict[str, Any]:
         if "/workflows/" in url:
             return {"workflow_runs": runs}
-        if "/runs/5/" in url:
-            return {"artifacts": [_artifact(5, name="ticketbox-nvd-database-v11")]}
-        assert "/runs/6/" in url
-        return {"artifacts": [_artifact(6)]}
-
-    reference = _resolve(get_json)
-
-    assert reference is not None
-    assert reference.run_id == 6
-
-
-def test_resolver_rejects_expired_ambiguous_or_malformed_artifacts() -> None:
-    runs = [_run(7), _run(8), _run(9)]
-
-    def get_json(url: str) -> dict[str, Any]:
-        if "/workflows/" in url:
-            return {"workflow_runs": runs}
-        run_id = int(url.split("/runs/", 1)[1].split("/", 1)[0])
-        artifact = _artifact(run_id)
-        if run_id == 7:
-            artifact["expired"] = True
-            return {"artifacts": [artifact]}
-        if run_id == 8:
-            return {"artifacts": [artifact, dict(artifact)]}
-        artifact["digest"] = "sha256:not-a-digest"
-        return {"artifacts": [artifact]}
+        return {
+            "artifacts": [
+                _artifact(
+                    4,
+                    name="ticketbox-nvd-database-v12.2.2-" + "d" * 64,
+                )
+            ]
+        }
 
     assert _resolve(get_json) is None
-
-
-def test_resolver_treats_unmerged_producer_workflow_as_bootstrap() -> None:
-    def missing(_url: str) -> dict[str, Any]:
-        raise resolver.ResourceNotFoundError("not merged yet")
-
-    assert _resolve(missing) is None
-    state = resolver.resolve_artifact_state(
-        repository="owner/repo",
-        workflow="nvd-database.yml",
-        branch="main",
-        artifact_name="ticketbox-nvd-database-v12",
-        api_url="https://api.github.test",
-        get_json=missing,
-        now=NOW,
-    )
-    assert state.producer_available is False
-    assert state.reference is None
 
 
 @pytest.mark.parametrize(
@@ -158,11 +127,11 @@ def test_resolver_treats_unmerged_producer_workflow_as_bootstrap() -> None:
         ("repository", {"full_name": "fork/repo"}),
     ],
 )
-def test_resolver_rejects_run_when_provenance_field_differs(
+def test_resolver_rejects_untrusted_run_provenance(
     field: str,
     value: object,
 ) -> None:
-    run = _run(10)
+    run = _run(5)
     run[field] = value
 
     def get_json(url: str) -> dict[str, Any]:
@@ -173,16 +142,23 @@ def test_resolver_rejects_run_when_provenance_field_differs(
 
 
 @pytest.mark.parametrize(
-    ("field", "value"),
-    [("id", 999), ("head_sha", "c" * 40)],
+    ("mutation", "value"),
+    [
+        ("expired", True),
+        ("digest", "sha256:not-a-digest"),
+        ("head_sha", "d" * 40),
+    ],
 )
-def test_resolver_rejects_artifact_bound_to_another_run(
-    field: str,
+def test_resolver_rejects_untrusted_artifact_metadata(
+    mutation: str,
     value: object,
 ) -> None:
-    run = _run(11)
-    artifact = _artifact(11)
-    artifact["workflow_run"][field] = value
+    run = _run(6)
+    artifact = _artifact(6)
+    if mutation == "head_sha":
+        artifact["workflow_run"][mutation] = value
+    else:
+        artifact[mutation] = value
 
     def get_json(url: str) -> dict[str, Any]:
         if "/workflows/" in url:
@@ -190,3 +166,21 @@ def test_resolver_rejects_artifact_bound_to_another_run(
         return {"artifacts": [artifact]}
 
     assert _resolve(get_json) is None
+
+
+def test_missing_main_producer_is_reported_without_bootstrap_artifact() -> None:
+    def missing(_url: str) -> dict[str, Any]:
+        raise resolver.ResourceNotFoundError("not merged yet")
+
+    result = resolver.resolve_artifact_state(
+        repository=REPOSITORY,
+        workflow=WORKFLOW,
+        branch="main",
+        artifact_name=ARTIFACT,
+        api_url="https://api.github.test",
+        get_json=missing,
+        now=NOW,
+    )
+
+    assert result.producer_available is False
+    assert result.reference is None

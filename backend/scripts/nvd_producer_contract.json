@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    ".github/workflows/nvd-database.yml",
+    "android/app/build.gradle.kts",
+    "android/build.gradle.kts",
+    "android/config/dependency-check/suppressions.xml",
+    "android/gradle/libs.versions.toml",
+    "android/gradle/wrapper/gradle-wrapper.properties",
+    "android/settings.gradle.kts",
+    "backend/scripts/android_dependency_audit.py",
+    "backend/scripts/nvd_artifact_contract.py",
+    "backend/scripts/resolve_nvd_artifact.py"
+  ]
+}

@@ -8,7 +8,6 @@
 .github/workflows/ci.yml                       # 主 CI：常驻快速合同 + 按域 PostgreSQL/Desktop/Android/Windows packaging
 .github/workflows/android-connected-test.yml   # path-filtered 云端模拟器 lane
 .github/workflows/codeql.yml                   # GitHub CodeQL 安全扫描
-.github/workflows/nvd-database.yml              # main 独占的 NVD 数据生产 lane
 ```
 
 本地降级 workflow 文件：
@@ -100,7 +99,7 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 
 - run 一直排队：Gitea / runner 没起，先把它们启动。
 - pip-audit SSL EOF：网络 flake，rerun 整个 run 即绿。
-- OWASP dependency-check：`main`/定时 workflow 按插件版本生成不可变 NVD artifact；PR 只消费 GitHub API 证明来自成功 `main` run、48 小时内且由官方 action 验证摘要的精确 artifact ID，绝不接收 `NVD_API_KEY`。唯一例外是生产器首次落库 PR：base 必须确实不存在该 workflow；合入后由 main 生产器完成首轮更新与扫描，产物成功后重跑同一 main SHA。此后缺少可信 artifact 一律失败。更新、摘要、来源、两条 Release 配置覆盖、离线分析或 CVSS 任一合同失败均红灯。
+- OWASP dependency-check NVD 超时：`ci.yml` 先跑 `dependencyCheckUpdate`，只有这个独立 NVD 更新阶段超时才降级为 warning，并删除半成品缓存；`dependencyCheckAnalyze -PdependencyCheckAutoUpdate=false` 离线扫描阶段超时或失败仍按真实 CVE、腐坏缓存或未知 scanner fatal 处理。
 - `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android 测试而没同步 bump `android/audit/test_count_baseline.txt`。
 - `backend_pytest_count` / `installer_pytest_count` 红：分别更新 `backend/audit/test_count_baseline.txt` / `backend/packaging/audit/test_count_baseline.txt`；不要改 gate 代码里的数字。
 - `WaitDelay expired before I/O complete`：临时 PG 没拆干净；teardown 先要求 `pg_ctl` 成功且已固定的进程句柄全部退出，超时后只处理同一已验证进程代际，绝不按二进制路径批量杀，详见 workflow 内注释。

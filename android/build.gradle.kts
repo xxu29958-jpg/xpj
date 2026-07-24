@@ -1,3 +1,4 @@
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import groovy.json.JsonOutput
 
 plugins {
@@ -41,19 +42,34 @@ val dependencyCheckFailBuildOnCvss =
         .map(String::toFloat)
         .getOrElse(7.0f)
 val dependencyCheckScanProject = ":app"
-val dependencyCheckScanConfigurations = listOf(
-    "grayReleaseRuntimeClasspath",
-    "internalReleaseRuntimeClasspath",
-)
+val dependencyCheckScanConfigurations = mutableListOf<String>()
 val dependencyCheckScopeContract =
     layout.buildDirectory.file("reports/dependency-check-scope.json")
+
+project(dependencyCheckScanProject).pluginManager.withPlugin("com.android.application") {
+    val androidComponents =
+        project(dependencyCheckScanProject)
+            .extensions
+            .getByType(ApplicationAndroidComponentsExtension::class.java)
+    androidComponents.onVariants(androidComponents.selector().withBuildType("release")) { variant ->
+        dependencyCheckScanConfigurations += variant.runtimeConfiguration.name
+    }
+}
+
+fun resolvedDependencyCheckScanConfigurations(): List<String> {
+    val resolved = dependencyCheckScanConfigurations.distinct().sorted()
+    check(resolved.isNotEmpty()) { "No Android application release variants were discovered." }
+    check(resolved.size == dependencyCheckScanConfigurations.size) {
+        "Android application release variants produced duplicate runtime configurations."
+    }
+    return resolved
+}
 
 dependencyCheck {
     failBuildOnCVSS = dependencyCheckFailBuildOnCvss
     // The root plugin owns one aggregate report, but only the shipped Android
     // application and its release runtime classpaths belong in the SCA gate.
     scanProjects = listOf(dependencyCheckScanProject)
-    scanConfigurations = dependencyCheckScanConfigurations
     // Keep failOnError=true: unreadable data, scanner failures, and findings at
     // or above the threshold must all fail the audit rather than become a no-op.
     formats = listOf("HTML", "JSON")
@@ -68,12 +84,18 @@ dependencyCheck {
     data.directory = dependencyCheckDataDir
 }
 
+gradle.projectsEvaluated {
+    dependencyCheck {
+        scanConfigurations = resolvedDependencyCheckScanConfigurations()
+    }
+}
+
 val writeDependencyCheckScopeContract =
     tasks.register("writeDependencyCheckScopeContract") {
         outputs.file(dependencyCheckScopeContract)
         doLast {
             val reportProject = dependencyCheckScanProject.removePrefix(":")
-            val references = dependencyCheckScanConfigurations.map { configuration ->
+            val references = resolvedDependencyCheckScanConfigurations().map { configuration ->
                 "$reportProject:$configuration"
             }
             val output = dependencyCheckScopeContract.get().asFile
