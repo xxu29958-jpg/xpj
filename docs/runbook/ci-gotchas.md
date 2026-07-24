@@ -63,7 +63,7 @@ body: { "ref": "<分支名>" }
 **正确做法**：
 - 盯 CI 用**后台轮询脚本**（bash `run_in_background`，`gh pr checks N` 轮到 pending==0 再数 fail），别死等、别信 `gh pr checks --watch`。
 - 红 triage：先 `gh run view --job <id>` 看哪步 ✗，再 `gh run view --job <id> --log` 全日志搜 `^e: `(detekt finding)/ `FAILED` / `failures="[1-9]` / `error:` 定位文件:行。别被被取消 run 的「fail」唬住，也别把 workflow 里 `echo "::error::..."` 的守卫定义文本当真错。
-- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。OWASP 数据源 flake **非 required、不挡合**。
+- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。OWASP 属于 `Android` 门，必须完成真实扫描。
 
 **铁律**：被 concurrency 取消的旧 run 的 `fail` 是噪声；只认最新 head 那条 run。
 
@@ -106,18 +106,13 @@ gh pr merge N --squash --delete-branch --match-head-commit <exact-head-sha>
 
 ## 坑 6：OWASP / NVD dependency-check 步在 NVD 网关超时上 flake
 
-**症状**：Android job 卡在 `Dependency vulnerability scan (OWASP dependency-check)` 步，日志出现 `NvdApiException: Status Code 520/524`、`Checking for updates and analyzing dependencies for vulnerabilities` 后长时间无进展，或 `OWASP_NVD_UPDATE_TIMED_OUT`，NVD 服务抖动时一天复发数次。
+**症状**：Android job 卡在 dependency-check，日志出现 NVD 520/524、更新超时，或 `NvdCveClient` 的空响应异常。
 
 **根因**：该步下载 NVD 漏洞库，撞 NVD API 网关超时即 flake。它是 Android job 的**最后一个大步**——能跑到 OWASP，说明 compile / unit test / lint / detekt×2 / count baseline / debug+release APK 全已过。
 
-**正确做法**：
-- **OWASP NVD 数据源 timeout 已在 `ci.yml` 内窄放行**：workflow 先跑 `dependencyCheckUpdate`，只有这个独立 NVD 更新阶段超时才降级为 warning，并删除半成品 H2 DB；更新成功后再跑 `dependencyCheckAnalyze -PdependencyCheckAutoUpdate=false` 离线扫描。
-- **OWASP 仍红、其余全绿 = 先按真红 triage**：红在 Enforce 且不是 `OWASP_NVD_UPDATE_TIMED_OUT` 时，说明不是已知 NVD 数据源 flake。真实 CVE、腐坏缓存、未知 scanner fatal、离线 analyze timeout 仍红。
-- **别提议加全局 `continue-on-error`**：跳过机制已内建——步带 `if: ${{ env.NVD_API_KEY != '' }}`，配对一个「scan skipped」warning 步处理空 key。要强制跳过得删 `NVD_API_KEY` repo secret，**但该值 write-only、删了只有用户能重加**，先确认。
-- 缓存修复已落地（main@`9d627e02`）：`android/build.gradle.kts` `nvd.validForHours=24` + `data.directory = Gradle user home`；`ci.yml` android job 用 `actions/cache@v4` 缓存 `~/.gradle/dependency-check-data`（UTC-day key + `restore-keys`）。**warm cache（<24h）让插件整个 SKIP NVD 调用** → rerun / 同日 run 零 NVD I/O。缓存按 GitHub Actions scope 规则：**main 的 cache 才能惠及其它 PR**，需一次成功完整下载 bootstrap。NVD 真宕机时缓存也救不了，得等 NVD 恢复一次下载。
-- 改 `build.gradle.kts` 的 dependencyCheck 配置块，本地用 `./gradlew help` 验（求值 block 不跑 OWASP）。
+**正确做法**：workflow 按日恢复只读缓存。有 API key 且当天无已验证缓存时，在独立候选库强制刷新，离线分析成功后才保存；fork/Dependabot 没有 secret 时，只能扫描 48 小时内的已验证缓存副本。在线刷新失败、缓存过期/损坏、离线分析失败或 CVSS 超阈值都必须红。不要用 `continue-on-error` 或“无数据也绿”掩盖扫描缺失。
 
-**铁律**：OWASP update 阶段的 520/524 / NVD timeout 是数据源 flake，workflow 只对这个外部数据源阶段放 warning；离线 analyze 阶段仍 fail-closed。别加全局 `continue-on-error`，跳过分支已内建。
+**铁律**：缓存只能由“刷新成功 + 离线分析成功”产生；绿灯必须代表新鲜、已验证的 NVD 数据完成了真实扫描。
 
 ---
 
@@ -187,4 +182,4 @@ git push gitee main                  # 推 cloud mirror
 
 5. **emulator AVD/路径**：gitea `android-connected.yml` 用 runner 宿主用户级 AVD `ticketbox_api36_host`（与记忆一致）；但 **GitHub `android-connected-test.yml` 用 `reactivecircus/android-emulator-runner@v2` 动态起 pixel_6 / api-36，无 `ticketbox_api36_host`**。HANDOFF 把宿主 AVD 当成两端通用，实为 gitea 专属。
 
-（其余记忆陈述——Gradle daemon 共享、OWASP `if NVD_API_KEY != ''` 跳过分支 + `actions/cache@v4` + `validForHours=24`、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。）
+（其余记忆陈述——Gradle daemon 共享、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。OWASP 已改为按日验证缓存；无 key 仅允许新鲜缓存离线扫描，不再跳过。）

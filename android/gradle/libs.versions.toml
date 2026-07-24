@@ -102,4 +102,4 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 # v1.1 Batch 3: OWASP dependency-check, applied at the root level
 # so :app inherits the analyze task.
-owasp-dependency-check = { id = "org.owasp.dependencycheck", version = "12.1.0" }
+owasp-dependency-check = { id = "org.owasp.dependencycheck", version = "12.2.2" }
