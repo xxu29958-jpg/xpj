@@ -34,9 +34,20 @@ val dependencyCheckNvdValidForHours =
     providers.gradleProperty("dependencyCheckNvdValidForHours")
         .map(String::toInt)
         .getOrElse(24)
+val dependencyCheckFailBuildOnCvss =
+    providers.gradleProperty("dependencyCheckFailBuildOnCVSS")
+        .map(String::toFloat)
+        .getOrElse(7.0f)
 
 dependencyCheck {
-    failBuildOnCVSS = 7.0f
+    failBuildOnCVSS = dependencyCheckFailBuildOnCvss
+    // The root plugin owns one aggregate report, but only the shipped Android
+    // application and its release runtime classpaths belong in the SCA gate.
+    scanProjects = listOf(":app")
+    scanConfigurations = listOf(
+        "grayReleaseRuntimeClasspath",
+        "internalReleaseRuntimeClasspath",
+    )
     // Keep failOnError=true: unreadable data, scanner failures, and findings at
     // or above the threshold must all fail the audit rather than become a no-op.
     formats = listOf("HTML", "JSON")

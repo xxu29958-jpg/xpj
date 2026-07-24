@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
+
 from tests._infra.ci_gap import load_ci_script
 
 resolver = load_ci_script("resolve_nvd_artifact.py")
@@ -132,3 +134,48 @@ def test_resolver_treats_unmerged_producer_workflow_as_bootstrap() -> None:
         raise resolver.ResourceNotFoundError("not merged yet")
 
     assert _resolve(missing) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("status", "queued"),
+        ("conclusion", "failure"),
+        ("head_branch", "feature"),
+        ("head_sha", "not-a-sha"),
+        ("path", ".github/workflows/other.yml"),
+        ("repository", {"full_name": "fork/repo"}),
+    ],
+)
+def test_resolver_rejects_run_when_provenance_field_differs(
+    field: str,
+    value: object,
+) -> None:
+    run = _run(10)
+    run[field] = value
+
+    def get_json(url: str) -> dict[str, Any]:
+        assert "/workflows/" in url
+        return {"workflow_runs": [run]}
+
+    assert _resolve(get_json) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("id", 999), ("head_sha", "c" * 40)],
+)
+def test_resolver_rejects_artifact_bound_to_another_run(
+    field: str,
+    value: object,
+) -> None:
+    run = _run(11)
+    artifact = _artifact(11)
+    artifact["workflow_run"][field] = value
+
+    def get_json(url: str) -> dict[str, Any]:
+        if "/workflows/" in url:
+            return {"workflow_runs": [run]}
+        return {"artifacts": [artifact]}
+
+    assert _resolve(get_json) is None

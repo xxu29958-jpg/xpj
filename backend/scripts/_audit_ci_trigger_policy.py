@@ -16,6 +16,7 @@ GITEA_WORKFLOWS = ROOT / ".gitea" / "workflows"
 GITHUB_MAIN_ONLY = ("main",)
 GITEA_WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "codex/**")
 CODEQL_WEEKLY_CRON = "37 3 * * 1"
+NVD_DAILY_CRON = "17 2 * * *"
 GITHUB_CONNECTED_PATHS = (
     *ANDROID_PROTECTED_PATHS,
     ".github/workflows/android-connected-test.yml",
@@ -24,10 +25,17 @@ GITEA_CONNECTED_PATHS = (
     *ANDROID_PROTECTED_PATHS,
     ".gitea/workflows/android-connected.yml",
 )
+GITHUB_NVD_PATHS = (
+    ".github/workflows/nvd-database.yml",
+    "backend/scripts/android_dependency_audit.py",
+    "android/build.gradle.kts",
+    "android/gradle/libs.versions.toml",
+)
 GITHUB_WORKFLOW_EVENTS = {
     "ci.yml": ("push", "pull_request", "workflow_dispatch"),
     "android-connected-test.yml": ("push", "pull_request", "workflow_dispatch"),
     "codeql.yml": ("push", "pull_request", "workflow_dispatch", "schedule"),
+    "nvd-database.yml": ("push", "workflow_dispatch", "schedule"),
 }
 GITHUB_EVENT_KEYS = {
     ("ci.yml", "push"): ("branches",),
@@ -36,6 +44,7 @@ GITHUB_EVENT_KEYS = {
     ("android-connected-test.yml", "pull_request"): ("branches", "paths"),
     ("codeql.yml", "push"): ("branches",),
     ("codeql.yml", "pull_request"): ("branches",),
+    ("nvd-database.yml", "push"): ("branches", "paths"),
 }
 GITEA_WORKFLOW_EVENTS = {
     "windows-ci.yml": ("push", "workflow_dispatch"),
@@ -175,20 +184,25 @@ def _audit_github_main_pr_policy(failures: list[str]) -> None:
             expected_events,
             failures,
         )
-        _expect_exact(f"{workflow_name} push branches", _branches(path, "push"), GITHUB_MAIN_ONLY, failures)
-        _expect_exact(
-            f"{workflow_name} pull_request branches",
-            _branches(path, "pull_request"),
-            GITHUB_MAIN_ONLY,
-            failures,
-        )
+        for event_name in ("push", "pull_request"):
+            if event_name not in expected_events:
+                continue
+            _expect_exact(
+                f"{workflow_name} {event_name} branches",
+                _branches(path, event_name),
+                GITHUB_MAIN_ONLY,
+                failures,
+            )
         if not _event_present(path, "workflow_dispatch"):
             failures.append(f"{workflow_name}: missing workflow_dispatch trigger")
         for event_name in ("push", "pull_request"):
+            expected_keys = GITHUB_EVENT_KEYS.get((workflow_name, event_name))
+            if expected_keys is None:
+                continue
             _expect_exact_members(
                 f"{workflow_name} {event_name} configuration keys",
                 _event_keys(path, event_name),
-                GITHUB_EVENT_KEYS[(workflow_name, event_name)],
+                expected_keys,
                 failures,
             )
 
@@ -198,11 +212,25 @@ def _audit_github_main_pr_policy(failures: list[str]) -> None:
     _expect_exact("android-connected-test.yml push paths", push_paths, GITHUB_CONNECTED_PATHS, failures)
     _expect_exact("android-connected-test.yml pull_request paths", pr_paths, GITHUB_CONNECTED_PATHS, failures)
 
+    nvd = GITHUB_WORKFLOWS / "nvd-database.yml"
+    _expect_exact(
+        "nvd-database.yml push paths",
+        _paths(nvd, "push"),
+        GITHUB_NVD_PATHS,
+        failures,
+    )
+
     crons = _schedule_crons(GITHUB_WORKFLOWS / "codeql.yml")
     _expect_exact(
         "codeql.yml schedule crons",
         crons,
         (CODEQL_WEEKLY_CRON,),
+        failures,
+    )
+    _expect_exact(
+        "nvd-database.yml schedule crons",
+        _schedule_crons(nvd),
+        (NVD_DAILY_CRON,),
         failures,
     )
 

@@ -711,6 +711,48 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Resolve Dependency-Check version
+        id: dependency-check-version
+        run: |
+          version="$(python -c 'import tomllib; print(tomllib.load(open("gradle/libs.versions.toml", "rb"))["plugins"]["owasp-dependency-check"]["version"])')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve trusted main NVD artifact
+        id: nvd-source
+        working-directory: ${{ github.workspace }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python backend/scripts/resolve_nvd_artifact.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow nvd-database.yml \
+            --branch main \
+            --artifact "ticketbox-nvd-database-v${{ steps.dependency-check-version.outputs.version }}" \
+            --api-url "$GITHUB_API_URL" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Require dependency audit source
+        if: steps.nvd-source.outputs.found != 'true'
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::A trusted NVD artifact or NVD_API_KEY is required."
+            exit 1
+          fi
+          echo "No trusted artifact exists yet; isolated bootstrap is authorized."
+
+      - name: Download trusted main NVD artifact
+        if: steps.nvd-source.outputs.found == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ steps.nvd-source.outputs.artifact_id }}
+          path: ~/.gradle/dependency-check-data
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.nvd-source.outputs.run_id }}
+          digest-mismatch: error
+
       - name: Install Android SDK packages
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
@@ -854,37 +896,6 @@ jobs:
             fi
             echo "OK signing certificate $apk"
           done
-
-      - name: Resolve Dependency-Check version
-        id: dependency-check-version
-        run: |
-          version="$(python -c 'import tomllib; print(tomllib.load(open("gradle/libs.versions.toml", "rb"))["plugins"]["owasp-dependency-check"]["version"])')"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve trusted main NVD artifact
-        id: nvd-source
-        working-directory: ${{ github.workspace }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          python backend/scripts/resolve_nvd_artifact.py \
-            --repository "$GITHUB_REPOSITORY" \
-            --workflow nvd-database.yml \
-            --branch main \
-            --artifact "ticketbox-nvd-database-v${{ steps.dependency-check-version.outputs.version }}" \
-            --api-url "$GITHUB_API_URL" \
-            --output "$GITHUB_OUTPUT"
-
-      - name: Download trusted main NVD artifact
-        if: steps.nvd-source.outputs.found == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          artifact-ids: ${{ steps.nvd-source.outputs.artifact_id }}
-          path: ~/.gradle/dependency-check-data
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ steps.nvd-source.outputs.run_id }}
-          digest-mismatch: error
 
       - name: Dependency vulnerability scan
         env:

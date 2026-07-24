@@ -14,22 +14,26 @@ on:
       - "android/gradle/libs.versions.toml"
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
-  group: android-nvd-database-main
+  group: android-nvd-database-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   produce:
     name: Produce trusted NVD database
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
     steps:
       - name: Checkout main
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.sha }}
 
       - name: Set up Java
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
@@ -59,6 +63,30 @@ jobs:
           version="$(python -c 'import tomllib; print(tomllib.load(open("gradle/libs.versions.toml", "rb"))["plugins"]["owasp-dependency-check"]["version"])')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve previous trusted NVD artifact
+        id: nvd-seed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python backend/scripts/resolve_nvd_artifact.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow nvd-database.yml \
+            --branch main \
+            --artifact "ticketbox-nvd-database-v${{ steps.dependency-check-version.outputs.version }}" \
+            --api-url "$GITHUB_API_URL" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Download previous trusted NVD artifact
+        if: steps.nvd-seed.outputs.found == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ steps.nvd-seed.outputs.artifact_id }}
+          path: ${{ runner.temp }}/ticketbox-nvd-seed
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.nvd-seed.outputs.run_id }}
+          digest-mismatch: error
+
       - name: Produce and validate NVD database
         working-directory: android
         env:
@@ -66,6 +94,8 @@ jobs:
         run: |
           python ../backend/scripts/android_dependency_audit.py produce \
             --gradlew "$PWD/gradlew" \
+            --seed-dir "$RUNNER_TEMP/ticketbox-nvd-seed" \
+            --seed-present "${{ steps.nvd-seed.outputs.found }}" \
             --output-dir "$RUNNER_TEMP/ticketbox-nvd-database" \
             --log owasp-output.log
 

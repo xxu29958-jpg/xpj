@@ -2,7 +2,7 @@
 
 > 把反复踩中的 CI 工具坑固化成一篇查得到的 runbook。**做这几类活前先读**：跑本地重型 Gradle 验证（`--stop` / classes.jar 锁）、起或改 CI lane、判一条 CI run 是真红还是良性、合 PR（`gh pr merge` / gitea `merge`）、连发合并后核验、三端同步。
 >
-> 本仓 CI 真相：**主 CI 在 GitHub Actions（origin `xxu29958-jpg/xpj`，云端）**，三条 workflow `.github/workflows/{ci,android-connected-test,codeql}.yml`；自托管 **gitea（`localhost:3000/codex/xiaopiaojia`）是次要兜底**，两条 workflow `.gitea/workflows/{windows-ci,android-connected}.yml`，常没起。两套 workflow 的 job 覆盖 / audit 覆盖刻意对齐，但 trigger 面有意不同（GitHub 走 PR/main-push，Gitea 走白名单 push + 手动），且**运行环境、merge API、日志拿法不同**——别把 gitea 的事实套到 GitHub 上，反之亦然。
+> 本仓 CI 真相：**主 CI 在 GitHub Actions（origin `xxu29958-jpg/xpj`，云端）**，四条 workflow `.github/workflows/{ci,android-connected-test,codeql,nvd-database}.yml`；自托管 **gitea（`localhost:3000/codex/xiaopiaojia`）是次要兜底**，两条 workflow `.gitea/workflows/{windows-ci,android-connected}.yml`，常没起。两套 workflow 的 job 覆盖 / audit 覆盖刻意对齐，但 trigger 面有意不同（GitHub 走 PR/main-push，Gitea 走白名单 push + 手动），且**运行环境、merge API、日志拿法不同**——别把 gitea 的事实套到 GitHub 上，反之亦然。
 
 ---
 
@@ -31,6 +31,7 @@
 # GitHub .github/workflows/ci.yml        →  pull_request: main; push: main; workflow_dispatch
 # GitHub android-connected-test.yml      →  pull_request: main + paths; push: main + paths; workflow_dispatch
 # GitHub codeql.yml                       →  pull_request: main; push: main; workflow_dispatch; schedule cron "37 3 * * 1"
+# GitHub nvd-database.yml                 →  push: main + paths; workflow_dispatch; schedule cron "17 2 * * *"
 # gitea  .gitea/workflows/windows-ci.yml →  main, feat/**, fix/**, perf/**, refactor/**, codex/**
 # gitea  android-connected.yml            →  同 windows-ci + paths 过滤
 ```
