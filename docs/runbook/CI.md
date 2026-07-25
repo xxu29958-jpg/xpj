@@ -8,6 +8,7 @@
 .github/workflows/ci.yml                       # 主 CI：常驻快速合同 + 按域 PostgreSQL/Desktop/Android/Windows packaging
 .github/workflows/android-connected-test.yml   # path-filtered 云端模拟器 lane
 .github/workflows/codeql.yml                   # GitHub CodeQL 安全扫描
+.github/workflows/nvd-database.yml              # main-only Android NVD 数据库生产者
 ```
 
 本地降级 workflow 文件：
@@ -20,12 +21,13 @@
 触发条件：
 
 - GitHub: push 到 `main`，以及 pull_request 到 `main`。PR 始终跑 Backend 快速合同；PostgreSQL、Desktop、Android、Windows packaging 只在对应路径受影响时跑。`main`、手动运行、未知路径、空 diff 或分类失败均 fail closed 到全量。
+- Android NVD producer: 每日 02:17 UTC、相关生产者输入合入 `main` 或手动触发；仅生产者读取 `NVD_API_KEY`。它优先增量复用兼容的旧产物，首次或不兼容时冷启动，离线扫描通过后上传保留 3 天的不可变数据库产物。
 - local-Gitea: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`、`codex/**`
 - 手动 `workflow_dispatch`
 
 GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 是单台 Windows 机器（与生产后端同机），**串行执行**——前一个 run 没结束时排队；只作为云端不可用、发布候选本机验收、或宿主特有 emulator/打包问题的降级确认。Gitea 与 runner 在 home-server 上人工启动；如果本地 push 后 run 一直排队不动，先确认它们活着。
 
-历史：GitHub workflow 曾随 GitHub→Gitea 迁移删除。2026-06-13 起恢复 GitHub 云端 workflow，当前主路径为 `ci.yml`、`android-connected-test.yml` 和 `codeql.yml`；本地 `.gitea/workflows/` 保留为降级备用。pytest 覆盖率报告（`--cov=app`，只是报告、无 fail-under 门槛）仍未恢复。
+历史：GitHub workflow 曾随 GitHub→Gitea 迁移删除。2026-06-13 起恢复 GitHub 云端 workflow，当前主路径为 `ci.yml`、`android-connected-test.yml`、`codeql.yml` 和 main-only `nvd-database.yml`；本地 `.gitea/workflows/` 保留为降级备用。pytest 覆盖率报告（`--cov=app`，只是报告、无 fail-under 门槛）仍未恢复。
 
 ## Job 清单（GitHub 主路径 + local-Gitea 降级）
 
