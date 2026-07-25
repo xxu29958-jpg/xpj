@@ -31,7 +31,8 @@
             https://nvd.nist.gov/vuln/detail/CVE-2025-6965
         ]]></notes>
         <packageUrl regex="true">^pkg:maven/androidx\.sqlite/sqlite(?:-framework)?-android@2\.6\.2$</packageUrl>
-        <cpe>cpe:2.3:a:sqlite:sqlite:2.6.2:*:*:*:*:*:*:*</cpe>
+        <!-- Dependency-Check suppression matching normalizes CPEs to 2.2 URI form. -->
+        <cpe>cpe:/a:sqlite:sqlite:2.6.2</cpe>
     </suppress>
     <suppress>
         <notes><![CDATA[

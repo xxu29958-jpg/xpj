@@ -193,7 +193,7 @@ def _refresh_and_analyze(
         _create_owned_directory(destination, label="NVD refresh directory")
     else:
         try:
-            _copy_database(seed, destination)
+            _copy_database(seed, destination, plugin_version=plugin_version)
         except ArtifactError:
             print("Previous trusted NVD artifact is unusable; rebuilding from empty data.")
             _create_owned_directory(destination, label="NVD refresh directory")

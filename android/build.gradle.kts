@@ -1,5 +1,10 @@
 import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import groovy.json.JsonOutput
+import org.owasp.dependencycheck.dependency.Confidence
+import org.owasp.dependencycheck.dependency.Dependency
+import org.owasp.dependencycheck.dependency.naming.CpeIdentifier
+import org.owasp.dependencycheck.dependency.naming.PurlIdentifier
+import org.owasp.dependencycheck.xml.suppression.SuppressionParser
 
 plugins {
     alias(libs.plugins.android.application) apply false
@@ -41,8 +46,12 @@ val dependencyCheckFailBuildOnCvss =
     providers.gradleProperty("dependencyCheckFailBuildOnCVSS")
         .map(String::toFloat)
         .getOrElse(7.0f)
+val dependencyCheckSuppressionFile =
+    file("config/dependency-check/suppressions.xml")
+
 data class DependencyCheckScope(
     val projectPath: String,
+    val projectName: String,
     val configurationName: String,
 )
 
@@ -52,15 +61,20 @@ val dependencyCheckScopeContract =
     layout.buildDirectory.file("reports/dependency-check-scope.json")
 
 subprojects {
+    val applicationProject = this
     pluginManager.withPlugin("com.android.application") {
-        dependencyCheckApplicationProjects += path
+        dependencyCheckApplicationProjects += applicationProject.path
         val androidComponents =
             extensions.getByType(ApplicationAndroidComponentsExtension::class.java)
         androidComponents.onVariants(
             androidComponents.selector().withBuildType("release"),
         ) { variant ->
             dependencyCheckScanScopes +=
-                DependencyCheckScope(path, variant.runtimeConfiguration.name)
+                DependencyCheckScope(
+                    applicationProject.path,
+                    applicationProject.name,
+                    variant.runtimeConfiguration.name,
+                )
         }
     }
 }
@@ -88,6 +102,18 @@ fun resolvedDependencyCheckScanScopes(): List<DependencyCheckScope> {
     check(resolved.size == dependencyCheckScanScopes.size) {
         "Android application release variants produced duplicate runtime configurations."
     }
+    val ambiguousProjectNames =
+        resolved
+            .groupBy(DependencyCheckScope::projectName)
+            .filterValues { scopes ->
+                scopes.map(DependencyCheckScope::projectPath).distinct().size > 1
+            }
+            .keys
+            .sorted()
+    check(ambiguousProjectNames.isEmpty()) {
+        "Dependency-Check reports project names, so Android application module names must be unique: " +
+            ambiguousProjectNames.joinToString()
+    }
     return resolved
 }
 
@@ -96,7 +122,7 @@ dependencyCheck {
     // Keep failOnError=true: unreadable data, scanner failures, and findings at
     // or above the threshold must all fail the audit rather than become a no-op.
     formats = listOf("HTML", "JSON")
-    suppressionFile = file("config/dependency-check/suppressions.xml").takeIf { it.exists() }?.absolutePath
+    suppressionFile = dependencyCheckSuppressionFile.takeIf { it.exists() }?.absolutePath
     // OWASP recommends an NVD API key to avoid throttling; CI injects it and
     // local runs can use either an environment variable or a Gradle property.
     nvd.apiKey = nvdApiKey.orEmpty()
@@ -120,22 +146,65 @@ gradle.projectsEvaluated {
 
 val writeDependencyCheckScopeContract =
     tasks.register("writeDependencyCheckScopeContract") {
+        val projectReferences =
+            provider {
+                resolvedDependencyCheckScanScopes().map { scope ->
+                    "${scope.projectName}:${scope.configurationName}"
+                }
+            }
+        inputs.property("projectReferences", projectReferences)
         outputs.file(dependencyCheckScopeContract)
         doLast {
-            val references =
-                resolvedDependencyCheckScanScopes().map { scope ->
-                    "${scope.projectPath.removePrefix(":")}:${scope.configurationName}"
-                }
             val output = dependencyCheckScopeContract.get().asFile
             output.parentFile.mkdirs()
             output.writeText(
                 JsonOutput.prettyPrint(
-                    JsonOutput.toJson(mapOf("projectReferences" to references)),
+                    JsonOutput.toJson(mapOf("projectReferences" to projectReferences.get())),
                 ) + "\n",
             )
         }
     }
 
+val verifyDependencyCheckSuppressionContract =
+    tasks.register("verifyDependencyCheckSuppressionContract") {
+        inputs.file(dependencyCheckSuppressionFile)
+        doLast {
+            val rules =
+                SuppressionParser().parseSuppressionRules(dependencyCheckSuppressionFile)
+
+            fun sqliteDependency(artifact: String): Dependency =
+                Dependency(true).apply {
+                    addSoftwareIdentifier(
+                        PurlIdentifier(
+                            "maven",
+                            "androidx.sqlite",
+                            artifact,
+                            "2.6.2",
+                            Confidence.HIGHEST,
+                        ),
+                    )
+                    addVulnerableSoftwareIdentifier(
+                        CpeIdentifier("sqlite", "sqlite", "2.6.2", Confidence.HIGHEST),
+                    )
+                    rules.forEach { rule -> rule.process(this) }
+                }
+
+            for (artifact in listOf("sqlite-android", "sqlite-framework-android")) {
+                check(sqliteDependency(artifact).vulnerableSoftwareIdentifiersCount == 0) {
+                    "The AndroidX SQLite false-positive suppression does not match " +
+                        "Dependency-Check's runtime CPE representation for $artifact."
+                }
+            }
+            check(sqliteDependency("sqlite-bundled-android").vulnerableSoftwareIdentifiersCount == 1) {
+                "The AndroidX SQLite false-positive suppression is broader than its " +
+                    "reviewed API/framework package boundary."
+            }
+        }
+    }
+
 tasks.named("dependencyCheckAggregate") {
-    dependsOn(writeDependencyCheckScopeContract)
+    dependsOn(
+        writeDependencyCheckScopeContract,
+        verifyDependencyCheckSuppressionContract,
+    )
 }
