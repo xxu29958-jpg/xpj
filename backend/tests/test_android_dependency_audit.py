@@ -402,9 +402,11 @@ def test_consumer_rejects_an_incompatible_database_channel(tmp_path: Path) -> No
 
 def test_dependency_report_must_match_dynamic_gradle_scope(tmp_path: Path) -> None:
     scope = tmp_path / "scope.json"
+    report = tmp_path / "report.json"
     scope.write_text(
         json.dumps(
             {
+                "reportPath": report.name,
                 "projectReferences": [
                     "app:grayReleaseRuntimeClasspath",
                     "app:internalReleaseRuntimeClasspath",
@@ -413,7 +415,6 @@ def test_dependency_report_must_match_dynamic_gradle_scope(tmp_path: Path) -> No
         ),
         encoding="utf-8",
     )
-    report = tmp_path / "report.json"
     report.write_text(
         json.dumps(
             {
@@ -424,9 +425,8 @@ def test_dependency_report_must_match_dynamic_gradle_scope(tmp_path: Path) -> No
         ),
         encoding="utf-8",
     )
-
     with pytest.raises(dependency_audit.AuditError, match="exact Gradle scan scope"):
-        dependency_audit._require_app_dependency_report(report, scope)
+        dependency_audit._require_app_dependency_report(tmp_path, scope)
 
 
 def test_producer_workflow_is_main_only_and_has_no_failure_log_artifact() -> None:

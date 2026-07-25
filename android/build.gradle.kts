@@ -57,6 +57,12 @@ data class DependencyCheckScope(
 
 val dependencyCheckApplicationProjects = mutableListOf<String>()
 val dependencyCheckScanScopes = mutableListOf<DependencyCheckScope>()
+val dependencyCheckReportDirectory =
+    layout.buildDirectory.dir("reports/dependency-check")
+val dependencyCheckReportFile =
+    dependencyCheckReportDirectory.map { it.file("dependency-check-report.json") }
+val dependencyCheckReportRelativePath =
+    dependencyCheckReportFile.map { it.asFile.relativeTo(projectDir).invariantSeparatorsPath }
 val dependencyCheckScopeContract =
     layout.buildDirectory.file("reports/dependency-check-scope.json")
 
@@ -122,6 +128,7 @@ dependencyCheck {
     // Keep failOnError=true: unreadable data, scanner failures, and findings at
     // or above the threshold must all fail the audit rather than become a no-op.
     formats = listOf("HTML", "JSON")
+    outputDirectory.set(dependencyCheckReportDirectory)
     suppressionFile = dependencyCheckSuppressionFile.takeIf { it.exists() }?.absolutePath
     // OWASP recommends an NVD API key to avoid throttling; CI injects it and
     // local runs can use either an environment variable or a Gradle property.
@@ -153,13 +160,19 @@ val writeDependencyCheckScopeContract =
                 }
             }
         inputs.property("projectReferences", projectReferences)
+        inputs.property("reportPath", dependencyCheckReportRelativePath)
         outputs.file(dependencyCheckScopeContract)
         doLast {
             val output = dependencyCheckScopeContract.get().asFile
             output.parentFile.mkdirs()
             output.writeText(
                 JsonOutput.prettyPrint(
-                    JsonOutput.toJson(mapOf("projectReferences" to projectReferences.get())),
+                    JsonOutput.toJson(
+                        mapOf(
+                            "projectReferences" to projectReferences.get(),
+                            "reportPath" to dependencyCheckReportRelativePath.get(),
+                        ),
+                    ),
                 ) + "\n",
             )
         }

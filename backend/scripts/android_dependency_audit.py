@@ -119,10 +119,37 @@ def _project_references(payload: object, *, label: str) -> set[str]:
     return set(references)
 
 
-def _require_app_dependency_report(report: Path, scope_contract: Path) -> None:
+def _report_path_from_scope_contract(
+    android_root: Path,
+    scope_payload: object,
+) -> Path:
+    if not isinstance(scope_payload, dict):
+        raise AuditError("the Gradle scan scope contract is not an object")
+    raw_path = scope_payload.get("reportPath")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise AuditError("the Gradle scan scope contract has no report path")
+    relative_path = Path(raw_path)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise AuditError("the Gradle scan scope contract has an unsafe report path")
+    root = android_root.resolve()
+    report = (root / relative_path).resolve()
     try:
-        payload = json.loads(report.read_text(encoding="utf-8"))
+        report.relative_to(root)
+    except ValueError as exc:
+        raise AuditError(
+            "the Gradle scan scope contract report path escapes the Android root"
+        ) from exc
+    return report
+
+
+def _require_app_dependency_report(
+    android_root: Path,
+    scope_contract: Path,
+) -> None:
+    try:
         expected_payload = json.loads(scope_contract.read_text(encoding="utf-8"))
+        report = _report_path_from_scope_contract(android_root, expected_payload)
+        payload = json.loads(report.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         raise AuditError("the aggregate dependency report contract is missing or invalid") from exc
     expected = _project_references(expected_payload, label="Gradle scan scope contract")
@@ -342,7 +369,7 @@ def _run_gradle_factory(
         if return_code == 0 and task == SCAN_TASK:
             try:
                 _require_app_dependency_report(
-                    gradlew.parent / "build" / "reports" / "dependency-check-report.json",
+                    gradlew.parent,
                     gradlew.parent / "build" / "reports" / "dependency-check-scope.json",
                 )
             except AuditError as exc:
