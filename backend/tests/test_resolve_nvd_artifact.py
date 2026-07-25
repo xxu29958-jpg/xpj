@@ -12,7 +12,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPOSITORY_ROOT / "backend" / "scripts" / "resolve_nvd_artifact.py"
 REPOSITORY = "owner/repo"
 WORKFLOW = "nvd-database.yml"
-ARTIFACT = "ticketbox-nvd-database-v12.2.2-" + "a" * 64
+ARTIFACT = "ticketbox-nvd-database-compat1"
 HEAD_SHA = "b" * 40
 ARTIFACT_DIGEST = "sha256:" + "c" * 64
 NOW = datetime(2026, 7, 24, 9, tzinfo=UTC)
@@ -98,7 +98,7 @@ def test_resolver_selects_newest_matching_artifact_from_trusted_main() -> None:
     assert not any("/runs/1/" in url or "/runs/2/" in url for url in observed)
 
 
-def test_resolver_does_not_fall_back_to_another_producer_contract() -> None:
+def test_resolver_does_not_accept_another_database_compatibility_channel() -> None:
     runs = [_run(4)]
 
     def get_json(url: str) -> dict[str, Any]:
@@ -108,7 +108,7 @@ def test_resolver_does_not_fall_back_to_another_producer_contract() -> None:
             "artifacts": [
                 _artifact(
                     4,
-                    name="ticketbox-nvd-database-v12.2.2-" + "d" * 64,
+                    name="ticketbox-nvd-database-compat2",
                 )
             ]
         }
@@ -131,6 +131,7 @@ def test_resolver_rejects_a_run_older_than_the_freshness_window() -> None:
         ("conclusion", "failure"),
         ("head_branch", "feature"),
         ("head_sha", "not-a-sha"),
+        ("event", "pull_request"),
         ("path", ".github/workflows/other.yml"),
         ("repository", {"full_name": "fork/repo"}),
     ],

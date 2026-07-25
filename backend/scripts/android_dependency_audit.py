@@ -30,7 +30,9 @@ SCAN_TASK = "dependencyCheckAggregate"
 UPDATE_TIMEOUT_SECONDS = 22 * 60
 SCAN_TIMEOUT_SECONDS = 10 * 60
 DEPENDENCY_CHECK_PLUGIN_ALIAS = "owasp-dependency-check"
-DEPENDENCY_CHECK_ARTIFACT_PREFIX = "ticketbox-nvd-database-v"
+# Keep reusable database compatibility separate from producer lineage. Binding the
+# artifact name to current PR inputs would require main to publish it before merge.
+DEPENDENCY_CHECK_ARTIFACT_PREFIX = "ticketbox-nvd-database-compat"
 
 
 def _absolute_path(path: Path) -> Path:
@@ -93,7 +95,13 @@ def _dependency_artifact_metadata(
     return {
         "version": version,
         "contract_digest": contract_digest,
-        "artifact": f"{DEPENDENCY_CHECK_ARTIFACT_PREFIX}{version}-{contract_digest}",
+        "database_compatibility": str(
+            nvd_contract.NVD_DATABASE_COMPATIBILITY_VERSION
+        ),
+        "artifact": (
+            f"{DEPENDENCY_CHECK_ARTIFACT_PREFIX}"
+            f"{nvd_contract.NVD_DATABASE_COMPATIBILITY_VERSION}"
+        ),
     }
 
 
@@ -143,8 +151,8 @@ def _copy_database(
     source: Path,
     target: Path,
     *,
-    plugin_version: str,
-    contract_digest: str,
+    plugin_version: str | None = None,
+    contract_digest: str | None = None,
 ) -> None:
     _require_artifact_payload(
         source,
@@ -167,16 +175,8 @@ def _analyze_copy(
     trusted: Path,
     scan: Path,
     run_task: TaskRunner,
-    *,
-    plugin_version: str,
-    contract_digest: str,
 ) -> None:
-    _copy_database(
-        trusted,
-        scan,
-        plugin_version=plugin_version,
-        contract_digest=contract_digest,
-    )
+    _copy_database(trusted, scan)
     if run_task(SCAN_TASK, scan) != 0:
         raise AuditError("dependency analysis failed")
 
@@ -193,12 +193,7 @@ def _refresh_and_analyze(
         _create_owned_directory(destination, label="NVD refresh directory")
     else:
         try:
-            _copy_database(
-                seed,
-                destination,
-                plugin_version=plugin_version,
-                contract_digest=contract_digest,
-            )
+            _copy_database(seed, destination)
         except ArtifactError:
             print("Previous trusted NVD artifact is unusable; rebuilding from empty data.")
             _create_owned_directory(destination, label="NVD refresh directory")
@@ -225,8 +220,6 @@ def run_dependency_audit(
     work: Path,
     artifact_present: bool,
     run_task: TaskRunner,
-    plugin_version: str,
-    contract_digest: str,
 ) -> str:
     """Scan an immutable artifact produced by the trusted main workflow."""
     if not artifact_present:
@@ -237,8 +230,6 @@ def run_dependency_audit(
             trusted,
             work / "scan",
             run_task,
-            plugin_version=plugin_version,
-            contract_digest=contract_digest,
         )
     except (AuditError, OSError):
         _remove_owned_directory(work)
@@ -318,10 +309,14 @@ def _run_gradle_factory(
                 # OWASP documents 11 as the non-failing threshold because CVSS
                 # scores are bounded by 10. Scanner/data errors still fail.
                 command.append("-PdependencyCheckFailBuildOnCVSS=11")
+        child_environment = os.environ.copy()
+        if task != "dependencyCheckUpdate":
+            child_environment.pop("NVD_API_KEY", None)
         try:
             process = subprocess.Popen(
                 command,
                 cwd=gradlew.parent,
+                env=child_environment,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -371,8 +366,6 @@ def _parse_bool(value: str) -> bool:
 def _add_gradle_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--gradlew", type=Path, required=True)
     parser.add_argument("--log", type=Path, required=True)
-    parser.add_argument("--plugin-version", required=True)
-    parser.add_argument("--contract-digest", required=True)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -387,6 +380,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     produce = commands.add_parser("produce")
     _add_gradle_arguments(produce)
+    produce.add_argument("--plugin-version", required=True)
+    produce.add_argument("--contract-digest", required=True)
     produce.add_argument("--output-dir", type=Path, required=True)
     produce.add_argument("--seed-dir", type=Path, required=True)
     produce.add_argument("--seed-present", required=True)
@@ -453,8 +448,6 @@ def main() -> int:
             work=work,
             artifact_present=_parse_bool(args.artifact_present),
             run_task=run_task,
-            plugin_version=args.plugin_version,
-            contract_digest=args.contract_digest,
         )
         print(f"Android dependency audit completed via {mode}.")
         return 0

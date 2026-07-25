@@ -41,25 +41,51 @@ val dependencyCheckFailBuildOnCvss =
     providers.gradleProperty("dependencyCheckFailBuildOnCVSS")
         .map(String::toFloat)
         .getOrElse(7.0f)
-val dependencyCheckScanProject = ":app"
-val dependencyCheckScanConfigurations = mutableListOf<String>()
+data class DependencyCheckScope(
+    val projectPath: String,
+    val configurationName: String,
+)
+
+val dependencyCheckApplicationProjects = mutableListOf<String>()
+val dependencyCheckScanScopes = mutableListOf<DependencyCheckScope>()
 val dependencyCheckScopeContract =
     layout.buildDirectory.file("reports/dependency-check-scope.json")
 
-project(dependencyCheckScanProject).pluginManager.withPlugin("com.android.application") {
-    val androidComponents =
-        project(dependencyCheckScanProject)
-            .extensions
-            .getByType(ApplicationAndroidComponentsExtension::class.java)
-    androidComponents.onVariants(androidComponents.selector().withBuildType("release")) { variant ->
-        dependencyCheckScanConfigurations += variant.runtimeConfiguration.name
+subprojects {
+    pluginManager.withPlugin("com.android.application") {
+        dependencyCheckApplicationProjects += path
+        val androidComponents =
+            extensions.getByType(ApplicationAndroidComponentsExtension::class.java)
+        androidComponents.onVariants(
+            androidComponents.selector().withBuildType("release"),
+        ) { variant ->
+            dependencyCheckScanScopes +=
+                DependencyCheckScope(path, variant.runtimeConfiguration.name)
+        }
     }
 }
 
-fun resolvedDependencyCheckScanConfigurations(): List<String> {
-    val resolved = dependencyCheckScanConfigurations.distinct().sorted()
+fun resolvedDependencyCheckApplicationProjects(): List<String> {
+    val resolved = dependencyCheckApplicationProjects.distinct().sorted()
+    check(resolved.isNotEmpty()) { "No Android application projects were discovered." }
+    check(resolved.size == dependencyCheckApplicationProjects.size) {
+        "Android application projects were discovered more than once."
+    }
+    return resolved
+}
+
+fun resolvedDependencyCheckScanScopes(): List<DependencyCheckScope> {
+    val resolved =
+        dependencyCheckScanScopes
+            .distinct()
+            .sortedWith(
+                compareBy(
+                    DependencyCheckScope::projectPath,
+                    DependencyCheckScope::configurationName,
+                ),
+            )
     check(resolved.isNotEmpty()) { "No Android application release variants were discovered." }
-    check(resolved.size == dependencyCheckScanConfigurations.size) {
+    check(resolved.size == dependencyCheckScanScopes.size) {
         "Android application release variants produced duplicate runtime configurations."
     }
     return resolved
@@ -67,9 +93,6 @@ fun resolvedDependencyCheckScanConfigurations(): List<String> {
 
 dependencyCheck {
     failBuildOnCVSS = dependencyCheckFailBuildOnCvss
-    // The root plugin owns one aggregate report, but only the shipped Android
-    // application and its release runtime classpaths belong in the SCA gate.
-    scanProjects = listOf(dependencyCheckScanProject)
     // Keep failOnError=true: unreadable data, scanner failures, and findings at
     // or above the threshold must all fail the audit rather than become a no-op.
     formats = listOf("HTML", "JSON")
@@ -86,7 +109,12 @@ dependencyCheck {
 
 gradle.projectsEvaluated {
     dependencyCheck {
-        scanConfigurations = resolvedDependencyCheckScanConfigurations()
+        scanProjects = resolvedDependencyCheckApplicationProjects()
+        scanConfigurations =
+            resolvedDependencyCheckScanScopes()
+                .map(DependencyCheckScope::configurationName)
+                .distinct()
+                .sorted()
     }
 }
 
@@ -94,10 +122,10 @@ val writeDependencyCheckScopeContract =
     tasks.register("writeDependencyCheckScopeContract") {
         outputs.file(dependencyCheckScopeContract)
         doLast {
-            val reportProject = dependencyCheckScanProject.removePrefix(":")
-            val references = resolvedDependencyCheckScanConfigurations().map { configuration ->
-                "$reportProject:$configuration"
-            }
+            val references =
+                resolvedDependencyCheckScanScopes().map { scope ->
+                    "${scope.projectPath.removePrefix(":")}:${scope.configurationName}"
+                }
             val output = dependencyCheckScopeContract.get().asFile
             output.parentFile.mkdirs()
             output.writeText(

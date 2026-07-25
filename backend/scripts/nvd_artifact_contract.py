@@ -6,10 +6,12 @@ import hashlib
 import json
 import os
 import re
+import stat
 from pathlib import Path, PurePosixPath
 
 ARTIFACT_MANIFEST_NAME = "ticketbox-nvd-manifest.json"
-ARTIFACT_MANIFEST_SCHEMA_VERSION = 1
+ARTIFACT_MANIFEST_SCHEMA_VERSION = 2
+NVD_DATABASE_COMPATIBILITY_VERSION = 1
 PRODUCER_CONTRACT_SCHEMA_VERSION = 2
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
@@ -173,6 +175,7 @@ def producer_contract_digest(repository_root: Path, contract: Path) -> str:
         source = _contract_file(root, relative_path)
         source_bytes = source.read_bytes()
         digest.update(relative_path.encode("utf-8") + b"\0")
+        digest.update(stat.S_IMODE(source.stat().st_mode).to_bytes(4, "big"))
         digest.update(len(source_bytes).to_bytes(8, "big"))
         digest.update(source_bytes)
     return digest.hexdigest()
@@ -193,6 +196,7 @@ def write_artifact_manifest(
     payload_path = database_payload_path(database)
     manifest = {
         "schemaVersion": ARTIFACT_MANIFEST_SCHEMA_VERSION,
+        "databaseCompatibility": NVD_DATABASE_COMPATIBILITY_VERSION,
         "pluginVersion": plugin_version,
         "producerContractDigest": contract_digest,
         "database": {
@@ -212,10 +216,11 @@ def write_artifact_manifest(
 def require_artifact_payload(
     database: Path,
     *,
-    plugin_version: str,
-    contract_digest: str,
+    plugin_version: str | None = None,
+    contract_digest: str | None = None,
 ) -> None:
-    _require_digest(contract_digest, label="producer contract digest")
+    if contract_digest is not None:
+        _require_digest(contract_digest, label="producer contract digest")
     payload_path = database_payload_path(database)
     manifest_path = database / ARTIFACT_MANIFEST_NAME
     if manifest_path.is_symlink() or not manifest_path.is_file():
@@ -230,13 +235,23 @@ def require_artifact_payload(
         not isinstance(manifest, dict)
         or set(manifest) != {
             "schemaVersion",
+            "databaseCompatibility",
             "pluginVersion",
             "producerContractDigest",
             "database",
         }
         or manifest.get("schemaVersion") != ARTIFACT_MANIFEST_SCHEMA_VERSION
-        or manifest.get("pluginVersion") != plugin_version
-        or manifest.get("producerContractDigest") != contract_digest
+        or manifest.get("databaseCompatibility")
+        != NVD_DATABASE_COMPATIBILITY_VERSION
+        or not isinstance(manifest.get("pluginVersion"), str)
+        or not manifest["pluginVersion"]
+        or (plugin_version is not None and manifest["pluginVersion"] != plugin_version)
+        or not isinstance(manifest.get("producerContractDigest"), str)
+        or SHA256_PATTERN.fullmatch(manifest["producerContractDigest"]) is None
+        or (
+            contract_digest is not None
+            and manifest["producerContractDigest"] != contract_digest
+        )
         or not isinstance(database_contract, dict)
         or set(database_contract) != {"path", "sha256"}
         or database_contract.get("path") != expected_path

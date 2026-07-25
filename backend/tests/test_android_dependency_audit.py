@@ -122,6 +122,25 @@ def test_contract_digest_changes_for_each_producer_input(tmp_path: Path) -> None
         path.write_text(original, encoding="utf-8")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Git executable mode is Unix-only")
+def test_contract_digest_tracks_the_producer_executable_mode(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    producer = root / "producer"
+    producer.write_text("#!/bin/sh\n", encoding="utf-8")
+    producer.chmod(0o644)
+    contract = root / "contract.json"
+    contract.write_text(
+        json.dumps({"schemaVersion": 2, "files": ["producer"], "patterns": []}),
+        encoding="utf-8",
+    )
+    baseline = dependency_audit._producer_contract_digest(root, contract)
+
+    producer.chmod(0o755)
+
+    assert dependency_audit._producer_contract_digest(root, contract) != baseline
+
+
 def test_contract_patterns_discover_new_gradle_modules(tmp_path: Path) -> None:
     root = tmp_path / "repository"
     (root / "android").mkdir(parents=True)
@@ -156,7 +175,6 @@ def test_contract_patterns_discover_new_gradle_modules(tmp_path: Path) -> None:
     [
         ["b.txt", "a.txt"],
         ["a.txt", "a.txt"],
-        ["../outside.txt"],
         ["nested\\file.txt"],
     ],
 )
@@ -178,28 +196,65 @@ def test_producer_contract_rejects_ambiguous_file_inventory(
         dependency_audit._producer_contract_digest(root, contract)
 
 
+def test_producer_contract_rejects_an_existing_file_outside_repository(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    (tmp_path / "outside.txt").write_text("outside", encoding="utf-8")
+    contract = root / "contract.json"
+    contract.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "files": ["../outside.txt"],
+                "patterns": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(dependency_audit.AuditError, match="non-canonical path"):
+        dependency_audit._producer_contract_digest(root, contract)
+
+
 def test_producer_contract_rejects_unsafe_or_empty_patterns(tmp_path: Path) -> None:
     root = tmp_path / "repository"
     root.mkdir()
     (root / "producer.py").write_text("producer\n", encoding="utf-8")
+    (tmp_path / "outside.gradle.kts").write_text("outside\n", encoding="utf-8")
     contract = root / "contract.json"
 
-    for pattern in ("../*.kts", "missing/**/*.kts"):
-        contract.write_text(
-            json.dumps(
-                {
-                    "schemaVersion": 2,
-                    "files": ["producer.py"],
-                    "patterns": [pattern],
-                }
-            ),
-            encoding="utf-8",
-        )
-        with pytest.raises(dependency_audit.AuditError):
-            dependency_audit._producer_contract_digest(root, contract)
+    contract.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "files": ["producer.py"],
+                "patterns": ["../*.kts"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(dependency_audit.AuditError, match="non-canonical pattern"):
+        dependency_audit._producer_contract_digest(root, contract)
+
+    contract.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "files": ["producer.py"],
+                "patterns": ["missing/**/*.kts"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(dependency_audit.AuditError, match="matched no files"):
+        dependency_audit._producer_contract_digest(root, contract)
 
 
-def test_metadata_binds_plugin_version_and_contract_digest(tmp_path: Path) -> None:
+def test_metadata_separates_database_compatibility_from_producer_lineage(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "repository"
     root.mkdir()
     source = root / "producer.py"
@@ -227,16 +282,23 @@ owasp-dependency-check = { id = "org.owasp.dependencycheck", version.ref = "depe
         repository_root=root,
         contract=contract,
     )
+    original_digest = metadata["contract_digest"]
+    original_artifact = metadata["artifact"]
+    source.write_text("print('changed producer')\n", encoding="utf-8")
+    changed = dependency_audit._dependency_artifact_metadata(
+        catalog,
+        repository_root=root,
+        contract=contract,
+    )
 
     assert metadata["version"] == PLUGIN_VERSION
-    assert metadata["contract_digest"] == dependency_audit._producer_contract_digest(
-        root,
-        contract,
+    assert len(original_digest) == 64
+    assert metadata["database_compatibility"] == str(
+        dependency_audit.nvd_contract.NVD_DATABASE_COMPATIBILITY_VERSION
     )
-    assert metadata["artifact"] == (
-        f"ticketbox-nvd-database-v{PLUGIN_VERSION}-"
-        f"{metadata['contract_digest']}"
-    )
+    assert original_artifact == "ticketbox-nvd-database-compat1"
+    assert changed["artifact"] == original_artifact
+    assert changed["contract_digest"] != original_digest
 
 
 def test_producer_publishes_manifest_only_after_update_and_scan(tmp_path: Path) -> None:
@@ -297,12 +359,45 @@ def test_consumer_rejects_mutated_database_before_gradle_runs(tmp_path: Path) ->
             work=tmp_path / "work",
             artifact_present=True,
             run_task=lambda task, _database: observed.append(task) or 0,
-            plugin_version=PLUGIN_VERSION,
-            contract_digest=CONTRACT_DIGEST,
         )
 
     assert observed == []
     assert not (tmp_path / "work").exists()
+
+
+def test_consumer_accepts_compatible_database_from_previous_producer(
+    tmp_path: Path,
+) -> None:
+    trusted = tmp_path / "trusted"
+    _seed_artifact(trusted)
+    observed: list[str] = []
+
+    mode = dependency_audit.run_dependency_audit(
+        trusted=trusted,
+        work=tmp_path / "work",
+        artifact_present=True,
+        run_task=lambda task, _database: observed.append(task) or 0,
+    )
+
+    assert mode == "trusted-artifact"
+    assert observed == [dependency_audit.SCAN_TASK]
+
+
+def test_consumer_rejects_an_incompatible_database_channel(tmp_path: Path) -> None:
+    trusted = tmp_path / "trusted"
+    _seed_artifact(trusted)
+    manifest_path = trusted / dependency_audit.ARTIFACT_MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["databaseCompatibility"] += 1
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(dependency_audit.ArtifactError):
+        dependency_audit.run_dependency_audit(
+            trusted=trusted,
+            work=tmp_path / "work",
+            artifact_present=True,
+            run_task=lambda _task, _database: 0,
+        )
 
 
 def test_dependency_report_must_match_dynamic_gradle_scope(tmp_path: Path) -> None:
@@ -352,6 +447,8 @@ def test_producer_workflow_is_main_only_and_has_no_failure_log_artifact() -> Non
         "backend/scripts/nvd_producer_contract.json",
     }
     assert produce["if"] == "github.ref == 'refs/heads/main'"
+    checkout = next(step for step in steps if step["name"] == "Checkout main")
+    assert checkout["with"]["persist-credentials"] is False
     setup_python = next(step for step in steps if step["name"] == "Set up Python")
     assert setup_python["uses"] == (
         "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
@@ -372,7 +469,18 @@ def test_producer_workflow_is_main_only_and_has_no_failure_log_artifact() -> Non
     )
     assert "--plugin-version" in producer
     assert "--contract-digest" in producer
-    assert not any("failure" in step.get("name", "").lower() for step in steps)
+    uploads = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("actions/upload-artifact@")
+    ]
+    assert len(uploads) == 1
+    assert uploads[0]["name"] == "Upload immutable NVD artifact"
+    assert "if" not in uploads[0]
+    upload_path = uploads[0]["with"]["path"]
+    assert upload_path.startswith("${{ runner.")
+    assert upload_path.endswith("/ticketbox-nvd-database")
+    assert all("owasp-output.log" not in str(step) for step in uploads)
 
 
 def test_existing_pr_scan_uses_the_same_aggregate_app_scope() -> None:
