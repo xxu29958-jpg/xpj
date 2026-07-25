@@ -216,6 +216,9 @@ val verifyDependencyCheckSuppressionContract =
     }
 
 tasks.named("dependencyCheckAggregate") {
+    doNotTrackState(
+        "The external NVD database and resolved dependency graph must be scanned on every invocation.",
+    )
     dependsOn(
         writeDependencyCheckScopeContract,
         verifyDependencyCheckSuppressionContract,
