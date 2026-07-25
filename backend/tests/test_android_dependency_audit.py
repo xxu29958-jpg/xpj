@@ -53,12 +53,44 @@ def _seed_artifact(path: Path, content: str = "trusted") -> None:
 def test_real_producer_contract_covers_every_declared_input() -> None:
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     files = contract["files"]
+    patterns = contract["patterns"]
+    inputs = set(
+        dependency_audit.nvd_contract.producer_contract_inputs(
+            REPOSITORY_ROOT,
+            CONTRACT_PATH,
+        )
+    )
 
     assert files == sorted(files)
     assert len(files) == len(set(files))
+    assert patterns == sorted(patterns)
+    assert len(patterns) == len(set(patterns))
     assert all((REPOSITORY_ROOT / path).is_file() for path in files)
-    assert {"android/gradlew", "android/gradle/wrapper/gradle-wrapper.jar"} <= set(
-        files
+    assert {
+        "android/gradle.properties",
+        "android/gradlew",
+        "android/gradle/wrapper/gradle-wrapper.jar",
+    } <= inputs
+    discovered = {
+        path.relative_to(REPOSITORY_ROOT).as_posix()
+        for pattern in patterns
+        for path in REPOSITORY_ROOT.glob(pattern)
+        if path.is_file()
+    }
+    assert discovered <= inputs
+    wrapper_properties = dict(
+        line.split("=", maxsplit=1)
+        for line in (
+            REPOSITORY_ROOT
+            / "android"
+            / "gradle"
+            / "wrapper"
+            / "gradle-wrapper.properties"
+        ).read_text(encoding="utf-8").splitlines()
+        if line
+    )
+    assert wrapper_properties["distributionSha256Sum"] == (
+        "2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb"
     )
     digest = dependency_audit._producer_contract_digest(
         REPOSITORY_ROOT,
@@ -77,7 +109,7 @@ def test_contract_digest_changes_for_each_producer_input(tmp_path: Path) -> None
         path.write_text(relative_path, encoding="utf-8")
     contract = root / "contract.json"
     contract.write_text(
-        json.dumps({"schemaVersion": 1, "files": files}),
+        json.dumps({"schemaVersion": 2, "files": files, "patterns": []}),
         encoding="utf-8",
     )
     baseline = dependency_audit._producer_contract_digest(root, contract)
@@ -88,6 +120,35 @@ def test_contract_digest_changes_for_each_producer_input(tmp_path: Path) -> None
         path.write_text(f"{original}-changed", encoding="utf-8")
         assert dependency_audit._producer_contract_digest(root, contract) != baseline
         path.write_text(original, encoding="utf-8")
+
+
+def test_contract_patterns_discover_new_gradle_modules(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    (root / "android").mkdir(parents=True)
+    producer = root / "producer.py"
+    producer.write_text("producer\n", encoding="utf-8")
+    root_build = root / "android" / "build.gradle.kts"
+    root_build.write_text("plugins {}\n", encoding="utf-8")
+    contract = root / "contract.json"
+    contract.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "files": ["producer.py"],
+                "patterns": ["android/**/build.gradle.kts"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    baseline = dependency_audit._producer_contract_digest(root, contract)
+    module_build = root / "android" / "new-module" / "build.gradle.kts"
+    module_build.parent.mkdir()
+    module_build.write_text("plugins {}\n", encoding="utf-8")
+
+    assert dependency_audit._producer_contract_digest(root, contract) != baseline
+    assert "android/new-module/build.gradle.kts" in (
+        dependency_audit.nvd_contract.producer_contract_inputs(root, contract)
+    )
 
 
 @pytest.mark.parametrize(
@@ -109,12 +170,33 @@ def test_producer_contract_rejects_ambiguous_file_inventory(
         (root / relative_path).write_text(relative_path, encoding="utf-8")
     contract = root / "contract.json"
     contract.write_text(
-        json.dumps({"schemaVersion": 1, "files": files}),
+        json.dumps({"schemaVersion": 2, "files": files, "patterns": []}),
         encoding="utf-8",
     )
 
     with pytest.raises(dependency_audit.AuditError):
         dependency_audit._producer_contract_digest(root, contract)
+
+
+def test_producer_contract_rejects_unsafe_or_empty_patterns(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    (root / "producer.py").write_text("producer\n", encoding="utf-8")
+    contract = root / "contract.json"
+
+    for pattern in ("../*.kts", "missing/**/*.kts"):
+        contract.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 2,
+                    "files": ["producer.py"],
+                    "patterns": [pattern],
+                }
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(dependency_audit.AuditError):
+            dependency_audit._producer_contract_digest(root, contract)
 
 
 def test_metadata_binds_plugin_version_and_contract_digest(tmp_path: Path) -> None:
@@ -124,7 +206,9 @@ def test_metadata_binds_plugin_version_and_contract_digest(tmp_path: Path) -> No
     source.write_text("print('producer')\n", encoding="utf-8")
     contract = root / "contract.json"
     contract.write_text(
-        json.dumps({"schemaVersion": 1, "files": ["producer.py"]}),
+        json.dumps(
+            {"schemaVersion": 2, "files": ["producer.py"], "patterns": []}
+        ),
         encoding="utf-8",
     )
     catalog = root / "libs.versions.toml"
@@ -264,9 +348,15 @@ def test_producer_workflow_is_main_only_and_has_no_failure_log_artifact() -> Non
     assert "pull_request" not in trigger
     assert set(trigger["push"]["paths"]) == {
         *contract["files"],
+        *contract["patterns"],
         "backend/scripts/nvd_producer_contract.json",
     }
     assert produce["if"] == "github.ref == 'refs/heads/main'"
+    setup_python = next(step for step in steps if step["name"] == "Set up Python")
+    assert setup_python["uses"] == (
+        "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
+    )
+    assert setup_python["with"]["python-version"] == "3.11"
     setup_gradle = next(step for step in steps if step["name"] == "Set up Gradle")
     assert setup_gradle["uses"] == (
         "gradle/actions/setup-gradle@"

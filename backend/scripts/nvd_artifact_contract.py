@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 
 ARTIFACT_MANIFEST_NAME = "ticketbox-nvd-manifest.json"
 ARTIFACT_MANIFEST_SCHEMA_VERSION = 1
-PRODUCER_CONTRACT_SCHEMA_VERSION = 1
+PRODUCER_CONTRACT_SCHEMA_VERSION = 2
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 
@@ -81,7 +81,32 @@ def _contract_file(root: Path, relative_path: str) -> Path:
     return candidate
 
 
-def producer_contract_digest(repository_root: Path, contract: Path) -> str:
+def _contract_pattern(root: Path, pattern: str) -> list[str]:
+    pure_pattern = PurePosixPath(pattern)
+    if (
+        not pattern
+        or pure_pattern.is_absolute()
+        or "\\" in pattern
+        or str(pure_pattern) != pattern
+        or any(part in {"", ".", ".."} for part in pure_pattern.parts)
+    ):
+        raise AuditError("the producer contract contains a non-canonical pattern")
+    matches = sorted(
+        path.relative_to(root).as_posix()
+        for path in root.glob(pattern)
+        if path.is_file() or path.is_symlink()
+    )
+    if not matches:
+        raise AuditError("the producer contract pattern matched no files")
+    for relative_path in matches:
+        _contract_file(root, relative_path)
+    return matches
+
+
+def _load_producer_contract(
+    repository_root: Path,
+    contract: Path,
+) -> tuple[Path, Path, tuple[str, ...]]:
     root = _absolute_path(repository_root)
     contract_path = _absolute_path(contract)
     if root.is_symlink() or not root.is_dir():
@@ -96,24 +121,55 @@ def producer_contract_digest(repository_root: Path, contract: Path) -> str:
     except (json.JSONDecodeError, OSError) as exc:
         raise AuditError("the producer contract is invalid") from exc
     files = payload.get("files") if isinstance(payload, dict) else None
+    patterns = payload.get("patterns") if isinstance(payload, dict) else None
     schema_version = payload.get("schemaVersion") if isinstance(payload, dict) else None
     if (
-        schema_version != PRODUCER_CONTRACT_SCHEMA_VERSION
+        not isinstance(payload, dict)
+        or set(payload) != {"schemaVersion", "files", "patterns"}
+        or schema_version != PRODUCER_CONTRACT_SCHEMA_VERSION
         or not isinstance(files, list)
         or not files
         or any(not isinstance(path, str) for path in files)
         or files != sorted(files)
         or len(files) != len(set(files))
+        or not isinstance(patterns, list)
+        or any(not isinstance(pattern, str) for pattern in patterns)
+        or patterns != sorted(patterns)
+        or len(patterns) != len(set(patterns))
     ):
         raise AuditError("the producer contract has an invalid file inventory")
 
+    inventory = list(files)
+    for pattern in patterns:
+        inventory.extend(_contract_pattern(root, pattern))
+    if len(inventory) != len(set(inventory)):
+        raise AuditError("the producer contract contains overlapping file inputs")
+    for relative_path in files:
+        _contract_file(root, relative_path)
+    return contract_path, contract_relative, tuple(sorted(inventory))
+
+
+def producer_contract_inputs(repository_root: Path, contract: Path) -> tuple[str, ...]:
+    _contract_path, _contract_relative, inventory = _load_producer_contract(
+        repository_root,
+        contract,
+    )
+    return inventory
+
+
+def producer_contract_digest(repository_root: Path, contract: Path) -> str:
+    root = _absolute_path(repository_root)
+    contract_path, contract_relative, inventory = _load_producer_contract(
+        root,
+        contract,
+    )
     digest = hashlib.sha256()
-    digest.update(b"ticketbox-nvd-producer-contract-v1\0")
+    digest.update(b"ticketbox-nvd-producer-contract-v2\0")
     contract_bytes = contract_path.read_bytes()
     digest.update(contract_relative.as_posix().encode("utf-8") + b"\0")
     digest.update(len(contract_bytes).to_bytes(8, "big"))
     digest.update(contract_bytes)
-    for relative_path in files:
+    for relative_path in inventory:
         source = _contract_file(root, relative_path)
         source_bytes = source.read_bytes()
         digest.update(relative_path.encode("utf-8") + b"\0")

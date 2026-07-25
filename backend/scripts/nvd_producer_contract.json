@@ -1,17 +1,19 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "files": [
     ".github/workflows/nvd-database.yml",
-    "android/app/build.gradle.kts",
-    "android/build.gradle.kts",
     "android/config/dependency-check/suppressions.xml",
-    "android/gradle/libs.versions.toml",
+    "android/gradle.properties",
     "android/gradle/wrapper/gradle-wrapper.jar",
     "android/gradle/wrapper/gradle-wrapper.properties",
     "android/gradlew",
-    "android/settings.gradle.kts",
     "backend/scripts/android_dependency_audit.py",
     "backend/scripts/nvd_artifact_contract.py",
     "backend/scripts/resolve_nvd_artifact.py"
+  ],
+  "patterns": [
+    "android/**/build.gradle.kts",
+    "android/**/settings.gradle.kts",
+    "android/gradle/*.versions.toml"
   ]
 }

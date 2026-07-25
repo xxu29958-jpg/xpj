@@ -116,6 +116,14 @@ def test_resolver_does_not_fall_back_to_another_producer_contract() -> None:
     assert _resolve(get_json) is None
 
 
+def test_resolver_rejects_a_run_older_than_the_freshness_window() -> None:
+    def get_json(url: str) -> dict[str, Any]:
+        assert "/workflows/" in url
+        return {"workflow_runs": [_run(5, age=timedelta(hours=49))]}
+
+    assert _resolve(get_json) is None
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -147,6 +155,7 @@ def test_resolver_rejects_untrusted_run_provenance(
         ("expired", True),
         ("digest", "sha256:not-a-digest"),
         ("head_sha", "d" * 40),
+        ("run_id", 999),
     ],
 )
 def test_resolver_rejects_untrusted_artifact_metadata(
@@ -155,7 +164,9 @@ def test_resolver_rejects_untrusted_artifact_metadata(
 ) -> None:
     run = _run(6)
     artifact = _artifact(6)
-    if mutation == "head_sha":
+    if mutation == "run_id":
+        artifact["workflow_run"]["id"] = value
+    elif mutation == "head_sha":
         artifact["workflow_run"][mutation] = value
     else:
         artifact[mutation] = value
