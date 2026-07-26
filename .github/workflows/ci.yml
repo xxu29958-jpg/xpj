@@ -675,6 +675,9 @@ jobs:
     # The Windows tray/service manager (desktop/). Added after the original
     # ci.yml — pinned in _audit_ci_gap.py so the whole job can't silently vanish.
     runs-on: windows-latest
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     defaults:
       run:
         working-directory: desktop
@@ -689,6 +692,14 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: desktop/requirements.txt
+
+      - name: Verify qualification SHA
+        id: qualification
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -747,20 +758,17 @@ jobs:
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version-file: android/.java-version
+          verify-signature: true
 
       - &android_setup_gradle
         name: Set up Gradle
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
       - &android_sdk
-        name: Install Android SDK packages
+        name: Accept Android SDK licenses
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0"
 
       - &android_local_properties
         name: Point Gradle at cloud Android SDK
@@ -768,16 +776,6 @@ jobs:
           sdk_dir="${ANDROID_HOME//\\/\\\\}"
           echo "sdk.dir=$sdk_dir" > local.properties
           echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
-
-      - &android_gradle_tuning
-        name: Tune Gradle for cloud runner
-        run: |
-          {
-            echo ""
-            echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
-            echo "org.gradle.workers.max=2"
-            echo "kotlin.daemon.jvmargs=-Xmx2560m"
-          } >> gradle.properties
 
       - name: Force regenerate latest Room schema
         run: |
@@ -851,15 +849,19 @@ jobs:
       - *android_setup_gradle
       - *android_sdk
       - *android_local_properties
-      - *android_gradle_tuning
 
       - name: Build debug APKs
-        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug :app:writeTicketboxBuildToolsVersion
 
       - name: Verify debug APK signing certificate
         run: |
           set -euo pipefail
-          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          build_tools_version="$(tr -d '\r\n' < app/build/ticketbox-ci/build-tools-version.txt)"
+          apksigner="$ANDROID_HOME/build-tools/$build_tools_version/apksigner"
+          if [ -z "$build_tools_version" ] || [ ! -x "$apksigner" ]; then
+            echo "::error::Gradle-resolved apksigner is unavailable: $apksigner"
+            exit 1
+          fi
           expected="$(
             keytool -exportcert -rfc \
               -keystore config/debug/ticketbox-debug.keystore \
@@ -921,7 +923,6 @@ jobs:
       - *android_setup_gradle
       - *android_sdk
       - *android_local_properties
-      - *android_gradle_tuning
 
       - name: Build release APKs
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
@@ -952,7 +953,6 @@ jobs:
       - *android_setup_gradle
       - *android_sdk
       - *android_local_properties
-      - *android_gradle_tuning
 
       - name: Resolve Dependency-Check contract
         id: dependency-check

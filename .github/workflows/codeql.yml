@@ -32,6 +32,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: CodeQL scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      android: ${{ steps.scope.outputs.android }}
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Resolve Android scope
+        id: scope
+        shell: bash
+        run: |
+          python -E -S backend/scripts/ci_scope.py \
+            --event "${{ github.event_name }}" \
+            --base "${{ github.event.pull_request.base.sha || '' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --output "$GITHUB_OUTPUT"
+
   analyze-scripted:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
@@ -49,6 +85,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4
         with:
@@ -61,8 +108,10 @@ jobs:
 
   analyze-android:
     name: Analyze (java-kotlin)
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
 
     env:
       # From the repo Actions variable (keeps the origin host out of the public workflow file).
@@ -72,17 +121,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
       - name: Set up Java
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
-          java-version: "21"
-          cache: gradle
+          java-version-file: android/.java-version
+          verify-signature: true
 
-      - name: Install Android SDK packages
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      - name: Accept Android SDK licenses
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Point Gradle at cloud Android SDK
         working-directory: android
@@ -99,9 +161,27 @@ jobs:
 
       - name: Build Android for CodeQL
         working-directory: android
-        run: ./gradlew --no-daemon --no-build-cache clean :app:assembleGrayDebug :app:assembleInternalDebug
+        # CodeQL observes compiler invocations. Keep dependency/wrapper caches,
+        # but force these compile-only tasks to execute instead of restoring
+        # compiler outputs from Gradle's build cache.
+        run: ./gradlew --no-daemon --no-build-cache --max-workers=2 :app:compileGrayDebugKotlin :app:compileGrayDebugJavaWithJavac :app:compileInternalDebugKotlin :app:compileInternalDebugJavaWithJavac
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4
+
+      - name: Enforce CodeQL scope result
+        if: ${{ always() && !cancelled() }}
+        shell: bash
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$SCOPE_RESULT" = "success"
+          test "$SCOPE_SHA" = "$EXPECTED_SHA"
+          test "$SCOPE_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"
         with:
           category: "/language:java-kotlin"

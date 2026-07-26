@@ -8,6 +8,7 @@ import re
 from collections.abc import Iterable
 
 ANDROID_PROTECTED_PATHS = (
+    "android/.java-version",
     "android/app/src/**",
     "android/gradle/**",
     "android/app/build.gradle.kts",

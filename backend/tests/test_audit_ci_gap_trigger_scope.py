@@ -5,6 +5,7 @@ from pathlib import Path
 from tests._infra.ci_gap import load_ci_gap_audit
 
 _ANDROID_PATHS = """
+      - android/.java-version
       - android/app/src/**
       - android/gradle/**
       - android/app/build.gradle.kts
@@ -241,6 +242,32 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
         workflow.write_text(mutated, encoding="utf-8")
         commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
         assert all(command.job != "backend-postgres" for command in commands), index
+
+    terminal_gate_contracts = (
+        ("codeql.yml", "analyze-android", "Enforce CodeQL scope result"),
+        (
+            "android-connected-test.yml",
+            "connected_execution",
+            "Enforce Connected result",
+        ),
+    )
+    repository_workflows = Path(__file__).resolve().parents[2] / ".github" / "workflows"
+    for workflow_name, protected_job, gate_name in terminal_gate_contracts:
+        source = (repository_workflows / workflow_name).read_text(encoding="utf-8")
+        scoped_workflow = workflows / workflow_name
+        scoped_workflow.write_text(source, encoding="utf-8")
+        commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+        assert any(
+            command.job == protected_job and command.protection_scope == "android"
+            for command in commands
+        )
+
+        scoped_workflow.write_text(
+            source.replace(gate_name, f"Observe {gate_name}", 1),
+            encoding="utf-8",
+        )
+        commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+        assert all(command.job != protected_job for command in commands)
 
 
 def test_windows_scope_protects_real_installer_provenance(tmp_path: Path) -> None:
