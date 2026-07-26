@@ -2,14 +2,18 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.BudgetCategoryDto
 import com.ticketbox.data.remote.dto.BudgetCategoryRequestDto
+import com.ticketbox.data.remote.dto.BudgetAdviseResponseDto
 import com.ticketbox.data.remote.dto.BudgetExcludedCategoryDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetCategoryDraft
+import com.ticketbox.domain.model.BudgetAdvice
+import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetExcludedCategory
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.BudgetSuggestion
 import com.ticketbox.domain.model.normalizeExpenseCategory
 
 fun BudgetMonthlyDto.toDomain(): BudgetMonthly = BudgetMonthly(
@@ -64,4 +68,22 @@ fun BudgetMonthlyUpdate.toRequest(): BudgetMonthlyUpdateRequestDto = BudgetMonth
 
 private fun BudgetCategoryDraft.normalized(): BudgetCategoryDraft = copy(
     category = normalizeExpenseCategory(category),
+)
+
+fun BudgetAdviseResponseDto.toDomain(): BudgetAdviceResult = BudgetAdviceResult(
+    advice = advice?.let { response ->
+        BudgetAdvice(
+            summary = response.summary,
+            suggestions = response.suggestions.map { suggestion ->
+                BudgetSuggestion(
+                    category = suggestion.category,
+                    suggestedAmountCents = suggestion.suggestedAmountCents,
+                    rationale = suggestion.rationale,
+                )
+            },
+            confidence = response.confidence,
+        )
+    },
+    providerName = providerName,
+    reasonCode = reasonCode,
 )

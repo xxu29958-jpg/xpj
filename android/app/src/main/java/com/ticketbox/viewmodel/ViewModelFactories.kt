@@ -62,6 +62,15 @@ fun budgetViewModelFactory(
 }
 
 @Suppress("UNCHECKED_CAST")
+fun budgetAdviceViewModelFactory(
+    repository: BudgetActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return BudgetAdviceViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 fun recurringViewModelFactory(
     repository: RecurringRepository,
     onDataChanged: () -> Unit = {},

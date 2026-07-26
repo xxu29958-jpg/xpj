@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 计划一级页：把未来意图组织为真实状态工作区，不展示技术实体名。 -->
-<!-- 218-B1：仅 PlanScreen / PlanOverviewComponents 所需键；预算建议与消费目标三段流的键随后续 slice 迁入。 -->
+<!-- 218-B1：PlanScreen / PlanOverviewComponents 所需键；218-B4 迁入预算建议（BudgetAdvice）二级屏键。 -->
 <resources>
     <string name="plan_page_title">计划</string>
     <string name="plan_page_month_context">%1$s的预算、目标与固定安排</string>
@@ -11,6 +11,8 @@
     <string name="plan_budget_progress_meta">已用 %1$s / %2$s · %3$d%%</string>
     <string name="plan_budget_loading">正在读取本月预算</string>
     <string name="plan_budget_empty">还没有本月预算，先定一个可用范围</string>
+    <string name="plan_budget_advice_title">预算建议</string>
+    <string name="plan_budget_advice_subtitle">根据本月收支结构，生成可审阅的分类额度</string>
     <string name="plan_section_goals">目标</string>
     <string name="plan_spending_goal_title">消费目标</string>
     <string name="plan_spending_goal_subtitle">给总支出或某个分类设一个上限</string>
@@ -33,4 +35,26 @@
     <string name="plan_action_adjust">调整</string>
     <string name="plan_action_view">查看</string>
     <string name="plan_action_manage">管理</string>
+    <string name="plan_action_open">打开</string>
+    <string name="budget_advice_page_title">预算建议</string>
+    <string name="budget_advice_page_subtitle">%1$s · 收支结构与分类额度</string>
+    <string name="budget_advice_back_to_plan">返回计划</string>
+    <string name="budget_advice_start_title">生成本月建议</string>
+    <string name="budget_advice_start_body">根据收入计划、固定支出和已入账消费的汇总结构，给出可逐项审阅的分类额度建议。建议不会自动修改预算。</string>
+    <string name="budget_advice_privacy_note">仅使用汇总信息，不发送商家名称或家庭成员明细。</string>
+    <string name="budget_advice_generate">生成预算建议</string>
+    <string name="budget_advice_loading_title">正在整理本月收支结构</string>
+    <string name="budget_advice_loading_body">建议生成完成前，你可以离开此页，现有预算不会发生变化。</string>
+    <string name="budget_advice_load_failed">预算建议暂时无法生成，请稍后重试。</string>
+    <string name="budget_advice_error_title">没有生成成功</string>
+    <string name="budget_advice_empty_title">当前没有可显示的建议</string>
+    <string name="budget_advice_empty_body">先补充收入计划或固定支出，再生成一次；现有预算不会被修改。</string>
+    <string name="budget_advice_generate_again">重新生成</string>
+    <string name="budget_advice_readonly_title">此账本为只读</string>
+    <string name="budget_advice_readonly_body">生成建议会调用服务并留下审计记录，需要账本编辑权限。</string>
+    <string name="budget_advice_summary_title">本月建议</string>
+    <string name="budget_advice_confidence">建议置信度 %1$d%%</string>
+    <string name="budget_advice_suggestions_title">分类额度</string>
+    <string name="budget_advice_overall_category">整体预算</string>
+    <string name="budget_advice_result_note">这些额度仅供审阅，不会自动写入月度预算。</string>
 </resources>

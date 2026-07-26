@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.BudgetAdviseRequestDto
+import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -12,6 +14,7 @@ interface BudgetActions {
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
     suspend fun monthlyBudget(month: String): Result<BudgetMonthly>
+    suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult>
     suspend fun saveMonthlyBudget(month: String, update: BudgetMonthlyUpdate): Result<BudgetMonthly>
 }
 
@@ -40,6 +43,29 @@ class BudgetRepository(
                 api.monthlyBudget(
                     month = cleanMonth,
                     timezone = timezone,
+                ).toDomain()
+            }
+        }
+    }
+
+    override suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult> {
+        if (!canModifyLedger()) {
+            return Result.failure(
+                RepositoryException(
+                    message = "permission_denied",
+                    errorCode = "permission_denied",
+                ),
+            )
+        }
+        val cleanMonth = validatedMonth(month)
+            .getOrElse { return Result.failure(it) }
+        return errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.budgetAdvise(
+                    BudgetAdviseRequestDto(
+                        month = cleanMonth,
+                        timezone = currentTimezoneId(),
+                    ),
                 ).toDomain()
             }
         }

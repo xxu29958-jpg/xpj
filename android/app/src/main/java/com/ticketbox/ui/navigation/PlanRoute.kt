@@ -61,6 +61,7 @@ internal fun PlanRoute(
         actions = PlanScreenActions(
             budgetNavigation = PlanBudgetNavigationActions(
                 onOpenBudget = { shellState.openSecondaryPage(ProductSecondaryPage.Budget) },
+                onOpenAdvice = { shellState.openSecondaryPage(ProductSecondaryPage.BudgetAdvice) },
             ),
             onOpenSpendingGoal = { shellState.openSecondaryPage(ProductSecondaryPage.SpendingGoal) },
             onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },

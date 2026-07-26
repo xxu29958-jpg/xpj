@@ -100,7 +100,12 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 onDataChanged = shellState::markPlanDataChanged,
             )
         }
-        // 218-B1: 预算建议屏属后续 slice（BudgetAdviceScreen 未随骨架迁入），枚举保留但暂不挂路由。
+        composable(ProductSecondaryPage.BudgetAdvice.route) {
+            BudgetAdviceRoute(
+                screenFactory = screenFactory,
+                onBack = onBack,
+            )
+        }
         composable(ProductSecondaryPage.Recurring.route) {
             RecurringRoute(
                 screenFactory = screenFactory,
