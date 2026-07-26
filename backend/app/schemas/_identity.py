@@ -38,6 +38,7 @@ __all__ = [
     "LedgerMemberResponse",
     "LedgerMemberRoleUpdateRequest",
     "LedgerResponse",
+    "LedgerSwitchPrepareRequest",
     "LedgerSwitchResponse",
     "OwnerTransferResponse",
     "PairRequest",
@@ -151,6 +152,19 @@ class LedgerCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=60)
 
 
+class LedgerSwitchPrepareRequest(BaseModel):
+    """Desktop two-phase ledger switch: client-owned attempt proof for staging."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    activation_attempt_id: UUID
+    activation_attempt_secret: str = Field(
+        min_length=43,
+        max_length=43,
+        pattern=r"^[A-Za-z0-9_-]{43}$",
+    )
+
+
 class LedgerSwitchResponse(BaseModel):
     session_token: str
     server_id: str
@@ -162,6 +176,10 @@ class LedgerSwitchResponse(BaseModel):
     ledger: LedgerResponse
     account_name: str
     device_name: str
+    # Two-phase desktop switch prepare: True while the returned credential is
+    # a staged ``desktop_pending`` token that only the activate endpoint accepts.
+    activation_required: bool = False
+    activation_expires_at: str | None = None
 
 
 # v0.4-beta1 — family ledger invitations & members

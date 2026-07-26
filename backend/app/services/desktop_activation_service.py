@@ -39,8 +39,10 @@ from app.services.session_lifecycle_service import (
     hash_desktop_activation_attempt_secret,
     hash_secret,
     issue_auth_token,
+    revoke_token_value,
 )
 from app.services.time_service import ensure_utc, now_utc
+from app.tenants import AuthContext
 
 DESKTOP_PENDING_SCOPE = "desktop_pending"
 DESKTOP_PENDING_TOKEN_TTL_SECONDS = 300
@@ -460,3 +462,33 @@ def activate_desktop_session(
         previous_token_value=previous_token_value,
         checked_at=checked_at,
     )
+
+
+def revoke_desktop_app_session(
+    db: Session,
+    *,
+    auth: AuthContext,
+    token_value: str,
+) -> None:
+    """Revoke the exact app credential authenticated for this request.
+
+    The Desktop bridge's self-revoke: only the presented credential dies —
+    sibling sessions, the device, and any staged pending credential are
+    untouched. Anything short of an exact one-row revocation fails closed.
+    """
+
+    if (
+        auth.scope != "app"
+        or auth.credential_hash is None
+        or not hmac.compare_digest(hash_secret(token_value), auth.credential_hash)
+    ):
+        raise AppError("invalid_token", status_code=401)
+    revoked = revoke_token_value(
+        db,
+        token_value=token_value,
+        scope="app",
+    )
+    if revoked != 1:
+        db.rollback()
+        raise AppError("invalid_token", status_code=401)
+    db.commit()
