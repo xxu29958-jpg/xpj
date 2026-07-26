@@ -20,6 +20,7 @@ on:
       - "refactor/**"
       - "codex/**"
     paths:
+      - "android/.java-version"
       - "android/app/src/**"
       - "android/gradle/**"
       - "android/app/build.gradle.kts"

@@ -18,11 +18,6 @@ GITEA_WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "c
 CODEQL_WEEKLY_CRON = "37 3 * * 1"
 QUALIFICATION_DISPATCH_TYPE = "qualification"
 NVD_REFRESH_DISPATCH_TYPE = "nvd_database_refresh"
-GITHUB_CONNECTED_PATHS = (
-    *ANDROID_PROTECTED_PATHS,
-    "android/scripts/**",
-    ".github/workflows/android-connected-test.yml",
-)
 GITEA_CONNECTED_PATHS = (
     *ANDROID_PROTECTED_PATHS,
     ".gitea/workflows/android-connected.yml",
@@ -108,6 +103,14 @@ def _audit_github_main_pr_policy(failures: list[str]) -> None:
                 f"{path.name}: missing repository_dispatch type "
                 f"{QUALIFICATION_DISPATCH_TYPE!r}"
             )
+        for event_name in ("push", "pull_request"):
+            for field in ("paths", "paths-ignore"):
+                _expect_exact(
+                    f"{workflow_name} {event_name} {field}",
+                    _event_values(path, event_name, field),
+                    (),
+                    failures,
+                )
 
     for path in iter_workflow_paths(GITHUB_WORKFLOWS):
         if (
@@ -129,12 +132,6 @@ def _audit_github_main_pr_policy(failures: list[str]) -> None:
         failures.append(
             f"{nvd.name}: secret-bearing producer cannot expose workflow_dispatch"
         )
-
-    connected = GITHUB_WORKFLOWS / "android-connected-test.yml"
-    push_paths = _paths(connected, "push")
-    pr_paths = _paths(connected, "pull_request")
-    _expect_exact("android-connected-test.yml push paths", push_paths, GITHUB_CONNECTED_PATHS, failures)
-    _expect_exact("android-connected-test.yml pull_request paths", pr_paths, GITHUB_CONNECTED_PATHS, failures)
 
     crons = _schedule_crons(GITHUB_WORKFLOWS / "codeql.yml")
     if CODEQL_WEEKLY_CRON not in crons:

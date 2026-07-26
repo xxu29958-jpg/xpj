@@ -1,45 +1,21 @@
 name: Android Connected Test
 
-# Path-filtered emulator gate for Compose UI contract tests
+# Scope-aware emulator gate for Compose UI contract tests
 # (connectedGrayDebugAndroidTest). Restored from the pre-Gitea original; the
 # codex "android-connected-cloud" rewrite dropped the Enable KVM step
 # (without hardware accel the emulator boot is glacial / times out) and the
-# failure-report artifact upload. Triggered only when Android sources change
-# so backend / docs / config PRs don't pay the emulator boot cost.
+# failure-report artifact upload. The shared fail-closed scope resolver keeps
+# unrelated PRs cheap without GitHub's path-filter file-count blind spot.
 
 on:
   push:
-    # Work branches are validated by pull_request path filters below. Keeping
-    # push emulator runs to main avoids duplicate PR-head emulator boots.
+    # Work branches are validated by pull_request below. Keeping push runs to
+    # main avoids validating the same PR head twice.
     branches:
       - main
-    paths:
-      - "android/app/src/**"
-      - "android/gradle/**"
-      - "android/app/build.gradle.kts"
-      - "android/build.gradle.kts"
-      - "android/gradle.properties"
-      - "android/gradlew"
-      - "android/gradlew.bat"
-      - "android/settings.gradle.kts"
-      - "android/audit/test_count_baseline.txt"
-      - "android/scripts/**"
-      - ".github/workflows/android-connected-test.yml"
   pull_request:
     branches:
       - main
-    paths:
-      - "android/app/src/**"
-      - "android/gradle/**"
-      - "android/app/build.gradle.kts"
-      - "android/build.gradle.kts"
-      - "android/gradle.properties"
-      - "android/gradlew"
-      - "android/gradlew.bat"
-      - "android/settings.gradle.kts"
-      - "android/audit/test_count_baseline.txt"
-      - "android/scripts/**"
-      - ".github/workflows/android-connected-test.yml"
   repository_dispatch:
     types:
       - qualification
@@ -52,13 +28,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  connected:
-    name: Connected (emulator)
+  scope:
+    name: Connected scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      android: ${{ steps.scope.outputs.android }}
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Resolve Android scope
+        id: scope
+        shell: bash
+        run: |
+          python -E -S backend/scripts/ci_scope.py \
+            --event "${{ github.event_name }}" \
+            --base "${{ github.event.pull_request.base.sha || '' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --output "$GITHUB_OUTPUT"
+
+  connected_execution:
+    name: Connected execution
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
     # The connected action has the 20-minute qualification ceiling. The wider
     # job cap covers setup plus post-action verification and diagnostic upload;
     # it is an infrastructure envelope, not a relaxed qualification target.
     timeout-minutes: 30
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
 
     env:
       # Same canonical owner URL the regular android job injects, so
@@ -70,22 +87,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - name: Set up Java
-        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
-
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
 
-      - name: Install Android SDK packages
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Set up Java
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version-file: android/.java-version
+          verify-signature: true
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      - name: Accept Android SDK licenses
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Enable KVM
         # ubuntu runners gate /dev/kvm behind a udev rule; without this the
@@ -116,7 +142,7 @@ jobs:
           # as one direct command whose exit status is the Gradle exit status.
           # The Gradle task owns test execution, result-count qualification and
           # process-exit verification before the emulator action tears down.
-          script: timeout --signal=INT --kill-after=30s 14m ./gradlew --no-daemon -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedGrayDebugAndroidTest
+          script: timeout --signal=INT --kill-after=30s 14m ./gradlew --no-daemon --max-workers=2 -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedGrayDebugAndroidTest
 
       - name: Upload androidTest reports on failure
         if: failure()
@@ -131,3 +157,44 @@ jobs:
             ${{ runner.temp }}/ticketbox-connected-exit-info-after.txt
           if-no-files-found: ignore
           retention-days: 7
+
+  connected:
+    name: Connected (emulator)
+    needs:
+      - scope
+      - connected_execution
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Enforce Connected result
+        env:
+          BASH_ENV: ""
+          ENV: ""
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
+          EXECUTION_RESULT: ${{ needs.connected_execution.result }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          EXECUTION_SHA: ${{ needs.connected_execution.outputs.qualification_sha }}
+          EXECUTION_SOURCE_SHA: ${{ needs.connected_execution.outputs.qualification_source_sha }}
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label Connected --scope-key ANDROID_SCOPE --lane EXECUTION
