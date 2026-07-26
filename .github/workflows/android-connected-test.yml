@@ -184,6 +184,8 @@ jobs:
 
       - name: Enforce Connected result
         env:
+          BASH_ENV: ""
+          ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
           EXECUTION_RESULT: ${{ needs.connected_execution.result }}

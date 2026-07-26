@@ -308,6 +308,8 @@ def _assert_postgres_aggregator(job: object) -> None:
         "--lane ORDINARY --lane REAL_DB --lane RECOVERY"
     )
     assert enforcement["env"] == {
+        "BASH_ENV": "",
+        "ENV": "",
         "SCOPE_RESULT": "${{ needs.scope.result }}",
         "POSTGRES_SCOPE": "${{ needs.scope.outputs.postgres }}",
         "ORDINARY_RESULT": "${{ needs.backend_postgres_ordinary.result }}",

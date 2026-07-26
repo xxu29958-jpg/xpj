@@ -7,7 +7,11 @@ import re
 
 from ci_gap_shell import shell_tokens
 from ci_gap_trigger_scope import CI_HEAVY_SCOPES
-from ci_gap_workflow_conditions import GITHUB_TERMINAL_JOBS, allows_failure
+from ci_gap_workflow_conditions import (
+    GITHUB_TERMINAL_JOBS,
+    GithubTerminalContract,
+    allows_failure,
+)
 
 HEAVY_JOB_SCOPES = frozenset(CI_HEAVY_SCOPES)
 _GITHUB_SCOPE_OUTPUTS = {
@@ -165,6 +169,8 @@ def _github_qualification_step_is_valid(
     raw_step: object,
     *,
     resolves_audit_base: bool,
+    expected_shell: str | None = None,
+    expected_working_directory: str | None = None,
 ) -> bool:
     expected_environment = (
         _GITHUB_QUALIFICATION_ENV
@@ -178,11 +184,12 @@ def _github_qualification_step_is_valid(
         isinstance(raw_step, dict)
         and raw_step.get("name") == "Verify qualification SHA"
         and raw_step.get("id") == "qualification"
-        and raw_step.get("shell") is None
+        and raw_step.get("shell") == expected_shell
+        and raw_step.get("working-directory") == expected_working_directory
+        and raw_step.get("timeout-minutes") is None
         and raw_step.get("env") == expected_environment
         and raw_step.get("if") in {None, True}
         and not allows_failure(raw_step.get("continue-on-error"))
-        and _step_execution_shape_is_plain(raw_step, allow_env=True)
         and _qualification_command_is_valid(
             raw_step.get("run"),
             resolves_audit_base=resolves_audit_base,
@@ -329,31 +336,22 @@ def _scoped_job_name(raw_job: dict[object, object]) -> str | None:
 def _terminal_gate_consumes_dependency(
     raw_job: dict[object, object],
     dependency: str,
-    expected_command: tuple[str, ...],
+    contract: GithubTerminalContract,
 ) -> bool:
-    required_values = {
-        f"${{{{ needs.{dependency}.result }}}}",
-        f"${{{{ needs.{dependency}.outputs.qualification_sha }}}}",
-        f"${{{{ needs.{dependency}.outputs.qualification_source_sha }}}}",
-        "${{ github.sha }}",
-        "${{ github.event.pull_request.head.sha || github.sha }}",
-    }
+    if dependency not in dict(contract.lane_bindings):
+        return False
     for step in raw_job.get("steps", []):
         if (
             not isinstance(step, dict)
             or step.get("if") not in {None, True}
-            or step.get("shell") is not None
+            or step.get("shell") != contract.shell
             or allows_failure(step.get("continue-on-error"))
             or not _step_execution_shape_is_plain(step, allow_env=True)
         ):
             continue
-        environment = step.get("env")
-        if not isinstance(environment, dict):
-            continue
-        values = {str(value) for value in environment.values()}
         if (
-            required_values <= values
-            and shell_tokens(str(step.get("run", ""))) == expected_command
+            step.get("env") == contract.environment()
+            and shell_tokens(str(step.get("run", ""))) == contract.command
         ):
             return True
     return False
@@ -361,52 +359,42 @@ def _terminal_gate_consumes_dependency(
 
 def _job_has_qualification_output_producer(
     raw_job: dict[object, object],
+    contract: GithubTerminalContract,
 ) -> bool:
     producers = [
         step
         for step in raw_job.get("steps", [])
-        if isinstance(step, dict)
-        and step.get("name") == "Verify qualification SHA"
-        and step.get("id") == "qualification"
-        and step.get("if") in {None, True}
-        and not allows_failure(step.get("continue-on-error"))
-        and _qualification_command_is_valid(step.get("run"))
+        if _github_qualification_step_is_valid(
+            step,
+            resolves_audit_base=False,
+            expected_shell=contract.qualification_shell,
+            expected_working_directory=contract.qualification_working_directory,
+        )
     ]
     return len(producers) == 1
 
 
 def _self_terminal_enforces_scope(
     raw_job: dict[object, object],
-    expected_command: tuple[str, ...],
-    expected_shell: str | None,
+    contract: GithubTerminalContract,
 ) -> bool:
     if any(
         raw_job.get(field) is not None
-        for field in ("container", "services", "strategy")
-    ) or (
-        expected_shell is None and raw_job.get("defaults") is not None
-    ) or not _job_has_qualification_output_producer(raw_job):
+        for field in ("env", "container", "services", "strategy")
+    ) or raw_job.get("defaults") != contract.job_defaults() or not (
+        _job_has_qualification_output_producer(raw_job, contract)
+    ):
         return False
-    required_values = {
-        "${{ needs.scope.result }}",
-        "${{ needs.scope.outputs.qualification_sha }}",
-        "${{ needs.scope.outputs.qualification_source_sha }}",
-        "${{ github.sha }}",
-        "${{ github.event.pull_request.head.sha || github.sha }}",
-        "${{ steps.qualification.outputs.sha }}",
-        "${{ steps.qualification.outputs.source_sha }}",
-    }
     gates = [
         step
         for step in raw_job.get("steps", [])
         if isinstance(step, dict)
         and _expression_text(step.get("if")) == "always() && !cancelled()"
-        and step.get("shell") == expected_shell
-        and isinstance(step.get("env"), dict)
-        and required_values <= {str(value) for value in step["env"].values()}
+        and step.get("shell") == contract.shell
+        and step.get("env") == contract.environment()
         and not allows_failure(step.get("continue-on-error"))
         and _step_execution_shape_is_plain(step, allow_env=True)
-        and shell_tokens(str(step.get("run", ""))) == expected_command
+        and shell_tokens(str(step.get("run", ""))) == contract.command
     ]
     return len(gates) == 1
 
@@ -420,16 +408,14 @@ def _terminal_gate_protects_job(
     contract = GITHUB_TERMINAL_JOBS.get((path.name, scope))
     if contract is None:
         return False
-    terminal_name, expected_command, expected_shell = contract
-    terminal = jobs.get(terminal_name)
-    if not isinstance(terminal, dict):
+    terminal = jobs.get(contract.job)
+    if (
+        not isinstance(terminal, dict)
+        or not _job_has_qualification_output_producer(terminal, contract)
+    ):
         return False
-    if terminal_name == job_name:
-        return _self_terminal_enforces_scope(
-            terminal,
-            expected_command,
-            expected_shell,
-        )
+    if contract.job == job_name:
+        return _self_terminal_enforces_scope(terminal, contract)
     return (
         _job_execution_shape_is_plain(terminal)
         and _expression_text(terminal.get("if")) == "always()"
@@ -438,7 +424,7 @@ def _terminal_gate_protects_job(
         and _terminal_gate_consumes_dependency(
             terminal,
             job_name,
-            expected_command,
+            contract,
         )
     )
 

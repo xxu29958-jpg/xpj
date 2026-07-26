@@ -106,12 +106,15 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-  analyze-android:
-    name: Analyze (java-kotlin)
+  analyze-android-execution:
+    name: Analyze (java-kotlin) execution
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
 
     env:
       # From the repo Actions variable (keeps the origin host out of the public workflow file).
@@ -172,9 +175,34 @@ jobs:
         with:
           category: "/language:java-kotlin"
 
-      - name: Enforce CodeQL scope result
-        if: ${{ always() && !cancelled() }}
+  analyze-android:
+    name: Analyze (java-kotlin)
+    needs:
+      - scope
+      - analyze-android-execution
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
         env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Enforce CodeQL scope result
+        env:
+          BASH_ENV: ""
+          ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
           SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
@@ -183,4 +211,7 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
           AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
-        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label CodeQL --scope-key ANDROID_SCOPE
+          EXECUTION_RESULT: ${{ needs.analyze-android-execution.result }}
+          EXECUTION_SHA: ${{ needs.analyze-android-execution.outputs.qualification_sha }}
+          EXECUTION_SOURCE_SHA: ${{ needs.analyze-android-execution.outputs.qualification_source_sha }}
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label CodeQL --scope-key ANDROID_SCOPE --lane EXECUTION

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path
 
@@ -16,6 +17,43 @@ def _assert_build_tools_authority(build_script: str) -> None:
     assert 'inputs.property("buildToolsVersion", ticketboxResolvedBuildToolsVersion)' in (
         build_script
     )
+
+
+def _assert_codeql_workload_contract(steps: list[dict[str, object]]) -> None:
+    by_name = {str(step["name"]): step for step in steps}
+    names = [str(step["name"]) for step in steps]
+    init = by_name["Initialize CodeQL"]
+    build = by_name["Build Android for CodeQL"]
+    analyze = by_name["Perform CodeQL Analysis"]
+    assert names.index("Initialize CodeQL") < names.index(
+        "Build Android for CodeQL"
+    ) < names.index("Perform CodeQL Analysis")
+    assert set(init) == {"name", "uses", "with"}
+    assert init["with"] == {"languages": "java-kotlin", "build-mode": "manual"}
+    assert set(analyze) == {"name", "uses", "with"}
+    assert analyze["with"] == {"category": "/language:java-kotlin"}
+    assert set(build) == {"name", "working-directory", "run"}
+    assert build["working-directory"] == "android"
+    assert shlex.split(str(build["run"])) == [
+        "./gradlew",
+        "--no-daemon",
+        "--no-build-cache",
+        "--max-workers=2",
+        ":app:compileGrayDebugKotlin",
+        ":app:compileGrayDebugJavaWithJavac",
+        ":app:compileInternalDebugKotlin",
+        ":app:compileInternalDebugJavaWithJavac",
+    ]
+    action_commit = r"[0-9a-f]{40}"
+    assert re.fullmatch(
+        rf"github/codeql-action/init@{action_commit}",
+        str(init["uses"]),
+    )
+    assert re.fullmatch(
+        rf"github/codeql-action/analyze@{action_commit}",
+        str(analyze["uses"]),
+    )
+    assert str(init["uses"]).rsplit("@", 1)[1] == str(analyze["uses"]).rsplit("@", 1)[1]
 
 
 def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
@@ -124,21 +162,10 @@ def test_android_cloud_builds_share_one_java_and_sdk_contract() -> None:
             for step in android_java_steps
         )
 
-    codeql_build = next(
-        step["run"]
-        for step in workflows["codeql.yml"]["jobs"]["analyze-android"]["steps"]
-        if step["name"] == "Build Android for CodeQL"
-    )
-    assert shlex.split(codeql_build) == [
-        "./gradlew",
-        "--no-daemon",
-        "--no-build-cache",
-        "--max-workers=2",
-        ":app:compileGrayDebugKotlin",
-        ":app:compileGrayDebugJavaWithJavac",
-        ":app:compileInternalDebugKotlin",
-        ":app:compileInternalDebugJavaWithJavac",
+    codeql_steps = workflows["codeql.yml"]["jobs"]["analyze-android-execution"][
+        "steps"
     ]
+    _assert_codeql_workload_contract(codeql_steps)
 
     java_version = (_ROOT / "android" / ".java-version").read_text(
         encoding="utf-8"

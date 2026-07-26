@@ -63,72 +63,7 @@ jobs:
             --base "${{ github.event.pull_request.base.sha || '' }}" \
             --head "${{ github.event.pull_request.head.sha || github.sha }}" \
             --output "$GITHUB_OUTPUT"
-  backend_contracts:
-    needs: scope
-    outputs:
-      qualification_sha: ${{ steps.qualification.outputs.sha }}
-      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
-    steps:
-      - run: python scripts/release_audit.py
-  backend_frozen:
-    needs: scope
-    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.backend_frozen != 'false') }}
-    outputs:
-      qualification_sha: ${{ steps.qualification.outputs.sha }}
-      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
-    steps:
-      - run: powershell -File backend/scripts/build_backend_exe.ps1 -Clean
-  windows_packaging:
-    needs: scope
-    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
-    outputs:
-      qualification_sha: ${{ steps.qualification.outputs.sha }}
-      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
-    steps:
-      - run: python -m pytest packaging/tests -q
-  backend:
-    name: Backend
-    needs:
-      - scope
-      - backend_contracts
-      - backend_frozen
-      - windows_packaging
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
-        with:
-          python-version: "3.11"
-      - name: Verify qualification SHA
-        id: qualification
-        env:
-          EXPECTED_SHA: ${{ github.sha }}
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
-      - name: Enforce required CI results
-        env:
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          BACKEND_FROZEN_SCOPE: ${{ needs.scope.outputs.backend_frozen }}
-          WINDOWS_SCOPE: ${{ needs.scope.outputs.windows }}
-          BACKEND_CONTRACTS_RESULT: ${{ needs.backend_contracts.result }}
-          BACKEND_FROZEN_RESULT: ${{ needs.backend_frozen.result }}
-          WINDOWS_PACKAGING_RESULT: ${{ needs.windows_packaging.result }}
-          EXPECTED_SHA: ${{ github.sha }}
-          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
-          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
-          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
-          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
-          BACKEND_CONTRACTS_SHA: ${{ needs.backend_contracts.outputs.qualification_sha }}
-          BACKEND_CONTRACTS_SOURCE_SHA: ${{ needs.backend_contracts.outputs.qualification_source_sha }}
-          BACKEND_FROZEN_SHA: ${{ needs.backend_frozen.outputs.qualification_sha }}
-          BACKEND_FROZEN_SOURCE_SHA: ${{ needs.backend_frozen.outputs.qualification_source_sha }}
-          WINDOWS_PACKAGING_SHA: ${{ needs.windows_packaging.outputs.qualification_sha }}
-          WINDOWS_PACKAGING_SOURCE_SHA: ${{ needs.windows_packaging.outputs.qualification_source_sha }}
-        run: python -E -S backend/scripts/verify_backend_ci_results.py
-  backend_postgres_ordinary:
+  backend_postgres_ordinary: &postgres_lane
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     outputs:
@@ -136,25 +71,49 @@ jobs:
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     steps:
       - run: python -m pytest tests -q -ra --tb=short -p no:cacheprovider
+  backend_postgres_real_db: *postgres_lane
+  backend_postgres_recovery: *postgres_lane
   backend-postgres:
     name: Backend (PostgreSQL)
     needs:
       - scope
       - backend_postgres_ordinary
+      - backend_postgres_real_db
+      - backend_postgres_recovery
     if: ${{ always() }}
     steps:
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
       - name: Enforce PostgreSQL lane results
         env:
+          BASH_ENV: ""
+          ENV: ""
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          POSTGRES_SCOPE: ${{ needs.scope.outputs.postgres }}
           ORDINARY_RESULT: ${{ needs.backend_postgres_ordinary.result }}
+          REAL_DB_RESULT: ${{ needs.backend_postgres_real_db.result }}
+          RECOVERY_RESULT: ${{ needs.backend_postgres_recovery.result }}
           ORDINARY_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_sha }}
           ORDINARY_SOURCE_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_source_sha }}
           EXPECTED_SHA: ${{ github.sha }}
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          REAL_DB_SHA: ${{ needs.backend_postgres_real_db.outputs.qualification_sha }}
+          REAL_DB_SOURCE_SHA: ${{ needs.backend_postgres_real_db.outputs.qualification_source_sha }}
+          RECOVERY_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_sha }}
+          RECOVERY_SOURCE_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_source_sha }}
         run: python -E -S backend/scripts/verify_scoped_ci_results.py --label PostgreSQL --scope-key POSTGRES_SCOPE --lane ORDINARY --lane REAL_DB --lane RECOVERY
 """
 
 
-def _scope_regressions(valid: str) -> tuple[str, ...]:
+def _scope_job_regressions(valid: str) -> tuple[str, ...]:
     return (
         valid.replace("timeout-minutes: 5", "timeout-minutes: 6", 1),
         valid.replace("fetch-depth: 0", "fetch-depth: 1"),
@@ -196,25 +155,49 @@ def _scope_regressions(valid: str) -> tuple[str, ...]:
             '            --output "$GITHUB_OUTPUT"',
             '            --output "$GITHUB_OUTPUT" || true',
         ),
+    )
+
+
+def _terminal_regressions(valid: str) -> tuple[str, ...]:
+    return (
         valid.replace(
             "      - backend_postgres_ordinary",
-            "      - backend_contracts",
+            "      - unknown_lane",
             1,
         ),
         valid.replace(
-            "    if: ${{ always() }}\n    steps:\n"
-            "      - name: Enforce PostgreSQL lane results",
-            "    if: ${{ false }}\n    steps:\n"
-            "      - name: Enforce PostgreSQL lane results",
+            "  backend-postgres:\n"
+            "    name: Backend (PostgreSQL)\n"
+            "    needs:\n"
+            "      - scope\n"
+            "      - backend_postgres_ordinary\n"
+            "      - backend_postgres_real_db\n"
+            "      - backend_postgres_recovery\n"
+            "    if: ${{ always() }}",
+            "  backend-postgres:\n"
+            "    name: Backend (PostgreSQL)\n"
+            "    needs:\n"
+            "      - scope\n"
+            "      - backend_postgres_ordinary\n"
+            "      - backend_postgres_real_db\n"
+            "      - backend_postgres_recovery\n"
+            "    if: ${{ false }}",
         ),
         valid.replace(
             "${{ needs.backend_postgres_ordinary.result }}",
-            "${{ needs.backend_contracts.result }}",
+            "${{ needs.unknown_lane.result }}",
             1,
         ),
         valid.replace(
             "${{ needs.backend_postgres_ordinary.outputs.qualification_sha }}",
-            "${{ needs.backend_contracts.outputs.qualification_sha }}",
+            "${{ needs.unknown_lane.outputs.qualification_sha }}",
+            1,
+        ),
+        valid.replace(
+            "          ORDINARY_RESULT: ${{ needs.backend_postgres_ordinary.result }}",
+            "          ORDINARY_RESULT: success\n"
+            "          UNUSED_ORDINARY_RESULT: "
+            "${{ needs.backend_postgres_ordinary.result }}",
             1,
         ),
         valid.replace(
@@ -225,6 +208,10 @@ def _scope_regressions(valid: str) -> tuple[str, ...]:
             1,
         ),
     )
+
+
+def _scope_regressions(valid: str) -> tuple[str, ...]:
+    return (*_scope_job_regressions(valid), *_terminal_regressions(valid))
 
 
 def _assert_codeql_terminal_mutations_are_rejected(
@@ -241,7 +228,8 @@ def _assert_codeql_terminal_mutations_are_rejected(
     codeql.write_text(codeql_source, encoding="utf-8")
     commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
     assert any(
-        command.job == "analyze-android" and command.protection_scope == "android"
+        command.job == "analyze-android-execution"
+        and command.protection_scope == "android"
         for command in commands
     )
 
@@ -251,15 +239,46 @@ def _assert_codeql_terminal_mutations_are_rejected(
     assert qualification_id
     mutations = [
         codeql_source.replace(
-            "        if: ${{ always() && !cancelled() }}",
-            "        if: ${{ false }}",
+            "  analyze-android:\n"
+            "    name: Analyze (java-kotlin)\n"
+            "    needs:\n"
+            "      - scope\n"
+            "      - analyze-android-execution\n"
+            "    if: ${{ always() }}",
+            "  analyze-android:\n"
+            "    name: Analyze (java-kotlin)\n"
+            "    needs:\n"
+            "      - scope\n"
+            "      - analyze-android-execution\n"
+            "    if: ${{ false }}",
             1,
         ),
         before_id + after_id,
+        before_id + qualification_id
+        + "        shell: \"bash -c 'exit 0' -- {0}\"\n"
+        + after_id,
         codeql_source.replace(
             "run: python -E -S backend/scripts/verify_scoped_ci_results.py "
-            "--label CodeQL --scope-key ANDROID_SCOPE",
+            "--label CodeQL --scope-key ANDROID_SCOPE --lane EXECUTION",
             "run: echo terminal-bypassed",
+            1,
+        ),
+        codeql_source.replace(
+            "          EXECUTION_RESULT: "
+            "${{ needs.analyze-android-execution.result }}",
+            "          EXECUTION_RESULT: success\n"
+            "          UNUSED_EXECUTION_RESULT: "
+            "${{ needs.analyze-android-execution.result }}",
+            1,
+        ),
+        codeql_source.replace(
+            '          BASH_ENV: ""',
+            "          BASH_ENV: /tmp/untrusted-bash-env",
+            1,
+        ),
+        codeql_source.replace(
+            "      - analyze-android-execution\n",
+            "",
             1,
         ),
     ]
@@ -267,7 +286,9 @@ def _assert_codeql_terminal_mutations_are_rejected(
         assert mutated != codeql_source
         codeql.write_text(mutated, encoding="utf-8")
         commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-        assert all(command.job != "analyze-android" for command in commands)
+        assert all(
+            command.job != "analyze-android-execution" for command in commands
+        )
 
 
 def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
@@ -287,16 +308,16 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
     assert postgres[0].protection_scope == "postgres"
 
     extensible = valid.replace(
-        "  backend_contracts:\n",
+        "  backend_postgres_ordinary: &postgres_lane\n",
         "      - name: Report resolved scope\n"
         "        run: echo scope-complete\n"
-        "  backend_contracts:\n",
+        "  backend_postgres_ordinary: &postgres_lane\n",
         1,
     ).replace(
-        "  backend_postgres_ordinary:\n",
+        "  backend_postgres_real_db: *postgres_lane\n",
         "      - name: Report required gate\n"
         "        run: echo backend-complete\n"
-        "  backend_postgres_ordinary:\n",
+        "  backend_postgres_real_db: *postgres_lane\n",
         1,
     )
     workflow.write_text(extensible, encoding="utf-8")

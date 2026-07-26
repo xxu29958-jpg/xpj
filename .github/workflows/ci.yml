@@ -413,6 +413,8 @@ jobs:
 
       - name: Enforce required CI results
         env:
+          BASH_ENV: ""
+          ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           BACKEND_FROZEN_SCOPE: ${{ needs.scope.outputs.backend_frozen }}
           WINDOWS_SCOPE: ${{ needs.scope.outputs.windows }}
@@ -649,6 +651,8 @@ jobs:
 
       - name: Enforce PostgreSQL lane results
         env:
+          BASH_ENV: ""
+          ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           POSTGRES_SCOPE: ${{ needs.scope.outputs.postgres }}
           ORDINARY_RESULT: ${{ needs.backend_postgres_ordinary.result }}
@@ -1034,6 +1038,8 @@ jobs:
 
       - name: Enforce Android lane results
         env:
+          BASH_ENV: ""
+          ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
           EXPECTED_SHA: ${{ github.sha }}
