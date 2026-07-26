@@ -85,7 +85,7 @@ gradlew --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease   
 # apksigner 校验两个 debug APK = 仓库级稳定 debug 证书（指纹钉自 android/config/debug/README.md）
 ```
 
-GitHub 云端 Android job 使用 hosted runner 的 Android SDK，并按需安装 `platforms;android-36` / `build-tools;36.0.0`。local-Gitea Android job 使用仓库本地 `.toolchains\android-sdk`（workflow 写 `local.properties` 指过去）。云端 Android job 有 `timeout-minutes: 45` 上限；local-Gitea Android job 有 `timeout-minutes: 40` 上限（本地单 runner 串行，一次 wedge 不能阻塞全部本地队列）。
+GitHub 云端 Android 资格链按责任并行：`Android fast` 跑编译、单测、计数、lint、detekt 与 Room schema；`Android APK debug` / `release` 分别构建 Gray/Internal；`Android SCA` 使用 main 分支生产的可信 NVD 产物做离线扫描。四条 lane 均为 15 分钟上限，稳定的 `Android` 聚合检查验证结果与同一资格 SHA。local-Gitea Android job 使用仓库本地 `.toolchains\android-sdk`，有 40 分钟上限；它是降级备用，不是 GitHub 合并阻断项。
 
 ### android-connected（模拟器，path-filtered）
 
@@ -101,7 +101,7 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 
 - run 一直排队：Gitea / runner 没起，先把它们启动。
 - pip-audit SSL EOF：网络 flake，rerun 整个 run 即绿。
-- OWASP dependency-check NVD 超时：`ci.yml` 先跑 `dependencyCheckUpdate`，只有这个独立 NVD 更新阶段超时才降级为 warning，并删除半成品缓存；`dependencyCheckAggregate -PdependencyCheckAutoUpdate=false` 离线扫描阶段超时或失败仍按真实 CVE、腐坏缓存或未知 scanner fatal 处理。
+- Android SCA 找不到新鲜可信 NVD 产物：不要反复重跑 PR；在 main 上手动运行 `Android NVD Database` workflow，等 producer 成功上传产物后再重跑 PR。摘要不符、产物损坏、真实 CVE 或离线扫描失败都必须保持红灯，不能旁路。
 - `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android 测试而没同步 bump `android/audit/test_count_baseline.txt`。
 - `backend_pytest_count` / `installer_pytest_count` 红：分别更新 `backend/audit/test_count_baseline.txt` / `backend/packaging/audit/test_count_baseline.txt`；不要改 gate 代码里的数字。
 - `WaitDelay expired before I/O complete`：临时 PG 没拆干净；teardown 先要求 `pg_ctl` 成功且已固定的进程句柄全部退出，超时后只处理同一已验证进程代际，绝不按二进制路径批量杀，详见 workflow 内注释。
