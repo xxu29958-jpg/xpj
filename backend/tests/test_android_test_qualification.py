@@ -1,41 +1,11 @@
 from __future__ import annotations
 
-import importlib.util
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT_PATH = (
-    REPOSITORY_ROOT / "android" / "scripts" / "verify_android_test_qualification.py"
-)
-
-
-def _load_script() -> object:
-    spec = importlib.util.spec_from_file_location(
-        "_test_android_test_qualification",
-        SCRIPT_PATH,
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-qualification = _load_script()
-
-
-def _snapshot(records: str) -> str:
-    return f"""
-===== Android target emulator-5554 =====
-ACTIVITY MANAGER PROCESS EXIT INFO (dumpsys activity exit-info)
- package: com.ticketbox
-  Historical Process Exit for uid=10123
-{records}
-"""
+from tests._infra.android_test_qualification import qualification
 
 
 def _write_results(
@@ -66,151 +36,6 @@ def _git(repository: Path, *args: str) -> str:
         text=True,
     )
     return completed.stdout.strip()
-
-
-def _old_record(
-    *,
-    timestamp: str = "2026-07-26 12:00:00.000",
-    pid: int = 123,
-    process: str = "com.ticketbox",
-    reason: int = 4,
-    status: int = 0,
-) -> str:
-    return f"""   ApplicationExitInfo #0:
-    timestamp={timestamp}
-    pid={pid}
-    realUid=10123
-    process={process}
-    reason={reason} (APP CRASH)
-    status={status}
-"""
-
-
-def _new_record(
-    *,
-    timestamp: str = "2026-07-26 12:00:00.000",
-    pid: int = 123,
-    process: str = "com.ticketbox",
-    reason: int = 5,
-    status: int = 11,
-) -> str:
-    return f"""   ApplicationExitInfo #0:
-     timestamp={timestamp} pid={pid} realUid=10123 packageUid=10123
-     process={process} reason={reason} (APP CRASH(NATIVE)) subreason=0 status={status}
-     importance=100 pss=1MB rss=2MB description=null state=empty trace=null
-"""
-
-
-def test_exit_snapshot_parser_supports_android_dump_layouts() -> None:
-    snapshot = qualification.parse_exit_snapshot(
-        _snapshot(_old_record() + _new_record(pid=456))
-    )
-
-    assert snapshot.targets == {"emulator-5554"}
-    assert [(record.pid, record.reason) for record in snapshot.records] == [
-        (123, 4),
-        (456, 5),
-    ]
-
-
-def test_new_native_crash_is_a_failure() -> None:
-    before = qualification.parse_exit_snapshot(_snapshot(""))
-    after = qualification.parse_exit_snapshot(_snapshot(_new_record()))
-
-    failures = qualification.new_fatal_exits(
-        before,
-        after,
-        {"com.ticketbox"},
-    )
-
-    assert [(record.process, record.reason) for record in failures] == [
-        ("com.ticketbox", 5)
-    ]
-
-
-def test_stale_crash_from_before_the_run_is_ignored() -> None:
-    evidence = _snapshot(_old_record())
-    before = qualification.parse_exit_snapshot(evidence)
-    after = qualification.parse_exit_snapshot(evidence)
-
-    assert qualification.new_fatal_exits(before, after, {"com.ticketbox"}) == []
-    with pytest.raises(qualification.EvidenceError, match="no new target"):
-        qualification.require_expected_process_exit(
-            qualification.new_exit_records(before, after),
-            {"com.ticketbox"},
-        )
-
-
-@pytest.mark.parametrize("reason", [4, 5, 6, 7])
-def test_each_android_fatal_exit_reason_is_rejected(reason: int) -> None:
-    before = qualification.parse_exit_snapshot(_snapshot(""))
-    after = qualification.parse_exit_snapshot(
-        _snapshot(_new_record(reason=reason))
-    )
-
-    failures = qualification.new_fatal_exits(
-        before,
-        after,
-        {"com.ticketbox"},
-    )
-
-    assert [record.reason for record in failures] == [reason]
-
-
-def test_unrelated_process_exit_is_ignored() -> None:
-    before = qualification.parse_exit_snapshot(_snapshot(""))
-    after = qualification.parse_exit_snapshot(
-        _snapshot(
-            _new_record(process="com.ticketbox", reason=10, status=0)
-            + _new_record(process="com.android.systemui", pid=456)
-        )
-    )
-
-    assert (
-        qualification.require_expected_process_exit(
-            qualification.new_exit_records(before, after),
-            {"com.ticketbox"},
-        )
-        == 1
-    )
-    assert qualification.new_fatal_exits(before, after, {"com.ticketbox"}) == []
-
-
-def test_exit_snapshot_fails_closed_on_malformed_evidence() -> None:
-    with pytest.raises(qualification.EvidenceError, match="missing status"):
-        qualification.parse_exit_snapshot(
-            _snapshot(
-                """   ApplicationExitInfo #0:
-    timestamp=2026-07-26 12:00:00.000
-    pid=123
-    process=com.ticketbox
-    reason=4 (APP CRASH)
-"""
-            )
-        )
-    malformed_header = _old_record().replace(
-        "ApplicationExitInfo #0:",
-        "ApplicationExitInfo #0",
-    )
-    with pytest.raises(qualification.EvidenceError, match="header is malformed"):
-        qualification.parse_exit_snapshot(_snapshot(malformed_header))
-
-
-def test_manifest_processes_are_derived_without_hardcoded_package_names() -> None:
-    manifest = """
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <application>
-    <service android:process=":sync" />
-    <provider android:process="shared.worker" />
-  </application>
-</manifest>
-"""
-
-    assert qualification.application_processes("family.finance", manifest) == {
-        "family.finance",
-        "family.finance:sync",
-        "shared.worker",
-    }
 
 
 def test_junit_results_parse_reported_cases_not_source_shaped_text(
@@ -400,39 +225,22 @@ def test_baseline_ratchet_rejects_an_unreachable_explicit_sha(
         )
 
 
-def test_apkanalyzer_launch_failure_is_evidence_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def reject_launch(*_args: object, **_kwargs: object) -> None:
-        raise OSError("missing executable")
+def test_baseline_ratchet_requires_an_exact_ref_in_ci(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    baseline = repository / "android" / "audit" / "test_count_baseline.txt"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("jvm=1\ninstrumentation=1\n", encoding="utf-8")
 
-    monkeypatch.setattr(qualification.subprocess, "run", reject_launch)
-
-    with pytest.raises(qualification.EvidenceError, match="Could not run apkanalyzer"):
-        qualification._run_apkanalyzer(Path("apkanalyzer"), "manifest", "print")
-
-    observed: dict[str, object] = {}
-
-    def successful_run(*_args: object, **kwargs: object) -> object:
-        observed.update(kwargs)
-        return qualification.subprocess.CompletedProcess(
-            args=["apkanalyzer"],
-            returncode=0,
-            stdout="<manifest />",
-            stderr="",
+    with pytest.raises(
+        qualification.EvidenceError,
+        match="CI requires XPJ_AUDIT_BASE_REF",
+    ):
+        qualification.verify_baseline_ratchet(
+            baseline_path=baseline,
+            repository_root=repository,
+            environment={"CI": "true", "GITHUB_EVENT_NAME": "push"},
         )
-
-    monkeypatch.setattr(qualification.subprocess, "run", successful_run)
-    assert (
-        qualification._run_apkanalyzer(
-            Path("apkanalyzer"),
-            "manifest",
-            "print",
-        )
-        == "<manifest />"
-    )
-    assert observed["encoding"] == "utf-8"
-    assert observed["errors"] == "strict"
 
 
 def test_cli_returns_failure_when_runtime_qualification_fails(
@@ -456,40 +264,3 @@ def test_cli_returns_failure_when_runtime_qualification_fails(
         ]
     ) == 1
     assert "runtime result rejected" in capsys.readouterr().err
-
-
-def test_connected_cli_qualifies_results_and_process_exit(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setattr(
-        qualification,
-        "verify_test_results",
-        lambda **_kwargs: qualification.TestResultSummary(49, 0, 1),
-    )
-    monkeypatch.setattr(
-        qualification,
-        "verify_process_health",
-        lambda **_kwargs: 1,
-    )
-
-    assert qualification.main(
-        [
-            "connected",
-            "--baseline",
-            "baseline.txt",
-            "--results-dir",
-            "results",
-            "--before",
-            "before.txt",
-            "--after",
-            "after.txt",
-            "--apkanalyzer",
-            "apkanalyzer",
-            "--apk-output-dir",
-            "app-apk",
-            "--apk-output-dir",
-            "test-apk",
-        ]
-    ) == 0
-    assert "49 tests" in capsys.readouterr().out
