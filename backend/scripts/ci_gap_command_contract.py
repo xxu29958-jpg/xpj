@@ -82,10 +82,16 @@ def _timeout_wraps_direct_gradle(
     index = 1
     while index < executable_index:
         token = tokens[index].strip("'\"")
-        option_name, separator, _ = token.partition("=")
-        if separator and option_name in _TIMEOUT_OPTIONS_WITH_VALUE:
+        option_name, separator, option_value = token.partition("=")
+        if (
+            separator
+            and option_name in _TIMEOUT_OPTIONS_WITH_VALUE
+            and option_value
+        ):
             index += 1
             continue
+        if separator:
+            return False
         if token in _TIMEOUT_OPTIONS_WITH_VALUE:
             index += 2
             continue

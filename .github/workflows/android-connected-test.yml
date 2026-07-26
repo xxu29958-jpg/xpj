@@ -101,7 +101,7 @@ jobs:
           disable-animations: true
           working-directory: android
           script: |
-            set -uo pipefail
+            set -euo pipefail
             echo "sdk.dir=$ANDROID_HOME" > local.properties
             echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
             capture_connected_failure() {
