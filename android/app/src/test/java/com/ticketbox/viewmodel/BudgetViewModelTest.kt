@@ -319,6 +319,41 @@ class BudgetAdviceViewModelTest {
     }
 
     @Test
+    fun transientProviderCallFailureKeepsRetryableFailedState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        // Live openai_compat failures return HTTP 200 with advice == null and
+        // last_error_code as the reason (_providers.py:161-180) — they are
+        // transient, so the retryable Failed state (with 重试) must survive;
+        // only ai_advisor_provider_empty is terminal. The payload_invalid guard
+        // failure (_runner.py:72) rides the same taxonomy arm.
+        val retryableReasons = listOf(
+            "ai_advisor_provider_call_failed",
+            "ai_advisor_provider_unexpected_error",
+            "ai_advisor_response_parse_failed",
+            "ai_advisor_response_unexpected_error",
+            "ai_advisor_payload_invalid",
+        )
+        for (reason in retryableReasons) {
+            fake.adviceResponder = {
+                Result.success(
+                    BudgetAdviceResult(advice = null, providerName = "live", reasonCode = reason),
+                )
+            }
+            adviceViewModel.requestAdvice()
+            advanceUntilIdle()
+
+            assertEquals(BudgetAdviceLoadState.Failed, adviceViewModel.uiState.value.loadState)
+            assertEquals(
+                UiText.res(R.string.budget_advice_load_failed),
+                adviceViewModel.uiState.value.error,
+            )
+        }
+    }
+
+    @Test
     fun ownerRequiredErrorMapsToTerminalUnavailableState() = budgetTest {
         val fake = FakeBudgetActions(budget = budget())
         fake.adviceResponder = {

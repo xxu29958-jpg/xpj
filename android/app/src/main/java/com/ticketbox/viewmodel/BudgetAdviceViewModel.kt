@@ -113,23 +113,30 @@ class BudgetAdviceViewModel(
     }
 
     private fun BudgetAdviceUiState.adviceLoaded(result: BudgetAdviceResult): BudgetAdviceUiState {
-        // Backend contract (_runner.py): advice == null carries a reason_code.
-        // `ai_advisor_provider_*` means the provider is not live, so retrying
-        // cannot succeed — terminal Unavailable, not the add-data Empty guidance.
-        val providerUnavailable = result.advice == null &&
-            result.reasonCode.orEmpty().startsWith(PROVIDER_REASON_PREFIX)
+        // Backend contract: advice == null carries a reason_code. Today
+        // `ai_advisor_provider_empty` is the only genuinely-disabled code
+        // (non-live provider — retrying cannot succeed until the server is
+        // configured), so it alone maps to the terminal Unavailable state.
+        val reasonCode = result.reasonCode?.trim()
+        val providerUnavailable = result.advice == null && reasonCode == PROVIDER_DISABLED_REASON
+        // Transient live-provider call/parse failures arrive as a 200 with
+        // advice == null (last_error_code overrides the default reason), not as
+        // an HTTP error — classify them as the retryable Failed state, not the
+        // add-data Empty guidance.
+        val transientCallFailure = result.advice == null && reasonCode in RETRYABLE_NULL_ADVICE_REASONS
         return copy(
             loadState = when {
                 result.advice != null -> BudgetAdviceLoadState.Ready
                 providerUnavailable -> BudgetAdviceLoadState.Unavailable
+                transientCallFailure -> BudgetAdviceLoadState.Failed
                 else -> BudgetAdviceLoadState.Empty
             },
             canRequest = repository.canModifyLedger(),
             result = result,
-            error = if (providerUnavailable) {
-                UiText.res(R.string.budget_advice_unavailable_body)
-            } else {
-                null
+            error = when {
+                providerUnavailable -> UiText.res(R.string.budget_advice_unavailable_body)
+                transientCallFailure -> UiText.res(R.string.budget_advice_load_failed)
+                else -> null
             },
         )
     }
@@ -152,7 +159,22 @@ class BudgetAdviceViewModel(
     }
 
     private companion object {
-        const val PROVIDER_REASON_PREFIX = "ai_advisor_provider_"
+        const val PROVIDER_DISABLED_REASON = "ai_advisor_provider_empty"
+
+        /** Null-advice reason codes that mean a transient live-provider failure
+         *  (retry may succeed): the `openai_compat` `last_error_code` values at
+         *  backend/app/services/budget_advisor_service/_providers.py:161-180,
+         *  plus `ai_advisor_payload_invalid` (the fail-closed outbound-schema
+         *  guard, _runner.py:72). Keep in sync with the backend when new
+         *  last_error_code values appear. */
+        val RETRYABLE_NULL_ADVICE_REASONS = setOf(
+            "ai_advisor_provider_call_failed",
+            "ai_advisor_provider_unexpected_error",
+            "ai_advisor_response_parse_failed",
+            "ai_advisor_response_unexpected_error",
+            "ai_advisor_payload_invalid",
+        )
+
         val TERMINAL_ADVISOR_ERROR_CODES = setOf(
             "ai_advisor_owner_required",
             "ai_advisor_not_confirmed",
