@@ -422,37 +422,113 @@ dependencies {
 // silent under-count if JUnit5 lands later without this task being
 // updated in the same PR.
 //
-// Per-line predicate (kept simple — line-level state machine instead
-// of full Kotlin parser):
-//
-//   - exact annotation token followed by whitespace, ``(``, or EOL —
-//     annotation is the first token on the line (the common style:
-//     each annotation on its own line above the method)
-//   - && NOT startsWith("//")  — line comment
-//   - && NOT startsWith("*")   — KDoc continuation line ("* @Test")
-//
-// Known limitation: multi-annotation lines like ``@JvmField @Test``
-// where ``@Test`` is not the first token aren't counted. The project
-// doesn't use that style today; if it ever does, this task will
-// under-count and the baseline mismatch will surface the missed style
-// for explicit decision.
-val androidTestAnnotations = listOf(
-    "@Test",
-    "@ParameterizedTest",
-    "@RepeatedTest",
-    "@TestFactory",
-    "@TestTemplate",
+// A lexical pass removes comments, strings, raw strings and character
+// literals before matching exact annotation tokens anywhere in code.
+// This counts stacked annotations while preventing comments or fixture
+// strings from compensating for a deleted test.
+val androidTestAnnotationNames = listOf(
+    "Test",
+    "ParameterizedTest",
+    "RepeatedTest",
+    "TestFactory",
+    "TestTemplate",
 )
 
-fun isAndroidTestAnnotationLine(trimmedLine: String): Boolean =
-    androidTestAnnotations.any { annotation ->
-        if (!trimmedLine.startsWith(annotation)) {
-            false
-        } else {
-            val suffix = trimmedLine.drop(annotation.length)
-            suffix.isEmpty() || suffix.first().isWhitespace() || suffix.first() == '('
+val androidTestAnnotationPattern = Regex(
+    "(?<![A-Za-z0-9_])@(?:[A-Za-z_][A-Za-z0-9_]*\\.)*(?:" +
+        androidTestAnnotationNames.joinToString("|", transform = Regex::escape) +
+        ")(?=\\s|\\(|$)"
+)
+
+fun androidTestCodeOnly(source: String): String {
+    val code = StringBuilder(source.length)
+    var index = 0
+    var lineComment = false
+    var blockCommentDepth = 0
+    var rawString = false
+    var backtickIdentifier = false
+    var quotedDelimiter: Char? = null
+
+    fun appendMasked(count: Int) {
+        repeat(count) { offset ->
+            val character = source[index + offset]
+            code.append(if (character == '\n' || character == '\r') character else ' ')
+        }
+        index += count
+    }
+
+    while (index < source.length) {
+        val character = source[index]
+        when {
+            lineComment -> {
+                appendMasked(1)
+                if (character == '\n' || character == '\r') {
+                    lineComment = false
+                }
+            }
+            blockCommentDepth > 0 && source.startsWith("/*", index) -> {
+                appendMasked(2)
+                blockCommentDepth += 1
+            }
+            blockCommentDepth > 0 && source.startsWith("*/", index) -> {
+                appendMasked(2)
+                blockCommentDepth -= 1
+            }
+            blockCommentDepth > 0 -> appendMasked(1)
+            rawString && source.startsWith("\"\"\"", index) -> {
+                appendMasked(3)
+                rawString = false
+            }
+            rawString -> appendMasked(1)
+            backtickIdentifier -> {
+                appendMasked(1)
+                if (character == '`') {
+                    backtickIdentifier = false
+                }
+            }
+            quotedDelimiter != null && character == '\\' && index + 1 < source.length -> {
+                appendMasked(2)
+            }
+            quotedDelimiter != null -> {
+                val delimiter = quotedDelimiter
+                appendMasked(1)
+                if (character == delimiter) {
+                    quotedDelimiter = null
+                }
+            }
+            source.startsWith("//", index) -> {
+                appendMasked(2)
+                lineComment = true
+            }
+            source.startsWith("/*", index) -> {
+                appendMasked(2)
+                blockCommentDepth = 1
+            }
+            source.startsWith("\"\"\"", index) -> {
+                appendMasked(3)
+                rawString = true
+            }
+            character == '`' -> {
+                code.append(' ')
+                backtickIdentifier = true
+                index += 1
+            }
+            character == '"' || character == '\'' -> {
+                code.append(' ')
+                quotedDelimiter = character
+                index += 1
+            }
+            else -> {
+                code.append(character)
+                index += 1
+            }
         }
     }
+    return code.toString()
+}
+
+fun countAndroidTestAnnotations(source: String): Int =
+    androidTestAnnotationPattern.findAll(androidTestCodeOnly(source)).count()
 
 // Conceptual counter name: ``android_junit_test_method_count`` — explicitly
 // names "annotation-based method count", not "runtime-collected test count".
@@ -593,16 +669,7 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
                 }
                 .map(File::getCanonicalFile)
                 .distinctBy(File::getAbsolutePath)
-                .sumOf { sourceFile ->
-                    sourceFile.useLines { lines ->
-                        lines.count { sourceLine ->
-                            val trimmedLine = sourceLine.trim()
-                            isAndroidTestAnnotationLine(trimmedLine) &&
-                                !trimmedLine.startsWith("//") &&
-                                !trimmedLine.startsWith("*")
-                        }
-                    }
-                }
+                .sumOf { sourceFile -> countAndroidTestAnnotations(sourceFile.readText()) }
         }
 
         // Layer 1: strict equality per source set. Moving tests between JVM and
@@ -692,15 +759,23 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
         }
 
         fun runGit(args: List<String>, operation: String): Pair<Int, String> {
-            val proc = ProcessBuilder(*(listOf("git") + args).toTypedArray())
-                .directory(rootProject.rootDir.parentFile)
-                .redirectErrorStream(true)
-                .start()
-            if (!proc.waitFor(30, TimeUnit.SECONDS)) {
-                proc.destroyForcibly()
-                throw GradleException("Timed out while $operation.")
+            val outputFile = File.createTempFile("ticketbox-git-", ".txt")
+            try {
+                val proc = ProcessBuilder(*(listOf("git") + args).toTypedArray())
+                    .directory(rootProject.rootDir.parentFile)
+                    .redirectErrorStream(true)
+                    .redirectOutput(outputFile)
+                    .start()
+                if (!proc.waitFor(30, TimeUnit.SECONDS)) {
+                    proc.destroyForcibly()
+                    throw GradleException("Timed out while $operation.")
+                }
+                return proc.exitValue() to outputFile.readText().trim()
+            } finally {
+                if (!outputFile.delete()) {
+                    outputFile.deleteOnExit()
+                }
             }
-            return proc.exitValue() to proc.inputStream.bufferedReader().readText().trim()
         }
 
         val baselineRepoPath = "android/audit/test_count_baseline.txt"
@@ -743,8 +818,6 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
         }
 
         val legacyInstrumentationCount = if (baseBaselineText.toIntOrNull() != null) {
-            val annotationPattern =
-                "^[[:space:]]*(${androidTestAnnotations.joinToString("|")})([[:space:](]|$)"
             val repositoryRoot = rootProject.rootDir.parentFile.canonicalFile.toPath()
             val instrumentationPaths = testDirs.getValue("instrumentation")
                 .mapNotNull { sourceDirectory ->
@@ -761,25 +834,37 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
                     "Cannot derive repository paths for GrayDebug instrumentation sources."
                 )
             }
-            val (grepExit, grepOutput) = runGit(
+            val (listSourcesExit, listSourcesOutput) = runGit(
                 listOf(
-                    "grep",
-                    "-h",
-                    "-I",
-                    "-E",
-                    annotationPattern,
+                    "ls-tree",
+                    "-r",
+                    "--name-only",
                     baseRef,
                     "--",
                 ) + instrumentationPaths,
-                "deriving the legacy instrumentation floor at '$baseRef'",
+                "listing legacy instrumentation sources at '$baseRef'",
             )
-            when (grepExit) {
-                0 -> grepOutput.lineSequence().count { it.isNotBlank() }
-                1 -> 0
-                else -> throw GradleException(
-                    "Unable to derive legacy instrumentation floor at '$baseRef': $grepOutput"
+            if (listSourcesExit != 0) {
+                throw GradleException(
+                    "Unable to list legacy instrumentation sources at '$baseRef': " +
+                        listSourcesOutput
                 )
             }
+            listSourcesOutput.lineSequence()
+                .filter { path -> path.endsWith(".kt") || path.endsWith(".java") }
+                .sumOf { sourcePath ->
+                    val (showSourceExit, sourceText) = runGit(
+                        listOf("show", "$baseRef:$sourcePath"),
+                        "reading legacy instrumentation source '$sourcePath' at '$baseRef'",
+                    )
+                    if (showSourceExit != 0) {
+                        throw GradleException(
+                            "Unable to read legacy instrumentation source '$sourcePath' " +
+                                "at '$baseRef': $sourceText"
+                        )
+                    }
+                    countAndroidTestAnnotations(sourceText)
+                }
         } else {
             null
         }
@@ -882,6 +967,35 @@ val guardConnectedAndroidTestEmulatorOnly by tasks.registering {
     }
 }
 
+fun ticketboxConnectedCrashLog(): File =
+    System.getenv("RUNNER_TEMP")
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.let { File(it, "ticketbox-connected-crash.log") }
+        ?: layout.buildDirectory
+            .file("reports/androidTests/ticketbox-connected-crash.log")
+            .get()
+            .asFile
+
+fun prepareTicketboxConnectedCrashLog(crashLog: File) {
+    val crashLogDirectory = crashLog.parentFile
+        ?: throw GradleException("Connected-test crash log has no parent directory.")
+    if (!crashLogDirectory.isDirectory && !crashLogDirectory.mkdirs()) {
+        throw GradleException("Cannot create connected-test crash-log directory.")
+    }
+}
+
+val prepareGrayConnectedTestCrashLog by tasks.registering {
+    group = "verification"
+    description = "Start a fresh crash-evidence file for this connected-test run."
+
+    doLast {
+        val crashLog = ticketboxConnectedCrashLog()
+        prepareTicketboxConnectedCrashLog(crashLog)
+        crashLog.writeText("")
+    }
+}
+
 val captureGrayConnectedTestCrashLog by tasks.registering {
     group = "verification"
     description = "Capture crash buffers from the connected-test targets before teardown."
@@ -889,19 +1003,8 @@ val captureGrayConnectedTestCrashLog by tasks.registering {
     doLast {
         val adb = ticketboxAdbExecutable()
             ?: throw GradleException("Android adb is unavailable; cannot capture connected-test crashes.")
-        val crashLog = System.getenv("RUNNER_TEMP")
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.let { File(it, "ticketbox-connected-crash.log") }
-            ?: layout.buildDirectory
-                .file("reports/androidTests/ticketbox-connected-crash.log")
-                .get()
-                .asFile
-        val crashLogDirectory = crashLog.parentFile
-            ?: throw GradleException("Connected-test crash log has no parent directory.")
-        if (!crashLogDirectory.isDirectory && !crashLogDirectory.mkdirs()) {
-            throw GradleException("Cannot create connected-test crash-log directory.")
-        }
+        val crashLog = ticketboxConnectedCrashLog()
+        prepareTicketboxConnectedCrashLog(crashLog)
 
         val readySerials = ticketboxReadyDeviceSerials()
         val selectedSerial = System.getenv("ANDROID_SERIAL")
@@ -920,7 +1023,7 @@ val captureGrayConnectedTestCrashLog by tasks.registering {
             )
         }
 
-        crashLog.writeText("")
+        crashLog.appendText("===== Connected crash capture =====\n")
         captureSerials.forEach { serial ->
             crashLog.appendText("===== Android target $serial =====\n")
             val process = ProcessBuilder(
@@ -956,6 +1059,7 @@ val captureGrayConnectedTestCrashLog by tasks.registering {
 tasks.matching { it.name.matches(Regex("connected.*AndroidTest")) }.configureEach {
     dependsOn(guardConnectedAndroidTestEmulatorOnly)
     if (name == "connectedGrayDebugAndroidTest") {
+        dependsOn(prepareGrayConnectedTestCrashLog)
         timeout.set(Duration.ofMinutes(10))
         finalizedBy(captureGrayConnectedTestCrashLog)
     }

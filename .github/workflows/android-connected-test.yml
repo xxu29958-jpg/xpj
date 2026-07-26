@@ -22,6 +22,7 @@ on:
       - "android/gradlew"
       - "android/gradlew.bat"
       - "android/settings.gradle.kts"
+      - "android/scripts/**"
       - ".github/workflows/android-connected-test.yml"
   pull_request:
     branches:
@@ -35,6 +36,7 @@ on:
       - "android/gradlew"
       - "android/gradlew.bat"
       - "android/settings.gradle.kts"
+      - "android/scripts/**"
       - ".github/workflows/android-connected-test.yml"
   workflow_dispatch:
 
@@ -92,6 +94,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          emulator-boot-timeout: 180
           emulator-options: >-
             -no-window
             -gpu swiftshader_indirect
@@ -100,26 +103,9 @@ jobs:
             -camera-back none
           disable-animations: true
           working-directory: android
-          script: |
-            set -eu
-            echo "sdk.dir=$ANDROID_HOME" > local.properties
-            echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
-            capture_connected_failure() {
-              connected_status=$?
-              trap - 0
-              if [ "$connected_status" -ne 0 ]; then
-                echo "Connected Gradle invocation failed with status $connected_status." >&2
-                # The 18-minute in-action watchdog leaves time to preserve
-                # diagnostics before the 20-minute action ceiling kills the
-                # host process. Ordinary task failures are already captured
-                # by the Gradle finalizer; repeating capture is harmless.
-                ./gradlew --no-daemon :app:captureGrayConnectedTestCrashLog || true
-              fi
-              exit "$connected_status"
-            }
-            trap capture_connected_failure 0
-            timeout --signal=INT --kill-after=30s 18m \
-              ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+          # The action executes each input line in a fresh `sh -c`; keep the
+          # lifecycle state machine in one checked-in shell entrypoint.
+          script: sh scripts/run_connected_ci.sh
 
       - name: Verify connected process health
         working-directory: android

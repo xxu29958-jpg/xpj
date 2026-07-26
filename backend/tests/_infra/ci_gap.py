@@ -27,6 +27,50 @@ def load_ci_gap_audit() -> object:
         sys.path[:] = old_path
 
 
+def assert_ci_gap_expands_local_shell_entrypoint(
+    mod: object,
+    tmp_path: Path,
+) -> None:
+    workflows = tmp_path / ".github" / "workflows"
+    scripts = tmp_path / "android" / "scripts"
+    workflows.mkdir(parents=True)
+    scripts.mkdir(parents=True)
+    (workflows / "android-connected-test.yml").write_text(
+        """
+name: connected
+on: pull_request
+jobs:
+  connected:
+    steps:
+      - uses: reactivecircus/android-emulator-runner@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        with:
+          working-directory: android
+          script: sh scripts/run_connected_ci.sh
+""",
+        encoding="utf-8",
+    )
+    entrypoint = scripts / "run_connected_ci.sh"
+    entrypoint.write_text(
+        """
+#!/bin/sh
+set -eu
+timeout --signal=INT --kill-after=30s 14m \
+  ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+""",
+        encoding="utf-8",
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+
+    assert len(commands) == 1
+    assert ":app:connectedGrayDebugAndroidTest" in commands[0].text
+    assert ":app:connectedGrayDebugAndroidTest" not in mod._missing_gradle_tasks(commands)
+
+    entrypoint.unlink()
+    unresolved = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    assert ":app:connectedGrayDebugAndroidTest" in mod._missing_gradle_tasks(unresolved)
+
+
 def assert_ci_provider_selection_contract(mod: object) -> None:
     assert mod.selected_ci_platforms({}) == ("GitHub", "Gitea")
     assert mod.selected_ci_platforms({"XPJ_CI_AUDIT_PROVIDER": "github"}) == (

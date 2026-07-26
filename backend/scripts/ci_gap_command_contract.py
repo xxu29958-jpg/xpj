@@ -47,6 +47,38 @@ _GRADLE_EXCLUDE_OPTIONS = {"-x", "--exclude-task"}
 _TIMEOUT_OPTIONS_WITH_VALUE = {"-k", "--kill-after", "-s", "--signal"}
 _TIMEOUT_FLAG_OPTIONS = {"--foreground", "--preserve-status", "--verbose"}
 _TIMEOUT_DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
+_TIMEOUT_SIGNAL_NAMES = {
+    "ABRT",
+    "ALRM",
+    "BUS",
+    "CHLD",
+    "CONT",
+    "FPE",
+    "HUP",
+    "ILL",
+    "INT",
+    "IO",
+    "KILL",
+    "PIPE",
+    "PROF",
+    "PWR",
+    "QUIT",
+    "SEGV",
+    "STOP",
+    "SYS",
+    "TERM",
+    "TRAP",
+    "TSTP",
+    "TTIN",
+    "TTOU",
+    "URG",
+    "USR1",
+    "USR2",
+    "VTALRM",
+    "WINCH",
+    "XCPU",
+    "XFSZ",
+}
 
 
 def _is_line_continued(stripped_line: str) -> bool:
@@ -73,6 +105,17 @@ def _contains_gradle_executable(line: str) -> bool:
     return any(_is_gradle_executable(token) for token in _shell_tokens(line))
 
 
+def _valid_timeout_option_value(option: str, value: str) -> bool:
+    if option in {"-k", "--kill-after"}:
+        return _TIMEOUT_DURATION.fullmatch(value) is not None
+    if option not in {"-s", "--signal"}:
+        return False
+    if value.isdecimal():
+        return 1 <= int(value) <= 64
+    normalized = value.upper().removeprefix("SIG")
+    return normalized in _TIMEOUT_SIGNAL_NAMES
+
+
 def _timeout_wraps_direct_gradle(
     tokens: tuple[str, ...],
     executable_index: int,
@@ -86,13 +129,21 @@ def _timeout_wraps_direct_gradle(
         if (
             separator
             and option_name in _TIMEOUT_OPTIONS_WITH_VALUE
-            and option_value
+            and _valid_timeout_option_value(option_name, option_value)
         ):
             index += 1
             continue
         if separator:
             return False
         if token in _TIMEOUT_OPTIONS_WITH_VALUE:
+            if (
+                index + 1 >= executable_index
+                or not _valid_timeout_option_value(
+                    token,
+                    tokens[index + 1].strip("'\""),
+                )
+            ):
+                return False
             index += 2
             continue
         if token in _TIMEOUT_FLAG_OPTIONS:

@@ -14,6 +14,7 @@ from ci_gap_job_scope import scoped_step_protection_scope as _scoped_step_protec
 from ci_gap_job_scope import (
     scoped_step_requires_prior_success as _scoped_step_requires_prior_success,
 )
+from ci_gap_local_script import local_shell_script_text as _local_shell_script_text
 from ci_gap_powershell import (
     looks_like_powershell as _looks_like_powershell,
 )
@@ -259,14 +260,18 @@ def _workflow_step_command(
     if not isinstance(command, str):
         return None
     shell = str(raw_step.get("shell", job_shell))
-    executable_text = _strip_comment_lines(command)
+    local_script = _local_shell_script_text(path, raw_step, command)
+    source_command = local_script if local_script is not None else command
+    if local_script is not None:
+        shell = "sh"
+    executable_text = _strip_comment_lines(source_command)
     is_powershell = _looks_like_powershell(shell=shell, command=executable_text)
     if is_powershell:
         executable_text = _powershell_reachable_command_text(executable_text)
     return WorkflowCommand(
         path,
         executable_text,
-        folded="\n" not in command,
+        folded="\n" not in source_command,
         job=str(job_name),
         step=str(raw_step.get("name", index)),
         step_index=index,
@@ -279,7 +284,7 @@ def _workflow_step_command(
         ),
         step_id=str(raw_step.get("id", "")),
         environment=environment,
-        source_text=_strip_comment_lines(command),
+        source_text=_strip_comment_lines(source_command),
     )
 
 
