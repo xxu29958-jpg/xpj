@@ -5,7 +5,12 @@ from __future__ import annotations
 import pathlib
 import shlex
 
-_LOCAL_SHELL_LAUNCHERS = {"bash", "sh"}
+_LOCAL_SHELL_LAUNCHERS = {
+    "/bin/bash",
+    "/bin/sh",
+    "/usr/bin/bash",
+    "/usr/bin/sh",
+}
 
 
 def _repository_root(path: pathlib.Path) -> pathlib.Path | None:
@@ -37,10 +42,9 @@ def local_shell_script_text(
         tokens = shlex.split(command, posix=True)
     except ValueError:
         return None
-    launcher = tokens[0].replace("\\", "/").rsplit("/", maxsplit=1)[-1] if tokens else ""
     if (
         len(tokens) != 2
-        or launcher not in _LOCAL_SHELL_LAUNCHERS
+        or tokens[0].replace("\\", "/") not in _LOCAL_SHELL_LAUNCHERS
         or tokens[1].startswith("-")
     ):
         return None

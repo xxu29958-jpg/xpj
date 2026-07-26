@@ -434,11 +434,21 @@ val androidTestAnnotationNames = listOf(
     "TestTemplate",
 )
 
+val androidTestAnnotationAlternation =
+    androidTestAnnotationNames.joinToString("|", transform = Regex::escape)
 val androidTestAnnotationPattern = Regex(
     "(?<![A-Za-z0-9_])@(?:[A-Za-z_][A-Za-z0-9_]*\\.)*(?:" +
-        androidTestAnnotationNames.joinToString("|", transform = Regex::escape) +
-        ")(?=\\s|\\(|$)"
+        androidTestAnnotationAlternation + ")(?=\\s|\\(|$)"
 )
+val androidTestAliasImportPattern = Regex(
+    "(?m)^\\s*import\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\.)*(?:" +
+        androidTestAnnotationAlternation + ")\\s+as(?:\\s|$)"
+)
+val androidTestAliasTypePattern = Regex(
+    "(?m)^\\s*typealias\\s+[^=]+?=\\s*(?:[A-Za-z_][A-Za-z0-9_]*\\.)*(?:" +
+        androidTestAnnotationAlternation + ")(?:\\s|$)"
+)
+val javaUnicodeEscapePattern = Regex("""\\u+[0-9A-Fa-f]{4}""")
 
 fun androidTestCodeOnly(source: String): String {
     val code = StringBuilder(source.length)
@@ -527,8 +537,31 @@ fun androidTestCodeOnly(source: String): String {
     return code.toString()
 }
 
-fun countAndroidTestAnnotations(source: String): Int =
-    androidTestAnnotationPattern.findAll(androidTestCodeOnly(source)).count()
+fun countAndroidTestAnnotations(source: String, sourceName: String): Int {
+    val codeOnly = androidTestCodeOnly(source)
+    if (
+        sourceName.endsWith(".kt") &&
+        (
+            androidTestAliasImportPattern.containsMatchIn(codeOnly) ||
+                androidTestAliasTypePattern.containsMatchIn(codeOnly)
+            )
+    ) {
+        throw GradleException(
+            "Test source '$sourceName' aliases a recognized test annotation. " +
+                "Use its canonical annotation name so the test-count contract remains exact."
+        )
+    }
+    if (
+        sourceName.endsWith(".java") &&
+        javaUnicodeEscapePattern.containsMatchIn(source)
+    ) {
+        throw GradleException(
+            "Test source '$sourceName' contains a Java Unicode escape. " +
+                "Use literal source tokens so comment and annotation counting cannot diverge."
+        )
+    }
+    return androidTestAnnotationPattern.findAll(codeOnly).count()
+}
 
 // Conceptual counter name: ``android_junit_test_method_count`` — explicitly
 // names "annotation-based method count", not "runtime-collected test count".
@@ -669,7 +702,12 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
                 }
                 .map(File::getCanonicalFile)
                 .distinctBy(File::getAbsolutePath)
-                .sumOf { sourceFile -> countAndroidTestAnnotations(sourceFile.readText()) }
+                .sumOf { sourceFile ->
+                    countAndroidTestAnnotations(
+                        sourceFile.readText(),
+                        sourceFile.absolutePath,
+                    )
+                }
         }
 
         // Layer 1: strict equality per source set. Moving tests between JVM and
@@ -863,7 +901,7 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
                                 "at '$baseRef': $sourceText"
                         )
                     }
-                    countAndroidTestAnnotations(sourceText)
+                    countAndroidTestAnnotations(sourceText, sourcePath)
                 }
         } else {
             null

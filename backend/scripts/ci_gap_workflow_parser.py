@@ -255,10 +255,20 @@ def _workflow_step_command(
     environment: tuple[tuple[str, str], ...],
 ) -> WorkflowCommand | None:
     command = raw_step.get("run", raw_step.get("script"))
+    nested_action_script = None
     if command is None:
-        command = _nested_action_script(raw_step)
+        nested_action_script = _nested_action_script(raw_step)
+        command = nested_action_script
     if not isinstance(command, str):
         return None
+    if nested_action_script is not None:
+        executable_lines = [
+            line
+            for line in _strip_comment_lines(command).splitlines()
+            if line.strip()
+        ]
+        if len(executable_lines) != 1:
+            return None
     shell = str(raw_step.get("shell", job_shell))
     local_script = _local_shell_script_text(path, raw_step, command)
     source_command = local_script if local_script is not None else command

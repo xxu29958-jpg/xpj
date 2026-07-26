@@ -225,6 +225,8 @@ def _assert_gradle_failure_masking_is_rejected(mod: object) -> None:
         "timeout --signal=NO_SUCH_SIGNAL 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
         "timeout --signal=0 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
         "timeout --kill-after=not-a-duration 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout -s=INT 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout -k=15s 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
         "timeout --signal --foreground 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
     ):
         candidate = mod.WorkflowCommand(

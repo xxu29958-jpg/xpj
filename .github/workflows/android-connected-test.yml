@@ -105,7 +105,7 @@ jobs:
           working-directory: android
           # The action executes each input line in a fresh `sh -c`; keep the
           # lifecycle state machine in one checked-in shell entrypoint.
-          script: sh scripts/run_connected_ci.sh
+          script: /bin/sh scripts/run_connected_ci.sh
 
       - name: Verify connected process health
         working-directory: android

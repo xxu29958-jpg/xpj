@@ -128,6 +128,7 @@ def _timeout_wraps_direct_gradle(
         option_name, separator, option_value = token.partition("=")
         if (
             separator
+            and option_name.startswith("--")
             and option_name in _TIMEOUT_OPTIONS_WITH_VALUE
             and _valid_timeout_option_value(option_name, option_value)
         ):
