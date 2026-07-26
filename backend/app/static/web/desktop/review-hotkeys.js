@@ -24,7 +24,7 @@
       // here, but a removed row is gone from the DOM, so offsetParent guards
       // the rare hidden case). 批选模式挂起的行(aria-disabled)不参与 J/K 导航。
       return Array.prototype.filter.call(
-        table.querySelectorAll(".exp-row[data-fragment-url]"),
+        table.querySelectorAll(".exp-row-detail[data-fragment-url]"),
         function (r) { return r.offsetParent !== null && r.getAttribute("aria-disabled") !== "true"; }
       );
     }

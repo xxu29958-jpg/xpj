@@ -25,13 +25,15 @@ internal fun PlanRoute(
     screenFactory: MainScreenFactory,
 ) {
     val budgetViewModel: BudgetViewModel = viewModel(
+        key = planViewModelKey("plan-budget", screenFactory.ledgerRepository.activeLedgerId()),
         factory = budgetViewModelFactory(screenFactory.budgetRepository),
     )
     val recurringViewModel: RecurringViewModel = viewModel(
+        key = planViewModelKey("plan-recurring", screenFactory.ledgerRepository.activeLedgerId()),
         factory = recurringViewModelFactory(screenFactory.recurringRepository),
     )
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
-        key = IncomePlanViewModelKey,
+        key = planViewModelKey("plan-income", screenFactory.ledgerRepository.activeLedgerId()),
         factory = incomePlanViewModelFactory(screenFactory.incomePlanRepository),
     )
     val budgetState by budgetViewModel.uiState.collectAsStateWithLifecycle()
@@ -75,6 +77,15 @@ internal fun PlanRoute(
         ),
     )
 }
+
+/**
+ * Ledger-scoped ViewModel key for the Plan overview, mirroring
+ * [transactionsLibraryViewModelKey] (218-B2): keying by active ledger
+ * guarantees a fresh VM (fresh load) after a ledger switch instead of reusing
+ * the previous ledger's budget / recurring / income state from the back stack.
+ */
+internal fun planViewModelKey(prefix: String, ledgerId: String?): String =
+    "$prefix-${ledgerId ?: "none"}"
 
 private fun refreshPlanOverview(
     budget: BudgetViewModel,

@@ -56,18 +56,24 @@
     font-size: var(--type-caption-size); font-weight: 600; color: var(--text-muted);
 }
 
-/* 行：类目图标 + 商家/meta + 金额拆分 */
+/* 行：类目图标 + 商家/meta + 金额拆分
+   #218 行结构:checkbox(.lrow-sel) 与行链接(a.timeline-row-detail)并列,
+   行容器只出两列(选择器 + 链接),内容三列网格收在行链接上。 */
 .timeline-row.lrow {
-    display: grid; grid-template-columns: var(--space-9) minmax(0, 1fr) auto; align-items: center; gap: var(--space-4);
-    padding: var(--space-3) var(--space-5); text-decoration: none; color: inherit;
+    display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: var(--space-4);
+    padding: var(--space-3) var(--space-5);
 }
-.timeline-row.lrow.has-check { grid-template-columns: var(--space-6) var(--space-9) minmax(0, 1fr) auto; }
+.timeline-row.lrow.has-check { grid-template-columns: var(--space-6) minmax(0, 1fr); }
 .timeline-row.lrow + .timeline-row.lrow { border-top: 1px solid var(--border-card); } /* 1px 发丝线 */
 .timeline-row.lrow:hover { background: var(--surface-sunken); }
 .timeline-row.lrow.selected,
 .timeline-row.lrow[aria-selected="true"] { background: var(--surface-sunken); box-shadow: 0 0 0 1px var(--border-card) inset; }
 
 .lrow-sel { display: flex; align-items: center; }
+.timeline-row.lrow > .timeline-row-detail {
+    display: grid; grid-template-columns: var(--space-9) minmax(0, 1fr) auto; align-items: center; gap: var(--space-4);
+    min-width: 0; text-decoration: none; color: inherit;
+}
 .lrow-ic {
     width: var(--space-9); height: var(--space-9); flex: 0 0 var(--space-9); border-radius: var(--radius-md);
     display: flex; align-items: center; justify-content: center;

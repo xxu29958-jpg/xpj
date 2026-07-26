@@ -144,8 +144,9 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     resp = web_client.get("/web/pending?ledger_id=owner")
     assert resp.status_code == 200
     assert f'data-expense-id="{eid}"' in resp.text
-    # main 保留 drawer.js 的 aria-selected 选中标记(#218 才换成 aria-current),
-    # 行锚点也未做 #218 的行重构,只补 JS 契约要求的 class / 原生 checkbox。
+    # main 保留 drawer.js 的 aria-selected 选中标记(#218 才换成 aria-current);
+    # 行结构已按 #218 拆开:checkbox 与整行链接是兄弟节点(嵌套合同测试见
+    # test_web_batch_confirmed_and_fragments.py)。
     assert 'aria-selected="false"' in resp.text
     assert ('<button class="dt-btn" type="button" data-bulk-clear>取消选择</button>') in resp.text
     assert f'aria-label="选择账单 #{eid}"' in resp.text
@@ -167,7 +168,8 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert 'row.setAttribute("aria-disabled", "true");' in js
     assert 'row.setAttribute("tabindex", "-1");' in js
     assert "setBatchNavigationMode(entries.length > 0);" in js
-    # checkbox 在 main 的行锚点内部:点击必须 stopPropagation,否则冒泡触发整行跳转。
+    # checkbox 与行链接拆开为兄弟节点后,stopPropagation 仍兜底:任何残留监听都不
+    # 会因勾选而触发整行跳转。
     assert "e.stopPropagation();" in js
 
     drawer_js = js_path.with_name("drawer.js").read_text(encoding="utf-8")
