@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from functools import cache
 from pathlib import Path
 
 _PROBE = """
@@ -15,16 +16,14 @@ _PROBE = """
 _PROBE_TIMEOUT_SECONDS = 10
 
 
-def powershell_contract_engines() -> list[str]:
-    contracts = (
-        ("powershell", "Desktop", 5, 1),
-        ("pwsh", "Core", 7, 0),
-    )
+@cache
+def _probe_contract_engines(
+    contracts: tuple[tuple[str, str, int, int], ...],
+) -> tuple[str, ...]:
     engines: list[str] = []
     identities: list[tuple[str, int, int]] = []
-    for command, edition, minimum_major, minimum_minor in contracts:
-        executable = shutil.which(command)
-        assert executable is not None, f"required PowerShell host is missing: {command}"
+    for executable, edition, minimum_major, minimum_minor in contracts:
+        command = Path(executable).name
         try:
             result = subprocess.run(
                 [
@@ -64,4 +63,24 @@ def powershell_contract_engines() -> list[str]:
         identities.append(actual)
     assert Path(engines[0]) != Path(engines[1]), "PowerShell hosts must be distinct"
     assert identities[0][0] != identities[1][0], "PowerShell editions must be distinct"
-    return engines
+    return tuple(engines)
+
+
+def powershell_contract_engines() -> tuple[str, ...]:
+    contracts = (
+        ("powershell", "Desktop", 5, 1),
+        ("pwsh", "Core", 7, 0),
+    )
+    resolved: list[tuple[str, str, int, int]] = []
+    for command, edition, minimum_major, minimum_minor in contracts:
+        executable = shutil.which(command)
+        assert executable is not None, f"required PowerShell host is missing: {command}"
+        resolved.append(
+            (
+                str(Path(executable).resolve()),
+                edition,
+                minimum_major,
+                minimum_minor,
+            )
+        )
+    return _probe_contract_engines(tuple(resolved))

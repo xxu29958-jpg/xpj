@@ -19,6 +19,125 @@ jobs:
       - run: ./gradlew --no-daemon :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
 """
 
+_INSTALLER_SAFETY_COMMAND = (
+    "python -m pytest packaging/tests --strict-markers "
+    "-p no:cacheprovider -o addopts= -n 3 --dist loadfile "
+    "--max-worker-restart 0"
+)
+_SAFE_PYTEST_ENVIRONMENT = (("PYTEST_ADDOPTS", ""),)
+
+
+def _write_required_workflows(workflows: Path) -> None:
+    (workflows / "ci.yml").write_text(
+        """
+name: CI
+env:
+  pytest_addopts: "-k workflow_poison"
+jobs:
+  backend:
+    env:
+      PyTest_AddOpts: "-m job_poison"
+    steps:
+      - run: .\\.ci-venv\\Scripts\\python.exe -m compileall app scripts tests packaging/tests
+      - run: .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests packaging/tests
+      - env:
+          PYTEST_ADDOPTS: ""
+        run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -n 2 --dist loadfile --max-worker-restart 0
+      - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
+      - run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
+      - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\\build_backend_exe.ps1 -Clean
+      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\release_audit.py
+      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\check_api_contract.py
+  desktop:
+    steps:
+      - run: .\\.ci-venv\\Scripts\\python.exe -m compileall backend_manager tests
+      - run: .\\.ci-venv\\Scripts\\ruff.exe check backend_manager tests
+      - run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q
+""",
+        encoding="utf-8",
+    )
+    (workflows / "backend-postgres.yml").write_text(
+        _POSTGRES_REQUIRED_WORKFLOW,
+        encoding="utf-8",
+    )
+    (workflows / "android-connected.yml").write_text(
+        """
+name: Android Connected
+jobs:
+  connected:
+    steps:
+      - run: .\\gradlew.bat --no-daemon :app:connectedGrayDebugAndroidTest
+""",
+        encoding="utf-8",
+    )
+
+
+def _assert_installer_safety_rejects_narrowing(mod: object) -> None:
+    invalid_commands = (
+        "python -m pytest -q packaging/tests -p no:cacheprovider -k version",
+        (
+            "python -m pytest -q packaging/tests --strict-markers "
+            "-p no:cacheprovider -o addopts="
+        ),
+        _INSTALLER_SAFETY_COMMAND.replace(
+            "--max-worker-restart 0",
+            "--max-worker-restart 1",
+        ),
+    )
+    for text in invalid_commands:
+        command = mod.WorkflowCommand(
+            Path("ci.yml"),
+            text,
+            environment=_SAFE_PYTEST_ENVIRONMENT,
+        )
+        assert "pytest installer safety lane" in mod._missing_ci_invocations(
+            [command]
+        )
+    poisoned = mod.WorkflowCommand(
+        Path("ci.yml"),
+        _INSTALLER_SAFETY_COMMAND,
+        environment=(("pytest_addopts", ""), ("PYTEST_ADDOPTS", "-k version")),
+    )
+    assert "pytest installer safety lane" in mod._missing_ci_invocations([poisoned])
+
+
+def _assert_installer_safety_tuning_contract(mod: object) -> None:
+    precedence = mod.WorkflowCommand(
+        Path("ci.yml"),
+        _INSTALLER_SAFETY_COMMAND,
+        environment=(("PYTEST_ADDOPTS", "-k poisoned"), ("pytest_addopts", "")),
+    )
+    assert "pytest installer safety lane" not in mod._missing_ci_invocations(
+        [precedence]
+    )
+    for workers in (2, 3, 4):
+        tuned = mod.WorkflowCommand(
+            Path("ci.yml"),
+            _INSTALLER_SAFETY_COMMAND.replace("-n 3", f"-n {workers}"),
+            environment=_SAFE_PYTEST_ENVIRONMENT,
+        )
+        assert "pytest installer safety lane" not in mod._missing_ci_invocations(
+            [tuned]
+        )
+    invalid_commands = (
+        _INSTALLER_SAFETY_COMMAND.replace("-n 3", "-n 1"),
+        _INSTALLER_SAFETY_COMMAND.replace("-n 3", "-n 5"),
+        _INSTALLER_SAFETY_COMMAND.replace(
+            "-p no:cacheprovider",
+            "-p no:cacheprovider -p no:cacheprovider",
+        ),
+        f"{_INSTALLER_SAFETY_COMMAND} tests/test_version.py",
+    )
+    for text in invalid_commands:
+        invalid = mod.WorkflowCommand(
+            Path("ci.yml"),
+            text,
+            environment=_SAFE_PYTEST_ENVIRONMENT,
+        )
+        assert "pytest installer safety lane" in mod._missing_ci_invocations(
+            [invalid]
+        )
+
 
 def test_ci_gap_scans_run_commands_not_comments(tmp_path: Path) -> None:
     mod = _load()
@@ -66,43 +185,7 @@ def test_ci_gap_accepts_required_commands_across_workflows(tmp_path: Path) -> No
     mod = _load()
     workflows = tmp_path / ".gitea" / "workflows"
     workflows.mkdir(parents=True)
-    (workflows / "ci.yml").write_text(
-        """
-name: CI
-jobs:
-  backend:
-    steps:
-      - run: .\\.ci-venv\\Scripts\\python.exe -m compileall app scripts tests packaging/tests
-      - run: .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests packaging/tests
-      - run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests -p no:cacheprovider
-      - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
-      - run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
-      - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\\build_backend_exe.ps1 -Clean
-      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\release_audit.py
-      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\check_api_contract.py
-  desktop:
-    steps:
-      - run: .\\.ci-venv\\Scripts\\python.exe -m compileall backend_manager tests
-      - run: .\\.ci-venv\\Scripts\\ruff.exe check backend_manager tests
-      - run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q
-""",
-        encoding="utf-8",
-    )
-    (workflows / "backend-postgres.yml").write_text(
-        _POSTGRES_REQUIRED_WORKFLOW,
-        encoding="utf-8",
-    )
-    (workflows / "android-connected.yml").write_text(
-        """
-name: Android Connected
-jobs:
-  connected:
-    steps:
-      - run: .\\gradlew.bat --no-daemon :app:connectedGrayDebugAndroidTest
-""",
-        encoding="utf-8",
-    )
-
+    _write_required_workflows(workflows)
     commands = mod._iter_workflow_run_commands(workflows)
 
     assert mod._missing_ci_invocations(commands) == []
@@ -123,13 +206,10 @@ jobs:
         Path("ci.yml"),
         "python -m pytest tests/test_audit_ci_gap.py -q -ra --tb=short -p no:cacheprovider",
     )
-    filtered_installer = mod.WorkflowCommand(
-        Path("ci.yml"),
-        "python -m pytest -q packaging/tests -p no:cacheprovider -k version",
-    )
     assert "pytest ordinary business lane" in mod._missing_ci_invocations([narrowed_business])
     assert "pytest real-db serial lane" in mod._missing_ci_invocations([narrowed_business])
-    assert "pytest installer safety lane" in mod._missing_ci_invocations([filtered_installer])
+    _assert_installer_safety_rejects_narrowing(mod)
+    _assert_installer_safety_tuning_contract(mod)
 
 
 def test_ci_gap_ignores_if_false_steps(tmp_path: Path) -> None:
