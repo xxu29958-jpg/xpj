@@ -67,6 +67,7 @@ def test_real_producer_contract_covers_every_declared_input() -> None:
     assert len(patterns) == len(set(patterns))
     assert all((REPOSITORY_ROOT / path).is_file() for path in files)
     assert {
+        "android/.java-version",
         "android/gradle.properties",
         "android/gradlew",
         "android/gradle/wrapper/gradle-wrapper.jar",

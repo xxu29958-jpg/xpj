@@ -8,6 +8,7 @@ import re
 from collections.abc import Iterable
 
 ANDROID_PROTECTED_PATHS = (
+    "android/.java-version",
     "android/app/src/**",
     "android/gradle/**",
     "android/app/build.gradle.kts",
@@ -45,6 +46,7 @@ _ALWAYS_ON_CONTRACT_PATHS = {
     "backend/tests/test_android_process_qualification.py",
     "backend/tests/test_android_test_qualification.py",
     "backend/tests/test_backend_ci_results.py",
+    "backend/tests/test_postgres_ci_lane_runner.py",
     "backend/tests/test_postgres_ci_topology.py",
 }
 _FULL_PREFIXES = (".github/workflows/", ".gitea/workflows/")

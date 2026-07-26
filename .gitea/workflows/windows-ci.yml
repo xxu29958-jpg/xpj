@@ -96,7 +96,12 @@ jobs:
 
       - name: Windows installer safety behavior
         working-directory: backend
-        run: .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests -p no:cacheprovider
+        env:
+          PYTEST_ADDOPTS: ""
+        run: >-
+          .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests
+          --strict-markers -p no:cacheprovider -o addopts=
+          -n 2 --dist loadfile --max-worker-restart 0
 
       - name: Windows database maintenance contract
         working-directory: backend
@@ -643,7 +648,7 @@ jobs:
         # Detekt remains type-resolving (both grayDebug variants). Release
         # builds are path-gated in the next step because R8/minify dominates
         # backend-only PR time while still being required for Android/CI changes.
-        run: .\gradlew.bat --no-daemon :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest :app:assembleGrayDebug :app:assembleInternalDebug
+        run: .\gradlew.bat --no-daemon :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest :app:assembleGrayDebug :app:assembleInternalDebug :app:writeTicketboxBuildToolsVersion
 
       - name: Android release APK builds
         if: steps.release-apk-scope.outputs.release_apk_required == 'true'
@@ -669,9 +674,14 @@ jobs:
           # $LASTEXITCODE is consulted. This step's failure handling is
           # entirely explicit (throw + exit-code checks), so relax EAP here.
           $ErrorActionPreference = 'Continue'
-          $apksigner = Get-ChildItem "$env:ANDROID_HOME\build-tools\*\apksigner.bat" -ErrorAction SilentlyContinue |
-            Sort-Object { [version]$_.Directory.Name } -Descending | Select-Object -First 1
-          if (-not $apksigner) { throw "apksigner.bat not found under $env:ANDROID_HOME\build-tools" }
+          $buildToolsVersion = (
+            Get-Content "app\build\ticketbox-ci\build-tools-version.txt" -Raw
+          ).Trim()
+          if (-not $buildToolsVersion) { throw "Gradle did not report its Build Tools version" }
+          $apksigner = Get-Item "$env:ANDROID_HOME\build-tools\$buildToolsVersion\apksigner.bat" -ErrorAction SilentlyContinue
+          if (-not $apksigner) {
+            throw "Gradle-resolved apksigner.bat not found for Build Tools $buildToolsVersion"
+          }
           $expected = "911522417cc5016edadcffadde7b904d928dc42d66a797844445acb5bcae106f"
           $apks = @(
             "app\build\outputs\apk\gray\debug\app-gray-debug.apk",

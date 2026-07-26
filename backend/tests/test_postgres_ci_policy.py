@@ -10,7 +10,7 @@ from scripts.postgres_release_policy import (
     PostgresReleasePolicy,
     postgres_server_version,
 )
-from scripts.verify_postgres_ci_results import verify
+from scripts.verify_scoped_ci_results import Verification, verify
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -37,6 +37,15 @@ def _valid_results(*, scope: str = "true") -> dict[str, str]:
         "RECOVERY_SHA": sha if scope == "true" else "",
         "RECOVERY_SOURCE_SHA": sha if scope == "true" else "",
     }
+
+
+def _verify(values: dict[str, str]) -> Verification:
+    return verify(
+        values,
+        label="PostgreSQL",
+        scope_key="POSTGRES_SCOPE",
+        lanes=("ORDINARY", "REAL_DB", "RECOVERY"),
+    )
 
 
 def test_release_policy_covers_the_pinned_windows_postgres_artifact() -> None:
@@ -85,7 +94,18 @@ def test_release_policy_covers_the_pinned_windows_postgres_artifact() -> None:
 @pytest.mark.parametrize("scope", ["true", "false"])
 def test_postgres_result_verifier_rejects_every_single_field_mutation(scope: str) -> None:
     baseline = _valid_results(scope=scope)
-    assert verify(baseline).ok
+    assert _verify(baseline).ok
+    scope_only = {
+        key: value
+        for key, value in baseline.items()
+        if not key.startswith(("ORDINARY_", "REAL_DB_", "RECOVERY_"))
+    }
+    assert verify(
+        scope_only,
+        label="Scope only",
+        scope_key="POSTGRES_SCOPE",
+        lanes=(),
+    ).ok
     mutations = {
         "SCOPE_RESULT": "failure",
         "POSTGRES_SCOPE": "unknown",
@@ -107,8 +127,8 @@ def test_postgres_result_verifier_rejects_every_single_field_mutation(scope: str
     }
     for field, value in mutations.items():
         candidate = {**baseline, field: value}
-        assert not verify(candidate).ok, field
+        assert not _verify(candidate).ok, field
     for field in baseline:
         candidate = dict(baseline)
         del candidate[field]
-        assert not verify(candidate).ok, field
+        assert not _verify(candidate).ok, field

@@ -6,7 +6,7 @@
 
 ```text
 .github/workflows/ci.yml                       # 主 CI：常驻快速合同 + 按域 PostgreSQL/Desktop/Android/Windows packaging
-.github/workflows/android-connected-test.yml   # path-filtered 云端模拟器 lane
+.github/workflows/android-connected-test.yml   # scope-aware 云端模拟器 lane
 .github/workflows/codeql.yml                   # GitHub CodeQL 安全扫描
 .github/workflows/nvd-database.yml              # main-only Android NVD 数据库生产者
 ```
@@ -20,7 +20,7 @@
 
 触发条件：
 
-- GitHub: push 到 `main`，以及 pull_request 到 `main`。PR 始终跑 Backend 快速合同；PostgreSQL、Desktop、Android、Windows packaging 只在对应路径受影响时跑。`main`、手动运行、未知路径、空 diff 或分类失败均 fail closed 到全量。
+- GitHub: push 到 `main`，以及 pull_request 到 `main`。PR 始终跑 Backend 快速合同；PostgreSQL、Desktop、Android、Windows packaging 只在对应路径受影响时跑。主 CI、CodeQL Android 和 Connected 复用同一 `ci_scope.py` 分类权威；`main`、完整资格、未知路径、空 diff 或分类失败均 fail closed 到全量。
 - Android NVD producer: 每日 02:17 UTC、相关生产者输入合入 `main` 或手动触发；仅生产者读取 `NVD_API_KEY`。它优先增量复用兼容的旧产物，首次或不兼容时冷启动，离线扫描通过后上传保留 3 天的不可变数据库产物。
 - local-Gitea: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`、`codex/**`
 - 默认分支完整资格：`repository_dispatch`，type 为 `qualification`
@@ -64,7 +64,7 @@ pip-audit --strict（OSV 库）
 
 GitHub 是发布验收与合并权威；Gitea 是离线镜像和自检后备，Gitea-only 失败不阻断 GitHub 合并。后端运行时、测试、迁移相关路径变化或全量 fallback 时，ordinary、`real_db`、smoke + recovery 三个独立 job 各自使用隔离的 PostgreSQL service container；三个责任域保持显式 job。当前只支持安装器钉住的单一 PostgreSQL major，matrix 从发布配置和固定 service image 动态生成；未来扩展多个 major 前，必须先为每个 major 提供独立固定镜像。稳定汇总检查 `Backend (PostgreSQL)` 必须核对三个结果和实际 checkout SHA。
 
-ordinary lane 执行完整测试树中所有未标记 `real_db` 的用例，并为每个 xdist worker 动态创建独立数据库、文件根和租约；`real_db` lane 串行执行显式标记的真实提交、跨连接、DDL 与 migration 测试；smoke + recovery lane 执行真实 `pg_dump` / restore drill。分类权威只有测试源码 marker，禁止维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试不需要同步第二份“分类清单”。
+ordinary lane 以两个同构 GitHub matrix 分片并行执行完整测试树中所有未标记 `real_db` 的用例，每个分片再为四个 xdist worker 动态创建独立数据库、文件根和租约。分片只按完整 pytest nodeid 的稳定哈希决定唯一归属，不维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试会自动进入且只进入一个分片。`real_db` lane 继续串行执行显式标记的真实提交、跨连接、DDL 与 migration 测试；smoke + recovery lane 继续执行真实 `pg_dump` / restore drill。ordinary / real-db 的责任分类权威仍只有测试源码 marker。
 
 后端测试数量只在 `backend/audit/test_count_baseline.txt` 维护。它是严格对账信号，不是覆盖率或分类权威：新增测试与源码同 commit 提高基线；base ratchet 同时阻止一个 PR 删除测试并下调自己的可编辑基线。测试整合必须先保留或补上独立风险证明，不能为了变绿改小数字。总数仍不能证明语义质量，因为“删除高价值测试、补同数量低价值参数化用例”也能骗过它，所以机器计数与代码审计缺一不可。该文件与测试源码同属 PostgreSQL 域；`codebase_audit_gate.py` 只保留政策，不再因正常增测把 PR 放大成全端构建。
 
@@ -89,17 +89,17 @@ gradlew :app:lintGrayDebug
 gradlew :app:detektGrayDebug :app:detektGrayDebugUnitTest   # Kotlin 复杂度门（六阈值；type-resolving——plain :app:detekt 会静默跳过 LongParameterList；存量冻结 per-variant baseline）
 gradlew :app:assembleGrayDebug
 gradlew :app:assembleInternalDebug
-gradlew --max-workers=1 :app:assembleGrayRelease :app:assembleInternalRelease   # R8 minify + shrinkResources；PR 仅 Android/CI 相关变更跑，main/manual 必跑
+gradlew --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease   # R8 minify + shrinkResources；PR 仅 Android/CI 相关变更跑，main/qualification 必跑
 # apksigner 校验两个 debug APK = 仓库级稳定 debug 证书（指纹钉自 android/config/debug/README.md）
 ```
 
-GitHub 云端 Android 资格链按责任并行：`Android fast` 跑编译、单测、计数、lint、detekt 与 Room schema；`Android APK debug` / `release` 分别构建 Gray/Internal；`Android SCA` 使用 main 分支生产的可信 NVD 产物做离线扫描。四条 lane 均为 15 分钟上限，稳定的 `Android` 聚合检查验证结果与同一资格 SHA。local-Gitea Android job 使用仓库本地 `.toolchains\android-sdk`，有 40 分钟上限；它是降级备用，不是 GitHub 合并阻断项。
+GitHub 云端 Android 资格链按责任并行：`Android fast` 跑编译、单测、计数、lint、detekt 与 Room schema；`Android APK debug` / `release` 分别构建 Gray/Internal；`Android SCA` 使用 main 分支生产的可信 NVD 产物做离线扫描。四条 lane 均为 15 分钟上限，稳定的 `Android` 聚合检查验证结果与同一资格 SHA。Android 构建、CodeQL、Connected 和 NVD producer 都从 `android/.java-version` 读取 JDK，SDK/Build Tools 由 Gradle Android 模型解析；CodeQL 只执行 Gray/Internal compile task，并仅关闭 task-output build cache 以保证编译器真实运行，不再 clean 或 assemble APK。local-Gitea Android job 使用仓库本地 `.toolchains\android-sdk`，有 40 分钟上限；它是降级备用，不是 GitHub 合并阻断项。
 
-### android-connected（模拟器，path-filtered）
+### android-connected（模拟器，scope-aware）
 
-云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置、CI 入口脚本）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。单个 API 36 emulator job 执行完整 instrumentation suite；test APK 排除只服务发布安装的 ProfileInstaller，避免其 Startup provider 在独立测试进程中形成绿色崩溃和逐项超时。emulator action 只执行一条 timeout 包裹的 Gradle 命令：3 分钟 boot 上限、14 分钟 Gradle watchdog、20 分钟 action 上限和 30 分钟 job cap 逐层给环境准备、验证与失败报告留出余量；connected Gradle task 自身仍以 10 分钟为内层上限。
+云端 connected workflow `.github/workflows/android-connected-test.yml` 对所有 `main` PR 保持稳定检查名，先用共享 scope job 判断影响；明确无关时跳过 emulator execution，由聚合 job 验证跳过语义和实际 checkout SHA。Android、CI、未知或分类失败时运行单个 API 36 emulator 的完整 instrumentation suite，规避 GitHub workflow path filter 的文件数盲区，同时让 backend/docs PR 不付模拟器成本。test APK 排除只服务发布安装的 ProfileInstaller，避免其 Startup provider 在独立测试进程中形成绿色崩溃和逐项超时。emulator action 只执行一条 timeout 包裹的 Gradle 命令：3 分钟 boot 上限、14 分钟 Gradle watchdog、20 分钟 action 上限和 30 分钟 job cap 逐层给环境准备、验证与失败报告留出余量；connected Gradle task 自身仍以 10 分钟为内层上限。
 
-Gradle 在测试前后各采集一次 `ApplicationExitInfo`，并在 action teardown 前保留 APK，避免 UTP 卸载清除退出历史；每次 adb 取证各有 30 秒上限。`connectedGrayDebugAndroidTest` 在同一任务内读取 AGP 生成的 connected JUnit XML、对账 instrumentation 基线，再从实际 APK manifest 动态读取目标包、测试包及其进程名，要求本轮至少产生一条目标进程退出记录，并拒绝 Java crash、native crash、ANR 和初始化失败；logcat 只作为诊断附件。证据缺失、畸形或被卸载清空时一律 fail closed。JVM 计数同样读取 Gradle `Test` 任务的真实 JUnit XML；`android/audit/test_count_baseline.txt` 分别锁住两条 lane，源码注解、注释、字符串和文件布局不再充当执行事实。
+Gradle 在测试前后各采集一次 `ApplicationExitInfo`，并在 action teardown 前保留 APK，避免 UTP 卸载清除退出历史；每次 adb 取证各有 30 秒上限。`connectedGrayDebugAndroidTest` 在同一任务内读取 AGP 生成的 connected JUnit XML、对账 instrumentation 基线，再从实际 APK manifest 动态读取目标包、测试包及其进程名，要求本轮至少产生一条目标进程退出记录；仅接受状态为 0 的正常退出、受控停止或包更新终态，其余已知、未知及未来新增原因一律 fail closed。logcat 只作为诊断附件。JVM 计数同样读取 Gradle `Test` 任务的真实 JUnit XML；`android/audit/test_count_baseline.txt` 分别锁住两条 lane，源码注解、注释、字符串和文件布局不再充当执行事实。
 
 local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。它保持单设备串行执行，不作为 GitHub 合并阻断项。
 
@@ -121,4 +121,4 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 
 ## CI 是合并底线
 
-任何后端、Android、release 脚本变更都不能绕过当前 GitHub PR / main-push 云端 job 绿灯；Android 源变更还会在 PR 或 main push 上触发 connected lane。local-Gitea CI 是降级备用和本机验收，不再作为主路径排队瓶颈。任何账本隔离、上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。
+任何后端、Android、release 脚本变更都不能绕过当前 GitHub PR / main-push 云端 job 绿灯；Connected workflow 始终产生稳定汇总检查，Android 受影响时必须完成真实 emulator execution。local-Gitea CI 是降级备用和本机验收，不再作为主路径排队瓶颈。任何账本隔离、上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。

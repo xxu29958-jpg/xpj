@@ -4,6 +4,9 @@ import java.util.concurrent.TimeUnit
 
 val ticketboxVersionCode = 10200000
 val ticketboxVersionName = "1.2.0"
+val ticketboxJavaLanguageVersion =
+    rootProject.file(".java-version").readText().trim().toIntOrNull()
+        ?: error("android/.java-version must contain one Java major version.")
 
 val ticketboxLocalProperties: Properties = Properties().also { props ->
     val propsFile = rootProject.file("local.properties")
@@ -255,6 +258,25 @@ android {
     sourceSets {
         getByName("androidTest") {
             assets.srcDir("$projectDir/schemas")
+        }
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(ticketboxJavaLanguageVersion)
+    }
+}
+
+val ticketboxResolvedBuildToolsVersion = providers.provider { android.buildToolsVersion }
+val writeTicketboxBuildToolsVersion by tasks.registering {
+    val outputFile = layout.buildDirectory.file("ticketbox-ci/build-tools-version.txt")
+    inputs.property("buildToolsVersion", ticketboxResolvedBuildToolsVersion)
+    outputs.file(outputFile)
+    doLast {
+        outputFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText("${ticketboxResolvedBuildToolsVersion.get()}\n")
         }
     }
 }

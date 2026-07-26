@@ -14,11 +14,18 @@ class RequiredCommand:
     label: str
     pattern: re.Pattern[str]
     matcher: Callable[[str], bool] | None = None
+    environment_matcher: Callable[[tuple[tuple[str, str], ...]], bool] | None = None
 
     def matches(self, command: str) -> bool:
         if self.matcher is not None:
             return self.matcher(command)
         return self.pattern.search(command) is not None
+
+    def matches_environment(self, environment: tuple[tuple[str, str], ...]) -> bool:
+        return (
+            self.environment_matcher is None
+            or self.environment_matcher(environment)
+        )
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,10 @@ _PYTHON_PREFIX = rf"(?i)^\s*(?:&\s+)?{_PYTHON_COMMAND}\s+"
 _RUFF_PREFIX = r"(?i)^\s*(?:&\s+)?(?:ruff(?:\.exe)?|[^\s]+[\\/]ruff(?:\.exe)?)\s+"
 _PYTEST_LINE = rf"(?m)^\s*{_PYTHON_COMMAND}\s+-m\s+pytest\s+"
 _BACKEND_TARGETS = r"app\s+scripts\s+tests\s+packaging[\\/]+tests"
+_MATRIX_SHARD_COORDINATES = (
+    "${{ matrix.shard.index }}",
+    "${{ matrix.shard.count }}",
+)
 
 
 def _command_tokens(command: str) -> tuple[str, ...]:
@@ -46,30 +57,141 @@ def _command_tokens(command: str) -> tuple[str, ...]:
     return tokens[1:] if tokens and tokens[0] == "&" else tokens
 
 
-def _postgres_lane_invocation(command: str) -> tuple[str, int] | None:
+def _postgres_lane_invocation(
+    command: str,
+) -> tuple[str, int, int | str, int | str] | None:
     tokens = _command_tokens(command)
-    if len(tokens) != 7:
+    if len(tokens) < 7 or len(tokens) % 2 == 0:
         return None
     executable = tokens[0].replace("\\", "/").lower().rsplit("/", 1)[-1]
     if executable not in {"python", "python.exe"}:
         return None
     if tokens[1:3] != ("-m", "scripts.run_postgres_pytest_lane"):
         return None
-    if tokens[3] != "--lane" or tokens[5] != "--workers":
+    arguments = tokens[3:]
+    if len(arguments) % 2 != 0:
         return None
+    values: dict[str, str] = {}
+    for index in range(0, len(arguments), 2):
+        key, value = arguments[index : index + 2]
+        if key in values or key not in {
+            "--lane",
+            "--workers",
+            "--shard-index",
+            "--shard-count",
+        }:
+            return None
+        values[key] = value
+    if set(values) not in (
+        {"--lane", "--workers"},
+        {"--lane", "--workers", "--shard-index", "--shard-count"},
+    ):
+        return None
+    lane = values["--lane"]
     try:
-        return tokens[4], int(tokens[6])
+        workers = int(values["--workers"])
     except ValueError:
         return None
+    shard_values = (
+        values.get("--shard-index", "0"),
+        values.get("--shard-count", "1"),
+    )
+    if shard_values == _MATRIX_SHARD_COORDINATES:
+        shard_index, shard_count = shard_values
+    else:
+        try:
+            shard_index, shard_count = map(int, shard_values)
+        except ValueError:
+            return None
+    if (
+        isinstance(shard_count, int)
+        and (
+            shard_count < 1
+            or shard_count > 4
+            or not isinstance(shard_index, int)
+            or shard_index < 0
+            or shard_index >= shard_count
+        )
+    ):
+        return None
+    return lane, workers, shard_index, shard_count
 
 
 def _matches_ordinary_pytest(command: str) -> bool:
     invocation = _postgres_lane_invocation(command)
-    return invocation is not None and invocation[0] == "ordinary" and 1 <= invocation[1] <= 4
+    return (
+        invocation is not None
+        and invocation[0] == "ordinary"
+        and 1 <= invocation[1] <= 4
+    )
 
 
 def _matches_real_db_pytest(command: str) -> bool:
-    return _postgres_lane_invocation(command) == ("real-db", 1)
+    return _postgres_lane_invocation(command) == ("real-db", 1, 0, 1)
+
+
+def _matches_installer_safety_pytest(command: str) -> bool:
+    tokens = _command_tokens(command)
+    if len(tokens) < 4:
+        return False
+    executable = tokens[0].replace("\\", "/").lower().rsplit("/", 1)[-1]
+    if executable not in {"python", "python.exe"} or tokens[1:3] != ("-m", "pytest"):
+        return False
+
+    flags: set[str] = set()
+    options: dict[str, str] = {}
+    targets: list[str] = []
+    value_options = {
+        "-p",
+        "-o",
+        "-n",
+        "--dist",
+        "--max-worker-restart",
+    }
+    index = 3
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"-q", "--strict-markers"}:
+            if token in flags:
+                return False
+            flags.add(token)
+            index += 1
+            continue
+        if token in value_options:
+            if token in options or index + 1 >= len(tokens):
+                return False
+            options[token] = tokens[index + 1]
+            index += 2
+            continue
+        if token.startswith("-"):
+            return False
+        targets.append(token.replace("\\", "/").removeprefix("./"))
+        index += 1
+
+    try:
+        workers = int(options.get("-n", ""))
+    except ValueError:
+        return False
+    return (
+        "--strict-markers" in flags
+        and flags <= {"-q", "--strict-markers"}
+        and set(options) == value_options
+        and options["-p"] == "no:cacheprovider"
+        and options["-o"] == "addopts="
+        and 2 <= workers <= 4
+        and options["--dist"] == "loadfile"
+        and options["--max-worker-restart"] == "0"
+        and targets == ["packaging/tests"]
+    )
+
+
+def _clears_pytest_addopts(
+    environment: tuple[tuple[str, str], ...],
+) -> bool:
+    effective: dict[str, str] = {}
+    for key, value in environment:
+        effective[key.casefold()] = value
+    return effective.get("pytest_addopts") == ""
 
 
 def _powershell_file_invocation(
@@ -195,10 +317,9 @@ REQUIRED_CI_INVOCATIONS = (
     ),
     RequiredCommand(
         "pytest installer safety lane",
-        re.compile(
-            _PYTEST_LINE
-            + r"-q\s+packaging[\\/]+tests\s+-p\s+no:cacheprovider\s*$"
-        ),
+        re.compile(_PYTEST_LINE),
+        matcher=_matches_installer_safety_pytest,
+        environment_matcher=_clears_pytest_addopts,
     ),
     RequiredCommand(
         "installer source preflight (Windows PowerShell 5.1)",

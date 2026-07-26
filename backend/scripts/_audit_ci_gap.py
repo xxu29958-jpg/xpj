@@ -106,7 +106,12 @@ def _missing_ci_invocations(commands: list[WorkflowCommand]) -> list[str]:
     for required in REQUIRED_CI_INVOCATIONS:
         allowed_scopes = _CI_INVOCATION_SCOPES.get(required.label, {"full"})
         executable_segments = _iter_executable_command_segments(
-            [command for command in commands if command.protection_scope in allowed_scopes]
+            [
+                command
+                for command in commands
+                if command.protection_scope in allowed_scopes
+                and required.matches_environment(command.environment)
+            ]
         )
         if not any(required.matches(segment) for segment in executable_segments):
             missing.append(required.label)
@@ -130,6 +135,7 @@ def _missing_ci_invocations_by_platform(
                     command
                     for command in platform_commands
                     if command.protection_scope in allowed_scopes
+                    and required.matches_environment(command.environment)
                 ]
             )
             if not any(required.matches(segment) for segment in executable_segments):

@@ -72,6 +72,8 @@ def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -
     enforcement = steps["Enforce required CI results"]
     assert enforcement["run"] == "python -E -S backend/scripts/verify_backend_ci_results.py"
     assert enforcement["env"] == {
+        "BASH_ENV": "",
+        "ENV": "",
         "SCOPE_RESULT": "${{ needs.scope.result }}",
         "BACKEND_FROZEN_SCOPE": "${{ needs.scope.outputs.backend_frozen }}",
         "WINDOWS_SCOPE": "${{ needs.scope.outputs.windows }}",
