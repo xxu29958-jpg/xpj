@@ -8,6 +8,16 @@ import yaml
 _ROOT = Path(__file__).resolve().parents[2]
 
 
+def _assert_build_tools_authority(build_script: str) -> None:
+    assert (
+        "val ticketboxResolvedBuildToolsVersion = "
+        "providers.provider { android.buildToolsVersion }"
+    ) in build_script
+    assert 'inputs.property("buildToolsVersion", ticketboxResolvedBuildToolsVersion)' in (
+        build_script
+    )
+
+
 def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
     workflow = yaml.safe_load(
         (_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -146,9 +156,7 @@ def test_android_cloud_builds_share_one_java_and_sdk_contract() -> None:
     build_script = (_ROOT / "android" / "app" / "build.gradle.kts").read_text(
         encoding="utf-8"
     )
-    assert 'inputs.property("buildToolsVersion", ticketboxResolvedBuildToolsVersion)' in (
-        build_script
-    )
+    _assert_build_tools_authority(build_script)
 
     debug_signing = next(
         step["run"]

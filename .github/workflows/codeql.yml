@@ -173,15 +173,13 @@ jobs:
 
       - name: Enforce CodeQL scope result
         if: ${{ always() && !cancelled() }}
-        shell: bash
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
+          ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
           SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
           SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
           EXPECTED_SHA: ${{ github.sha }}
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          test "$SCOPE_RESULT" = "success"
-          test "$SCOPE_SHA" = "$EXPECTED_SHA"
-          test "$SCOPE_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label CodeQL --scope-key ANDROID_SCOPE

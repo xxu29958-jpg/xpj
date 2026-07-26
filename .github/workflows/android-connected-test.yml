@@ -183,7 +183,6 @@ jobs:
         run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
       - name: Enforce Connected result
-        shell: bash
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
           ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
@@ -196,31 +195,4 @@ jobs:
           EXECUTION_SOURCE_SHA: ${{ needs.connected_execution.outputs.qualification_source_sha }}
           AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
           AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
-        run: |
-          set -euo pipefail
-          require_equal() {
-            if [ "$1" != "$2" ]; then
-              echo "::error::$3: expected '$2', got '$1'"
-              exit 1
-            fi
-          }
-
-          require_equal "$SCOPE_RESULT" "success" "Connected scope result"
-          require_equal "$SCOPE_SHA" "$EXPECTED_SHA" "Connected scope qualification SHA"
-          require_equal "$SCOPE_SOURCE_SHA" "$EXPECTED_SOURCE_SHA" "Connected scope source SHA"
-          require_equal "$AGGREGATOR_SHA" "$EXPECTED_SHA" "Connected gate qualification SHA"
-          require_equal "$AGGREGATOR_SOURCE_SHA" "$EXPECTED_SOURCE_SHA" "Connected gate source SHA"
-
-          if [ "$ANDROID_SCOPE" = "false" ]; then
-            require_equal "$EXECUTION_RESULT" "skipped" "out-of-scope Connected result"
-            require_equal "$EXECUTION_SHA" "" "skipped Connected qualification SHA"
-            require_equal "$EXECUTION_SOURCE_SHA" "" "skipped Connected source SHA"
-            echo "Android scope not affected."
-            exit 0
-          fi
-
-          require_equal "$ANDROID_SCOPE" "true" "Connected Android scope"
-          require_equal "$EXECUTION_RESULT" "success" "Connected execution result"
-          require_equal "$EXECUTION_SHA" "$EXPECTED_SHA" "Connected execution qualification SHA"
-          require_equal "$EXECUTION_SOURCE_SHA" "$EXPECTED_SOURCE_SHA" "Connected execution source SHA"
-          echo "Connected qualification is valid."
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label Connected --scope-key ANDROID_SCOPE --lane EXECUTION

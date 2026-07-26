@@ -149,7 +149,7 @@ jobs:
           ORDINARY_SOURCE_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_source_sha }}
           EXPECTED_SHA: ${{ github.sha }}
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python -E -S backend/scripts/verify_postgres_ci_results.py
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label PostgreSQL --scope-key POSTGRES_SCOPE --lane ORDINARY --lane REAL_DB --lane RECOVERY
 """
 
 
@@ -174,6 +174,16 @@ def _scope_regressions(valid: str) -> tuple[str, ...]:
             "qualification_sha: ${{ steps.scope.outputs.postgres }}",
         ),
         valid.replace("report_qualification_sha.py", "ci_scope.py", 1),
+        valid.replace(
+            "        env:\n"
+            "          EXPECTED_SHA: ${{ github.sha }}\n"
+            "          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+            "        shell: \"bash -c 'exit 0' -- {0}\"\n"
+            "        env:\n"
+            "          EXPECTED_SHA: ${{ github.sha }}\n"
+            "          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+            1,
+        ),
         valid.replace('--expected "$EXPECTED_SHA"', '--expected "${{ github.event.before }}"', 1),
         valid.replace('--output "$GITHUB_OUTPUT"', '--output "$GITHUB_ENV"'),
         valid.replace("python -E -S backend/scripts/ci_scope.py", "python backend/scripts/ci_scope.py"),
@@ -204,6 +214,13 @@ def _scope_regressions(valid: str) -> tuple[str, ...]:
         valid.replace(
             "${{ needs.backend_postgres_ordinary.outputs.qualification_sha }}",
             "${{ needs.backend_contracts.outputs.qualification_sha }}",
+            1,
+        ),
+        valid.replace(
+            "run: python -E -S backend/scripts/verify_scoped_ci_results.py "
+            "--label PostgreSQL --scope-key POSTGRES_SCOPE --lane ORDINARY "
+            "--lane REAL_DB --lane RECOVERY",
+            "run: echo terminal-bypassed",
             1,
         ),
     )
@@ -271,6 +288,17 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
     bypassed_codeql = codeql_source.replace(
         "        if: ${{ always() && !cancelled() }}",
         "        if: ${{ false }}",
+        1,
+    )
+    assert bypassed_codeql != codeql_source
+    codeql.write_text(bypassed_codeql, encoding="utf-8")
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    assert all(command.job != "analyze-android" for command in commands)
+
+    bypassed_codeql = codeql_source.replace(
+        "run: python -E -S backend/scripts/verify_scoped_ci_results.py "
+        "--label CodeQL --scope-key ANDROID_SCOPE",
+        "run: echo terminal-bypassed",
         1,
     )
     assert bypassed_codeql != codeql_source

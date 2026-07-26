@@ -7,7 +7,7 @@ import re
 
 from ci_gap_shell import shell_tokens
 from ci_gap_trigger_scope import CI_HEAVY_SCOPES
-from ci_gap_workflow_conditions import allows_failure
+from ci_gap_workflow_conditions import GITHUB_TERMINAL_JOBS, allows_failure
 
 HEAVY_JOB_SCOPES = frozenset(CI_HEAVY_SCOPES)
 _GITHUB_SCOPE_OUTPUTS = {
@@ -35,29 +35,6 @@ _GITHUB_SCOPE_CONTRACTS = {
         False,
     ),
 }
-_GITHUB_TERMINAL_JOBS = {
-    ("ci.yml", "postgres"): "backend-postgres",
-    ("ci.yml", "backend_frozen"): "backend",
-    ("ci.yml", "desktop"): "desktop-manager",
-    ("ci.yml", "android"): "android",
-    ("ci.yml", "windows"): "backend",
-    ("codeql.yml", "android"): "analyze-android",
-    ("android-connected-test.yml", "android"): "connected",
-}
-_SELF_TERMINAL_SCOPE_ENV = {
-    "SCOPE_RESULT": "${{ needs.scope.result }}",
-    "SCOPE_SHA": "${{ needs.scope.outputs.qualification_sha }}",
-    "SCOPE_SOURCE_SHA": "${{ needs.scope.outputs.qualification_source_sha }}",
-    "EXPECTED_SHA": "${{ github.sha }}",
-    "EXPECTED_SOURCE_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
-}
-_SELF_TERMINAL_SCOPE_COMMAND = shell_tokens(
-    """set -euo pipefail
-test "$SCOPE_RESULT" = "success"
-test "$SCOPE_SHA" = "$EXPECTED_SHA"
-test "$SCOPE_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"
-"""
-)
 _GITEA_SCOPE_OUTPUTS = {
     scope: f"${{{{ steps.scope.outputs.{scope} }}}}" for scope in HEAVY_JOB_SCOPES
 }
@@ -201,6 +178,7 @@ def _github_qualification_step_is_valid(
         isinstance(raw_step, dict)
         and raw_step.get("name") == "Verify qualification SHA"
         and raw_step.get("id") == "qualification"
+        and raw_step.get("shell") is None
         and raw_step.get("env") == expected_environment
         and raw_step.get("if") in {None, True}
         and not allows_failure(raw_step.get("continue-on-error"))
@@ -351,6 +329,7 @@ def _scoped_job_name(raw_job: dict[object, object]) -> str | None:
 def _terminal_gate_consumes_dependency(
     raw_job: dict[object, object],
     dependency: str,
+    expected_command: tuple[str, ...],
 ) -> bool:
     required_values = {
         f"${{{{ needs.{dependency}.result }}}}",
@@ -363,6 +342,7 @@ def _terminal_gate_consumes_dependency(
         if (
             not isinstance(step, dict)
             or step.get("if") not in {None, True}
+            or step.get("shell") is not None
             or allows_failure(step.get("continue-on-error"))
             or not _step_execution_shape_is_plain(step, allow_env=True)
         ):
@@ -371,34 +351,44 @@ def _terminal_gate_consumes_dependency(
         if not isinstance(environment, dict):
             continue
         values = {str(value) for value in environment.values()}
-        if required_values <= values and str(step.get("run", "")).strip():
+        if (
+            required_values <= values
+            and shell_tokens(str(step.get("run", ""))) == expected_command
+        ):
             return True
     return False
 
 
-def _self_terminal_enforces_scope(raw_job: dict[object, object]) -> bool:
-    environment = raw_job.get("env")
-    if (
-        any(
-            raw_job.get(field) is not None
-            for field in ("container", "services", "strategy")
-        )
-        or (
-            isinstance(environment, dict)
-            and {"BASH_ENV", "ENV"}.intersection(map(str, environment))
-        )
-    ):
+def _self_terminal_enforces_scope(
+    raw_job: dict[object, object],
+    expected_command: tuple[str, ...],
+    expected_shell: str | None,
+) -> bool:
+    if any(
+        raw_job.get(field) is not None
+        for field in ("container", "services", "strategy")
+    ) or (expected_shell is None and raw_job.get("defaults") is not None):
         return False
+    required_values = {
+        "${{ needs.scope.result }}",
+        "${{ needs.scope.outputs.qualification_sha }}",
+        "${{ needs.scope.outputs.qualification_source_sha }}",
+        "${{ github.sha }}",
+        "${{ github.event.pull_request.head.sha || github.sha }}",
+        "${{ steps.qualification.outputs.sha }}",
+        "${{ steps.qualification.outputs.source_sha }}",
+    }
     gates = [
         step
         for step in raw_job.get("steps", [])
         if isinstance(step, dict)
         and _expression_text(step.get("if")) == "always() && !cancelled()"
-        and step.get("shell") == "bash"
-        and step.get("env") == _SELF_TERMINAL_SCOPE_ENV
+        and step.get("shell") == expected_shell
+        and isinstance(step.get("env"), dict)
+        and required_values <= {str(value) for value in step["env"].values()}
         and not allows_failure(step.get("continue-on-error"))
         and _step_execution_shape_is_plain(step, allow_env=True)
-        and shell_tokens(str(step.get("run", ""))) == _SELF_TERMINAL_SCOPE_COMMAND
+        and shell_tokens(str(step.get("run", ""))) == expected_command
     ]
     return len(gates) == 1
 
@@ -409,20 +399,29 @@ def _terminal_gate_protects_job(
     job_name: str,
     jobs: dict[object, object],
 ) -> bool:
-    terminal_name = _GITHUB_TERMINAL_JOBS.get((path.name, scope))
-    if terminal_name is None:
+    contract = GITHUB_TERMINAL_JOBS.get((path.name, scope))
+    if contract is None:
         return False
+    terminal_name, expected_command, expected_shell = contract
     terminal = jobs.get(terminal_name)
     if not isinstance(terminal, dict):
         return False
     if terminal_name == job_name:
-        return _self_terminal_enforces_scope(terminal)
+        return _self_terminal_enforces_scope(
+            terminal,
+            expected_command,
+            expected_shell,
+        )
     return (
         _job_execution_shape_is_plain(terminal)
         and _expression_text(terminal.get("if")) == "always()"
         and not allows_failure(terminal.get("continue-on-error"))
         and job_name in (job_needs(terminal) or ())
-        and _terminal_gate_consumes_dependency(terminal, job_name)
+        and _terminal_gate_consumes_dependency(
+            terminal,
+            job_name,
+            expected_command,
+        )
     )
 
 

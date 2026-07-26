@@ -1,8 +1,71 @@
-"""Evaluate workflow conditions for protected CI command discovery."""
+"""Evaluate workflow conditions and terminal contracts for CI discovery."""
 
 from __future__ import annotations
 
 import re
+
+_SCOPED_VERIFIER = "backend/scripts/verify_scoped_ci_results.py"
+
+
+def _scoped_verifier_command(
+    label: str,
+    scope_key: str,
+    *lanes: str,
+    executable: str = "python",
+    script: str = _SCOPED_VERIFIER,
+) -> tuple[str, ...]:
+    command = [executable, "-E", "-S", script, "--label", label, "--scope-key", scope_key]
+    for lane in lanes:
+        command.extend(("--lane", lane))
+    return tuple(command)
+
+
+GITHUB_TERMINAL_JOBS = {
+    ("ci.yml", "postgres"): (
+        "backend-postgres",
+        _scoped_verifier_command(
+            "PostgreSQL", "POSTGRES_SCOPE", "ORDINARY", "REAL_DB", "RECOVERY"
+        ),
+        None,
+    ),
+    ("ci.yml", "backend_frozen"): (
+        "backend",
+        ("python", "-E", "-S", "backend/scripts/verify_backend_ci_results.py"),
+        None,
+    ),
+    ("ci.yml", "desktop"): (
+        "desktop-manager",
+        _scoped_verifier_command(
+            "Desktop",
+            "DESKTOP_SCOPE",
+            executable=".\\.ci-venv\\Scripts\\python.exe",
+            script="..\\backend\\scripts\\verify_scoped_ci_results.py",
+        ),
+        "powershell",
+    ),
+    ("ci.yml", "android"): (
+        "android",
+        _scoped_verifier_command(
+            "Android", "ANDROID_SCOPE", "FAST", "DEBUG_APK", "RELEASE_APK", "SCA"
+        ),
+        None,
+    ),
+    ("ci.yml", "windows"): (
+        "backend",
+        ("python", "-E", "-S", "backend/scripts/verify_backend_ci_results.py"),
+        None,
+    ),
+    ("codeql.yml", "android"): (
+        "analyze-android",
+        _scoped_verifier_command("CodeQL", "ANDROID_SCOPE"),
+        None,
+    ),
+    ("android-connected-test.yml", "android"): (
+        "connected",
+        _scoped_verifier_command("Connected", "ANDROID_SCOPE", "EXECUTION"),
+        None,
+    ),
+}
 
 
 def _strip_expression_wrapper(value: str) -> str:
