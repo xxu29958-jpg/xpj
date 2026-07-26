@@ -63,7 +63,7 @@ body: { "ref": "<分支名>" }
 **正确做法**：
 - 盯 CI 用**后台轮询脚本**（bash `run_in_background`，`gh pr checks N` 轮到 pending==0 再数 fail），别死等、别信 `gh pr checks --watch`。
 - 红 triage：先 `gh run view --job <id>` 看哪步 ✗，再 `gh run view --job <id> --log` 全日志搜 `^e: `(detekt finding)/ `FAILED` / `failures="[1-9]` / `error:` 定位文件:行。别被被取消 run 的「fail」唬住，也别把 workflow 里 `echo "::error::..."` 的守卫定义文本当真错。
-- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。OWASP 数据源 flake **非 required、不挡合**。
+- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。`Android SCA` 是 `Android` 聚合检查的强制依赖，失败会阻断合并。
 
 **铁律**：被 concurrency 取消的旧 run 的 `fail` 是噪声；只认最新 head 那条 run。
 
@@ -108,7 +108,7 @@ gh pr merge N --squash --delete-branch --match-head-commit <exact-head-sha>
 
 **症状**：`Android SCA` 在解析或下载可信产物时失败，或离线扫描报告摘要不符、数据库损坏、真实 CVE / scanner fatal。
 
-**根因**：PR 不再直接访问 NVD。`.github/workflows/nvd-database.yml` 只在 main 上定时或手动生产并校验短期可信产物；PR 的 SCA lane 只消费该产物并离线扫描。产物缺失、过期或验证失败都会 fail closed。
+**根因**：PR 不再直接访问 NVD。`.github/workflows/nvd-database.yml` 在 main 上定时、手动或由相关 producer 输入变更触发，生产并校验短期可信产物；PR 的 SCA lane 只消费该产物并离线扫描。产物缺失、过期或验证失败都会 fail closed。
 
 **正确做法**：
 - 产物缺失或过期：在 main 上手动运行 `Android NVD Database`，producer 成功后再重跑 PR。
@@ -185,5 +185,3 @@ git push gitee main                  # 推 cloud mirror
 4. **CodeQL trigger**：记忆只笼统说「Analyze×4」。真实 `codeql.yml` 的 **push 只触发 `main`**，外加 `pull_request: main` 和 `schedule: cron "37 3 * * 1"`；工作分支靠 PR 的 `pull_request` 事件触发 CodeQL。4 条 Analyze job 名核实无误：`actions` / `javascript-typescript` / `python` / `java-kotlin`。
 
 5. **emulator AVD/路径**：gitea `android-connected.yml` 用 runner 宿主用户级 AVD `ticketbox_api36_host`（与记忆一致）；但 **GitHub `android-connected-test.yml` 用 `reactivecircus/android-emulator-runner@v2` 动态起 pixel_6 / api-36，无 `ticketbox_api36_host`**。HANDOFF 把宿主 AVD 当成两端通用，实为 gitea 专属。
-
-（其余记忆陈述——Gradle daemon 共享、OWASP `if NVD_API_KEY != ''` 跳过分支 + `actions/cache@v4` + `validForHours=24`、pip-audit OSV flake、gitea merge=POST / 日志在磁盘 / 单 runner 串行、三端同步顺序——均与真实文件一致。）
