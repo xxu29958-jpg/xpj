@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.BudgetAdvice
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetCategoryBudget
@@ -27,16 +28,18 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class BudgetViewModelTest {
-    private fun budgetTest(block: suspend TestScope.() -> Unit) = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        Dispatchers.setMain(dispatcher)
-        try {
-            block()
-        } finally {
-            Dispatchers.resetMain()
-        }
+private fun budgetTest(block: suspend TestScope.() -> Unit) = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    try {
+        block()
+    } finally {
+        Dispatchers.resetMain()
     }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetViewModelTest {
 
     @Test
     fun initialLoadPopulatesBudgetAndForm() = budgetTest {
@@ -84,7 +87,11 @@ class BudgetViewModelTest {
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
-        assertEquals(BudgetAdviceLoadState.Empty, adviceViewModel.uiState.value.loadState)
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+        assertEquals(
+            UiText.res(R.string.budget_advice_unavailable_body),
+            adviceViewModel.uiState.value.error,
+        )
         assertNull(adviceViewModel.uiState.value.result?.advice)
     }
 
@@ -267,6 +274,90 @@ class BudgetViewModelTest {
         assertEquals("2026-04", vm.uiState.value.month)
         assertEquals(111000L, vm.uiState.value.budget?.totalAmountCents)
         assertEquals("1110", vm.uiState.value.form.totalAmount)
+    }
+}
+
+/** 218-B4 review P2: terminal budget-advisor state mapping (provider-disabled
+ *  reason codes and live-advisor 403 gates) vs. the retryable Empty/Failed
+ *  states. Kept in a dedicated class to stay under the per-class function cap. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetAdviceViewModelTest {
+    @Test
+    fun nullAdviceWithoutProviderReasonKeepsRetryableEmptyState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        // Backend emits reason_code = null or "ai_advisor_no_advice" when a live
+        // provider simply produced nothing — the add-data Empty guidance with its
+        // 重新生成 CTA stays the right state there.
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(advice = null, providerName = "mock", reasonCode = null),
+            )
+        }
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Empty, adviceViewModel.uiState.value.loadState)
+        assertNull(adviceViewModel.uiState.value.error)
+
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(
+                    advice = null,
+                    providerName = "mock",
+                    reasonCode = "ai_advisor_no_advice",
+                ),
+            )
+        }
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Empty, adviceViewModel.uiState.value.loadState)
+        assertNull(adviceViewModel.uiState.value.error)
+    }
+
+    @Test
+    fun ownerRequiredErrorMapsToTerminalUnavailableState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "只有账本拥有者可以调用外部 AI 预算建议。",
+                    errorCode = "ai_advisor_owner_required",
+                ),
+            )
+        }
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        // Terminal (no retry affordance): the server code has no R.string arm, so
+        // the backend's registered copy rides through as Raw via toUiText.
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals(UiText.raw("只有账本拥有者可以调用外部 AI 预算建议。"), state.error)
+    }
+
+    @Test
+    fun advisorNotConfirmedErrorMapsToTerminalUnavailableState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "AI 预算助手尚未经过拥有者显式确认，已禁用。",
+                    errorCode = "ai_advisor_not_confirmed",
+                ),
+            )
+        }
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals(UiText.raw("AI 预算助手尚未经过拥有者显式确认，已禁用。"), state.error)
     }
 }
 

@@ -151,6 +151,31 @@ class BudgetRepositoryTest {
     }
 
     @Test
+    fun backendAdvisorOwnerRequiredPropagatesErrorCode() = runTest {
+        // 218-B4 review: the VM maps ai_advisor_owner_required /
+        // ai_advisor_not_confirmed to a terminal no-retry state, which depends on
+        // NetworkErrorHandler preserving the backend error code (and the
+        // registered server copy) through RepositoryException.
+        val api = BudgetApiHandler().apply {
+            adviceError = HttpException(
+                Response.error<BudgetAdviseResponseDto>(
+                    403,
+                    """{"error":"ai_advisor_owner_required","message":"只有账本拥有者可以调用外部 AI 预算建议。"}"""
+                        .toResponseBody("application/json".toMediaType()),
+                ),
+            )
+        }
+        val repository = repository(api)
+
+        val advice = repository.requestBudgetAdvice("2026-05")
+
+        assertTrue(advice.isFailure)
+        val exception = advice.exceptionOrNull() as? RepositoryException
+        assertEquals("ai_advisor_owner_required", exception?.errorCode)
+        assertEquals("只有账本拥有者可以调用外部 AI 预算建议。", exception?.message)
+    }
+
+    @Test
     fun invalidMonthIsRejectedBeforeApiCall() = runTest {
         val api = BudgetApiHandler()
         val repository = repository(api)
@@ -210,6 +235,7 @@ private class BudgetApiHandler : InvocationHandler {
     val updateBudgetCalls = mutableListOf<UpdateBudgetCall>()
     val adviceCalls = mutableListOf<AdviceCall>()
     var updateError: Throwable? = null
+    var adviceError: Throwable? = null
 
     fun service(): ApiService {
         return Proxy.newProxyInstance(
@@ -247,6 +273,7 @@ private class BudgetApiHandler : InvocationHandler {
                 budgetDto(configured = true)
             }
             "budgetAdvise" -> {
+                adviceError?.let { throw it }
                 val request = values[0] as BudgetAdviseRequestDto
                 adviceCalls += AdviceCall(
                     month = request.month,

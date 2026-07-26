@@ -91,6 +91,7 @@ private fun BudgetAdviceBody(
             body = stringResource(R.string.budget_advice_loading_body),
         )
         BudgetAdviceLoadState.Empty -> BudgetAdviceEmptyCard(onRequestAdvice)
+        BudgetAdviceLoadState.Unavailable -> BudgetAdviceUnavailableCard(state)
         BudgetAdviceLoadState.Ready -> state.result?.advice?.let { advice ->
             BudgetAdviceResultContent(
                 advice = advice,
@@ -144,6 +145,24 @@ private fun BudgetAdviceReadOnlyCard() {
         )
         Text(
             text = stringResource(R.string.budget_advice_readonly_body),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun BudgetAdviceUnavailableCard(state: BudgetAdviceUiState) {
+    AppContentCard {
+        Text(
+            text = stringResource(R.string.budget_advice_unavailable_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = state.error?.asString().orEmpty().ifBlank {
+                stringResource(R.string.budget_advice_unavailable_body)
+            },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )

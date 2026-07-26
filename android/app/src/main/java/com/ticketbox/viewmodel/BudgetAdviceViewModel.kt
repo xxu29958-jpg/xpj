@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,11 @@ enum class BudgetAdviceLoadState {
     Empty,
     Ready,
     Failed,
+
+    /** Terminal state with no retry affordance: retrying cannot succeed until
+     *  something outside this screen changes (advisor provider not configured
+     *  server-side, or a 403 advisor-permission gate). */
+    Unavailable,
 }
 
 data class BudgetAdviceUiState(
@@ -94,28 +100,62 @@ class BudgetAdviceViewModel(
                 .onSuccess { result ->
                     _state.update {
                         if (generation != requestGeneration || month != it.month) return@update it
-                        it.copy(
-                            loadState = if (result.advice == null) {
-                                BudgetAdviceLoadState.Empty
-                            } else {
-                                BudgetAdviceLoadState.Ready
-                            },
-                            canRequest = repository.canModifyLedger(),
-                            result = result,
-                            error = null,
-                        )
+                        it.adviceLoaded(result)
                     }
                 }
                 .onFailure { error ->
                     _state.update {
                         if (generation != requestGeneration || month != it.month) return@update it
-                        it.copy(
-                            loadState = BudgetAdviceLoadState.Failed,
-                            canRequest = repository.canModifyLedger(),
-                            error = error.toUiText(R.string.budget_advice_load_failed),
-                        )
+                        it.adviceFailed(error)
                     }
                 }
         }
+    }
+
+    private fun BudgetAdviceUiState.adviceLoaded(result: BudgetAdviceResult): BudgetAdviceUiState {
+        // Backend contract (_runner.py): advice == null carries a reason_code.
+        // `ai_advisor_provider_*` means the provider is not live, so retrying
+        // cannot succeed — terminal Unavailable, not the add-data Empty guidance.
+        val providerUnavailable = result.advice == null &&
+            result.reasonCode.orEmpty().startsWith(PROVIDER_REASON_PREFIX)
+        return copy(
+            loadState = when {
+                result.advice != null -> BudgetAdviceLoadState.Ready
+                providerUnavailable -> BudgetAdviceLoadState.Unavailable
+                else -> BudgetAdviceLoadState.Empty
+            },
+            canRequest = repository.canModifyLedger(),
+            result = result,
+            error = if (providerUnavailable) {
+                UiText.res(R.string.budget_advice_unavailable_body)
+            } else {
+                null
+            },
+        )
+    }
+
+    private fun BudgetAdviceUiState.adviceFailed(error: Throwable): BudgetAdviceUiState {
+        // Live-advisor 403 gates (owner not confirmed / member is not the owner)
+        // cannot be retried away on this device; the backend's registered copy
+        // rides the failure through toUiText as-is.
+        val terminal = (error as? RepositoryException)
+            ?.errorCode?.trim() in TERMINAL_ADVISOR_ERROR_CODES
+        return copy(
+            loadState = if (terminal) {
+                BudgetAdviceLoadState.Unavailable
+            } else {
+                BudgetAdviceLoadState.Failed
+            },
+            canRequest = repository.canModifyLedger(),
+            error = error.toUiText(R.string.budget_advice_load_failed),
+        )
+    }
+
+    private companion object {
+        const val PROVIDER_REASON_PREFIX = "ai_advisor_provider_"
+        val TERMINAL_ADVISOR_ERROR_CODES = setOf(
+            "ai_advisor_owner_required",
+            "ai_advisor_not_confirmed",
+        )
     }
 }
