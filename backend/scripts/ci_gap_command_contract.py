@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -43,6 +44,41 @@ REQUIRED_GRADLE_TASKS = [
 ]
 _GRADLE_NO_ACTION_OPTIONS = {"-m", "--dry-run", "--task-graph"}
 _GRADLE_EXCLUDE_OPTIONS = {"-x", "--exclude-task"}
+_TIMEOUT_OPTIONS_WITH_VALUE = {"-k", "--kill-after", "-s", "--signal"}
+_TIMEOUT_FLAG_OPTIONS = {"-v", "--foreground", "--preserve-status", "--verbose"}
+_TIMEOUT_DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
+_TIMEOUT_SIGNAL_NAMES = {
+    "ABRT",
+    "ALRM",
+    "BUS",
+    "CHLD",
+    "CONT",
+    "FPE",
+    "HUP",
+    "ILL",
+    "INT",
+    "IO",
+    "KILL",
+    "PIPE",
+    "PROF",
+    "PWR",
+    "QUIT",
+    "SEGV",
+    "STOP",
+    "SYS",
+    "TERM",
+    "TRAP",
+    "TSTP",
+    "TTIN",
+    "TTOU",
+    "URG",
+    "USR1",
+    "USR2",
+    "VTALRM",
+    "WINCH",
+    "XCPU",
+    "XFSZ",
+}
 
 
 def _is_line_continued(stripped_line: str) -> bool:
@@ -67,6 +103,76 @@ def _is_gradle_executable(token: str) -> bool:
 
 def _contains_gradle_executable(line: str) -> bool:
     return any(_is_gradle_executable(token) for token in _shell_tokens(line))
+
+
+def _valid_timeout_option_value(option: str, value: str) -> bool:
+    if option in {"-k", "--kill-after"}:
+        return _TIMEOUT_DURATION.fullmatch(value) is not None
+    if option not in {"-s", "--signal"}:
+        return False
+    if value.isdecimal():
+        return 1 <= int(value) <= 64
+    normalized = value.upper().removeprefix("SIG")
+    return normalized in _TIMEOUT_SIGNAL_NAMES
+
+
+def _timeout_wraps_direct_gradle(
+    tokens: tuple[str, ...],
+    executable_index: int,
+) -> bool:
+    if not tokens or tokens[0].strip("'\"").lower() != "timeout":
+        return False
+    index = 1
+    while index < executable_index:
+        token = tokens[index].strip("'\"")
+        option_name, separator, option_value = token.partition("=")
+        if (
+            separator
+            and option_name.startswith("--")
+            and option_name in _TIMEOUT_OPTIONS_WITH_VALUE
+            and _valid_timeout_option_value(option_name, option_value)
+        ):
+            index += 1
+            continue
+        if separator:
+            return False
+        attached_short_option = next(
+            (
+                option
+                for option in ("-k", "-s")
+                if token.startswith(option) and token != option
+            ),
+            None,
+        )
+        if attached_short_option is not None:
+            option_value = token[len(attached_short_option) :]
+            if option_value.startswith("=") or not _valid_timeout_option_value(
+                attached_short_option,
+                option_value,
+            ):
+                return False
+            index += 1
+            continue
+        if token in _TIMEOUT_OPTIONS_WITH_VALUE:
+            if (
+                index + 1 >= executable_index
+                or not _valid_timeout_option_value(
+                    token,
+                    tokens[index + 1].strip("'\""),
+                )
+            ):
+                return False
+            index += 2
+            continue
+        if token in _TIMEOUT_FLAG_OPTIONS:
+            index += 1
+            continue
+        break
+    return (
+        index + 1 == executable_index
+        and index < len(tokens)
+        and _TIMEOUT_DURATION.fullmatch(tokens[index].strip("'\"")) is not None
+    )
 
 
 def _looks_like_gradle_arg_fragment(stripped_line: str) -> bool:
@@ -136,7 +242,16 @@ def _gradle_invocation_from_segment(
         (index for index, token in enumerate(tokens) if _is_gradle_executable(token)),
         None,
     )
-    if executable_index is None or (require_direct and executable_index != 0):
+    if executable_index is None:
+        return None
+    if (
+        require_direct
+        and executable_index != 0
+        and not _timeout_wraps_direct_gradle(
+            tokens,
+            executable_index,
+        )
+    ):
         return None
     return GradleInvocation(workflow, tokens[executable_index:])
 

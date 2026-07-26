@@ -31,6 +31,7 @@ on:
       - "android/gradlew"
       - "android/gradlew.bat"
       - "android/settings.gradle.kts"
+      - "android/audit/test_count_baseline.txt"
       - ".gitea/workflows/android-connected.yml"
   workflow_dispatch:
 
@@ -176,7 +177,7 @@ jobs:
             Write-Host "Boot completed, running connected tests"
 
             $env:ANDROID_SERIAL = $serial
-            .\gradlew.bat --no-daemon :app:connectedGrayDebugAndroidTest
+            .\gradlew.bat --no-daemon '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true' :app:connectedGrayDebugAndroidTest
             if ($LASTEXITCODE -ne 0) { throw "connectedGrayDebugAndroidTest failed" }
           }
           catch {

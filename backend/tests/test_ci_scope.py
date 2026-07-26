@@ -145,6 +145,7 @@ def test_version_contract_crosses_backend_desktop_and_packaging() -> None:
 
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
     for path in (
+        "backend/tests/test_android_test_qualification.py",
         "backend/tests/test_backend_ci_results.py",
         "backend/tests/test_postgres_ci_topology.py",
     ):

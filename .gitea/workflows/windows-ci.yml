@@ -510,6 +510,37 @@ jobs:
       - name: Gradle / JVM versions
         run: .\gradlew.bat --no-daemon --version
 
+      - name: Resolve Android test ratchet base
+        working-directory: ${{ github.workspace }}
+        env:
+          AUDIT_MANUAL_BASE: ${{ inputs.adr_base_ref }}
+          AUDIT_PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") {
+            $auditBase = $env:AUDIT_MANUAL_BASE
+          }
+          elseif ($env:GITHUB_EVENT_NAME -eq "push" -and $env:GITHUB_REF -eq "refs/heads/main") {
+            $auditBase = $env:AUDIT_PUSH_BEFORE
+          }
+          elseif ($env:GITHUB_EVENT_NAME -eq "push") {
+            $auditBaseCandidates = @(git merge-base --all HEAD refs/remotes/origin/main)
+            if ($LASTEXITCODE -ne 0 -or $auditBaseCandidates.Count -ne 1) {
+              throw "Cannot resolve one unique canonical Android test ratchet base."
+            }
+            $auditBase = ([string]$auditBaseCandidates[0]).Trim()
+          }
+          else {
+            throw "Unsupported Android test ratchet event: $env:GITHUB_EVENT_NAME"
+          }
+          if ($auditBase -notmatch '^[0-9a-fA-F]{40,64}$') {
+            throw "Android test ratchet base is not an exact object ID."
+          }
+          [System.IO.File]::AppendAllText(
+            $env:GITHUB_ENV,
+            "XPJ_AUDIT_BASE_REF=$auditBase" + [Environment]::NewLine,
+            [System.Text.UTF8Encoding]::new($false)
+          )
+
       - name: Force regenerate latest Room schema
         # Room's KSP processor is incremental and SKIPS rewriting an existing
         # schemaLocation file when its cache says the entity hash is unchanged

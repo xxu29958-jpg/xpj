@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 _MODULE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "_audit_ci_gap.py"
+_CONNECTED_TASK = ":app:connectedGrayDebugAndroidTest"
 
 
 def load_ci_gap_audit() -> object:
@@ -25,6 +26,87 @@ def load_ci_gap_audit() -> object:
         return module
     finally:
         sys.path[:] = old_path
+
+
+def _write_connected_workflow(workflow: Path, script: str) -> None:
+    workflow.write_text(
+        f"""
+name: connected
+on: pull_request
+jobs:
+  connected:
+    steps:
+      - uses: reactivecircus/android-emulator-runner@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        with:
+          working-directory: android
+          script: >-
+            {script}
+""",
+        encoding="utf-8",
+    )
+
+
+def _connected_task_is_missing(mod: object, workflows: Path) -> bool:
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    return _CONNECTED_TASK in mod._missing_gradle_tasks(commands)
+
+
+def _assert_multiline_action_script_is_rejected(
+    mod: object,
+    workflows: Path,
+    workflow: Path,
+) -> None:
+    workflow.write_text(
+        """
+name: connected
+on: pull_request
+jobs:
+  connected:
+    steps:
+      - uses: reactivecircus/android-emulator-runner@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        with:
+          working-directory: android
+          script: |
+            false
+            timeout 14m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+""",
+        encoding="utf-8",
+    )
+    assert _connected_task_is_missing(mod, workflows)
+
+
+def assert_ci_gap_requires_single_direct_action_command(
+    mod: object,
+    tmp_path: Path,
+) -> None:
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    workflow = workflows / "android-connected-test.yml"
+    direct_command = (
+        "timeout --signal=INT --kill-after=30s 14m "
+        "./gradlew --no-daemon "
+        "-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true "
+        f"{_CONNECTED_TASK}"
+    )
+    _write_connected_workflow(
+        workflow,
+        direct_command,
+    )
+
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+
+    assert len(commands) == 1
+    assert commands[0].text.strip() == direct_command
+    assert _CONNECTED_TASK not in mod._missing_gradle_tasks(commands)
+
+    for indirect_command in (
+        "/bin/sh scripts/run_connected_ci.sh",
+        f"set -n; {direct_command}",
+        f'finish=exit; "$finish" 0; {direct_command}',
+    ):
+        _write_connected_workflow(workflow, indirect_command)
+        assert _connected_task_is_missing(mod, workflows)
+    _assert_multiline_action_script_is_rejected(mod, workflows, workflow)
 
 
 def assert_ci_provider_selection_contract(mod: object) -> None:

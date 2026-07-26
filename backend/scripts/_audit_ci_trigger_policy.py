@@ -18,6 +18,7 @@ GITEA_WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "c
 CODEQL_WEEKLY_CRON = "37 3 * * 1"
 GITHUB_CONNECTED_PATHS = (
     *ANDROID_PROTECTED_PATHS,
+    "android/scripts/**",
     ".github/workflows/android-connected-test.yml",
 )
 GITEA_CONNECTED_PATHS = (

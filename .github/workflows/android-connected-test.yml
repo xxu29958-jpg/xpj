@@ -22,6 +22,8 @@ on:
       - "android/gradlew"
       - "android/gradlew.bat"
       - "android/settings.gradle.kts"
+      - "android/audit/test_count_baseline.txt"
+      - "android/scripts/**"
       - ".github/workflows/android-connected-test.yml"
   pull_request:
     branches:
@@ -35,6 +37,8 @@ on:
       - "android/gradlew"
       - "android/gradlew.bat"
       - "android/settings.gradle.kts"
+      - "android/audit/test_count_baseline.txt"
+      - "android/scripts/**"
       - ".github/workflows/android-connected-test.yml"
   workflow_dispatch:
 
@@ -49,7 +53,10 @@ jobs:
   connected:
     name: Connected (emulator)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The connected action has the 20-minute qualification ceiling. The wider
+    # job cap covers setup plus post-action verification and diagnostic upload;
+    # it is an infrastructure envelope, not a relaxed qualification target.
+    timeout-minutes: 30
 
     env:
       # Same canonical owner URL the regular android job injects, so
@@ -68,6 +75,11 @@ jobs:
           java-version: "21"
           cache: gradle
 
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
       - name: Install Android SDK packages
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
@@ -82,12 +94,14 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Run connected test
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
         with:
           api-level: 36
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          emulator-boot-timeout: 180
           emulator-options: >-
             -no-window
             -gpu swiftshader_indirect
@@ -96,10 +110,11 @@ jobs:
             -camera-back none
           disable-animations: true
           working-directory: android
-          script: |
-            echo "sdk.dir=$ANDROID_HOME" > local.properties
-            echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
-            ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+          # The action executes each input line in a fresh `sh -c`; keep this
+          # as one direct command whose exit status is the Gradle exit status.
+          # The Gradle task owns test execution, result-count qualification and
+          # process-exit verification before the emulator action tears down.
+          script: timeout --signal=INT --kill-after=30s 14m ./gradlew --no-daemon -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedGrayDebugAndroidTest
 
       - name: Upload androidTest reports on failure
         if: failure()
@@ -109,5 +124,8 @@ jobs:
           path: |
             android/app/build/reports/androidTests/**
             android/app/build/outputs/androidTest-results/**
+            ${{ runner.temp }}/ticketbox-connected-crash.log
+            ${{ runner.temp }}/ticketbox-connected-exit-info-before.txt
+            ${{ runner.temp }}/ticketbox-connected-exit-info-after.txt
           if-no-files-found: ignore
           retention-days: 7

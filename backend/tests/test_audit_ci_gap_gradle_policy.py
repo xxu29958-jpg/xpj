@@ -204,9 +204,43 @@ def _assert_gradle_failure_masking_is_rejected(mod: object) -> None:
             Path("C:/.github/workflows/ci.yml"),
             f"./gradlew --no-daemon {arguments}",
         )
-        assert ":app:testGrayDebugUnitTest" in mod._missing_gradle_tasks(
-            [non_executing]
+        assert ":app:testGrayDebugUnitTest" in mod._missing_gradle_tasks([non_executing])
+
+    timed = mod.WorkflowCommand(
+        Path("C:/.github/workflows/android-connected-test.yml"),
+        "timeout --signal=INT --kill-after=30s 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+    )
+    assert ":app:connectedGrayDebugAndroidTest" not in mod._missing_gradle_tasks([timed])
+    separate_values = mod.WorkflowCommand(
+        Path("C:/.github/workflows/android-connected-test.yml"),
+        "timeout --signal INT --kill-after 30s 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+    )
+    assert ":app:connectedGrayDebugAndroidTest" not in mod._missing_gradle_tasks(
+        [separate_values]
+    )
+    attached_short_values = mod.WorkflowCommand(
+        Path("C:/.github/workflows/android-connected-test.yml"),
+        "timeout -v -sINT -k30s 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+    )
+    assert ":app:connectedGrayDebugAndroidTest" not in mod._missing_gradle_tasks(
+        [attached_short_values]
+    )
+    for invalid_wrapper in (
+        "timeout 18m echo ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout --unknown 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout --signal= 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout --signal=NO_SUCH_SIGNAL 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout --signal=0 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout --kill-after=not-a-duration 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout -s=INT 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout -k=15s 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+        "timeout --signal --foreground 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+    ):
+        candidate = mod.WorkflowCommand(
+            Path("C:/.github/workflows/android-connected-test.yml"),
+            invalid_wrapper,
         )
+        assert ":app:connectedGrayDebugAndroidTest" in mod._missing_gradle_tasks([candidate])
 
 
 def test_ci_gap_gradle_catch_must_propagate_guard_failure() -> None:

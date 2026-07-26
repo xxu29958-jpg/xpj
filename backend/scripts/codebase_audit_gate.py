@@ -144,12 +144,12 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 
-# Android ``@Test`` count is enforced separately by the Android CI lane
-# (``:app:assertAndroidTestCountEqualsBaseline`` gradle task against
-# ``android/audit/test_count_baseline.txt``). Cross-job coordination is
-# intentionally avoided: each side enforces its own contract, at the cost of
-# cut-over PRs that touch both sides needing to update both baseline files.
-# Android count is NOT listed here.
+# Android executed JVM/connected totals are enforced separately by the Android
+# CI lane (``:app:assertAndroidTestCountEqualsBaseline`` and the connected task
+# against Gradle/AGP JUnit XML plus ``android/audit/test_count_baseline.txt``).
+# Cross-job coordination is intentionally avoided: each side enforces its own
+# contract, at the cost of cut-over PRs that touch both sides needing to update
+# both baseline files. Android counts are NOT listed here.
 # Total test counts are reconciliation signals, not coverage proofs. Strict
 # equality declares every change. Backend consolidation may lower its declared
 # count only when review proves the removed cases had no independent risk model;

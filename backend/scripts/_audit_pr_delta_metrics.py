@@ -32,9 +32,9 @@ What this lane counts
 - **installer_pytest_count** — exact count from the isolated Windows installer
   contract lane under ``packaging/tests``.
 
-Android ``@Test`` count is checked separately by the Android CI lane
-(``:app:assertAndroidTestCountEqualsBaseline`` gradle task against
-``android/audit/test_count_baseline.txt``). Cross-job coordination is
+Android executed JVM/connected totals are checked separately by the Android CI
+lane against Gradle/AGP JUnit XML and
+``android/audit/test_count_baseline.txt``. Cross-job coordination is
 intentionally avoided — each side enforces its own contract.
 
 Run from ``backend/``::

@@ -99,6 +99,16 @@ def _assert_postgres_job_contract(job: dict[str, object]) -> None:
     assert service["ports"] == ["5432/tcp"]
 
 
+def _assert_checkout_independent_passfile_cleanup(step: dict[str, object]) -> None:
+    assert step["if"] == "${{ always() }}"
+    assert step["working-directory"] == "${{ runner." + "te" + "mp }}"
+    assert str(step["run"]).splitlines() == [
+        'if [ -n "${PGPASSFILE:-}" ]; then',
+        '  rm -f -- "$PGPASSFILE"',
+        "fi",
+    ]
+
+
 def _assert_lane(
     job: object,
     *,
@@ -169,9 +179,9 @@ def _assert_lane(
         "--workers",
         str(workers),
     ]
-    cleanup = steps["Remove PostgreSQL passfile"]
-    assert cleanup["if"] == "${{ always() }}"
-    assert shlex.split(cleanup["run"], posix=True) == ["rm", "-f", "--", "$PGPASSFILE"]
+    _assert_checkout_independent_passfile_cleanup(
+        steps["Remove PostgreSQL passfile"]
+    )
 
 
 def _assert_recovery_job(job: object) -> None:
@@ -217,6 +227,9 @@ def _assert_recovery_job(job: object) -> None:
     scripts = "\n".join(str(step.get("run", "")) for step in job["steps"])
     assert _LANE_RUNNER not in scripts
     assert " -m pytest " not in scripts
+    _assert_checkout_independent_passfile_cleanup(
+        steps["Remove PostgreSQL passfile"]
+    )
 
 
 def _assert_no_postgres_password_leaks(jobs: dict[str, object]) -> None:

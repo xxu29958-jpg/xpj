@@ -150,6 +150,8 @@ jobs:
           tests/test_ci_scope.py
           tests/test_backend_ci_results.py
           tests/test_postgres_ci_topology.py
+          tests/test_android_process_qualification.py
+          tests/test_android_test_qualification.py
           --noconftest -p no:cacheprovider
 
       - name: Audit (release lanes)
@@ -506,7 +508,11 @@ jobs:
       - &postgres_remove_passfile
         name: Remove PostgreSQL passfile
         if: ${{ always() }}
-        run: rm -f -- "$PGPASSFILE"
+        working-directory: ${{ runner.temp }}
+        run: |
+          if [ -n "${PGPASSFILE:-}" ]; then
+            rm -f -- "$PGPASSFILE"
+          fi
 
   backend_postgres_real_db:
     name: Backend PostgreSQL / real-db
@@ -696,6 +702,8 @@ jobs:
         shell: bash
     env: &android_environment
       TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
+      XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
+      XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || inputs.adr_base_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6

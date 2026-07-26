@@ -1,3 +1,4 @@
+import java.time.Duration
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 
@@ -320,6 +321,15 @@ configurations.configureEach {
     }
 }
 
+// Instrumentation code runs in a separate APK but against the debug target APK.
+// ProfileInstaller belongs to the release app, and its transitive test copy
+// contributes a Startup provider whose shared runtime classes AGP keeps in the
+// target APK. Exclude it at the official androidTest boundary so the test
+// process cannot publish a provider it cannot load.
+configurations.named("androidTestImplementation") {
+    exclude(group = "androidx.profileinstaller", module = "profileinstaller")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.datastore.preferences)
@@ -388,60 +398,8 @@ dependencies {
     // unblocked by aligning kotlinx-serialization to 1.10.0 (configurations
     // force above). Test-only artifact of the adopted Room library (same 2.8.4).
     androidTestImplementation(libs.androidx.room.testing)
-    // The androidTest APK gets its own merged manifest; keep the startup provider
-    // class available there too, otherwise connected tests crash when Android
-    // binds androidx.startup.InitializationProvider in the test process.
-    androidTestImplementation(libs.androidx.startup.runtime)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
-
-// ---------------------------------------------------------------------------
-// ADR-0038 prep: PR-Δ verification — Android side
-// ---------------------------------------------------------------------------
-//
-// Counterpart to backend's ``_audit_pr_delta_metrics.py`` strict-equality
-// gate. The Android count is enforced here (not by reaching across the
-// backend/android boundary) — each side owns its own baseline file and
-// own assertion. Cut-over PRs (ADR-0038 PR-A/B/C/D etc) that change the
-// Android test count MUST bump ``audit/test_count_baseline.txt`` in the
-// same diff. Strict equality (NOT >=); drift in either direction fails.
-//
-// Annotation set covers JUnit4 (``@Test`` only at present) and is
-// forward-compatible with a JUnit5 migration (``@ParameterizedTest`` /
-// ``@RepeatedTest`` / ``@TestFactory`` / ``@TestTemplate`` — currently
-// 0 matches each). Adding them now costs nothing today and avoids a
-// silent under-count if JUnit5 lands later without this task being
-// updated in the same PR.
-//
-// Per-line predicate (kept simple — line-level state machine instead
-// of full Kotlin parser):
-//
-//   - trim().startsWith(<test annotation>)  — annotation is the first
-//     token on the line (the common style: each annotation on its
-//     own line above the method)
-//   - && NOT startsWith("//")  — line comment
-//   - && NOT startsWith("*")   — KDoc continuation line ("* @Test")
-//
-// Known limitation: multi-annotation lines like ``@JvmField @Test``
-// where ``@Test`` is not the first token aren't counted. The project
-// doesn't use that style today; if it ever does, this task will
-// under-count and the baseline mismatch will surface the missed style
-// for explicit decision.
-val androidTestAnnotations = listOf(
-    "@Test",
-    "@ParameterizedTest",
-    "@RepeatedTest",
-    "@TestFactory",
-    "@TestTemplate",
-)
-
-// Conceptual counter name: ``android_junit_test_method_count`` — explicitly
-// names "annotation-based method count", not "runtime-collected test count".
-// Parametrized JUnit5 expansions (when/if migrated) would still register as
-// 1 method per ``@ParameterizedTest`` site, not N runtime instances. The
-// counter measures source-level test method declarations; runtime test
-// count is a different metric (would need ``gradle test --dry-run`` and
-// parsing). Keep them mentally separate.
 
 // Machine gate for the six Kotlin complexity thresholds in
 // docs/rules/CODE_QUALITY_STANDARDS.md. CI runs the type-resolving variant
@@ -468,184 +426,157 @@ tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
     }
 }
 
-tasks.register("assertAndroidTestCountEqualsBaseline") {
-    group = "verification"
-    description = "ADR-0038 PR-Δ: assert Android JUnit @Test method-annotation " +
-        "count exactly matches audit/test_count_baseline.txt (strict-equality + " +
-        "UP-ratchet vs PR base baseline + bootstrap exception by data shape)."
+val androidTestBaselineFile = rootProject.file("audit/test_count_baseline.txt")
+val androidTestQualificationScript =
+    rootProject.file("scripts/verify_android_test_qualification.py")
 
-    val baselineFile = rootProject.file("audit/test_count_baseline.txt")
-    val testDir = file("src/test")
-    inputs.file(baselineFile)
-    inputs.dir(testDir)
-
-    doLast {
-        if (!baselineFile.exists()) {
-            throw GradleException(
-                "ADR-0038 PR-Δ: baseline file missing at ${baselineFile.absolutePath}. " +
-                "Create it with a single integer (current Android JUnit @Test method count)."
-            )
-        }
-        val currentBaseline = baselineFile.readText().trim().toInt()
-
-        val actual = if (testDir.exists()) {
-            fileTree(testDir).matching { include("**/*.kt") }.sumOf { file ->
-                file.useLines { lines ->
-                    lines.count { line ->
-                        val trimmed = line.trim()
-                        androidTestAnnotations.any { trimmed.startsWith(it) } &&
-                            !trimmed.startsWith("//") &&
-                            !trimmed.startsWith("*")
-                    }
-                }
-            }
+fun ticketboxPythonCommand(): List<String> {
+    val configured = ticketboxEnvOrLocal(
+        "TICKETBOX_PYTHON",
+        "ticketbox.pythonExecutable",
+    )
+    val isWindows = System.getProperty("os.name").contains("Windows", ignoreCase = true)
+    val candidates = buildList {
+        configured?.let { add(listOf(it)) }
+        if (isWindows) {
+            add(listOf("py", "-3"))
+            add(listOf("python"))
         } else {
-            0
+            add(listOf("python3"))
+            add(listOf("python"))
         }
+    }.distinct()
 
-        // Layer 1: strict equality (actual == current baseline). Both directions FAIL.
-        if (actual != currentBaseline) {
-            val diff = actual - currentBaseline
-            val sign = if (diff > 0) "+" else ""
-            throw GradleException(
-                "ADR-0038 PR-Δ strict equality FAIL: actual=$actual " +
-                "current_baseline=$currentBaseline ($sign$diff). Update " +
-                "audit/test_count_baseline.txt in the SAME PR if intentional " +
-                "(both directions FAIL — silent drift in either is a bug)."
-            )
-        }
-
-        // Layer 2: UP ratchet — current baseline must be >= base baseline.
-        // Bootstrap exception: if base baseline file doesn't exist (prep PR
-        // is the first to introduce it), only strict equality applies.
-        //
-        // Base ref priority mirrors backend gate:
-        //   GITHUB_BASE_REF env (PR CI sets to PR target branch)
-        //   → XPJ_AUDIT_BASE_REF env (manual override)
-        //   → "main" fallback (local dev).
-        // Prefixed with origin/ if not already namespaced.
-        // The CI runner sets GITHUB_BASE_REF to the empty string on push
-        // events (not unset — non-null but empty). System.getenv() returns
-        // "" not null in that case, so a naïve null-coalesce treats push
-        // CI as PR CI and builds baseRef="origin/" → unreachable → FAIL.
-        // Treat empty same as null for both ref selection and PR-context
-        // detection. Matches backend gate's ``bool(os.environ.get(...))``
-        // which naturally treats empty as falsy via Python truthiness.
-        val explicitRef = System.getenv("GITHUB_BASE_REF")?.takeIf { it.isNotEmpty() }
-            ?: System.getenv("XPJ_AUDIT_BASE_REF")?.takeIf { it.isNotEmpty() }
-        val baseRef = when {
-            explicitRef != null -> if (explicitRef.contains("/")) explicitRef else "origin/$explicitRef"
-            // CI push event (GITHUB_SHA set, no PR base): the offline checkout fetches
-            // heads into origin/*, so the live main is origin/main.
-            !System.getenv("GITHUB_SHA").isNullOrEmpty() -> "origin/main"
-            // Local dev: the `origin` remote is the dead GitHub mirror (stale), so read
-            // the LIVE local main instead — avoids false ratchet failures.
-            else -> "refs/heads/main"
-        }
-        val isPrCiContext = !System.getenv("GITHUB_BASE_REF").isNullOrEmpty()
-
-        // Distinguish three states (parallels backend gate's tuple return):
-        //   - refReachable=false: git itself can't see the base ref (shallow
-        //     checkout, ref not fetched) → infra failure
-        //     · PR CI: FAIL loudly
-        //     · local: INFO-skip ratchet
-        //   - refReachable=true, fileMissing=true: ref reachable but baseline
-        //     file didn't exist at base → integral-bootstrap for this counter
-        //     · skip ratchet (no value to compare); strict equality already
-        //       enforced above
-        //   - refReachable=true, fileMissing=false, baseBaseline=N: normal
-        //     ratchet path
-        val refReachable = try {
-            val proc = ProcessBuilder("git", "rev-parse", "--verify", baseRef)
+    return candidates.firstOrNull { command ->
+        try {
+            val commandProcess = ProcessBuilder(command + "--version")
                 .directory(rootProject.rootDir)
-                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start()
-            proc.waitFor(30, TimeUnit.SECONDS)
-            proc.exitValue() == 0
-        } catch (e: Exception) {
+            val completed = commandProcess.waitFor(10, TimeUnit.SECONDS)
+            if (!completed) {
+                commandProcess.destroyForcibly()
+            }
+            completed && commandProcess.exitValue() == 0
+        } catch (_: Exception) {
             false
         }
+    } ?: throw GradleException(
+        "Python 3 is required for Android test qualification. Set TICKETBOX_PYTHON " +
+            "or ticketbox.pythonExecutable, or make python3/python available on PATH."
+    )
+}
 
-        if (!refReachable) {
-            if (isPrCiContext) {
-                throw GradleException(
-                    "ADR-0038 PR-Δ: in PR CI but base ref '$baseRef' is unreachable. " +
-                    "Possible: shallow checkout (need fetch-depth: 0 in CI workflow), " +
-                    "or remote not fetched. Fix CI config; do NOT downgrade to " +
-                    "strict-equality-only as a workaround."
-                )
-            }
-            println(
-                "ADR-0038 PR-Δ: Android count $actual matches current baseline " +
-                "(base ref '$baseRef' unreachable — local dev, ratchet skipped)."
-            )
-            return@doLast
-        }
-
-        val baseBaseline: Int? = try {
-            val proc = ProcessBuilder(
-                "git", "show", "$baseRef:android/audit/test_count_baseline.txt"
-            )
-                .directory(rootProject.rootDir)
-                .redirectErrorStream(false)
-                .start()
-            val output = proc.inputStream.bufferedReader().readText().trim()
-            val finished = proc.waitFor(30, TimeUnit.SECONDS)
-            if (finished && proc.exitValue() == 0 && output.isNotEmpty()) {
-                output.toIntOrNull()
-            } else {
-                // File didn't exist at base (ref was reachable, so this is
-                // legit "this counter is new in this PR"). Bootstrap.
-                null
-            }
-        } catch (e: Exception) {
-            null
-        }
-
-        if (baseBaseline == null) {
-            // refReachable=true + baseBaseline=null → integral-bootstrap.
-            // Strict equality already enforced above (actual == currentBaseline);
-            // ratchet skipped because there's no base value to ratchet against.
-            // Auto-extinguishes once the baseline file lands in main.
-            println(
-                "ADR-0038 PR-Δ: Android count $actual matches current baseline " +
-                "(bootstrap — baseline file new in this PR; ratchet auto-engages " +
-                "next PR after merge)."
-            )
-            return@doLast
-        }
-
-        if (currentBaseline < baseBaseline) {
-            throw GradleException(
-                "ADR-0038 PR-Δ ratchet FAIL: Android test count baseline at base=$baseBaseline, " +
-                "at current PR=$currentBaseline (dropped by ${baseBaseline - currentBaseline}). " +
-                "Tests should accumulate, not vanish. If this drop is intentional " +
-                "(test consolidation, dead code removal with paired test removal), " +
-                "document the rationale and get explicit sign-off — don't silently " +
-                "lower the floor. Strict equality alone misses this when actuals dropped " +
-                "in lockstep — UP-ratchet catches it."
-            )
-        }
-
-        println(
-            "ADR-0038 PR-Δ: Android test count $actual matches current baseline " +
-            "(base=$baseBaseline; ratchet UP OK)."
+fun runTicketboxAndroidQualification(
+    description: String,
+    arguments: List<String>,
+) {
+    if (!androidTestQualificationScript.isFile) {
+        throw GradleException(
+            "Android test qualification script is missing: " +
+                androidTestQualificationScript.absolutePath
+        )
+    }
+    val command = ticketboxPythonCommand() +
+        androidTestQualificationScript.absolutePath +
+        arguments
+    val qualificationProcess = ProcessBuilder(command)
+        .directory(rootProject.rootDir.parentFile)
+        .inheritIO()
+        .start()
+    if (!qualificationProcess.waitFor(2, TimeUnit.MINUTES)) {
+        qualificationProcess.destroyForcibly()
+        throw GradleException("Timed out while $description.")
+    }
+    if (qualificationProcess.exitValue() != 0) {
+        throw GradleException(
+            "$description failed with exit code " +
+                qualificationProcess.exitValue() + "."
         )
     }
 }
 
-fun ticketboxAdbExecutable(): File? {
+val grayDebugUnitTestTaskName = "testGrayDebugUnitTest"
+val grayDebugUnitTestResultsDirectory =
+    layout.buildDirectory.dir("test-results/$grayDebugUnitTestTaskName")
+
+tasks.register("assertAndroidTestCountEqualsBaseline") {
+    group = "verification"
+    description = "Verify executed GrayDebug JVM results and the Android test-count ratchet."
+    dependsOn(grayDebugUnitTestTaskName)
+    inputs.file(androidTestBaselineFile)
+
+    doLast {
+        runTicketboxAndroidQualification(
+            "GrayDebug JVM test-result qualification",
+            listOf(
+                "results",
+                "--lane",
+                "jvm",
+                "--baseline",
+                androidTestBaselineFile.absolutePath,
+                "--results-dir",
+                grayDebugUnitTestResultsDirectory.get().asFile.absolutePath,
+            ),
+        )
+        runTicketboxAndroidQualification(
+            "Android test baseline ratchet",
+            listOf(
+                "baseline",
+                "--baseline",
+                androidTestBaselineFile.absolutePath,
+                "--repository-root",
+                rootProject.rootDir.parentFile.absolutePath,
+            ),
+        )
+    }
+}
+
+
+fun ticketboxAndroidSdkDirectory(): File? {
     val sdkDir = ticketboxLocalProperty("sdk.dir")
         ?: System.getenv("ANDROID_HOME")?.trim()?.takeIf { it.isNotBlank() }
         ?: System.getenv("ANDROID_SDK_ROOT")?.trim()?.takeIf { it.isNotBlank() }
+    return sdkDir?.let(::File)?.takeIf(File::isDirectory)
+}
+
+fun ticketboxAdbExecutable(): File? {
     val adbName = if (System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
         "adb.exe"
     } else {
         "adb"
     }
-    return sdkDir
-        ?.let { File(it, "platform-tools/$adbName") }
+    return ticketboxAndroidSdkDirectory()
+        ?.resolve("platform-tools/$adbName")
         ?.takeIf { it.exists() }
+}
+
+fun ticketboxApkAnalyzerExecutable(): File? {
+    ticketboxEnvOrLocal(
+        "TICKETBOX_APKANALYZER",
+        "ticketbox.apkanalyzerExecutable",
+    )?.let(::File)?.takeIf(File::isFile)?.let { return it }
+
+    val sdkDirectory = ticketboxAndroidSdkDirectory() ?: return null
+    val executableName = if (
+        System.getProperty("os.name").contains("Windows", ignoreCase = true)
+    ) {
+        "apkanalyzer.bat"
+    } else {
+        "apkanalyzer"
+    }
+    val commandLineTools = sdkDirectory.resolve("cmdline-tools")
+        .listFiles()
+        ?.filter(File::isDirectory)
+        .orEmpty()
+        .sortedWith(
+            compareByDescending<File> { it.name.equals("latest", ignoreCase = true) }
+                .thenByDescending(File::getName)
+        )
+    return commandLineTools.asSequence()
+        .map { it.resolve("bin/$executableName") }
+        .firstOrNull(File::isFile)
 }
 
 fun ticketboxReadyDeviceSerials(): List<String> {
@@ -702,6 +633,168 @@ val guardConnectedAndroidTestEmulatorOnly by tasks.registering {
     }
 }
 
+fun ticketboxConnectedEvidenceFile(fileName: String): File =
+    System.getenv("RUNNER_TEMP")
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.let { File(it, fileName) }
+        ?: layout.buildDirectory
+            .file("reports/androidTests/$fileName")
+            .get()
+            .asFile
+
+fun prepareTicketboxConnectedEvidenceFile(evidenceFile: File) {
+    val evidenceDirectory = evidenceFile.parentFile
+        ?: throw GradleException("Connected-test evidence file has no parent directory.")
+    if (!evidenceDirectory.isDirectory && !evidenceDirectory.mkdirs()) {
+        throw GradleException("Cannot create connected-test evidence directory.")
+    }
+}
+
+fun ticketboxConnectedCaptureSerials(): List<String> {
+    val readySerials = ticketboxReadyDeviceSerials()
+    val selectedSerial = System.getenv("ANDROID_SERIAL")
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+    val captureSerials = when {
+        selectedSerial != null -> readySerials.filter {
+            it.equals(selectedSerial, ignoreCase = true)
+        }
+        ticketboxAllowRealDeviceConnectedTest -> readySerials
+        else -> readySerials.filter { it.startsWith("emulator-", ignoreCase = true) }
+    }
+    if (captureSerials.isEmpty()) {
+        throw GradleException(
+            "No ready connected-test target is available for evidence capture."
+        )
+    }
+    return captureSerials
+}
+
+fun captureTicketboxConnectedAdbEvidence(
+    adb: File,
+    serials: List<String>,
+    evidenceFile: File,
+    description: String,
+    arguments: List<String>,
+) {
+    serials.forEach { serial ->
+        evidenceFile.appendText("===== Android target $serial =====\n")
+        val process = ProcessBuilder(
+            listOf(adb.absolutePath, "-s", serial) + arguments
+        )
+            .directory(rootProject.rootDir)
+            .redirectErrorStream(true)
+            .redirectOutput(ProcessBuilder.Redirect.appendTo(evidenceFile))
+            .start()
+        if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            throw GradleException("Timed out while capturing $description from $serial.")
+        }
+        if (process.exitValue() != 0) {
+            throw GradleException(
+                "Could not capture $description from $serial: " + evidenceFile.readText()
+            )
+        }
+        evidenceFile.appendText("\n")
+    }
+}
+
+val grayConnectedTestResultsDirectory =
+    layout.buildDirectory.dir("outputs/androidTest-results/connected")
+val grayDebugApkOutputDirectory =
+    layout.buildDirectory.dir("outputs/apk/gray/debug")
+val grayDebugAndroidTestApkOutputDirectory =
+    layout.buildDirectory.dir("outputs/apk/androidTest/gray/debug")
+
+val prepareGrayConnectedTestEvidence by tasks.registering {
+    group = "verification"
+    description = "Reset connected results and capture the pre-test process-exit baseline."
+    dependsOn(guardConnectedAndroidTestEmulatorOnly)
+
+    doLast {
+        val adb = ticketboxAdbExecutable()
+            ?: throw GradleException("Android adb is unavailable; cannot capture exit evidence.")
+        val crashLog = ticketboxConnectedEvidenceFile("ticketbox-connected-crash.log")
+        val beforeExitInfo = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-exit-info-before.txt"
+        )
+        val afterExitInfo = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-exit-info-after.txt"
+        )
+        prepareTicketboxConnectedEvidenceFile(crashLog)
+        crashLog.writeText("")
+        beforeExitInfo.writeText("")
+        afterExitInfo.writeText("")
+        project.delete(grayConnectedTestResultsDirectory)
+        captureTicketboxConnectedAdbEvidence(
+            adb,
+            ticketboxConnectedCaptureSerials(),
+            beforeExitInfo,
+            "the pre-test process-exit baseline",
+            listOf("shell", "dumpsys", "activity", "exit-info"),
+        )
+    }
+}
+
 tasks.matching { it.name.matches(Regex("connected.*AndroidTest")) }.configureEach {
     dependsOn(guardConnectedAndroidTestEmulatorOnly)
+    if (name == "connectedGrayDebugAndroidTest") {
+        dependsOn(prepareGrayConnectedTestEvidence)
+        timeout.set(Duration.ofMinutes(10))
+        doLast {
+            val adb = ticketboxAdbExecutable()
+                ?: throw GradleException(
+                    "Android adb is unavailable; cannot qualify connected tests."
+                )
+            val apkanalyzer = ticketboxApkAnalyzerExecutable()
+                ?: throw GradleException(
+                    "Android apkanalyzer is unavailable; cannot qualify connected tests."
+                )
+            val captureSerials = ticketboxConnectedCaptureSerials()
+            val beforeExitInfo = ticketboxConnectedEvidenceFile(
+                "ticketbox-connected-exit-info-before.txt"
+            )
+            val afterExitInfo = ticketboxConnectedEvidenceFile(
+                "ticketbox-connected-exit-info-after.txt"
+            )
+            val crashLog = ticketboxConnectedEvidenceFile(
+                "ticketbox-connected-crash.log"
+            )
+            captureTicketboxConnectedAdbEvidence(
+                adb,
+                captureSerials,
+                afterExitInfo,
+                "the post-test process-exit snapshot",
+                listOf("shell", "dumpsys", "activity", "exit-info"),
+            )
+            captureTicketboxConnectedAdbEvidence(
+                adb,
+                captureSerials,
+                crashLog,
+                "the connected-test crash buffer",
+                listOf("logcat", "-b", "crash", "-d"),
+            )
+            runTicketboxAndroidQualification(
+                "GrayDebug connected-test qualification",
+                listOf(
+                    "connected",
+                    "--baseline",
+                    androidTestBaselineFile.absolutePath,
+                    "--results-dir",
+                    grayConnectedTestResultsDirectory.get().asFile.absolutePath,
+                    "--before",
+                    beforeExitInfo.absolutePath,
+                    "--after",
+                    afterExitInfo.absolutePath,
+                    "--apkanalyzer",
+                    apkanalyzer.absolutePath,
+                    "--apk-output-dir",
+                    grayDebugApkOutputDirectory.get().asFile.absolutePath,
+                    "--apk-output-dir",
+                    grayDebugAndroidTestApkOutputDirectory.get().asFile.absolutePath,
+                ),
+            )
+        }
+    }
 }

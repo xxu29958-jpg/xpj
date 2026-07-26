@@ -89,7 +89,11 @@ GitHub 云端 Android 资格链按责任并行：`Android fast` 跑编译、单�
 
 ### android-connected（模拟器，path-filtered）
 
-云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。`timeout-minutes: 30`。
+云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置、CI 入口脚本）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。单个 API 36 emulator job 执行完整 instrumentation suite；test APK 排除只服务发布安装的 ProfileInstaller，避免其 Startup provider 在独立测试进程中形成绿色崩溃和逐项超时。emulator action 只执行一条 timeout 包裹的 Gradle 命令：3 分钟 boot 上限、14 分钟 Gradle watchdog、20 分钟 action 上限和 30 分钟 job cap 逐层给环境准备、验证与失败报告留出余量；connected Gradle task 自身仍以 10 分钟为内层上限。
+
+Gradle 在测试前后各采集一次 `ApplicationExitInfo`，并在 action teardown 前保留 APK，避免 UTP 卸载清除退出历史；每次 adb 取证各有 30 秒上限。`connectedGrayDebugAndroidTest` 在同一任务内读取 AGP 生成的 connected JUnit XML、对账 instrumentation 基线，再从实际 APK manifest 动态读取目标包、测试包及其进程名，要求本轮至少产生一条目标进程退出记录，并拒绝 Java crash、native crash、ANR 和初始化失败；logcat 只作为诊断附件。证据缺失、畸形或被卸载清空时一律 fail closed。JVM 计数同样读取 Gradle `Test` 任务的真实 JUnit XML；`android/audit/test_count_baseline.txt` 分别锁住两条 lane，源码注解、注释、字符串和文件布局不再充当执行事实。
+
+local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。它保持单设备串行执行，不作为 GitHub 合并阻断项。
 
 `release_audit.py` 的 ci-gap lane 静态扫两套 workflow，钉住 Gradle、后端、Desktop 与安装器数据流。scoped job 只有在完整 checkout、唯一分类输出、fail-closed 条件和无软失败均成立时才被计入；任意普通 `if` 不能冒充覆盖。安装器哈希、上传、下载和回验仍作为同一 Windows job 的有序原子链检查。
 
@@ -102,7 +106,7 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 - run 一直排队：Gitea / runner 没起，先把它们启动。
 - pip-audit SSL EOF：网络 flake，rerun 整个 run 即绿。
 - Android SCA 找不到新鲜可信 NVD 产物：不要反复重跑 PR；在 main 上手动运行 `Android NVD Database` workflow，等 producer 成功上传产物后再重跑 PR。摘要不符、产物损坏、真实 CVE 或离线扫描失败都必须保持红灯，不能旁路。
-- `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android 测试而没同步 bump `android/audit/test_count_baseline.txt`。
+- `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android JVM / instrumentation 测试而没同步 bump `android/audit/test_count_baseline.txt`。
 - `backend_pytest_count` / `installer_pytest_count` 红：分别更新 `backend/audit/test_count_baseline.txt` / `backend/packaging/audit/test_count_baseline.txt`；不要改 gate 代码里的数字。
 - `WaitDelay expired before I/O complete`：临时 PG 没拆干净；teardown 先要求 `pg_ctl` 成功且已固定的进程句柄全部退出，超时后只处理同一已验证进程代际，绝不按二进制路径批量杀，详见 workflow 内注释。
 - `.ps1` 检查失败：确认仍是 UTF-8 with BOM、无 PS 5.1 语法错误。

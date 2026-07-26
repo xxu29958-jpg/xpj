@@ -254,19 +254,30 @@ def _workflow_step_command(
     environment: tuple[tuple[str, str], ...],
 ) -> WorkflowCommand | None:
     command = raw_step.get("run", raw_step.get("script"))
+    nested_action_script = None
     if command is None:
-        command = _nested_action_script(raw_step)
+        nested_action_script = _nested_action_script(raw_step)
+        command = nested_action_script
     if not isinstance(command, str):
         return None
+    if nested_action_script is not None:
+        executable_lines = [
+            line
+            for line in _strip_comment_lines(command).splitlines()
+            if line.strip()
+        ]
+        if len(executable_lines) != 1:
+            return None
     shell = str(raw_step.get("shell", job_shell))
-    executable_text = _strip_comment_lines(command)
+    source_command = command
+    executable_text = _strip_comment_lines(source_command)
     is_powershell = _looks_like_powershell(shell=shell, command=executable_text)
     if is_powershell:
         executable_text = _powershell_reachable_command_text(executable_text)
     return WorkflowCommand(
         path,
         executable_text,
-        folded="\n" not in command,
+        folded="\n" not in source_command,
         job=str(job_name),
         step=str(raw_step.get("name", index)),
         step_index=index,
@@ -279,7 +290,7 @@ def _workflow_step_command(
         ),
         step_id=str(raw_step.get("id", "")),
         environment=environment,
-        source_text=_strip_comment_lines(command),
+        source_text=_strip_comment_lines(source_command),
     )
 
 
