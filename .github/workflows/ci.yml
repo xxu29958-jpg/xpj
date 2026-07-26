@@ -25,7 +25,6 @@ on:
         type: string
 
 permissions:
-  actions: read
   contents: read
 
 concurrency:
@@ -769,6 +768,17 @@ jobs:
       - name: Compile, unit tests, lint, detekt, and count ratchet
         run: ./gradlew --no-daemon --max-workers=2 :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
 
+      - name: Upload Android unit-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-fast-test-diagnostics
+          path: |
+            android/app/build/test-results/testGrayDebugUnitTest/
+            android/app/build/reports/tests/testGrayDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Verify Room schema snapshots are committed
         working-directory: ${{ github.workspace }}
         run: |
@@ -790,12 +800,12 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  android_apk:
-    name: Android APK
+  android_apk_debug:
+    name: Android APK debug
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
@@ -815,8 +825,8 @@ jobs:
       - *android_local_properties
       - *android_gradle_tuning
 
-      - name: Build debug and release APKs
-        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug :app:assembleGrayRelease :app:assembleInternalRelease
+      - name: Build debug APKs
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug
 
       - name: Verify debug APK signing certificate
         run: |
@@ -860,12 +870,43 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  android_apk_release:
+    name: Android APK release
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults: *android_defaults
+    env: *android_environment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - *android_setup_python
+      - *android_qualification
+      - *android_setup_java
+      - *android_setup_gradle
+      - *android_sdk
+      - *android_local_properties
+      - *android_gradle_tuning
+
+      - name: Build release APKs
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
+
   android_sca:
     name: Android SCA
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
@@ -934,7 +975,8 @@ jobs:
     needs:
       - scope
       - android_fast
-      - android_apk
+      - android_apk_debug
+      - android_apk_release
       - android_sca
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -952,9 +994,12 @@ jobs:
           FAST_RESULT: ${{ needs.android_fast.result }}
           FAST_SHA: ${{ needs.android_fast.outputs.qualification_sha }}
           FAST_SOURCE_SHA: ${{ needs.android_fast.outputs.qualification_source_sha }}
-          APK_RESULT: ${{ needs.android_apk.result }}
-          APK_SHA: ${{ needs.android_apk.outputs.qualification_sha }}
-          APK_SOURCE_SHA: ${{ needs.android_apk.outputs.qualification_source_sha }}
+          DEBUG_APK_RESULT: ${{ needs.android_apk_debug.result }}
+          DEBUG_APK_SHA: ${{ needs.android_apk_debug.outputs.qualification_sha }}
+          DEBUG_APK_SOURCE_SHA: ${{ needs.android_apk_debug.outputs.qualification_source_sha }}
+          RELEASE_APK_RESULT: ${{ needs.android_apk_release.result }}
+          RELEASE_APK_SHA: ${{ needs.android_apk_release.outputs.qualification_sha }}
+          RELEASE_APK_SOURCE_SHA: ${{ needs.android_apk_release.outputs.qualification_source_sha }}
           SCA_RESULT: ${{ needs.android_sca.result }}
           SCA_SHA: ${{ needs.android_sca.outputs.qualification_sha }}
           SCA_SOURCE_SHA: ${{ needs.android_sca.outputs.qualification_source_sha }}
@@ -972,10 +1017,15 @@ jobs:
           require_equal "$SCOPE_SOURCE_SHA" "$EXPECTED_SOURCE_SHA" "CI scope source SHA"
 
           if [ "$ANDROID_SCOPE" = "false" ]; then
-            for result in "$FAST_RESULT" "$APK_RESULT" "$SCA_RESULT"; do
+            for result in "$FAST_RESULT" "$DEBUG_APK_RESULT" "$RELEASE_APK_RESULT" "$SCA_RESULT"; do
               require_equal "$result" "skipped" "out-of-scope Android lane result"
             done
-            for sha in "$FAST_SHA" "$FAST_SOURCE_SHA" "$APK_SHA" "$APK_SOURCE_SHA" "$SCA_SHA" "$SCA_SOURCE_SHA"; do
+            for sha in \
+              "$FAST_SHA" "$FAST_SOURCE_SHA" \
+              "$DEBUG_APK_SHA" "$DEBUG_APK_SOURCE_SHA" \
+              "$RELEASE_APK_SHA" "$RELEASE_APK_SOURCE_SHA" \
+              "$SCA_SHA" "$SCA_SOURCE_SHA"
+            do
               require_equal "$sha" "" "skipped Android lane SHA"
             done
             echo "Android scope not affected."
@@ -983,13 +1033,18 @@ jobs:
           fi
 
           require_equal "$ANDROID_SCOPE" "true" "Android scope"
-          for result in "$FAST_RESULT" "$APK_RESULT" "$SCA_RESULT"; do
+          for result in "$FAST_RESULT" "$DEBUG_APK_RESULT" "$RELEASE_APK_RESULT" "$SCA_RESULT"; do
             require_equal "$result" "success" "Android lane result"
           done
-          for sha in "$FAST_SHA" "$APK_SHA" "$SCA_SHA"; do
+          for sha in "$FAST_SHA" "$DEBUG_APK_SHA" "$RELEASE_APK_SHA" "$SCA_SHA"; do
             require_equal "$sha" "$EXPECTED_SHA" "Android lane qualification SHA"
           done
-          for sha in "$FAST_SOURCE_SHA" "$APK_SOURCE_SHA" "$SCA_SOURCE_SHA"; do
+          for sha in \
+            "$FAST_SOURCE_SHA" \
+            "$DEBUG_APK_SOURCE_SHA" \
+            "$RELEASE_APK_SOURCE_SHA" \
+            "$SCA_SOURCE_SHA"
+          do
             require_equal "$sha" "$EXPECTED_SOURCE_SHA" "Android lane source SHA"
           done
           echo "Required Android lanes are valid."

@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.R
@@ -20,7 +21,9 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -33,6 +36,7 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MerchantAliasViewModelTest {
+    private val activeViewModels = mutableListOf<MerchantAliasViewModel>()
 
     private fun merchantAlias(block: suspend TestScope.() -> Unit) = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -40,6 +44,9 @@ class MerchantAliasViewModelTest {
         try {
             block()
         } finally {
+            activeViewModels.forEach {
+                it.viewModelScope.coroutineContext.job.cancelAndJoin()
+            }
             advanceUntilIdle()
             Dispatchers.resetMain()
         }
@@ -231,13 +238,12 @@ class MerchantAliasViewModelTest {
                 tokenStore = tokenStore,
             ),
         )
-        return Harness(
-            api = api,
-            vm = MerchantAliasViewModel(
-                merchantRepository = merchantRepository,
-                repository = expenseRepository,
-            ),
+        val vm = MerchantAliasViewModel(
+            merchantRepository = merchantRepository,
+            repository = expenseRepository,
         )
+        activeViewModels += vm
+        return Harness(api = api, vm = vm)
     }
 
     private data class Harness(
