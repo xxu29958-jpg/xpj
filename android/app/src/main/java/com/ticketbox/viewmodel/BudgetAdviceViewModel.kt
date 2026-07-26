@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.YearMonth
@@ -72,18 +71,39 @@ class BudgetAdviceViewModel(
 
     private fun observeLedgerChanges() {
         viewModelScope.launch {
-            repository.observeActiveLedgerId()
+            var observedLedgerId: String? = null
+            var firstEmission = true
+            repository.observeLedgerAccessState()
                 .distinctUntilChanged()
-                .drop(1)
-                .collect {
-                    requestGeneration += 1
-                    _state.update { current ->
-                        current.copy(
-                            loadState = BudgetAdviceLoadState.Idle,
-                            canRequest = repository.canModifyLedger(),
-                            result = null,
-                            error = null,
-                        )
+                .collect { access ->
+                    val ledgerId = access?.ledgerId
+                    if (firstEmission) {
+                        // Baseline (the ledger the VM was created under), mirroring
+                        // the previous drop(1) semantics.
+                        firstEmission = false
+                        observedLedgerId = ledgerId
+                        return@collect
+                    }
+                    if (ledgerId != observedLedgerId) {
+                        observedLedgerId = ledgerId
+                        requestGeneration += 1
+                        _state.update { current ->
+                            current.copy(
+                                loadState = BudgetAdviceLoadState.Idle,
+                                canRequest = repository.canModifyLedger(),
+                                result = null,
+                                error = null,
+                            )
+                        }
+                        restoreCachedAdvice()
+                    } else {
+                        // Role-only re-projection (viewer↔member on the same
+                        // ledger): re-gate the capability in place — promotion
+                        // must not discard rendered content, demotion must
+                        // immediately restore the read-only gate.
+                        _state.update { current ->
+                            current.copy(canRequest = repository.canModifyLedger())
+                        }
                     }
                 }
         }

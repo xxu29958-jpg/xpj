@@ -8,7 +8,9 @@ import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -18,15 +20,26 @@ import java.util.TimeZone
 interface BudgetActions {
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
+
+    /** Access projection of the active session identity: re-emits on ledger
+     *  switches AND role-only re-projections (viewer↔member on the same
+     *  ledger), which [observeActiveLedgerId] cannot distinguish. */
+    fun observeLedgerAccessState(): Flow<LedgerAccessState?> = emptyFlow()
     suspend fun monthlyBudget(month: String): Result<BudgetMonthly>
     suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult>
 
-    /** Last successful advice for [month] in this process, or null. See
-     *  [BudgetRepository.cachedBudgetAdvice] for the process-lifetime contract. */
+    /** Last successful advice for [month] under the CURRENT logical session
+     *  binding in this process, or null. Process-lifetime, binding-scoped —
+     *  see [BudgetRepository.cachedBudgetAdvice]. */
     suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? = null
 
     suspend fun saveMonthlyBudget(month: String, update: BudgetMonthlyUpdate): Result<BudgetMonthly>
 }
+
+data class LedgerAccessState(
+    val ledgerId: String?,
+    val canModify: Boolean,
+)
 
 class BudgetRepository(
     private val apiProvider: ApiServiceProvider,
@@ -40,8 +53,10 @@ class BudgetRepository(
 
     /** Guards [adviceInFlight] / [adviceLastSuccess]. Both are in-memory only —
      *  process-lifetime, never persisted (the advice round-trip persists
-     *  nothing on device, see BudgetAdviseDto). Keyed by (ledger, month) so a
-     *  ledger switch can never bleed another ledger's result in. */
+     *  nothing on device, see BudgetAdviseDto). Keyed by (logical session
+     *  binding, month): the binding carries server/account/ledger/generation,
+     *  so an unbind + re-pair to a different household — even one whose ledger
+     *  id is also "owner" — can never be served another binding's result. */
     private val adviceCallMutex = Mutex()
     private val adviceInFlight = mutableMapOf<AdviceRequestKey, CompletableDeferred<Result<BudgetAdviceResult>>>()
     private val adviceLastSuccess = mutableMapOf<AdviceRequestKey, BudgetAdviceResult>()
@@ -49,6 +64,16 @@ class BudgetRepository(
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
     override fun observeActiveLedgerId(): Flow<String?> = apiProvider.observeActiveLedgerId()
+
+    override fun observeLedgerAccessState(): Flow<LedgerAccessState?> =
+        apiProvider.observeActiveLedgerIdentity()
+            .map { identity ->
+                LedgerAccessState(
+                    ledgerId = identity?.ledgerId,
+                    canModify = ledgerRoleCanModify(identity?.role),
+                )
+            }
+            .distinctUntilChanged()
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> =
         monthlyBudget(month = month, timezone = currentTimezoneId())
@@ -80,8 +105,12 @@ class BudgetRepository(
         // 218-B4 review: each live call is quota-counted server-side the moment
         // it starts, so concurrent callers (e.g. a reopened route while the
         // first call is still in flight) must attach to ONE in-flight call
-        // instead of spending a second reservation.
-        val key = adviceRequestKey(cleanMonth)
+        // instead of spending a second reservation. ONE logical-binding
+        // snapshot is captured up front and scopes both the dedupe/cache key
+        // and the execution (bindExact re-validates it around the call).
+        val binding = ledgerRequestGuard.captureLogicalBinding()
+            ?: return Result.failure(RepositoryException("登录状态已失效，请重新绑定。"))
+        val key = AdviceRequestKey(binding = binding, month = cleanMonth)
         val (deferred, isOwner) = adviceCallMutex.withLock {
             val existing = adviceInFlight[key]
             if (existing != null) {
@@ -106,7 +135,7 @@ class BudgetRepository(
         // Running to completion lets attached callers and the last-success
         // cache still observe the result instead of forcing a second call.
         val result = errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(key.binding).call { api ->
                 api.budgetAdvise(
                     BudgetAdviseRequestDto(
                         month = month,
@@ -123,14 +152,17 @@ class BudgetRepository(
         result
     }
 
-    /** Process-lifetime last-successful advice for [month] (and the active
-     *  ledger), written only on success — a failure leaves the cache absent.
-     *  Nothing is persisted; an app restart simply starts cold. */
+    /** Process-lifetime last-successful advice for [month] under the CURRENT
+     *  logical session binding, written only on success — a failure leaves the
+     *  cache absent. Nothing is persisted; an app restart simply starts cold.
+     *  The binding is part of the lookup key, so a re-paired household never
+     *  sees a previous binding's entry. */
     override suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? {
         val cleanMonth = validatedMonth(month)
             .getOrElse { return null }
+        val binding = ledgerRequestGuard.captureLogicalBinding() ?: return null
         return adviceCallMutex.withLock {
-            adviceLastSuccess[adviceRequestKey(cleanMonth)]
+            adviceLastSuccess[AdviceRequestKey(binding = binding, month = cleanMonth)]
         }
     }
 
@@ -155,14 +187,12 @@ class BudgetRepository(
     }
 
     private fun currentTimezoneId(): String = TimeZone.getDefault().id
-
-    private fun adviceRequestKey(month: String): AdviceRequestKey = AdviceRequestKey(
-        ledgerId = apiProvider.currentLedgerId().orEmpty(),
-        month = month,
-    )
 }
 
-private data class AdviceRequestKey(val ledgerId: String, val month: String)
+private data class AdviceRequestKey(
+    val binding: LogicalSessionBinding,
+    val month: String,
+)
 
 private val MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
 

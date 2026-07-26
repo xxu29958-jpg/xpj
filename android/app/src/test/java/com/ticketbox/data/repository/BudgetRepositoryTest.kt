@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
@@ -266,6 +267,82 @@ class BudgetRepositoryTest {
             apiProvider = testApiServiceProvider(apiClient, tokenStore),
         )
     }
+}
+
+/** 218-B4 review P1: the advice in-flight/cache state is keyed by the full
+ *  logical session binding (server + account + ledger + generations), not the
+ *  ledger id alone — ledger ids like "owner" repeat across households, so a
+ *  ledgerId-only key would leak one household's advice into another after an
+ *  unbind + re-pair. Separate class to stay under the per-class function cap. */
+class BudgetRepositoryAdviceBindingTest {
+    @Test
+    fun adviceCacheIsScopedToLogicalBinding() = runTest {
+        val api = BudgetApiHandler()
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val repository = repository(api, tokenStore)
+
+        val advice = repository.requestBudgetAdvice("2026-05").getOrThrow()
+        assertEquals(advice, repository.cachedBudgetAdvice("2026-05"))
+
+        // Unbind + re-pair to a DIFFERENT household whose ledger id is also
+        // "owner": the previous binding's entry must be unreachable.
+        val current = requireNotNull(tokenStore.sessionStore.currentSession())
+        tokenStore.sessionStore.replaceForFixture(
+            current.copy(
+                sessionGeneration = "other-household-session",
+                bindingRevision = "other-household-binding",
+                serverUrl = "https://other.example.com",
+            ),
+        )
+
+        assertNull(repository.cachedBudgetAdvice("2026-05"))
+        repository.requestBudgetAdvice("2026-05").getOrThrow()
+        assertEquals(2, api.adviceCalls.size)
+    }
+
+    @Test
+    fun inFlightAdviceIsScopedToLogicalBinding() = runBlocking {
+        val api = BudgetApiHandler().apply {
+            adviceEntered = CountDownLatch(2)
+            adviceRelease = CountDownLatch(1)
+        }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val repository = repository(api, tokenStore)
+
+        val first = async(Dispatchers.IO) { repository.requestBudgetAdvice("2026-05") }
+        // Wait until the first call is bound and inside the API, then re-pair:
+        // the new binding must NOT attach to the stale binding's deferred.
+        withTimeout(5_000) {
+            while (api.adviceEntered?.count != 1L) delay(10)
+        }
+        val current = requireNotNull(tokenStore.sessionStore.currentSession())
+        tokenStore.sessionStore.replaceForFixture(
+            current.copy(
+                sessionGeneration = "other-household-session",
+                bindingRevision = "other-household-binding",
+                serverUrl = "https://other.example.com",
+            ),
+        )
+        val second = async(Dispatchers.IO) { repository.requestBudgetAdvice("2026-05") }
+        assertTrue(api.adviceEntered?.await(5, TimeUnit.SECONDS) == true)
+        api.adviceRelease?.countDown()
+
+        val firstResult = first.await()
+        val secondResult = second.await()
+        assertEquals(2, api.adviceCalls.size)
+        // The stale-binding call completes as ledger-changed (post-call re-check)
+        // and never writes the cache; the new binding's call succeeds and does.
+        assertTrue(firstResult.isFailure)
+        assertTrue(secondResult.isSuccess)
+        assertEquals(secondResult.getOrNull(), repository.cachedBudgetAdvice("2026-05"))
+    }
+
+    private fun repository(
+        handler: BudgetApiHandler,
+        tokenStore: TestSessionFixture,
+    ): BudgetRepository = BudgetRepository(
+        apiProvider = testApiServiceProvider(BudgetApiFactory(handler), tokenStore),
+    )
 }
 
 private data class MonthlyBudgetCall(val month: String, val timezone: String?)

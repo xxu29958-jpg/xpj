@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.data.repository.LedgerAccessState
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.BudgetAdvice
 import com.ticketbox.domain.model.BudgetAdviceResult
@@ -15,6 +16,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -478,27 +480,124 @@ class BudgetAdviceViewModelTest {
         assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
         assertEquals(0, fake.adviceMonths.size)
     }
+
+    @Test
+    fun roleReprojectionOnSameLedgerRegatesWithoutWipingContent() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", canModify = true),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
+
+        // Demotion member→viewer on the SAME ledger: re-gate to read-only
+        // immediately, but the already-rendered result is not discarded.
+        fake.canModify = false
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", canModify = false)
+        advanceUntilIdle()
+
+        var state = adviceViewModel.uiState.value
+        assertFalse(state.canRequest)
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals("保持弹性支出空间。", state.result?.advice?.summary)
+
+        // Promotion viewer→member: the gate opens again with content intact.
+        fake.canModify = true
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", canModify = true)
+        advanceUntilIdle()
+
+        state = adviceViewModel.uiState.value
+        assertEquals(true, state.canRequest)
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals("保持弹性支出空间。", state.result?.advice?.summary)
+    }
+
+    @Test
+    fun roleDemotionRestoresReadOnlyShortCircuit() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", canModify = true),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        fake.canModify = false
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", canModify = false)
+        advanceUntilIdle()
+        assertFalse(adviceViewModel.uiState.value.canRequest)
+
+        // The viewer short-circuit is live again: no repository call is made.
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertEquals(UiText.res(R.string.common_readonly_ledger), state.error)
+        assertEquals(0, fake.adviceMonths.size)
+    }
+
+    @Test
+    fun ledgerChangeResetsThenRestoresFromBindingScopedCache() = budgetTest {
+        val cached = BudgetAdviceResult(
+            advice = BudgetAdvice(
+                summary = "保持弹性支出空间。",
+                suggestions = emptyList(),
+                confidence = 0.8,
+            ),
+            providerName = "mock",
+            reasonCode = "advisor_ready",
+        )
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", canModify = true),
+        )
+        val fake = FakeBudgetActions(budget = budget(), cachedAdvice = cached, accessFlow = accessFlow)
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
+
+        // Ledger switch keeps the round-4 semantics: reset to Idle, then the
+        // binding-scoped cache restore runs for the new ledger.
+        accessFlow.value = LedgerAccessState(ledgerId = "ledger-b", canModify = true)
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals(cached, state.result)
+        assertEquals(listOf("2026-05", "2026-05"), fake.cachedAdviceMonths)
+        assertEquals(0, fake.adviceMonths.size)
+    }
 }
 
 private class FakeBudgetActions(
     var budget: BudgetMonthly,
-    private val canModify: Boolean = true,
+    canModify: Boolean = true,
     private val activeLedgerFlow: Flow<String?> = emptyFlow(),
     private val cachedAdvice: BudgetAdviceResult? = null,
+    private val accessFlow: Flow<LedgerAccessState?> = emptyFlow(),
 ) : BudgetActions {
     val loadedMonths = mutableListOf<String>()
     val savedMonths = mutableListOf<String>()
     val savedRequests = mutableListOf<BudgetMonthlyUpdate>()
     val adviceMonths = mutableListOf<String>()
+    val cachedAdviceMonths = mutableListOf<String>()
     val loadCalls: Int get() = loadedMonths.size
+    var canModify: Boolean = canModify
     var monthlyBudgetResponder: (suspend (String) -> Result<BudgetMonthly>)? = null
     var adviceResponder: (suspend (String) -> Result<BudgetAdviceResult>)? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? = cachedAdvice
+    override suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? {
+        cachedAdviceMonths += month
+        return cachedAdvice
+    }
 
     override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
+
+    override fun observeLedgerAccessState(): Flow<LedgerAccessState?> = accessFlow
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> {
         loadedMonths += month
