@@ -101,12 +101,12 @@ jobs:
           disable-animations: true
           working-directory: android
           script: |
-            set -euo pipefail
+            set -eu
             echo "sdk.dir=$ANDROID_HOME" > local.properties
             echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
             capture_connected_failure() {
               connected_status=$?
-              trap - EXIT
+              trap - 0
               if [ "$connected_status" -ne 0 ]; then
                 echo "Connected Gradle invocation failed with status $connected_status." >&2
                 # The 18-minute in-action watchdog leaves time to preserve
@@ -117,7 +117,7 @@ jobs:
               fi
               exit "$connected_status"
             }
-            trap capture_connected_failure EXIT
+            trap capture_connected_failure 0
             timeout --signal=INT --kill-after=30s 18m \
               ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
 
