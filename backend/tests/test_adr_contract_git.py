@@ -40,13 +40,12 @@ def _init_feature_repo(root: Path) -> tuple[str, str]:
     return stale, base
 
 
-def test_ci_requires_explicit_exact_base(tmp_path: Path) -> None:
+def test_non_manual_ci_requires_explicit_exact_base(tmp_path: Path) -> None:
     _init_repo(tmp_path)
 
     for environment in (
         {"CI": "1"},
         {"CI": "false"},
-        {"GITHUB_EVENT_NAME": "workflow_dispatch"},
         {"GITHUB_BASE_REF": "main"},
     ):
         selected, error = select_ratchet_base(tmp_path, environment)
@@ -163,6 +162,7 @@ def _assert_github_pr_checkout_contract() -> None:
     ).read_text(encoding="utf-8")
     assert "fetch-depth: 0" in github_workflow
     assert "github.event.pull_request.base.sha" in github_workflow
+    assert "adr_base_ref" not in github_workflow
     checkout_step = github_workflow[
         github_workflow.index("      - name: Checkout\n") : github_workflow.index(
             "      - name: Check PowerShell scripts\n"
@@ -203,36 +203,140 @@ def test_new_branch_push_uses_canonical_default_merge_base(tmp_path: Path) -> No
     assert bootstrap_errors == []
 
 
-def test_manual_and_recreated_default_reject_noncanonical_base(
+def _qualification_environment(
+    github_ref: str,
+    *,
+    explicit: str | None = None,
+) -> dict[str, str]:
+    environment = {
+        "CI": "1",
+        "GITHUB_EVENT_NAME": "repository_dispatch",
+        "GITHUB_REF": github_ref,
+        "XPJ_AUDIT_DEFAULT_REF": "refs/heads/main",
+    }
+    if explicit is not None:
+        environment["XPJ_AUDIT_BASE_REF"] = explicit
+    return environment
+
+
+def _assert_qualification_feature_rejected(tmp_path: Path, base: str) -> None:
+    implicit, implicit_error = select_ratchet_base(
+        tmp_path,
+        _qualification_environment("refs/heads/feature"),
+    )
+    assert implicit is None
+    assert implicit_error == (
+        "qualification ADR audit must target the trusted default branch"
+    )
+
+    explicit, explicit_error = select_ratchet_base(
+        tmp_path,
+        _qualification_environment("refs/heads/feature", explicit=base),
+    )
+    assert explicit is None
+    assert explicit_error == (
+        "qualification ADR audit must target the trusted default branch"
+    )
+
+
+def _assert_gitea_manual_base_is_unchanged(
+    tmp_path: Path,
+    stale: str,
+    base: str,
+) -> None:
+    environment = {
+        "CI": "1",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REF": "refs/heads/feature",
+        "XPJ_AUDIT_DEFAULT_REF": "refs/heads/main",
+    }
+    accepted, accepted_error = select_ratchet_base(
+        tmp_path,
+        {**environment, "XPJ_AUDIT_BASE_REF": base},
+    )
+    assert accepted_error is None
+    assert accepted is not None and accepted.commit == base
+
+    rejected, rejected_error = select_ratchet_base(
+        tmp_path,
+        {**environment, "XPJ_AUDIT_BASE_REF": stale},
+    )
+    assert rejected is None
+    assert rejected_error is not None
+    assert "canonical default-branch divergence base" in rejected_error
+
+
+def _assert_qualification_main_selection(
+    tmp_path: Path,
+    stale: str,
+    base: str,
+) -> None:
+    _git(tmp_path, "update-ref", "refs/heads/main", "HEAD")
+    implicit_main, implicit_main_error = select_ratchet_base(
+        tmp_path,
+        _qualification_environment("refs/heads/main"),
+    )
+    assert implicit_main_error is None
+    assert implicit_main is not None and implicit_main.commit == base
+
+    manual_main, manual_main_error = select_ratchet_base(
+        tmp_path,
+        _qualification_environment("refs/heads/main", explicit=base),
+    )
+    assert manual_main_error is None
+    assert manual_main is not None and manual_main.commit == base
+
+    wrong_manual_main, wrong_manual_main_error = select_ratchet_base(
+        tmp_path,
+        _qualification_environment("refs/heads/main", explicit=stale),
+    )
+    assert wrong_manual_main is None
+    assert wrong_manual_main_error is not None
+    assert "first parent" in wrong_manual_main_error
+
+
+def test_qualification_dispatch_uses_first_parent_and_recreated_default_fails_closed(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     stale, base = _init_feature_repo(tmp_path)
+    _assert_qualification_feature_rejected(tmp_path, base)
+    _assert_gitea_manual_base_is_unchanged(tmp_path, stale, base)
+    _assert_qualification_main_selection(tmp_path, stale, base)
 
-    manual, manual_error = select_ratchet_base(
+    invalid_dispatch, invalid_dispatch_error = select_ratchet_base(
         tmp_path,
-        {
-            "CI": "1",
-            "GITHUB_EVENT_NAME": "workflow_dispatch",
-            "XPJ_AUDIT_BASE_REF": stale,
-            "XPJ_AUDIT_DEFAULT_REF": "refs/heads/main",
-        },
+        _qualification_environment("refs/tags/v1"),
     )
-    assert manual is None
-    assert manual_error is not None and "canonical default-branch divergence base" in manual_error
+    assert invalid_dispatch is None
+    assert invalid_dispatch_error == (
+        "qualification ADR audit requires a dispatched branch ref"
+    )
 
-    _git(tmp_path, "update-ref", "refs/heads/main", "HEAD")
-    manual_main, manual_main_error = select_ratchet_base(
-        tmp_path,
+    assert adr_git._is_default_branch_ref(
         {
-            "CI": "1",
-            "GITHUB_EVENT_NAME": "workflow_dispatch",
-            "XPJ_AUDIT_BASE_REF": base,
-            "XPJ_AUDIT_DEFAULT_REF": "refs/heads/main",
-        },
+            "GITHUB_REF": "refs/heads/release/main",
+            "XPJ_AUDIT_DEFAULT_REF": "refs/remotes/origin/release/main",
+        }
     )
-    assert manual_main is None
-    assert manual_main_error is not None and "no independent" in manual_main_error
+    assert not adr_git._is_default_branch_ref(
+        {
+            "GITHUB_REF": "refs/heads/main",
+            "XPJ_AUDIT_DEFAULT_REF": "refs/remotes/origin/release/main",
+        }
+    )
+
+    root_repo = tmp_path / "root"
+    root_repo.mkdir()
+    _init_repo(root_repo)
+    root_dispatch, root_dispatch_error = select_ratchet_base(
+        root_repo,
+        _qualification_environment("refs/heads/main"),
+    )
+    assert root_dispatch is None
+    assert root_dispatch_error == (
+        "qualification default-branch audit has no first-parent baseline"
+    )
 
     recreated_default, recreated_default_error = select_ratchet_base(
         tmp_path,
@@ -313,12 +417,7 @@ def test_local_main_uses_parent_instead_of_comparing_head_with_itself(tmp_path: 
 
     self_base, self_error = select_ratchet_base(
         tmp_path,
-        {
-            "CI": "1",
-            "GITHUB_EVENT_NAME": "workflow_dispatch",
-            "XPJ_AUDIT_BASE_REF": "HEAD",
-            "XPJ_AUDIT_DEFAULT_REF": "refs/heads/main",
-        },
+        _qualification_environment("refs/heads/main", explicit="HEAD"),
     )
     assert self_base is None
     assert self_error is not None and "self-comparison is forbidden" in self_error

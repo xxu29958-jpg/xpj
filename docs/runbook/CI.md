@@ -23,7 +23,15 @@
 - GitHub: push 到 `main`，以及 pull_request 到 `main`。PR 始终跑 Backend 快速合同；PostgreSQL、Desktop、Android、Windows packaging 只在对应路径受影响时跑。`main`、手动运行、未知路径、空 diff 或分类失败均 fail closed 到全量。
 - Android NVD producer: 每日 02:17 UTC、相关生产者输入合入 `main` 或手动触发；仅生产者读取 `NVD_API_KEY`。它优先增量复用兼容的旧产物，首次或不兼容时冷启动，离线扫描通过后上传保留 3 天的不可变数据库产物。
 - local-Gitea: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`、`codex/**`
-- 手动 `workflow_dispatch`
+- 默认分支完整资格：`repository_dispatch`，type 为 `qualification`
+
+完整资格用
+`gh api --method POST "repos/{owner}/{repo}/dispatches" -f event_type=qualification`
+触发。GitHub 将 `repository_dispatch` 固定到默认分支当时的 commit 和 workflow，工作分支不能
+自行生成 required-check 资格。`CI scope` 从实际 checkout 选择第一父提交并输出不可变 base
+SHA，Backend 与 Android 棘轮只消费该输出；根提交、非默认 ref、非祖先和 `HEAD` 自比较均
+fail closed。工作分支仍由 PR merge SHA 验证。连续资格验证必须等本轮 CI、CodeQL 和
+Connected 全部结束并核对同一 `head_sha`，再触发下一轮，避免并发组取消前一轮。
 
 GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 是单台 Windows 机器（与生产后端同机），**串行执行**——前一个 run 没结束时排队；只作为云端不可用、发布候选本机验收、或宿主特有 emulator/打包问题的降级确认。Gitea 与 runner 在 home-server 上人工启动；如果本地 push 后 run 一直排队不动，先确认它们活着。
 
@@ -105,7 +113,7 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 
 - run 一直排队：Gitea / runner 没起，先把它们启动。
 - pip-audit SSL EOF：网络 flake，rerun 整个 run 即绿。
-- Android SCA 找不到新鲜可信 NVD 产物：不要反复重跑 PR；在 main 上手动运行 `Android NVD Database` workflow，等 producer 成功上传产物后再重跑 PR。摘要不符、产物损坏、真实 CVE 或离线扫描失败都必须保持红灯，不能旁路。
+- Android SCA 找不到新鲜可信 NVD 产物：不要反复重跑 PR；执行 `gh api --method POST "repos/{owner}/{repo}/dispatches" -f event_type=nvd_database_refresh`，等 producer 成功上传产物后再重跑 PR。调用者需有仓库写权限；摘要不符、产物损坏、真实 CVE 或离线扫描失败都必须保持红灯，不能旁路。
 - `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android JVM / instrumentation 测试而没同步 bump `android/audit/test_count_baseline.txt`。
 - `backend_pytest_count` / `installer_pytest_count` 红：分别更新 `backend/audit/test_count_baseline.txt` / `backend/packaging/audit/test_count_baseline.txt`；不要改 gate 代码里的数字。
 - `WaitDelay expired before I/O complete`：临时 PG 没拆干净；teardown 先要求 `pg_ctl` 成功且已固定的进程句柄全部退出，超时后只处理同一已验证进程代际，绝不按二进制路径批量杀，详见 workflow 内注释。

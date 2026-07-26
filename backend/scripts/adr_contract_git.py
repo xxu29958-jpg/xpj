@@ -53,6 +53,18 @@ def select_ratchet_base(
         if ancestry_error is not None:
             return None, ancestry_error
         event_name = environ.get("GITHUB_EVENT_NAME", "").strip()
+        if event_name == "repository_dispatch":
+            expected, expected_error = _select_qualification_dispatch_base(
+                repo_root,
+                environ,
+            )
+            if expected is None:
+                return None, expected_error
+            if commit != expected.commit:
+                return None, (
+                    "qualification ADR ratchet base must equal the default-branch first parent "
+                    f"{expected.commit}, got {commit}"
+                )
         require_canonical = event_name in {"pull_request", "workflow_dispatch"} or (
             event_name == "push" and _is_non_default_branch_push(environ)
         )
@@ -70,6 +82,8 @@ def select_ratchet_base(
                     f"divergence base {canonical.commit}, got {commit}"
                 )
         return GitBase(ref=explicit, commit=commit), None
+    if environ.get("GITHUB_EVENT_NAME", "").strip() == "repository_dispatch":
+        return _select_qualification_dispatch_base(repo_root, environ)
     if has_auditable_ci_context(environ):
         return None, "CI requires XPJ_AUDIT_BASE_REF with the exact pre-change commit"
 
@@ -87,14 +101,41 @@ def has_auditable_ci_context(environ: dict[str, str]) -> bool:
 
 
 def _is_non_default_branch_push(environ: dict[str, str]) -> bool:
+    return not _is_default_branch_ref(environ)
+
+
+def _is_default_branch_ref(environ: dict[str, str]) -> bool:
     github_ref = environ.get("GITHUB_REF", "").strip()
     if not github_ref.startswith("refs/heads/"):
         return False
+    default_branch = environ.get("XPJ_AUDIT_DEFAULT_BRANCH", "").strip()
+    if default_branch:
+        return github_ref == f"refs/heads/{default_branch}"
     default_ref = environ.get(
         "XPJ_AUDIT_DEFAULT_REF", "refs/remotes/origin/main"
     ).strip()
-    default_branch = default_ref.rstrip("/").rsplit("/", 1)[-1]
-    return github_ref != f"refs/heads/{default_branch}"
+    for prefix in ("refs/remotes/origin/", "refs/heads/"):
+        if default_ref.startswith(prefix):
+            default_branch = default_ref.removeprefix(prefix)
+            break
+    else:
+        default_branch = default_ref
+    return github_ref == f"refs/heads/{default_branch}"
+
+
+def _select_qualification_dispatch_base(
+    repo_root: Path,
+    environ: dict[str, str],
+) -> tuple[GitBase | None, str | None]:
+    github_ref = environ.get("GITHUB_REF", "").strip()
+    if not github_ref.startswith("refs/heads/"):
+        return None, "qualification ADR audit requires a dispatched branch ref"
+    if not _is_default_branch_ref(environ):
+        return None, "qualification ADR audit must target the trusted default branch"
+    parent = git_text(repo_root, ["rev-parse", "--verify", "HEAD^1^{commit}"])
+    if parent is None:
+        return None, "qualification default-branch audit has no first-parent baseline"
+    return GitBase(ref=parent, commit=parent), None
 
 
 def _strict_ancestor_error(

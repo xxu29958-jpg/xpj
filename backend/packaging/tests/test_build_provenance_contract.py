@@ -1317,4 +1317,3 @@ def test_windows_ci_names_source_preflight_without_claiming_a_build() -> None:
         assert "run: pwsh " in text
         assert "build_inno_installer.ps1 -CheckSourceInputsOnly" in text
         assert "build_inno_installer.ps1 -CheckInputsOnly" not in text
-        assert "XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main" in text

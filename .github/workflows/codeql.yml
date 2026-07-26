@@ -7,14 +7,17 @@ name: CodeQL
 
 on:
   push:
-    # Work branches are scanned by pull_request or explicit workflow_dispatch.
+    # Work branches are scanned by pull_request. Manual qualification is
+    # default-branch-only through repository_dispatch.
     # The weekly schedule scans the default branch.
     branches:
       - main
   pull_request:
     branches:
       - main
-  workflow_dispatch:
+  repository_dispatch:
+    types:
+      - qualification
   schedule:
     - cron: "37 3 * * 1"
 

@@ -66,15 +66,10 @@ commit。CI gap gate 以 Windows 大小写不敏感语义合并 workflow/job/ste
 其他来源都会失败。只同步改写 EXE、旁车和
 `BUILD_COMPLETE.json` 不能为替换产物重新授权。普通方式直接调用
 `.iss` 不提供这些必需 defines/provenance，会被脚本的常规入口契约拒绝；该约束不是对任意本机管理员的密码学防篡改声明。
-`release_audit` 在显式 `XPJ_AUDIT_BASE_REF` 或任何 CI/PR 上下文中必须成功读取所声明的精确基线；CI 中该 commit
-还必须是当前 HEAD 的严格变更前祖先。manual workflow 只能使用当前分支与受信任默认分支的 canonical divergence base，
-不能填 `HEAD` 自比较或任意远古祖先；默认分支 push 使用事件提供的变更前 `before`，非默认工作分支 push 无论是否首推都必须
-相对受信任默认分支求 canonical merge-base，不能把该工作分支自己的上一 tip 当发布基线；首推的全零 `before` 也只在该
-push 上下文按同一规则求解。canonical merge-base 必须恰好一个；criss-cross 等多候选历史直接失败。自动化环境中默认分支 ref
-已经等于 HEAD 时也因没有独立比较权威而失败，不能退回 `HEAD^1`；该 parent fallback 只供无 CI marker 的本地探索。求得的实际
-commit/ref 交给全部 Git 消费者；“merge-base 来源”等描述不能冒充可解析 ref。ADR 与 codebase gate 共用同一 CI-context
-predicate，event-only workflow 或任何非空 marker（包括文本 `CI=false`）都必须要求 exact base。只有没有精确 ref、没有 CI 标记的真实
-本地运行才可跳过 ratchet 比较，不能把未比较或错误比较降级成 PASS。
+`release_audit` 在 CI 中只接受可解析且严格早于 HEAD 的精确基线。GitHub PR/push 使用事件
+基线；默认分支 `repository_dispatch` 资格运行由 scope 选择 `HEAD^1`，Backend 与 Android
+只消费同一输出。Gitea manual workflow 继续使用 canonical merge-base。自比较、非祖先、
+歧义或不可解析基线均失败；只有无 CI marker 的本地探索可跳过比较。
 
 安装行为:
 

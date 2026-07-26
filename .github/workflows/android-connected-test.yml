@@ -40,7 +40,9 @@ on:
       - "android/audit/test_count_baseline.txt"
       - "android/scripts/**"
       - ".github/workflows/android-connected-test.yml"
-  workflow_dispatch:
+  repository_dispatch:
+    types:
+      - qualification
 
 permissions:
   contents: read

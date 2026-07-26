@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import pathlib
-import re
 import sys
 
 from ci_audit_provider import selected_ci_platforms
 from ci_gap_trigger_scope import ANDROID_PROTECTED_PATHS
+from ci_gap_workflow_parser import iter_workflow_paths, load_workflow
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GITHUB_WORKFLOWS = ROOT / ".github" / "workflows"
@@ -16,6 +16,8 @@ GITEA_WORKFLOWS = ROOT / ".gitea" / "workflows"
 GITHUB_MAIN_ONLY = ("main",)
 GITEA_WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "codex/**")
 CODEQL_WEEKLY_CRON = "37 3 * * 1"
+QUALIFICATION_DISPATCH_TYPE = "qualification"
+NVD_REFRESH_DISPATCH_TYPE = "nvd_database_refresh"
 GITHUB_CONNECTED_PATHS = (
     *ANDROID_PROTECTED_PATHS,
     "android/scripts/**",
@@ -27,76 +29,63 @@ GITEA_CONNECTED_PATHS = (
 )
 
 
-def _indent(line: str) -> int:
-    return len(line) - len(line.lstrip(" "))
-
-
-def _read_lines(path: pathlib.Path) -> list[str]:
-    return path.read_text(encoding="utf-8").splitlines()
-
-
-def _event_block(path: pathlib.Path, event_name: str) -> list[str]:
-    lines = _read_lines(path)
-    start_index: int | None = None
-    event_indent: int | None = None
-    for index, line in enumerate(lines):
-        if line.strip() == f"{event_name}:":
-            start_index = index
-            event_indent = _indent(line)
-            break
-    if start_index is None or event_indent is None:
-        return []
-
-    block: list[str] = []
-    for line in lines[start_index + 1 :]:
-        if line.strip() and _indent(line) <= event_indent:
-            break
-        block.append(line)
-    return block
+def _events(path: pathlib.Path) -> dict[str, object]:
+    raw_events = load_workflow(path).get("on")
+    if isinstance(raw_events, str):
+        return {raw_events: None}
+    if isinstance(raw_events, list) and all(
+        isinstance(event, str) for event in raw_events
+    ):
+        return dict.fromkeys(raw_events)
+    if isinstance(raw_events, dict) and all(
+        isinstance(event, str) for event in raw_events
+    ):
+        return dict(raw_events)
+    return {}
 
 
 def _event_present(path: pathlib.Path, event_name: str) -> bool:
-    return any(line.strip() == f"{event_name}:" for line in _read_lines(path))
+    return event_name in _events(path)
 
 
-def _sequence_values(block: list[str], key: str) -> list[str]:
-    start_index: int | None = None
-    key_indent: int | None = None
-    for index, line in enumerate(block):
-        if line.strip() == f"{key}:":
-            start_index = index
-            key_indent = _indent(line)
-            break
-    if start_index is None or key_indent is None:
-        return []
-
-    values: list[str] = []
-    for line in block[start_index + 1 :]:
-        if line.strip() and _indent(line) <= key_indent:
-            break
-        stripped = line.strip()
-        if stripped.startswith("- "):
-            values.append(stripped[2:].strip().strip('"').strip("'"))
-    return values
+def _event_values(
+    path: pathlib.Path,
+    event_name: str,
+    field: str,
+) -> tuple[str, ...]:
+    raw_event = _events(path).get(event_name)
+    if not isinstance(raw_event, dict):
+        return ()
+    values = raw_event.get(field)
+    if isinstance(values, str):
+        return (values,)
+    if isinstance(values, list) and all(isinstance(value, str) for value in values):
+        return tuple(values)
+    return ()
 
 
 def _branches(path: pathlib.Path, event_name: str) -> tuple[str, ...]:
-    return tuple(_sequence_values(_event_block(path, event_name), "branches"))
+    return _event_values(path, event_name, "branches")
 
 
 def _paths(path: pathlib.Path, event_name: str) -> tuple[str, ...]:
-    return tuple(_sequence_values(_event_block(path, event_name), "paths"))
+    return _event_values(path, event_name, "paths")
+
+
+def _types(path: pathlib.Path, event_name: str) -> tuple[str, ...]:
+    return _event_values(path, event_name, "types")
 
 
 def _schedule_crons(path: pathlib.Path) -> tuple[str, ...]:
-    block = _event_block(path, "schedule")
-    crons: list[str] = []
-    cron_rx = re.compile(r"""-\s+cron:\s*["']?([^"']+)["']?""")
-    for line in block:
-        match = cron_rx.search(line.strip())
-        if match:
-            crons.append(match.group(1))
-    return tuple(crons)
+    schedule = _events(path).get("schedule")
+    if not isinstance(schedule, list):
+        return ()
+    return tuple(
+        cron
+        for entry in schedule
+        if isinstance(entry, dict)
+        and isinstance((cron := entry.get("cron")), str)
+    )
 
 
 def _expect_exact(label: str, actual: tuple[str, ...], expected: tuple[str, ...], failures: list[str]) -> None:
@@ -114,8 +103,32 @@ def _audit_github_main_pr_policy(failures: list[str]) -> None:
             GITHUB_MAIN_ONLY,
             failures,
         )
-        if not _event_present(path, "workflow_dispatch"):
-            failures.append(f"{workflow_name}: missing workflow_dispatch trigger")
+        if QUALIFICATION_DISPATCH_TYPE not in _types(path, "repository_dispatch"):
+            failures.append(
+                f"{path.name}: missing repository_dispatch type "
+                f"{QUALIFICATION_DISPATCH_TYPE!r}"
+            )
+
+    for path in iter_workflow_paths(GITHUB_WORKFLOWS):
+        if (
+            QUALIFICATION_DISPATCH_TYPE
+            in _types(path, "repository_dispatch")
+            and _event_present(path, "workflow_dispatch")
+        ):
+            failures.append(
+                f"{path.name}: qualification workflow cannot expose workflow_dispatch"
+            )
+
+    nvd = GITHUB_WORKFLOWS / "nvd-database.yml"
+    if NVD_REFRESH_DISPATCH_TYPE not in _types(nvd, "repository_dispatch"):
+        failures.append(
+            f"{nvd.name}: missing repository_dispatch type "
+            f"{NVD_REFRESH_DISPATCH_TYPE!r}"
+        )
+    if _event_present(nvd, "workflow_dispatch"):
+        failures.append(
+            f"{nvd.name}: secret-bearing producer cannot expose workflow_dispatch"
+        )
 
     connected = GITHUB_WORKFLOWS / "android-connected-test.yml"
     push_paths = _paths(connected, "push")

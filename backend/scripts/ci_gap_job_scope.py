@@ -18,6 +18,9 @@ _GITHUB_SCOPE_OUTPUTS["qualification_sha"] = "${{ steps.qualification.outputs.sh
 _GITHUB_SCOPE_OUTPUTS["qualification_source_sha"] = (
     "${{ steps.qualification.outputs.source_sha }}"
 )
+_GITHUB_SCOPE_OUTPUTS["audit_base_sha"] = (
+    "${{ steps.qualification.outputs.audit_base_sha }}"
+)
 _GITEA_SCOPE_OUTPUTS = {
     scope: f"${{{{ steps.scope.outputs.{scope} }}}}" for scope in HEAVY_JOB_SCOPES
 }
@@ -61,6 +64,20 @@ _QUALIFICATION_ARGS = (
     "--output",
     "$GITHUB_OUTPUT",
 )
+_SCOPE_QUALIFICATION_ARGS = (*_QUALIFICATION_ARGS, "--audit-base")
+_GITHUB_QUALIFICATION_ENV = {
+    "EXPECTED_SHA": "${{ github.sha }}",
+    "SOURCE_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+    "XPJ_AUDIT_DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+    "XPJ_AUDIT_DEFAULT_REF": (
+        "refs/remotes/origin/${{ github.event.repository.default_branch }}"
+    ),
+    "XPJ_AUDIT_BASE_REF": (
+        "${{ github.event_name == 'pull_request' && "
+        "github.event.pull_request.base.sha || github.event_name == 'push' && "
+        "github.event.before || '' }}"
+    ),
+}
 _REQUIRED_GATE_JOB = "backend"
 _REQUIRED_GATE_NEEDS = (
     "scope",
@@ -128,11 +145,16 @@ def _bash_script_text(value: object) -> str:
     return " ".join(" ".join(commands).split())
 
 
-def _qualification_command_is_valid(value: object) -> bool:
+def _qualification_command_is_valid(
+    value: object,
+    *,
+    resolves_audit_base: bool = False,
+) -> bool:
     if not isinstance(value, str):
         return False
     lines = [line.strip() for line in value.splitlines() if line.strip()]
-    return len(lines) == 1 and shell_tokens(lines[0]) == _QUALIFICATION_ARGS
+    expected = _SCOPE_QUALIFICATION_ARGS if resolves_audit_base else _QUALIFICATION_ARGS
+    return len(lines) == 1 and shell_tokens(lines[0]) == expected
 
 
 def _workflow_execution_shape_is_plain(workflow: dict[object, object]) -> bool:
@@ -155,6 +177,34 @@ def _step_execution_shape_is_plain(
         (allow_env or raw_step.get("env") is None)
         and raw_step.get("working-directory") is None
         and raw_step.get("timeout-minutes") is None
+    )
+
+
+def _github_qualification_step_is_valid(raw_step: object) -> bool:
+    return (
+        isinstance(raw_step, dict)
+        and raw_step.get("name") == "Verify qualification SHA"
+        and raw_step.get("id") == "qualification"
+        and raw_step.get("env") == _GITHUB_QUALIFICATION_ENV
+        and raw_step.get("if") in {None, True}
+        and not allows_failure(raw_step.get("continue-on-error"))
+        and _step_execution_shape_is_plain(raw_step, allow_env=True)
+        and _qualification_command_is_valid(
+            raw_step.get("run"),
+            resolves_audit_base=True,
+        )
+    )
+
+
+def _github_scope_resolver_step_is_valid(raw_step: object) -> bool:
+    return (
+        isinstance(raw_step, dict)
+        and raw_step.get("id") == "scope"
+        and raw_step.get("shell") == "bash"
+        and raw_step.get("if") in {None, True}
+        and not allows_failure(raw_step.get("continue-on-error"))
+        and _step_execution_shape_is_plain(raw_step)
+        and _bash_script_text(raw_step.get("run")) == _SCOPE_COMMAND
     )
 
 
@@ -199,34 +249,11 @@ def _github_scope_job_is_valid(
         and not allows_failure(setup_python.get("continue-on-error"))
         and _step_execution_shape_is_plain(setup_python)
     )
-    qualification_is_complete = (
-        isinstance(qualification, dict)
-        and qualification.get("name") == "Verify qualification SHA"
-        and qualification.get("id") == "qualification"
-        and qualification.get("env")
-        == {
-            "EXPECTED_SHA": "${{ github.sha }}",
-            "SOURCE_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
-        }
-        and qualification.get("if") in {None, True}
-        and not allows_failure(qualification.get("continue-on-error"))
-        and _step_execution_shape_is_plain(qualification, allow_env=True)
-        and _qualification_command_is_valid(qualification.get("run"))
-    )
-    resolver_is_complete = (
-        isinstance(resolver, dict)
-        and resolver.get("id") == "scope"
-        and resolver.get("shell") == "bash"
-        and resolver.get("if") in {None, True}
-        and not allows_failure(resolver.get("continue-on-error"))
-        and _step_execution_shape_is_plain(resolver)
-        and _bash_script_text(resolver.get("run")) == _SCOPE_COMMAND
-    )
     return (
         checkout_is_complete
         and setup_is_complete
-        and qualification_is_complete
-        and resolver_is_complete
+        and _github_qualification_step_is_valid(qualification)
+        and _github_scope_resolver_step_is_valid(resolver)
     )
 
 
