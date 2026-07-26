@@ -108,10 +108,10 @@ gh pr merge N --squash --delete-branch --match-head-commit <exact-head-sha>
 
 **症状**：`Android SCA` 在解析或下载可信产物时失败，或离线扫描报告摘要不符、数据库损坏、真实 CVE / scanner fatal。
 
-**根因**：PR 不再直接访问 NVD。`.github/workflows/nvd-database.yml` 在 main 上定时、由 `nvd_database_refresh` 事件或相关 producer 输入变更触发，生产并校验短期可信产物；PR 的 SCA lane 只消费该产物并离线扫描。产物缺失、过期或验证失败都会 fail closed。
+**根因**：PR 不再直接访问 NVD。`.github/workflows/nvd-database.yml` 在 main 上定时、手动或由相关 producer 输入变更触发，生产并校验短期可信产物；PR 的 SCA lane 只消费该产物并离线扫描。产物缺失、过期或验证失败都会 fail closed。
 
 **正确做法**：
-- 产物缺失或过期：执行 `gh api --method POST "repos/{owner}/{repo}/dispatches" -f event_type=nvd_database_refresh`（需要仓库写权限），producer 成功后再重跑 PR。
+- 产物缺失或过期：在 main 上手动运行 `Android NVD Database`，producer 成功后再重跑 PR。
 - producer 因 NVD 网关失败：修复或等待上游恢复后重跑 producer；重跑 PR 本身不会生成产物。
 - 摘要不符、数据库损坏、真实 CVE 或离线 scanner fatal：按真实安全失败处理，不能以 `continue-on-error`、空密钥或跳过扫描洗绿。
 - producer 使用 `NVD_API_KEY`；PR consumer 不持有该密钥。

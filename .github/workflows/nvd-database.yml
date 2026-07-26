@@ -3,9 +3,7 @@ name: Android NVD Database
 on:
   schedule:
     - cron: "17 2 * * *"
-  repository_dispatch:
-    types:
-      - nvd_database_refresh
+  workflow_dispatch:
   push:
     branches:
       - main

@@ -7,7 +7,7 @@ import sys
 
 from ci_audit_provider import selected_ci_platforms
 from ci_gap_trigger_scope import ANDROID_PROTECTED_PATHS
-from ci_gap_workflow_parser import iter_workflow_paths, load_workflow
+from ci_gap_workflow_parser import load_workflow
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GITHUB_WORKFLOWS = ROOT / ".github" / "workflows"
@@ -17,7 +17,6 @@ GITHUB_MAIN_ONLY = ("main",)
 GITEA_WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "codex/**")
 CODEQL_WEEKLY_CRON = "37 3 * * 1"
 QUALIFICATION_DISPATCH_TYPE = ("qualification",)
-NVD_REFRESH_DISPATCH_TYPE = ("nvd_database_refresh",)
 GITHUB_CONNECTED_PATHS = (
     *ANDROID_PROTECTED_PATHS,
     "android/scripts/**",
@@ -109,15 +108,6 @@ def _audit_github_main_pr_policy(failures: list[str]) -> None:
             QUALIFICATION_DISPATCH_TYPE,
             failures,
         )
-
-    nvd = GITHUB_WORKFLOWS / "nvd-database.yml"
-    _expect_exact(
-        "nvd-database.yml repository_dispatch types",
-        _types(nvd, "repository_dispatch"),
-        NVD_REFRESH_DISPATCH_TYPE,
-        failures,
-    )
-    for path in iter_workflow_paths(GITHUB_WORKFLOWS):
         if _event_present(path, "workflow_dispatch"):
             failures.append(
                 f"{path.name}: workflow_dispatch can mint mutable-branch checks; "

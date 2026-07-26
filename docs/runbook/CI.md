@@ -113,7 +113,7 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 
 - run 一直排队：Gitea / runner 没起，先把它们启动。
 - pip-audit SSL EOF：网络 flake，rerun 整个 run 即绿。
-- Android SCA 找不到新鲜可信 NVD 产物：不要反复重跑 PR；执行 `gh api --method POST "repos/{owner}/{repo}/dispatches" -f event_type=nvd_database_refresh`，等 producer 成功上传产物后再重跑 PR。调用者需有仓库写权限；摘要不符、产物损坏、真实 CVE 或离线扫描失败都必须保持红灯，不能旁路。
+- Android SCA 找不到新鲜可信 NVD 产物：不要反复重跑 PR；在 main 上手动运行 `Android NVD Database` workflow，等 producer 成功上传产物后再重跑 PR。摘要不符、产物损坏、真实 CVE 或离线扫描失败都必须保持红灯，不能旁路。
 - `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android JVM / instrumentation 测试而没同步 bump `android/audit/test_count_baseline.txt`。
 - `backend_pytest_count` / `installer_pytest_count` 红：分别更新 `backend/audit/test_count_baseline.txt` / `backend/packaging/audit/test_count_baseline.txt`；不要改 gate 代码里的数字。
 - `WaitDelay expired before I/O complete`：临时 PG 没拆干净；teardown 先要求 `pg_ctl` 成功且已固定的进程句柄全部退出，超时后只处理同一已验证进程代际，绝不按二进制路径批量杀，详见 workflow 内注释。
