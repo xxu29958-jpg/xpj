@@ -329,6 +329,88 @@ class BudgetRepositoryAdviceBindingTest {
     }
 
     @Test
+    fun adviceCacheIsScopedToRequestTimezone() {
+        // The request timezone is the device ZoneId (TimeZone.getDefault().id
+        // via currentTimezoneId()); the same textual month under a different
+        // timezone is a different key — no stale restore, no wrong dedupe.
+        withTimezone("Asia/Shanghai") {
+            runBlocking {
+                val api = BudgetApiHandler()
+                val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+                val repository = repository(api, tokenStore)
+
+                val shanghaiAdvice = repository.requestBudgetAdvice("2026-05").getOrThrow()
+                assertEquals(shanghaiAdvice, repository.cachedBudgetAdvice("2026-05"))
+                assertEquals("Asia/Shanghai", api.adviceCalls.single().timezone)
+
+                withTimezone("America/Los_Angeles") {
+                    runBlocking {
+                        assertNull(repository.cachedBudgetAdvice("2026-05"))
+                        repository.requestBudgetAdvice("2026-05").getOrThrow()
+                        assertEquals(2, api.adviceCalls.size)
+                        assertEquals("America/Los_Angeles", api.adviceCalls[1].timezone)
+                    }
+                }
+
+                // Both entries coexist: back in the original timezone the first
+                // result is served again with no third call.
+                assertEquals(shanghaiAdvice, repository.cachedBudgetAdvice("2026-05"))
+                assertEquals(2, api.adviceCalls.size)
+            }
+        }
+    }
+
+    @Test
+    fun preWriteInFlightCallDoesNotRepopulateCacheAfterInvalidation() = runBlocking {
+        val api = BudgetApiHandler().apply {
+            adviceResponses += BudgetAdviseResponseDto(
+                advice = BudgetAdviceDto(
+                    summary = "旧建议",
+                    suggestions = emptyList(),
+                    confidence = 0.5,
+                ),
+                providerName = "mock",
+                reasonCode = "advisor_ready",
+            )
+            adviceResponses += BudgetAdviseResponseDto(
+                advice = BudgetAdviceDto(
+                    summary = "新建议",
+                    suggestions = emptyList(),
+                    confidence = 0.6,
+                ),
+                providerName = "mock",
+                reasonCode = "advisor_ready",
+            )
+            adviceEntered = CountDownLatch(2)
+            adviceRelease = CountDownLatch(1)
+        }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val repository = repository(api, tokenStore)
+
+        val first = async(Dispatchers.IO) { repository.requestBudgetAdvice("2026-05") }
+        withTimeout(5_000) {
+            while (api.adviceEntered?.count != 1L) delay(10)
+        }
+
+        // An advice-input write lands mid-flight: invalidation bumps the data
+        // generation, so the post-write request must NOT attach to the
+        // pre-write call.
+        repository.invalidateBudgetAdvice()
+        val second = async(Dispatchers.IO) { repository.requestBudgetAdvice("2026-05") }
+        assertTrue(api.adviceEntered?.await(5, TimeUnit.SECONDS) == true)
+        api.adviceRelease?.countDown()
+
+        val staleResult = first.await().getOrThrow()
+        val freshResult = second.await().getOrThrow()
+        assertEquals(2, api.adviceCalls.size)
+        // The pre-write success is still delivered to its own caller (allowed),
+        // but only the post-write result repopulates the cache.
+        assertEquals("旧建议", staleResult.advice?.summary)
+        assertEquals("新建议", freshResult.advice?.summary)
+        assertEquals("新建议", repository.cachedBudgetAdvice("2026-05")?.advice?.summary)
+    }
+
+    @Test
     fun adviceCacheIsScopedToLogicalBinding() = runTest {
         val api = BudgetApiHandler()
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
@@ -429,6 +511,7 @@ private class BudgetApiHandler : InvocationHandler {
     var adviceEntered: CountDownLatch? = null
     var adviceRelease: CountDownLatch? = null
     var adviceResponse: BudgetAdviseResponseDto? = null
+    val adviceResponses = mutableListOf<BudgetAdviseResponseDto>()
 
     fun service(): ApiService {
         return Proxy.newProxyInstance(
@@ -470,11 +553,14 @@ private class BudgetApiHandler : InvocationHandler {
                 adviceEntered?.countDown()
                 adviceRelease?.await(10, TimeUnit.SECONDS)
                 val request = values[0] as BudgetAdviseRequestDto
-                adviceCalls += AdviceCall(
-                    month = request.month,
-                    timezone = request.timezone,
-                )
-                adviceResponse ?: BudgetAdviseResponseDto(
+                val queuedResponse = synchronized(adviceResponses) {
+                    adviceCalls += AdviceCall(
+                        month = request.month,
+                        timezone = request.timezone,
+                    )
+                    adviceResponses.removeFirstOrNull()
+                }
+                queuedResponse ?: adviceResponse ?: BudgetAdviseResponseDto(
                     advice = BudgetAdviceDto(
                         summary = "为弹性支出留出余量。",
                         suggestions = listOf(

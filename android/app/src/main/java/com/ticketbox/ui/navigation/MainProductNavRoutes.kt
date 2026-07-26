@@ -161,7 +161,12 @@ internal fun NavGraphBuilder.addTransactionRoutes(
             navController = navController,
             screenFactory = screenFactory,
             onVocabularyChanged = shellState::markTransactionVocabularyChanged,
-            onRestoreCompleted = shellState::markRecycleBinRestoreCompleted,
+            // 回收站恢复覆盖 monthly_budget / income_plan / recurring_item 等建议
+            // 输入实体（kind 见 backend recycle_bin_service），与流水恢复同点失效建议缓存。
+            onRestoreCompleted = {
+                shellState.markRecycleBinRestoreCompleted()
+                screenFactory.budgetRepository.invalidateBudgetAdvice()
+            },
             // 规则应用/回滚与回收站 tag_mutation 恢复会原地改写确认流水行——语义
             // 等同批量流水编辑完成，复用 expenseEditCompletionRevision 通道让账本
             // 行重同步（同时失效洞察汇总）。这些写入也改变建议输入，一并失效建议缓存。
