@@ -176,7 +176,7 @@ jobs:
             Write-Host "Boot completed, running connected tests"
 
             $env:ANDROID_SERIAL = $serial
-            .\gradlew.bat --no-daemon :app:connectedGrayDebugAndroidTest
+            .\gradlew.bat --no-daemon '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true' :app:connectedGrayDebugAndroidTest
             if ($LASTEXITCODE -ne 0) { throw "connectedGrayDebugAndroidTest failed" }
           }
           catch {

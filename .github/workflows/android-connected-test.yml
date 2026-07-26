@@ -73,6 +73,11 @@ jobs:
           java-version: "21"
           cache: gradle
 
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
       - name: Install Android SDK packages
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
@@ -105,21 +110,9 @@ jobs:
           working-directory: android
           # The action executes each input line in a fresh `sh -c`; keep this
           # as one direct command whose exit status is the Gradle exit status.
-          # Keep APKs installed until the Gradle finalizer captures exit-info;
-          # the ephemeral emulator is discarded after this action.
+          # The Gradle task owns test execution, result-count qualification and
+          # process-exit verification before the emulator action tears down.
           script: timeout --signal=INT --kill-after=30s 14m ./gradlew --no-daemon -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedGrayDebugAndroidTest
-
-      - name: Verify connected process health
-        working-directory: android
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/verify_connected_process_health.py \
-            --before "$RUNNER_TEMP/ticketbox-connected-exit-info-before.txt" \
-            --after "$RUNNER_TEMP/ticketbox-connected-exit-info-after.txt" \
-            --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" \
-            --apk-output-dir app/build/outputs/apk/gray/debug \
-            --apk-output-dir app/build/outputs/apk/androidTest/gray/debug
 
       - name: Upload androidTest reports on failure
         if: failure()

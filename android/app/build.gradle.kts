@@ -401,326 +401,6 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
-// ---------------------------------------------------------------------------
-// ADR-0038 prep: PR-Δ verification — Android side
-// ---------------------------------------------------------------------------
-//
-// Counterpart to backend's ``_audit_pr_delta_metrics.py`` strict-equality
-// gate. The Android count is enforced here (not by reaching across the
-// backend/android boundary) — each side owns its own baseline file and
-// own assertion. JVM and connected tests have separate counters in one
-// structured baseline so growth in one source set cannot hide deletion in
-// the other. Cut-over PRs
-// (ADR-0038 PR-A/B/C/D etc) that change the Android test count MUST bump
-// ``audit/test_count_baseline.txt`` in the same diff. Strict equality
-// (NOT >=); drift in either direction fails.
-//
-// Annotation set covers JUnit4 (``@Test`` only at present) and is
-// forward-compatible with a JUnit5 migration (``@ParameterizedTest`` /
-// ``@RepeatedTest`` / ``@TestFactory`` / ``@TestTemplate`` — currently
-// 0 matches each). Adding them now costs nothing today and avoids a
-// silent under-count if JUnit5 lands later without this task being
-// updated in the same PR.
-//
-// A lexical pass removes comments, strings, raw strings and character
-// literals before matching exact annotation tokens anywhere in code.
-// This counts stacked annotations while preventing comments or fixture
-// strings from compensating for a deleted test.
-val androidTestAnnotationNames = listOf(
-    "Test",
-    "ParameterizedTest",
-    "RepeatedTest",
-    "TestFactory",
-    "TestTemplate",
-)
-
-val androidTestAnnotationAlternation =
-    androidTestAnnotationNames.joinToString("|", transform = Regex::escape)
-val androidTestAnnotationIdentifierPattern =
-    "(?:" + androidTestAnnotationAlternation + "|`(?:" +
-        androidTestAnnotationAlternation + ")`)"
-val androidTestAnnotationPattern = Regex(
-    "(?<![A-Za-z0-9_])@(?:[A-Za-z_][A-Za-z0-9_]*\\.)*" +
-        androidTestAnnotationIdentifierPattern + "(?=\\s|\\(|$)"
-)
-val androidTestAliasImportPattern = Regex(
-    "(?m)^\\s*import\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\.)*" +
-        androidTestAnnotationIdentifierPattern + "\\s+as(?:\\s|$)"
-)
-val androidTestAliasTypePattern = Regex(
-    "\\btypealias\\s+[^=\\r\\n]+?=\\s*" +
-        "(?:[A-Za-z_][A-Za-z0-9_]*\\.)*" +
-        androidTestAnnotationIdentifierPattern + "(?=\\s|;|//|/\\*|$)"
-)
-val androidGroupedAnnotationStartPattern = Regex(
-    "@(?:[A-Za-z_][A-Za-z0-9_]*\\s*:)?\\s*\\["
-)
-val androidGroupedTestAnnotationPattern = Regex(
-    "(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*\\.)*" +
-        androidTestAnnotationIdentifierPattern + "(?=\\s|\\(|\\]|,|$)"
-)
-
-fun hasEligibleJavaUnicodeEscape(source: String): Boolean {
-    var index = 0
-    while (index < source.length) {
-        if (source[index] != '\\') {
-            index += 1
-            continue
-        }
-        val slashStart = index
-        while (index < source.length && source[index] == '\\') {
-            index += 1
-        }
-        val slashCount = index - slashStart
-        if (slashCount % 2 == 0 || index >= source.length || source[index] != 'u') {
-            continue
-        }
-        while (index < source.length && source[index] == 'u') {
-            index += 1
-        }
-        if (
-            index + 4 <= source.length &&
-            source.substring(index, index + 4).all { character ->
-                character in '0'..'9' ||
-                    character in 'A'..'F' ||
-                    character in 'a'..'f'
-            }
-        ) {
-            return true
-        }
-    }
-    return false
-}
-
-// Java text blocks may escape the first quote of a would-be closing delimiter.
-fun isEscapedJavaTextBlockDelimiter(source: String, delimiterStart: Int): Boolean {
-    var precedingBackslashes = 0
-    var index = delimiterStart - 1
-    while (index >= 0 && source[index] == '\\') {
-        precedingBackslashes += 1
-        index -= 1
-    }
-    return precedingBackslashes % 2 == 1
-}
-
-fun androidTestCodeOnly(
-    source: String,
-    nestedBlockComments: Boolean,
-    javaTextBlockEscapes: Boolean,
-): String {
-    val code = StringBuilder(source.length)
-    var index = 0
-    var lineComment = false
-    var blockCommentDepth = 0
-    var rawString = false
-    var backtickIdentifier = false
-    var preserveBacktickIdentifier = false
-    var quotedDelimiter: Char? = null
-
-    fun appendMasked(count: Int) {
-        repeat(count) { offset ->
-            val character = source[index + offset]
-            code.append(if (character == '\n' || character == '\r') character else ' ')
-        }
-        index += count
-    }
-
-    while (index < source.length) {
-        val character = source[index]
-        when {
-            lineComment -> {
-                appendMasked(1)
-                if (character == '\n' || character == '\r') {
-                    lineComment = false
-                }
-            }
-            blockCommentDepth > 0 &&
-                nestedBlockComments &&
-                source.startsWith("/*", index) -> {
-                appendMasked(2)
-                blockCommentDepth += 1
-            }
-            blockCommentDepth > 0 && source.startsWith("*/", index) -> {
-                appendMasked(2)
-                blockCommentDepth -= 1
-            }
-            blockCommentDepth > 0 -> appendMasked(1)
-            rawString &&
-                source.startsWith("\"\"\"", index) &&
-                (
-                    !javaTextBlockEscapes ||
-                        !isEscapedJavaTextBlockDelimiter(source, index)
-                    ) -> {
-                appendMasked(3)
-                rawString = false
-            }
-            rawString -> appendMasked(1)
-            backtickIdentifier -> {
-                if (preserveBacktickIdentifier) {
-                    code.append(character)
-                    index += 1
-                } else {
-                    appendMasked(1)
-                }
-                if (character == '`') {
-                    backtickIdentifier = false
-                    preserveBacktickIdentifier = false
-                }
-            }
-            quotedDelimiter != null && character == '\\' && index + 1 < source.length -> {
-                appendMasked(2)
-            }
-            quotedDelimiter != null -> {
-                val delimiter = quotedDelimiter
-                appendMasked(1)
-                if (character == delimiter) {
-                    quotedDelimiter = null
-                }
-            }
-            source.startsWith("//", index) -> {
-                appendMasked(2)
-                lineComment = true
-            }
-            source.startsWith("/*", index) -> {
-                appendMasked(2)
-                blockCommentDepth = 1
-            }
-            source.startsWith("\"\"\"", index) -> {
-                appendMasked(3)
-                rawString = true
-            }
-            character == '`' -> {
-                val identifierEnd = source.indexOf('`', index + 1)
-                val identifier = if (identifierEnd >= 0) {
-                    source.substring(index + 1, identifierEnd)
-                } else {
-                    ""
-                }
-                preserveBacktickIdentifier =
-                    identifier in androidTestAnnotationNames
-                code.append(if (preserveBacktickIdentifier) character else ' ')
-                backtickIdentifier = true
-                index += 1
-            }
-            character == '"' || character == '\'' -> {
-                code.append(' ')
-                quotedDelimiter = character
-                index += 1
-            }
-            else -> {
-                code.append(character)
-                index += 1
-            }
-        }
-    }
-    return code.toString()
-}
-
-fun countGroupedAndroidTestAnnotations(codeOnly: String, sourceName: String): Int {
-    var count = 0
-    var searchIndex = 0
-    while (searchIndex < codeOnly.length) {
-        val start = androidGroupedAnnotationStartPattern.find(codeOnly, searchIndex) ?: break
-        val openBracket = codeOnly.indexOf('[', start.range.first)
-        val topLevel = StringBuilder()
-        var bracketDepth = 1
-        var parenthesisDepth = 0
-        var braceDepth = 0
-        var index = openBracket + 1
-        while (index < codeOnly.length && bracketDepth > 0) {
-            val character = codeOnly[index]
-            when (character) {
-                '[' -> bracketDepth += 1
-                ']' -> bracketDepth -= 1
-                '(' -> parenthesisDepth += 1
-                ')' -> parenthesisDepth -= 1
-                '{' -> braceDepth += 1
-                '}' -> braceDepth -= 1
-            }
-            if (parenthesisDepth < 0 || braceDepth < 0) {
-                throw GradleException(
-                    "Test source '$sourceName' has malformed grouped annotation syntax."
-                )
-            }
-            if (bracketDepth == 1 && parenthesisDepth == 0 && braceDepth == 0) {
-                topLevel.append(character)
-            } else {
-                topLevel.append(' ')
-            }
-            index += 1
-        }
-        if (bracketDepth != 0 || parenthesisDepth != 0 || braceDepth != 0) {
-            throw GradleException(
-                "Test source '$sourceName' has unterminated grouped annotation syntax."
-            )
-        }
-        count += androidGroupedTestAnnotationPattern.findAll(topLevel).count()
-        searchIndex = index
-    }
-    return count
-}
-
-fun countAndroidTestAnnotations(source: String, sourceName: String): Int {
-    val kotlinSource = sourceName.endsWith(".kt")
-    val javaSource = sourceName.endsWith(".java")
-    if (javaSource && hasEligibleJavaUnicodeEscape(source)) {
-        throw GradleException(
-            "Test source '$sourceName' contains an eligible Java Unicode escape. " +
-                "Use literal source tokens so comment and annotation counting cannot diverge."
-        )
-    }
-    val codeOnly = androidTestCodeOnly(
-        source,
-        nestedBlockComments = kotlinSource,
-        javaTextBlockEscapes = javaSource,
-    )
-    if (
-        kotlinSource &&
-        (
-            androidTestAliasImportPattern.containsMatchIn(codeOnly) ||
-                androidTestAliasTypePattern.containsMatchIn(codeOnly)
-            )
-    ) {
-        throw GradleException(
-            "Test source '$sourceName' aliases a recognized test annotation. " +
-            "Use its canonical annotation name so the test-count contract remains exact."
-        )
-    }
-    val groupedCount = if (kotlinSource) {
-        countGroupedAndroidTestAnnotations(codeOnly, sourceName)
-    } else {
-        0
-    }
-    return androidTestAnnotationPattern.findAll(codeOnly).count() + groupedCount
-}
-
-fun assertAndroidTestCounterLexerContract() {
-    val tripleQuote = "\"".repeat(3)
-    val escapedTripleQuote = "\\" + tripleQuote
-    val javaTextBlockFixture = listOf(
-        "String decoy = $tripleQuote",
-        "    $escapedTripleQuote",
-        "    @Test",
-        "    $tripleQuote;",
-        "@Test",
-        "void actual() {}",
-    ).joinToString("\n")
-    val count = countAndroidTestAnnotations(javaTextBlockFixture, "LexerContract.java")
-    if (count != 1) {
-        throw GradleException(
-            "Android test counter lexer contract failed for escaped Java text-block delimiters."
-        )
-    }
-}
-
-// Conceptual counter name: ``android_junit_test_method_count`` — explicitly
-// names "annotation-based method count", not "runtime-collected test count".
-// Parametrized JUnit5 expansions (when/if migrated) would still register as
-// 1 method per ``@ParameterizedTest`` site, not N runtime instances. The
-// counter measures source-level test method declarations; runtime test
-// count is a different metric (would need ``gradle test --dry-run`` and
-// parsing). Keep them mentally separate.
-
 // Machine gate for the six Kotlin complexity thresholds in
 // docs/rules/CODE_QUALITY_STANDARDS.md. CI runs the type-resolving variant
 // tasks (:app:detektGrayDebug + :app:detektGrayDebugUnitTest): detekt 2.0's
@@ -746,360 +426,157 @@ tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
     }
 }
 
-val grayDebugJvmTestSourceDirectories =
-    objects.listProperty(org.gradle.api.file.Directory::class.java)
-val grayDebugInstrumentationTestSourceDirectories =
-    objects.listProperty(org.gradle.api.file.Directory::class.java)
+val androidTestBaselineFile = rootProject.file("audit/test_count_baseline.txt")
+val androidTestQualificationScript =
+    rootProject.file("scripts/verify_android_test_qualification.py")
 
-androidComponents {
-    onVariants(selector().withName("grayDebug")) { variant ->
-        val unitTest = variant.hostTests[
-            com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE
-        ]
-            ?: throw GradleException("GrayDebug unit-test component is unavailable.")
-        val instrumentationTest = variant.androidTest
-            ?: throw GradleException("GrayDebug instrumentation-test component is unavailable.")
+fun ticketboxPythonCommand(): List<String> {
+    val configured = ticketboxEnvOrLocal(
+        "TICKETBOX_PYTHON",
+        "ticketbox.pythonExecutable",
+    )
+    val isWindows = System.getProperty("os.name").contains("Windows", ignoreCase = true)
+    val candidates = buildList {
+        configured?.let { add(listOf(it)) }
+        if (isWindows) {
+            add(listOf("py", "-3"))
+            add(listOf("python"))
+        } else {
+            add(listOf("python3"))
+            add(listOf("python"))
+        }
+    }.distinct()
 
-        unitTest.sources.java?.all?.let(grayDebugJvmTestSourceDirectories::addAll)
-        unitTest.sources.kotlin?.all?.let(grayDebugJvmTestSourceDirectories::addAll)
-        instrumentationTest.sources.java?.all
-            ?.let(grayDebugInstrumentationTestSourceDirectories::addAll)
-        instrumentationTest.sources.kotlin?.all
-            ?.let(grayDebugInstrumentationTestSourceDirectories::addAll)
+    return candidates.firstOrNull { command ->
+        try {
+            val commandProcess = ProcessBuilder(command + "--version")
+                .directory(rootProject.rootDir)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start()
+            val completed = commandProcess.waitFor(10, TimeUnit.SECONDS)
+            if (!completed) {
+                commandProcess.destroyForcibly()
+            }
+            completed && commandProcess.exitValue() == 0
+        } catch (_: Exception) {
+            false
+        }
+    } ?: throw GradleException(
+        "Python 3 is required for Android test qualification. Set TICKETBOX_PYTHON " +
+            "or ticketbox.pythonExecutable, or make python3/python available on PATH."
+    )
+}
+
+fun runTicketboxAndroidQualification(
+    description: String,
+    arguments: List<String>,
+) {
+    if (!androidTestQualificationScript.isFile) {
+        throw GradleException(
+            "Android test qualification script is missing: " +
+                androidTestQualificationScript.absolutePath
+        )
+    }
+    val command = ticketboxPythonCommand() +
+        androidTestQualificationScript.absolutePath +
+        arguments
+    val qualificationProcess = ProcessBuilder(command)
+        .directory(rootProject.rootDir.parentFile)
+        .inheritIO()
+        .start()
+    if (!qualificationProcess.waitFor(2, TimeUnit.MINUTES)) {
+        qualificationProcess.destroyForcibly()
+        throw GradleException("Timed out while $description.")
+    }
+    if (qualificationProcess.exitValue() != 0) {
+        throw GradleException(
+            "$description failed with exit code " +
+                qualificationProcess.exitValue() + "."
+        )
     }
 }
+
+val grayDebugUnitTestTaskName = "testGrayDebugUnitTest"
+val grayDebugUnitTestResultsDirectory =
+    layout.buildDirectory.dir("test-results/$grayDebugUnitTestTaskName")
 
 tasks.register("assertAndroidTestCountEqualsBaseline") {
     group = "verification"
-    description = "ADR-0038 PR-Δ: assert JVM and instrumentation JUnit method counts " +
-        "separately match audit/test_count_baseline.txt (strict equality + per-lane " +
-        "UP-ratchet vs PR base baseline)."
-
-    val baselineFile = rootProject.file("audit/test_count_baseline.txt")
-    val testSourceDirectoryProviders = linkedMapOf(
-        "jvm" to grayDebugJvmTestSourceDirectories,
-        "instrumentation" to grayDebugInstrumentationTestSourceDirectories,
-    )
-    inputs.file(baselineFile)
+    description = "Verify executed GrayDebug JVM results and the Android test-count ratchet."
+    dependsOn(grayDebugUnitTestTaskName)
+    inputs.file(androidTestBaselineFile)
 
     doLast {
-        assertAndroidTestCounterLexerContract()
-        val testDirs = testSourceDirectoryProviders.mapValues { (_, directories) ->
-            directories.get()
-                .map { it.asFile.canonicalFile }
-                .distinctBy { it.absolutePath }
-        }
-        if (!baselineFile.exists()) {
-            throw GradleException(
-                "ADR-0038 PR-Δ: baseline file missing at ${baselineFile.absolutePath}. " +
-                "Create it with jvm=<count> and instrumentation=<count>."
-            )
-        }
-
-        val counterNames = testSourceDirectoryProviders.keys
-        fun parseBaselines(
-            raw: String,
-            source: String,
-            legacyInstrumentationCount: Int? = null,
-        ): Map<String, Int> {
-            val trimmed = raw.trim()
-            trimmed.toIntOrNull()?.let { legacyJvmCount ->
-                val instrumentationCount = legacyInstrumentationCount
-                    ?: throw GradleException(
-                        "Legacy scalar Android baseline at $source is only valid for a " +
-                            "base-tree migration with a derived instrumentation count."
-                    )
-                return mapOf(
-                    "jvm" to legacyJvmCount,
-                    "instrumentation" to instrumentationCount,
-                )
-            }
-
-            val properties = Properties()
-            try {
-                trimmed.reader().use(properties::load)
-            } catch (e: Exception) {
-                throw GradleException("Cannot parse Android test baseline from $source.", e)
-            }
-            val keys = properties.stringPropertyNames()
-            if (keys != counterNames) {
-                throw GradleException(
-                    "Android test baseline at $source must contain exactly " +
-                        "${counterNames.joinToString()} (found: ${keys.sorted().joinToString()})."
-                )
-            }
-            return counterNames.associateWith { name ->
-                properties.getProperty(name)?.trim()?.toIntOrNull()
-                    ?.takeIf { it >= 0 }
-                    ?: throw GradleException(
-                        "Android test baseline '$name' at $source must be a non-negative integer."
-                    )
-            }
-        }
-
-        val currentBaselines = parseBaselines(
-            baselineFile.readText(),
-            baselineFile.absolutePath,
+        runTicketboxAndroidQualification(
+            "GrayDebug JVM test-result qualification",
+            listOf(
+                "results",
+                "--lane",
+                "jvm",
+                "--baseline",
+                androidTestBaselineFile.absolutePath,
+                "--results-dir",
+                grayDebugUnitTestResultsDirectory.get().asFile.absolutePath,
+            ),
         )
-
-        val actualCounts = testDirs.mapValues { (_, sourceDirectories) ->
-            sourceDirectories.asSequence()
-                .filter(File::exists)
-                .flatMap { sourceDirectory ->
-                    fileTree(sourceDirectory)
-                        .matching { include("**/*.kt", "**/*.java") }
-                        .files
-                        .asSequence()
-                }
-                .map(File::getCanonicalFile)
-                .distinctBy(File::getAbsolutePath)
-                .sumOf { sourceFile ->
-                    countAndroidTestAnnotations(
-                        sourceFile.readText(),
-                        sourceFile.absolutePath,
-                    )
-                }
-        }
-
-        // Layer 1: strict equality per source set. Moving tests between JVM and
-        // instrumentation cannot preserve a misleading aggregate.
-        val mismatches = counterNames.filter { name ->
-            actualCounts.getValue(name) != currentBaselines.getValue(name)
-        }
-        if (mismatches.isNotEmpty()) {
-            val details = mismatches.joinToString("; ") { name ->
-                val actual = actualCounts.getValue(name)
-                val baseline = currentBaselines.getValue(name)
-                val diff = actual - baseline
-                "$name actual=$actual baseline=$baseline (${if (diff > 0) "+" else ""}$diff)"
-            }
-            throw GradleException(
-                "ADR-0038 PR-Δ strict equality FAIL: $details. Update " +
-                "audit/test_count_baseline.txt in the SAME PR if intentional " +
-                "(both directions FAIL — silent drift in either is a bug)."
-            )
-        }
-
-        // Layer 2: UP ratchet — current baseline must be >= base baseline.
-        // Bootstrap exception: if base baseline file doesn't exist (prep PR
-        // is the first to introduce it), only strict equality applies.
-        //
-        // Base ref priority mirrors backend gate:
-        //   GITHUB_BASE_REF env (PR CI sets to PR target branch)
-        //   → XPJ_AUDIT_BASE_REF env (manual override)
-        //   → "main" fallback (local dev).
-        // Prefixed with origin/ if not already namespaced.
-        // The CI runner sets GITHUB_BASE_REF to the empty string on push
-        // events (not unset — non-null but empty). System.getenv() returns
-        // "" not null in that case, so a naïve null-coalesce treats push
-        // CI as PR CI and builds baseRef="origin/" → unreachable → FAIL.
-        // Treat empty same as null for both ref selection and PR-context
-        // detection. Matches backend gate's ``bool(os.environ.get(...))``
-        // which naturally treats empty as falsy via Python truthiness.
-        val explicitRef = System.getenv("GITHUB_BASE_REF")?.takeIf { it.isNotEmpty() }
-            ?: System.getenv("XPJ_AUDIT_BASE_REF")?.takeIf { it.isNotEmpty() }
-        val baseRef = when {
-            explicitRef != null -> if (explicitRef.contains("/")) explicitRef else "origin/$explicitRef"
-            // CI push event (GITHUB_SHA set, no PR base): the offline checkout fetches
-            // heads into origin/*, so the live main is origin/main.
-            !System.getenv("GITHUB_SHA").isNullOrEmpty() -> "origin/main"
-            // Local dev: the `origin` remote is the dead GitHub mirror (stale), so read
-            // the LIVE local main instead — avoids false ratchet failures.
-            else -> "refs/heads/main"
-        }
-        val isPrCiContext = !System.getenv("GITHUB_BASE_REF").isNullOrEmpty()
-
-        // Distinguish three states (parallels backend gate's tuple return):
-        //   - refReachable=false: git itself can't see the base ref (shallow
-        //     checkout, ref not fetched) → infra failure
-        //     · PR CI: FAIL loudly
-        //     · local: INFO-skip ratchet
-        //   - refReachable=true, fileMissing=true: ref reachable but baseline
-        //     file didn't exist at base → integral-bootstrap for this counter
-        //     · skip ratchet (no value to compare); strict equality already
-        //       enforced above
-        //   - refReachable=true, fileMissing=false, baseBaseline=N: normal
-        //     ratchet path
-        val refReachable = try {
-            val proc = ProcessBuilder("git", "rev-parse", "--verify", baseRef)
-                .directory(rootProject.rootDir)
-                .redirectErrorStream(true)
-                .start()
-            proc.waitFor(30, TimeUnit.SECONDS)
-            proc.exitValue() == 0
-        } catch (e: Exception) {
-            false
-        }
-
-        if (!refReachable) {
-            if (isPrCiContext) {
-                throw GradleException(
-                    "ADR-0038 PR-Δ: in PR CI but base ref '$baseRef' is unreachable. " +
-                    "Possible: shallow checkout (need fetch-depth: 0 in CI workflow), " +
-                    "or remote not fetched. Fix CI config; do NOT downgrade to " +
-                    "strict-equality-only as a workaround."
-                )
-            }
-            println(
-                "ADR-0038 PR-Δ: Android counts $actualCounts match current baselines " +
-                "(base ref '$baseRef' unreachable — local dev, ratchet skipped)."
-            )
-            return@doLast
-        }
-
-        fun runGit(args: List<String>, operation: String): Pair<Int, String> {
-            val outputFile = File.createTempFile("ticketbox-git-", ".txt")
-            try {
-                val proc = ProcessBuilder(*(listOf("git") + args).toTypedArray())
-                    .directory(rootProject.rootDir.parentFile)
-                    .redirectErrorStream(true)
-                    .redirectOutput(outputFile)
-                    .start()
-                if (!proc.waitFor(30, TimeUnit.SECONDS)) {
-                    proc.destroyForcibly()
-                    throw GradleException("Timed out while $operation.")
-                }
-                return proc.exitValue() to outputFile.readText().trim()
-            } finally {
-                if (!outputFile.delete()) {
-                    outputFile.deleteOnExit()
-                }
-            }
-        }
-
-        val baselineRepoPath = "android/audit/test_count_baseline.txt"
-        val (listExit, listOutput) = runGit(
-            listOf("ls-tree", "--name-only", baseRef, "--", baselineRepoPath),
-            "checking Android test baseline existence at '$baseRef'",
-        )
-        if (listExit != 0) {
-            throw GradleException(
-                "Unable to inspect Android test baseline at '$baseRef': $listOutput"
-            )
-        }
-        if (listOutput.isEmpty()) {
-            // refReachable=true + baseline missing → integral-bootstrap.
-            // Strict equality already enforced above;
-            // ratchet skipped because there's no base value to ratchet against.
-            // Auto-extinguishes once the baseline file lands in main.
-            println(
-                "ADR-0038 PR-Δ: Android counts $actualCounts match current baselines " +
-                "(bootstrap — baseline file new in this PR; ratchet auto-engages " +
-                "next PR after merge)."
-            )
-            return@doLast
-        }
-        if (listOutput.lineSequence().filter { it.isNotBlank() }.toList() != listOf(baselineRepoPath)) {
-            throw GradleException(
-                "Unexpected git ls-tree result for Android test baseline at '$baseRef': $listOutput"
-            )
-        }
-
-        val (showExit, baseBaselineText) = runGit(
-            listOf("show", "$baseRef:$baselineRepoPath"),
-            "reading Android test baseline at '$baseRef'",
-        )
-        if (showExit != 0 || baseBaselineText.isBlank()) {
-            throw GradleException(
-                "Android test baseline exists at '$baseRef' but could not be read as " +
-                    "non-empty content: $baseBaselineText"
-            )
-        }
-
-        val legacyInstrumentationCount = if (baseBaselineText.toIntOrNull() != null) {
-            val repositoryRoot = rootProject.rootDir.parentFile.canonicalFile.toPath()
-            val instrumentationPaths = testDirs.getValue("instrumentation")
-                .mapNotNull { sourceDirectory ->
-                    val sourcePath = sourceDirectory.toPath()
-                    if (sourcePath.startsWith(repositoryRoot)) {
-                        repositoryRoot.relativize(sourcePath).toString().replace('\\', '/')
-                    } else {
-                        null
-                    }
-                }
-                .distinct()
-            if (instrumentationPaths.isEmpty()) {
-                throw GradleException(
-                    "Cannot derive repository paths for GrayDebug instrumentation sources."
-                )
-            }
-            val (listSourcesExit, listSourcesOutput) = runGit(
-                listOf(
-                    "ls-tree",
-                    "-r",
-                    "--name-only",
-                    baseRef,
-                    "--",
-                ) + instrumentationPaths,
-                "listing legacy instrumentation sources at '$baseRef'",
-            )
-            if (listSourcesExit != 0) {
-                throw GradleException(
-                    "Unable to list legacy instrumentation sources at '$baseRef': " +
-                        listSourcesOutput
-                )
-            }
-            listSourcesOutput.lineSequence()
-                .filter { path -> path.endsWith(".kt") || path.endsWith(".java") }
-                .sumOf { sourcePath ->
-                    val (showSourceExit, sourceText) = runGit(
-                        listOf("show", "$baseRef:$sourcePath"),
-                        "reading legacy instrumentation source '$sourcePath' at '$baseRef'",
-                    )
-                    if (showSourceExit != 0) {
-                        throw GradleException(
-                            "Unable to read legacy instrumentation source '$sourcePath' " +
-                                "at '$baseRef': $sourceText"
-                        )
-                    }
-                    countAndroidTestAnnotations(sourceText, sourcePath)
-                }
-        } else {
-            null
-        }
-
-        val baseBaselines = parseBaselines(
-            baseBaselineText,
-            "$baseRef:android/audit/test_count_baseline.txt",
-            legacyInstrumentationCount = legacyInstrumentationCount,
-        )
-        val drops = counterNames.filter { name ->
-            currentBaselines.getValue(name) < baseBaselines.getValue(name)
-        }
-        if (drops.isNotEmpty()) {
-            val details = drops.joinToString("; ") { name ->
-                val current = currentBaselines.getValue(name)
-                val base = baseBaselines.getValue(name)
-                "$name base=$base current=$current (dropped by ${base - current})"
-            }
-            throw GradleException(
-                "ADR-0038 PR-Δ ratchet FAIL: $details. " +
-                "Tests should accumulate, not vanish. If this drop is intentional " +
-                "(test consolidation, dead code removal with paired test removal), " +
-                "document the rationale and get explicit sign-off — don't silently " +
-                "lower a source-set floor."
-            )
-        }
-
-        println(
-            "ADR-0038 PR-Δ: Android counts $actualCounts match current baselines " +
-                "(base=$baseBaselines; per-source-set ratchet UP OK)."
+        runTicketboxAndroidQualification(
+            "Android test baseline ratchet",
+            listOf(
+                "baseline",
+                "--baseline",
+                androidTestBaselineFile.absolutePath,
+                "--repository-root",
+                rootProject.rootDir.parentFile.absolutePath,
+            ),
         )
     }
 }
 
-fun ticketboxAdbExecutable(): File? {
+
+fun ticketboxAndroidSdkDirectory(): File? {
     val sdkDir = ticketboxLocalProperty("sdk.dir")
         ?: System.getenv("ANDROID_HOME")?.trim()?.takeIf { it.isNotBlank() }
         ?: System.getenv("ANDROID_SDK_ROOT")?.trim()?.takeIf { it.isNotBlank() }
+    return sdkDir?.let(::File)?.takeIf(File::isDirectory)
+}
+
+fun ticketboxAdbExecutable(): File? {
     val adbName = if (System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
         "adb.exe"
     } else {
         "adb"
     }
-    return sdkDir
-        ?.let { File(it, "platform-tools/$adbName") }
+    return ticketboxAndroidSdkDirectory()
+        ?.resolve("platform-tools/$adbName")
         ?.takeIf { it.exists() }
+}
+
+fun ticketboxApkAnalyzerExecutable(): File? {
+    ticketboxEnvOrLocal(
+        "TICKETBOX_APKANALYZER",
+        "ticketbox.apkanalyzerExecutable",
+    )?.let(::File)?.takeIf(File::isFile)?.let { return it }
+
+    val sdkDirectory = ticketboxAndroidSdkDirectory() ?: return null
+    val executableName = if (
+        System.getProperty("os.name").contains("Windows", ignoreCase = true)
+    ) {
+        "apkanalyzer.bat"
+    } else {
+        "apkanalyzer"
+    }
+    val commandLineTools = sdkDirectory.resolve("cmdline-tools")
+        .listFiles()
+        ?.filter(File::isDirectory)
+        .orEmpty()
+        .sortedWith(
+            compareByDescending<File> { it.name.equals("latest", ignoreCase = true) }
+                .thenByDescending(File::getName)
+        )
+    return commandLineTools.asSequence()
+        .map { it.resolve("bin/$executableName") }
+        .firstOrNull(File::isFile)
 }
 
 fun ticketboxReadyDeviceSerials(): List<String> {
@@ -1223,9 +700,16 @@ fun captureTicketboxConnectedAdbEvidence(
     }
 }
 
+val grayConnectedTestResultsDirectory =
+    layout.buildDirectory.dir("outputs/androidTest-results/connected")
+val grayDebugApkOutputDirectory =
+    layout.buildDirectory.dir("outputs/apk/gray/debug")
+val grayDebugAndroidTestApkOutputDirectory =
+    layout.buildDirectory.dir("outputs/apk/androidTest/gray/debug")
+
 val prepareGrayConnectedTestEvidence by tasks.registering {
     group = "verification"
-    description = "Capture the pre-test process-exit baseline for connected tests."
+    description = "Reset connected results and capture the pre-test process-exit baseline."
     dependsOn(guardConnectedAndroidTestEmulatorOnly)
 
     doLast {
@@ -1242,6 +726,7 @@ val prepareGrayConnectedTestEvidence by tasks.registering {
         crashLog.writeText("")
         beforeExitInfo.writeText("")
         afterExitInfo.writeText("")
+        project.delete(grayConnectedTestResultsDirectory)
         captureTicketboxConnectedAdbEvidence(
             adb,
             ticketboxConnectedCaptureSerials(),
@@ -1252,40 +737,64 @@ val prepareGrayConnectedTestEvidence by tasks.registering {
     }
 }
 
-val captureGrayConnectedTestEvidence by tasks.registering {
-    group = "verification"
-    description = "Capture process-exit and crash evidence before emulator teardown."
-
-    doLast {
-        val adb = ticketboxAdbExecutable()
-            ?: throw GradleException("Android adb is unavailable; cannot capture exit evidence.")
-        val captureSerials = ticketboxConnectedCaptureSerials()
-        val afterExitInfo = ticketboxConnectedEvidenceFile(
-            "ticketbox-connected-exit-info-after.txt"
-        )
-        val crashLog = ticketboxConnectedEvidenceFile("ticketbox-connected-crash.log")
-        captureTicketboxConnectedAdbEvidence(
-            adb,
-            captureSerials,
-            afterExitInfo,
-            "the post-test process-exit snapshot",
-            listOf("shell", "dumpsys", "activity", "exit-info"),
-        )
-        captureTicketboxConnectedAdbEvidence(
-            adb,
-            captureSerials,
-            crashLog,
-            "the connected-test crash buffer",
-            listOf("logcat", "-b", "crash", "-d"),
-        )
-    }
-}
-
 tasks.matching { it.name.matches(Regex("connected.*AndroidTest")) }.configureEach {
     dependsOn(guardConnectedAndroidTestEmulatorOnly)
     if (name == "connectedGrayDebugAndroidTest") {
         dependsOn(prepareGrayConnectedTestEvidence)
         timeout.set(Duration.ofMinutes(10))
-        finalizedBy(captureGrayConnectedTestEvidence)
+        doLast {
+            val adb = ticketboxAdbExecutable()
+                ?: throw GradleException(
+                    "Android adb is unavailable; cannot qualify connected tests."
+                )
+            val apkanalyzer = ticketboxApkAnalyzerExecutable()
+                ?: throw GradleException(
+                    "Android apkanalyzer is unavailable; cannot qualify connected tests."
+                )
+            val captureSerials = ticketboxConnectedCaptureSerials()
+            val beforeExitInfo = ticketboxConnectedEvidenceFile(
+                "ticketbox-connected-exit-info-before.txt"
+            )
+            val afterExitInfo = ticketboxConnectedEvidenceFile(
+                "ticketbox-connected-exit-info-after.txt"
+            )
+            val crashLog = ticketboxConnectedEvidenceFile(
+                "ticketbox-connected-crash.log"
+            )
+            captureTicketboxConnectedAdbEvidence(
+                adb,
+                captureSerials,
+                afterExitInfo,
+                "the post-test process-exit snapshot",
+                listOf("shell", "dumpsys", "activity", "exit-info"),
+            )
+            captureTicketboxConnectedAdbEvidence(
+                adb,
+                captureSerials,
+                crashLog,
+                "the connected-test crash buffer",
+                listOf("logcat", "-b", "crash", "-d"),
+            )
+            runTicketboxAndroidQualification(
+                "GrayDebug connected-test qualification",
+                listOf(
+                    "connected",
+                    "--baseline",
+                    androidTestBaselineFile.absolutePath,
+                    "--results-dir",
+                    grayConnectedTestResultsDirectory.get().asFile.absolutePath,
+                    "--before",
+                    beforeExitInfo.absolutePath,
+                    "--after",
+                    afterExitInfo.absolutePath,
+                    "--apkanalyzer",
+                    apkanalyzer.absolutePath,
+                    "--apk-output-dir",
+                    grayDebugApkOutputDirectory.get().asFile.absolutePath,
+                    "--apk-output-dir",
+                    grayDebugAndroidTestApkOutputDirectory.get().asFile.absolutePath,
+                ),
+            )
+        }
     }
 }
