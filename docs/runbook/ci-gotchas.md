@@ -28,14 +28,14 @@
 **根因**：GitHub 云端重型 CI 已改为 **pull_request 到 main + push main**，工作分支 push 不再单独跑一套，避免同一 PR head 被 push + pull_request 双跑。local-Gitea 降级 workflow 仍只有 push 白名单，`chore/**` / `docs/**` / `test/**` 不在其中。
 
 ```
-# GitHub .github/workflows/ci.yml        →  pull_request: main; push: main; workflow_dispatch
-# GitHub android-connected-test.yml      →  pull_request: main + paths; push: main + paths; workflow_dispatch
-# GitHub codeql.yml                       →  pull_request: main; push: main; workflow_dispatch; schedule cron "37 3 * * 1"
+# GitHub .github/workflows/ci.yml        →  pull_request: main; push: main; repository_dispatch: qualification
+# GitHub android-connected-test.yml      →  pull_request: main + paths; push: main + paths; repository_dispatch: qualification
+# GitHub codeql.yml                       →  pull_request: main; push: main; repository_dispatch: qualification; schedule cron "37 3 * * 1"
 # gitea  .gitea/workflows/windows-ci.yml →  main, feat/**, fix/**, perf/**, refactor/**, codex/**
 # gitea  android-connected.yml            →  同 windows-ci + paths 过滤
 ```
 
-注意三处差异：① **GitHub 三条 workflow 都带 `pull_request: branches: [main]` trigger**（gitea 两条**只有 push + workflow_dispatch，无 pull_request**）；② GitHub 工作分支 push 不跑重 CI，必须开 PR 或手动 `workflow_dispatch`；③ CodeQL 的工作分支扫描靠 PR 的 `pull_request` 事件或手动 `workflow_dispatch`，周计划只扫默认分支，push 只保 main。
+注意三处差异：① **GitHub 三条 workflow 都带 `pull_request: branches: [main]` trigger**（gitea 两条**只有 push + workflow_dispatch，无 pull_request**）；② GitHub 工作分支 push 不跑重 CI，必须开 PR；③ `repository_dispatch: qualification` 只运行默认分支资格链，CodeQL 工作分支扫描由 PR 事件承担，周计划只扫默认分支，push 只保 main。
 
 **正确做法**：
 - 起清理 / 重构 PR 分支可以用 `codex/**` 或 `refactor/**`；GitHub 云端以 PR 为准。
@@ -58,7 +58,7 @@ body: { "ref": "<分支名>" }
 
 **症状**：`gh pr checks N` 里看到旧提交的 Android job 显示 `fail`，常是跑一段时间后报 `##[error]The operation was canceled.`，误判真红。
 
-**根因**：GitHub 工作分支 push 不再触发重型 CI，正常 PR head 只有 pull_request 这一套；但同一 PR 连续 push 时，workflow 的 `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` 仍会**取消旧 head run**。被取消的旧 job 在 `gh pr checks` 显示 `fail` = **良性，非真红**。authoritative run = 最新 / 未被取消 / 跑完 pass 的那个。`main` 已启用 strict branch protection、管理员同样受约束，并要求线性历史；只允许当前精确 head 的必需检查全部通过后合并。
+**根因**：GitHub 工作分支 push 不再触发重型 CI，正常 PR head 只有 pull_request 这一套；但同一 PR 连续 push 时，workflow 的 `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` 仍会**取消旧 head run**。被取消的旧 job 在 `gh pr checks` 显示 `fail` = **良性，非真红**。authoritative run = 最新 / 未被取消 / 跑完 pass 的那个。`main` 已启用 strict branch protection、管理员同样受约束，并要求线性历史；仓库只启用 squash merge，使资格运行的 `HEAD^1` 始终是合入前 main。只允许当前精确 head 的必需检查全部通过后合并。
 
 **正确做法**：
 - 盯 CI 用**后台轮询脚本**（bash `run_in_background`，`gh pr checks N` 轮到 pending==0 再数 fail），别死等、别信 `gh pr checks --watch`。
@@ -108,10 +108,10 @@ gh pr merge N --squash --delete-branch --match-head-commit <exact-head-sha>
 
 **症状**：`Android SCA` 在解析或下载可信产物时失败，或离线扫描报告摘要不符、数据库损坏、真实 CVE / scanner fatal。
 
-**根因**：PR 不再直接访问 NVD。`.github/workflows/nvd-database.yml` 在 main 上定时、手动或由相关 producer 输入变更触发，生产并校验短期可信产物；PR 的 SCA lane 只消费该产物并离线扫描。产物缺失、过期或验证失败都会 fail closed。
+**根因**：PR 不再直接访问 NVD。`.github/workflows/nvd-database.yml` 在 main 上定时、由 `nvd_database_refresh` 事件或相关 producer 输入变更触发，生产并校验短期可信产物；PR 的 SCA lane 只消费该产物并离线扫描。产物缺失、过期或验证失败都会 fail closed。
 
 **正确做法**：
-- 产物缺失或过期：在 main 上手动运行 `Android NVD Database`，producer 成功后再重跑 PR。
+- 产物缺失或过期：执行 `gh api --method POST "repos/{owner}/{repo}/dispatches" -f event_type=nvd_database_refresh`（需要仓库写权限），producer 成功后再重跑 PR。
 - producer 因 NVD 网关失败：修复或等待上游恢复后重跑 producer；重跑 PR 本身不会生成产物。
 - 摘要不符、数据库损坏、真实 CVE 或离线 scanner fatal：按真实安全失败处理，不能以 `continue-on-error`、空密钥或跳过扫描洗绿。
 - producer 使用 `NVD_API_KEY`；PR consumer 不持有该密钥。

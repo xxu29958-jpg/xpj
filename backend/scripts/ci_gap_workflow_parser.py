@@ -91,7 +91,7 @@ _WorkflowLoader.add_implicit_resolver(
 )
 
 
-def _load_workflow(path: pathlib.Path) -> dict[object, object]:
+def load_workflow(path: pathlib.Path) -> dict[object, object]:
     try:
         value = yaml.load(path.read_text(encoding="utf-8"), Loader=_WorkflowLoader)
     except yaml.YAMLError as exc:
@@ -150,7 +150,7 @@ def _workflow_dir_list(workflow_dirs: pathlib.Path | list[pathlib.Path]) -> list
     return workflow_dirs
 
 
-def _iter_workflow_paths(
+def iter_workflow_paths(
     workflow_dirs: pathlib.Path | list[pathlib.Path],
 ) -> list[pathlib.Path]:
     return sorted(
@@ -355,8 +355,8 @@ def _iter_reachable_workflow_steps(
     protected_only: bool = False,
 ) -> list[WorkflowStep]:
     reachable: list[WorkflowStep] = []
-    for path in _iter_workflow_paths(workflow_dirs):
-        workflow = _load_workflow(path)
+    for path in iter_workflow_paths(workflow_dirs):
+        workflow = load_workflow(path)
         event_name = _required_protection_event(path)
         protection_scope = "full"
         if protected_only:

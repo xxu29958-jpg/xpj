@@ -36,6 +36,7 @@ jobs:
       postgres_matrix: ${{ steps.scope.outputs.postgres_matrix }}
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+      audit_base_sha: ${{ steps.qualification.outputs.audit_base_sha }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -48,7 +49,10 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.sha }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+          XPJ_AUDIT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/${{ github.event.repository.default_branch }}
+          XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || '' }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT" --audit-base
       - id: scope
         shell: bash
         run: |
@@ -58,6 +62,7 @@ jobs:
             --head "${{ github.event.pull_request.head.sha || github.sha }}" \
             --output "$GITHUB_OUTPUT"
   backend_contracts:
+    needs: scope
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}

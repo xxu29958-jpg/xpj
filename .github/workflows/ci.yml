@@ -17,12 +17,9 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:
-    inputs:
-      adr_base_ref:
-        description: Canonical default-branch divergence commit for ADR history ratchets
-        required: true
-        type: string
+  repository_dispatch:
+    types:
+      - qualification
 
 permissions:
   contents: read
@@ -45,6 +42,7 @@ jobs:
       postgres_matrix: ${{ steps.scope.outputs.postgres_matrix }}
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+      audit_base_sha: ${{ steps.qualification.outputs.audit_base_sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -61,7 +59,10 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.sha }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+          XPJ_AUDIT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/${{ github.event.repository.default_branch }}
+          XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || '' }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT" --audit-base
 
       - name: Resolve heavy-job scope
         id: scope
@@ -75,6 +76,7 @@ jobs:
 
   backend_contracts:
     name: Backend contracts
+    needs: scope
     runs-on: windows-latest
     timeout-minutes: 12
     outputs:
@@ -161,10 +163,9 @@ jobs:
         env:
           XPJ_RELEASE_AUDIT_COMPACT: "1"
           XPJ_CI_AUDIT_PROVIDER: github
-          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
-          # PRs compare with the exact target SHA; main pushes compare with the
-          # pre-push SHA; manual runs must name the canonical divergence commit.
-          XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || inputs.adr_base_ref }}
+          XPJ_AUDIT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/${{ github.event.repository.default_branch }}
+          XPJ_AUDIT_BASE_REF: ${{ needs.scope.outputs.audit_base_sha }}
         run: python scripts\release_audit.py
 
       - name: API contract
@@ -702,8 +703,6 @@ jobs:
         shell: bash
     env: &android_environment
       TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
-      XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/main
-      XPJ_AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || inputs.adr_base_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -774,6 +773,10 @@ jobs:
           ./gradlew --no-daemon --max-workers=2 :app:kspGrayDebugKotlin --rerun-tasks
 
       - name: Compile, unit tests, lint, detekt, and count ratchet
+        env:
+          XPJ_AUDIT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/${{ github.event.repository.default_branch }}
+          XPJ_AUDIT_BASE_REF: ${{ needs.scope.outputs.audit_base_sha }}
         run: ./gradlew --no-daemon --max-workers=2 :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
 
       - name: Upload Android unit-test diagnostics
