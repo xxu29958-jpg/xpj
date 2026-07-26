@@ -111,7 +111,10 @@ fun GoalUpdate.toRequest(): GoalUpdateRequestDto = GoalUpdateRequestDto(
     name = name?.trim()?.takeIf { it.isNotBlank() },
     month = month?.trim()?.takeIf { it.isNotBlank() },
     targetAmountCents = targetAmountCents,
-    category = category.cleanCategoryOrNull(),
+    // PATCH needs to distinguish "category omitted" (leave unchanged) from an
+    // explicit blank category (clear to the all-spending scope). Moshi omits
+    // nulls, so preserve "" here; the backend normalizes blank to SQL NULL.
+    category = category?.trim()?.let { if (it.isBlank()) "" else normalizeExpenseCategory(it) },
 )
 
 fun DashboardCardsResponseDto.toDomain(): DashboardCards = DashboardCards(
