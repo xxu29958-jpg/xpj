@@ -13,7 +13,8 @@ import os
 import subprocess
 import sys
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from typing import TypeVar
 
 from sqlalchemy.engine import make_url
 
@@ -42,6 +43,7 @@ POSTGRES_PYTEST_LANE_MARKERS = {
 }
 PARALLEL_POSTGRES_PYTEST_LANE = "ordinary"
 MAX_POSTGRES_PYTEST_SHARDS = 4
+_ShardItem = TypeVar("_ShardItem")
 _LIBPQ_ROUTE_ENV = {
     "PGAPPNAME",
     "PGDATABASE",
@@ -88,6 +90,31 @@ def nodeid_shard(nodeid: str, *, shard_count: int) -> int:
     )
     digest = hashlib.sha256(nodeid.encode("utf-8")).digest()
     return int.from_bytes(digest[:8], byteorder="big") % shard_count
+
+
+def partition_shard_items(
+    items: Sequence[_ShardItem],
+    *,
+    shard_index: int,
+    shard_count: int,
+    nodeid_of: Callable[[_ShardItem], str],
+) -> tuple[list[_ShardItem], list[_ShardItem]]:
+    """Partition one collection into the selected shard and its complement."""
+    validate_shard_coordinates(
+        lane=PARALLEL_POSTGRES_PYTEST_LANE,
+        shard_index=shard_index,
+        shard_count=shard_count,
+    )
+    selected: list[_ShardItem] = []
+    deselected: list[_ShardItem] = []
+    for item in items:
+        target = (
+            selected
+            if nodeid_shard(nodeid_of(item), shard_count=shard_count) == shard_index
+            else deselected
+        )
+        target.append(item)
+    return selected, deselected
 
 
 def build_pytest_command(

@@ -32,7 +32,6 @@ from scripts.run_postgres_pytest_lane import (
     POSTGRES_PYTEST_SHARD_COUNT_OPTION,
     POSTGRES_PYTEST_SHARD_INDEX_DEST,
     POSTGRES_PYTEST_SHARD_INDEX_OPTION,
-    nodeid_shard,
     validate_lane_collection,
     validate_shard_coordinates,
 )
@@ -57,6 +56,8 @@ from tests._infra.worker_db import (
     verify_worker_database,
     worker_database,
 )
+
+pytest_plugins = ("tests._infra.postgres_sharding_plugin",)
 
 _CONTROLLER_STACK: ExitStack | None = None
 _CONTROLLER_DATABASES: dict[str, WorkerDatabase] = {}
@@ -219,32 +220,6 @@ def pytest_configure(config: pytest.Config) -> None:
         raise pytest.UsageError("xdist worker database was not derived before app import")
     if worker_input.get("xpj_worker_database_name") != env.WORKER_DATABASE.name:
         raise pytest.UsageError("xdist worker database does not match controller ownership")
-
-
-@pytest.hookimpl(trylast=True)
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Select one complete, deterministic ordinary-lane shard."""
-    lane = config.getoption(POSTGRES_PYTEST_LANE_DEST)
-    shard_index = config.getoption(POSTGRES_PYTEST_SHARD_INDEX_DEST)
-    shard_count = config.getoption(POSTGRES_PYTEST_SHARD_COUNT_DEST)
-    if lane != PARALLEL_POSTGRES_PYTEST_LANE or shard_count == 1:
-        return
-
-    selected: list[pytest.Item] = []
-    deselected: list[pytest.Item] = []
-    for item in items:
-        target = (
-            selected
-            if nodeid_shard(item.nodeid, shard_count=shard_count) == shard_index
-            else deselected
-        )
-        target.append(item)
-    if not selected:
-        raise pytest.UsageError(
-            f"ordinary PostgreSQL shard {shard_index}/{shard_count} selected no tests"
-        )
-    items[:] = selected
-    config.hook.pytest_deselected(items=deselected)
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 from pathlib import Path
@@ -18,7 +19,7 @@ from scripts.run_postgres_pytest_lane import (
     validate_lane_collection,
     validate_shard_coordinates,
 )
-from tests import conftest as postgres_conftest
+from tests._infra.postgres_sharding_plugin import pytest_collection_modifyitems
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -161,14 +162,14 @@ def _hook_partition(shard_index: int) -> tuple[set[str], set[str]]:
         for index in range(64)
     ]
     config = _ShardConfig(shard_index)
-    postgres_conftest.pytest_collection_modifyitems(config, items)
+    pytest_collection_modifyitems(config, items)
     return (
         {str(item.nodeid) for item in items},
         {str(item.nodeid) for item in config.hook.items},
     )
 
 
-def _assert_collection_hook_forms_complementary_shards() -> None:
+def _assert_hook_forms_complementary_shards() -> None:
     selected_zero, deselected_zero = _hook_partition(0)
     selected_one, deselected_one = _hook_partition(1)
     expected = {
@@ -218,6 +219,24 @@ def _assert_local_verify_uses_postgres_authorities() -> None:
     assert "GetFolderPath" in script
 
 
+def _assert_root_conftest_registers_the_sharding_plugin() -> None:
+    source = (_ROOT / "backend" / "tests" / "conftest.py").read_text(
+        encoding="utf-8"
+    )
+    module = ast.parse(source)
+    plugin_assignments = [
+        statement.value
+        for statement in module.body
+        if isinstance(statement, ast.Assign)
+        for target in statement.targets
+        if isinstance(target, ast.Name) and target.id == "pytest_plugins"
+    ]
+    assert len(plugin_assignments) == 1
+    assert ast.literal_eval(plugin_assignments[0]) == (
+        "tests._infra.postgres_sharding_plugin",
+    )
+
+
 def test_postgres_lane_runner_is_the_single_pytest_command_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -225,7 +244,7 @@ def test_postgres_lane_runner_is_the_single_pytest_command_authority(
     _assert_main_forwards_shard_coordinates(monkeypatch)
     _assert_invalid_runner_coordinates_fail_closed()
     _assert_nodeid_shards_form_an_exact_partition()
-    _assert_collection_hook_forms_complementary_shards()
+    _assert_hook_forms_complementary_shards()
     _assert_collection_contract_is_fail_closed()
     module_entry = subprocess.run(
         [sys.executable, "-m", "scripts.run_postgres_pytest_lane", "--help"],
@@ -236,3 +255,4 @@ def test_postgres_lane_runner_is_the_single_pytest_command_authority(
     )
     assert module_entry.returncode == 0, module_entry.stderr
     _assert_local_verify_uses_postgres_authorities()
+    _assert_root_conftest_registers_the_sharding_plugin()
