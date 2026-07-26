@@ -19,6 +19,7 @@ E:\projects\xiaopiaojia\
       ci.yml                     # GitHub 云端主 CI
       android-connected-test.yml  # GitHub 云端模拟器 lane
       codeql.yml                 # GitHub CodeQL 安全扫描
+      nvd-database.yml           # main-only Android NVD 数据库生产者
   .gitea\
     workflows\
       windows-ci.yml             # 本地降级四 job CI

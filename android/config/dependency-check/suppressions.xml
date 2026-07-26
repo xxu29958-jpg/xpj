@@ -17,4 +17,35 @@
         Empty file is fine — dependencyCheck will simply find no
         suppressions and apply its default fail-on-CVSS-7 threshold.
     -->
+    <suppress>
+        <notes><![CDATA[
+            False CPE association observed on 2026-07-26. These are AndroidX
+            API/framework artifacts; their 2.6.2 release version is not SQLite
+            engine version 2.6.2. Keep both the exact Maven package family and
+            the incorrect CPE in the selector so unrelated SQLite dependencies
+            and future AndroidX releases remain visible.
+
+            Triage:
+            https://dependency-check.github.io/DependencyCheck/general/suppression.html
+            https://developer.android.com/jetpack/androidx/releases/sqlite
+            https://nvd.nist.gov/vuln/detail/CVE-2025-6965
+        ]]></notes>
+        <packageUrl regex="true">^pkg:maven/androidx\.sqlite/sqlite(?:-framework)?-android@2\.6\.2$</packageUrl>
+        <!-- Dependency-Check suppression matching normalizes CPEs to 2.2 URI form. -->
+        <cpe>cpe:/a:sqlite:sqlite:2.6.2</cpe>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            CVE-2026-53914 affects Kotlin build-cache metadata
+            deserialization, not the stdlib/reflect runtime jars in the
+            Android release classpath. Suppress only this CVE on the exact
+            runtime package family; Kotlin build tooling remains a separate
+            build-chain risk and all other Kotlin findings remain visible.
+
+            Triage:
+            https://nvd.nist.gov/vuln/detail/CVE-2026-53914
+        ]]></notes>
+        <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/kotlin-(?:reflect|stdlib(?:-jdk[78])?)@.*$</packageUrl>
+        <cve>CVE-2026-53914</cve>
+    </suppress>
 </suppressions>

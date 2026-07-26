@@ -1,0 +1,130 @@
+name: Android NVD Database
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/nvd-database.yml"
+      - "backend/scripts/nvd_producer_contract.json"
+      - "backend/scripts/android_dependency_audit.py"
+      - "backend/scripts/nvd_artifact_contract.py"
+      - "backend/scripts/resolve_nvd_artifact.py"
+      - "android/**/build.gradle.kts"
+      - "android/**/settings.gradle.kts"
+      - "android/config/dependency-check/suppressions.xml"
+      - "android/gradle/*.versions.toml"
+      - "android/gradle.properties"
+      - "android/gradle/wrapper/gradle-wrapper.jar"
+      - "android/gradle/wrapper/gradle-wrapper.properties"
+      - "android/gradlew"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: android-nvd-database-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  produce:
+    name: Produce trusted NVD database
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up Java
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+      - name: Point Gradle at cloud Android SDK
+        working-directory: android
+        run: |
+          sdk_dir="${ANDROID_HOME//\\/\\\\}"
+          echo "sdk.dir=$sdk_dir" > local.properties
+          echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
+
+      - name: Resolve Dependency-Check version
+        id: dependency-check-version
+        run: |
+          python backend/scripts/android_dependency_audit.py metadata \
+            --catalog android/gradle/libs.versions.toml \
+            --repository-root . \
+            --contract backend/scripts/nvd_producer_contract.json \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Resolve previous trusted NVD artifact
+        id: nvd-seed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python backend/scripts/resolve_nvd_artifact.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow nvd-database.yml \
+            --branch main \
+            --artifact "${{ steps.dependency-check-version.outputs.artifact }}" \
+            --api-url "$GITHUB_API_URL" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Download previous trusted NVD artifact
+        if: steps.nvd-seed.outputs.found == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ steps.nvd-seed.outputs.artifact_id }}
+          path: ${{ runner.temp }}/ticketbox-nvd-seed
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.nvd-seed.outputs.run_id }}
+          digest-mismatch: error
+
+      - name: Produce and validate NVD database
+        working-directory: android
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          python ../backend/scripts/android_dependency_audit.py produce \
+            --gradlew "$PWD/gradlew" \
+            --seed-dir "$RUNNER_TEMP/ticketbox-nvd-seed" \
+            --seed-present "${{ steps.nvd-seed.outputs.found }}" \
+            --output-dir "$RUNNER_TEMP/ticketbox-nvd-database" \
+            --log owasp-output.log \
+            --plugin-version "${{ steps.dependency-check-version.outputs.version }}" \
+            --contract-digest "${{ steps.dependency-check-version.outputs.contract_digest }}"
+
+      - name: Upload immutable NVD artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.dependency-check-version.outputs.artifact }}
+          path: ${{ runner.temp }}/ticketbox-nvd-database
+          if-no-files-found: error
+          retention-days: 3
