@@ -254,6 +254,30 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
             command.job != "backend_postgres_ordinary" for command in commands
         ), index
 
+    codeql = workflows / "codeql.yml"
+    codeql_source = (
+        Path(__file__).resolve().parents[2]
+        / ".github"
+        / "workflows"
+        / "codeql.yml"
+    ).read_text(encoding="utf-8")
+    codeql.write_text(codeql_source, encoding="utf-8")
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    assert any(
+        command.job == "analyze-android" and command.protection_scope == "android"
+        for command in commands
+    )
+
+    bypassed_codeql = codeql_source.replace(
+        "        if: ${{ always() && !cancelled() }}",
+        "        if: ${{ false }}",
+        1,
+    )
+    assert bypassed_codeql != codeql_source
+    codeql.write_text(bypassed_codeql, encoding="utf-8")
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    assert all(command.job != "analyze-android" for command in commands)
+
 
 def test_windows_scope_protects_real_installer_provenance(tmp_path: Path) -> None:
     mod = load_ci_gap_audit()

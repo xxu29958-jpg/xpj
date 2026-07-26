@@ -717,6 +717,21 @@ jobs:
       - name: Test
         run: .\.ci-venv\Scripts\python.exe -m pytest -q
 
+      - name: Enforce Desktop scope result
+        if: ${{ always() && !cancelled() }}
+        shell: bash
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$SCOPE_RESULT" = "success"
+          test "$SCOPE_SHA" = "$EXPECTED_SHA"
+          test "$SCOPE_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"
+
   android_fast:
     name: Android fast
     needs: scope

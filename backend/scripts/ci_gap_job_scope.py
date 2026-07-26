@@ -44,6 +44,20 @@ _GITHUB_TERMINAL_JOBS = {
     ("codeql.yml", "android"): "analyze-android",
     ("android-connected-test.yml", "android"): "connected",
 }
+_SELF_TERMINAL_SCOPE_ENV = {
+    "SCOPE_RESULT": "${{ needs.scope.result }}",
+    "SCOPE_SHA": "${{ needs.scope.outputs.qualification_sha }}",
+    "SCOPE_SOURCE_SHA": "${{ needs.scope.outputs.qualification_source_sha }}",
+    "EXPECTED_SHA": "${{ github.sha }}",
+    "EXPECTED_SOURCE_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+}
+_SELF_TERMINAL_SCOPE_COMMAND = shell_tokens(
+    """set -euo pipefail
+test "$SCOPE_RESULT" = "success"
+test "$SCOPE_SHA" = "$EXPECTED_SHA"
+test "$SCOPE_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"
+"""
+)
 _GITEA_SCOPE_OUTPUTS = {
     scope: f"${{{{ steps.scope.outputs.{scope} }}}}" for scope in HEAVY_JOB_SCOPES
 }
@@ -346,7 +360,12 @@ def _terminal_gate_consumes_dependency(
         "${{ github.event.pull_request.head.sha || github.sha }}",
     }
     for step in raw_job.get("steps", []):
-        if not isinstance(step, dict) or allows_failure(step.get("continue-on-error")):
+        if (
+            not isinstance(step, dict)
+            or step.get("if") not in {None, True}
+            or allows_failure(step.get("continue-on-error"))
+            or not _step_execution_shape_is_plain(step, allow_env=True)
+        ):
             continue
         environment = step.get("env")
         if not isinstance(environment, dict):
@@ -355,6 +374,33 @@ def _terminal_gate_consumes_dependency(
         if required_values <= values and str(step.get("run", "")).strip():
             return True
     return False
+
+
+def _self_terminal_enforces_scope(raw_job: dict[object, object]) -> bool:
+    environment = raw_job.get("env")
+    if (
+        any(
+            raw_job.get(field) is not None
+            for field in ("container", "services", "strategy")
+        )
+        or (
+            isinstance(environment, dict)
+            and {"BASH_ENV", "ENV"}.intersection(map(str, environment))
+        )
+    ):
+        return False
+    gates = [
+        step
+        for step in raw_job.get("steps", [])
+        if isinstance(step, dict)
+        and _expression_text(step.get("if")) == "always() && !cancelled()"
+        and step.get("shell") == "bash"
+        and step.get("env") == _SELF_TERMINAL_SCOPE_ENV
+        and not allows_failure(step.get("continue-on-error"))
+        and _step_execution_shape_is_plain(step, allow_env=True)
+        and shell_tokens(str(step.get("run", ""))) == _SELF_TERMINAL_SCOPE_COMMAND
+    ]
+    return len(gates) == 1
 
 
 def _terminal_gate_protects_job(
@@ -366,11 +412,13 @@ def _terminal_gate_protects_job(
     terminal_name = _GITHUB_TERMINAL_JOBS.get((path.name, scope))
     if terminal_name is None:
         return False
-    if terminal_name == job_name:
-        return True
     terminal = jobs.get(terminal_name)
+    if not isinstance(terminal, dict):
+        return False
+    if terminal_name == job_name:
+        return _self_terminal_enforces_scope(terminal)
     return (
-        isinstance(terminal, dict)
+        _job_execution_shape_is_plain(terminal)
         and _expression_text(terminal.get("if")) == "always()"
         and not allows_failure(terminal.get("continue-on-error"))
         and job_name in (job_needs(terminal) or ())
