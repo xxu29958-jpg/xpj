@@ -569,10 +569,8 @@ fun androidTestCodeOnly(source: String, nestedBlockComments: Boolean): String {
                 } else {
                     ""
                 }
-                val previousCodeCharacter = code.lastOrNull { !it.isWhitespace() }
                 preserveBacktickIdentifier =
-                    identifier in androidTestAnnotationNames &&
-                    previousCodeCharacter in setOf('@', '.')
+                    identifier in androidTestAnnotationNames
                 code.append(if (preserveBacktickIdentifier) character else ' ')
                 backtickIdentifier = true
                 index += 1

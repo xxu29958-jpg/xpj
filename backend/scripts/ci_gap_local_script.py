@@ -14,12 +14,40 @@ _LOCAL_SHELL_LAUNCHERS = {
     "/usr/bin/bash",
     "/usr/bin/sh",
 }
-_SHELL_FUNCTION_START = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)\s*\{\s*$"
+_SHELL_FUNCTION_DEFINITION = re.compile(
+    r"^(?:"
+    r"function\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?"
+    r"|[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)"
+    r")\s*(?:\{.*)?$"
 )
-_SHELL_FUNCTION_END = re.compile(r"^}\s*;?\s*$")
-_SHELL_CONTROL_PREFIXES = {"!", "do", "elif", "else", "if", "then", "until", "while"}
-_SHELL_PREMATURE_TERMINATORS = {".", "eval", "exec", "exit", "return", "source"}
+_SHELL_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_SHELL_UNPROVABLE_COMMANDS = {
+    ".",
+    "break",
+    "builtin",
+    "case",
+    "command",
+    "continue",
+    "do",
+    "done",
+    "elif",
+    "else",
+    "esac",
+    "eval",
+    "exec",
+    "exit",
+    "fi",
+    "for",
+    "function",
+    "if",
+    "return",
+    "select",
+    "source",
+    "then",
+    "trap",
+    "until",
+    "while",
+}
 
 
 def _repository_root(path: pathlib.Path) -> pathlib.Path | None:
@@ -50,31 +78,30 @@ def _segment_command(segment: str) -> str:
     tokens = list(shell_tokens(segment))
     while tokens:
         candidate = tokens.pop(0).strip(";&|(){}")
-        if not candidate or candidate in _SHELL_CONTROL_PREFIXES:
+        if not candidate or _SHELL_ASSIGNMENT.match(candidate):
             continue
         return candidate
     return ""
 
 
 def _reaches_top_level_gradle_without_premature_termination(script: str) -> bool:
-    in_function = False
+    reaches_gradle = False
     for raw_line in script.splitlines():
         line = strip_inline_shell_comment(raw_line.strip()).strip()
         if not line:
             continue
-        if in_function:
-            if _SHELL_FUNCTION_END.fullmatch(line):
-                in_function = False
-            continue
-        if _SHELL_FUNCTION_START.fullmatch(line):
-            in_function = True
-            continue
-        if any(_is_gradle_token(token) for token in shell_tokens(line)):
-            return True
+        # The audit deliberately accepts a small, straight-line shell subset.
+        # Proving arbitrary shell control flow would require executing the
+        # entrypoint; rejecting it keeps the static contract fail closed.
+        if _SHELL_FUNCTION_DEFINITION.match(line):
+            return False
         for segment in split_shell_command_segments(line):
-            if _segment_command(segment) in _SHELL_PREMATURE_TERMINATORS:
+            if _segment_command(segment) in _SHELL_UNPROVABLE_COMMANDS:
                 return False
-    return False
+        reaches_gradle = reaches_gradle or any(
+            _is_gradle_token(token) for token in shell_tokens(line)
+        )
+    return reaches_gradle
 
 
 def local_shell_script_text(

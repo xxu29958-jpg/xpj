@@ -106,6 +106,27 @@ def _assert_premature_local_success_is_rejected(
     for script in (
         f"exit 0\n./gradlew --no-daemon {_CONNECTED_TASK}\n",
         rf"'.\gradlew' --no-daemon {_CONNECTED_TASK}" + "\n",
+        (
+            "./gradlew --version\n"
+            "exit 0\n"
+            f"timeout 14m ./gradlew --no-daemon {_CONNECTED_TASK}\n"
+        ),
+        (
+            "finish() { exit 0; }\n"
+            "finish\n"
+            f"timeout 14m ./gradlew --no-daemon {_CONNECTED_TASK}\n"
+        ),
+        (
+            "finish()\n"
+            "{\n"
+            f"  ./gradlew --no-daemon {_CONNECTED_TASK}\n"
+            "}\n"
+        ),
+        (
+            "trap 'exit 0' 0\n"
+            f"timeout 14m ./gradlew --no-daemon {_CONNECTED_TASK}\n"
+        ),
+        f"if false; then\n  ./gradlew --no-daemon {_CONNECTED_TASK}\nfi\n",
     ):
         entrypoint.write_text(script, encoding="utf-8")
         assert _connected_task_is_missing(mod, workflows)
