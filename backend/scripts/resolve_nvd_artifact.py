@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 API_VERSION = "2022-11-28"
-TRUSTED_EVENTS = frozenset({"push", "schedule", "workflow_dispatch"})
+TRUSTED_EVENTS = frozenset({"push", "schedule", "repository_dispatch"})
 SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 

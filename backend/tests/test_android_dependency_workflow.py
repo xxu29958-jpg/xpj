@@ -32,12 +32,10 @@ def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
     for job in (fast, debug_apk, release_apk, sca):
         assert job["needs"] == "scope"
         assert job["if"] == expected_scope_condition
-        assert job["env"]["XPJ_AUDIT_BASE_REF"] == (
-            "${{ needs.scope.outputs.audit_base_sha }}"
-        )
         assert all(
             "XPJ_AUDIT_BASE_REF" not in (step.get("env") or {})
             for step in job["steps"]
+            if step["name"] != "Compile, unit tests, lint, detekt, and count ratchet"
         )
     assert "NVD_API_KEY" not in str(sca)
     assert "android_dependency_audit.py scan" in scan["run"]
@@ -45,11 +43,15 @@ def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
     assert download["if"] == "steps.nvd-artifact.outputs.found == 'true'"
     assert download["with"]["digest-mismatch"] == "error"
 
-    fast_command = next(
-        step["run"]
+    fast_step = next(
+        step
         for step in fast["steps"]
         if step["name"] == "Compile, unit tests, lint, detekt, and count ratchet"
     )
+    assert fast_step["env"]["XPJ_AUDIT_BASE_REF"] == (
+        "${{ needs.scope.outputs.audit_base_sha }}"
+    )
+    fast_command = fast_step["run"]
     assert {
         ":app:compileGrayDebugKotlin",
         ":app:testGrayDebugUnitTest",

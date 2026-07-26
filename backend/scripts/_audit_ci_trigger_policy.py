@@ -7,7 +7,7 @@ import sys
 
 from ci_audit_provider import selected_ci_platforms
 from ci_gap_trigger_scope import ANDROID_PROTECTED_PATHS
-from ci_gap_workflow_parser import load_workflow
+from ci_gap_workflow_parser import iter_workflow_paths, load_workflow
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GITHUB_WORKFLOWS = ROOT / ".github" / "workflows"
@@ -16,7 +16,8 @@ GITEA_WORKFLOWS = ROOT / ".gitea" / "workflows"
 GITHUB_MAIN_ONLY = ("main",)
 GITEA_WORK_BRANCHES = ("main", "feat/**", "fix/**", "perf/**", "refactor/**", "codex/**")
 CODEQL_WEEKLY_CRON = "37 3 * * 1"
-QUALIFICATION_DISPATCH_TYPE = ("qualification",)
+QUALIFICATION_DISPATCH_TYPE = "qualification"
+NVD_REFRESH_DISPATCH_TYPE = "nvd_database_refresh"
 GITHUB_CONNECTED_PATHS = (
     *ANDROID_PROTECTED_PATHS,
     "android/scripts/**",
@@ -102,17 +103,32 @@ def _audit_github_main_pr_policy(failures: list[str]) -> None:
             GITHUB_MAIN_ONLY,
             failures,
         )
-        _expect_exact(
-            f"{workflow_name} repository_dispatch types",
-            _types(path, "repository_dispatch"),
-            QUALIFICATION_DISPATCH_TYPE,
-            failures,
-        )
-        if _event_present(path, "workflow_dispatch"):
+        if QUALIFICATION_DISPATCH_TYPE not in _types(path, "repository_dispatch"):
             failures.append(
-                f"{path.name}: workflow_dispatch can mint mutable-branch checks; "
-                "use a default-branch repository_dispatch type"
+                f"{path.name}: missing repository_dispatch type "
+                f"{QUALIFICATION_DISPATCH_TYPE!r}"
             )
+
+    for path in iter_workflow_paths(GITHUB_WORKFLOWS):
+        if (
+            QUALIFICATION_DISPATCH_TYPE
+            in _types(path, "repository_dispatch")
+            and _event_present(path, "workflow_dispatch")
+        ):
+            failures.append(
+                f"{path.name}: qualification workflow cannot expose workflow_dispatch"
+            )
+
+    nvd = GITHUB_WORKFLOWS / "nvd-database.yml"
+    if NVD_REFRESH_DISPATCH_TYPE not in _types(nvd, "repository_dispatch"):
+        failures.append(
+            f"{nvd.name}: missing repository_dispatch type "
+            f"{NVD_REFRESH_DISPATCH_TYPE!r}"
+        )
+    if _event_present(nvd, "workflow_dispatch"):
+        failures.append(
+            f"{nvd.name}: secret-bearing producer cannot expose workflow_dispatch"
+        )
 
     connected = GITHUB_WORKFLOWS / "android-connected-test.yml"
     push_paths = _paths(connected, "push")

@@ -85,7 +85,7 @@ def test_resolver_selects_newest_matching_artifact_from_trusted_main() -> None:
         _run(1, event="pull_request"),
         _run(2, age=timedelta(hours=2)),
         _run(3, event="push", age=timedelta(minutes=30)),
-        _run(4, event="workflow_dispatch", age=timedelta(minutes=15)),
+        _run(4, event="repository_dispatch", age=timedelta(minutes=15)),
     ]
 
     def get_json(url: str) -> dict[str, Any]:
