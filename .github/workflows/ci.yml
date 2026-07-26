@@ -681,40 +681,56 @@ jobs:
       - name: Test
         run: .\.ci-venv\Scripts\python.exe -m pytest -q
 
-  android:
-    name: Android
+  android_fast:
+    name: Android fast
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    defaults:
+    timeout-minutes: 15
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults: &android_defaults
       run:
         working-directory: android
         shell: bash
-    env:
-      # Canonical owner server URL so BuildConfig.DEFAULT_SERVER_URL is populated
-      # without a hardcoded domain in build.gradle.kts. Value comes from the repo
-      # Actions variable (defense-in-depth: keep the origin host out of the public
-      # workflow file — set it via `gh variable set TICKETBOX_SERVER_URL`).
+    env: &android_environment
       TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
-      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          # assertAndroidTestCountEqualsBaseline reads the base baseline via
-          # ``git show <base_ref>:android/audit/test_count_baseline.txt`` for the
-          # ratchet check; fetch-depth: 0 makes the base ref reachable.
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up Java
+      - &android_setup_python
+        name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - &android_qualification
+        name: Verify qualification SHA
+        id: qualification
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - &android_setup_java
+        name: Set up Java
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
-      - name: Install Android SDK packages
+      - &android_setup_gradle
+        name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      - &android_sdk
+        name: Install Android SDK packages
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
@@ -722,13 +738,15 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0"
 
-      - name: Point Gradle at cloud Android SDK
+      - &android_local_properties
+        name: Point Gradle at cloud Android SDK
         run: |
           sdk_dir="${ANDROID_HOME//\\/\\\\}"
           echo "sdk.dir=$sdk_dir" > local.properties
           echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
 
-      - name: Tune Gradle for cloud runner
+      - &android_gradle_tuning
+        name: Tune Gradle for cloud runner
         run: |
           {
             echo ""
@@ -737,15 +755,7 @@ jobs:
             echo "kotlin.daemon.jvmargs=-Xmx2560m"
           } >> gradle.properties
 
-      - name: Gradle / JVM versions
-        run: ./gradlew --no-daemon --version
-
       - name: Force regenerate latest Room schema
-        # --rerun-tasks is the FROM-CACHE proofing that makes the schema-drift
-        # gate non-vacuous: Room's KSP is incremental and SKIPS overwriting an
-        # existing schema JSON when the entity hash is unchanged (even if the
-        # committed file is a wrong placeholder). Deleting the latest version's
-        # file + forcing KSP is the only reliable fresh-write trigger.
         run: |
           schema_dir="app/schemas/com.ticketbox.data.local.AppDatabase"
           latest="$(find "$schema_dir" -maxdepth 1 -name '*.json' -printf '%f\n' | sed 's/\.json$//' | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
@@ -755,13 +765,21 @@ jobs:
           fi
           ./gradlew --no-daemon --max-workers=2 :app:kspGrayDebugKotlin --rerun-tasks
 
-      - name: Compile and unit tests
-        run: ./gradlew --no-daemon --max-workers=2 :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest
+      - name: Compile, unit tests, lint, detekt, and count ratchet
+        run: ./gradlew --no-daemon --max-workers=2 :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
+
+      - name: Upload Android unit-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-fast-test-diagnostics
+          path: |
+            android/app/build/test-results/testGrayDebugUnitTest/
+            android/app/build/reports/tests/testGrayDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify Room schema snapshots are committed
-        # Run from repo root: with working-directory android a path like
-        # ``android/app/schemas`` would resolve to ``android/android/...`` and
-        # git would silently return empty (codex round-6 P1).
         working-directory: ${{ github.workspace }}
         run: |
           status="$(git status --porcelain android/app/schemas)"
@@ -782,57 +800,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Android verification (count baseline + lint + detekt)
-        # Kotlin complexity gate (CODE_QUALITY_STANDARDS.md): detekt 2.x runs
-        # LongParameterList only under type resolution, so BOTH variant tasks
-        # are pinned — the plain :app:detekt would be a weaker gate.
-        run: ./gradlew --no-daemon --max-workers=2 :app:assertAndroidTestCountEqualsBaseline :app:lintGrayDebug :app:detektGrayDebug :app:detektGrayDebugUnitTest
+  android_apk_debug:
+    name: Android APK debug
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults: *android_defaults
+    env: *android_environment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
-      - name: Android debug APK builds
+      - *android_setup_python
+      - *android_qualification
+      - *android_setup_java
+      - *android_setup_gradle
+      - *android_sdk
+      - *android_local_properties
+      - *android_gradle_tuning
+
+      - name: Build debug APKs
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug
 
-      - name: Detect release APK scope
-        id: release-apk-scope
-        working-directory: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "release_apk_required=true" >> "$GITHUB_OUTPUT"
-            echo "Release APK builds required for non-PR events."
-            exit 0
-          fi
-
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          changed="$(git diff --name-only "${base}...${head}")"
-          printf '%s\n' "$changed"
-
-          if printf '%s\n' "$changed" | grep -E '^(android/|\.github/workflows/|\.gitea/workflows/)' >/dev/null; then
-            echo "release_apk_required=true" >> "$GITHUB_OUTPUT"
-            echo "Release APK builds required by Android/CI changes."
-          else
-            echo "release_apk_required=false" >> "$GITHUB_OUTPUT"
-            echo "Release APK builds skipped for PR without Android/CI changes."
-          fi
-
-      - name: Android release APK builds
-        if: steps.release-apk-scope.outputs.release_apk_required == 'true'
-        # Release builds run R8 minify + shrinkResources, keeping keep-rules warm
-        # in CI instead of discovering Retrofit/Moshi issues only on a manual
-        # release assemble. Keep both release variants in one Gradle invocation:
-        # Two workers let the flavor-specific R8/resource pipelines overlap
-        # while both variants still share one configuration and daemon. A clean
-        # local no-build-cache benchmark reduced this lane from 438s to 300s.
-        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
-
-      - name: Skip Android release APK builds
-        if: steps.release-apk-scope.outputs.release_apk_required != 'true'
-        run: echo "Release APK builds are path-gated for this PR."
-
       - name: Verify debug APK signing certificate
-        # Compute the expected fingerprint from the committed debug keystore
-        # rather than hardcoding it, so a deliberate keystore rotation doesn't
-        # need a CI edit while an accidental signing-identity change still fails.
         run: |
           set -euo pipefail
           apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
@@ -858,137 +854,6 @@ jobs:
             echo "OK signing certificate $apk"
           done
 
-      - name: NVD cache key (UTC date)
-        # Day-rotating key so the cached NVD DB refreshes ~daily; restore-keys
-        # below falls back to the most recent prior cache on a key miss.
-        id: nvd-key
-        if: ${{ env.NVD_API_KEY != '' }}
-        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache OWASP NVD database
-        # Persists the OWASP/NVD H2 DB across runs (path mirrors data.directory in
-        # android/build.gradle.kts = Gradle user home). With nvd.validForHours=24 a
-        # warm cache (<24h) makes the plugin SKIP the NVD API call entirely — the
-        # whole point: kills the recurring NVD 520/524 gateway-timeout flake on
-        # reruns/same-day runs and turns the full ~7min download into a cache hit.
-        if: ${{ env.NVD_API_KEY != '' }}
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.gradle/dependency-check-data
-          key: nvd-${{ runner.os }}-${{ steps.nvd-key.outputs.date }}
-          restore-keys: |
-            nvd-${{ runner.os }}-
-
-      - name: Dependency vulnerability scan (OWASP dependency-check)
-        if: ${{ env.NVD_API_KEY != '' }}
-        id: owasp
-        # Android dependency CVE gate via the OWASP plugin (android/build.gradle.kts).
-        # Cloud-only (NVD download is too heavy for the single local-Gitea runner).
-        # Requires the NVD_API_KEY repo secret.
-        #
-        # continue-on-error lets the run REACH the "Enforce" gate below even when
-        # dependency-check exits non-zero — a cold NVD cache + NVD-source outage throws
-        # a FATAL ExceptionCollection (gradle exit 1). This does NOT disable the gate:
-        # the next step re-adjudicates the failure from the log so a real CVE finding
-        # (failBuildOnCVSS, the docs/security/THREAT_MODEL.md gate) still reds the job;
-        # only the specific NVD-data-unavailable path is tolerated, everything else
-        # (corrupt DB, parser/analyzer fatals, unknown) fails safe. failOnError stays at
-        # its default (true) so a corrupt cached DB can't silently skip analysis as a pass.
-        continue-on-error: true
-        run: |
-          set +e            # capture the exit code manually; errexit would skip the lines below
-          set -o pipefail
-          # Split NVD data update from offline analysis so the Enforce gate can
-          # distinguish an external NVD data-source outage from a real scanner failure.
-          # Both phases are bounded so a wedged JVM returns control before the 45m job
-          # timeout can cancel the job and skip adjudication.
-          #
-          # Timeout exit codes: 124 = TERM sent at the deadline (only `timeout`
-          # produces it → unambiguous timeout). 137 = SIGKILL, which is AMBIGUOUS: it's the
-          # post-timeout `-k` KILL (tolerable) OR an OOM/external kill of a broken scanner
-          # BEFORE the deadline (must NOT be tolerated). Disambiguate by elapsed time —
-          # only a 137 at/after the phase deadline is the post-timeout KILL; an earlier
-          # 137 stays unmarked so the Enforce gate fails safe instead of treating a crash
-          # as a tolerated timeout.
-          : > owasp-output.log
-
-          start=$(date +%s)
-          timeout -k 1m 12m ./gradlew --no-daemon --max-workers=2 dependencyCheckUpdate -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee -a owasp-output.log
-          update_rc=${PIPESTATUS[0]}
-          elapsed=$(( $(date +%s) - start ))
-          if [ "$update_rc" -eq 124 ] || { [ "$update_rc" -eq 137 ] && [ "$elapsed" -ge 720 ]; }; then
-            echo "OWASP_NVD_UPDATE_TIMED_OUT (dependency-check update exceeded the 12m NVD bound; rc=$update_rc elapsed=${elapsed}s)" | tee -a owasp-output.log
-          fi
-          if [ "$update_rc" -ne 0 ]; then
-            exit "$update_rc"
-          fi
-
-          start=$(date +%s)
-          timeout -k 1m 10m ./gradlew --no-daemon --max-workers=2 dependencyCheckAggregate -PdependencyCheckAutoUpdate=false -PnvdApiKey="${NVD_API_KEY}" 2>&1 | tee -a owasp-output.log
-          aggregate_rc=${PIPESTATUS[0]}
-          elapsed=$(( $(date +%s) - start ))
-          if [ "$aggregate_rc" -eq 124 ] || { [ "$aggregate_rc" -eq 137 ] && [ "$elapsed" -ge 600 ]; }; then
-            echo "OWASP_AGGREGATE_TIMED_OUT (dependency-check offline aggregate exceeded the 10m bound; rc=$aggregate_rc elapsed=${elapsed}s)" | tee -a owasp-output.log
-          fi
-          exit "$aggregate_rc"
-
-      - name: Enforce OWASP CVE findings (tolerate only NVD-data outages)
-        if: ${{ env.NVD_API_KEY != '' }}
-        # Re-asserts the dependency-check gate the previous step's continue-on-error
-        # would otherwise drop. failOnError stays true, so outcome=success genuinely
-        # means "analysis ran clean" (a corrupt-DB skip can't masquerade as success).
-        # On failure, distinguish the two cases from the gradle log — report+CVSS check
-        # run AFTER analysis, the fatal data error throws BEFORE:
-        #   real finding       -> "...vulnerabilities that have a CVSS score greater than..."
-        #   NVD data empty      -> "No documents exist" / "NoDataException" (Lucene CVE index empty)
-        #   NVD update timeout  -> timeout marker from the isolated dependencyCheckUpdate phase
-        # Tolerate ONLY those NVD-data-source signatures (NOT the generic "Analysis
-        # failed" wrapper, which also fronts corrupt-DB / parser / analyzer fatals);
-        # fail-safe (red) on a real finding and on every other / unrecognized failure
-        # so nothing — a real CVE or a broken scanner — is silently swallowed.
-        run: |
-          if [ "${{ steps.owasp.outcome }}" = "success" ]; then
-            echo "OWASP scan completed with no findings at/above the failBuildOnCVSS threshold."
-            exit 0
-          fi
-          log=owasp-output.log
-          if [ -f "$log" ] && grep -qiE "vulnerabilities that have a CVSS score greater than|failBuildOnCVSS" "$log"; then
-            echo "::error::OWASP found a dependency at/above the failBuildOnCVSS threshold — real finding, failing the build (threat-model gate)."
-            grep -iE "CVSS score greater than" "$log" || true
-            exit 1
-          fi
-          if [ -f "$log" ] && grep -qiE "No documents exist|NoDataException" "$log"; then
-            echo "::warning::OWASP dependency-check could not run: the NVD CVE data store is empty (cold cache + NVD source unreachable). Tolerated — no data to gate on."
-            # Don't let a tolerated outage POISON the cache: dependency-check already
-            # created an empty ~/.gradle/dependency-check-data H2 dir before throwing
-            # NoDataException, and because the job now ends green the actions/cache step
-            # would save that empty dir under today's key — same-day reruns would restore
-            # it and keep short-circuiting to this tolerated path instead of rebuilding.
-            # Delete it so the cache save has nothing to persist and the next run
-            # re-attempts the NVD build (a good same-day cache, if one exists, is under an
-            # already-saved immutable key and is unaffected).
-            rm -rf "${HOME}/.gradle/dependency-check-data" || true
-            echo "Removed the empty dependency-check data dir to avoid caching a poisoned NVD DB. Re-run once NVD is reachable to restore coverage."
-            exit 0
-          fi
-          if [ -f "$log" ] && grep -q "OWASP_NVD_UPDATE_TIMED_OUT" "$log"; then
-            # A timed-out fetch can leave a PARTIAL H2 DB — drop it so an incomplete NVD DB
-            # isn't cached and the next run rebuilds from scratch.
-            rm -rf "${HOME}/.gradle/dependency-check-data" || true
-            echo "::warning::OWASP dependency-check timed out while updating the NVD CVE data. Tolerated as an external NVD-data outage; substantive Android gates already ran, and the partial dependency-check data dir was removed to avoid caching a poisoned DB."
-            exit 0
-          fi
-          if [ -f "$log" ] && grep -q "OWASP_AGGREGATE_TIMED_OUT" "$log"; then
-            echo "::error::OWASP dependency-check offline analysis exceeded its 10m bound after NVD update succeeded. Failing safe (red): this is not an NVD data-source outage and could hide a real finding."
-            exit 1
-          fi
-          echo "::error::OWASP step failed and the log is neither a CVE finding nor a known NVD-data-empty outage (could be a corrupt cache DB, parser/analyzer fatal, scan timeout, or unknown) — failing safe so no real finding is swallowed. See the previous step's log."
-          exit 1
-
-      - name: Dependency vulnerability scan skipped
-        if: ${{ env.NVD_API_KEY == '' }}
-        run: echo "::warning::NVD_API_KEY is not configured in GitHub Actions secrets; skipping OWASP dependency-check until the secret is restored."
-
       - name: Upload gray debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -1004,6 +869,185 @@ jobs:
           path: android/app/build/outputs/apk/internal/debug/app-internal-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+  android_apk_release:
+    name: Android APK release
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults: *android_defaults
+    env: *android_environment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - *android_setup_python
+      - *android_qualification
+      - *android_setup_java
+      - *android_setup_gradle
+      - *android_sdk
+      - *android_local_properties
+      - *android_gradle_tuning
+
+      - name: Build release APKs
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
+
+  android_sca:
+    name: Android SCA
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults: *android_defaults
+    env: *android_environment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - *android_setup_python
+      - *android_qualification
+      - *android_setup_java
+      - *android_setup_gradle
+      - *android_sdk
+      - *android_local_properties
+      - *android_gradle_tuning
+
+      - name: Resolve Dependency-Check contract
+        id: dependency-check
+        working-directory: ${{ github.workspace }}
+        run: |
+          python backend/scripts/android_dependency_audit.py metadata \
+            --catalog android/gradle/libs.versions.toml \
+            --repository-root . \
+            --contract backend/scripts/nvd_producer_contract.json \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Resolve trusted NVD artifact
+        id: nvd-artifact
+        working-directory: ${{ github.workspace }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python backend/scripts/resolve_nvd_artifact.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow nvd-database.yml \
+            --branch main \
+            --artifact "${{ steps.dependency-check.outputs.artifact }}" \
+            --api-url "$GITHUB_API_URL" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Download trusted NVD artifact
+        if: steps.nvd-artifact.outputs.found == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ steps.nvd-artifact.outputs.artifact_id }}
+          path: ${{ runner.temp }}/ticketbox-nvd-trusted
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.nvd-artifact.outputs.run_id }}
+          digest-mismatch: error
+
+      - name: Scan dependencies from trusted NVD data
+        run: |
+          python ../backend/scripts/android_dependency_audit.py scan \
+            --gradlew "$PWD/gradlew" \
+            --trusted-dir "$RUNNER_TEMP/ticketbox-nvd-trusted" \
+            --work-dir "$RUNNER_TEMP/ticketbox-nvd-work" \
+            --artifact-present "${{ steps.nvd-artifact.outputs.found }}" \
+            --log owasp-output.log
+
+  android:
+    name: Android
+    needs:
+      - scope
+      - android_fast
+      - android_apk_debug
+      - android_apk_release
+      - android_sca
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enforce Android lane results
+        shell: bash
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          FAST_RESULT: ${{ needs.android_fast.result }}
+          FAST_SHA: ${{ needs.android_fast.outputs.qualification_sha }}
+          FAST_SOURCE_SHA: ${{ needs.android_fast.outputs.qualification_source_sha }}
+          DEBUG_APK_RESULT: ${{ needs.android_apk_debug.result }}
+          DEBUG_APK_SHA: ${{ needs.android_apk_debug.outputs.qualification_sha }}
+          DEBUG_APK_SOURCE_SHA: ${{ needs.android_apk_debug.outputs.qualification_source_sha }}
+          RELEASE_APK_RESULT: ${{ needs.android_apk_release.result }}
+          RELEASE_APK_SHA: ${{ needs.android_apk_release.outputs.qualification_sha }}
+          RELEASE_APK_SOURCE_SHA: ${{ needs.android_apk_release.outputs.qualification_source_sha }}
+          SCA_RESULT: ${{ needs.android_sca.result }}
+          SCA_SHA: ${{ needs.android_sca.outputs.qualification_sha }}
+          SCA_SOURCE_SHA: ${{ needs.android_sca.outputs.qualification_source_sha }}
+        run: |
+          set -euo pipefail
+          require_equal() {
+            if [ "$1" != "$2" ]; then
+              echo "::error::$3: expected '$2', got '$1'"
+              exit 1
+            fi
+          }
+
+          require_equal "$SCOPE_RESULT" "success" "CI scope result"
+          require_equal "$SCOPE_SHA" "$EXPECTED_SHA" "CI scope qualification SHA"
+          require_equal "$SCOPE_SOURCE_SHA" "$EXPECTED_SOURCE_SHA" "CI scope source SHA"
+
+          if [ "$ANDROID_SCOPE" = "false" ]; then
+            for result in "$FAST_RESULT" "$DEBUG_APK_RESULT" "$RELEASE_APK_RESULT" "$SCA_RESULT"; do
+              require_equal "$result" "skipped" "out-of-scope Android lane result"
+            done
+            for sha in \
+              "$FAST_SHA" "$FAST_SOURCE_SHA" \
+              "$DEBUG_APK_SHA" "$DEBUG_APK_SOURCE_SHA" \
+              "$RELEASE_APK_SHA" "$RELEASE_APK_SOURCE_SHA" \
+              "$SCA_SHA" "$SCA_SOURCE_SHA"
+            do
+              require_equal "$sha" "" "skipped Android lane SHA"
+            done
+            echo "Android scope not affected."
+            exit 0
+          fi
+
+          require_equal "$ANDROID_SCOPE" "true" "Android scope"
+          for result in "$FAST_RESULT" "$DEBUG_APK_RESULT" "$RELEASE_APK_RESULT" "$SCA_RESULT"; do
+            require_equal "$result" "success" "Android lane result"
+          done
+          for sha in "$FAST_SHA" "$DEBUG_APK_SHA" "$RELEASE_APK_SHA" "$SCA_SHA"; do
+            require_equal "$sha" "$EXPECTED_SHA" "Android lane qualification SHA"
+          done
+          for sha in \
+            "$FAST_SOURCE_SHA" \
+            "$DEBUG_APK_SOURCE_SHA" \
+            "$RELEASE_APK_SOURCE_SHA" \
+            "$SCA_SOURCE_SHA"
+          do
+            require_equal "$sha" "$EXPECTED_SOURCE_SHA" "Android lane source SHA"
+          done
+          echo "Required Android lanes are valid."
 
 # The instrumented (emulator) lane lives in
 # .github/workflows/android-connected-test.yml — path-filtered to Android

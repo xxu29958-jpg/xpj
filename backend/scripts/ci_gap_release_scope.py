@@ -5,6 +5,7 @@ from __future__ import annotations
 import pathlib
 import re
 
+import yaml
 from ci_audit_provider import PLATFORM_WORKFLOW_PARTS
 from ci_gap_powershell import (
     powershell_statement_depths,
@@ -16,6 +17,10 @@ _MISSING_WORKFLOW_VIOLATION = "required workflow missing from CI gap scan"
 _SCOPE_POLICY_VIOLATION = "Android release APK builds must be path-gated for non-Android changes"
 _EXPECTED_WORKFLOWS = ((".github", "ci.yml", True), (".gitea", "windows-ci.yml", False))
 _RELEASE_IF = "steps.release-apk-scope.outputs.release_apk_required == 'true'"
+_CENTRAL_ANDROID_IF = (
+    "${{ always() && !cancelled() && "
+    "(needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}"
+)
 _RELEASE_TASKS = (":app:assembleGrayRelease", ":app:assembleInternalRelease")
 
 
@@ -373,7 +378,44 @@ def _detect_step_valid(block: str, *, github: bool) -> bool:
     )
 
 
+def _github_central_scope_valid(path: pathlib.Path) -> bool:
+    try:
+        workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return False
+    if not isinstance(workflow, dict) or not isinstance(workflow.get("jobs"), dict):
+        return False
+
+    release_jobs: list[dict[str, object]] = []
+    for raw_job in workflow["jobs"].values():
+        if not isinstance(raw_job, dict) or not isinstance(raw_job.get("steps"), list):
+            continue
+        commands = [
+            shell_without_heredoc_literals(str(step["run"]))
+            for step in raw_job["steps"]
+            if isinstance(step, dict) and isinstance(step.get("run"), str)
+        ]
+        if any(all(task in command for task in _RELEASE_TASKS) for command in commands):
+            release_jobs.append(raw_job)
+
+    if not release_jobs:
+        return False
+    for job in release_jobs:
+        needs = job.get("needs")
+        if isinstance(needs, str):
+            normalized_needs = {needs}
+        elif isinstance(needs, list) and all(isinstance(item, str) for item in needs):
+            normalized_needs = set(needs)
+        else:
+            normalized_needs = set()
+        if "scope" not in normalized_needs or job.get("if") != _CENTRAL_ANDROID_IF:
+            return False
+    return True
+
+
 def _workflow_scope_valid(path: pathlib.Path, *, github: bool) -> bool:
+    if github and _github_central_scope_valid(path):
+        return True
     blocks = _step_blocks(path)
     release_blocks = [
         block for block in blocks if _has_release_tasks(block, github=github)
