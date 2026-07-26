@@ -39,6 +39,10 @@ _PYTHON_PREFIX = rf"(?i)^\s*(?:&\s+)?{_PYTHON_COMMAND}\s+"
 _RUFF_PREFIX = r"(?i)^\s*(?:&\s+)?(?:ruff(?:\.exe)?|[^\s]+[\\/]ruff(?:\.exe)?)\s+"
 _PYTEST_LINE = rf"(?m)^\s*{_PYTHON_COMMAND}\s+-m\s+pytest\s+"
 _BACKEND_TARGETS = r"app\s+scripts\s+tests\s+packaging[\\/]+tests"
+_MATRIX_SHARD_COORDINATES = (
+    "${{ matrix.shard.index }}",
+    "${{ matrix.shard.count }}",
+)
 
 
 def _command_tokens(command: str) -> tuple[str, ...]:
@@ -46,30 +50,77 @@ def _command_tokens(command: str) -> tuple[str, ...]:
     return tokens[1:] if tokens and tokens[0] == "&" else tokens
 
 
-def _postgres_lane_invocation(command: str) -> tuple[str, int] | None:
+def _postgres_lane_invocation(
+    command: str,
+) -> tuple[str, int, int | str, int | str] | None:
     tokens = _command_tokens(command)
-    if len(tokens) != 7:
+    if len(tokens) < 7 or len(tokens) % 2 == 0:
         return None
     executable = tokens[0].replace("\\", "/").lower().rsplit("/", 1)[-1]
     if executable not in {"python", "python.exe"}:
         return None
     if tokens[1:3] != ("-m", "scripts.run_postgres_pytest_lane"):
         return None
-    if tokens[3] != "--lane" or tokens[5] != "--workers":
+    arguments = tokens[3:]
+    if len(arguments) % 2 != 0:
         return None
+    values: dict[str, str] = {}
+    for index in range(0, len(arguments), 2):
+        key, value = arguments[index : index + 2]
+        if key in values or key not in {
+            "--lane",
+            "--workers",
+            "--shard-index",
+            "--shard-count",
+        }:
+            return None
+        values[key] = value
+    if set(values) not in (
+        {"--lane", "--workers"},
+        {"--lane", "--workers", "--shard-index", "--shard-count"},
+    ):
+        return None
+    lane = values["--lane"]
     try:
-        return tokens[4], int(tokens[6])
+        workers = int(values["--workers"])
     except ValueError:
         return None
+    shard_values = (
+        values.get("--shard-index", "0"),
+        values.get("--shard-count", "1"),
+    )
+    if shard_values == _MATRIX_SHARD_COORDINATES:
+        shard_index, shard_count = shard_values
+    else:
+        try:
+            shard_index, shard_count = map(int, shard_values)
+        except ValueError:
+            return None
+    if (
+        isinstance(shard_count, int)
+        and (
+            shard_count < 1
+            or shard_count > 4
+            or not isinstance(shard_index, int)
+            or shard_index < 0
+            or shard_index >= shard_count
+        )
+    ):
+        return None
+    return lane, workers, shard_index, shard_count
 
 
 def _matches_ordinary_pytest(command: str) -> bool:
     invocation = _postgres_lane_invocation(command)
-    return invocation is not None and invocation[0] == "ordinary" and 1 <= invocation[1] <= 4
+    return (
+        invocation is not None
+        and invocation[0] == "ordinary"
+        and 1 <= invocation[1] <= 4
+    )
 
 
 def _matches_real_db_pytest(command: str) -> bool:
-    return _postgres_lane_invocation(command) == ("real-db", 1)
+    return _postgres_lane_invocation(command) == ("real-db", 1, 0, 1)
 
 
 def _powershell_file_invocation(

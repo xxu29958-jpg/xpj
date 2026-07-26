@@ -28,7 +28,13 @@ from scripts.run_postgres_pytest_lane import (
     POSTGRES_PYTEST_LANE_DEST,
     POSTGRES_PYTEST_LANE_MARKERS,
     POSTGRES_PYTEST_LANE_OPTION,
+    POSTGRES_PYTEST_SHARD_COUNT_DEST,
+    POSTGRES_PYTEST_SHARD_COUNT_OPTION,
+    POSTGRES_PYTEST_SHARD_INDEX_DEST,
+    POSTGRES_PYTEST_SHARD_INDEX_OPTION,
+    nodeid_shard,
     validate_lane_collection,
+    validate_shard_coordinates,
 )
 
 # Importing tests._infra.env sets os.environ before any app.* import.
@@ -67,6 +73,22 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         dest=POSTGRES_PYTEST_LANE_DEST,
         help="declare the PostgreSQL responsibility lane selected by the runner",
+    )
+    group.addoption(
+        POSTGRES_PYTEST_SHARD_INDEX_OPTION,
+        action="store",
+        type=int,
+        default=0,
+        dest=POSTGRES_PYTEST_SHARD_INDEX_DEST,
+        help="zero-based ordinary-lane shard index",
+    )
+    group.addoption(
+        POSTGRES_PYTEST_SHARD_COUNT_OPTION,
+        action="store",
+        type=int,
+        default=1,
+        dest=POSTGRES_PYTEST_SHARD_COUNT_DEST,
+        help="ordinary-lane shard count",
     )
 
 
@@ -176,6 +198,14 @@ def pytest_configure(config: pytest.Config) -> None:
         "tests that need real cross-connection commits — concurrency, true "
         "background-thread work.",
     )
+    try:
+        validate_shard_coordinates(
+            lane=config.getoption(POSTGRES_PYTEST_LANE_DEST),
+            shard_index=config.getoption(POSTGRES_PYTEST_SHARD_INDEX_DEST),
+            shard_count=config.getoption(POSTGRES_PYTEST_SHARD_COUNT_DEST),
+        )
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
     worker_input = getattr(config, "workerinput", None)
     worker_id = os.environ.get("PYTEST_XDIST_WORKER")
     run_uid = os.environ.get("PYTEST_XDIST_TESTRUNUID")
@@ -189,6 +219,32 @@ def pytest_configure(config: pytest.Config) -> None:
         raise pytest.UsageError("xdist worker database was not derived before app import")
     if worker_input.get("xpj_worker_database_name") != env.WORKER_DATABASE.name:
         raise pytest.UsageError("xdist worker database does not match controller ownership")
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Select one complete, deterministic ordinary-lane shard."""
+    lane = config.getoption(POSTGRES_PYTEST_LANE_DEST)
+    shard_index = config.getoption(POSTGRES_PYTEST_SHARD_INDEX_DEST)
+    shard_count = config.getoption(POSTGRES_PYTEST_SHARD_COUNT_DEST)
+    if lane != PARALLEL_POSTGRES_PYTEST_LANE or shard_count == 1:
+        return
+
+    selected: list[pytest.Item] = []
+    deselected: list[pytest.Item] = []
+    for item in items:
+        target = (
+            selected
+            if nodeid_shard(item.nodeid, shard_count=shard_count) == shard_index
+            else deselected
+        )
+        target.append(item)
+    if not selected:
+        raise pytest.UsageError(
+            f"ordinary PostgreSQL shard {shard_index}/{shard_count} selected no tests"
+        )
+    items[:] = selected
+    config.hook.pytest_deselected(items=deselected)
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:

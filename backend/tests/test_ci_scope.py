@@ -147,6 +147,7 @@ def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
     for path in (
         "backend/tests/test_android_test_qualification.py",
         "backend/tests/test_backend_ci_results.py",
+        "backend/tests/test_postgres_ci_lane_runner.py",
         "backend/tests/test_postgres_ci_topology.py",
     ):
         assert classify_ci_paths([path]) == {

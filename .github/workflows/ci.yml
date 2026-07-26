@@ -151,6 +151,7 @@ jobs:
           python -m pytest -q
           tests/test_ci_scope.py
           tests/test_backend_ci_results.py
+          tests/test_postgres_ci_lane_runner.py
           tests/test_postgres_ci_topology.py
           tests/test_android_process_qualification.py
           tests/test_android_test_qualification.py
@@ -428,14 +429,22 @@ jobs:
         run: python -E -S backend/scripts/verify_backend_ci_results.py
 
   backend_postgres_ordinary:
-    name: Backend PostgreSQL / ordinary
+    name: "Backend PostgreSQL / ordinary ${{ matrix.shard.label }} (PG ${{ matrix.postgres['postgres-major'] }})"
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    strategy: &postgres_test_strategy
+    strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.scope.outputs.postgres_matrix) }}
+      matrix:
+        postgres: ${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}
+        shard:
+          - index: 0
+            count: 2
+            label: 1/2
+          - index: 1
+            count: 2
+            label: 2/2
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
@@ -445,7 +454,7 @@ jobs:
         shell: bash
     services:
       postgres: &postgres_test_service
-        image: ${{ matrix.postgres-image }}
+        image: ${{ matrix.postgres['postgres-image'] }}
         env:
           POSTGRES_PASSWORD: &postgres_test_password xpj-ci-${{ github.run_id }}-${{ github.run_attempt }}
           POSTGRES_HOST_AUTH_METHOD: scram-sha-256
@@ -500,11 +509,11 @@ jobs:
       - name: Prepare ordinary lane database
         env: &postgres_prepare_environment
           XPJ_TEST_APPLICATION_PASSWORD: xpj-app-${{ github.run_id }}-${{ github.run_attempt }}
-        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --expected-major "${{ matrix.postgres-major }}"
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --expected-major "${{ matrix.postgres['postgres-major'] }}"
 
       - name: PostgreSQL parallel pytest lane
         # Ordinary tests own one database/data root per fixed xdist worker.
-        run: ./.ci-venv/bin/python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4
+        run: ./.ci-venv/bin/python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --shard-index "${{ matrix.shard.index }}" --shard-count "${{ matrix.shard.count }}"
 
       - &postgres_remove_passfile
         name: Remove PostgreSQL passfile
@@ -516,12 +525,15 @@ jobs:
           fi
 
   backend_postgres_real_db:
-    name: Backend PostgreSQL / real-db
+    name: "Backend PostgreSQL / real-db (PG ${{ matrix.postgres['postgres-major'] }})"
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    strategy: *postgres_test_strategy
+    strategy: &postgres_test_strategy
+      fail-fast: false
+      matrix:
+        postgres: ${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
@@ -542,7 +554,7 @@ jobs:
 
       - name: Prepare real-db lane database
         env: *postgres_prepare_environment
-        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --expected-major "${{ matrix.postgres-major }}"
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --expected-major "${{ matrix.postgres['postgres-major'] }}"
 
       - name: PostgreSQL real-db serial pytest lane
         run: ./.ci-venv/bin/python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
@@ -550,7 +562,7 @@ jobs:
       - *postgres_remove_passfile
 
   backend_postgres_recovery:
-    name: Backend PostgreSQL / smoke + recovery
+    name: "Backend PostgreSQL / smoke + recovery (PG ${{ matrix.postgres['postgres-major'] }})"
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
@@ -581,9 +593,9 @@ jobs:
           sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
           sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
           sudo apt-get update
-          sudo apt-get install -y "postgresql-client-${{ matrix.postgres-major }}"
-          echo "/usr/lib/postgresql/${{ matrix.postgres-major }}/bin" >> "$GITHUB_PATH"
-          export PATH="/usr/lib/postgresql/${{ matrix.postgres-major }}/bin:$PATH"
+          sudo apt-get install -y "postgresql-client-${{ matrix.postgres['postgres-major'] }}"
+          echo "/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin" >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin:$PATH"
           pg_dump --version
           pg_restore --version
 
@@ -591,7 +603,7 @@ jobs:
 
       - name: Prepare smoke and recovery databases
         env: *postgres_prepare_environment
-        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role smoke --role restore --expected-major "${{ matrix.postgres-major }}"
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role smoke --role restore --expected-major "${{ matrix.postgres['postgres-major'] }}"
 
       - name: PostgreSQL end-to-end smoke (ADR-0041)
         run: ./.ci-venv/bin/python scripts/smoke_test.py

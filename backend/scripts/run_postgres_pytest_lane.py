@@ -8,6 +8,7 @@ the CI audit cannot drift into separate command contracts.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import subprocess
 import sys
@@ -31,11 +32,16 @@ _PYTEST_CONTRACT_ARGS = (
 )
 POSTGRES_PYTEST_LANE_OPTION = "--xpj-postgres-lane"
 POSTGRES_PYTEST_LANE_DEST = "xpj_postgres_lane"
+POSTGRES_PYTEST_SHARD_INDEX_OPTION = "--xpj-postgres-shard-index"
+POSTGRES_PYTEST_SHARD_INDEX_DEST = "xpj_postgres_shard_index"
+POSTGRES_PYTEST_SHARD_COUNT_OPTION = "--xpj-postgres-shard-count"
+POSTGRES_PYTEST_SHARD_COUNT_DEST = "xpj_postgres_shard_count"
 POSTGRES_PYTEST_LANE_MARKERS = {
     "ordinary": "not real_db",
     "real-db": "real_db",
 }
 PARALLEL_POSTGRES_PYTEST_LANE = "ordinary"
+MAX_POSTGRES_PYTEST_SHARDS = 4
 _LIBPQ_ROUTE_ENV = {
     "PGAPPNAME",
     "PGDATABASE",
@@ -55,13 +61,53 @@ _LIBPQ_ROUTE_ENV = {
 }
 
 
-def build_pytest_command(*, lane: str, workers: int) -> tuple[str, ...]:
+def validate_shard_coordinates(
+    *,
+    lane: str | None,
+    shard_index: int,
+    shard_count: int,
+) -> None:
+    if shard_count < 1 or shard_count > MAX_POSTGRES_PYTEST_SHARDS:
+        raise ValueError(
+            f"PostgreSQL pytest shard count must be between 1 and "
+            f"{MAX_POSTGRES_PYTEST_SHARDS}"
+        )
+    if shard_index < 0 or shard_index >= shard_count:
+        raise ValueError("PostgreSQL pytest shard index is outside the shard count")
+    if shard_count > 1 and lane != PARALLEL_POSTGRES_PYTEST_LANE:
+        raise ValueError("only the ordinary PostgreSQL lane may be sharded")
+
+
+def nodeid_shard(nodeid: str, *, shard_count: int) -> int:
+    if not nodeid:
+        raise ValueError("PostgreSQL pytest shard requires a non-empty nodeid")
+    validate_shard_coordinates(
+        lane=PARALLEL_POSTGRES_PYTEST_LANE,
+        shard_index=0,
+        shard_count=shard_count,
+    )
+    digest = hashlib.sha256(nodeid.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], byteorder="big") % shard_count
+
+
+def build_pytest_command(
+    *,
+    lane: str,
+    workers: int,
+    shard_index: int = 0,
+    shard_count: int = 1,
+) -> tuple[str, ...]:
     if lane not in POSTGRES_PYTEST_LANE_MARKERS:
         raise ValueError(f"unknown PostgreSQL pytest lane: {lane}")
     if workers < 1 or workers > 4:
         raise ValueError("PostgreSQL pytest workers must be between 1 and 4")
     if lane == "real-db" and workers != 1:
         raise ValueError("the real-db PostgreSQL lane must remain serial")
+    validate_shard_coordinates(
+        lane=lane,
+        shard_index=shard_index,
+        shard_count=shard_count,
+    )
 
     command = [
         sys.executable,
@@ -73,6 +119,10 @@ def build_pytest_command(*, lane: str, workers: int) -> tuple[str, ...]:
         lane,
         "-m",
         POSTGRES_PYTEST_LANE_MARKERS[lane],
+        POSTGRES_PYTEST_SHARD_INDEX_OPTION,
+        str(shard_index),
+        POSTGRES_PYTEST_SHARD_COUNT_OPTION,
+        str(shard_count),
     ]
     if workers > 1:
         command.extend(
@@ -193,12 +243,19 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         required=True,
     )
     parser.add_argument("--workers", type=int, required=True)
+    parser.add_argument("--shard-index", type=int, default=0)
+    parser.add_argument("--shard-count", type=int, default=1)
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    command = build_pytest_command(lane=args.lane, workers=args.workers)
+    command = build_pytest_command(
+        lane=args.lane,
+        workers=args.workers,
+        shard_index=args.shard_index,
+        shard_count=args.shard_count,
+    )
     return subprocess.run(
         command,
         check=False,
