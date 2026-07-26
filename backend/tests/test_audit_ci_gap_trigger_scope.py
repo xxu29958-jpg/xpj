@@ -13,6 +13,7 @@ _ANDROID_PATHS = """
       - android/gradlew
       - android/gradlew.bat
       - android/settings.gradle.kts
+      - android/audit/test_count_baseline.txt
       - .gitea/workflows/android-connected.yml
 """
 
