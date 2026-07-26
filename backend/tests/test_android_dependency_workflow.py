@@ -97,7 +97,14 @@ def test_android_cloud_builds_share_one_java_and_sdk_contract() -> None:
             "nvd-database.yml",
         )
     }
-    for workflow in workflows.values():
+    for workflow_name, workflow in workflows.items():
+        for job_id, job in workflow["jobs"].items():
+            for step in job.get("steps", []):
+                execution_keys = {"run", "uses"}.intersection(step)
+                assert len(execution_keys) == 1, (workflow_name, job_id, step)
+                if "with" in step:
+                    assert "uses" in step, (workflow_name, job_id, step)
+
         android_java_steps = [
             step
             for job in workflow["jobs"].values()

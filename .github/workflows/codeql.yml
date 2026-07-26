@@ -168,6 +168,8 @@ jobs:
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4
+        with:
+          category: "/language:java-kotlin"
 
       - name: Enforce CodeQL scope result
         if: ${{ always() && !cancelled() }}
@@ -183,5 +185,3 @@ jobs:
           test "$SCOPE_RESULT" = "success"
           test "$SCOPE_SHA" = "$EXPECTED_SHA"
           test "$SCOPE_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"
-        with:
-          category: "/language:java-kotlin"
