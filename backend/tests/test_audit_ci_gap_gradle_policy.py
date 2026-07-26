@@ -218,6 +218,13 @@ def _assert_gradle_failure_masking_is_rejected(mod: object) -> None:
     assert ":app:connectedGrayDebugAndroidTest" not in mod._missing_gradle_tasks(
         [separate_values]
     )
+    attached_short_values = mod.WorkflowCommand(
+        Path("C:/.github/workflows/android-connected-test.yml"),
+        "timeout -v -sINT -k30s 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
+    )
+    assert ":app:connectedGrayDebugAndroidTest" not in mod._missing_gradle_tasks(
+        [attached_short_values]
+    )
     for invalid_wrapper in (
         "timeout 18m echo ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",
         "timeout --unknown 18m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest",

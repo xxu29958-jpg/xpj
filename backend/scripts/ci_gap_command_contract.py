@@ -45,7 +45,7 @@ REQUIRED_GRADLE_TASKS = [
 _GRADLE_NO_ACTION_OPTIONS = {"-m", "--dry-run", "--task-graph"}
 _GRADLE_EXCLUDE_OPTIONS = {"-x", "--exclude-task"}
 _TIMEOUT_OPTIONS_WITH_VALUE = {"-k", "--kill-after", "-s", "--signal"}
-_TIMEOUT_FLAG_OPTIONS = {"--foreground", "--preserve-status", "--verbose"}
+_TIMEOUT_FLAG_OPTIONS = {"-v", "--foreground", "--preserve-status", "--verbose"}
 _TIMEOUT_DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
 _TIMEOUT_SIGNAL_NAMES = {
     "ABRT",
@@ -136,6 +136,23 @@ def _timeout_wraps_direct_gradle(
             continue
         if separator:
             return False
+        attached_short_option = next(
+            (
+                option
+                for option in ("-k", "-s")
+                if token.startswith(option) and token != option
+            ),
+            None,
+        )
+        if attached_short_option is not None:
+            option_value = token[len(attached_short_option) :]
+            if option_value.startswith("=") or not _valid_timeout_option_value(
+                attached_short_option,
+                option_value,
+            ):
+                return False
+            index += 1
+            continue
         if token in _TIMEOUT_OPTIONS_WITH_VALUE:
             if (
                 index + 1 >= executable_index

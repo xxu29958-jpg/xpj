@@ -436,27 +436,63 @@ val androidTestAnnotationNames = listOf(
 
 val androidTestAnnotationAlternation =
     androidTestAnnotationNames.joinToString("|", transform = Regex::escape)
+val androidTestAnnotationIdentifierPattern =
+    "(?:" + androidTestAnnotationAlternation + "|`(?:" +
+        androidTestAnnotationAlternation + ")`)"
 val androidTestAnnotationPattern = Regex(
-    "(?<![A-Za-z0-9_])@(?:[A-Za-z_][A-Za-z0-9_]*\\.)*(?:" +
-        androidTestAnnotationAlternation + ")(?=\\s|\\(|$)"
+    "(?<![A-Za-z0-9_])@(?:[A-Za-z_][A-Za-z0-9_]*\\.)*" +
+        androidTestAnnotationIdentifierPattern + "(?=\\s|\\(|$)"
 )
 val androidTestAliasImportPattern = Regex(
-    "(?m)^\\s*import\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\.)*(?:" +
-        androidTestAnnotationAlternation + ")\\s+as(?:\\s|$)"
+    "(?m)^\\s*import\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\.)*" +
+        androidTestAnnotationIdentifierPattern + "\\s+as(?:\\s|$)"
 )
 val androidTestAliasTypePattern = Regex(
-    "(?m)^\\s*typealias\\s+[^=]+?=\\s*(?:[A-Za-z_][A-Za-z0-9_]*\\.)*(?:" +
-        androidTestAnnotationAlternation + ")(?:\\s|$)"
+    "\\btypealias\\s+[^=\\r\\n]+?=\\s*" +
+        "(?:[A-Za-z_][A-Za-z0-9_]*\\.)*" +
+        androidTestAnnotationIdentifierPattern + "(?=\\s|;|//|/\\*|$)"
 )
-val javaUnicodeEscapePattern = Regex("""\\u+[0-9A-Fa-f]{4}""")
 
-fun androidTestCodeOnly(source: String): String {
+fun hasEligibleJavaUnicodeEscape(source: String): Boolean {
+    var index = 0
+    while (index < source.length) {
+        if (source[index] != '\\') {
+            index += 1
+            continue
+        }
+        val slashStart = index
+        while (index < source.length && source[index] == '\\') {
+            index += 1
+        }
+        val slashCount = index - slashStart
+        if (slashCount % 2 == 0 || index >= source.length || source[index] != 'u') {
+            continue
+        }
+        while (index < source.length && source[index] == 'u') {
+            index += 1
+        }
+        if (
+            index + 4 <= source.length &&
+            source.substring(index, index + 4).all { character ->
+                character in '0'..'9' ||
+                    character in 'A'..'F' ||
+                    character in 'a'..'f'
+            }
+        ) {
+            return true
+        }
+    }
+    return false
+}
+
+fun androidTestCodeOnly(source: String, nestedBlockComments: Boolean): String {
     val code = StringBuilder(source.length)
     var index = 0
     var lineComment = false
     var blockCommentDepth = 0
     var rawString = false
     var backtickIdentifier = false
+    var preserveBacktickIdentifier = false
     var quotedDelimiter: Char? = null
 
     fun appendMasked(count: Int) {
@@ -476,7 +512,9 @@ fun androidTestCodeOnly(source: String): String {
                     lineComment = false
                 }
             }
-            blockCommentDepth > 0 && source.startsWith("/*", index) -> {
+            blockCommentDepth > 0 &&
+                nestedBlockComments &&
+                source.startsWith("/*", index) -> {
                 appendMasked(2)
                 blockCommentDepth += 1
             }
@@ -491,9 +529,15 @@ fun androidTestCodeOnly(source: String): String {
             }
             rawString -> appendMasked(1)
             backtickIdentifier -> {
-                appendMasked(1)
+                if (preserveBacktickIdentifier) {
+                    code.append(character)
+                    index += 1
+                } else {
+                    appendMasked(1)
+                }
                 if (character == '`') {
                     backtickIdentifier = false
+                    preserveBacktickIdentifier = false
                 }
             }
             quotedDelimiter != null && character == '\\' && index + 1 < source.length -> {
@@ -519,7 +563,17 @@ fun androidTestCodeOnly(source: String): String {
                 rawString = true
             }
             character == '`' -> {
-                code.append(' ')
+                val identifierEnd = source.indexOf('`', index + 1)
+                val identifier = if (identifierEnd >= 0) {
+                    source.substring(index + 1, identifierEnd)
+                } else {
+                    ""
+                }
+                val previousCodeCharacter = code.lastOrNull { !it.isWhitespace() }
+                preserveBacktickIdentifier =
+                    identifier in androidTestAnnotationNames &&
+                    previousCodeCharacter in setOf('@', '.')
+                code.append(if (preserveBacktickIdentifier) character else ' ')
                 backtickIdentifier = true
                 index += 1
             }
@@ -538,9 +592,20 @@ fun androidTestCodeOnly(source: String): String {
 }
 
 fun countAndroidTestAnnotations(source: String, sourceName: String): Int {
-    val codeOnly = androidTestCodeOnly(source)
+    val kotlinSource = sourceName.endsWith(".kt")
+    val javaSource = sourceName.endsWith(".java")
+    if (javaSource && hasEligibleJavaUnicodeEscape(source)) {
+        throw GradleException(
+            "Test source '$sourceName' contains an eligible Java Unicode escape. " +
+                "Use literal source tokens so comment and annotation counting cannot diverge."
+        )
+    }
+    val codeOnly = androidTestCodeOnly(
+        source,
+        nestedBlockComments = kotlinSource,
+    )
     if (
-        sourceName.endsWith(".kt") &&
+        kotlinSource &&
         (
             androidTestAliasImportPattern.containsMatchIn(codeOnly) ||
                 androidTestAliasTypePattern.containsMatchIn(codeOnly)
@@ -548,16 +613,7 @@ fun countAndroidTestAnnotations(source: String, sourceName: String): Int {
     ) {
         throw GradleException(
             "Test source '$sourceName' aliases a recognized test annotation. " +
-                "Use its canonical annotation name so the test-count contract remains exact."
-        )
-    }
-    if (
-        sourceName.endsWith(".java") &&
-        javaUnicodeEscapePattern.containsMatchIn(source)
-    ) {
-        throw GradleException(
-            "Test source '$sourceName' contains a Java Unicode escape. " +
-                "Use literal source tokens so comment and annotation counting cannot diverge."
+            "Use its canonical annotation name so the test-count contract remains exact."
         )
     }
     return androidTestAnnotationPattern.findAll(codeOnly).count()

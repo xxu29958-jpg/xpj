@@ -39,7 +39,8 @@ jobs:
       - uses: reactivecircus/android-emulator-runner@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         with:
           working-directory: android
-          script: {script}
+          script: >-
+            {script}
 """,
         encoding="utf-8",
     )
@@ -60,11 +61,12 @@ def _assert_untrusted_launcher_is_rejected(
         f"./gradlew --no-daemon {_CONNECTED_TASK}\n",
         encoding="utf-8",
     )
-    _write_connected_workflow(
-        workflow,
-        "/tmp/sh scripts/run_connected_ci.sh",
-    )
-    assert _connected_task_is_missing(mod, workflows)
+    for launcher in ("/tmp/sh", r"'\bin\sh'"):
+        _write_connected_workflow(
+            workflow,
+            f"{launcher} scripts/run_connected_ci.sh",
+        )
+        assert _connected_task_is_missing(mod, workflows)
 
 
 def _assert_multiline_action_script_is_rejected(
@@ -89,6 +91,24 @@ jobs:
         encoding="utf-8",
     )
     assert _connected_task_is_missing(mod, workflows)
+
+
+def _assert_premature_local_success_is_rejected(
+    mod: object,
+    workflows: Path,
+    workflow: Path,
+    entrypoint: Path,
+) -> None:
+    _write_connected_workflow(
+        workflow,
+        "/bin/sh scripts/run_connected_ci.sh",
+    )
+    for script in (
+        f"exit 0\n./gradlew --no-daemon {_CONNECTED_TASK}\n",
+        rf"'.\gradlew' --no-daemon {_CONNECTED_TASK}" + "\n",
+    ):
+        entrypoint.write_text(script, encoding="utf-8")
+        assert _connected_task_is_missing(mod, workflows)
 
 
 def assert_ci_gap_expands_local_shell_entrypoint(
@@ -125,6 +145,12 @@ timeout --signal=INT --kill-after=30s 14m \
     assert _connected_task_is_missing(mod, workflows)
     _assert_untrusted_launcher_is_rejected(mod, workflows, workflow, entrypoint)
     _assert_multiline_action_script_is_rejected(mod, workflows, workflow)
+    _assert_premature_local_success_is_rejected(
+        mod,
+        workflows,
+        workflow,
+        entrypoint,
+    )
 
 
 def assert_ci_provider_selection_contract(mod: object) -> None:
