@@ -14,7 +14,6 @@ from ci_gap_job_scope import scoped_step_protection_scope as _scoped_step_protec
 from ci_gap_job_scope import (
     scoped_step_requires_prior_success as _scoped_step_requires_prior_success,
 )
-from ci_gap_local_script import local_shell_script_text as _local_shell_script_text
 from ci_gap_powershell import (
     looks_like_powershell as _looks_like_powershell,
 )
@@ -270,10 +269,7 @@ def _workflow_step_command(
         if len(executable_lines) != 1:
             return None
     shell = str(raw_step.get("shell", job_shell))
-    local_script = _local_shell_script_text(path, raw_step, command)
-    source_command = local_script if local_script is not None else command
-    if local_script is not None:
-        shell = "sh"
+    source_command = command
     executable_text = _strip_comment_lines(source_command)
     is_powershell = _looks_like_powershell(shell=shell, command=executable_text)
     if is_powershell:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests._infra.ci_gap import (
-    assert_ci_gap_expands_local_shell_entrypoint,
+    assert_ci_gap_requires_single_direct_action_command,
 )
 from tests._infra.ci_gap import load_ci_gap_audit as _load
 from tests._infra.ci_gap_action_pins import (
@@ -60,9 +60,9 @@ def test_github_external_uses_require_exact_commit_sha_across_all_workflows(
     _assert_ci_gap_rejects_deferred_powershell_scriptblocks(
         tmp_path / "deferred-scriptblocks"
     )
-    assert_ci_gap_expands_local_shell_entrypoint(
+    assert_ci_gap_requires_single_direct_action_command(
         mod,
-        tmp_path / "local-shell-entrypoint",
+        tmp_path / "direct-action-command",
     )
     assert_ci_gap_uses_complete_powershell_ast(
         tmp_path / "powershell-ast", monkeypatch

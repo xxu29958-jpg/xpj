@@ -51,24 +51,6 @@ def _connected_task_is_missing(mod: object, workflows: Path) -> bool:
     return _CONNECTED_TASK in mod._missing_gradle_tasks(commands)
 
 
-def _assert_untrusted_launcher_is_rejected(
-    mod: object,
-    workflows: Path,
-    workflow: Path,
-    entrypoint: Path,
-) -> None:
-    entrypoint.write_text(
-        f"./gradlew --no-daemon {_CONNECTED_TASK}\n",
-        encoding="utf-8",
-    )
-    for launcher in ("/tmp/sh", r"'\bin\sh'"):
-        _write_connected_workflow(
-            workflow,
-            f"{launcher} scripts/run_connected_ci.sh",
-        )
-        assert _connected_task_is_missing(mod, workflows)
-
-
 def _assert_multiline_action_script_is_rejected(
     mod: object,
     workflows: Path,
@@ -93,85 +75,36 @@ jobs:
     assert _connected_task_is_missing(mod, workflows)
 
 
-def _assert_premature_local_success_is_rejected(
-    mod: object,
-    workflows: Path,
-    workflow: Path,
-    entrypoint: Path,
-) -> None:
-    _write_connected_workflow(
-        workflow,
-        "/bin/sh scripts/run_connected_ci.sh",
-    )
-    for script in (
-        f"exit 0\n./gradlew --no-daemon {_CONNECTED_TASK}\n",
-        rf"'.\gradlew' --no-daemon {_CONNECTED_TASK}" + "\n",
-        (
-            "./gradlew --version\n"
-            "exit 0\n"
-            f"timeout 14m ./gradlew --no-daemon {_CONNECTED_TASK}\n"
-        ),
-        (
-            "finish() { exit 0; }\n"
-            "finish\n"
-            f"timeout 14m ./gradlew --no-daemon {_CONNECTED_TASK}\n"
-        ),
-        (
-            "finish()\n"
-            "{\n"
-            f"  ./gradlew --no-daemon {_CONNECTED_TASK}\n"
-            "}\n"
-        ),
-        (
-            "trap 'exit 0' 0\n"
-            f"timeout 14m ./gradlew --no-daemon {_CONNECTED_TASK}\n"
-        ),
-        f"if false; then\n  ./gradlew --no-daemon {_CONNECTED_TASK}\nfi\n",
-    ):
-        entrypoint.write_text(script, encoding="utf-8")
-        assert _connected_task_is_missing(mod, workflows)
-
-
-def assert_ci_gap_expands_local_shell_entrypoint(
+def assert_ci_gap_requires_single_direct_action_command(
     mod: object,
     tmp_path: Path,
 ) -> None:
     workflows = tmp_path / ".github" / "workflows"
-    scripts = tmp_path / "android" / "scripts"
     workflows.mkdir(parents=True)
-    scripts.mkdir(parents=True)
     workflow = workflows / "android-connected-test.yml"
+    direct_command = (
+        "timeout --signal=INT --kill-after=30s 14m "
+        f"./gradlew --no-daemon {_CONNECTED_TASK}"
+    )
     _write_connected_workflow(
         workflow,
-        "/bin/sh scripts/run_connected_ci.sh",
-    )
-    entrypoint = scripts / "run_connected_ci.sh"
-    entrypoint.write_text(
-        """
-#!/bin/sh
-set -eu
-timeout --signal=INT --kill-after=30s 14m \
-  ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
-""",
-        encoding="utf-8",
+        direct_command,
     )
 
     commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
 
     assert len(commands) == 1
-    assert _CONNECTED_TASK in commands[0].text
+    assert commands[0].text.strip() == direct_command
     assert _CONNECTED_TASK not in mod._missing_gradle_tasks(commands)
 
-    entrypoint.unlink()
-    assert _connected_task_is_missing(mod, workflows)
-    _assert_untrusted_launcher_is_rejected(mod, workflows, workflow, entrypoint)
+    for indirect_command in (
+        "/bin/sh scripts/run_connected_ci.sh",
+        f"set -n; {direct_command}",
+        f'finish=exit; "$finish" 0; {direct_command}',
+    ):
+        _write_connected_workflow(workflow, indirect_command)
+        assert _connected_task_is_missing(mod, workflows)
     _assert_multiline_action_script_is_rejected(mod, workflows, workflow)
-    _assert_premature_local_success_is_rejected(
-        mod,
-        workflows,
-        workflow,
-        entrypoint,
-    )
 
 
 def assert_ci_provider_selection_contract(mod: object) -> None:

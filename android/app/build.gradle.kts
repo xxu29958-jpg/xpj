@@ -452,6 +452,13 @@ val androidTestAliasTypePattern = Regex(
         "(?:[A-Za-z_][A-Za-z0-9_]*\\.)*" +
         androidTestAnnotationIdentifierPattern + "(?=\\s|;|//|/\\*|$)"
 )
+val androidGroupedAnnotationStartPattern = Regex(
+    "@(?:[A-Za-z_][A-Za-z0-9_]*\\s*:)?\\s*\\["
+)
+val androidGroupedTestAnnotationPattern = Regex(
+    "(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*\\.)*" +
+        androidTestAnnotationIdentifierPattern + "(?=\\s|\\(|\\]|,|$)"
+)
 
 fun hasEligibleJavaUnicodeEscape(source: String): Boolean {
     var index = 0
@@ -589,6 +596,50 @@ fun androidTestCodeOnly(source: String, nestedBlockComments: Boolean): String {
     return code.toString()
 }
 
+fun countGroupedAndroidTestAnnotations(codeOnly: String, sourceName: String): Int {
+    var count = 0
+    var searchIndex = 0
+    while (searchIndex < codeOnly.length) {
+        val start = androidGroupedAnnotationStartPattern.find(codeOnly, searchIndex) ?: break
+        val openBracket = codeOnly.indexOf('[', start.range.first)
+        val topLevel = StringBuilder()
+        var bracketDepth = 1
+        var parenthesisDepth = 0
+        var braceDepth = 0
+        var index = openBracket + 1
+        while (index < codeOnly.length && bracketDepth > 0) {
+            val character = codeOnly[index]
+            when (character) {
+                '[' -> bracketDepth += 1
+                ']' -> bracketDepth -= 1
+                '(' -> parenthesisDepth += 1
+                ')' -> parenthesisDepth -= 1
+                '{' -> braceDepth += 1
+                '}' -> braceDepth -= 1
+            }
+            if (parenthesisDepth < 0 || braceDepth < 0) {
+                throw GradleException(
+                    "Test source '$sourceName' has malformed grouped annotation syntax."
+                )
+            }
+            if (bracketDepth == 1 && parenthesisDepth == 0 && braceDepth == 0) {
+                topLevel.append(character)
+            } else {
+                topLevel.append(' ')
+            }
+            index += 1
+        }
+        if (bracketDepth != 0 || parenthesisDepth != 0 || braceDepth != 0) {
+            throw GradleException(
+                "Test source '$sourceName' has unterminated grouped annotation syntax."
+            )
+        }
+        count += androidGroupedTestAnnotationPattern.findAll(topLevel).count()
+        searchIndex = index
+    }
+    return count
+}
+
 fun countAndroidTestAnnotations(source: String, sourceName: String): Int {
     val kotlinSource = sourceName.endsWith(".kt")
     val javaSource = sourceName.endsWith(".java")
@@ -614,7 +665,12 @@ fun countAndroidTestAnnotations(source: String, sourceName: String): Int {
             "Use its canonical annotation name so the test-count contract remains exact."
         )
     }
-    return androidTestAnnotationPattern.findAll(codeOnly).count()
+    val groupedCount = if (kotlinSource) {
+        countGroupedAndroidTestAnnotations(codeOnly, sourceName)
+    } else {
+        0
+    }
+    return androidTestAnnotationPattern.findAll(codeOnly).count() + groupedCount
 }
 
 // Conceptual counter name: ``android_junit_test_method_count`` — explicitly
@@ -1059,100 +1115,136 @@ val guardConnectedAndroidTestEmulatorOnly by tasks.registering {
     }
 }
 
-fun ticketboxConnectedCrashLog(): File =
+fun ticketboxConnectedEvidenceFile(fileName: String): File =
     System.getenv("RUNNER_TEMP")
         ?.trim()
         ?.takeIf { it.isNotBlank() }
-        ?.let { File(it, "ticketbox-connected-crash.log") }
+        ?.let { File(it, fileName) }
         ?: layout.buildDirectory
-            .file("reports/androidTests/ticketbox-connected-crash.log")
+            .file("reports/androidTests/$fileName")
             .get()
             .asFile
 
-fun prepareTicketboxConnectedCrashLog(crashLog: File) {
-    val crashLogDirectory = crashLog.parentFile
-        ?: throw GradleException("Connected-test crash log has no parent directory.")
-    if (!crashLogDirectory.isDirectory && !crashLogDirectory.mkdirs()) {
-        throw GradleException("Cannot create connected-test crash-log directory.")
+fun prepareTicketboxConnectedEvidenceFile(evidenceFile: File) {
+    val evidenceDirectory = evidenceFile.parentFile
+        ?: throw GradleException("Connected-test evidence file has no parent directory.")
+    if (!evidenceDirectory.isDirectory && !evidenceDirectory.mkdirs()) {
+        throw GradleException("Cannot create connected-test evidence directory.")
     }
 }
 
-val prepareGrayConnectedTestCrashLog by tasks.registering {
-    group = "verification"
-    description = "Start a fresh crash-evidence file for this connected-test run."
+fun ticketboxConnectedCaptureSerials(): List<String> {
+    val readySerials = ticketboxReadyDeviceSerials()
+    val selectedSerial = System.getenv("ANDROID_SERIAL")
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+    val captureSerials = when {
+        selectedSerial != null -> readySerials.filter {
+            it.equals(selectedSerial, ignoreCase = true)
+        }
+        ticketboxAllowRealDeviceConnectedTest -> readySerials
+        else -> readySerials.filter { it.startsWith("emulator-", ignoreCase = true) }
+    }
+    if (captureSerials.isEmpty()) {
+        throw GradleException(
+            "No ready connected-test target is available for evidence capture."
+        )
+    }
+    return captureSerials
+}
 
-    doLast {
-        val crashLog = ticketboxConnectedCrashLog()
-        prepareTicketboxConnectedCrashLog(crashLog)
-        crashLog.writeText("")
+fun captureTicketboxConnectedAdbEvidence(
+    adb: File,
+    serials: List<String>,
+    evidenceFile: File,
+    description: String,
+    arguments: List<String>,
+) {
+    serials.forEach { serial ->
+        evidenceFile.appendText("===== Android target $serial =====\n")
+        val process = ProcessBuilder(
+            listOf(adb.absolutePath, "-s", serial) + arguments
+        )
+            .directory(rootProject.rootDir)
+            .redirectErrorStream(true)
+            .redirectOutput(ProcessBuilder.Redirect.appendTo(evidenceFile))
+            .start()
+        if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            throw GradleException("Timed out while capturing $description from $serial.")
+        }
+        if (process.exitValue() != 0) {
+            throw GradleException(
+                "Could not capture $description from $serial: " + evidenceFile.readText()
+            )
+        }
+        evidenceFile.appendText("\n")
     }
 }
 
-val captureGrayConnectedTestCrashLog by tasks.registering {
+val prepareGrayConnectedTestEvidence by tasks.registering {
     group = "verification"
-    description = "Capture crash buffers from the connected-test targets before teardown."
+    description = "Capture the pre-test process-exit baseline for connected tests."
+    dependsOn(guardConnectedAndroidTestEmulatorOnly)
 
     doLast {
         val adb = ticketboxAdbExecutable()
-            ?: throw GradleException("Android adb is unavailable; cannot capture connected-test crashes.")
-        val crashLog = ticketboxConnectedCrashLog()
-        prepareTicketboxConnectedCrashLog(crashLog)
+            ?: throw GradleException("Android adb is unavailable; cannot capture exit evidence.")
+        val crashLog = ticketboxConnectedEvidenceFile("ticketbox-connected-crash.log")
+        val beforeExitInfo = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-exit-info-before.txt"
+        )
+        val afterExitInfo = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-exit-info-after.txt"
+        )
+        prepareTicketboxConnectedEvidenceFile(crashLog)
+        crashLog.writeText("")
+        beforeExitInfo.writeText("")
+        afterExitInfo.writeText("")
+        captureTicketboxConnectedAdbEvidence(
+            adb,
+            ticketboxConnectedCaptureSerials(),
+            beforeExitInfo,
+            "the pre-test process-exit baseline",
+            listOf("shell", "dumpsys", "activity", "exit-info"),
+        )
+    }
+}
 
-        val readySerials = ticketboxReadyDeviceSerials()
-        val selectedSerial = System.getenv("ANDROID_SERIAL")
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-        val captureSerials = when {
-            selectedSerial != null -> readySerials.filter {
-                it.equals(selectedSerial, ignoreCase = true)
-            }
-            ticketboxAllowRealDeviceConnectedTest -> readySerials
-            else -> readySerials.filter { it.startsWith("emulator-", ignoreCase = true) }
-        }
-        if (captureSerials.isEmpty()) {
-            throw GradleException(
-                "No ready connected-test target is available for crash-buffer capture."
-            )
-        }
+val captureGrayConnectedTestEvidence by tasks.registering {
+    group = "verification"
+    description = "Capture process-exit and crash evidence before emulator teardown."
 
-        crashLog.appendText("===== Connected crash capture =====\n")
-        captureSerials.forEach { serial ->
-            crashLog.appendText("===== Android target $serial =====\n")
-            val process = ProcessBuilder(
-                adb.absolutePath,
-                "-s",
-                serial,
-                "logcat",
-                "-b",
-                "crash",
-                "-d",
-            )
-                .directory(rootProject.rootDir)
-                .redirectErrorStream(true)
-                .redirectOutput(ProcessBuilder.Redirect.appendTo(crashLog))
-                .start()
-            if (!process.waitFor(30, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-                throw GradleException(
-                    "Timed out while capturing the connected-test crash buffer from $serial."
-                )
-            }
-            if (process.exitValue() != 0) {
-                throw GradleException(
-                    "Could not capture the connected-test crash buffer from $serial: " +
-                        crashLog.readText()
-                )
-            }
-            crashLog.appendText("\n")
-        }
+    doLast {
+        val adb = ticketboxAdbExecutable()
+            ?: throw GradleException("Android adb is unavailable; cannot capture exit evidence.")
+        val captureSerials = ticketboxConnectedCaptureSerials()
+        val afterExitInfo = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-exit-info-after.txt"
+        )
+        val crashLog = ticketboxConnectedEvidenceFile("ticketbox-connected-crash.log")
+        captureTicketboxConnectedAdbEvidence(
+            adb,
+            captureSerials,
+            afterExitInfo,
+            "the post-test process-exit snapshot",
+            listOf("shell", "dumpsys", "activity", "exit-info"),
+        )
+        captureTicketboxConnectedAdbEvidence(
+            adb,
+            captureSerials,
+            crashLog,
+            "the connected-test crash buffer",
+            listOf("logcat", "-b", "crash", "-d"),
+        )
     }
 }
 
 tasks.matching { it.name.matches(Regex("connected.*AndroidTest")) }.configureEach {
     dependsOn(guardConnectedAndroidTestEmulatorOnly)
     if (name == "connectedGrayDebugAndroidTest") {
-        dependsOn(prepareGrayConnectedTestCrashLog)
+        dependsOn(prepareGrayConnectedTestEvidence)
         timeout.set(Duration.ofMinutes(10))
-        finalizedBy(captureGrayConnectedTestCrashLog)
+        finalizedBy(captureGrayConnectedTestEvidence)
     }
 }

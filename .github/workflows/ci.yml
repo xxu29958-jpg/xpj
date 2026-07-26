@@ -506,7 +506,11 @@ jobs:
       - &postgres_remove_passfile
         name: Remove PostgreSQL passfile
         if: ${{ always() }}
-        run: rm -f -- "$PGPASSFILE"
+        working-directory: ${{ runner.temp }}
+        run: |
+          if [ -n "${PGPASSFILE:-}" ]; then
+            rm -f -- "$PGPASSFILE"
+          fi
 
   backend_postgres_real_db:
     name: Backend PostgreSQL / real-db

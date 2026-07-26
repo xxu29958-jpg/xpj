@@ -103,112 +103,21 @@ jobs:
             -camera-back none
           disable-animations: true
           working-directory: android
-          # The action executes each input line in a fresh `sh -c`; keep the
-          # lifecycle state machine in one checked-in shell entrypoint.
-          script: /bin/sh scripts/run_connected_ci.sh
+          # The action executes each input line in a fresh `sh -c`; keep this
+          # as one direct command whose exit status is the Gradle exit status.
+          script: timeout --signal=INT --kill-after=30s 14m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
 
       - name: Verify connected process health
         working-directory: android
         shell: bash
         run: |
           set -euo pipefail
-          crash_log="$RUNNER_TEMP/ticketbox-connected-crash.log"
-          if [ ! -f "$crash_log" ] || [ ! -r "$crash_log" ]; then
-            echo "Connected crash evidence is missing or unreadable: $crash_log" >&2
-            exit 1
-          fi
-
-          apk_from_output() {
-            output_dir=$1
-            mapfile -d '' -t apk_files < <(find "$output_dir" -type f -name '*.apk' -print0)
-            if [ "${#apk_files[@]}" -ne 1 ]; then
-              echo "Expected exactly one APK under $output_dir; found ${#apk_files[@]}." >&2
-              return 1
-            fi
-            printf '%s\n' "${apk_files[0]}"
-          }
-
-          application_processes_from_apk() {
-            apk_file=$1
-            application_id="$(
-              "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" \
-                manifest application-id "$apk_file"
-            )"
-            manifest_file="$(mktemp)"
-            "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" \
-              manifest print "$apk_file" > "$manifest_file"
-            python3 - "$application_id" "$manifest_file" <<'PY'
-          import sys
-          import xml.etree.ElementTree as ET
-
-          application_id, manifest_path = sys.argv[1:]
-          android_process = "{http://schemas.android.com/apk/res/android}process"
-          processes = {application_id}
-          for element in ET.parse(manifest_path).getroot().iter():
-              raw = element.attrib.get(android_process)
-              if not raw:
-                  continue
-              if raw.startswith(":") or raw.startswith("."):
-                  processes.add(application_id + raw)
-              else:
-                  processes.add(raw)
-          for process_name in sorted(processes):
-              print(process_name)
-          PY
-            process_status=$?
-            rm -f "$manifest_file"
-            return "$process_status"
-          }
-
-          process_crashed() {
-            expected_process=$1
-            awk -v expected="$expected_process" '
-              {
-                marker = "Process: "
-                marker_position = index($0, marker)
-                if (marker_position > 0) {
-                  process_name = substr($0, marker_position + length(marker))
-                  sub(/,.*/, "", process_name)
-                  if (process_name == expected) {
-                    found = 1
-                  }
-                }
-              }
-              END { exit found ? 0 : 1 }
-            ' "$crash_log"
-          }
-
-          declare -A expected_processes=()
-          for output_dir in \
-            app/build/outputs/apk/gray/debug \
-            app/build/outputs/apk/androidTest/gray/debug
-          do
-            apk_file="$(apk_from_output "$output_dir")"
-            process_list="$(application_processes_from_apk "$apk_file")"
-            while IFS= read -r process_name; do
-              if [ -n "$process_name" ]; then
-                expected_processes["$process_name"]=1
-              fi
-            done <<< "$process_list"
-          done
-          if [ "${#expected_processes[@]}" -eq 0 ]; then
-            echo "No connected-test process identities were derived from the APKs." >&2
-            exit 1
-          fi
-
-          for process_name in "${!expected_processes[@]}"; do
-            if process_crashed "$process_name"; then
-              echo "Connected tests left a crashed process for $process_name." >&2
-              cat "$crash_log"
-              exit 1
-            else
-              crash_scan_status=$?
-              if [ "$crash_scan_status" -ne 1 ]; then
-                echo "Could not audit connected crash evidence for $process_name." >&2
-                exit "$crash_scan_status"
-              fi
-            fi
-          done
+          python3 scripts/verify_connected_process_health.py \
+            --before "$RUNNER_TEMP/ticketbox-connected-exit-info-before.txt" \
+            --after "$RUNNER_TEMP/ticketbox-connected-exit-info-after.txt" \
+            --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" \
+            --apk-output-dir app/build/outputs/apk/gray/debug \
+            --apk-output-dir app/build/outputs/apk/androidTest/gray/debug
 
       - name: Upload androidTest reports on failure
         if: failure()
@@ -219,5 +128,7 @@ jobs:
             android/app/build/reports/androidTests/**
             android/app/build/outputs/androidTest-results/**
             ${{ runner.temp }}/ticketbox-connected-crash.log
+            ${{ runner.temp }}/ticketbox-connected-exit-info-before.txt
+            ${{ runner.temp }}/ticketbox-connected-exit-info-after.txt
           if-no-files-found: ignore
           retention-days: 7
