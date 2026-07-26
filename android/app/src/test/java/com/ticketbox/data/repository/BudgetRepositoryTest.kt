@@ -276,6 +276,27 @@ class BudgetRepositoryTest {
  *  unbind + re-pair. Separate class to stay under the per-class function cap. */
 class BudgetRepositoryAdviceBindingTest {
     @Test
+    fun nullAdviceSuccessIsNotCached() = runTest {
+        // provider_empty returns HTTP 200 with advice == null — a terminal
+        // state that must never be restored, or a later operator-side fix
+        // would stay invisible behind the cached state.
+        val api = BudgetApiHandler().apply {
+            adviceResponse = BudgetAdviseResponseDto(
+                advice = null,
+                providerName = "empty",
+                reasonCode = "ai_advisor_provider_empty",
+            )
+        }
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val repository = repository(api, tokenStore)
+
+        val result = repository.requestBudgetAdvice("2026-05").getOrThrow()
+
+        assertNull(result.advice)
+        assertNull(repository.cachedBudgetAdvice("2026-05"))
+    }
+
+    @Test
     fun adviceCacheIsScopedToLogicalBinding() = runTest {
         val api = BudgetApiHandler()
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
@@ -375,6 +396,7 @@ private class BudgetApiHandler : InvocationHandler {
     var adviceError: Throwable? = null
     var adviceEntered: CountDownLatch? = null
     var adviceRelease: CountDownLatch? = null
+    var adviceResponse: BudgetAdviseResponseDto? = null
 
     fun service(): ApiService {
         return Proxy.newProxyInstance(
@@ -420,7 +442,7 @@ private class BudgetApiHandler : InvocationHandler {
                     month = request.month,
                     timezone = request.timezone,
                 )
-                BudgetAdviseResponseDto(
+                adviceResponse ?: BudgetAdviseResponseDto(
                     advice = BudgetAdviceDto(
                         summary = "为弹性支出留出余量。",
                         suggestions = listOf(

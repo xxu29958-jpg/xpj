@@ -329,14 +329,13 @@ class BudgetAdviceViewModelTest {
         // Live openai_compat failures return HTTP 200 with advice == null and
         // last_error_code as the reason (_providers.py:161-180) — they are
         // transient, so the retryable Failed state (with 重试) must survive;
-        // only ai_advisor_provider_empty is terminal. The payload_invalid guard
-        // failure (_runner.py:72) rides the same taxonomy arm.
+        // only ai_advisor_provider_empty and ai_advisor_payload_invalid are
+        // terminal (the latter pinned in BudgetAdvicePayloadInvalidTest).
         val retryableReasons = listOf(
             "ai_advisor_provider_call_failed",
             "ai_advisor_provider_unexpected_error",
             "ai_advisor_response_parse_failed",
             "ai_advisor_response_unexpected_error",
-            "ai_advisor_payload_invalid",
         )
         for (reason in retryableReasons) {
             fake.adviceResponder = {
@@ -568,6 +567,34 @@ class BudgetAdviceViewModelTest {
         assertEquals(cached, state.result)
         assertEquals(listOf("2026-05", "2026-05"), fake.cachedAdviceMonths)
         assertEquals(0, fake.adviceMonths.size)
+    }
+}
+
+/** 218-B4 review P2: ai_advisor_payload_invalid is the deterministic
+ *  fail-closed outbound guard (rejects before the provider call), so it maps
+ *  to the terminal Unavailable state with its own honest copy — separate
+ *  class to stay under the per-class function cap. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetAdvicePayloadInvalidTest {
+    @Test
+    fun payloadInvalidMapsToTerminalUnavailableState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(
+                    advice = null,
+                    providerName = "live",
+                    reasonCode = "ai_advisor_payload_invalid",
+                ),
+            )
+        }
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals(UiText.res(R.string.budget_advice_payload_invalid_body), state.error)
     }
 }
 

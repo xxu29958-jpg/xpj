@@ -149,12 +149,19 @@ class BudgetAdviceViewModel(
     }
 
     private fun BudgetAdviceUiState.adviceLoaded(result: BudgetAdviceResult): BudgetAdviceUiState {
-        // Backend contract: advice == null carries a reason_code. Today
-        // `ai_advisor_provider_empty` is the only genuinely-disabled code
-        // (non-live provider — retrying cannot succeed until the server is
-        // configured), so it alone maps to the terminal Unavailable state.
+        // Backend contract: advice == null carries a reason_code. Terminal
+        // (retry cannot succeed right now): `ai_advisor_provider_empty` (the
+        // only genuinely-disabled code — non-live provider) and
+        // `ai_advisor_payload_invalid` (deterministic fail-closed guard — same
+        // month + unchanged data rejects again). Everything else retryable or
+        // Empty per below.
         val reasonCode = result.reasonCode?.trim()
-        val providerUnavailable = result.advice == null && reasonCode == PROVIDER_DISABLED_REASON
+        val terminalBody = when (reasonCode) {
+            PROVIDER_DISABLED_REASON -> UiText.res(R.string.budget_advice_unavailable_body)
+            PAYLOAD_INVALID_REASON -> UiText.res(R.string.budget_advice_payload_invalid_body)
+            else -> null
+        }
+        val terminal = result.advice == null && terminalBody != null
         // Transient live-provider call/parse failures arrive as a 200 with
         // advice == null (last_error_code overrides the default reason), not as
         // an HTTP error — classify them as the retryable Failed state, not the
@@ -163,14 +170,14 @@ class BudgetAdviceViewModel(
         return copy(
             loadState = when {
                 result.advice != null -> BudgetAdviceLoadState.Ready
-                providerUnavailable -> BudgetAdviceLoadState.Unavailable
+                terminal -> BudgetAdviceLoadState.Unavailable
                 transientCallFailure -> BudgetAdviceLoadState.Failed
                 else -> BudgetAdviceLoadState.Empty
             },
             canRequest = repository.canModifyLedger(),
             result = result,
             error = when {
-                providerUnavailable -> UiText.res(R.string.budget_advice_unavailable_body)
+                terminal -> terminalBody
                 transientCallFailure -> UiText.res(R.string.budget_advice_load_failed)
                 else -> null
             },
@@ -197,18 +204,21 @@ class BudgetAdviceViewModel(
     private companion object {
         const val PROVIDER_DISABLED_REASON = "ai_advisor_provider_empty"
 
+        /** The fail-closed outbound-schema guard (_runner.py:72) rejects the
+         *  locally built payload BEFORE the provider call, so the same month
+         *  with unchanged data fails deterministically — terminal, never
+         *  retryable. */
+        const val PAYLOAD_INVALID_REASON = "ai_advisor_payload_invalid"
+
         /** Null-advice reason codes that mean a transient live-provider failure
          *  (retry may succeed): the `openai_compat` `last_error_code` values at
-         *  backend/app/services/budget_advisor_service/_providers.py:161-180,
-         *  plus `ai_advisor_payload_invalid` (the fail-closed outbound-schema
-         *  guard, _runner.py:72). Keep in sync with the backend when new
-         *  last_error_code values appear. */
+         *  backend/app/services/budget_advisor_service/_providers.py:161-180.
+         *  Keep in sync with the backend when new last_error_code values appear. */
         val RETRYABLE_NULL_ADVICE_REASONS = setOf(
             "ai_advisor_provider_call_failed",
             "ai_advisor_provider_unexpected_error",
             "ai_advisor_response_parse_failed",
             "ai_advisor_response_unexpected_error",
-            "ai_advisor_payload_invalid",
         )
 
         val TERMINAL_ADVISOR_ERROR_CODES = setOf(

@@ -49,6 +49,7 @@
     <string name="budget_advice_error_title">没有生成成功</string>
     <string name="budget_advice_unavailable_title">预算建议暂不可用</string>
     <string name="budget_advice_unavailable_body">建议服务尚未配置完成，在完成配置前无法生成建议；现有预算不会受到影响。</string>
+    <string name="budget_advice_payload_invalid_body">本月的数据暂时没能用于生成建议，现在重新生成结果也不会改变；补充或调整本月收支记录后再试。</string>
     <string name="budget_advice_empty_title">当前没有可显示的建议</string>
     <string name="budget_advice_empty_body">先补充收入计划或固定支出，再生成一次；现有预算不会被修改。</string>
     <string name="budget_advice_generate_again">重新生成</string>

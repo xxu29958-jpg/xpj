@@ -145,7 +145,12 @@ class BudgetRepository(
             }
         }
         adviceCallMutex.withLock {
-            result.getOrNull()?.let { adviceLastSuccess[key] = it }
+            // Only a real advice payload is cached: a null-advice result (e.g.
+            // provider_empty) must never be restored, or a later operator-side
+            // fix would stay invisible behind the cached terminal state.
+            result.getOrNull()
+                ?.takeIf { it.advice != null }
+                ?.let { adviceLastSuccess[key] = it }
             adviceInFlight.remove(key)
         }
         deferred.complete(result)
@@ -153,7 +158,8 @@ class BudgetRepository(
     }
 
     /** Process-lifetime last-successful advice for [month] under the CURRENT
-     *  logical session binding, written only on success — a failure leaves the
+     *  logical session binding, written only on a success that carries an
+     *  actual advice payload — failures and null-advice results leave the
      *  cache absent. Nothing is persisted; an app restart simply starts cold.
      *  The binding is part of the lookup key, so a re-paired household never
      *  sees a previous binding's entry. */
