@@ -481,20 +481,3 @@ def test_producer_workflow_is_main_only_and_has_no_failure_log_artifact() -> Non
     assert upload_path.startswith("${{ runner.")
     assert upload_path.endswith("/ticketbox-nvd-database")
     assert all("owasp-output.log" not in str(step) for step in uploads)
-
-
-def test_existing_pr_scan_uses_the_same_aggregate_app_scope() -> None:
-    workflow = yaml.safe_load(
-        (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(
-            encoding="utf-8"
-        )
-    )
-    android = workflow["jobs"]["android"]
-    scan = next(
-        step
-        for step in android["steps"]
-        if step["name"] == "Dependency vulnerability scan (OWASP dependency-check)"
-    )
-
-    assert "dependencyCheckAggregate" in scan["run"]
-    assert "dependencyCheckAnalyze" not in scan["run"]

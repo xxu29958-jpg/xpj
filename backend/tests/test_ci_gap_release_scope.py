@@ -40,6 +40,24 @@ def test_ci_gap_release_apk_scope_policy_accepts_pr_path_gate(tmp_path: Path) ->
 
     assert mod.release_apk_scope_policy_violations({github, gitea}) == []
 
+    github.write_text(
+        """
+name: CI
+jobs:
+  scope:
+    steps:
+      - run: python backend/scripts/ci_scope.py
+  android_apk:
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
+    steps:
+      - name: Build debug and release APKs
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
+""",
+        encoding="utf-8",
+    )
+    assert mod.release_apk_scope_policy_violations({github, gitea}) == []
+
     github = _write_github_heredoc_forgery(tmp_path)
     assert mod.release_apk_scope_policy_violations({github, gitea}) == [_GITHUB_POLICY]
 
