@@ -394,12 +394,97 @@ class BudgetAdviceViewModelTest {
         assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
         assertEquals(UiText.raw("AI 预算助手尚未经过拥有者显式确认，已禁用。"), state.error)
     }
+
+    @Test
+    fun dailyLimitExceededMapsToTerminalUnavailableState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "AI 预算助手今日调用次数已达上限。",
+                    errorCode = "ai_advisor_daily_limit_exceeded",
+                ),
+            )
+        }
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        // 24h-window quota cap (_audit.py:131-138): retrying today can never
+        // succeed, so this is terminal (no retry affordance in the state model).
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals(UiText.raw("AI 预算助手今日调用次数已达上限。"), state.error)
+    }
+
+    @Test
+    fun rateLimitedStaysRetryableFailedState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "AI 预算助手调用过于频繁，请稍后再试。",
+                    errorCode = "ai_advisor_rate_limited",
+                ),
+            )
+        }
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        // Short-window 429 (errors.py:147): a later retry IS meaningful, so the
+        // retryable Failed state (with 重试) must survive. The full code has no
+        // R.string arm, so the server copy passes through as Raw.
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Failed, state.loadState)
+        assertEquals(UiText.raw("AI 预算助手调用过于频繁，请稍后再试。"), state.error)
+    }
+
+    @Test
+    fun initRestoresCachedAdviceAsReady() = budgetTest {
+        val cached = BudgetAdviceResult(
+            advice = BudgetAdvice(
+                summary = "保持弹性支出空间。",
+                suggestions = listOf(
+                    BudgetSuggestion(
+                        category = "餐饮",
+                        suggestedAmountCents = 80_000,
+                        rationale = "近期支出稳定。",
+                    ),
+                ),
+                confidence = 0.8,
+            ),
+            providerName = "mock",
+            reasonCode = "advisor_ready",
+        )
+        val fake = FakeBudgetActions(budget = budget(), cachedAdvice = cached)
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        // A reopen after an already quota-counted call renders the cached result
+        // instead of firing a second counted request.
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals(cached, state.result)
+        assertEquals(0, fake.adviceMonths.size)
+    }
+
+    @Test
+    fun initWithoutCachedAdviceStaysIdle() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
+        assertEquals(0, fake.adviceMonths.size)
+    }
 }
 
 private class FakeBudgetActions(
     var budget: BudgetMonthly,
     private val canModify: Boolean = true,
     private val activeLedgerFlow: Flow<String?> = emptyFlow(),
+    private val cachedAdvice: BudgetAdviceResult? = null,
 ) : BudgetActions {
     val loadedMonths = mutableListOf<String>()
     val savedMonths = mutableListOf<String>()
@@ -410,6 +495,8 @@ private class FakeBudgetActions(
     var adviceResponder: (suspend (String) -> Result<BudgetAdviceResult>)? = null
 
     override fun canModifyLedger(): Boolean = canModify
+
+    override suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? = cachedAdvice
 
     override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
 

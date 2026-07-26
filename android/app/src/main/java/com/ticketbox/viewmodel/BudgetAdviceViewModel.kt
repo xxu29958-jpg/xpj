@@ -52,6 +52,22 @@ class BudgetAdviceViewModel(
 
     init {
         observeLedgerChanges()
+        restoreCachedAdvice()
+    }
+
+    private fun restoreCachedAdvice() {
+        // The page-scoped VM is destroyed on route exit; the repository keeps a
+        // process-lifetime last-success cache keyed by (ledger, month), so a
+        // reopen after an already quota-counted call renders that result
+        // instead of firing a second counted request. Only applies while the
+        // screen is still Idle (a concurrent request/ledger switch wins).
+        viewModelScope.launch {
+            val cached = repository.cachedBudgetAdvice(_state.value.month) ?: return@launch
+            _state.update { current ->
+                if (current.loadState != BudgetAdviceLoadState.Idle) return@update current
+                current.adviceLoaded(cached)
+            }
+        }
     }
 
     private fun observeLedgerChanges() {
@@ -178,6 +194,11 @@ class BudgetAdviceViewModel(
         val TERMINAL_ADVISOR_ERROR_CODES = setOf(
             "ai_advisor_owner_required",
             "ai_advisor_not_confirmed",
+            // 24h-window quota cap (_audit.py:131-138): every attempt 429s until
+            // the window slides, so retrying today can never succeed — terminal.
+            // Deliberately excludes ai_advisor_rate_limited (short-window 429,
+            // errors.py:147): there a later retry IS meaningful, stays Failed.
+            "ai_advisor_daily_limit_exceeded",
         )
     }
 }

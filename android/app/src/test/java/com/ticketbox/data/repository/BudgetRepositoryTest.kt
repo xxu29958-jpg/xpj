@@ -16,8 +16,12 @@ import com.ticketbox.domain.model.BudgetCategoryDraft
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.SessionCredentialProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -26,9 +30,12 @@ import retrofit2.Response
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 import java.util.TimeZone
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BudgetRepositoryTest {
@@ -176,6 +183,59 @@ class BudgetRepositoryTest {
     }
 
     @Test
+    fun concurrentAdviceCallsShareSingleApiInvocation() = runBlocking {
+        // 218-B4 review P2: a live advice call is quota-counted server-side the
+        // moment it starts, so concurrent callers must attach to one in-flight
+        // call — one API hit, both callers observe the same result.
+        val api = BudgetApiHandler().apply {
+            adviceEntered = CountDownLatch(1)
+            adviceRelease = CountDownLatch(1)
+        }
+        val repository = repository(api)
+
+        val first = async(Dispatchers.IO) { repository.requestBudgetAdvice("2026-05") }
+        assertTrue(api.adviceEntered?.await(5, TimeUnit.SECONDS) == true)
+        val second = async(Dispatchers.IO) { repository.requestBudgetAdvice("2026-05") }
+        delay(200)
+        api.adviceRelease?.countDown()
+
+        val firstResult = first.await()
+        val secondResult = second.await()
+        assertEquals(1, api.adviceCalls.size)
+        assertTrue(firstResult.isSuccess)
+        assertEquals(firstResult.getOrNull(), secondResult.getOrNull())
+    }
+
+    @Test
+    fun adviceSuccessIsCachedAndServedFromCache() = runTest {
+        val api = BudgetApiHandler()
+        val repository = repository(api)
+
+        val advice = repository.requestBudgetAdvice("2026-05").getOrThrow()
+
+        assertEquals(advice, repository.cachedBudgetAdvice("2026-05"))
+        assertEquals(advice, repository.cachedBudgetAdvice(" 2026-05 "))
+        assertNull(repository.cachedBudgetAdvice("2026-06"))
+    }
+
+    @Test
+    fun adviceFailureLeavesCacheAbsent() = runTest {
+        val api = BudgetApiHandler().apply {
+            adviceError = HttpException(
+                Response.error<BudgetAdviseResponseDto>(
+                    403,
+                    """{"error":"ai_advisor_owner_required","message":"只有账本拥有者可以调用外部 AI 预算建议。"}"""
+                        .toResponseBody("application/json".toMediaType()),
+                ),
+            )
+        }
+        val repository = repository(api)
+
+        assertTrue(repository.requestBudgetAdvice("2026-05").isFailure)
+        assertNull(repository.cachedBudgetAdvice("2026-05"))
+    }
+
+    @Test
     fun invalidMonthIsRejectedBeforeApiCall() = runTest {
         val api = BudgetApiHandler()
         val repository = repository(api)
@@ -236,6 +296,8 @@ private class BudgetApiHandler : InvocationHandler {
     val adviceCalls = mutableListOf<AdviceCall>()
     var updateError: Throwable? = null
     var adviceError: Throwable? = null
+    var adviceEntered: CountDownLatch? = null
+    var adviceRelease: CountDownLatch? = null
 
     fun service(): ApiService {
         return Proxy.newProxyInstance(
@@ -274,6 +336,8 @@ private class BudgetApiHandler : InvocationHandler {
             }
             "budgetAdvise" -> {
                 adviceError?.let { throw it }
+                adviceEntered?.countDown()
+                adviceRelease?.await(10, TimeUnit.SECONDS)
                 val request = values[0] as BudgetAdviseRequestDto
                 adviceCalls += AdviceCall(
                     month = request.month,
