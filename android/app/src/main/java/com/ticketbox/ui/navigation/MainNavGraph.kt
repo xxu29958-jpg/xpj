@@ -112,6 +112,9 @@ internal fun MainNavGraph(
                 onBack = { runtime.navController.popBackStack() },
                 onCompleted = {
                     runtime.shellState.markExpenseEditCompleted()
+                    // Expense edits feed the advisor inputs — invalidate the
+                    // process-lifetime advice cache at the same refresh point.
+                    runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
                     runtime.navController.popBackStack()
                 },
                 onOpenRepaymentDrafts = { draftPublicId ->

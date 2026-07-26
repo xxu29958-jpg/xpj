@@ -11,8 +11,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.YearMonth
 import java.util.TimeZone
@@ -22,23 +20,30 @@ interface BudgetActions {
     fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
 
     /** Access projection of the active session identity: re-emits on ledger
-     *  switches AND role-only re-projections (viewer↔member on the same
-     *  ledger), which [observeActiveLedgerId] cannot distinguish. */
+     *  switches AND role-only re-projections (viewer↔member↔owner on the same
+     *  ledger), which [observeActiveLedgerId] cannot distinguish. Carries the
+     *  full role — member→owner matters (the live advisor is owner-gated). */
     fun observeLedgerAccessState(): Flow<LedgerAccessState?> = emptyFlow()
     suspend fun monthlyBudget(month: String): Result<BudgetMonthly>
     suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult>
 
     /** Last successful advice for [month] under the CURRENT logical session
      *  binding in this process, or null. Process-lifetime, binding-scoped —
-     *  see [BudgetRepository.cachedBudgetAdvice]. */
+     *  see [BudgetRepository.cachedBudgetAdvice]. Restored only while no
+     *  advice-input write (income plan / recurring / budget / expense) has
+     *  occurred in this process — those write paths call
+     *  [invalidateBudgetAdvice] from their existing refresh points. */
     suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? = null
+
+    /** Drops the process-lifetime advice cache (all bindings). */
+    fun invalidateBudgetAdvice() { }
 
     suspend fun saveMonthlyBudget(month: String, update: BudgetMonthlyUpdate): Result<BudgetMonthly>
 }
 
 data class LedgerAccessState(
     val ledgerId: String?,
-    val canModify: Boolean,
+    val role: String?,
 )
 
 class BudgetRepository(
@@ -51,13 +56,16 @@ class BudgetRepository(
         statusMessages = mapOf(404 to "预算不存在。"),
     )
 
-    /** Guards [adviceInFlight] / [adviceLastSuccess]. Both are in-memory only —
-     *  process-lifetime, never persisted (the advice round-trip persists
-     *  nothing on device, see BudgetAdviseDto). Keyed by (logical session
-     *  binding, month): the binding carries server/account/ledger/generation,
-     *  so an unbind + re-pair to a different household — even one whose ledger
-     *  id is also "owner" — can never be served another binding's result. */
-    private val adviceCallMutex = Mutex()
+    /** Guards [adviceInFlight] / [adviceLastSuccess]; a plain monitor because
+     *  every critical section below is non-suspending map I/O — that keeps
+     *  [invalidateBudgetAdvice] callable from non-suspend refresh callbacks.
+     *  Both maps are in-memory only — process-lifetime, never persisted (the
+     *  advice round-trip persists nothing on device, see BudgetAdviseDto).
+     *  Keyed by (logical session binding, month): the binding carries
+     *  server/account/ledger/generation, so an unbind + re-pair to a different
+     *  household — even one whose ledger id is also "owner" — can never be
+     *  served another binding's result. */
+    private val adviceCacheLock = Any()
     private val adviceInFlight = mutableMapOf<AdviceRequestKey, CompletableDeferred<Result<BudgetAdviceResult>>>()
     private val adviceLastSuccess = mutableMapOf<AdviceRequestKey, BudgetAdviceResult>()
 
@@ -70,7 +78,7 @@ class BudgetRepository(
             .map { identity ->
                 LedgerAccessState(
                     ledgerId = identity?.ledgerId,
-                    canModify = ledgerRoleCanModify(identity?.role),
+                    role = identity?.role,
                 )
             }
             .distinctUntilChanged()
@@ -111,7 +119,7 @@ class BudgetRepository(
         val binding = ledgerRequestGuard.captureLogicalBinding()
             ?: return Result.failure(RepositoryException("登录状态已失效，请重新绑定。"))
         val key = AdviceRequestKey(binding = binding, month = cleanMonth)
-        val (deferred, isOwner) = adviceCallMutex.withLock {
+        val (deferred, isOwner) = synchronized(adviceCacheLock) {
             val existing = adviceInFlight[key]
             if (existing != null) {
                 existing to false
@@ -144,7 +152,7 @@ class BudgetRepository(
                 ).toDomain()
             }
         }
-        adviceCallMutex.withLock {
+        synchronized(adviceCacheLock) {
             // Only a real advice payload is cached: a null-advice result (e.g.
             // provider_empty) must never be restored, or a later operator-side
             // fix would stay invisible behind the cached terminal state.
@@ -167,8 +175,14 @@ class BudgetRepository(
         val cleanMonth = validatedMonth(month)
             .getOrElse { return null }
         val binding = ledgerRequestGuard.captureLogicalBinding() ?: return null
-        return adviceCallMutex.withLock {
+        return synchronized(adviceCacheLock) {
             adviceLastSuccess[AdviceRequestKey(binding = binding, month = cleanMonth)]
+        }
+    }
+
+    override fun invalidateBudgetAdvice() {
+        synchronized(adviceCacheLock) {
+            adviceLastSuccess.clear()
         }
     }
 

@@ -483,7 +483,7 @@ class BudgetAdviceViewModelTest {
     @Test
     fun roleReprojectionOnSameLedgerRegatesWithoutWipingContent() = budgetTest {
         val accessFlow = MutableStateFlow<LedgerAccessState?>(
-            LedgerAccessState(ledgerId = "owner", canModify = true),
+            LedgerAccessState(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
         val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
@@ -495,7 +495,7 @@ class BudgetAdviceViewModelTest {
         // Demotion member→viewer on the SAME ledger: re-gate to read-only
         // immediately, but the already-rendered result is not discarded.
         fake.canModify = false
-        accessFlow.value = LedgerAccessState(ledgerId = "owner", canModify = false)
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "viewer")
         advanceUntilIdle()
 
         var state = adviceViewModel.uiState.value
@@ -505,7 +505,7 @@ class BudgetAdviceViewModelTest {
 
         // Promotion viewer→member: the gate opens again with content intact.
         fake.canModify = true
-        accessFlow.value = LedgerAccessState(ledgerId = "owner", canModify = true)
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "member")
         advanceUntilIdle()
 
         state = adviceViewModel.uiState.value
@@ -517,14 +517,14 @@ class BudgetAdviceViewModelTest {
     @Test
     fun roleDemotionRestoresReadOnlyShortCircuit() = budgetTest {
         val accessFlow = MutableStateFlow<LedgerAccessState?>(
-            LedgerAccessState(ledgerId = "owner", canModify = true),
+            LedgerAccessState(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
         val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
         advanceUntilIdle()
 
         fake.canModify = false
-        accessFlow.value = LedgerAccessState(ledgerId = "owner", canModify = false)
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "viewer")
         advanceUntilIdle()
         assertFalse(adviceViewModel.uiState.value.canRequest)
 
@@ -550,7 +550,7 @@ class BudgetAdviceViewModelTest {
             reasonCode = "advisor_ready",
         )
         val accessFlow = MutableStateFlow<LedgerAccessState?>(
-            LedgerAccessState(ledgerId = "owner", canModify = true),
+            LedgerAccessState(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), cachedAdvice = cached, accessFlow = accessFlow)
         val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
@@ -559,7 +559,7 @@ class BudgetAdviceViewModelTest {
 
         // Ledger switch keeps the round-4 semantics: reset to Idle, then the
         // binding-scoped cache restore runs for the new ledger.
-        accessFlow.value = LedgerAccessState(ledgerId = "ledger-b", canModify = true)
+        accessFlow.value = LedgerAccessState(ledgerId = "ledger-b", role = "member")
         advanceUntilIdle()
 
         val state = adviceViewModel.uiState.value
@@ -595,6 +595,65 @@ class BudgetAdvicePayloadInvalidTest {
         val state = adviceViewModel.uiState.value
         assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
         assertEquals(UiText.res(R.string.budget_advice_payload_invalid_body), state.error)
+    }
+}
+
+/** 218-B4 review P2-8: the access projection carries the full role, so a
+ *  member→owner promotion on the same ledger is observable and re-offers a
+ *  role-gated terminal state — separate class to stay under the per-class
+ *  function cap. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetAdviceRoleCapabilityTest {
+    @Test
+    fun ownerPromotionReoffersRoleGatedTerminalState() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", role = "member"),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "只有账本拥有者可以调用外部 AI 预算建议。",
+                    errorCode = "ai_advisor_owner_required",
+                ),
+            )
+        }
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // Promotion member→owner on the SAME ledger: the backend gate now
+        // permits the request, so the terminal state reverts to Idle (the user
+        // still taps 生成 explicitly — nothing auto-requests).
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "owner")
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertEquals(true, state.canRequest)
+        assertNull(state.error)
+        assertNull(state.terminalErrorCode)
+    }
+
+    @Test
+    fun ownerPromotionKeepsReadyContent() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", role = "member"),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
+
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "owner")
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals(true, state.canRequest)
+        assertEquals("保持弹性支出空间。", state.result?.advice?.summary)
     }
 }
 

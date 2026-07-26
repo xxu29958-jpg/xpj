@@ -50,7 +50,12 @@ internal fun PendingRoute(
     screenFactory: MainScreenFactory,
 ) {
     val pendingFactory = remember(screenFactory, shellState) {
-        screenFactory.repositoryViewModelFactory(shellState::markInsightsDataChanged)
+        screenFactory.repositoryViewModelFactory {
+            shellState.markInsightsDataChanged()
+            // Confirmed-expense writes feed the advisor inputs — drop the
+            // process-lifetime advice cache at the same refresh point.
+            screenFactory.budgetRepository.invalidateBudgetAdvice()
+        }
     }
     val pendingViewModel: PendingViewModel = viewModel(factory = pendingFactory)
     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()

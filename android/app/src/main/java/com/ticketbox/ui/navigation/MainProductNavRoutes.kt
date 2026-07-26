@@ -87,6 +87,13 @@ internal fun NavGraphBuilder.addPlanRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
+        // Budget / recurring / income-plan saves feed the budget-advisor inputs:
+        // alongside the plan refresh, drop the process-lifetime advice cache so
+        // a reopened advice page recomputes instead of restoring pre-write limits.
+        val onPlanDataChanged = {
+            shellState.markPlanDataChanged()
+            screenFactory.budgetRepository.invalidateBudgetAdvice()
+        }
         composable(ProductSecondaryPage.SpendingGoal.route) {
             SpendingGoalsRoute(
                 screenFactory = screenFactory,
@@ -97,7 +104,7 @@ internal fun NavGraphBuilder.addPlanRoutes(
             BudgetRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                onDataChanged = shellState::markPlanDataChanged,
+                onDataChanged = onPlanDataChanged,
             )
         }
         composable(ProductSecondaryPage.BudgetAdvice.route) {
@@ -110,14 +117,14 @@ internal fun NavGraphBuilder.addPlanRoutes(
             RecurringRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                onDataChanged = shellState::markPlanDataChanged,
+                onDataChanged = onPlanDataChanged,
             )
         }
         composable(ProductSecondaryPage.IncomePlans.route) {
             IncomePlanRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                onDataChanged = shellState::markPlanDataChanged,
+                onDataChanged = onPlanDataChanged,
             )
         }
     }
@@ -157,8 +164,11 @@ internal fun NavGraphBuilder.addTransactionRoutes(
             onRestoreCompleted = shellState::markRecycleBinRestoreCompleted,
             // 规则应用/回滚与回收站 tag_mutation 恢复会原地改写确认流水行——语义
             // 等同批量流水编辑完成，复用 expenseEditCompletionRevision 通道让账本
-            // 行重同步（同时失效洞察汇总）。
-            onTransactionRowsChanged = shellState::markExpenseEditCompleted,
+            // 行重同步（同时失效洞察汇总）。这些写入也改变建议输入，一并失效建议缓存。
+            onTransactionRowsChanged = {
+                shellState.markExpenseEditCompleted()
+                screenFactory.budgetRepository.invalidateBudgetAdvice()
+            },
         )
     }
 }

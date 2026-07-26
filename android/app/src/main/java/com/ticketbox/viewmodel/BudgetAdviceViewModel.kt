@@ -6,7 +6,9 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.BudgetAdviceResult
+import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +36,11 @@ data class BudgetAdviceUiState(
     val canRequest: Boolean = true,
     val result: BudgetAdviceResult? = null,
     val error: UiText? = null,
+
+    /** Backend error code that produced a terminal [BudgetAdviceLoadState.Unavailable]
+     *  from a failed request, so a later capability increase (member→owner)
+     *  can tell a role-gated terminal apart from a config/data one. */
+    val terminalErrorCode: String? = null,
 )
 
 class BudgetAdviceViewModel(
@@ -72,20 +79,24 @@ class BudgetAdviceViewModel(
     private fun observeLedgerChanges() {
         viewModelScope.launch {
             var observedLedgerId: String? = null
+            var observedRole: String? = null
             var firstEmission = true
             repository.observeLedgerAccessState()
                 .distinctUntilChanged()
                 .collect { access ->
                     val ledgerId = access?.ledgerId
+                    val role = access?.role
                     if (firstEmission) {
                         // Baseline (the ledger the VM was created under), mirroring
                         // the previous drop(1) semantics.
                         firstEmission = false
                         observedLedgerId = ledgerId
+                        observedRole = role
                         return@collect
                     }
                     if (ledgerId != observedLedgerId) {
                         observedLedgerId = ledgerId
+                        observedRole = role
                         requestGeneration += 1
                         _state.update { current ->
                             current.copy(
@@ -93,19 +104,42 @@ class BudgetAdviceViewModel(
                                 canRequest = repository.canModifyLedger(),
                                 result = null,
                                 error = null,
+                                terminalErrorCode = null,
                             )
                         }
                         restoreCachedAdvice()
-                    } else {
-                        // Role-only re-projection (viewer↔member on the same
-                        // ledger): re-gate the capability in place — promotion
-                        // must not discard rendered content, demotion must
-                        // immediately restore the read-only gate.
-                        _state.update { current ->
-                            current.copy(canRequest = repository.canModifyLedger())
-                        }
+                    } else if (role != observedRole) {
+                        val previousRole = observedRole
+                        observedRole = role
+                        onRoleReprojection(previousRole, role)
                     }
                 }
+        }
+    }
+
+    private fun onRoleReprojection(previousRole: String?, newRole: String?) {
+        // viewer→member/owner opens modification; member→owner additionally
+        // opens the live advisor (owner-gated server-side). Demotion re-gates
+        // in place (round-5 semantics); a capability INCREASE re-offers
+        // generation only when the terminal state came from a role/config 403 —
+        // never auto-requesting, never wiping rendered content.
+        val capabilityIncreased =
+            (!ledgerRoleCanModify(previousRole) && ledgerRoleCanModify(newRole)) ||
+                (newRole == LEDGER_ROLE_OWNER && previousRole != LEDGER_ROLE_OWNER)
+        _state.update { current ->
+            val regated = current.copy(canRequest = repository.canModifyLedger())
+            if (capabilityIncreased &&
+                regated.loadState == BudgetAdviceLoadState.Unavailable &&
+                regated.terminalErrorCode in ROLE_GATED_ADVISOR_ERROR_CODES
+            ) {
+                regated.copy(
+                    loadState = BudgetAdviceLoadState.Idle,
+                    error = null,
+                    terminalErrorCode = null,
+                )
+            } else {
+                regated
+            }
         }
     }
 
@@ -118,6 +152,7 @@ class BudgetAdviceViewModel(
                     loadState = BudgetAdviceLoadState.Idle,
                     result = null,
                     error = UiText.res(R.string.common_readonly_ledger),
+                    terminalErrorCode = null,
                 )
             }
             return
@@ -130,6 +165,7 @@ class BudgetAdviceViewModel(
                     loadState = BudgetAdviceLoadState.Loading,
                     canRequest = true,
                     error = null,
+                    terminalErrorCode = null,
                 )
             }
             repository.requestBudgetAdvice(month)
@@ -181,6 +217,7 @@ class BudgetAdviceViewModel(
                 transientCallFailure -> UiText.res(R.string.budget_advice_load_failed)
                 else -> null
             },
+            terminalErrorCode = null,
         )
     }
 
@@ -188,8 +225,8 @@ class BudgetAdviceViewModel(
         // Live-advisor 403 gates (owner not confirmed / member is not the owner)
         // cannot be retried away on this device; the backend's registered copy
         // rides the failure through toUiText as-is.
-        val terminal = (error as? RepositoryException)
-            ?.errorCode?.trim() in TERMINAL_ADVISOR_ERROR_CODES
+        val terminalCode = (error as? RepositoryException)?.errorCode?.trim()
+        val terminal = terminalCode in TERMINAL_ADVISOR_ERROR_CODES
         return copy(
             loadState = if (terminal) {
                 BudgetAdviceLoadState.Unavailable
@@ -198,6 +235,7 @@ class BudgetAdviceViewModel(
             },
             canRequest = repository.canModifyLedger(),
             error = error.toUiText(R.string.budget_advice_load_failed),
+            terminalErrorCode = if (terminal) terminalCode else null,
         )
     }
 
@@ -229,6 +267,15 @@ class BudgetAdviceViewModel(
             // Deliberately excludes ai_advisor_rate_limited (short-window 429,
             // errors.py:147): there a later retry IS meaningful, stays Failed.
             "ai_advisor_daily_limit_exceeded",
+        )
+
+        /** Terminal codes a capability increase (member→owner promotion, or the
+         *  owner confirming the advisor) can plausibly clear — re-offered as
+         *  Idle on role increase. Excludes the daily quota cap: a role change
+         *  does not reset the 24h window. */
+        val ROLE_GATED_ADVISOR_ERROR_CODES = setOf(
+            "ai_advisor_owner_required",
+            "ai_advisor_not_confirmed",
         )
     }
 }

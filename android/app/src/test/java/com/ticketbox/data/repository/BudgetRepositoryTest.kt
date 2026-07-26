@@ -276,6 +276,38 @@ class BudgetRepositoryTest {
  *  unbind + re-pair. Separate class to stay under the per-class function cap. */
 class BudgetRepositoryAdviceBindingTest {
     @Test
+    fun adviceInputWriteInvalidatesCache() = runTest {
+        val api = BudgetApiHandler()
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val repository = repository(api, tokenStore)
+
+        val advice = repository.requestBudgetAdvice("2026-05").getOrThrow()
+        assertEquals(advice, repository.cachedBudgetAdvice("2026-05"))
+
+        // The refresh points of the advice-input write paths (income plan /
+        // recurring / budget / expense saves) call this — a reopen must then
+        // recompute instead of restoring pre-write limits.
+        repository.invalidateBudgetAdvice()
+
+        assertNull(repository.cachedBudgetAdvice("2026-05"))
+        repository.requestBudgetAdvice("2026-05").getOrThrow()
+        assertEquals(2, api.adviceCalls.size)
+    }
+
+    @Test
+    fun unrelatedRepositoryCallLeavesCacheIntact() = runTest {
+        val api = BudgetApiHandler()
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val repository = repository(api, tokenStore)
+
+        val advice = repository.requestBudgetAdvice("2026-05").getOrThrow()
+
+        // A plain read is not an advice-input write — the cache survives.
+        repository.monthlyBudget("2026-05").getOrThrow()
+        assertEquals(advice, repository.cachedBudgetAdvice("2026-05"))
+    }
+
+    @Test
     fun nullAdviceSuccessIsNotCached() = runTest {
         // provider_empty returns HTTP 200 with advice == null — a terminal
         // state that must never be restored, or a later operator-side fix
