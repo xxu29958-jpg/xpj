@@ -89,7 +89,9 @@ GitHub 云端 Android 资格链按责任并行：`Android fast` 跑编译、单�
 
 ### android-connected（模拟器，path-filtered）
 
-云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置、CI 入口脚本）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。单个 API 36 emulator job 执行完整 instrumentation suite；test APK 排除只服务发布安装的 ProfileInstaller，避免其 Startup provider 在独立测试进程中形成绿色崩溃和逐项超时。emulator action 会逐行创建独立 shell，因此运行、watchdog、失败取证和退出码传播统一放在 `android/scripts/run_connected_ci.sh`；3 分钟 boot 上限、14 分钟 Gradle watchdog 和 45 秒取证上限共同早于 20 分钟 action 上限，30 分钟 job cap 只给环境准备、验证与失败报告留出诊断余量。connected Gradle task 自身仍以 10 分钟为内层上限。验证步骤从实际 APK manifest 动态读取目标包、测试包及其进程名，证据缺失或不可读时 fail closed。`android/audit/test_count_baseline.txt` 在同一文件中分别锁住 JVM 与 instrumentation 计数，计数范围直接来自 GrayDebug 变体实际参与编译的 Java/Kotlin source directories，任一来源或变体目录的删测都不能被另一来源增长掩盖。
+云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置、CI 入口脚本）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。单个 API 36 emulator job 执行完整 instrumentation suite；test APK 排除只服务发布安装的 ProfileInstaller，避免其 Startup provider 在独立测试进程中形成绿色崩溃和逐项超时。emulator action 只执行一条 timeout 包裹的 Gradle 命令：3 分钟 boot 上限、14 分钟 Gradle watchdog、20 分钟 action 上限和 30 分钟 job cap 逐层给环境准备、验证与失败报告留出余量；connected Gradle task 自身仍以 10 分钟为内层上限。
+
+Gradle 在测试前后各采集一次 `ApplicationExitInfo`，并在 action teardown 前保留 APK，避免 UTP 卸载清除退出历史；每次 adb 取证各有 30 秒上限。验证器从实际 APK manifest 动态读取目标包、测试包及其进程名，要求本轮至少产生一条目标进程退出记录，并拒绝 Java crash、native crash、ANR 和初始化失败；logcat 只作为诊断附件。证据缺失、畸形或被卸载清空时一律 fail closed。`android/audit/test_count_baseline.txt` 在同一文件中分别锁住 JVM 与 instrumentation 计数，计数范围直接来自 GrayDebug 变体实际参与编译的 Java/Kotlin source directories，任一来源或变体目录的删测都不能被另一来源增长掩盖。
 
 local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。它保持单设备串行执行，不作为 GitHub 合并阻断项。
 

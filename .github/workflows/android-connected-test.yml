@@ -105,7 +105,9 @@ jobs:
           working-directory: android
           # The action executes each input line in a fresh `sh -c`; keep this
           # as one direct command whose exit status is the Gradle exit status.
-          script: timeout --signal=INT --kill-after=30s 14m ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+          # Keep APKs installed until the Gradle finalizer captures exit-info;
+          # the ephemeral emulator is discarded after this action.
+          script: timeout --signal=INT --kill-after=30s 14m ./gradlew --no-daemon -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedGrayDebugAndroidTest
 
       - name: Verify connected process health
         working-directory: android

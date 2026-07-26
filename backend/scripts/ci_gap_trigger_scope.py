@@ -40,6 +40,7 @@ _FULL_PATHS = {
     "backend/scripts/verify_backend_ci_results.py",
 }
 _ALWAYS_ON_CONTRACT_PATHS = {
+    "backend/tests/test_android_connected_process_health.py",
     "backend/tests/test_backend_ci_results.py",
     "backend/tests/test_postgres_ci_topology.py",
 }

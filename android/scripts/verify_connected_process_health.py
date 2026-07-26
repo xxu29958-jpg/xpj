@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import collections
 import dataclasses
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -15,6 +16,7 @@ from typing import Iterable
 ANDROID_PROCESS_ATTRIBUTE = "{http://schemas.android.com/apk/res/android}process"
 EXIT_INFO_HEADER = "ACTIVITY MANAGER PROCESS EXIT INFO"
 TARGET_HEADER_PREFIX = "===== Android target "
+EXIT_RECORD_HEADER_PATTERN = re.compile(r"ApplicationExitInfo #\d+:")
 FATAL_EXIT_REASONS = {
     4: "crash",
     5: "native crash",
@@ -132,7 +134,11 @@ def parse_exit_snapshot(text: str) -> ExitSnapshot:
             if not package:
                 raise EvidenceError("Exit-info package block is empty.")
             continue
-        if line.startswith("ApplicationExitInfo ") and line.endswith(":"):
+        if line.startswith("ApplicationExitInfo"):
+            if EXIT_RECORD_HEADER_PATTERN.fullmatch(line) is None:
+                raise EvidenceError(
+                    f"ApplicationExitInfo record header is malformed: {line!r}."
+                )
             finish_record()
             record_lines = []
             continue
@@ -223,15 +229,11 @@ def new_fatal_exits(
     after: ExitSnapshot,
     expected: set[str],
 ) -> list[ExitRecord]:
-    if before.targets != after.targets:
-        raise EvidenceError(
-            "Connected-test target set changed while collecting exit evidence."
-        )
-    new_records = collections.Counter(after.records) - collections.Counter(before.records)
+    new_records = new_exit_records(before, after)
     return sorted(
         (
             record
-            for record in new_records.elements()
+            for record in new_records
             if record.process in expected and record.reason in FATAL_EXIT_REASONS
         ),
         key=lambda record: (
@@ -243,13 +245,46 @@ def new_fatal_exits(
     )
 
 
+def new_exit_records(
+    before: ExitSnapshot,
+    after: ExitSnapshot,
+) -> list[ExitRecord]:
+    if before.targets != after.targets:
+        raise EvidenceError(
+            "Connected-test target set changed while collecting exit evidence."
+        )
+    new_records = collections.Counter(after.records) - collections.Counter(before.records)
+    return sorted(
+        new_records.elements(),
+        key=lambda record: (
+            record.target,
+            record.timestamp,
+            record.process,
+            record.pid,
+        ),
+    )
+
+
+def require_expected_process_exit(
+    records: Iterable[ExitRecord],
+    expected: set[str],
+) -> int:
+    expected_record_count = sum(record.process in expected for record in records)
+    if expected_record_count == 0:
+        raise EvidenceError(
+            "Post-test exit evidence contains no new target or instrumentation "
+            "process record; APK uninstall may have erased the evidence."
+        )
+    return expected_record_count
+
+
 def verify(
     *,
     before_path: Path,
     after_path: Path,
     apkanalyzer: Path,
     apk_output_dirs: Iterable[Path],
-) -> None:
+) -> int:
     try:
         before_text = before_path.read_text(encoding="utf-8")
         after_text = after_path.read_text(encoding="utf-8")
@@ -258,6 +293,10 @@ def verify(
     before = parse_exit_snapshot(before_text)
     after = parse_exit_snapshot(after_text)
     expected = expected_processes(apkanalyzer, apk_output_dirs)
+    expected_record_count = require_expected_process_exit(
+        new_exit_records(before, after),
+        expected,
+    )
     failures = new_fatal_exits(before, after, expected)
     if failures:
         details = "\n".join(
@@ -271,6 +310,7 @@ def verify(
         raise EvidenceError(
             "Connected tests produced fatal process exit record(s):\n" + details
         )
+    return expected_record_count
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -285,7 +325,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        verify(
+        expected_record_count = verify(
             before_path=args.before,
             after_path=args.after,
             apkanalyzer=args.apkanalyzer,
@@ -294,7 +334,10 @@ def main(argv: list[str] | None = None) -> int:
     except EvidenceError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    print("Connected process exit evidence is healthy.")
+    print(
+        "Connected process exit evidence is healthy "
+        f"({expected_record_count} new expected process record(s))."
+    )
     return 0
 
 

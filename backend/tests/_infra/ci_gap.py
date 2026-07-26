@@ -84,7 +84,9 @@ def assert_ci_gap_requires_single_direct_action_command(
     workflow = workflows / "android-connected-test.yml"
     direct_command = (
         "timeout --signal=INT --kill-after=30s 14m "
-        f"./gradlew --no-daemon {_CONNECTED_TASK}"
+        "./gradlew --no-daemon "
+        "-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true "
+        f"{_CONNECTED_TASK}"
     )
     _write_connected_workflow(
         workflow,

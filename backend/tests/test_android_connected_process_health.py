@@ -103,6 +103,11 @@ def test_stale_crash_from_before_the_run_is_ignored() -> None:
     after = process_health.parse_exit_snapshot(evidence)
 
     assert process_health.new_fatal_exits(before, after, {"com.ticketbox"}) == []
+    with pytest.raises(process_health.EvidenceError, match="no new target"):
+        process_health.require_expected_process_exit(
+            process_health.new_exit_records(before, after),
+            {"com.ticketbox"},
+        )
 
 
 @pytest.mark.parametrize("reason", [4, 5, 6, 7])
@@ -124,9 +129,19 @@ def test_each_android_fatal_exit_reason_is_rejected(reason: int) -> None:
 def test_unrelated_process_exit_is_ignored() -> None:
     before = process_health.parse_exit_snapshot(_snapshot(""))
     after = process_health.parse_exit_snapshot(
-        _snapshot(_new_record(process="com.android.systemui"))
+        _snapshot(
+            _new_record(process="com.ticketbox", reason=10, status=0)
+            + _new_record(process="com.android.systemui", pid=456)
+        )
     )
 
+    assert (
+        process_health.require_expected_process_exit(
+            process_health.new_exit_records(before, after),
+            {"com.ticketbox"},
+        )
+        == 1
+    )
     assert process_health.new_fatal_exits(before, after, {"com.ticketbox"}) == []
 
 
@@ -142,6 +157,12 @@ def test_exit_snapshot_fails_closed_on_malformed_evidence() -> None:
 """
             )
         )
+    malformed_header = _old_record().replace(
+        "ApplicationExitInfo #0:",
+        "ApplicationExitInfo #0",
+    )
+    with pytest.raises(process_health.EvidenceError, match="header is malformed"):
+        process_health.parse_exit_snapshot(_snapshot(malformed_header))
 
 
 def test_manifest_processes_are_derived_without_hardcoded_package_names() -> None:

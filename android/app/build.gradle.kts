@@ -492,7 +492,22 @@ fun hasEligibleJavaUnicodeEscape(source: String): Boolean {
     return false
 }
 
-fun androidTestCodeOnly(source: String, nestedBlockComments: Boolean): String {
+// Java text blocks may escape the first quote of a would-be closing delimiter.
+fun isEscapedJavaTextBlockDelimiter(source: String, delimiterStart: Int): Boolean {
+    var precedingBackslashes = 0
+    var index = delimiterStart - 1
+    while (index >= 0 && source[index] == '\\') {
+        precedingBackslashes += 1
+        index -= 1
+    }
+    return precedingBackslashes % 2 == 1
+}
+
+fun androidTestCodeOnly(
+    source: String,
+    nestedBlockComments: Boolean,
+    javaTextBlockEscapes: Boolean,
+): String {
     val code = StringBuilder(source.length)
     var index = 0
     var lineComment = false
@@ -530,7 +545,12 @@ fun androidTestCodeOnly(source: String, nestedBlockComments: Boolean): String {
                 blockCommentDepth -= 1
             }
             blockCommentDepth > 0 -> appendMasked(1)
-            rawString && source.startsWith("\"\"\"", index) -> {
+            rawString &&
+                source.startsWith("\"\"\"", index) &&
+                (
+                    !javaTextBlockEscapes ||
+                        !isEscapedJavaTextBlockDelimiter(source, index)
+                    ) -> {
                 appendMasked(3)
                 rawString = false
             }
@@ -652,6 +672,7 @@ fun countAndroidTestAnnotations(source: String, sourceName: String): Int {
     val codeOnly = androidTestCodeOnly(
         source,
         nestedBlockComments = kotlinSource,
+        javaTextBlockEscapes = javaSource,
     )
     if (
         kotlinSource &&
@@ -671,6 +692,25 @@ fun countAndroidTestAnnotations(source: String, sourceName: String): Int {
         0
     }
     return androidTestAnnotationPattern.findAll(codeOnly).count() + groupedCount
+}
+
+fun assertAndroidTestCounterLexerContract() {
+    val tripleQuote = "\"".repeat(3)
+    val escapedTripleQuote = "\\" + tripleQuote
+    val javaTextBlockFixture = listOf(
+        "String decoy = $tripleQuote",
+        "    $escapedTripleQuote",
+        "    @Test",
+        "    $tripleQuote;",
+        "@Test",
+        "void actual() {}",
+    ).joinToString("\n")
+    val count = countAndroidTestAnnotations(javaTextBlockFixture, "LexerContract.java")
+    if (count != 1) {
+        throw GradleException(
+            "Android test counter lexer contract failed for escaped Java text-block delimiters."
+        )
+    }
 }
 
 // Conceptual counter name: ``android_junit_test_method_count`` — explicitly
@@ -743,6 +783,7 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
     inputs.file(baselineFile)
 
     doLast {
+        assertAndroidTestCounterLexerContract()
         val testDirs = testSourceDirectoryProviders.mapValues { (_, directories) ->
             directories.get()
                 .map { it.asFile.canonicalFile }
