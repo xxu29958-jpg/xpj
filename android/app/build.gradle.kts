@@ -268,14 +268,15 @@ java {
     }
 }
 
-val ticketboxResolvedBuildToolsVersion = android.buildToolsVersion
+val ticketboxResolvedBuildToolsVersion = providers.provider { android.buildToolsVersion }
 val writeTicketboxBuildToolsVersion by tasks.registering {
     val outputFile = layout.buildDirectory.file("ticketbox-ci/build-tools-version.txt")
+    inputs.property("buildToolsVersion", ticketboxResolvedBuildToolsVersion)
     outputs.file(outputFile)
     doLast {
         outputFile.get().asFile.apply {
             parentFile.mkdirs()
-            writeText("$ticketboxResolvedBuildToolsVersion\n")
+            writeText("${ticketboxResolvedBuildToolsVersion.get()}\n")
         }
     }
 }

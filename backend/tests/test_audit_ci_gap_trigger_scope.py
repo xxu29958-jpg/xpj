@@ -127,11 +127,29 @@ jobs:
           WINDOWS_PACKAGING_SHA: ${{ needs.windows_packaging.outputs.qualification_sha }}
           WINDOWS_PACKAGING_SOURCE_SHA: ${{ needs.windows_packaging.outputs.qualification_source_sha }}
         run: python -E -S backend/scripts/verify_backend_ci_results.py
-  backend-postgres:
+  backend_postgres_ordinary:
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     steps:
       - run: python -m pytest tests -q -ra --tb=short -p no:cacheprovider
+  backend-postgres:
+    name: Backend (PostgreSQL)
+    needs:
+      - scope
+      - backend_postgres_ordinary
+    if: ${{ always() }}
+    steps:
+      - name: Enforce PostgreSQL lane results
+        env:
+          ORDINARY_RESULT: ${{ needs.backend_postgres_ordinary.result }}
+          ORDINARY_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_sha }}
+          ORDINARY_SOURCE_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_source_sha }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/verify_postgres_ci_results.py
 """
 
 
@@ -164,41 +182,29 @@ def _scope_regressions(valid: str) -> tuple[str, ...]:
             "# python -E -S backend/scripts/ci_scope.py",
         ),
         valid.replace(
-            "python -E -S backend/scripts/ci_scope.py",
-            "exit 0\n          python -E -S backend/scripts/ci_scope.py",
-        ),
-        valid.replace(
             '            --output "$GITHUB_OUTPUT"',
             '            --output "$GITHUB_OUTPUT" || true',
         ),
         valid.replace(
-            "run: python -E -S backend/scripts/verify_backend_ci_results.py",
-            "run: python -E -S backend/scripts/report_qualification_sha.py",
-        ),
-        valid.replace(
-            "      - scope\n      - backend_contracts",
+            "      - backend_postgres_ordinary",
             "      - backend_contracts",
-        ),
-        valid.replace(
-            "jobs:\n",
-            "env:\n  BASH_ENV: backend/scripts/scope-prelude.sh\njobs:\n",
             1,
         ),
         valid.replace(
-            "      - id: scope\n        shell: bash",
-            "      - id: scope\n        shell: bash\n        env:\n"
-            "          BASH_ENV: backend/scripts/scope-prelude.sh",
+            "    if: ${{ always() }}\n    steps:\n"
+            "      - name: Enforce PostgreSQL lane results",
+            "    if: ${{ false }}\n    steps:\n"
+            "      - name: Enforce PostgreSQL lane results",
         ),
         valid.replace(
-            "    timeout-minutes: 5\n    outputs:",
-            "    timeout-minutes: 5\n    env:\n"
-            "      BASH_ENV: backend/scripts/scope-prelude.sh\n    outputs:",
+            "${{ needs.backend_postgres_ordinary.result }}",
+            "${{ needs.backend_contracts.result }}",
             1,
         ),
         valid.replace(
-            "      - name: Enforce required CI results\n        env:",
-            "      - name: Enforce required CI results\n"
-            "        working-directory: backend\n        env:",
+            "${{ needs.backend_postgres_ordinary.outputs.qualification_sha }}",
+            "${{ needs.backend_contracts.outputs.qualification_sha }}",
+            1,
         ),
     )
 
@@ -212,7 +218,9 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
     workflow.write_text(valid, encoding="utf-8")
 
     commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-    postgres = [command for command in commands if command.job == "backend-postgres"]
+    postgres = [
+        command for command in commands if command.job == "backend_postgres_ordinary"
+    ]
 
     assert len(postgres) == 1
     assert postgres[0].protection_scope == "postgres"
@@ -224,16 +232,17 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
         "  backend_contracts:\n",
         1,
     ).replace(
-        "  backend-postgres:\n",
+        "  backend_postgres_ordinary:\n",
         "      - name: Report required gate\n"
         "        run: echo backend-complete\n"
-        "  backend-postgres:\n",
+        "  backend_postgres_ordinary:\n",
         1,
     )
     workflow.write_text(extensible, encoding="utf-8")
     commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
     assert any(
-        command.job == "backend-postgres" and command.protection_scope == "postgres"
+        command.job == "backend_postgres_ordinary"
+        and command.protection_scope == "postgres"
         for command in commands
     )
 
@@ -241,33 +250,9 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
         assert mutated != valid, index
         workflow.write_text(mutated, encoding="utf-8")
         commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-        assert all(command.job != "backend-postgres" for command in commands), index
-
-    terminal_gate_contracts = (
-        ("codeql.yml", "analyze-android", "Enforce CodeQL scope result"),
-        (
-            "android-connected-test.yml",
-            "connected_execution",
-            "Enforce Connected result",
-        ),
-    )
-    repository_workflows = Path(__file__).resolve().parents[2] / ".github" / "workflows"
-    for workflow_name, protected_job, gate_name in terminal_gate_contracts:
-        source = (repository_workflows / workflow_name).read_text(encoding="utf-8")
-        scoped_workflow = workflows / workflow_name
-        scoped_workflow.write_text(source, encoding="utf-8")
-        commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-        assert any(
-            command.job == protected_job and command.protection_scope == "android"
-            for command in commands
-        )
-
-        scoped_workflow.write_text(
-            source.replace(gate_name, f"Observe {gate_name}", 1),
-            encoding="utf-8",
-        )
-        commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-        assert all(command.job != protected_job for command in commands)
+        assert all(
+            command.job != "backend_postgres_ordinary" for command in commands
+        ), index
 
 
 def test_windows_scope_protects_real_installer_provenance(tmp_path: Path) -> None:

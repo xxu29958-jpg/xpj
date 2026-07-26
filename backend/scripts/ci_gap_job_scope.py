@@ -6,7 +6,6 @@ import pathlib
 import re
 
 from ci_gap_shell import shell_tokens
-from ci_gap_terminal_gate import github_terminal_gate_is_valid
 from ci_gap_trigger_scope import CI_HEAVY_SCOPES
 from ci_gap_workflow_conditions import allows_failure
 
@@ -35,6 +34,15 @@ _GITHUB_SCOPE_CONTRACTS = {
         _GITHUB_ANDROID_SCOPE_OUTPUTS,
         False,
     ),
+}
+_GITHUB_TERMINAL_JOBS = {
+    ("ci.yml", "postgres"): "backend-postgres",
+    ("ci.yml", "backend_frozen"): "backend",
+    ("ci.yml", "desktop"): "desktop-manager",
+    ("ci.yml", "android"): "android",
+    ("ci.yml", "windows"): "backend",
+    ("codeql.yml", "android"): "analyze-android",
+    ("android-connected-test.yml", "android"): "connected",
 }
 _GITEA_SCOPE_OUTPUTS = {
     scope: f"${{{{ steps.scope.outputs.{scope} }}}}" for scope in HEAVY_JOB_SCOPES
@@ -326,21 +334,70 @@ def _scoped_job_name(raw_job: dict[object, object]) -> str | None:
     return match.group(2)
 
 
+def _terminal_gate_consumes_dependency(
+    raw_job: dict[object, object],
+    dependency: str,
+) -> bool:
+    required_values = {
+        f"${{{{ needs.{dependency}.result }}}}",
+        f"${{{{ needs.{dependency}.outputs.qualification_sha }}}}",
+        f"${{{{ needs.{dependency}.outputs.qualification_source_sha }}}}",
+        "${{ github.sha }}",
+        "${{ github.event.pull_request.head.sha || github.sha }}",
+    }
+    for step in raw_job.get("steps", []):
+        if not isinstance(step, dict) or allows_failure(step.get("continue-on-error")):
+            continue
+        environment = step.get("env")
+        if not isinstance(environment, dict):
+            continue
+        values = {str(value) for value in environment.values()}
+        if required_values <= values and str(step.get("run", "")).strip():
+            return True
+    return False
+
+
+def _terminal_gate_protects_job(
+    path: pathlib.Path,
+    scope: str,
+    job_name: str,
+    jobs: dict[object, object],
+) -> bool:
+    terminal_name = _GITHUB_TERMINAL_JOBS.get((path.name, scope))
+    if terminal_name is None:
+        return False
+    if terminal_name == job_name:
+        return True
+    terminal = jobs.get(terminal_name)
+    return (
+        isinstance(terminal, dict)
+        and _expression_text(terminal.get("if")) == "always()"
+        and not allows_failure(terminal.get("continue-on-error"))
+        and job_name in (job_needs(terminal) or ())
+        and _terminal_gate_consumes_dependency(terminal, job_name)
+    )
+
+
 def scoped_job_protection_scope(
     path: pathlib.Path,
     workflow: dict[object, object],
+    job_name: object,
     raw_job: dict[object, object],
     jobs: dict[object, object],
 ) -> str | None:
     if not _scope_job_is_valid(path, workflow, jobs):
         return None
-    if ".github" in path.parts and not github_terminal_gate_is_valid(
+    scope = _scoped_job_name(raw_job)
+    if scope is None:
+        return None
+    if ".github" in path.parts and not _terminal_gate_protects_job(
         path,
-        workflow,
+        scope,
+        str(job_name),
         jobs,
     ):
         return None
-    return _scoped_job_name(raw_job)
+    return scope
 
 
 def scoped_step_protection_scope(

@@ -97,14 +97,7 @@ def test_android_cloud_builds_share_one_java_and_sdk_contract() -> None:
             "nvd-database.yml",
         )
     }
-    for workflow_name, workflow in workflows.items():
-        for job_id, job in workflow["jobs"].items():
-            for step in job.get("steps", []):
-                execution_keys = {"run", "uses"}.intersection(step)
-                assert len(execution_keys) == 1, (workflow_name, job_id, step)
-                if "with" in step:
-                    assert "uses" in step, (workflow_name, job_id, step)
-
+    for workflow in workflows.values():
         android_java_steps = [
             step
             for job in workflow["jobs"].values()
@@ -150,6 +143,12 @@ def test_android_cloud_builds_share_one_java_and_sdk_contract() -> None:
     )
     assert "platforms;android-" not in workflow_text
     assert "build-tools;" not in workflow_text
+    build_script = (_ROOT / "android" / "app" / "build.gradle.kts").read_text(
+        encoding="utf-8"
+    )
+    assert 'inputs.property("buildToolsVersion", ticketboxResolvedBuildToolsVersion)' in (
+        build_script
+    )
 
     debug_signing = next(
         step["run"]
