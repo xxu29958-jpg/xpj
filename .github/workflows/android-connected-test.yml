@@ -50,8 +50,9 @@ jobs:
     name: Connected (emulator)
     runs-on: ubuntu-latest
     # The connected action has the 20-minute qualification ceiling. The wider
-    # job cap reserves diagnostic-upload time after a timed-out action.
-    timeout-minutes: 25
+    # job cap covers setup plus post-action verification and diagnostic upload;
+    # it is an infrastructure envelope, not a relaxed qualification target.
+    timeout-minutes: 30
 
     env:
       # Same canonical owner URL the regular android job injects, so
@@ -100,9 +101,25 @@ jobs:
           disable-animations: true
           working-directory: android
           script: |
+            set -uo pipefail
             echo "sdk.dir=$ANDROID_HOME" > local.properties
             echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
-            ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+            capture_connected_failure() {
+              connected_status=$?
+              trap - EXIT
+              if [ "$connected_status" -ne 0 ]; then
+                echo "Connected Gradle invocation failed with status $connected_status." >&2
+                # The 18-minute in-action watchdog leaves time to preserve
+                # diagnostics before the 20-minute action ceiling kills the
+                # host process. Ordinary task failures are already captured
+                # by the Gradle finalizer; repeating capture is harmless.
+                ./gradlew --no-daemon :app:captureGrayConnectedTestCrashLog || true
+              fi
+              exit "$connected_status"
+            }
+            trap capture_connected_failure EXIT
+            timeout --signal=INT --kill-after=30s 18m \
+              ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
 
       - name: Verify connected process health
         working-directory: android
@@ -110,26 +127,63 @@ jobs:
         run: |
           set -euo pipefail
           crash_log="$RUNNER_TEMP/ticketbox-connected-crash.log"
-          application_id_from_output() {
+          if [ ! -f "$crash_log" ] || [ ! -r "$crash_log" ]; then
+            echo "Connected crash evidence is missing or unreadable: $crash_log" >&2
+            exit 1
+          fi
+
+          apk_from_output() {
             output_dir=$1
             mapfile -d '' -t apk_files < <(find "$output_dir" -type f -name '*.apk' -print0)
             if [ "${#apk_files[@]}" -ne 1 ]; then
               echo "Expected exactly one APK under $output_dir; found ${#apk_files[@]}." >&2
               return 1
             fi
-            "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" \
-              manifest application-id "${apk_files[0]}"
+            printf '%s\n' "${apk_files[0]}"
           }
-          package_process_crashed() {
-            package_name=$1
-            awk -v package="$package_name" '
+
+          application_processes_from_apk() {
+            apk_file=$1
+            application_id="$(
+              "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" \
+                manifest application-id "$apk_file"
+            )"
+            manifest_file="$(mktemp)"
+            "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" \
+              manifest print "$apk_file" > "$manifest_file"
+            python3 - "$application_id" "$manifest_file" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          application_id, manifest_path = sys.argv[1:]
+          android_process = "{http://schemas.android.com/apk/res/android}process"
+          processes = {application_id}
+          for element in ET.parse(manifest_path).getroot().iter():
+              raw = element.attrib.get(android_process)
+              if not raw:
+                  continue
+              if raw.startswith(":") or raw.startswith("."):
+                  processes.add(application_id + raw)
+              else:
+                  processes.add(raw)
+          for process_name in sorted(processes):
+              print(process_name)
+          PY
+            process_status=$?
+            rm -f "$manifest_file"
+            return "$process_status"
+          }
+
+          process_crashed() {
+            expected_process=$1
+            awk -v expected="$expected_process" '
               {
                 marker = "Process: "
                 marker_position = index($0, marker)
                 if (marker_position > 0) {
                   process_name = substr($0, marker_position + length(marker))
                   sub(/,.*/, "", process_name)
-                  if (process_name == package || index(process_name, package ":") == 1) {
+                  if (process_name == expected) {
                     found = 1
                   }
                 }
@@ -138,15 +192,35 @@ jobs:
             ' "$crash_log"
           }
 
-          target_application_id="$(application_id_from_output app/build/outputs/apk/gray/debug)"
-          test_application_id="$(
-            application_id_from_output app/build/outputs/apk/androidTest/gray/debug
-          )"
-          for package_name in "$target_application_id" "$test_application_id"; do
-            if package_process_crashed "$package_name"; then
-              echo "Connected tests left a crashed process for $package_name." >&2
+          declare -A expected_processes=()
+          for output_dir in \
+            app/build/outputs/apk/gray/debug \
+            app/build/outputs/apk/androidTest/gray/debug
+          do
+            apk_file="$(apk_from_output "$output_dir")"
+            process_list="$(application_processes_from_apk "$apk_file")"
+            while IFS= read -r process_name; do
+              if [ -n "$process_name" ]; then
+                expected_processes["$process_name"]=1
+              fi
+            done <<< "$process_list"
+          done
+          if [ "${#expected_processes[@]}" -eq 0 ]; then
+            echo "No connected-test process identities were derived from the APKs." >&2
+            exit 1
+          fi
+
+          for process_name in "${!expected_processes[@]}"; do
+            if process_crashed "$process_name"; then
+              echo "Connected tests left a crashed process for $process_name." >&2
               cat "$crash_log"
               exit 1
+            else
+              crash_scan_status=$?
+              if [ "$crash_scan_status" -ne 1 ]; then
+                echo "Could not audit connected crash evidence for $process_name." >&2
+                exit "$crash_scan_status"
+              fi
             fi
           done
 

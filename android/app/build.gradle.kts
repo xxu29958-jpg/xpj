@@ -425,9 +425,9 @@ dependencies {
 // Per-line predicate (kept simple — line-level state machine instead
 // of full Kotlin parser):
 //
-//   - trim().startsWith(<test annotation>)  — annotation is the first
-//     token on the line (the common style: each annotation on its
-//     own line above the method)
+//   - exact annotation token followed by whitespace, ``(``, or EOL —
+//     annotation is the first token on the line (the common style:
+//     each annotation on its own line above the method)
 //   - && NOT startsWith("//")  — line comment
 //   - && NOT startsWith("*")   — KDoc continuation line ("* @Test")
 //
@@ -443,6 +443,16 @@ val androidTestAnnotations = listOf(
     "@TestFactory",
     "@TestTemplate",
 )
+
+fun isAndroidTestAnnotationLine(trimmedLine: String): Boolean =
+    androidTestAnnotations.any { annotation ->
+        if (!trimmedLine.startsWith(annotation)) {
+            false
+        } else {
+            val suffix = trimmedLine.drop(annotation.length)
+            suffix.isEmpty() || suffix.first().isWhitespace() || suffix.first() == '('
+        }
+    }
 
 // Conceptual counter name: ``android_junit_test_method_count`` — explicitly
 // names "annotation-based method count", not "runtime-collected test count".
@@ -477,6 +487,29 @@ tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
     }
 }
 
+val grayDebugJvmTestSourceDirectories =
+    objects.listProperty(org.gradle.api.file.Directory::class.java)
+val grayDebugInstrumentationTestSourceDirectories =
+    objects.listProperty(org.gradle.api.file.Directory::class.java)
+
+androidComponents {
+    onVariants(selector().withName("grayDebug")) { variant ->
+        val unitTest = variant.hostTests[
+            com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE
+        ]
+            ?: throw GradleException("GrayDebug unit-test component is unavailable.")
+        val instrumentationTest = variant.androidTest
+            ?: throw GradleException("GrayDebug instrumentation-test component is unavailable.")
+
+        unitTest.sources.java?.all?.let(grayDebugJvmTestSourceDirectories::addAll)
+        unitTest.sources.kotlin?.all?.let(grayDebugJvmTestSourceDirectories::addAll)
+        instrumentationTest.sources.java?.all
+            ?.let(grayDebugInstrumentationTestSourceDirectories::addAll)
+        instrumentationTest.sources.kotlin?.all
+            ?.let(grayDebugInstrumentationTestSourceDirectories::addAll)
+    }
+}
+
 tasks.register("assertAndroidTestCountEqualsBaseline") {
     group = "verification"
     description = "ADR-0038 PR-Δ: assert JVM and instrumentation JUnit method counts " +
@@ -484,14 +517,18 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
         "UP-ratchet vs PR base baseline)."
 
     val baselineFile = rootProject.file("audit/test_count_baseline.txt")
-    val testDirs = linkedMapOf(
-        "jvm" to file("src/test"),
-        "instrumentation" to file("src/androidTest"),
+    val testSourceDirectoryProviders = linkedMapOf(
+        "jvm" to grayDebugJvmTestSourceDirectories,
+        "instrumentation" to grayDebugInstrumentationTestSourceDirectories,
     )
     inputs.file(baselineFile)
-    inputs.files(testDirs.values)
 
     doLast {
+        val testDirs = testSourceDirectoryProviders.mapValues { (_, directories) ->
+            directories.get()
+                .map { it.asFile.canonicalFile }
+                .distinctBy { it.absolutePath }
+        }
         if (!baselineFile.exists()) {
             throw GradleException(
                 "ADR-0038 PR-Δ: baseline file missing at ${baselineFile.absolutePath}. " +
@@ -499,7 +536,7 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
             )
         }
 
-        val counterNames = testDirs.keys
+        val counterNames = testSourceDirectoryProviders.keys
         fun parseBaselines(
             raw: String,
             source: String,
@@ -545,21 +582,27 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
             baselineFile.absolutePath,
         )
 
-        val actualCounts = testDirs.mapValues { (_, testDir) ->
-            if (!testDir.exists()) {
-                0
-            } else {
-                fileTree(testDir).matching { include("**/*.kt") }.sumOf { sourceFile ->
+        val actualCounts = testDirs.mapValues { (_, sourceDirectories) ->
+            sourceDirectories.asSequence()
+                .filter(File::exists)
+                .flatMap { sourceDirectory ->
+                    fileTree(sourceDirectory)
+                        .matching { include("**/*.kt", "**/*.java") }
+                        .files
+                        .asSequence()
+                }
+                .map(File::getCanonicalFile)
+                .distinctBy(File::getAbsolutePath)
+                .sumOf { sourceFile ->
                     sourceFile.useLines { lines ->
                         lines.count { sourceLine ->
                             val trimmedLine = sourceLine.trim()
-                            androidTestAnnotations.any { trimmedLine.startsWith(it) } &&
+                            isAndroidTestAnnotationLine(trimmedLine) &&
                                 !trimmedLine.startsWith("//") &&
                                 !trimmedLine.startsWith("*")
                         }
                     }
                 }
-            }
         }
 
         // Layer 1: strict equality per source set. Moving tests between JVM and
@@ -701,7 +744,23 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
 
         val legacyInstrumentationCount = if (baseBaselineText.toIntOrNull() != null) {
             val annotationPattern =
-                "^[[:space:]]*(${androidTestAnnotations.joinToString("|")})"
+                "^[[:space:]]*(${androidTestAnnotations.joinToString("|")})([[:space:](]|$)"
+            val repositoryRoot = rootProject.rootDir.parentFile.canonicalFile.toPath()
+            val instrumentationPaths = testDirs.getValue("instrumentation")
+                .mapNotNull { sourceDirectory ->
+                    val sourcePath = sourceDirectory.toPath()
+                    if (sourcePath.startsWith(repositoryRoot)) {
+                        repositoryRoot.relativize(sourcePath).toString().replace('\\', '/')
+                    } else {
+                        null
+                    }
+                }
+                .distinct()
+            if (instrumentationPaths.isEmpty()) {
+                throw GradleException(
+                    "Cannot derive repository paths for GrayDebug instrumentation sources."
+                )
+            }
             val (grepExit, grepOutput) = runGit(
                 listOf(
                     "grep",
@@ -711,8 +770,7 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
                     annotationPattern,
                     baseRef,
                     "--",
-                    "android/app/src/androidTest",
-                ),
+                ) + instrumentationPaths,
                 "deriving the legacy instrumentation floor at '$baseRef'",
             )
             when (grepExit) {
@@ -826,7 +884,7 @@ val guardConnectedAndroidTestEmulatorOnly by tasks.registering {
 
 val captureGrayConnectedTestCrashLog by tasks.registering {
     group = "verification"
-    description = "Capture the emulator crash buffer before the connected-test device is torn down."
+    description = "Capture crash buffers from the connected-test targets before teardown."
 
     doLast {
         val adb = ticketboxAdbExecutable()
@@ -845,26 +903,52 @@ val captureGrayConnectedTestCrashLog by tasks.registering {
             throw GradleException("Cannot create connected-test crash-log directory.")
         }
 
-        val command = mutableListOf(adb.absolutePath)
-        System.getenv("ANDROID_SERIAL")
+        val readySerials = ticketboxReadyDeviceSerials()
+        val selectedSerial = System.getenv("ANDROID_SERIAL")
             ?.trim()
             ?.takeIf { it.isNotBlank() }
-            ?.let { serial -> command.addAll(listOf("-s", serial)) }
-        command.addAll(listOf("logcat", "-b", "crash", "-d"))
-
-        val process = ProcessBuilder(command)
-            .directory(rootProject.rootDir)
-            .redirectErrorStream(true)
-            .redirectOutput(crashLog)
-            .start()
-        if (!process.waitFor(30, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-            throw GradleException("Timed out while capturing the connected-test crash buffer.")
+        val captureSerials = when {
+            selectedSerial != null -> readySerials.filter {
+                it.equals(selectedSerial, ignoreCase = true)
+            }
+            ticketboxAllowRealDeviceConnectedTest -> readySerials
+            else -> readySerials.filter { it.startsWith("emulator-", ignoreCase = true) }
         }
-        if (process.exitValue() != 0) {
+        if (captureSerials.isEmpty()) {
             throw GradleException(
-                "Could not capture the connected-test crash buffer: ${crashLog.readText()}"
+                "No ready connected-test target is available for crash-buffer capture."
             )
+        }
+
+        crashLog.writeText("")
+        captureSerials.forEach { serial ->
+            crashLog.appendText("===== Android target $serial =====\n")
+            val process = ProcessBuilder(
+                adb.absolutePath,
+                "-s",
+                serial,
+                "logcat",
+                "-b",
+                "crash",
+                "-d",
+            )
+                .directory(rootProject.rootDir)
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.appendTo(crashLog))
+                .start()
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                throw GradleException(
+                    "Timed out while capturing the connected-test crash buffer from $serial."
+                )
+            }
+            if (process.exitValue() != 0) {
+                throw GradleException(
+                    "Could not capture the connected-test crash buffer from $serial: " +
+                        crashLog.readText()
+                )
+            }
+            crashLog.appendText("\n")
         }
     }
 }

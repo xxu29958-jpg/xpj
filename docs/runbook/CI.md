@@ -89,7 +89,7 @@ GitHub 云端 Android 资格链按责任并行：`Android fast` 跑编译、单�
 
 ### android-connected（模拟器，path-filtered）
 
-云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。单个 API 36 emulator job 执行完整 instrumentation suite；test APK 排除只服务发布安装的 ProfileInstaller，避免其 Startup provider 在独立测试进程中形成绿色崩溃和逐项超时。connected Gradle task 以 10 分钟为内层上限，失败或超时时由 finalizer 在设备拆除前保存 crash buffer；外层 emulator step 为 20 分钟资格上限，job 的额外 5 分钟只用于验证与失败报告上传。验证步骤从实际 APK 动态读取目标包与测试包，不硬编码进程名。`android/audit/test_count_baseline.txt` 在同一文件中分别锁住 JVM 与 instrumentation 计数，任一来源的删测都不能被另一来源增长掩盖。
+云端 connected workflow `.github/workflows/android-connected-test.yml` 只在 Android 源（`android/app/src/**`、gradle 配置）或该 workflow 自身变更时触发，backend/docs push 不付模拟器成本。单个 API 36 emulator job 执行完整 instrumentation suite；test APK 排除只服务发布安装的 ProfileInstaller，避免其 Startup provider 在独立测试进程中形成绿色崩溃和逐项超时。connected Gradle task 以 10 分钟为内层上限，workflow 内的 18 分钟 watchdog 会在 20 分钟 emulator action 上限前中止异常构建并保存本次全部目标设备的 crash buffer；30 分钟 job cap 只给环境准备、验证与失败报告留出诊断余量。验证步骤从实际 APK manifest 动态读取目标包、测试包及其进程名，证据缺失或不可读时 fail closed。`android/audit/test_count_baseline.txt` 在同一文件中分别锁住 JVM 与 instrumentation 计数，计数范围直接来自 GrayDebug 变体实际参与编译的 Java/Kotlin source directories，任一来源或变体目录的删测都不能被另一来源增长掩盖。
 
 local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。它保持单设备串行执行，不作为 GitHub 合并阻断项。
 

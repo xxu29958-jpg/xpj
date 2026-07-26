@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -43,6 +44,9 @@ REQUIRED_GRADLE_TASKS = [
 ]
 _GRADLE_NO_ACTION_OPTIONS = {"-m", "--dry-run", "--task-graph"}
 _GRADLE_EXCLUDE_OPTIONS = {"-x", "--exclude-task"}
+_TIMEOUT_OPTIONS_WITH_VALUE = {"-k", "--kill-after", "-s", "--signal"}
+_TIMEOUT_FLAG_OPTIONS = {"--foreground", "--preserve-status", "--verbose"}
+_TIMEOUT_DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
 
 
 def _is_line_continued(stripped_line: str) -> bool:
@@ -67,6 +71,33 @@ def _is_gradle_executable(token: str) -> bool:
 
 def _contains_gradle_executable(line: str) -> bool:
     return any(_is_gradle_executable(token) for token in _shell_tokens(line))
+
+
+def _timeout_wraps_direct_gradle(
+    tokens: tuple[str, ...],
+    executable_index: int,
+) -> bool:
+    if not tokens or tokens[0].strip("'\"").lower() != "timeout":
+        return False
+    index = 1
+    while index < executable_index:
+        token = tokens[index].strip("'\"")
+        option_name, separator, _ = token.partition("=")
+        if separator and option_name in _TIMEOUT_OPTIONS_WITH_VALUE:
+            index += 1
+            continue
+        if token in _TIMEOUT_OPTIONS_WITH_VALUE:
+            index += 2
+            continue
+        if token in _TIMEOUT_FLAG_OPTIONS:
+            index += 1
+            continue
+        break
+    return (
+        index + 1 == executable_index
+        and index < len(tokens)
+        and _TIMEOUT_DURATION.fullmatch(tokens[index].strip("'\"")) is not None
+    )
 
 
 def _looks_like_gradle_arg_fragment(stripped_line: str) -> bool:
@@ -136,7 +167,16 @@ def _gradle_invocation_from_segment(
         (index for index, token in enumerate(tokens) if _is_gradle_executable(token)),
         None,
     )
-    if executable_index is None or (require_direct and executable_index != 0):
+    if executable_index is None:
+        return None
+    if (
+        require_direct
+        and executable_index != 0
+        and not _timeout_wraps_direct_gradle(
+            tokens,
+            executable_index,
+        )
+    ):
         return None
     return GradleInvocation(workflow, tokens[executable_index:])
 
