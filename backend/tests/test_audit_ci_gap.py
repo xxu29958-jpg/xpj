@@ -69,12 +69,18 @@ def test_ci_gap_accepts_required_commands_across_workflows(tmp_path: Path) -> No
     (workflows / "ci.yml").write_text(
         """
 name: CI
+env:
+  pytest_addopts: "-k workflow_poison"
 jobs:
   backend:
+    env:
+      PyTest_AddOpts: "-m job_poison"
     steps:
       - run: .\\.ci-venv\\Scripts\\python.exe -m compileall app scripts tests packaging/tests
       - run: .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests packaging/tests
-      - run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests -p no:cacheprovider
+      - env:
+          PYTEST_ADDOPTS: ""
+        run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -n 2 --dist loadfile --max-worker-restart 0
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\\build_backend_exe.ps1 -Clean
@@ -127,9 +133,75 @@ jobs:
         Path("ci.yml"),
         "python -m pytest -q packaging/tests -p no:cacheprovider -k version",
     )
+    serial_installer = mod.WorkflowCommand(
+        Path("ci.yml"),
+        (
+            "python -m pytest -q packaging/tests --strict-markers "
+            "-p no:cacheprovider -o addopts="
+        ),
+    )
+    restartable_installer = mod.WorkflowCommand(
+        Path("ci.yml"),
+        (
+            "python -m pytest -q packaging/tests --strict-markers "
+            "-p no:cacheprovider -o addopts= -n 2 --dist loadfile "
+            "--max-worker-restart 1"
+        ),
+        environment=(("PYTEST_ADDOPTS", ""),),
+    )
+    valid_installer = mod.WorkflowCommand(
+        Path("ci.yml"),
+        (
+            "python -m pytest packaging/tests --strict-markers "
+            "-p no:cacheprovider -o addopts= -n 3 --dist loadfile "
+            "--max-worker-restart 0"
+        ),
+        environment=(("PYTEST_ADDOPTS", "-k poisoned"), ("pytest_addopts", "")),
+    )
+    poisoned_environment = mod.WorkflowCommand(
+        Path("ci.yml"),
+        valid_installer.text,
+        environment=(("pytest_addopts", ""), ("PYTEST_ADDOPTS", "-k version")),
+    )
     assert "pytest ordinary business lane" in mod._missing_ci_invocations([narrowed_business])
     assert "pytest real-db serial lane" in mod._missing_ci_invocations([narrowed_business])
     assert "pytest installer safety lane" in mod._missing_ci_invocations([filtered_installer])
+    assert "pytest installer safety lane" in mod._missing_ci_invocations([serial_installer])
+    assert "pytest installer safety lane" in mod._missing_ci_invocations(
+        [restartable_installer]
+    )
+    assert "pytest installer safety lane" not in mod._missing_ci_invocations(
+        [valid_installer]
+    )
+    assert "pytest installer safety lane" in mod._missing_ci_invocations(
+        [poisoned_environment]
+    )
+    for workers in (2, 4):
+        tuned = mod.WorkflowCommand(
+            Path("ci.yml"),
+            valid_installer.text.replace("-n 3", f"-n {workers}"),
+            environment=(("PYTEST_ADDOPTS", ""),),
+        )
+        assert "pytest installer safety lane" not in mod._missing_ci_invocations(
+            [tuned]
+        )
+    for invalid_text in (
+        valid_installer.text.replace("-n 3", "-n 1"),
+        valid_installer.text.replace("-n 3", "-n 5"),
+        valid_installer.text.replace(
+            "-p no:cacheprovider",
+            "-p no:cacheprovider -p no:cacheprovider",
+        ),
+        f"{valid_installer.text} tests/test_version.py",
+    ):
+        invalid = mod.WorkflowCommand(
+            Path("ci.yml"),
+            invalid_text,
+            environment=(("PYTEST_ADDOPTS", ""),),
+        )
+        assert "pytest installer safety lane" in mod._missing_ci_invocations(
+            [invalid]
+        )
 
 
 def test_ci_gap_ignores_if_false_steps(tmp_path: Path) -> None:

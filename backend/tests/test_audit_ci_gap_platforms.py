@@ -24,7 +24,9 @@ jobs:
       - run: python scripts/release_audit.py
       - run: python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4
       - run: python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
-      - run: python -m pytest -q packaging/tests -p no:cacheprovider
+      - env:
+          PYTEST_ADDOPTS: ""
+        run: python -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -n 2 --dist loadfile --max-worker-restart 0
       - run: powershell -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: powershell -NoProfile -File scripts/build_backend_exe.ps1 -Clean

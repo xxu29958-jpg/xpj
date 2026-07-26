@@ -14,11 +14,18 @@ class RequiredCommand:
     label: str
     pattern: re.Pattern[str]
     matcher: Callable[[str], bool] | None = None
+    environment_matcher: Callable[[tuple[tuple[str, str], ...]], bool] | None = None
 
     def matches(self, command: str) -> bool:
         if self.matcher is not None:
             return self.matcher(command)
         return self.pattern.search(command) is not None
+
+    def matches_environment(self, environment: tuple[tuple[str, str], ...]) -> bool:
+        return (
+            self.environment_matcher is None
+            or self.environment_matcher(environment)
+        )
 
 
 @dataclass(frozen=True)
@@ -121,6 +128,70 @@ def _matches_ordinary_pytest(command: str) -> bool:
 
 def _matches_real_db_pytest(command: str) -> bool:
     return _postgres_lane_invocation(command) == ("real-db", 1, 0, 1)
+
+
+def _matches_installer_safety_pytest(command: str) -> bool:
+    tokens = _command_tokens(command)
+    if len(tokens) < 4:
+        return False
+    executable = tokens[0].replace("\\", "/").lower().rsplit("/", 1)[-1]
+    if executable not in {"python", "python.exe"} or tokens[1:3] != ("-m", "pytest"):
+        return False
+
+    flags: set[str] = set()
+    options: dict[str, str] = {}
+    targets: list[str] = []
+    value_options = {
+        "-p",
+        "-o",
+        "-n",
+        "--dist",
+        "--max-worker-restart",
+    }
+    index = 3
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"-q", "--strict-markers"}:
+            if token in flags:
+                return False
+            flags.add(token)
+            index += 1
+            continue
+        if token in value_options:
+            if token in options or index + 1 >= len(tokens):
+                return False
+            options[token] = tokens[index + 1]
+            index += 2
+            continue
+        if token.startswith("-"):
+            return False
+        targets.append(token.replace("\\", "/").removeprefix("./"))
+        index += 1
+
+    try:
+        workers = int(options.get("-n", ""))
+    except ValueError:
+        return False
+    return (
+        "--strict-markers" in flags
+        and flags <= {"-q", "--strict-markers"}
+        and set(options) == value_options
+        and options["-p"] == "no:cacheprovider"
+        and options["-o"] == "addopts="
+        and 2 <= workers <= 4
+        and options["--dist"] == "loadfile"
+        and options["--max-worker-restart"] == "0"
+        and targets == ["packaging/tests"]
+    )
+
+
+def _clears_pytest_addopts(
+    environment: tuple[tuple[str, str], ...],
+) -> bool:
+    effective: dict[str, str] = {}
+    for key, value in environment:
+        effective[key.casefold()] = value
+    return effective.get("pytest_addopts") == ""
 
 
 def _powershell_file_invocation(
@@ -246,10 +317,9 @@ REQUIRED_CI_INVOCATIONS = (
     ),
     RequiredCommand(
         "pytest installer safety lane",
-        re.compile(
-            _PYTEST_LINE
-            + r"-q\s+packaging[\\/]+tests\s+-p\s+no:cacheprovider\s*$"
-        ),
+        re.compile(_PYTEST_LINE),
+        matcher=_matches_installer_safety_pytest,
+        environment_matcher=_clears_pytest_addopts,
     ),
     RequiredCommand(
         "installer source preflight (Windows PowerShell 5.1)",
