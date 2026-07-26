@@ -85,16 +85,17 @@ def test_resolver_selects_newest_matching_artifact_from_trusted_main() -> None:
         _run(1, event="pull_request"),
         _run(2, age=timedelta(hours=2)),
         _run(3, event="push", age=timedelta(minutes=30)),
+        _run(4, event="repository_dispatch", age=timedelta(minutes=15)),
     ]
 
     def get_json(url: str) -> dict[str, Any]:
         observed.append(url)
         if "/workflows/" in url:
             return {"workflow_runs": runs}
-        assert "/runs/3/" in url
-        return {"artifacts": [_artifact(3)]}
+        assert "/runs/4/" in url
+        return {"artifacts": [_artifact(4)]}
 
-    assert _resolve(get_json) == resolver.ArtifactReference(run_id=3, artifact_id=30)
+    assert _resolve(get_json) == resolver.ArtifactReference(run_id=4, artifact_id=40)
     assert not any("/runs/1/" in url or "/runs/2/" in url for url in observed)
 
 

@@ -41,7 +41,12 @@ def _steps(job: dict[str, object]) -> dict[str, dict[str, object]]:
     return {step["name"]: step for step in job["steps"]}
 
 
-def _assert_qualification_step(job: dict[str, object], step: dict[str, object]) -> None:
+def _assert_qualification_step(
+    job: dict[str, object],
+    step: dict[str, object],
+    *,
+    resolves_audit_base: bool = False,
+) -> None:
     assert step["id"] == "qualification"
     assert step["env"]["EXPECTED_SHA"] == "${{ github.sha }}"
     assert step["env"]["SOURCE_SHA"] == ("${{ github.event.pull_request.head.sha || github.sha }}")
@@ -52,7 +57,7 @@ def _assert_qualification_step(job: dict[str, object], step: dict[str, object]) 
     working_directory = run_defaults.get("working-directory", "") if isinstance(run_defaults, dict) else ""
     reporter = (_ROOT / str(working_directory) / tokens[3]).resolve()
     assert reporter == (_ROOT / "backend" / "scripts" / "report_qualification_sha.py").resolve()
-    assert tokens[4:] == [
+    expected_arguments = [
         "--expected",
         "$EXPECTED_SHA",
         "--source",
@@ -60,6 +65,9 @@ def _assert_qualification_step(job: dict[str, object], step: dict[str, object]) 
         "--output",
         "$GITHUB_OUTPUT",
     ]
+    if resolves_audit_base:
+        expected_arguments.append("--audit-base")
+    assert tokens[4:] == expected_arguments
 
 
 def _assert_managed_python_precedes(job: dict[str, object], *python_step_names: str) -> None:
@@ -359,13 +367,25 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     scope = jobs["scope"]
     assert isinstance(scope, dict)
     assert scope["outputs"]["postgres_matrix"] == ("${{ steps.scope.outputs.postgres_matrix }}")
+    assert scope["outputs"]["audit_base_sha"] == (
+        "${{ steps.qualification.outputs.audit_base_sha }}"
+    )
     _assert_bounded_timeout(scope)
-    _assert_qualification_step(scope, _steps(scope)["Verify qualification SHA"])
+    _assert_qualification_step(
+        scope,
+        _steps(scope)["Verify qualification SHA"],
+        resolves_audit_base=True,
+    )
     for name in ("backend_contracts", "backend_frozen", "windows_packaging"):
         job = jobs[name]
         assert job["outputs"]["qualification_sha"] == "${{ steps.qualification.outputs.sha }}"
         assert job["outputs"]["qualification_source_sha"] == ("${{ steps.qualification.outputs.source_sha }}")
         _assert_qualification_step(job, _steps(job)["Verify qualification SHA"])
+    assert jobs["backend_contracts"]["needs"] == "scope"
+    audit_environment = _steps(jobs["backend_contracts"])["Audit (release lanes)"]["env"]
+    assert audit_environment["XPJ_AUDIT_BASE_REF"] == (
+        "${{ needs.scope.outputs.audit_base_sha }}"
+    )
     _assert_bounded_timeout(jobs["backend_contracts"])
     _assert_bounded_timeout(jobs["backend_frozen"])
     assert jobs["windows_packaging"]["timeout-minutes"] == 20

@@ -324,6 +324,27 @@ def verify_baseline_ratchet(
         raise EvidenceError(
             f"Android test baseline base ref '{base_ref}' resolved without a commit."
         )
+    if in_ci:
+        head = _run_git(repository_root, "rev-parse", "--verify", "HEAD^{commit}")
+        head_commit = head.stdout.strip()
+        if head.returncode != 0 or not head_commit:
+            raise EvidenceError("Could not resolve Android qualification HEAD.")
+        if base_commit == head_commit:
+            raise EvidenceError(
+                "Android test baseline base must precede HEAD; "
+                "self-comparison is forbidden."
+            )
+        ancestry = _run_git(
+            repository_root,
+            "merge-base",
+            "--is-ancestor",
+            base_commit,
+            head_commit,
+        )
+        if ancestry.returncode != 0:
+            raise EvidenceError(
+                "Android test baseline base must be an ancestor of qualification HEAD."
+            )
 
     listed = _run_git(
         repository_root,

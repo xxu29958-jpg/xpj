@@ -197,8 +197,8 @@ def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
         is a FAIL; locally it's INFO-skip.
 
     Base ref priority:
-      1. ``XPJ_AUDIT_BASE_REF`` (the workflow supplies the exact PR target
-         SHA / pre-push SHA; manual runs supply their exact pre-change SHA).
+      1. ``XPJ_AUDIT_BASE_REF`` (the workflow scope supplies the exact PR
+         target, pre-push, or default-branch qualification base SHA).
       2. ``GITHUB_BASE_REF`` fallback (the CI runner sets the target branch
          name on PR events; fetched as ``origin/<branch>``).
       3. else: local ``refs/heads/main`` / CI push (``GITHUB_SHA`` set) →

@@ -32,6 +32,13 @@ def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
     for job in (fast, debug_apk, release_apk, sca):
         assert job["needs"] == "scope"
         assert job["if"] == expected_scope_condition
+        assert job["env"]["XPJ_AUDIT_BASE_REF"] == (
+            "${{ needs.scope.outputs.audit_base_sha }}"
+        )
+        assert all(
+            "XPJ_AUDIT_BASE_REF" not in (step.get("env") or {})
+            for step in job["steps"]
+        )
     assert "NVD_API_KEY" not in str(sca)
     assert "android_dependency_audit.py scan" in scan["run"]
     assert "--artifact-present" in scan["run"]

@@ -187,6 +187,7 @@ def test_baseline_ratchet_prefers_exact_audit_sha_over_branch_name(
     baseline.write_text("jvm=2\ninstrumentation=2\n", encoding="utf-8")
     _git(repository, "add", ".")
     _git(repository, "commit", "-m", "head")
+    head_sha = _git(repository, "rev-parse", "HEAD")
 
     current, base, selected_ref = qualification.verify_baseline_ratchet(
         baseline_path=baseline,
@@ -201,6 +202,32 @@ def test_baseline_ratchet_prefers_exact_audit_sha_over_branch_name(
     assert current == {"jvm": 2, "instrumentation": 2}
     assert base == {"jvm": 1, "instrumentation": 1}
     assert selected_ref == base_sha
+
+    with pytest.raises(qualification.EvidenceError, match="self-comparison"):
+        qualification.verify_baseline_ratchet(
+            baseline_path=baseline,
+            repository_root=repository,
+            environment={
+                "CI": "true",
+                "XPJ_AUDIT_BASE_REF": head_sha,
+            },
+        )
+
+    sibling_sha = _git(
+        repository,
+        "commit-tree",
+        f"{base_sha}^{{tree}}",
+        "-p",
+        base_sha,
+        "-m",
+        "sibling",
+    )
+    with pytest.raises(qualification.EvidenceError, match="must be an ancestor"):
+        qualification.verify_baseline_ratchet(
+            baseline_path=baseline,
+            repository_root=repository,
+            environment={"CI": "true", "XPJ_AUDIT_BASE_REF": sibling_sha},
+        )
 
 
 def test_baseline_ratchet_rejects_an_unreachable_explicit_sha(

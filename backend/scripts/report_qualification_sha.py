@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -70,13 +72,31 @@ def report_qualification_sha(
     return actual_sha, source_sha
 
 
+def resolve_audit_base(environment: Mapping[str, str]) -> str:
+    try:
+        from scripts.adr_contract_git import select_ratchet_base
+    except ModuleNotFoundError:
+        from adr_contract_git import select_ratchet_base
+
+    selected, error = select_ratchet_base(_REPOSITORY_ROOT, dict(environment))
+    if selected is None:
+        raise RuntimeError(error or "audit ratchet base selection failed")
+    return _validated_sha(selected.commit, "audit base SHA")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected", required=True)
     parser.add_argument("--source", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--audit-base", action="store_true")
     arguments = parser.parse_args()
+    audit_base = resolve_audit_base(os.environ) if arguments.audit_base else None
     report_qualification_sha(arguments.expected, arguments.source, arguments.output)
+    if audit_base is not None:
+        with arguments.output.open("a", encoding="utf-8", newline="\n") as output:
+            output.write(f"audit_base_sha={audit_base}\n")
+        print(f"Audit ratchet base SHA: {audit_base}")
     return 0
 
 
