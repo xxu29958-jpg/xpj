@@ -150,7 +150,7 @@ jobs:
           tests/test_ci_scope.py
           tests/test_backend_ci_results.py
           tests/test_postgres_ci_topology.py
-          tests/test_android_connected_process_health.py
+          tests/test_android_test_qualification.py
           --noconftest -p no:cacheprovider
 
       - name: Audit (release lanes)
