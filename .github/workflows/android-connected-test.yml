@@ -49,7 +49,9 @@ jobs:
   connected:
     name: Connected (emulator)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The connected action has the 20-minute qualification ceiling. The wider
+    # job cap reserves diagnostic-upload time after a timed-out action.
+    timeout-minutes: 25
 
     env:
       # Same canonical owner URL the regular android job injects, so
@@ -82,6 +84,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Run connected test
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
         with:
           api-level: 36
@@ -101,6 +104,52 @@ jobs:
             echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
             ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
 
+      - name: Verify connected process health
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          crash_log="$RUNNER_TEMP/ticketbox-connected-crash.log"
+          application_id_from_output() {
+            output_dir=$1
+            mapfile -d '' -t apk_files < <(find "$output_dir" -type f -name '*.apk' -print0)
+            if [ "${#apk_files[@]}" -ne 1 ]; then
+              echo "Expected exactly one APK under $output_dir; found ${#apk_files[@]}." >&2
+              return 1
+            fi
+            "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" \
+              manifest application-id "${apk_files[0]}"
+          }
+          package_process_crashed() {
+            package_name=$1
+            awk -v package="$package_name" '
+              {
+                marker = "Process: "
+                marker_position = index($0, marker)
+                if (marker_position > 0) {
+                  process_name = substr($0, marker_position + length(marker))
+                  sub(/,.*/, "", process_name)
+                  if (process_name == package || index(process_name, package ":") == 1) {
+                    found = 1
+                  }
+                }
+              }
+              END { exit found ? 0 : 1 }
+            ' "$crash_log"
+          }
+
+          target_application_id="$(application_id_from_output app/build/outputs/apk/gray/debug)"
+          test_application_id="$(
+            application_id_from_output app/build/outputs/apk/androidTest/gray/debug
+          )"
+          for package_name in "$target_application_id" "$test_application_id"; do
+            if package_process_crashed "$package_name"; then
+              echo "Connected tests left a crashed process for $package_name." >&2
+              cat "$crash_log"
+              exit 1
+            fi
+          done
+
       - name: Upload androidTest reports on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -109,5 +158,6 @@ jobs:
           path: |
             android/app/build/reports/androidTests/**
             android/app/build/outputs/androidTest-results/**
+            ${{ runner.temp }}/ticketbox-connected-crash.log
           if-no-files-found: ignore
           retention-days: 7

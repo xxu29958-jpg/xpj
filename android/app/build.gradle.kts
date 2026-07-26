@@ -1,3 +1,4 @@
+import java.time.Duration
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 
@@ -320,6 +321,15 @@ configurations.configureEach {
     }
 }
 
+// Instrumentation code runs in a separate APK but against the debug target APK.
+// ProfileInstaller belongs to the release app, and its transitive test copy
+// contributes a Startup provider whose shared runtime classes AGP keeps in the
+// target APK. Exclude it at the official androidTest boundary so the test
+// process cannot publish a provider it cannot load.
+configurations.named("androidTestImplementation") {
+    exclude(group = "androidx.profileinstaller", module = "profileinstaller")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.datastore.preferences)
@@ -388,10 +398,6 @@ dependencies {
     // unblocked by aligning kotlinx-serialization to 1.10.0 (configurations
     // force above). Test-only artifact of the adopted Room library (same 2.8.4).
     androidTestImplementation(libs.androidx.room.testing)
-    // The androidTest APK gets its own merged manifest; keep the startup provider
-    // class available there too, otherwise connected tests crash when Android
-    // binds androidx.startup.InitializationProvider in the test process.
-    androidTestImplementation(libs.androidx.startup.runtime)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
@@ -402,9 +408,12 @@ dependencies {
 // Counterpart to backend's ``_audit_pr_delta_metrics.py`` strict-equality
 // gate. The Android count is enforced here (not by reaching across the
 // backend/android boundary) — each side owns its own baseline file and
-// own assertion. Cut-over PRs (ADR-0038 PR-A/B/C/D etc) that change the
-// Android test count MUST bump ``audit/test_count_baseline.txt`` in the
-// same diff. Strict equality (NOT >=); drift in either direction fails.
+// own assertion. JVM and connected tests have separate counters in one
+// structured baseline so growth in one source set cannot hide deletion in
+// the other. Cut-over PRs
+// (ADR-0038 PR-A/B/C/D etc) that change the Android test count MUST bump
+// ``audit/test_count_baseline.txt`` in the same diff. Strict equality
+// (NOT >=); drift in either direction fails.
 //
 // Annotation set covers JUnit4 (``@Test`` only at present) and is
 // forward-compatible with a JUnit5 migration (``@ParameterizedTest`` /
@@ -470,46 +479,103 @@ tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
 
 tasks.register("assertAndroidTestCountEqualsBaseline") {
     group = "verification"
-    description = "ADR-0038 PR-Δ: assert Android JUnit @Test method-annotation " +
-        "count exactly matches audit/test_count_baseline.txt (strict-equality + " +
-        "UP-ratchet vs PR base baseline + bootstrap exception by data shape)."
+    description = "ADR-0038 PR-Δ: assert JVM and instrumentation JUnit method counts " +
+        "separately match audit/test_count_baseline.txt (strict equality + per-lane " +
+        "UP-ratchet vs PR base baseline)."
 
     val baselineFile = rootProject.file("audit/test_count_baseline.txt")
-    val testDir = file("src/test")
+    val testDirs = linkedMapOf(
+        "jvm" to file("src/test"),
+        "instrumentation" to file("src/androidTest"),
+    )
     inputs.file(baselineFile)
-    inputs.dir(testDir)
+    inputs.files(testDirs.values)
 
     doLast {
         if (!baselineFile.exists()) {
             throw GradleException(
                 "ADR-0038 PR-Δ: baseline file missing at ${baselineFile.absolutePath}. " +
-                "Create it with a single integer (current Android JUnit @Test method count)."
+                "Create it with jvm=<count> and instrumentation=<count>."
             )
         }
-        val currentBaseline = baselineFile.readText().trim().toInt()
 
-        val actual = if (testDir.exists()) {
-            fileTree(testDir).matching { include("**/*.kt") }.sumOf { file ->
-                file.useLines { lines ->
-                    lines.count { line ->
-                        val trimmed = line.trim()
-                        androidTestAnnotations.any { trimmed.startsWith(it) } &&
-                            !trimmed.startsWith("//") &&
-                            !trimmed.startsWith("*")
+        val counterNames = testDirs.keys
+        fun parseBaselines(
+            raw: String,
+            source: String,
+            legacyInstrumentationCount: Int? = null,
+        ): Map<String, Int> {
+            val trimmed = raw.trim()
+            trimmed.toIntOrNull()?.let { legacyJvmCount ->
+                val instrumentationCount = legacyInstrumentationCount
+                    ?: throw GradleException(
+                        "Legacy scalar Android baseline at $source is only valid for a " +
+                            "base-tree migration with a derived instrumentation count."
+                    )
+                return mapOf(
+                    "jvm" to legacyJvmCount,
+                    "instrumentation" to instrumentationCount,
+                )
+            }
+
+            val properties = Properties()
+            try {
+                trimmed.reader().use(properties::load)
+            } catch (e: Exception) {
+                throw GradleException("Cannot parse Android test baseline from $source.", e)
+            }
+            val keys = properties.stringPropertyNames()
+            if (keys != counterNames) {
+                throw GradleException(
+                    "Android test baseline at $source must contain exactly " +
+                        "${counterNames.joinToString()} (found: ${keys.sorted().joinToString()})."
+                )
+            }
+            return counterNames.associateWith { name ->
+                properties.getProperty(name)?.trim()?.toIntOrNull()
+                    ?.takeIf { it >= 0 }
+                    ?: throw GradleException(
+                        "Android test baseline '$name' at $source must be a non-negative integer."
+                    )
+            }
+        }
+
+        val currentBaselines = parseBaselines(
+            baselineFile.readText(),
+            baselineFile.absolutePath,
+        )
+
+        val actualCounts = testDirs.mapValues { (_, testDir) ->
+            if (!testDir.exists()) {
+                0
+            } else {
+                fileTree(testDir).matching { include("**/*.kt") }.sumOf { sourceFile ->
+                    sourceFile.useLines { lines ->
+                        lines.count { sourceLine ->
+                            val trimmedLine = sourceLine.trim()
+                            androidTestAnnotations.any { trimmedLine.startsWith(it) } &&
+                                !trimmedLine.startsWith("//") &&
+                                !trimmedLine.startsWith("*")
+                        }
                     }
                 }
             }
-        } else {
-            0
         }
 
-        // Layer 1: strict equality (actual == current baseline). Both directions FAIL.
-        if (actual != currentBaseline) {
-            val diff = actual - currentBaseline
-            val sign = if (diff > 0) "+" else ""
+        // Layer 1: strict equality per source set. Moving tests between JVM and
+        // instrumentation cannot preserve a misleading aggregate.
+        val mismatches = counterNames.filter { name ->
+            actualCounts.getValue(name) != currentBaselines.getValue(name)
+        }
+        if (mismatches.isNotEmpty()) {
+            val details = mismatches.joinToString("; ") { name ->
+                val actual = actualCounts.getValue(name)
+                val baseline = currentBaselines.getValue(name)
+                val diff = actual - baseline
+                "$name actual=$actual baseline=$baseline (${if (diff > 0) "+" else ""}$diff)"
+            }
             throw GradleException(
-                "ADR-0038 PR-Δ strict equality FAIL: actual=$actual " +
-                "current_baseline=$currentBaseline ($sign$diff). Update " +
+                "ADR-0038 PR-Δ strict equality FAIL: $details. Update " +
                 "audit/test_count_baseline.txt in the SAME PR if intentional " +
                 "(both directions FAIL — silent drift in either is a bug)."
             )
@@ -576,60 +642,116 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
                 )
             }
             println(
-                "ADR-0038 PR-Δ: Android count $actual matches current baseline " +
+                "ADR-0038 PR-Δ: Android counts $actualCounts match current baselines " +
                 "(base ref '$baseRef' unreachable — local dev, ratchet skipped)."
             )
             return@doLast
         }
 
-        val baseBaseline: Int? = try {
-            val proc = ProcessBuilder(
-                "git", "show", "$baseRef:android/audit/test_count_baseline.txt"
-            )
-                .directory(rootProject.rootDir)
-                .redirectErrorStream(false)
+        fun runGit(args: List<String>, operation: String): Pair<Int, String> {
+            val proc = ProcessBuilder(*(listOf("git") + args).toTypedArray())
+                .directory(rootProject.rootDir.parentFile)
+                .redirectErrorStream(true)
                 .start()
-            val output = proc.inputStream.bufferedReader().readText().trim()
-            val finished = proc.waitFor(30, TimeUnit.SECONDS)
-            if (finished && proc.exitValue() == 0 && output.isNotEmpty()) {
-                output.toIntOrNull()
-            } else {
-                // File didn't exist at base (ref was reachable, so this is
-                // legit "this counter is new in this PR"). Bootstrap.
-                null
+            if (!proc.waitFor(30, TimeUnit.SECONDS)) {
+                proc.destroyForcibly()
+                throw GradleException("Timed out while $operation.")
             }
-        } catch (e: Exception) {
-            null
+            return proc.exitValue() to proc.inputStream.bufferedReader().readText().trim()
         }
 
-        if (baseBaseline == null) {
-            // refReachable=true + baseBaseline=null → integral-bootstrap.
-            // Strict equality already enforced above (actual == currentBaseline);
+        val baselineRepoPath = "android/audit/test_count_baseline.txt"
+        val (listExit, listOutput) = runGit(
+            listOf("ls-tree", "--name-only", baseRef, "--", baselineRepoPath),
+            "checking Android test baseline existence at '$baseRef'",
+        )
+        if (listExit != 0) {
+            throw GradleException(
+                "Unable to inspect Android test baseline at '$baseRef': $listOutput"
+            )
+        }
+        if (listOutput.isEmpty()) {
+            // refReachable=true + baseline missing → integral-bootstrap.
+            // Strict equality already enforced above;
             // ratchet skipped because there's no base value to ratchet against.
             // Auto-extinguishes once the baseline file lands in main.
             println(
-                "ADR-0038 PR-Δ: Android count $actual matches current baseline " +
+                "ADR-0038 PR-Δ: Android counts $actualCounts match current baselines " +
                 "(bootstrap — baseline file new in this PR; ratchet auto-engages " +
                 "next PR after merge)."
             )
             return@doLast
         }
-
-        if (currentBaseline < baseBaseline) {
+        if (listOutput.lineSequence().filter { it.isNotBlank() }.toList() != listOf(baselineRepoPath)) {
             throw GradleException(
-                "ADR-0038 PR-Δ ratchet FAIL: Android test count baseline at base=$baseBaseline, " +
-                "at current PR=$currentBaseline (dropped by ${baseBaseline - currentBaseline}). " +
+                "Unexpected git ls-tree result for Android test baseline at '$baseRef': $listOutput"
+            )
+        }
+
+        val (showExit, baseBaselineText) = runGit(
+            listOf("show", "$baseRef:$baselineRepoPath"),
+            "reading Android test baseline at '$baseRef'",
+        )
+        if (showExit != 0 || baseBaselineText.isBlank()) {
+            throw GradleException(
+                "Android test baseline exists at '$baseRef' but could not be read as " +
+                    "non-empty content: $baseBaselineText"
+            )
+        }
+
+        val legacyInstrumentationCount = if (baseBaselineText.toIntOrNull() != null) {
+            val annotationPattern =
+                "^[[:space:]]*(${androidTestAnnotations.joinToString("|")})"
+            val (grepExit, grepOutput) = runGit(
+                listOf(
+                    "grep",
+                    "-h",
+                    "-I",
+                    "-E",
+                    annotationPattern,
+                    baseRef,
+                    "--",
+                    "android/app/src/androidTest",
+                ),
+                "deriving the legacy instrumentation floor at '$baseRef'",
+            )
+            when (grepExit) {
+                0 -> grepOutput.lineSequence().count { it.isNotBlank() }
+                1 -> 0
+                else -> throw GradleException(
+                    "Unable to derive legacy instrumentation floor at '$baseRef': $grepOutput"
+                )
+            }
+        } else {
+            null
+        }
+
+        val baseBaselines = parseBaselines(
+            baseBaselineText,
+            "$baseRef:android/audit/test_count_baseline.txt",
+            legacyInstrumentationCount = legacyInstrumentationCount,
+        )
+        val drops = counterNames.filter { name ->
+            currentBaselines.getValue(name) < baseBaselines.getValue(name)
+        }
+        if (drops.isNotEmpty()) {
+            val details = drops.joinToString("; ") { name ->
+                val current = currentBaselines.getValue(name)
+                val base = baseBaselines.getValue(name)
+                "$name base=$base current=$current (dropped by ${base - current})"
+            }
+            throw GradleException(
+                "ADR-0038 PR-Δ ratchet FAIL: $details. " +
                 "Tests should accumulate, not vanish. If this drop is intentional " +
                 "(test consolidation, dead code removal with paired test removal), " +
                 "document the rationale and get explicit sign-off — don't silently " +
-                "lower the floor. Strict equality alone misses this when actuals dropped " +
-                "in lockstep — UP-ratchet catches it."
+                "lower a source-set floor."
             )
         }
 
         println(
-            "ADR-0038 PR-Δ: Android test count $actual matches current baseline " +
-            "(base=$baseBaseline; ratchet UP OK)."
+            "ADR-0038 PR-Δ: Android counts $actualCounts match current baselines " +
+                "(base=$baseBaselines; per-source-set ratchet UP OK)."
         )
     }
 }
@@ -702,6 +824,55 @@ val guardConnectedAndroidTestEmulatorOnly by tasks.registering {
     }
 }
 
+val captureGrayConnectedTestCrashLog by tasks.registering {
+    group = "verification"
+    description = "Capture the emulator crash buffer before the connected-test device is torn down."
+
+    doLast {
+        val adb = ticketboxAdbExecutable()
+            ?: throw GradleException("Android adb is unavailable; cannot capture connected-test crashes.")
+        val crashLog = System.getenv("RUNNER_TEMP")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(it, "ticketbox-connected-crash.log") }
+            ?: layout.buildDirectory
+                .file("reports/androidTests/ticketbox-connected-crash.log")
+                .get()
+                .asFile
+        val crashLogDirectory = crashLog.parentFile
+            ?: throw GradleException("Connected-test crash log has no parent directory.")
+        if (!crashLogDirectory.isDirectory && !crashLogDirectory.mkdirs()) {
+            throw GradleException("Cannot create connected-test crash-log directory.")
+        }
+
+        val command = mutableListOf(adb.absolutePath)
+        System.getenv("ANDROID_SERIAL")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { serial -> command.addAll(listOf("-s", serial)) }
+        command.addAll(listOf("logcat", "-b", "crash", "-d"))
+
+        val process = ProcessBuilder(command)
+            .directory(rootProject.rootDir)
+            .redirectErrorStream(true)
+            .redirectOutput(crashLog)
+            .start()
+        if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            throw GradleException("Timed out while capturing the connected-test crash buffer.")
+        }
+        if (process.exitValue() != 0) {
+            throw GradleException(
+                "Could not capture the connected-test crash buffer: ${crashLog.readText()}"
+            )
+        }
+    }
+}
+
 tasks.matching { it.name.matches(Regex("connected.*AndroidTest")) }.configureEach {
     dependsOn(guardConnectedAndroidTestEmulatorOnly)
+    if (name == "connectedGrayDebugAndroidTest") {
+        timeout.set(Duration.ofMinutes(10))
+        finalizedBy(captureGrayConnectedTestCrashLog)
+    }
 }
