@@ -16,6 +16,7 @@ ANDROID_PROTECTED_PATHS = (
     "android/gradlew",
     "android/gradlew.bat",
     "android/settings.gradle.kts",
+    "android/audit/test_count_baseline.txt",
 )
 CI_HEAVY_SCOPES = (
     "postgres",

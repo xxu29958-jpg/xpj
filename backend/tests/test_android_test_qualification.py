@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -54,6 +55,17 @@ def _write_results(
         ),
         encoding="utf-8",
     )
+
+
+def _git(repository: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
 
 
 def _old_record(
@@ -201,7 +213,7 @@ def test_manifest_processes_are_derived_without_hardcoded_package_names() -> Non
     }
 
 
-def test_junit_results_count_reported_cases_not_source_shaped_text(
+def test_junit_results_parse_reported_cases_not_source_shaped_text(
     tmp_path: Path,
 ) -> None:
     _write_results(
@@ -222,6 +234,28 @@ def test_junit_results_count_reported_cases_not_source_shaped_text(
         skipped=1,
         files=1,
     )
+
+
+def test_result_qualification_rejects_skipped_cases(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text("jvm=2\ninstrumentation=1\n", encoding="utf-8")
+    results = tmp_path / "results"
+    _write_results(
+        results / "TEST-suite.xml",
+        """
+<testcase classname="example.One" name="first" />
+<testcase classname="example.One" name="second"><skipped /></testcase>
+""",
+        tests=2,
+        skipped=1,
+    )
+
+    with pytest.raises(qualification.EvidenceError, match="skipped=1"):
+        qualification.verify_test_results(
+            lane="jvm",
+            baseline_path=baseline,
+            results_dir=results,
+        )
 
 
 def test_junit_results_fail_closed_on_duplicate_and_malformed_evidence(
@@ -308,6 +342,62 @@ def test_legacy_scalar_is_only_accepted_for_base_ratchet_migration() -> None:
         "jvm": 1589,
         "instrumentation": 0,
     }
+
+
+def test_baseline_ratchet_prefers_exact_audit_sha_over_branch_name(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.name", "Android qualification test")
+    _git(repository, "config", "user.email", "qualification@example.invalid")
+    baseline = repository / "android" / "audit" / "test_count_baseline.txt"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("jvm=1\ninstrumentation=1\n", encoding="utf-8")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", "base")
+    base_sha = _git(repository, "rev-parse", "HEAD")
+
+    baseline.write_text("jvm=2\ninstrumentation=2\n", encoding="utf-8")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", "head")
+
+    current, base, selected_ref = qualification.verify_baseline_ratchet(
+        baseline_path=baseline,
+        repository_root=repository,
+        environment={
+            "CI": "true",
+            "GITHUB_BASE_REF": "main",
+            "XPJ_AUDIT_BASE_REF": base_sha,
+        },
+    )
+
+    assert current == {"jvm": 2, "instrumentation": 2}
+    assert base == {"jvm": 1, "instrumentation": 1}
+    assert selected_ref == base_sha
+
+
+def test_baseline_ratchet_rejects_an_unreachable_explicit_sha(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _git(repository, "init")
+    baseline = repository / "android" / "audit" / "test_count_baseline.txt"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("jvm=1\ninstrumentation=1\n", encoding="utf-8")
+
+    with pytest.raises(qualification.EvidenceError, match="is unreachable"):
+        qualification.verify_baseline_ratchet(
+            baseline_path=baseline,
+            repository_root=repository,
+            environment={
+                "CI": "true",
+                "GITHUB_EVENT_NAME": "push",
+                "XPJ_AUDIT_BASE_REF": "f" * 40,
+            },
+        )
 
 
 def test_apkanalyzer_launch_failure_is_evidence_failure(

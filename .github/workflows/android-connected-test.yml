@@ -22,6 +22,7 @@ on:
       - "android/gradlew"
       - "android/gradlew.bat"
       - "android/settings.gradle.kts"
+      - "android/audit/test_count_baseline.txt"
       - "android/scripts/**"
       - ".github/workflows/android-connected-test.yml"
   pull_request:
@@ -36,6 +37,7 @@ on:
       - "android/gradlew"
       - "android/gradlew.bat"
       - "android/settings.gradle.kts"
+      - "android/audit/test_count_baseline.txt"
       - "android/scripts/**"
       - ".github/workflows/android-connected-test.yml"
   workflow_dispatch:

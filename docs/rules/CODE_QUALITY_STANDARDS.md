@@ -42,8 +42,9 @@ full analysis 下运行，plain 会**静默跳过它**（实验实证：plain �
 警告）——六条规则全是语法级计数，报告精度不受影响。历史阈值超标按职责拆分收口
 （实证：`ExpenseEditViewModel` 曾膨到 815 行，靠手动 region 拆分回 ~470——正是
 接线前无机器守护的代价）；baseline 条目是冻结的债，不是许可。Android lane 其余
-机器门：`lintGrayDebug`、`assertAndroidTestCountEqualsBaseline`（`@Test` 计数
-ratchet）、Room schema 漂移门、R8 release 编译、apksigner 指纹钉。
+机器门：`lintGrayDebug`、`assertAndroidTestCountEqualsBaseline`（Gradle 实际
+JUnit XML 结果、零 skipped 与双 lane baseline ratchet）、Room schema 漂移门、
+R8 release 编译、apksigner 指纹钉。
 
 ## Pull Request
 

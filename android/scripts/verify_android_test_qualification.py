@@ -38,6 +38,14 @@ class TestResultSummary:
 
 
 TEST_LANES = ("jvm", "instrumentation")
+CI_CONTEXT_MARKERS = (
+    "CI",
+    "GITHUB_ACTIONS",
+    "GITHUB_BASE_REF",
+    "GITHUB_EVENT_NAME",
+    "GITHUB_SHA",
+    "GITEA_ACTIONS",
+)
 
 
 def parse_test_baseline(
@@ -242,6 +250,11 @@ def verify_test_results(
         raise EvidenceError(f"Unknown Android test lane: {lane}")
     baseline = read_test_baseline(baseline_path)
     summary = read_test_results(results_dir)
+    if summary.skipped:
+        raise EvidenceError(
+            f"Android {lane} results contain skipped tests: "
+            f"skipped={summary.skipped}. Skipped cases are not execution evidence."
+        )
     expected = baseline[lane]
     if summary.tests != expected:
         raise EvidenceError(
@@ -280,35 +293,43 @@ def verify_baseline_ratchet(
         raise EvidenceError("Android test baseline is outside the repository.") from exc
     current = read_test_baseline(baseline_path)
 
-    explicit_ref = (
-        environment.get("GITHUB_BASE_REF", "").strip()
-        or environment.get("XPJ_AUDIT_BASE_REF", "").strip()
-    )
+    explicit_ref = environment.get("XPJ_AUDIT_BASE_REF", "").strip()
+    in_ci = any(environment.get(marker, "").strip() for marker in CI_CONTEXT_MARKERS)
     if explicit_ref:
-        base_ref = (
-            explicit_ref
-            if explicit_ref.startswith(("refs/", "origin/"))
-            else f"origin/{explicit_ref}"
+        base_ref = explicit_ref
+    elif in_ci:
+        raise EvidenceError(
+            "CI requires XPJ_AUDIT_BASE_REF with the exact pre-change commit."
         )
-    elif environment.get("GITHUB_SHA", "").strip():
-        base_ref = "origin/main"
     else:
-        base_ref = "refs/heads/main"
-    is_pr = bool(environment.get("GITHUB_BASE_REF", "").strip())
+        base_ref = environment.get(
+            "XPJ_AUDIT_DEFAULT_REF",
+            "refs/remotes/origin/main",
+        ).strip()
 
-    reachable = _run_git(repository_root, "rev-parse", "--verify", base_ref)
+    reachable = _run_git(
+        repository_root,
+        "rev-parse",
+        "--verify",
+        f"{base_ref}^{{commit}}",
+    )
     if reachable.returncode != 0:
-        if is_pr:
+        if explicit_ref:
             raise EvidenceError(
-                f"Android test baseline base ref '{base_ref}' is unreachable in PR CI."
+                f"Android test baseline base ref '{base_ref}' is unreachable."
             )
         return current, None, base_ref
+    base_commit = reachable.stdout.strip()
+    if not base_commit:
+        raise EvidenceError(
+            f"Android test baseline base ref '{base_ref}' resolved without a commit."
+        )
 
     listed = _run_git(
         repository_root,
         "ls-tree",
         "--name-only",
-        base_ref,
+        base_commit,
         "--",
         baseline_repo_path,
     )
@@ -325,7 +346,11 @@ def verify_baseline_ratchet(
             f"Unexpected Android test baseline tree result at '{base_ref}'."
         )
 
-    shown = _run_git(repository_root, "show", f"{base_ref}:{baseline_repo_path}")
+    shown = _run_git(
+        repository_root,
+        "show",
+        f"{base_commit}:{baseline_repo_path}",
+    )
     if shown.returncode != 0 or not shown.stdout.strip():
         raise EvidenceError(
             f"Could not read Android test baseline at '{base_ref}'."
