@@ -2,17 +2,42 @@
 
 from __future__ import annotations
 
+import secrets
 import threading
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from types import MappingProxyType
 
 from backend_manager.config import ConfigError, ManagerConfig
 from backend_manager.desktop_shell import open_in_browser
 from backend_manager.diagnostic_bundle import DiagnosticExportError, export_diagnostic_bundle
 from backend_manager.netinfo import lan_ip
+from backend_manager.product_data import (
+    PendingProductSession,
+    ProductDataError,
+    activate_product_session,
+    derive_desktop_pending_token,
+    pair_product_session,
+    revoke_product_session,
+    switch_product_ledger,
+)
+from backend_manager.product_identity import (
+    ProductCredentialError,
+    ProductSession,
+    delete_product_session,
+    load_product_session,
+    save_product_session,
+)
+from backend_manager.product_recovery import (
+    RebindRecovery,
+    delete_rebind_recovery,
+    load_rebind_recovery,
+    save_rebind_recovery,
+)
 from backend_manager.projection import RuntimeConfigProvider, StaticRuntimeConfigProvider
 from backend_manager.runtime import BackendRuntime, RuntimeControlError, RuntimeStatus
+from backend_manager.web_bff import BridgeContext
 
 _OWNER_PATHS = MappingProxyType({
     "console": "",
@@ -36,6 +61,40 @@ class ManagerShuttingDownError(RuntimeError):
     """Raised when a new action races with an accepted maintenance handoff."""
 
 
+def _recovery_from_pending(pending: PendingProductSession) -> RebindRecovery:
+    """Persist the client-owned attempt proof plus staged display metadata."""
+    return RebindRecovery(
+        activation_attempt_id=pending.activation_attempt_id,
+        activation_attempt_secret=pending.activation_attempt_secret,
+        account_name=pending.session.account_name,
+        ledger_id=pending.session.ledger_id,
+        ledger_name=pending.session.ledger_name,
+        device_name=pending.session.device_name,
+        role=pending.session.role,
+        activation_expires_at=pending.session.expires_at,
+    )
+
+
+def _pending_from_recovery(recovery: RebindRecovery) -> PendingProductSession:
+    """Rebuild the staged session from the durable proof (never a stored token)."""
+    return PendingProductSession(
+        activation_attempt_id=recovery.activation_attempt_id,
+        activation_attempt_secret=recovery.activation_attempt_secret,
+        session=ProductSession(
+            session_token=derive_desktop_pending_token(
+                recovery.activation_attempt_secret,
+                recovery.activation_attempt_id,
+            ),
+            account_name=recovery.account_name,
+            ledger_id=recovery.ledger_id,
+            ledger_name=recovery.ledger_name,
+            device_name=recovery.device_name,
+            role=recovery.role,
+            expires_at=recovery.activation_expires_at,
+        ),
+    )
+
+
 class AppController:
     """Adapt one runtime into the stable JSON contract consumed by ``ui.html``."""
 
@@ -49,6 +108,16 @@ class AppController:
         startup_failure_code: str | None = None,
         startup_failure_stage: str | None = None,
         request_shutdown: Callable[[], None] = lambda: None,
+        product_session_pairer: Callable[..., PendingProductSession] = pair_product_session,
+        product_ledger_switcher: Callable[..., PendingProductSession] = switch_product_ledger,
+        product_session_activator: Callable[..., ProductSession] = activate_product_session,
+        product_session_revoker: Callable[..., None] = revoke_product_session,
+        product_session_loader: Callable[[str], ProductSession | None] = load_product_session,
+        product_session_saver: Callable[[str, ProductSession], None] = save_product_session,
+        product_session_deleter: Callable[[str], None] = delete_product_session,
+        product_recovery_loader: Callable[[str], RebindRecovery | None] = load_rebind_recovery,
+        product_recovery_saver: Callable[[str, RebindRecovery], None] = save_rebind_recovery,
+        product_recovery_deleter: Callable[[str], None] = delete_rebind_recovery,
     ) -> None:
         self._provider = (
             StaticRuntimeConfigProvider(runtime_or_provider, config)
@@ -70,6 +139,17 @@ class AppController:
         self._request_shutdown = request_shutdown
         self._manager_shutdown_requested = False
         self._lock = threading.RLock()
+        self._product_session_pairer = product_session_pairer
+        self._product_ledger_switcher = product_ledger_switcher
+        self._product_session_activator = product_session_activator
+        self._product_session_revoker = product_session_revoker
+        self._product_session_loader = product_session_loader
+        self._product_session_saver = product_session_saver
+        self._product_session_deleter = product_session_deleter
+        self._product_recovery_loader = product_recovery_loader
+        self._product_recovery_saver = product_recovery_saver
+        self._product_recovery_deleter = product_recovery_deleter
+        self._product_session_lock = threading.RLock()
 
     def status(self) -> dict:
         status_error: str | None = None
@@ -160,6 +240,342 @@ class AppController:
 
     def auto_restart(self) -> None:
         self._control("toggle_auto_restart")
+
+    def product_principal(self) -> dict:
+        """Return only non-secret pairing metadata for the product UI."""
+
+        with self._product_session_lock:
+            config = self._product_config(require_available=False)
+            session = self._load_product_session(config)
+            session = self._reconcile_rebind_recovery(
+                config,
+                self._loopback_origin(config),
+                session,
+            )
+            return session.public_projection() if session is not None else {"configured": False}
+
+    def product_bridge_context(self) -> BridgeContext:
+        """Return secrets only to the in-process Manager BFF."""
+        with self._product_session_lock:
+            config = self._product_config(require_available=True)
+            session = self._required_product_session(config)
+            return BridgeContext(
+                backend_origin=self._loopback_origin(config),
+                app_token=session.session_token,
+            )
+
+    def pair_product_principal(self, pairing_code: str) -> dict:
+        with self._product_session_lock:
+            return self._pair_product_principal(pairing_code)
+
+    def _pair_product_principal(self, pairing_code: str) -> dict:
+        """Stage, activate, then atomically replace the WinCred principal."""
+
+        config = self._product_config(require_available=True)
+        loopback_origin = self._loopback_origin(config)
+        current = self._load_product_session(config)
+        current = self._reconcile_rebind_recovery(
+            config,
+            loopback_origin,
+            current,
+        )
+        pending = self._product_session_pairer(
+            loopback_origin,
+            pairing_code,
+            timeout_seconds=config.health_request_timeout_seconds,
+        )
+        if current is not None and secrets.compare_digest(
+            current.session_token,
+            pending.session.session_token,
+        ):
+            raise ProductDataError(
+                "后端未轮换桌面身份，已保留原绑定。",
+                error="product_identity_rotation_required",
+                status_code=502,
+            )
+        recovery = _recovery_from_pending(pending)
+        self._stage_rebind_recovery(config, recovery)
+        activated = self._activate_and_promote_rebind(
+            config,
+            loopback_origin,
+            recovery,
+            current,
+        )
+        if current is not None and current.ledger_id != activated.ledger_id:
+            # Cross-account/ledger re-pair: the old credential is not a valid
+            # activation predecessor (the backend binds predecessors to the
+            # staged account+ledger), so it must be retired explicitly.
+            self._revoke_superseded_session(config, loopback_origin, current.session_token)
+        return activated.public_projection()
+
+    def unpair_product_principal(self) -> dict:
+        with self._product_session_lock:
+            return self._unpair_product_principal()
+
+    def _unpair_product_principal(self) -> dict:
+        """Revoke the backend token, then remove the local WinCred entry."""
+
+        config = self._product_config(require_available=False)
+        session = self._load_product_session(config)
+        session = self._reconcile_rebind_recovery(
+            config,
+            self._loopback_origin(config),
+            session,
+        )
+        if session is None:
+            return {"configured": False}
+        try:
+            self._product_session_revoker(
+                self._loopback_origin(config),
+                session.session_token,
+                timeout_seconds=config.health_request_timeout_seconds,
+            )
+        except ProductDataError as exc:
+            if exc.status_code != 401:
+                raise
+        try:
+            self._product_session_deleter(config.expected_installation_id)
+        except ProductCredentialError as exc:
+            raise self._credential_error(exc) from exc
+        return {"configured": False}
+
+    def switch_product_principal_ledger(self, ledger_id: str) -> dict:
+        with self._product_session_lock:
+            return self._switch_product_principal_ledger(ledger_id)
+
+    def _switch_product_principal_ledger(self, ledger_id: str) -> dict:
+        """Two-phase switch: stage on the target, activate, then retire the old."""
+
+        config = self._product_config(require_available=True)
+        loopback_origin = self._loopback_origin(config)
+        current = self._required_product_session(config)
+        if ledger_id == current.ledger_id:
+            return current.public_projection()
+        try:
+            pending = self._product_ledger_switcher(
+                loopback_origin,
+                ledger_id,
+                current.session_token,
+                timeout_seconds=config.health_request_timeout_seconds,
+            )
+        except ProductDataError as exc:
+            self._clear_invalid_product_session(config, exc)
+            raise
+        if secrets.compare_digest(current.session_token, pending.session.session_token):
+            raise ProductDataError(
+                "后端未轮换桌面身份，已保留原绑定。",
+                error="product_identity_rotation_required",
+                status_code=502,
+            )
+        recovery = _recovery_from_pending(pending)
+        self._stage_rebind_recovery(config, recovery)
+        activated = self._activate_and_promote_rebind(
+            config,
+            loopback_origin,
+            recovery,
+            current,
+        )
+        # The source-ledger credential is never a valid activation predecessor
+        # (cross-ledger by definition here), so activation did not retire it:
+        # revoke it explicitly. Best-effort — the credential dies by TTL anyway.
+        self._revoke_superseded_session(config, loopback_origin, current.session_token)
+        return activated.public_projection()
+
+    def _product_config(self, *, require_available: bool) -> ManagerConfig:
+        if require_available and not self._product_available():
+            raise ProductDataError("小票夹服务尚未就绪，请先在系统管理中恢复服务。")
+        try:
+            return self._provider.current().config
+        except (ConfigError, RuntimeControlError) as exc:
+            raise ProductDataError(self._display_error(exc)) from exc
+
+    def _product_available(self) -> bool:
+        try:
+            snapshot = self._provider.current().runtime.status()
+        except (ConfigError, RuntimeControlError):
+            return False
+        return (
+            snapshot.running
+            and snapshot.healthy
+            and snapshot.health_state == "healthy"
+            and snapshot.runtime_access_state == "available"
+            and snapshot.owner_state == "configured"
+        )
+
+    @staticmethod
+    def _loopback_origin(config: ManagerConfig) -> str:
+        return f"http://127.0.0.1:{config.backend_port}"
+
+    def _load_product_session(self, config: ManagerConfig) -> ProductSession | None:
+        try:
+            return self._product_session_loader(config.expected_installation_id)
+        except ProductCredentialError as exc:
+            raise self._credential_error(exc) from exc
+
+    def _load_rebind_recovery(self, config: ManagerConfig) -> RebindRecovery | None:
+        try:
+            return self._product_recovery_loader(config.expected_installation_id)
+        except ProductCredentialError as exc:
+            raise self._credential_error(exc) from exc
+
+    def _stage_rebind_recovery(
+        self,
+        config: ManagerConfig,
+        recovery: RebindRecovery,
+    ) -> None:
+        try:
+            self._product_recovery_saver(config.expected_installation_id, recovery)
+        except ProductCredentialError as credential_error:
+            raise self._credential_error(credential_error) from credential_error
+
+    def _delete_rebind_recovery(self, config: ManagerConfig) -> None:
+        try:
+            self._product_recovery_deleter(config.expected_installation_id)
+        except ProductCredentialError as exc:
+            raise self._credential_error(exc) from exc
+
+    def _reconcile_rebind_recovery(
+        self,
+        config: ManagerConfig,
+        loopback_origin: str,
+        current: ProductSession | None,
+    ) -> ProductSession | None:
+        recovery = self._load_rebind_recovery(config)
+        if recovery is None:
+            return current
+        derived = derive_desktop_pending_token(
+            recovery.activation_attempt_secret,
+            recovery.activation_attempt_id,
+        )
+        if current is not None and secrets.compare_digest(derived, current.session_token):
+            # Primary already contains B. A duplicate recovery-slot cleanup
+            # failure must not make the valid principal unusable; every later
+            # reconciliation retries this idempotent cleanup.
+            with suppress(ProductDataError):
+                self._delete_rebind_recovery(config)
+            return current
+        try:
+            return self._activate_and_promote_rebind(
+                config,
+                loopback_origin,
+                recovery,
+                current,
+            )
+        except ProductDataError as exc:
+            if exc.status_code == 401:
+                # The staged attempt expired/was revoked before activation, and
+                # prepare never displaced A. Recovery cleanup is best-effort so
+                # a transient WinCred delete failure cannot make that
+                # still-valid A unusable; later calls retry the same cleanup.
+                with suppress(ProductDataError):
+                    self._delete_rebind_recovery(config)
+                return current
+            raise
+
+    def _activate_and_promote_rebind(
+        self,
+        config: ManagerConfig,
+        loopback_origin: str,
+        recovery: RebindRecovery,
+        current: ProductSession | None,
+    ) -> ProductSession:
+        # Only a same-ledger re-pair may prove the predecessor: the backend
+        # binds X-Ticketbox-Previous-Session to the staged account AND ledger,
+        # so a switch (cross-ledger) must never send it.
+        previous = (
+            current.session_token
+            if current is not None and current.ledger_id == recovery.ledger_id
+            else None
+        )
+        try:
+            activated = self._product_session_activator(
+                loopback_origin,
+                _pending_from_recovery(recovery),
+                previous,
+                timeout_seconds=config.health_request_timeout_seconds,
+            )
+        except ProductDataError as exc:
+            if exc.status_code == 401:
+                raise
+            raise ProductDataError(
+                "新桌面身份仍安全保存在 Windows 凭据管理器中；恢复服务后会重放激活并完成切换。",
+                error="product_rebind_recovery_pending",
+                status_code=503,
+            ) from exc
+        expected = derive_desktop_pending_token(
+            recovery.activation_attempt_secret,
+            recovery.activation_attempt_id,
+        )
+        if not secrets.compare_digest(activated.session_token, expected):
+            raise ProductDataError(
+                "后端激活了未知桌面身份，恢复位已保留并停止提升。",
+                error="product_identity_rotation_required",
+                status_code=502,
+            )
+        try:
+            self._product_session_saver(
+                config.expected_installation_id,
+                activated,
+            )
+        except ProductCredentialError as exc:
+            raise ProductDataError(
+                "新桌面身份已激活且仍保存在恢复位；Windows 凭据管理器恢复后会自动提升为主身份。",
+                error="product_rebind_recovery_pending",
+                status_code=503,
+            ) from exc
+        # Primary B is durable at this point. The recovery slot holds the same
+        # ceremony's proof, so cleanup is best-effort and safely retryable.
+        with suppress(ProductDataError):
+            self._delete_rebind_recovery(config)
+        return activated
+
+    def _revoke_superseded_session(
+        self,
+        config: ManagerConfig,
+        loopback_origin: str,
+        session_token: str,
+    ) -> None:
+        # Best-effort: the superseded credential dies by TTL regardless;
+        # the replacement session is already durable in WinCred.
+        with suppress(ProductDataError):
+            self._product_session_revoker(
+                loopback_origin,
+                session_token,
+                timeout_seconds=config.health_request_timeout_seconds,
+            )
+
+    def _required_product_session(self, config: ManagerConfig) -> ProductSession:
+        session = self._load_product_session(config)
+        session = self._reconcile_rebind_recovery(
+            config,
+            self._loopback_origin(config),
+            session,
+        )
+        if session is None:
+            raise ProductDataError(
+                "请先使用 8 位绑定码连接桌面账本。",
+                error="product_principal_required",
+                status_code=401,
+            )
+        return session
+
+    def _clear_invalid_product_session(
+        self,
+        config: ManagerConfig,
+        error: ProductDataError,
+    ) -> None:
+        if error.status_code != 401:
+            return
+        with suppress(ProductCredentialError):
+            self._product_session_deleter(config.expected_installation_id)
+
+    @staticmethod
+    def _credential_error(error: ProductCredentialError) -> ProductDataError:
+        return ProductDataError(
+            str(error),
+            error="product_credential_unavailable",
+            status_code=503,
+        )
 
     def open_console(self) -> None:
         self._open_owner_page("console")

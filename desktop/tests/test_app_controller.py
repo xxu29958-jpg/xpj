@@ -436,3 +436,553 @@ def test_missing_installed_service_disables_scm_actions(tmp_path: Path) -> None:
     assert status["backend_service_state"] == "missing"
     assert status["service_controls_available"] is False
     assert "maintenance_available" not in status
+
+
+# ── Desktop product principal (218-E two-phase credential commit) ─────────
+
+from backend_manager.product_data import (  # noqa: E402
+    PendingProductSession,
+    ProductDataError,
+    derive_desktop_pending_token,
+    new_activation_attempt,
+)
+from backend_manager.product_identity import ProductCredentialError, ProductSession  # noqa: E402
+from backend_manager.product_recovery import RebindRecovery  # noqa: E402
+
+_INSTALLATION_ID = "ticketbox-0123456789abcdef0123456789abcdef"
+_STAGED_EXPIRY = "2026-07-26T22:20:00Z"
+_REAL_EXPIRY = "2026-10-16T00:00:00Z"
+
+
+def _product_session(
+    token: str = "tbx-desktop-secret",
+    *,
+    ledger_id: str = "owner",
+    role: str = "owner",
+    expires_at: str | None = _REAL_EXPIRY,
+) -> ProductSession:
+    return ProductSession(
+        session_token=token,
+        account_name="我",
+        ledger_id=ledger_id,
+        ledger_name="我的小票夹" if ledger_id == "owner" else "家庭账本",
+        device_name="小票夹 Desktop",
+        role=role,
+        expires_at=expires_at,
+    )
+
+
+def _pending_for(
+    *,
+    ledger_id: str = "owner",
+    role: str = "owner",
+    token: str | None = None,
+) -> PendingProductSession:
+    attempt_id, attempt_secret = new_activation_attempt()
+    derived = token or derive_desktop_pending_token(attempt_secret, attempt_id)
+    return PendingProductSession(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        session=ProductSession(
+            session_token=derived,
+            account_name="我",
+            ledger_id=ledger_id,
+            ledger_name="我的小票夹" if ledger_id == "owner" else "家庭账本",
+            device_name="小票夹 Desktop",
+            role=role,
+            expires_at=_STAGED_EXPIRY,
+        ),
+    )
+
+
+def _activate_pending(
+    _origin: str,
+    pending: PendingProductSession,
+    _previous: str | None,
+    **_kwargs,
+) -> ProductSession:
+    """Mirror product_data.activate: same derived value, fresh real expiry."""
+    return ProductSession(
+        session_token=pending.session.session_token,
+        account_name=pending.session.account_name,
+        ledger_id=pending.session.ledger_id,
+        ledger_name=pending.session.ledger_name,
+        device_name=pending.session.device_name,
+        role=pending.session.role,
+        expires_at=_REAL_EXPIRY,
+    )
+
+
+def _stores(primary: ProductSession | None = None):
+    """In-memory stand-ins for the two WinCred slots."""
+    sessions: dict[str, ProductSession] = {}
+    if primary is not None:
+        sessions[_INSTALLATION_ID] = primary
+    recoveries: dict[str, RebindRecovery] = {}
+    return (
+        sessions,
+        recoveries,
+        {
+            "product_session_loader": sessions.get,
+            "product_session_saver": sessions.__setitem__,
+            "product_session_deleter": lambda credential_id: sessions.pop(credential_id, None),
+            "product_recovery_loader": recoveries.get,
+            "product_recovery_saver": recoveries.__setitem__,
+            "product_recovery_deleter": lambda credential_id: recoveries.pop(credential_id, None),
+        },
+    )
+
+
+def test_pair_stages_activates_and_promotes_with_previous_proof_in_order() -> None:
+    current = _product_session()
+    pending = _pending_for(ledger_id="owner")
+    sessions, recoveries, store = _stores(current)
+    events: list[tuple[str, str]] = []
+
+    def pair(*_args, **_kwargs) -> PendingProductSession:
+        events.append(("pair", ""))
+        return pending
+
+    def activate(_origin, value, previous, **_kwargs) -> ProductSession:
+        events.append(("activate", str(previous)))
+        return _activate_pending(_origin, value, previous, **_kwargs)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=pair,
+        product_session_activator=activate,
+        **store,
+    )
+
+    projection = controller.pair_product_principal("12345678")
+
+    assert projection["configured"] is True
+    assert projection["ledger_id"] == "owner"
+    assert "session_token" not in projection
+    # Same-ledger re-pair: the predecessor proof goes to activate, and #219
+    # retires it server-side — no client revoke.
+    assert events == [("pair", ""), ("activate", current.session_token)]
+    assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
+    assert sessions[_INSTALLATION_ID].expires_at == _REAL_EXPIRY
+    assert recoveries == {}
+
+
+def test_pair_cross_ledger_skips_previous_and_revokes_old_after_promotion() -> None:
+    current = _product_session(ledger_id="owner")
+    pending = _pending_for(ledger_id="family", role="member")
+    sessions, recoveries, store = _stores(current)
+    events: list[tuple[str, str]] = []
+
+    def activate(_origin, value, previous, **_kwargs) -> ProductSession:
+        events.append(("activate", str(previous)))
+        return _activate_pending(_origin, value, previous, **_kwargs)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda *_args, **_kwargs: pending,
+        product_session_activator=activate,
+        product_session_revoker=lambda _origin, token, **_kwargs: events.append(("revoke", token)),
+        **store,
+    )
+
+    projection = controller.pair_product_principal("12345678")
+
+    assert projection["ledger_id"] == "family"
+    # A cross-ledger credential is not a valid activation predecessor: no
+    # previous header, and the old credential is retired only AFTER the new
+    # one is durable.
+    assert events == [("activate", "None"), ("revoke", current.session_token)]
+    assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
+
+
+def test_rebind_recovery_store_failure_never_activates_pending_b() -> None:
+    current = _product_session()
+    pending = _pending_for(ledger_id="family")
+    sessions, _recoveries, store = _stores(current)
+    activations: list[str] = []
+
+    def fail_recovery_save(_credential_id: str, _recovery: RebindRecovery) -> None:
+        raise ProductCredentialError("synthetic recovery store failure")
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda *_args, **_kwargs: pending,
+        product_session_activator=lambda _origin, value, _previous, **_kwargs: (
+            activations.append(value.session_token),
+            _activate_pending(_origin, value, _previous, **_kwargs),
+        )[-1],
+        **{**store, "product_recovery_saver": fail_recovery_save},
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("12345678")
+
+    assert error.value.error == "product_credential_unavailable"
+    assert activations == []
+    assert sessions[_INSTALLATION_ID] == current
+
+
+@pytest.mark.parametrize("operation", ["pair", "switch"])
+def test_rebind_same_token_fails_before_recovery_or_activation(operation: str) -> None:
+    current = _product_session()
+    sessions, recoveries, store = _stores(current)
+    activations: list[str] = []
+    pending = _pending_for(ledger_id="owner", token=current.session_token)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda *_args, **_kwargs: pending,
+        product_ledger_switcher=lambda *_args, **_kwargs: pending,
+        product_session_activator=lambda _origin, value, _previous, **_kwargs: (
+            activations.append(value.session_token),
+            _activate_pending(_origin, value, _previous, **_kwargs),
+        )[-1],
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        if operation == "pair":
+            controller.pair_product_principal("12345678")
+        else:
+            controller.switch_product_principal_ledger("family")
+
+    assert error.value.status_code == 502
+    assert error.value.error == "product_identity_rotation_required"
+    assert activations == []
+    assert recoveries == {}
+    assert sessions[_INSTALLATION_ID] == current
+
+
+def test_activation_response_loss_replays_recovery_with_fresh_metadata() -> None:
+    current = _product_session()
+    pending = _pending_for(ledger_id="owner")
+    sessions, recoveries, store = _stores(current)
+    calls: list[str | None] = []
+
+    def activate(_origin, value, previous, **_kwargs) -> ProductSession:
+        calls.append(previous)
+        if len(calls) == 1:
+            raise ProductDataError("synthetic committed response loss", status_code=503)
+        return _activate_pending(_origin, value, previous, **_kwargs)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda *_args, **_kwargs: pending,
+        product_session_activator=activate,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("12345678")
+    assert error.value.error == "product_rebind_recovery_pending"
+    assert error.value.status_code == 503
+    assert _INSTALLATION_ID in recoveries
+    assert sessions[_INSTALLATION_ID] == current
+
+    projection = controller.product_principal()
+
+    # The idempotent activate replay committed the same value; the projection
+    # carries the replay response's fresh expiry, not the stale staged TTL.
+    assert projection["configured"] is True
+    assert projection["expires_at"] == _REAL_EXPIRY
+    assert projection["expires_at"] != _STAGED_EXPIRY
+    assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
+    assert recoveries == {}
+    assert calls == [current.session_token, current.session_token]
+
+
+def test_primary_store_failure_leaves_recovery_replayable() -> None:
+    current = _product_session()
+    pending = _pending_for(ledger_id="family")
+    sessions, recoveries, store = _stores(current)
+    primary_writes = {"count": 0}
+
+    def flaky_primary_save(credential_id: str, session: ProductSession) -> None:
+        primary_writes["count"] += 1
+        if primary_writes["count"] == 1:
+            raise ProductCredentialError("synthetic primary save failure")
+        sessions[credential_id] = session
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda *_args, **_kwargs: pending,
+        product_session_activator=_activate_pending,
+        **{**store, "product_session_saver": flaky_primary_save},
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("12345678")
+
+    assert error.value.status_code == 503
+    assert error.value.error == "product_rebind_recovery_pending"
+    assert sessions[_INSTALLATION_ID] == current
+    assert _INSTALLATION_ID in recoveries
+
+    projection = controller.product_principal()
+    assert projection["ledger_id"] == "family"
+    assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
+    assert recoveries == {}
+
+
+def test_activation_failure_keeps_recovery_and_primary_unchanged() -> None:
+    current = _product_session()
+    pending = _pending_for(ledger_id="family")
+    sessions, recoveries, store = _stores(current)
+
+    def activation_failure(*_args, **_kwargs) -> ProductSession:
+        raise ProductDataError("synthetic activation response loss", status_code=503)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda *_args, **_kwargs: pending,
+        product_session_activator=activation_failure,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("12345678")
+
+    assert error.value.status_code == 503
+    assert error.value.error == "product_rebind_recovery_pending"
+    assert sessions[_INSTALLATION_ID] == current
+    assert _INSTALLATION_ID in recoveries
+    assert pending.activation_attempt_secret not in str(error.value)
+    assert pending.session.session_token not in str(error.value)
+
+
+def test_expired_recovery_is_cleaned_and_current_survives() -> None:
+    current = _product_session()
+    sessions, recoveries, store = _stores(current)
+    attempt_id, attempt_secret = new_activation_attempt()
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="member",
+        activation_expires_at=_STAGED_EXPIRY,
+    )
+
+    def reject_expired(*_args, **_kwargs) -> ProductSession:
+        raise ProductDataError("synthetic expired activation", error="invalid_token", status_code=401)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_activator=reject_expired,
+        **store,
+    )
+
+    projection = controller.product_principal()
+
+    assert projection["ledger_id"] == current.ledger_id
+    assert sessions[_INSTALLATION_ID] == current
+    assert recoveries == {}
+
+
+def test_switch_two_phase_omits_previous_and_revokes_source_after_promotion() -> None:
+    current = _product_session(ledger_id="owner")
+    pending = _pending_for(ledger_id="family", role="viewer")
+    sessions, recoveries, store = _stores(current)
+    events: list[tuple[str, str]] = []
+    switch_calls: list[tuple[str, str, str]] = []
+
+    def switcher(origin: str, ledger_id: str, token: str, **_kwargs) -> PendingProductSession:
+        switch_calls.append((origin, ledger_id, token))
+        return pending
+
+    def activate(_origin, value, previous, **_kwargs) -> ProductSession:
+        events.append(("activate", str(previous)))
+        return _activate_pending(_origin, value, previous, **_kwargs)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_ledger_switcher=switcher,
+        product_session_activator=activate,
+        product_session_revoker=lambda _origin, token, **_kwargs: events.append(("revoke", token)),
+        **store,
+    )
+
+    projection = controller.switch_product_principal_ledger("family")
+
+    assert projection["ledger_id"] == "family"
+    assert projection["role"] == "viewer"
+    assert "session_token" not in projection
+    assert switch_calls == [("http://127.0.0.1:8000", "family", current.session_token)]
+    # 218-E switch law: never send the source credential as the activation
+    # predecessor; revoke it explicitly only after the new one is durable.
+    assert events == [("activate", "None"), ("revoke", current.session_token)]
+    assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
+    assert recoveries == {}
+
+
+def test_switch_same_ledger_short_circuits_without_backend_calls() -> None:
+    current = _product_session(ledger_id="owner")
+    sessions, recoveries, store = _stores(current)
+    calls: list[str] = []
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_ledger_switcher=lambda *_args, **_kwargs: calls.append("switch"),
+        product_session_activator=lambda *_args, **_kwargs: calls.append("activate"),
+        **store,
+    )
+
+    projection = controller.switch_product_principal_ledger("owner")
+
+    assert projection["ledger_id"] == "owner"
+    assert calls == []
+    assert recoveries == {}
+
+
+def test_switch_prepare_401_clears_the_installation_credential() -> None:
+    current = _product_session()
+    sessions, _recoveries, store = _stores(current)
+
+    def denied(*_args, **_kwargs):
+        raise ProductDataError("桌面身份已失效", error="invalid_token", status_code=401)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_ledger_switcher=denied,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.switch_product_principal_ledger("family")
+
+    assert error.value.status_code == 401
+    assert sessions == {}
+
+
+def test_switch_revoke_failure_leaves_durable_replacement() -> None:
+    current = _product_session(ledger_id="owner")
+    pending = _pending_for(ledger_id="family")
+    sessions, _recoveries, store = _stores(current)
+
+    def flaky_revoker(*_args, **_kwargs) -> None:
+        raise ProductDataError("backend unreachable", status_code=503)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_ledger_switcher=lambda *_args, **_kwargs: pending,
+        product_session_activator=_activate_pending,
+        product_session_revoker=flaky_revoker,
+        **store,
+    )
+
+    projection = controller.switch_product_principal_ledger("family")
+
+    assert projection["ledger_id"] == "family"
+    assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
+
+
+def test_unpair_revokes_deletes_and_tolerates_401() -> None:
+    current = _product_session()
+    sessions, _recoveries, store = _stores(current)
+    revoked: list[str] = []
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        **store,
+    )
+
+    assert controller.unpair_product_principal() == {"configured": False}
+    assert revoked == [current.session_token]
+    assert sessions == {}
+
+    dead = _product_session()
+    sessions2, _recoveries2, store2 = _stores(dead)
+
+    def already_dead(*_args, **_kwargs) -> None:
+        raise ProductDataError("gone", error="invalid_token", status_code=401)
+
+    controller2 = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_revoker=already_dead,
+        **store2,
+    )
+    assert controller2.unpair_product_principal() == {"configured": False}
+    assert sessions2 == {}
+
+
+def test_bridge_context_returns_secrets_only_in_process_and_fails_closed() -> None:
+    current = _product_session()
+    _sessions, _recoveries, store = _stores(current)
+
+    controller = AppController(FakeRuntime(), _config(), **store)
+    context = controller.product_bridge_context()
+
+    assert context.backend_origin == "http://127.0.0.1:8000"
+    assert context.app_token == current.session_token
+
+    empty = AppController(FakeRuntime(), _config(), **_stores()[2])
+    with pytest.raises(ProductDataError) as error:
+        empty.product_bridge_context()
+    assert error.value.status_code == 401
+    assert error.value.error == "product_principal_required"
+
+
+def test_product_actions_are_serialized_on_the_session_lock() -> None:
+    activate_started = threading.Event()
+    release_activate = threading.Event()
+    switch_called = threading.Event()
+    errors: list[BaseException] = []
+    current = _product_session()
+    pending = _pending_for(ledger_id="family")
+    _sessions, _recoveries, store = _stores(current)
+
+    def slow_activate(_origin, value, previous, **_kwargs) -> ProductSession:
+        activate_started.set()
+        assert release_activate.wait(timeout=2)
+        return _activate_pending(_origin, value, previous, **_kwargs)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda *_args, **_kwargs: _pending_for(),
+        product_ledger_switcher=lambda *_args, **_kwargs: (switch_called.set(), pending)[-1],
+        product_session_activator=slow_activate,
+        **store,
+    )
+
+    def run_pair() -> None:
+        try:
+            controller.pair_product_principal("12345678")
+        except Exception as exc:  # pragma: no cover - asserted after join
+            errors.append(exc)
+
+    def run_switch() -> None:
+        try:
+            controller.switch_product_principal_ledger("family")
+        except Exception as exc:  # pragma: no cover - asserted after join
+            errors.append(exc)
+
+    pair_thread = threading.Thread(target=run_pair)
+    switch_thread = threading.Thread(target=run_switch)
+    pair_thread.start()
+    assert activate_started.wait(timeout=2)
+    switch_thread.start()
+    assert switch_called.wait(timeout=0.1) is False
+    release_activate.set()
+    pair_thread.join(timeout=2)
+    switch_thread.join(timeout=2)
+
+    assert errors == []
+    assert switch_called.is_set()
