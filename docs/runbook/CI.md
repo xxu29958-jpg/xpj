@@ -64,7 +64,7 @@ pip-audit --strict（OSV 库）
 
 GitHub 是发布验收与合并权威；Gitea 是离线镜像和自检后备，Gitea-only 失败不阻断 GitHub 合并。后端运行时、测试、迁移相关路径变化或全量 fallback 时，ordinary、`real_db`、smoke + recovery 三个独立 job 各自使用隔离的 PostgreSQL service container；三个责任域保持显式 job。当前只支持安装器钉住的单一 PostgreSQL major，matrix 从发布配置和固定 service image 动态生成；未来扩展多个 major 前，必须先为每个 major 提供独立固定镜像。稳定汇总检查 `Backend (PostgreSQL)` 必须核对三个结果和实际 checkout SHA。
 
-ordinary lane 执行完整测试树中所有未标记 `real_db` 的用例，并为每个 xdist worker 动态创建独立数据库、文件根和租约；`real_db` lane 串行执行显式标记的真实提交、跨连接、DDL 与 migration 测试；smoke + recovery lane 执行真实 `pg_dump` / restore drill。分类权威只有测试源码 marker，禁止维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试不需要同步第二份“分类清单”。
+ordinary lane 以两个同构 GitHub matrix 分片并行执行完整测试树中所有未标记 `real_db` 的用例，每个分片再为四个 xdist worker 动态创建独立数据库、文件根和租约。分片只按完整 pytest nodeid 的稳定哈希决定唯一归属，不维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试会自动进入且只进入一个分片。`real_db` lane 继续串行执行显式标记的真实提交、跨连接、DDL 与 migration 测试；smoke + recovery lane 继续执行真实 `pg_dump` / restore drill。ordinary / real-db 的责任分类权威仍只有测试源码 marker。
 
 后端测试数量只在 `backend/audit/test_count_baseline.txt` 维护。它是严格对账信号，不是覆盖率或分类权威：新增测试与源码同 commit 提高基线；base ratchet 同时阻止一个 PR 删除测试并下调自己的可编辑基线。测试整合必须先保留或补上独立风险证明，不能为了变绿改小数字。总数仍不能证明语义质量，因为“删除高价值测试、补同数量低价值参数化用例”也能骗过它，所以机器计数与代码审计缺一不可。该文件与测试源码同属 PostgreSQL 域；`codebase_audit_gate.py` 只保留政策，不再因正常增测把 PR 放大成全端构建。
 

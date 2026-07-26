@@ -45,6 +45,7 @@ _ALWAYS_ON_CONTRACT_PATHS = {
     "backend/tests/test_android_process_qualification.py",
     "backend/tests/test_android_test_qualification.py",
     "backend/tests/test_backend_ci_results.py",
+    "backend/tests/test_postgres_ci_lane_runner.py",
     "backend/tests/test_postgres_ci_topology.py",
 }
 _FULL_PREFIXES = (".github/workflows/", ".gitea/workflows/")

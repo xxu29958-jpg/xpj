@@ -28,7 +28,12 @@ from scripts.run_postgres_pytest_lane import (
     POSTGRES_PYTEST_LANE_DEST,
     POSTGRES_PYTEST_LANE_MARKERS,
     POSTGRES_PYTEST_LANE_OPTION,
+    POSTGRES_PYTEST_SHARD_COUNT_DEST,
+    POSTGRES_PYTEST_SHARD_COUNT_OPTION,
+    POSTGRES_PYTEST_SHARD_INDEX_DEST,
+    POSTGRES_PYTEST_SHARD_INDEX_OPTION,
     validate_lane_collection,
+    validate_shard_coordinates,
 )
 
 # Importing tests._infra.env sets os.environ before any app.* import.
@@ -52,6 +57,8 @@ from tests._infra.worker_db import (
     worker_database,
 )
 
+pytest_plugins = ("tests._infra.postgres_sharding_plugin",)
+
 _CONTROLLER_STACK: ExitStack | None = None
 _CONTROLLER_DATABASES: dict[str, WorkerDatabase] = {}
 _CONTROLLER_NODES: dict[str, object] = {}
@@ -67,6 +74,22 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         dest=POSTGRES_PYTEST_LANE_DEST,
         help="declare the PostgreSQL responsibility lane selected by the runner",
+    )
+    group.addoption(
+        POSTGRES_PYTEST_SHARD_INDEX_OPTION,
+        action="store",
+        type=int,
+        default=0,
+        dest=POSTGRES_PYTEST_SHARD_INDEX_DEST,
+        help="zero-based ordinary-lane shard index",
+    )
+    group.addoption(
+        POSTGRES_PYTEST_SHARD_COUNT_OPTION,
+        action="store",
+        type=int,
+        default=1,
+        dest=POSTGRES_PYTEST_SHARD_COUNT_DEST,
+        help="ordinary-lane shard count",
     )
 
 
@@ -176,6 +199,14 @@ def pytest_configure(config: pytest.Config) -> None:
         "tests that need real cross-connection commits — concurrency, true "
         "background-thread work.",
     )
+    try:
+        validate_shard_coordinates(
+            lane=config.getoption(POSTGRES_PYTEST_LANE_DEST),
+            shard_index=config.getoption(POSTGRES_PYTEST_SHARD_INDEX_DEST),
+            shard_count=config.getoption(POSTGRES_PYTEST_SHARD_COUNT_DEST),
+        )
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
     worker_input = getattr(config, "workerinput", None)
     worker_id = os.environ.get("PYTEST_XDIST_WORKER")
     run_uid = os.environ.get("PYTEST_XDIST_TESTRUNUID")
