@@ -302,8 +302,14 @@ def _assert_postgres_aggregator(job: object) -> None:
     _assert_no_continue_on_error(job)
     _assert_managed_python_precedes(job, "Verify qualification SHA", "Enforce PostgreSQL lane results")
     enforcement = _steps(job)["Enforce PostgreSQL lane results"]
-    assert enforcement["run"] == "python -E -S backend/scripts/verify_postgres_ci_results.py"
+    assert enforcement["run"] == (
+        "python -E -S backend/scripts/verify_scoped_ci_results.py "
+        "--label PostgreSQL --scope-key POSTGRES_SCOPE "
+        "--lane ORDINARY --lane REAL_DB --lane RECOVERY"
+    )
     assert enforcement["env"] == {
+        "BASH_ENV": "",
+        "ENV": "",
         "SCOPE_RESULT": "${{ needs.scope.result }}",
         "POSTGRES_SCOPE": "${{ needs.scope.outputs.postgres }}",
         "ORDINARY_RESULT": "${{ needs.backend_postgres_ordinary.result }}",

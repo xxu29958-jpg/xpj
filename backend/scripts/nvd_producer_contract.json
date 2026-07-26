@@ -2,6 +2,7 @@
   "schemaVersion": 2,
   "files": [
     ".github/workflows/nvd-database.yml",
+    "android/.java-version",
     "android/config/dependency-check/suppressions.xml",
     "android/gradle.properties",
     "android/gradle/wrapper/gradle-wrapper.jar",

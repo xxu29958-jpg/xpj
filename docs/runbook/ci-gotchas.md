@@ -29,7 +29,7 @@
 
 ```
 # GitHub .github/workflows/ci.yml        →  pull_request: main; push: main; repository_dispatch: qualification
-# GitHub android-connected-test.yml      →  pull_request: main + paths; push: main + paths; repository_dispatch: qualification
+# GitHub android-connected-test.yml      →  pull_request: main; push: main; repository_dispatch: qualification; 内部共享 scope
 # GitHub codeql.yml                       →  pull_request: main; push: main; repository_dispatch: qualification; schedule cron "37 3 * * 1"
 # gitea  .gitea/workflows/windows-ci.yml →  main, feat/**, fix/**, perf/**, refactor/**, codex/**
 # gitea  android-connected.yml            →  同 windows-ci + paths 过滤
@@ -48,7 +48,7 @@ POST /api/v1/repos/codex/xiaopiaojia/actions/workflows/windows-ci.yml/dispatches
 body: { "ref": "<分支名>" }
 ```
 
-- 改 Android 源时，GitHub PR 会触发 regular Android job 和 path-filtered connected/emulator lane；local-Gitea 如启用则仍按 push 白名单排队。判「该 PR 全绿」前先按改动面想清楚应有几条 run，别把「connected 还没跑」当卡住。
+- GitHub PR 始终产生 Connected 汇总检查；共享 scope 明确无关时 execution 跳过，Android/CI/未知范围时真实运行 emulator。local-Gitea 如启用则仍按 push 白名单和 paths 排队。
 
 **铁律**：GitHub 工作分支靠 PR 触发；local-Gitea 分支名不在 push 白名单 = CI 静默不跑。
 
@@ -63,7 +63,7 @@ body: { "ref": "<分支名>" }
 **正确做法**：
 - 盯 CI 用**后台轮询脚本**（bash `run_in_background`，`gh pr checks N` 轮到 pending==0 再数 fail），别死等、别信 `gh pr checks --watch`。
 - 红 triage：先 `gh run view --job <id>` 看哪步 ✗，再 `gh run view --job <id> --log` 全日志搜 `^e: `(detekt finding)/ `FAILED` / `failures="[1-9]` / `error:` 定位文件:行。别被被取消 run 的「fail」唬住，也别把 workflow 里 `echo "::error::..."` 的守卫定义文本当真错。
-- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`；Android 源变更触发的 `Connected (emulator)` 虽不是平台 branch-protection required check，但按工作流纪律仍须绿。`Android SCA` 是 `Android` 聚合检查的强制依赖，失败会阻断合并。
+- GitHub 实质门（authoritative，须真绿）：`Backend` / `Backend (PostgreSQL)` / `Desktop manager` / `Android` / `Connected (emulator)` / CodeQL 四条 `Analyze (actions|javascript-typescript|python|java-kotlin)`。`Android SCA` 是 `Android` 聚合检查的强制依赖，失败会阻断合并。
 
 **铁律**：被 concurrency 取消的旧 run 的 `fail` 是噪声；只认最新 head 那条 run。
 

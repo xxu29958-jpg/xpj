@@ -1,5 +1,9 @@
 import com.android.build.api.dsl.ManagedVirtualDevice
 
+val ticketboxJavaLanguageVersion =
+    rootProject.file(".java-version").readText().trim().toIntOrNull()
+        ?: error("android/.java-version must contain one Java major version.")
+
 // issue #64 A1: Baseline Profile generation + cold-start measurement module.
 //
 // This is a `com.android.test` module — it builds a separate test APK that drives
@@ -53,6 +57,12 @@ android {
                 }
             }
         }
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(ticketboxJavaLanguageVersion)
     }
 }
 

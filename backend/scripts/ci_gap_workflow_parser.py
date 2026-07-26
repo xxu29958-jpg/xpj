@@ -320,7 +320,7 @@ def _job_protection_scope(
         visiting=set(),
     ):
         return workflow_scope
-    return _scoped_job_protection_scope(path, workflow, raw_job, jobs)
+    return _scoped_job_protection_scope(path, workflow, job_name, raw_job, jobs)
 
 
 def _step_protection_scope(
