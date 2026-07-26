@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import ModuleType
 
 from tests._infra.ci_gap import load_ci_gap_audit
 
@@ -226,6 +227,49 @@ def _scope_regressions(valid: str) -> tuple[str, ...]:
     )
 
 
+def _assert_codeql_terminal_mutations_are_rejected(
+    mod: ModuleType,
+    workflows: Path,
+) -> None:
+    codeql = workflows / "codeql.yml"
+    codeql_source = (
+        Path(__file__).resolve().parents[2]
+        / ".github"
+        / "workflows"
+        / "codeql.yml"
+    ).read_text(encoding="utf-8")
+    codeql.write_text(codeql_source, encoding="utf-8")
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    assert any(
+        command.job == "analyze-android" and command.protection_scope == "android"
+        for command in commands
+    )
+
+    before_id, qualification_id, after_id = codeql_source.rpartition(
+        "        id: qualification\n"
+    )
+    assert qualification_id
+    mutations = [
+        codeql_source.replace(
+            "        if: ${{ always() && !cancelled() }}",
+            "        if: ${{ false }}",
+            1,
+        ),
+        before_id + after_id,
+        codeql_source.replace(
+            "run: python -E -S backend/scripts/verify_scoped_ci_results.py "
+            "--label CodeQL --scope-key ANDROID_SCOPE",
+            "run: echo terminal-bypassed",
+            1,
+        ),
+    ]
+    for mutated in mutations:
+        assert mutated != codeql_source
+        codeql.write_text(mutated, encoding="utf-8")
+        commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+        assert all(command.job != "analyze-android" for command in commands)
+
+
 def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
     mod = load_ci_gap_audit()
     workflows = tmp_path / ".github" / "workflows"
@@ -271,40 +315,7 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
             command.job != "backend_postgres_ordinary" for command in commands
         ), index
 
-    codeql = workflows / "codeql.yml"
-    codeql_source = (
-        Path(__file__).resolve().parents[2]
-        / ".github"
-        / "workflows"
-        / "codeql.yml"
-    ).read_text(encoding="utf-8")
-    codeql.write_text(codeql_source, encoding="utf-8")
-    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-    assert any(
-        command.job == "analyze-android" and command.protection_scope == "android"
-        for command in commands
-    )
-
-    bypassed_codeql = codeql_source.replace(
-        "        if: ${{ always() && !cancelled() }}",
-        "        if: ${{ false }}",
-        1,
-    )
-    assert bypassed_codeql != codeql_source
-    codeql.write_text(bypassed_codeql, encoding="utf-8")
-    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-    assert all(command.job != "analyze-android" for command in commands)
-
-    bypassed_codeql = codeql_source.replace(
-        "run: python -E -S backend/scripts/verify_scoped_ci_results.py "
-        "--label CodeQL --scope-key ANDROID_SCOPE",
-        "run: echo terminal-bypassed",
-        1,
-    )
-    assert bypassed_codeql != codeql_source
-    codeql.write_text(bypassed_codeql, encoding="utf-8")
-    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-    assert all(command.job != "analyze-android" for command in commands)
+    _assert_codeql_terminal_mutations_are_rejected(mod, workflows)
 
 
 def test_windows_scope_protects_real_installer_provenance(tmp_path: Path) -> None:

@@ -359,6 +359,22 @@ def _terminal_gate_consumes_dependency(
     return False
 
 
+def _job_has_qualification_output_producer(
+    raw_job: dict[object, object],
+) -> bool:
+    producers = [
+        step
+        for step in raw_job.get("steps", [])
+        if isinstance(step, dict)
+        and step.get("name") == "Verify qualification SHA"
+        and step.get("id") == "qualification"
+        and step.get("if") in {None, True}
+        and not allows_failure(step.get("continue-on-error"))
+        and _qualification_command_is_valid(step.get("run"))
+    ]
+    return len(producers) == 1
+
+
 def _self_terminal_enforces_scope(
     raw_job: dict[object, object],
     expected_command: tuple[str, ...],
@@ -367,7 +383,9 @@ def _self_terminal_enforces_scope(
     if any(
         raw_job.get(field) is not None
         for field in ("container", "services", "strategy")
-    ) or (expected_shell is None and raw_job.get("defaults") is not None):
+    ) or (
+        expected_shell is None and raw_job.get("defaults") is not None
+    ) or not _job_has_qualification_output_producer(raw_job):
         return False
     required_values = {
         "${{ needs.scope.result }}",

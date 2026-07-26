@@ -127,6 +127,7 @@ jobs:
           python-version: "3.11"
 
       - name: Verify qualification SHA
+        id: qualification
         env:
           EXPECTED_SHA: ${{ github.sha }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
