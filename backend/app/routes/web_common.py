@@ -641,9 +641,10 @@ def _dashboard_budget_goals_block(budget, goals) -> dict:
 def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
     """recent/device/backup 状态计数的 ctx 片段(从 ``_dashboard_cards`` 拆出守 80 行债线)。
 
-    PR #253 P2-6: backup 走轻量口径——只验证最新一个 dump (``pg_restore --list``
-    单文件) 并按 (name, mtime, size) 进程内缓存, 稳态每请求零子进程; 损坏则按
-    「无可恢复备份」呈现。恢复/健康流仍用全量验证的 ``latest_backup()``。
+    PR #253 R2/R3: backup 走轻量口径——候选 dump 按 mtime 新→旧逐个
+    ``pg_restore --list`` 验证 (per-(name, mtime, size) 进程内缓存, 稳态每请求
+    零子进程), 返回首个有效者; 全部无效才按「无可恢复备份」呈现。恢复/健康流
+    仍用全量验证的 ``latest_backup()``。
     """
     week_ago = now - timedelta(days=7)
     latest_backup = backup_service.latest_backup_lightweight()
@@ -734,17 +735,25 @@ def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
     home = home_currency_code()
     by_category = list(stats.get("by_category", []))
     if len(by_category) > 6:
-        # PR #253 R3: 第 7 名起聚合为「其他」片 — 环图 percent 按截断集重算会夸大
-        # 占比; 聚合后环图与清单同口径, 百分比合计才是全量的 100%。
+        # PR #253 R3: 前 5 + 第 6 名起聚合为「其他」片 — 环图 percent 按截断集重算会
+        # 夸大占比; 聚合后环图与清单同口径, 百分比合计才是全量的 100%。
+        # 复审 P2a: head 已含规范「其他」桶 (normalize_category 的缺省桶) 时, 溢出
+        # 并入该桶而非另起同名片 (照 source_breakdown 的 by_label 合并做法)。
         head, tail = by_category[:5], by_category[5:]
-        by_category = [
-            *head,
-            {
-                "category": "其他",
-                "amount_cents": sum(int(item["amount_cents"]) for item in tail),
-                "count": sum(int(item["count"]) for item in tail),
-            },
-        ]
+        tail_cents = sum(int(item["amount_cents"]) for item in tail)
+        tail_count = sum(int(item["count"]) for item in tail)
+        merged_into_existing = False
+        for item in head:
+            if item["category"] == "其他":
+                item["amount_cents"] = int(item["amount_cents"]) + tail_cents
+                item["count"] = int(item["count"]) + tail_count
+                merged_into_existing = True
+                break
+        by_category = (
+            head
+            if merged_into_existing
+            else [*head, {"category": "其他", "amount_cents": tail_cents, "count": tail_count}]
+        )
     rows = []
     for item in by_category:
         amount_minor = int(item["amount_cents"])

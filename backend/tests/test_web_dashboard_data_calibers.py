@@ -99,7 +99,7 @@ def test_latest_backup_lightweight_falls_back_to_older_valid_dump(
 def test_overview_category_share_aggregates_overflow_into_other(
     web_client: TestClient, *, identity
 ) -> None:
-    """PR #253 R3-2: 第 7 名起聚合为「其他」片, 环图/清单按全量总额算占比。"""
+    """PR #253 R3-2: 前 5 + 第 6 名起聚合为「其他」片, 环图/清单按全量总额算占比。"""
     categories = ["餐饮", "交通", "居家", "购物", "娱乐", "医疗", "教育"]
     for index, category in enumerate(categories):
         seed_confirmed_expense(
@@ -216,3 +216,39 @@ def test_recurring_candidate_count_excludes_formalized_merchants(
         # 确认转正后候选计数清零; 原口径 recurring_candidates 不动。
         assert unclaimed_recurring_candidate_count(db, tenant_id="owner") == 0
         assert len(recurring_candidates(db, tenant_id="owner")) == 1
+
+
+def test_overview_category_share_merges_overflow_into_existing_other_bucket(
+    web_client: TestClient, *, identity
+) -> None:
+    """复审 P2a: 规范「其他」桶已进前 5 时, 溢出并入该桶而非另起同名双片。"""
+    # 「其他」(normalize_category 缺省桶) 金额第 2 高 → 进前 5; 第 6/7 名溢出应并入。
+    seeds = [
+        ("餐饮", 9000),
+        ("其他", 8000),
+        ("交通", 7000),
+        ("居家", 6000),
+        ("购物", 5000),
+        ("娱乐", 3000),
+        ("医疗", 2000),
+    ]
+    for category, amount_cents in seeds:
+        seed_confirmed_expense(
+            web_client,
+            identity=identity,
+            amount_cents=amount_cents,
+            merchant=f"商家{category}",
+            category=category,
+        )
+
+    with SessionLocal() as db:
+        rows = web_common._dashboard_category_share(db, "owner")
+    names = [row["name"] for row in rows]
+    # 同名只出现一次: 合并后共 5 行, 环图无「其他」双片。
+    assert names.count("其他") == 1
+    assert len(rows) == 5
+    other = rows[names.index("其他")]
+    assert other["amount_cents"] == 8000 + 3000 + 2000
+    assert other["count"] == 3
+    # 金额仍按全量总额口径 (9000+8000+7000+6000+5000+3000+2000)。
+    assert sum(int(row["amount_cents"]) for row in rows) == 40000
