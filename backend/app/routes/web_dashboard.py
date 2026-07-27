@@ -91,7 +91,7 @@ def web_overview(
         page_title="总览",
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
-    payload = _dashboard_data_payload(db, selected_id)
+    payload = _dashboard_data_payload(db, selected_id, include_trend=False)
     cards = payload["cards"]
     category_share = payload["category_share"]
     visible_cards = [item for item in cards["layout"] if item["visible"]]

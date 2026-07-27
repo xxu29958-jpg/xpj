@@ -141,36 +141,44 @@ def latest_backup() -> BackupEntry | None:
     return items[0] if items else None
 
 
-def latest_backup_lightweight() -> BackupEntry | None:
-    """Newest backup file by mtime, WITHOUT per-file ``pg_restore --list`` validation.
+# 进程内缓存: (file_name, mtime_ns, size) -> ``pg_restore --list`` 验证结果
+# (PR #253 R2 bot-P1)。只原地增删 (dict[key]=value / clear), 不整体重绑。
+_lightweight_backup_validation: dict[tuple[str, int, int], bool] = {}
 
-    ``list_backups()`` validates every dump (up to 60s per file), which is the
-    right caliber for the Owner Console restore picker but too expensive for
-    read-heavy status surfaces (the /web overview landing + dashboard backup
-    card). Those only need "is there a backup, and how old is the newest one" —
-    a corrupt-but-present newest dump still counts as a backup attempt here.
-    Restore/health flows keep the fully validated caliber above.
+def latest_backup_lightweight() -> BackupEntry | None:
+    """Newest backup if — and only if — it is a restorable dump (PR #253 R2).
+
+    Validates ONLY the newest file (vs ``list_backups()``'s every-dump
+    ``pg_restore --list`` sweep), memoized per ``(name, mtime_ns, size)``:
+    steady state spawns no subprocess; a corrupt newest dump reads as "no
+    restorable backup" on status surfaces instead of a false "已备份".
+    Restore/health flows keep the fully validated caliber.
     """
-    directory = _backup_dir()
     newest: Path | None = None
-    newest_mtime = 0.0
-    for path in directory.glob(f"{_PREFIX}*{_SUFFIX}"):
+    newest_stat = None
+    for path in _backup_dir().glob(f"{_PREFIX}*{_SUFFIX}"):
         try:
             if not path.is_file():
                 continue
-            mtime = path.stat().st_mtime
+            stat = path.stat()
         except OSError:
             continue
-        if newest is None or mtime > newest_mtime:
-            newest = path
-            newest_mtime = mtime
+        if newest is None or stat.st_mtime > newest_stat.st_mtime:
+            newest, newest_stat = path, stat
     if newest is None:
         return None
-    stat = newest.stat()
+    cache_key = (newest.name, newest_stat.st_mtime_ns, int(newest_stat.st_size))
+    valid = _lightweight_backup_validation.get(cache_key)
+    if valid is None:
+        if len(_lightweight_backup_validation) >= 64:
+            _lightweight_backup_validation.clear()  # 键只随新 dump 出现, 清空=下次重验
+        valid = _lightweight_backup_validation[cache_key] = is_postgres_backup_valid(newest)
+    if not valid:
+        return None
     return BackupEntry(
         file_name=newest.name,
-        size_bytes=int(stat.st_size),
-        created_at=datetime.fromtimestamp(stat.st_mtime).astimezone(),
+        size_bytes=int(newest_stat.st_size),
+        created_at=datetime.fromtimestamp(newest_stat.st_mtime).astimezone(),
         kind=_classify(newest.name),
     )
 

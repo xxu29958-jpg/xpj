@@ -651,6 +651,11 @@ def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
         backup_age_days = max(0, (now.astimezone() - latest_backup.created_at).days)
     return {
         "recent_count": web_stats_service.recent_expense_count(db, ledger_id, week_ago),
+        # PR #253 R2: overview 最近新增卡链接 /web/confirmed, 专配 confirmed-only
+        # 计数使卡面数字与目标页一致; /web 首页「最近 7 日上传」卡沿用全状态口径。
+        "recent_confirmed_count": web_stats_service.recent_confirmed_expense_count(
+            db, ledger_id, week_ago
+        ),
         "active_device_count": web_stats_service.active_device_count(db, ledger_id),
         "backup_available": latest_backup is not None,
         "backup_age_days": backup_age_days,
@@ -752,13 +757,15 @@ def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
     return rows
 
 
-def _dashboard_data_payload(db: Session, selected_id: str) -> dict:
+def _dashboard_data_payload(db: Session, selected_id: str, *, include_trend: bool = True) -> dict:
     cards = _dashboard_cards(db, selected_id)
     return {
         "selected_ledger_id": selected_id,
         "month": cards["month"],
         "cards": cards,
         "visible_layout": [item for item in cards["layout"] if item["visible"]],
-        "trend14": _trend14_amounts(db, selected_id),
+        # PR #253 R2: trend14 物化 14 天 confirmed 流水, 只有 /web 首页与 JSON 端
+        # 需要; overview 不传 include_trend 以免白加载。
+        "trend14": _trend14_amounts(db, selected_id) if include_trend else [],
         "category_share": _dashboard_category_share(db, selected_id),
     }

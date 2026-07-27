@@ -22,7 +22,6 @@
         app.readVar("--chart-series-6"),
       ];
       const ink = app.readVar("--text-default");
-      const ink2 = app.readVar("--text-muted");
       const ink3 = app.readVar("--text-meta");
       return {
         animation: false,
@@ -52,13 +51,11 @@
               show: true, position: "center", color: ink,
               fontFamily: "Newsreader, 'Source Han Serif SC', serif", fontSize: 22,
               formatter: function (p) {
-                return "{n|" + p.name + "}\n{v|" + app.homeCurrencySymbol() + Math.round(p.value || 0).toLocaleString() +
-                       "}\n{p|" + p.percent + "%}";
-              },
-              rich: {
-                n: { color: ink2, fontSize: 12, fontFamily: "'Noto Sans SC', Inter", lineHeight: 18, fontWeight: 500 },
-                v: { color: ink, fontSize: 22, fontFamily: "Newsreader, serif", lineHeight: 28 },
-                p: { color: ink3, fontSize: 11, fontFamily: "Inter", lineHeight: 16 },
+                // 纯文本拼接, 不用 ECharts rich-text DSL: 分类名里的 "}"/"{x|" 元字符
+                // 会被当成样式段解析而破坏中心排版 (canvas 无 XSS, 但排版注入同样
+                // 不可接受 — PR #253 R2 复审 P2-2)。
+                return p.name + "\n" + app.homeCurrencySymbol() +
+                       Math.round(p.value || 0).toLocaleString() + "\n" + p.percent + "%";
               },
             },
           },

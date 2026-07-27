@@ -203,6 +203,26 @@ def recent_expense_count(db: Session, ledger_id: str, since: datetime) -> int:
     )
 
 
+def recent_confirmed_expense_count(db: Session, ledger_id: str, since: datetime) -> int:
+    """Number of CONFIRMED expenses created on/after ``since``.
+
+    This is the caliber the overview 最近新增 card links to (/web/confirmed):
+    count and destination must agree (PR #253 R2) — the all-status
+    ``recent_expense_count`` could show a positive number while the confirmed
+    list it linked to was empty.
+    """
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(Expense)
+            .where(Expense.tenant_id == ledger_id)
+            .where(Expense.created_at >= since)
+            .where(Expense.status == "confirmed")
+        )
+        or 0
+    )
+
+
 def active_device_count(db: Session, ledger_id: str) -> int:
     """Number of active account devices authorized for ``ledger_id``.
 

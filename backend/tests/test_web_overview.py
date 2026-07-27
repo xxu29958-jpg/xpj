@@ -16,7 +16,7 @@ from app.database import SessionLocal
 from app.models import LedgerMember
 from app.routes import web_common
 from app.services import backup_service
-from app.services.time_service import current_month
+from app.services.time_service import current_month, now_utc
 
 WEB_CARD_KEYS = [
     "monthly_spend",
@@ -306,13 +306,65 @@ def test_overview_amounts_follow_home_currency_exponent(
 
 
 def test_category_donut_escapes_tooltip_name_and_prefers_amount_major() -> None:
-    """PR #253 P1-2/P1-1: 无 JS runner, 钉 category-donut.js 的安全/币种契约。"""
+    """PR #253 P1-2/P1-1 + R2 复审: 无 JS runner, 钉 category-donut.js 的安全/币种契约。"""
     source = (
-        Path(__file__).resolve().parents[1]
-        / "app/static/web/desktop/category-donut.js"
+        Path(__file__).resolve().parents[1] / "app/static/web/desktop/category-donut.js"
     ).read_text(encoding="utf-8")
+    # tooltip: 名称进 HTML 前必须转义 — 正向钉完整片段, 负向钉漏洞形态 (复审 P2-1)。
     assert "app.escapeHtml(p.name)" in source
+    assert '+ p.name + "</b>' not in source
+    # 中心 label: 纯文本, 不用 rich-text DSL — 分类名的 }/{x| 元字符会破坏排版 (复审 P2-2)。
+    assert '"{n|"' not in source
+    # exponent 感知的图表数值投影。
     assert "amount_major" in source
+
+
+def test_overview_skips_trend14_assembly(web_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """PR #253 R2: overview 不白加载 trend14 (物化 14 天 confirmed 流水)。"""
+    calls: list[str] = []
+    real_trend14 = web_common._trend14_amounts
+
+    def _spy_trend14(db, ledger_id: str):
+        calls.append(ledger_id)
+        return real_trend14(db, ledger_id)
+
+    monkeypatch.setattr(web_common, "_trend14_amounts", _spy_trend14)
+
+    resp = web_client.get("/web/overview?ledger_id=owner")
+    assert resp.status_code == 200
+    assert calls == []
+
+    # /web 首页与 JSON 端行为不变 (trend 仍装配)。
+    resp = web_client.get("/web?ledger_id=owner")
+    assert resp.status_code == 200
+    assert calls == ["owner"]
+
+
+def test_overview_recent_count_is_confirmed_only(web_client: TestClient, *, identity) -> None:
+    """PR #253 R2: overview 最近新增 = confirmed-only (与 /web/confirmed 目标页一致)。"""
+    _seed_confirmed_expense(web_client, identity=identity, amount_cents=8800, merchant="海底捞", category="餐饮")
+    # 再投一笔 pending (不计入 confirmed 口径)。
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    uploaded = web_client.post(
+        f"/u/{identity.upload_key}", headers={"Content-Type": "image/png"}, content=png
+    )
+    assert uploaded.status_code == 200, uploaded.text
+
+    with SessionLocal() as db:
+        cards = web_common._dashboard_cards(db, "owner")
+    assert cards["recent_confirmed_count"] == 1
+    # 全状态口径保留给 /web 首页「最近 7 日上传」卡。
+    assert cards["recent_count"] == 2
+
+    resp = web_client.get("/web/overview?ledger_id=owner")
+    assert resp.status_code == 200
+    card = re.search(r'data-overview-card="recent_uploads">.*?</article>', resp.text, re.S)
+    assert card is not None
+    assert "过去 7 天 · 已入账" in card.group(0)
 
 
 def test_dashboard_month_follows_accounting_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -353,23 +405,57 @@ def test_dashboard_month_follows_accounting_timezone(monkeypatch: pytest.MonkeyP
     }
 
 
-def test_latest_backup_lightweight_skips_per_file_validation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """PR #253 P2-6: 状态卡口径按 mtime 取最新, 不逐文件 pg_restore 验证。"""
-    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
-    older = tmp_path / "ticketbox-2026-07-01.dump"
-    newer = tmp_path / "ticketbox-2026-07-20.dump"
+def _write_fake_dumps(directory: Path) -> tuple[Path, Path]:
+    older = directory / "ticketbox-2026-07-01.dump"
+    newer = directory / "ticketbox-2026-07-20.dump"
     older.write_bytes(b"not-a-real-dump")
     newer.write_bytes(b"also-not-a-real-dump")
     old_time = time.time() - 86400 * 10
     os.utime(older, (old_time, old_time))
+    return older, newer
 
-    def _boom(_path: Path) -> bool:
-        raise AssertionError("validation must not run on the lightweight path")
 
-    monkeypatch.setattr(backup_service, "is_postgres_backup_valid", _boom)
+def test_latest_backup_lightweight_validates_only_newest_once_and_caches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #253 R2 bot-P1: 只验最新一个 dump; (name, mtime, size) 缓存命中零重复验证。"""
+    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
+    backup_service._lightweight_backup_validation.clear()
+    _older, newer = _write_fake_dumps(tmp_path)
+    validations: list[Path] = []
 
-    entry = backup_service.latest_backup_lightweight()
-    assert entry is not None
-    assert entry.file_name == "ticketbox-2026-07-20.dump"
+    def _fake_validate(path: Path) -> bool:
+        validations.append(path)
+        return True
+
+    monkeypatch.setattr(backup_service, "is_postgres_backup_valid", _fake_validate)
+
+    first = backup_service.latest_backup_lightweight()
+    second = backup_service.latest_backup_lightweight()
+    assert first is not None and second is not None
+    assert first.file_name == "ticketbox-2026-07-20.dump"
+    # 旧文件从不验证; 缓存命中 → 同一 dump 只验一次。
+    assert validations == [newer]
+
+    # (path, mtime, size) 变化 = 新 dump → 重新验证一次。
+    newer.write_bytes(b"rewritten-dump-payload")
+    third = backup_service.latest_backup_lightweight()
+    assert third is not None
+    assert validations == [newer, newer]
+
+
+def test_latest_backup_lightweight_corrupt_newest_means_no_restorable_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """损坏的最新 dump → 状态卡按「无可恢复备份」呈现 (backup_available=False)。"""
+    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
+    backup_service._lightweight_backup_validation.clear()
+    _write_fake_dumps(tmp_path)
+    monkeypatch.setattr(backup_service, "is_postgres_backup_valid", lambda _path: False)
+
+    assert backup_service.latest_backup_lightweight() is None
+
+    with SessionLocal() as db:
+        block = web_common._dashboard_status_counts_block(db, "owner", now_utc())
+    assert block["backup_available"] is False
+    assert block["backup_age_days"] is None

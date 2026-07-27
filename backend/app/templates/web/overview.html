@@ -246,13 +246,14 @@
     <div class="product-panel-header">
       <div>
         <div class="product-panel-title">最近新增</div>
-        <div class="product-panel-subtitle">过去 7 天</div>
+        <div class="product-panel-subtitle">过去 7 天 · 已入账</div>
       </div>
-      {# PR #253 P2-4: recent_count 口径含全部状态, 链接指向流水而非仅待处理。 #}
+      {# PR #253 R2: 计数为 confirmed-only 口径 (recent_confirmed_count),
+         与链接目标 /web/confirmed 内容一致。 #}
       <a class="product-panel-subtitle" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">查看</a>
     </div>
-    <div class="insight-stat-value num">{{ cards.recent_count }}</div>
-    <div class="text-muted">截图、手动记账与导入</div>
+    <div class="insight-stat-value num">{{ cards.recent_confirmed_count }}</div>
+    <div class="text-muted">手动记账与导入入账</div>
   </article>
 
   {% elif item.key == 'backup_status' %}
