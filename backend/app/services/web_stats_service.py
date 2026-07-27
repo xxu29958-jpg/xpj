@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuthToken, Device, Expense, LedgerMember
+from app.services.data_quality_service import is_usable_pending_merchant
 from app.services.expense_service import NOTIFICATION_DRAFT_SOURCE_PREFIX
 from app.services.spending_contract_service import (
     accounting_zone,
@@ -188,6 +189,39 @@ def _web_stats_zone() -> ZoneInfo:
 
 def _month_bounds(month: str, zone: ZoneInfo) -> tuple[datetime, datetime]:
     return month_bounds_utc(month, zone.key)
+
+
+def pending_quality_counts(db: Session, ledger_id: str) -> dict[str, int]:
+    """Dashboard pending-card counts without materializing full pending rows.
+
+    total / needs-amount / suspected are plain COUNT()s with the same predicates
+    as ``list_pending`` + the dashboard card block; needs-merchant projects only
+    the merchant column because ``is_usable_pending_merchant`` is a Kotlin-ported
+    Unicode predicate that must stay byte-exact (PR #253 R3 — count semantics
+    identical to the old materialize-then-count caliber, pinned by tests).
+    """
+    pending_count, suspected = sidebar_counts(db, ledger_id)
+    needs_amount = int(
+        db.scalar(
+            select(func.count(Expense.id))
+            .where(Expense.tenant_id == ledger_id)
+            .where(Expense.status == "pending")
+            .where(Expense.amount_cents.is_(None))
+        )
+        or 0
+    )
+    merchants = db.scalars(
+        select(Expense.merchant)
+        .where(Expense.tenant_id == ledger_id)
+        .where(Expense.status == "pending")
+    ).all()
+    needs_merchant = sum(1 for merchant in merchants if not is_usable_pending_merchant(merchant))
+    return {
+        "pending_count": pending_count,
+        "needs_amount_count": needs_amount,
+        "needs_merchant_count": needs_merchant,
+        "suspected_duplicate_count": suspected,
+    }
 
 
 def recent_expense_count(db: Session, ledger_id: str, since: datetime) -> int:

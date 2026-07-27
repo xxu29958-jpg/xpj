@@ -146,41 +146,37 @@ def latest_backup() -> BackupEntry | None:
 _lightweight_backup_validation: dict[tuple[str, int, int], bool] = {}
 
 def latest_backup_lightweight() -> BackupEntry | None:
-    """Newest backup if — and only if — it is a restorable dump (PR #253 R2).
+    """Newest VALID dump — a corrupt newest one yields to older valid ones.
 
-    Validates ONLY the newest file (vs ``list_backups()``'s every-dump
-    ``pg_restore --list`` sweep), memoized per ``(name, mtime_ns, size)``:
-    steady state spawns no subprocess; a corrupt newest dump reads as "no
-    restorable backup" on status surfaces instead of a false "已备份".
-    Restore/health flows keep the fully validated caliber.
+    Same "newest valid" semantics as ``latest_backup()`` (PR #253 R3), but
+    validates candidates newest-first via ``pg_restore --list``, memoized per
+    ``(name, mtime_ns, size)``: steady state spawns no subprocess and each file
+    is validated at most once per process. Restore/health flows keep the
+    every-dump fully validated caliber.
     """
-    newest: Path | None = None
-    newest_stat = None
+    candidates: list[tuple[Path, os.stat_result]] = []
     for path in _backup_dir().glob(f"{_PREFIX}*{_SUFFIX}"):
         try:
-            if not path.is_file():
-                continue
-            stat = path.stat()
+            if path.is_file():
+                candidates.append((path, path.stat()))
         except OSError:
             continue
-        if newest is None or stat.st_mtime > newest_stat.st_mtime:
-            newest, newest_stat = path, stat
-    if newest is None:
-        return None
-    cache_key = (newest.name, newest_stat.st_mtime_ns, int(newest_stat.st_size))
-    valid = _lightweight_backup_validation.get(cache_key)
-    if valid is None:
-        if len(_lightweight_backup_validation) >= 64:
-            _lightweight_backup_validation.clear()  # 键只随新 dump 出现, 清空=下次重验
-        valid = _lightweight_backup_validation[cache_key] = is_postgres_backup_valid(newest)
-    if not valid:
-        return None
-    return BackupEntry(
-        file_name=newest.name,
-        size_bytes=int(newest_stat.st_size),
-        created_at=datetime.fromtimestamp(newest_stat.st_mtime).astimezone(),
-        kind=_classify(newest.name),
-    )
+    candidates.sort(key=lambda item: item[1].st_mtime, reverse=True)
+    for path, stat in candidates:
+        cache_key = (path.name, stat.st_mtime_ns, int(stat.st_size))
+        valid = _lightweight_backup_validation.get(cache_key)
+        if valid is None:
+            if len(_lightweight_backup_validation) >= 64:
+                _lightweight_backup_validation.clear()  # 键只随新 dump 出现, 清空=下次重验
+            valid = _lightweight_backup_validation[cache_key] = is_postgres_backup_valid(path)
+        if valid:
+            return BackupEntry(
+                file_name=path.name,
+                size_bytes=int(stat.st_size),
+                created_at=datetime.fromtimestamp(stat.st_mtime).astimezone(),
+                kind=_classify(path.name),
+            )
+    return None
 
 
 @dataclass(frozen=True)

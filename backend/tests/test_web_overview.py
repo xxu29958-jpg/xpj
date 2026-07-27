@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-import os
 import re
-import time
 from pathlib import Path
 
 import pytest
+from _web_overview_test_support import (
+    create_pending_upload as _create_pending_upload,
+)
+from _web_overview_test_support import (
+    seed_confirmed_expense as _seed_confirmed_expense,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -15,8 +19,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.models import LedgerMember
 from app.routes import web_common
-from app.services import backup_service
-from app.services.time_service import current_month, now_utc
+from app.services.time_service import current_month
 
 WEB_CARD_KEYS = [
     "monthly_spend",
@@ -29,20 +32,6 @@ WEB_CARD_KEYS = [
     "backup_status",
     "device_status",
 ]
-
-
-def _seed_confirmed_expense(client: TestClient, *, identity, amount_cents: int, merchant: str, category: str) -> None:
-    resp = client.post(
-        "/api/expenses/manual",
-        headers=identity.app_headers,
-        json={
-            "amount_cents": amount_cents,
-            "merchant": merchant,
-            "category": category,
-            "expense_time": f"{current_month('Asia/Shanghai')}-15T04:00:00Z",
-        },
-    )
-    assert resp.status_code == 200, resp.text
 
 
 def _seed_budget(client: TestClient, *, identity) -> None:
@@ -405,57 +394,18 @@ def test_dashboard_month_follows_accounting_timezone(monkeypatch: pytest.MonkeyP
     }
 
 
-def _write_fake_dumps(directory: Path) -> tuple[Path, Path]:
-    older = directory / "ticketbox-2026-07-01.dump"
-    newer = directory / "ticketbox-2026-07-20.dump"
-    older.write_bytes(b"not-a-real-dump")
-    newer.write_bytes(b"also-not-a-real-dump")
-    old_time = time.time() - 86400 * 10
-    os.utime(older, (old_time, old_time))
-    return older, newer
-
-
-def test_latest_backup_lightweight_validates_only_newest_once_and_caches(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_overview_pending_card_link_is_readonly_for_viewer(
+    web_client: TestClient, *, identity
 ) -> None:
-    """PR #253 R2 bot-P1: 只验最新一个 dump; (name, mtime, size) 缓存命中零重复验证。"""
-    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
-    backup_service._lightweight_backup_validation.clear()
-    _older, newer = _write_fake_dumps(tmp_path)
-    validations: list[Path] = []
+    """PR #253 R3-3: pending 卡链接按 can_write 分文案 (owner 去处理 / viewer 查看)。"""
+    _create_pending_upload(web_client, identity=identity)
+    owner_page = web_client.get("/web/overview?ledger_id=owner")
+    assert "去处理" in owner_page.text
 
-    def _fake_validate(path: Path) -> bool:
-        validations.append(path)
-        return True
-
-    monkeypatch.setattr(backup_service, "is_postgres_backup_valid", _fake_validate)
-
-    first = backup_service.latest_backup_lightweight()
-    second = backup_service.latest_backup_lightweight()
-    assert first is not None and second is not None
-    assert first.file_name == "ticketbox-2026-07-20.dump"
-    # 旧文件从不验证; 缓存命中 → 同一 dump 只验一次。
-    assert validations == [newer]
-
-    # (path, mtime, size) 变化 = 新 dump → 重新验证一次。
-    newer.write_bytes(b"rewritten-dump-payload")
-    third = backup_service.latest_backup_lightweight()
-    assert third is not None
-    assert validations == [newer, newer]
-
-
-def test_latest_backup_lightweight_corrupt_newest_means_no_restorable_backup(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """损坏的最新 dump → 状态卡按「无可恢复备份」呈现 (backup_available=False)。"""
-    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
-    backup_service._lightweight_backup_validation.clear()
-    _write_fake_dumps(tmp_path)
-    monkeypatch.setattr(backup_service, "is_postgres_backup_valid", lambda _path: False)
-
-    assert backup_service.latest_backup_lightweight() is None
-
-    with SessionLocal() as db:
-        block = web_common._dashboard_status_counts_block(db, "owner", now_utc())
-    assert block["backup_available"] is False
-    assert block["backup_age_days"] is None
+    _demote_owner_ledger_to_viewer()
+    resp = web_client.get("/web/overview?ledger_id=owner")
+    assert resp.status_code == 200
+    card = re.search(r'data-overview-card="pending">.*?</article>', resp.text, re.S)
+    assert card is not None
+    assert "查看" in card.group(0)
+    assert "去处理" not in card.group(0)

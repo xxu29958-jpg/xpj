@@ -36,9 +36,9 @@ from app.services.currency_common import (
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.data_quality_service import is_uncategorized_expense_category, is_usable_pending_merchant
 from app.services.exchange_rate_service import home_currency_code
-from app.services.expense_service import list_pending
+from app.services.expense_service import list_pending  # noqa: F401  (re-exported to web_pending)
 from app.services.goal_service import list_goals
-from app.services.insights_service import recurring_candidates
+from app.services.insights_service import unclaimed_recurring_candidate_count
 from app.services.recurring_service import list_recurring_items
 from app.services.spending_contract_service import accounting_zone, default_accounting_timezone_name
 from app.services.stats_service import monthly_stats
@@ -664,14 +664,9 @@ def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
 
 
 def _dashboard_cards(db: Session, ledger_id: str) -> dict:
-    pending_rows = list_pending(db, ledger_id)
-    pending_count = len(pending_rows)
-    needs_amount = sum(1 for e in pending_rows if e.amount_cents is None)
-    # Same shared merchant-usability caliber as the expense view above.
-    needs_merchant = sum(1 for e in pending_rows if not is_usable_pending_merchant(e.merchant))
-    suspected = sum(
-        1 for e in pending_rows if (getattr(e, "duplicate_status", None) or "") == "suspected"
-    )
+    # PR #253 R3: 计数走 stats 聚合查询 (COUNT/单列投影), 不再物化全部 pending 行;
+    # 谓词与 list_pending/旧卡块逐字一致 (测试钉新旧口径相等)。
+    quality = web_stats_service.pending_quality_counts(db, ledger_id)
     # 与 monthly_stats 无显式 tz 的口径同源 (PR #253 P2-7): accounting 默认时区,
     # 不再硬编码 Asia/Shanghai — 月末边界时月份/budget/goal 装配才不错位。
     timezone_name = default_accounting_timezone_name()
@@ -682,7 +677,7 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     recurring_rows = list_recurring_items(db, tenant_id=ledger_id, include_archived=False)
     active_recurring = sum(1 for item in recurring_rows if item.status == "active")
     paused_recurring = sum(1 for item in recurring_rows if item.status == "paused")
-    candidate_count = len(recurring_candidates(db, tenant_id=ledger_id))
+    candidate_count = unclaimed_recurring_candidate_count(db, tenant_id=ledger_id)
     budget = get_monthly_budget(db, tenant_id=ledger_id, month=month, timezone_name=timezone_name)
     goals = list_goals(db, tenant_id=ledger_id, month=month, timezone_name=timezone_name)
     now = now_utc()
@@ -712,10 +707,7 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
             }
             for item in layout.items
         ],
-        "pending_count": pending_count,
-        "needs_amount_count": needs_amount,
-        "needs_merchant_count": needs_merchant,
-        "suspected_duplicate_count": suspected,
+        **quality,
         "month": month,
         "total_amount_yuan": _amount_yuan(int(stats["total_amount_cents"])),
         "total_amount_cents": current_total,
@@ -740,8 +732,21 @@ def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
     month = current_month(timezone_name)
     stats = monthly_stats(db, month, selected_id, timezone_name=timezone_name)
     home = home_currency_code()
+    by_category = list(stats.get("by_category", []))
+    if len(by_category) > 6:
+        # PR #253 R3: 第 7 名起聚合为「其他」片 — 环图 percent 按截断集重算会夸大
+        # 占比; 聚合后环图与清单同口径, 百分比合计才是全量的 100%。
+        head, tail = by_category[:5], by_category[5:]
+        by_category = [
+            *head,
+            {
+                "category": "其他",
+                "amount_cents": sum(int(item["amount_cents"]) for item in tail),
+                "count": sum(int(item["count"]) for item in tail),
+            },
+        ]
     rows = []
-    for item in stats.get("by_category", [])[:6]:
+    for item in by_category:
         amount_minor = int(item["amount_cents"])
         rows.append(
             {

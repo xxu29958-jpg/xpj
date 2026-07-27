@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Expense
+from app.models import Expense, RecurringItem
 from app.services.merchant_service import normalize_merchant
 from app.services.time_service import ensure_utc, local_month_label
 
@@ -163,3 +163,26 @@ def recurring_candidates(
         if candidate is not None:
             candidates.append(candidate)
     return list(_sort_recurring_candidates(candidates))
+
+
+def unclaimed_recurring_candidate_count(
+    db: Session, *, tenant_id: str, timezone_name: str | None = None
+) -> int:
+    """候选中尚未转正 (无 active/paused ``RecurringItem``) 的数量 (PR #253 R3)。
+
+    商家被确认为正式固定支出后不应继续占 dashboard/overview 的候选计数。
+    /web/recurring 的候选列表与确认流沿用 ``recurring_candidates`` 原口径,
+    本次不动。
+    """
+    formal_keys = set(
+        db.scalars(
+            select(RecurringItem.merchant_key)
+            .where(RecurringItem.tenant_id == tenant_id)
+            .where(RecurringItem.status.in_(("active", "paused")))
+        ).all()
+    )
+    return sum(
+        1
+        for item in recurring_candidates(db, tenant_id=tenant_id, timezone_name=timezone_name)
+        if normalize_merchant(item.get("merchant")) not in formal_keys
+    )

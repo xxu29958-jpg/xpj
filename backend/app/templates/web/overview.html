@@ -112,7 +112,7 @@
       {% if cards.needs_merchant_count %}<span class="product-status product-status--warning">缺商家 {{ cards.needs_merchant_count }}</span>{% endif %}
       {% if cards.suspected_duplicate_count %}<span class="product-status product-status--danger">重复风险 {{ cards.suspected_duplicate_count }}</span>{% endif %}
     </div>
-    <a class="product-panel-subtitle" href="/web/pending?ledger_id={{ selected_ledger_id }}">去处理</a>
+    <a class="product-panel-subtitle" href="/web/pending?ledger_id={{ selected_ledger_id }}">{{ '去处理' if can_write else '查看' }}</a>
   </article>
 
   {% elif item.key == 'budget' %}
