@@ -107,6 +107,11 @@
     border-color: var(--control-border-hover);
     background: var(--surface-sunken);
 }
+/* 键盘焦点环：desktop-shell-active 下全局 outline 被 a11y.css 摘除，
+   补与 .dt-btn 等价的 box-shadow 焦点环 (同一 --brand-focus-ring token)。 */
+.product-button:focus-visible {
+    box-shadow: 0 0 0 3px var(--brand-focus-ring);
+}
 .product-button:active {
     transform: translateY(var(--space-1));
 }
