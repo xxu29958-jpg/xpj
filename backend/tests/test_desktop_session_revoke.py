@@ -95,14 +95,15 @@ def test_revoke_is_not_idempotent_for_the_same_credential(
     assert replay.json()["error"] == "invalid_token"
 
 
-def test_switch_cleanup_revoke_retires_predecessor_but_keeps_promoted_successor(
+def test_switch_activation_closes_source_family_and_cleanup_keeps_successor(
     identity,
     loopback_client: TestClient,
     client: TestClient,
 ) -> None:
-    """P0 regression: the ledger-switch cleanup (revoke the predecessor after
-    the replacement is promoted) must NOT kill the promoted successor — the
-    default revoke retires only the presented row and staged pending rows."""
+    """Switch activation atomically retires the source family (recorded
+    predecessor + its refresh descendants) with rotation grace; the promoted
+    successor becomes the session, and the default cleanup revoke afterwards
+    is a no-op 401 (predecessor already dead) that never touches it."""
     from tests.test_desktop_ledger_switch_prepare import _create_ledger
 
     _, headers = _desktop_session(client, identity.pairing_code)
@@ -121,16 +122,17 @@ def test_switch_cleanup_revoke_retires_predecessor_but_keeps_promoted_successor(
     assert activated.status_code == 200, activated.text
     successor_token = activated.json()["session_token"]
 
-    # The receipt names the source credential as predecessor (the durable
-    # association) — and the default cleanup must ignore it for the successor.
     attempt = _attempt_row(payload["activation_attempt_id"])
     source_row = _token_row(source_token)
     assert attempt.previous_token_id == source_row.id
+    # The atomic family close: A is already retired when activation commits.
+    assert source_row.revoked_at is not None
 
     response = loopback_client.post(REVOKE_PATH, headers=_bridge_headers(source_token))
 
-    assert response.status_code == 204, response.text
-    assert client.get("/api/auth/check", headers=headers).status_code == 401
+    # A is dead, so the route rejects it — the cleanup intent is already
+    # fulfilled; crucially the promoted successor is untouched either way.
+    assert response.status_code == 401
     successor = client.get(
         "/api/auth/check",
         headers={"Authorization": f"Bearer {successor_token}"},
@@ -144,15 +146,16 @@ def test_unpair_lineage_scope_kills_promoted_replacements_but_not_unrelated_line
     loopback_client: TestClient,
     client: TestClient,
 ) -> None:
-    """The teardown intent (``?scope=lineage``) additionally kills promoted
-    replacements whose receipt names the revoked credential as predecessor;
+    """The teardown intent (``?scope=lineage``) kills the presented session
+    plus promoted replacements linked through the predecessor receipts;
     an independently-paired desktop device's session survives."""
     from tests.test_desktop_ledger_switch_prepare import _create_ledger
 
+    # Pair + activate a desktop session, then switch it to the second ledger.
     _, headers = _desktop_session(client, identity.pairing_code)
-    source_token = headers["Authorization"].removeprefix("Bearer ")
     target = _create_ledger(client, headers, name="替换账本")
     payload = _prepare_payload()
+    source_token = headers["Authorization"].removeprefix("Bearer ")
     assert (
         client.post(
             f"/api/ledgers/{target}/switch/prepare",
@@ -175,18 +178,19 @@ def test_unpair_lineage_scope_kills_promoted_replacements_but_not_unrelated_line
     )
     assert _activate(client, other_payload).status_code == 200
 
+    # The desktop unpair presents the CURRENT (promoted) session.
     response = loopback_client.post(
         f"{REVOKE_PATH}?scope=lineage",
-        headers=_bridge_headers(source_token),
+        headers=_bridge_headers(sibling_token),
     )
 
     assert response.status_code == 204, response.text
-    assert client.get("/api/auth/check", headers=headers).status_code == 401
     sibling = client.get(
         "/api/auth/check",
         headers={"Authorization": f"Bearer {sibling_token}"},
     )
     assert sibling.status_code == 401
+    assert source_row.revoked_at is not None
     unrelated = client.get(
         "/api/auth/check",
         headers={"Authorization": f"Bearer {other_body['session_token']}"},
@@ -314,3 +318,4 @@ def test_revoke_cancels_outstanding_staged_replacements(
     staged_row = _token_row(staged_value)
     assert staged_row.revoked_at is not None
     assert staged_row.grace_until is None
+

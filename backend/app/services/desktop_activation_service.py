@@ -311,10 +311,18 @@ def _supersede_predecessors(
 
     The explicit header proof plus any live app token occupying the unique
     partial index slot are revoked with the same rotation grace refresh uses.
+    A switch-staged attempt additionally names its source credential
+    (``previous_token_id`` from prepare): if that source was rotated through
+    ``/api/auth/refresh`` between prepare and activation, its live refresh
+    family (A2, A3, …) is closed atomically here — a staged switch can never
+    leave two authorized credential families alive. The unauthenticated
+    replay contract is untouched: this runs once inside the committing
+    transaction; a response-loss replay re-reads the already-committed state.
     """
 
     grace_seconds = max(get_settings().app_token_rotation_grace_seconds, 0)
     grace_until = checked_at + timedelta(seconds=grace_seconds) if grace_seconds > 0 else None
+    staged_previous_id = attempt.previous_token_id
     predecessors = db.scalars(
         select(AuthToken)
         .where(AuthToken.account_id == attempt.account_id)
@@ -346,6 +354,19 @@ def _supersede_predecessors(
         attempt.previous_token_id = (family_head or previous).id
     elif predecessors:
         attempt.previous_token_id = predecessors[0].id
+    if staged_previous_id is not None and previous is None:
+        # The switch-staged source family (prepare-time predecessor): close
+        # A's refresh descendants (A2…) alongside A, atomically with B's
+        # promotion. The header case above already closes its own family, so
+        # this only runs where no explicit predecessor proof was presented.
+        staged_previous = db.get(AuthToken, staged_previous_id)
+        if staged_previous is not None:
+            for member in family_of_token(db, token=staged_previous):
+                if member.id == staged_token.id or member.revoked_at is not None:
+                    continue
+                member.revoked_at = checked_at
+                member.grace_until = grace_until
+                superseded_ids.add(member.id)
 
 
 def _activate_staged_token(

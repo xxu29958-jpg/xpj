@@ -30,6 +30,7 @@ from app.services.ledger_service import _lock_ledger_switch_context
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import (
     derive_desktop_activation_token,
+    family_of_token,
     hash_desktop_activation_attempt_secret,
     hash_secret,
     revoke_token_value,
@@ -245,7 +246,15 @@ def revoke_desktop_app_session(
             DesktopActivationAttempt.previous_token_id == auth.credential_id,
             DesktopActivationAttempt.activated_at.is_not(None),
         )
-        kill_filter = kill_filter | AuthToken.id.in_(promoted_ids)
+        # A promoted replacement can itself have been rotated through refresh
+        # (B → B2): the teardown must take the promoted tokens' whole refresh
+        # family, or the live descendant survives unpair by its full TTL.
+        promoted_rows = db.scalars(select(AuthToken).where(AuthToken.id.in_(promoted_ids))).all()
+        family_ids: set[int] = set()
+        for promoted in promoted_rows:
+            for member in family_of_token(db, token=promoted):
+                family_ids.add(member.id)
+        kill_filter = kill_filter | AuthToken.id.in_(family_ids)
     replacement_rows = db.scalars(
         select(AuthToken)
         .where(
