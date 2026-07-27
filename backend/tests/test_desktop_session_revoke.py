@@ -8,11 +8,14 @@ here:
 - Default scope (the ledger-switch cleanup intent): retires exactly the
   presented credential plus its still-staged ``desktop_pending`` rows — the
   already-promoted successor stays alive by design, so switching ledgers
-  never suicides the session it just created.
+  never suicides the session it just created. (After a switch activation the
+  presented predecessor is typically already dead — activation closed the
+  source family — and the cleanup is a no-op 401.)
 - ``?scope=lineage`` (the unpair/teardown intent): additionally hard-revokes
   every promoted replacement whose activation receipt names the presented
-  credential as predecessor; unrelated lineages (independently-paired
-  devices) and the device itself stay untouched.
+  credential as predecessor, together with that replacement's whole refresh
+  family; unrelated lineages (independently-paired devices) and the device
+  itself stay untouched.
 - Unknown scope values are rejected with 400.
 """
 
@@ -146,9 +149,11 @@ def test_unpair_lineage_scope_kills_promoted_replacements_but_not_unrelated_line
     loopback_client: TestClient,
     client: TestClient,
 ) -> None:
-    """The teardown intent (``?scope=lineage``) kills the presented session
-    plus promoted replacements linked through the predecessor receipts;
-    an independently-paired desktop device's session survives."""
+    """The teardown intent (``?scope=lineage``) end-to-end: the presented
+    (current, post-switch) session dies and an independently-paired desktop
+    device's session survives. The promoted-replacement kill set itself —
+    including a promoted token's refresh descendants — is pinned at service
+    level in :mod:`tests.test_desktop_session_revoke_refresh_lineage`."""
     from tests.test_desktop_ledger_switch_prepare import _create_ledger
 
     # Pair + activate a desktop session, then switch it to the second ledger.

@@ -177,12 +177,21 @@ def web_import_batch_apply(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     safe_batch_size = min(max(batch_size, 1), 1000)
+    # The apply commits every row independently, so the handler-entry
+    # revalidation above cannot cover a batch mid-flight: pass the bridged
+    # desktop principal (already refreshed by _resolve_selected_ledger_id)
+    # down for per-row revalidation. Web/console sessions pass None and pay
+    # nothing.
+    desktop_session = None
+    if getattr(request.state, "web_session_platform", "") == "desktop":
+        desktop_session = getattr(request.state, "web_session_auth", None)
     try:
         applied = apply_csv_import_batch(
             db,
             tenant_id=selected_id,
             public_id=public_id,
             batch_size=safe_batch_size,
+            desktop_session=desktop_session,
         )
     except AppError as exc:
         return _web_redirect("/web/import", selected_id, msg=exc.message)

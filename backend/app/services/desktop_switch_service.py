@@ -226,8 +226,10 @@ def revoke_desktop_app_session(
 
     ``lineage=True`` (the unpair/teardown intent): additionally hard-revoke
     every already-promoted replacement whose activation receipt names the
-    presented credential as predecessor, so no proof holder keeps a 90-day
-    session after the device is de-authorized.
+    presented credential as predecessor — and each replacement's whole
+    refresh family (B → B2 …), so no rotated descendant survives either — so
+    no proof holder keeps a 90-day session after the device is
+    de-authorized.
     """
 
     if (

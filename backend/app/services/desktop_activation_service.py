@@ -314,10 +314,14 @@ def _supersede_predecessors(
     A switch-staged attempt additionally names its source credential
     (``previous_token_id`` from prepare): if that source was rotated through
     ``/api/auth/refresh`` between prepare and activation, its live refresh
-    family (A2, A3, …) is closed atomically here — a staged switch can never
-    leave two authorized credential families alive. The unauthenticated
-    replay contract is untouched: this runs once inside the committing
-    transaction; a response-loss replay re-reads the already-committed state.
+    family (A2, A3, …) is closed atomically here. Two honest limits: the
+    close is grace-based, so inside the grace window the general API surface
+    still accepts a graced A2 (exactly like a refreshed session); and when
+    activation presents an explicit predecessor header, the header family is
+    the one closed and the staged source family is left alone (the
+    ``previous is None`` guard below). The unauthenticated replay contract
+    is untouched: this runs once inside the committing transaction; a
+    response-loss replay re-reads the already-committed state.
     """
 
     grace_seconds = max(get_settings().app_token_rotation_grace_seconds, 0)
