@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
@@ -17,6 +19,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -117,9 +120,17 @@ private class FakeStatsBudgetActions(
 ) : BudgetActions {
     override fun canModifyLedger(): Boolean = true
 
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = flowOf(null)
+
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> = Result.success(budget.copy(month = month))
 
+    override suspend fun monthlyBudget(
+        expectedBinding: LogicalSessionBinding,
+        month: String,
+    ): Result<BudgetMonthly> = monthlyBudget(month)
+
     override suspend fun saveMonthlyBudget(
+        expectedBinding: LogicalSessionBinding,
         month: String,
         update: BudgetMonthlyUpdate,
     ): Result<BudgetMonthly> = Result.failure(UnsupportedOperationException())

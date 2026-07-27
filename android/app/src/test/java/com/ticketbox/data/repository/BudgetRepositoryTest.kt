@@ -32,7 +32,7 @@ class BudgetRepositoryTest {
     fun monthlyBudgetForwardsMonthTimezoneAndMapsDomain() = withTimezone("Asia/Shanghai") {
         runTest {
             val api = BudgetApiHandler()
-            val repository = repository(api)
+            val (repository) = repository(api)
 
             val result = repository.monthlyBudget(" 2026-05 ").getOrThrow()
 
@@ -47,7 +47,7 @@ class BudgetRepositoryTest {
     fun monthlyBudgetCanUseExplicitTimezone() = withTimezone("America/Los_Angeles") {
         runTest {
             val api = BudgetApiHandler()
-            val repository = repository(api)
+            val (repository) = repository(api)
 
             val result = repository.monthlyBudget("2026-05", timezone = "Asia/Shanghai")
                 .getOrThrow()
@@ -62,9 +62,10 @@ class BudgetRepositoryTest {
     fun saveMonthlyBudgetForwardsNormalizedRequest() = withTimezone("UTC") {
         runTest {
             val api = BudgetApiHandler()
-            val repository = repository(api)
+            val (repository, binding) = repository(api)
 
             val result = repository.saveMonthlyBudget(
+                binding,
                 " 2026-05 ",
                 BudgetMonthlyUpdate(
                     totalAmountCents = 300000,
@@ -94,9 +95,10 @@ class BudgetRepositoryTest {
     @Test
     fun viewerSaveShortCircuitsWithoutApiCall() = runTest {
         val api = BudgetApiHandler()
-        val repository = repository(api, role = "viewer")
+        val (repository, binding) = repository(api, role = "viewer")
 
         val result = repository.saveMonthlyBudget(
+            binding,
             "2026-05",
             BudgetMonthlyUpdate(totalAmountCents = 300000),
         )
@@ -117,9 +119,10 @@ class BudgetRepositoryTest {
                 ),
             )
         }
-        val repository = repository(api)
+        val (repository, binding) = repository(api)
 
         val result = repository.saveMonthlyBudget(
+            binding,
             "2026-05",
             BudgetMonthlyUpdate(totalAmountCents = 300000),
         )
@@ -131,7 +134,7 @@ class BudgetRepositoryTest {
     @Test
     fun invalidMonthIsRejectedBeforeApiCall() = runTest {
         val api = BudgetApiHandler()
-        val repository = repository(api)
+        val (repository) = repository(api)
 
         val result = repository.monthlyBudget("2026-13")
 
@@ -143,7 +146,7 @@ class BudgetRepositoryTest {
     private fun repository(
         handler: BudgetApiHandler,
         role: String = "owner",
-    ): BudgetRepository {
+    ): BudgetRepositoryFixture {
         val tokenStore = TestSessionFixture(
             identity = LocalSessionIdentity(
                 accountName = "我",
@@ -155,11 +158,18 @@ class BudgetRepositoryTest {
             ),
         ).apply { saveToken("session-token") }
         val apiClient = BudgetApiFactory(handler)
-        return BudgetRepository(
-            apiProvider = testApiServiceProvider(apiClient, tokenStore),
+        val provider = testApiServiceProvider(apiClient, tokenStore)
+        return BudgetRepositoryFixture(
+            repository = BudgetRepository(apiProvider = provider),
+            binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding()),
         )
     }
 }
+
+private data class BudgetRepositoryFixture(
+    val repository: BudgetRepository,
+    val binding: LogicalSessionBinding,
+)
 
 private data class MonthlyBudgetCall(val month: String, val timezone: String?)
 
