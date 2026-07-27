@@ -294,3 +294,60 @@ def test_web_recurring_confirm_retry_returns_existing_not_error(web_client: Test
             ).all()
         )
         assert len(items) == 1
+
+
+def test_confirm_retry_with_different_amount_restores_not_found_guard(
+    web_client: TestClient,
+) -> None:
+    """复审 agent-60: 已 formal 商家以不同金额重试 → 恢复 404 守卫; 同金额 → 幂等返回。"""
+    from app.errors import AppError
+    from app.schemas import RecurringCandidateConfirmRequest
+    from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
+
+    _seed_candidate()
+    with SessionLocal() as db:
+        created = confirm_recurring_candidate(
+            db,
+            tenant_id="owner",
+            payload=RecurringCandidateConfirmRequest(
+                merchant="ChatGPT Plus",
+                amount_cents=20000,
+                occurrence_count=3,
+                last_seen_at=now_utc(),
+                confidence="high",
+                frequency="monthly",
+            ),
+        )
+        db.commit()
+        # 同金额重试: 幂等返回既有项。
+        same = confirm_recurring_candidate(
+            db,
+            tenant_id="owner",
+            payload=RecurringCandidateConfirmRequest(
+                merchant="ChatGPT Plus",
+                amount_cents=20000,
+                occurrence_count=3,
+                last_seen_at=now_utc(),
+                confidence="high",
+                frequency="monthly",
+            ),
+        )
+        assert same.id == created.id
+        # 不同金额重试: 恢复候选匹配的 404 守卫, 不静默返回既有项。
+        try:
+            confirm_recurring_candidate(
+                db,
+                tenant_id="owner",
+                payload=RecurringCandidateConfirmRequest(
+                    merchant="ChatGPT Plus",
+                    amount_cents=21000,
+                    occurrence_count=3,
+                    last_seen_at=now_utc(),
+                    confidence="high",
+                    frequency="monthly",
+                ),
+            )
+            raise AssertionError("different-amount retry must not silently return the formal item")
+        except AppError as exc:
+            assert exc.error == "recurring_candidate_not_found"
+            assert exc.status_code == 404

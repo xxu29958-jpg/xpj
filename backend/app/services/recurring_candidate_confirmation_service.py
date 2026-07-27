@@ -37,13 +37,20 @@ def confirm_recurring_candidate(
 ) -> RecurringItem:
     # PR #253 R4: 候选装配已过滤 active/paused formal — 确认成功后候选自然消失,
     # 重试同一确认时走既有幂等返回 (不 404/409)。
+    # 复审 agent-60: 幂等匹配必须含金额——已 formal 商家以不同金额重试时
+    # 继续走候选匹配原路径 (恢复 404 守卫), 不静默返回既有项。
     merchant_key = normalize_merchant(payload.merchant.strip())
     frequency = _clean_frequency(payload.frequency)
     if merchant_key:
         formal = _existing_item(
             db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency
         )
-        if formal is not None and formal.status != "archived" and formal.archived_at is None:
+        if (
+            formal is not None
+            and formal.status != "archived"
+            and formal.archived_at is None
+            and int(formal.last_amount_cents) == int(payload.amount_cents)
+        ):
             return formal
     match = _require_recurring_candidate_match(
         db,
