@@ -409,6 +409,7 @@ def _render_debt_detail(
     public_id: str,
     confirm_amount_error: str | None = None,
     confirm_amount_value: str | None = None,
+    confirm_error_proposal_id: str | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     """详情页唯一渲染入口：GET 与 proposal 确认 422 原地重渲染共用 (照
@@ -450,10 +451,13 @@ def _render_debt_detail(
     ctx["currency_input"] = _currency_input_view(debt.home_currency_code)
     ctx["expected_row_version"] = debt.row_version
     # D3 表单契约：确认金额输入的字段名从共享常量注入 (路由侧以 Form(alias=...) 绑定同一常量)；
-    # confirm_amount_error/value 只在金额校验 422 原地重渲染时有值 (错误锚定到该输入)。
+    # confirm_amount_error/value 只在金额校验 422 原地重渲染时有值 (错误锚定到该输入)；
+    # confirm_error_proposal_id 把错误钉在本次提交的 proposal 上 (提交后它被处理/换了在途条目时
+    # 错误仍渲染在该提交的语境，不挂到新的在途 proposal)。
     ctx["proposal_confirm_amount_field"] = PROPOSAL_CONFIRM_AMOUNT_FIELD
     ctx["confirm_amount_error"] = confirm_amount_error
     ctx["confirm_amount_value"] = confirm_amount_value
+    ctx["confirm_error_proposal_id"] = confirm_error_proposal_id
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
     if account_id is not None:
         ctx["repayment_facts"] = _fact_rows(

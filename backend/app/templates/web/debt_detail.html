@@ -33,6 +33,11 @@
 </div>
 {# slice 2b：成员还款 proposal 状态 + 过往历史 (只读；在途一行关系状态句 + 已解决沉降，永不红) #}
 {% if proposals.pending_line or proposals.has_resolved %}
+{% if confirm_amount_error and confirm_error_proposal_id != (pending_proposal.public_id if pending_proposal else none) %}
+{# P2：金额校验 422 重渲染时,被提交的 proposal 已不在途 (被处理/换了在途条目) —— 错误锚定到
+   本次提交的 proposal 语境 (状态/过往区,被提交条目已沉在这里),不隐藏、也不挂到新的在途 proposal。 #}
+<div id="proposal-confirm-amount-error" class="callout-info callout-info--danger" role="alert" data-proposal-public-id="{{ confirm_error_proposal_id }}">{{ confirm_amount_error }}</div>
+{% endif %}
 {% if proposals.pending_line %}
 <div class="debt-proposal-status">{{ proposals.pending_line }}</div>
 {% endif %}
@@ -252,17 +257,19 @@
   {% if pending_proposal %}
   <div class="debt-pending-actions">
     {% if viewer_is_debtor == false %}
+    {% set error_on_this_pending = confirm_amount_error and confirm_error_proposal_id == pending_proposal.public_id %}
     <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/confirm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_confirm }}">
       <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
-      {% if confirm_amount_error %}
-      {# 金额校验 422 原地重渲染：错误锚定到确认金额输入 (role=alert + aria 双锚)，不漂成顶部泛提示。 #}
-      <div id="proposal-confirm-amount-error" class="callout-info callout-info--danger" role="alert">{{ confirm_amount_error }}</div>
+      {% if error_on_this_pending %}
+      {# 金额校验 422 原地重渲染：错误锚定到确认金额输入 (role=alert + aria 双锚)，不漂成顶部泛提示；
+         仅当错误属于这条在途 proposal 时才挂在它的表单上 (P2,见上方 proposal 语境兜底块)。 #}
+      <div id="proposal-confirm-amount-error" class="callout-info callout-info--danger" role="alert" data-proposal-public-id="{{ confirm_error_proposal_id }}">{{ confirm_amount_error }}</div>
       {% endif %}
       {# D3 契约：字段名由服务端从 PROPOSAL_CONFIRM_AMOUNT_FIELD 注入，与路由 Form(alias=) 绑定同源。 #}
-      <input class="dt-input" name="{{ proposal_confirm_amount_field }}" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ confirm_amount_value or pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）"{% if confirm_amount_error %} aria-invalid="true" aria-describedby="proposal-confirm-amount-error"{% endif %}>
+      <input class="dt-input" name="{{ proposal_confirm_amount_field }}" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ confirm_amount_value if error_on_this_pending else pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）"{% if error_on_this_pending %} aria-invalid="true" aria-describedby="proposal-confirm-amount-error"{% endif %}>
       <button class="dt-btn primary" type="submit">确认到账</button>
     </form>
     <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/reject">

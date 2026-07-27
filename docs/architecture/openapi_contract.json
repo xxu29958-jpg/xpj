@@ -1477,6 +1477,12 @@
       },
       "Body_web_confirm_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__confirm_post": {
         "properties": {
+          "amount_major": {
+            "default": "",
+            "deprecated": true,
+            "title": "Amount Major",
+            "type": "string"
+          },
           "confirmed_amount_major": {
             "default": "",
             "title": "Confirmed Amount Major",

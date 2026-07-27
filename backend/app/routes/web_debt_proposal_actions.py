@@ -10,7 +10,10 @@ from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_debt_write import PROPOSAL_CONFIRM_AMOUNT_FIELD
+from app.routes._web_debt_write import (
+    PROPOSAL_CONFIRM_AMOUNT_FIELD,
+    PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY,
+)
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -186,6 +189,13 @@ def _parse_confirmed_amount(raw: str, *, currency_code: str) -> int | None:
     )
 
 
+def _confirm_amount_raw(confirmed_amount_major: str, legacy_amount_major: str) -> str:
+    """N-1 字段优先级：新字段 ``confirmed_amount_major`` 非空优先；空则回退旧字段
+    ``amount_major`` (D3 修复前路由误读的名字，旧客户端仍按它提交)；两者皆空返回空串，
+    由 ``_parse_confirmed_amount`` 的显式空串分支按对方申报全额处理。"""
+    return (confirmed_amount_major or "").strip() or (legacy_amount_major or "").strip()
+
+
 def _confirm_amount_error_rerender(
     request: Request,
     db: Session,
@@ -193,11 +203,14 @@ def _confirm_amount_error_rerender(
     options,
     selected_id: str,
     public_id: str,
+    proposal_public_id: str,
     exc: AppError,
     attempted: str,
 ) -> HTMLResponse:
     """金额事实门禁：非法金额输入 → 422 原地重渲染 (照 web_repayment_drafts 同页范式)，
-    错误锚定到确认金额输入，什么都不写 (不落 redirect-flash 让用户误以为操作已生效)。"""
+    错误锚定到确认金额输入，什么都不写 (不落 redirect-flash 让用户误以为操作已生效)。
+    ``proposal_public_id`` 把错误钉在**本次提交**的 proposal 语境上：提交后在途 proposal
+    被处理/换了一条时，错误仍渲染在被提交的 proposal 区域，不隐藏也不挂到新的在途条目。"""
     db.rollback()
     return _render_debt_detail(
         request,
@@ -207,6 +220,7 @@ def _confirm_amount_error_rerender(
         public_id=public_id,
         confirm_amount_error=_proposal_error_message(exc),
         confirm_amount_value=attempted,
+        confirm_error_proposal_id=proposal_public_id,
         status_code=422,
     )
 
@@ -235,6 +249,8 @@ def web_confirm_repayment_proposal(
     ledger_id: str = Form(default=""),
     # D3：字段名绑定共享契约常量 (模板侧也从同一常量渲染)，不再是第二个字面量。
     confirmed_amount_major: str = Form(default="", alias=PROPOSAL_CONFIRM_AMOUNT_FIELD),
+    # N-1 兼容：D3 前路由误读的旧字段名仍接受 (新字段非空时忽略)，schema 标记 deprecated。
+    amount_major: str = Form(default="", alias=PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY, deprecated=True),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     csrf_token: str = Form(default=""),
@@ -267,9 +283,10 @@ def web_confirm_repayment_proposal(
         )
     except AppError as exc:
         return _confirm_business_error_redirect(public_id, selected_id, exc)
+    attempted_amount = _confirm_amount_raw(confirmed_amount_major, amount_major)
     try:
         confirmed_amount = _parse_confirmed_amount(
-            confirmed_amount_major,
+            attempted_amount,
             currency_code=debt.home_currency_code,
         )
     except AppError as exc:
@@ -279,8 +296,9 @@ def web_confirm_repayment_proposal(
             options=options,
             selected_id=selected_id,
             public_id=public_id,
+            proposal_public_id=proposal_public_id,
             exc=exc,
-            attempted=confirmed_amount_major,
+            attempted=attempted_amount,
         )
     try:
         confirm_repayment_proposal_idempotently(

@@ -44,6 +44,9 @@ _PROPOSAL_DATE_PARTIAL = "{} 收了一部分"
 # 注入上下文渲染，路由侧由 ``web_debt_proposal_actions`` 以 ``Form(alias=...)`` 绑定——
 # 两侧消费同一个常量而非各自写字面量，任一侧漂移都会被契约测试钉住。
 PROPOSAL_CONFIRM_AMOUNT_FIELD = "confirmed_amount_major"
+# N-1 兼容：D3 修复前路由误读的旧字段名。旧客户端/旧页面仍按它提交时不得静默丢金额
+# (新字段非空优先，旧字段兜底，两者皆空按申报全额)；路由侧同样以 Form(alias=...) 绑定本常量。
+PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY = "amount_major"
 
 
 def _day_label(value) -> str:
