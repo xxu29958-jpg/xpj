@@ -1,17 +1,13 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.BudgetAdviseRequestDto
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
 import java.time.YearMonth
 import java.util.TimeZone
 
@@ -56,23 +52,9 @@ class BudgetRepository(
         statusMessages = mapOf(404 to "预算不存在。"),
     )
 
-    /** Guards [adviceInFlight] / [adviceLastSuccess] / [adviceDataGeneration];
-     *  a plain monitor because every critical section below is non-suspending
-     *  map I/O — that keeps [invalidateBudgetAdvice] callable from non-suspend
-     *  refresh callbacks. Both maps are in-memory only — process-lifetime,
-     *  never persisted (the advice round-trip persists nothing on device, see
-     *  BudgetAdviseDto). Keys are (logical session binding, month, request
-     *  timezone, data generation): the binding carries server/account/ledger/
-     *  generation, so an unbind + re-pair to a different household — even one
-     *  whose ledger id is also "owner" — can never be served another binding's
-     *  result; the timezone matches what the request sends (device ZoneId), so
-     *  a device timezone change can never restore another zone's totals; and
-     *  the generation is bumped by [invalidateBudgetAdvice], so a pre-write
-     *  in-flight call can neither be re-attached nor repopulate the cache. */
-    private val adviceCacheLock = Any()
-    private val adviceInFlight = mutableMapOf<AdviceRequestKey, CompletableDeferred<Result<BudgetAdviceResult>>>()
-    private val adviceLastSuccess = mutableMapOf<AdviceRequestKey, BudgetAdviceResult>()
-    private var adviceDataGeneration = 0
+    /** In-flight dedupe + process-lifetime advice cache + freshness tracking —
+     *  extracted to [BudgetAdviceCallStore] (per-class function cap). */
+    private val adviceCallStore = BudgetAdviceCallStore(ledgerRequestGuard, errorHandler)
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
@@ -116,104 +98,29 @@ class BudgetRepository(
         val cleanMonth = validatedMonth(month)
             .getOrElse { return Result.failure(it) }
         // 218-B4 review: each live call is quota-counted server-side the moment
-        // it starts, so concurrent callers (e.g. a reopened route while the
-        // first call is still in flight) must attach to ONE in-flight call
-        // instead of spending a second reservation. ONE logical-binding
-        // snapshot is captured up front and scopes both the dedupe/cache key
-        // and the execution (bindExact re-validates it around the call).
+        // it starts. ONE logical-binding snapshot is captured up front and
+        // scopes both the dedupe/cache key and the execution (the store's
+        // bindExact re-validates it around the call).
         val binding = ledgerRequestGuard.captureLogicalBinding()
             ?: return Result.failure(RepositoryException("登录状态已失效，请重新绑定。"))
-        // One key capture per request: same timezone value keys the maps and
-        // rides the wire (BudgetAdviseRequestDto.timezone); same data
-        // generation decides attach eligibility, atomically with the dedupe.
-        val (key, deferred, isOwner) = synchronized(adviceCacheLock) {
-            val key = AdviceRequestKey(
-                binding = binding,
-                month = cleanMonth,
-                timezone = currentTimezoneId(),
-                dataGeneration = adviceDataGeneration,
-            )
-            val existing = adviceInFlight[key]
-            if (existing != null) {
-                Triple(key, existing, false)
-            } else {
-                val created = CompletableDeferred<Result<BudgetAdviceResult>>()
-                adviceInFlight[key] = created
-                Triple(key, created, true)
-            }
-        }
-        if (!isOwner) return deferred.await()
-        return runAdviceCall(key, deferred, cleanMonth)
-    }
-
-    private suspend fun runAdviceCall(
-        key: AdviceRequestKey,
-        deferred: CompletableDeferred<Result<BudgetAdviceResult>>,
-        month: String,
-    ): Result<BudgetAdviceResult> = withContext(NonCancellable) {
-        // NonCancellable: the page-scoped VM dies on route exit (viewModelScope
-        // cancelled) while the backend may already have reserved the call.
-        // Running to completion lets attached callers and the last-success
-        // cache still observe the result instead of forcing a second call.
-        val result = errorHandler.safeCall {
-            ledgerRequestGuard.bindExact(key.binding).call { api ->
-                api.budgetAdvise(
-                    BudgetAdviseRequestDto(
-                        month = month,
-                        timezone = key.timezone,
-                    ),
-                ).toDomain()
-            }
-        }
-        synchronized(adviceCacheLock) {
-            // Only a real advice payload is cached: a null-advice result (e.g.
-            // provider_empty) must never be restored, or a later operator-side
-            // fix would stay invisible behind the cached terminal state. And a
-            // call that started BEFORE an advice-input write (stale generation)
-            // may still deliver to its attached callers, but must not
-            // repopulate the cache with pre-write advice.
-            result.getOrNull()
-                ?.takeIf { it.advice != null && key.dataGeneration == adviceDataGeneration }
-                ?.let { adviceLastSuccess[key] = it }
-            adviceInFlight.remove(key)
-        }
-        deferred.complete(result)
-        result
+        return adviceCallStore.attachOrRequest(binding, cleanMonth)
     }
 
     /** Process-lifetime last-successful advice for [month] under the CURRENT
-     *  logical session binding, request timezone and data generation, written
-     *  only on a success that carries an actual advice payload — failures and
-     *  null-advice results leave the cache absent. Nothing is persisted; an
-     *  app restart simply starts cold. The binding is part of the lookup key,
-     *  so a re-paired household never sees a previous binding's entry. */
+     *  logical session binding — see [BudgetAdviceCallStore.cached]. */
     override suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? {
         val cleanMonth = validatedMonth(month)
             .getOrElse { return null }
         val binding = ledgerRequestGuard.captureLogicalBinding() ?: return null
-        return synchronized(adviceCacheLock) {
-            adviceLastSuccess[
-                AdviceRequestKey(
-                    binding = binding,
-                    month = cleanMonth,
-                    timezone = currentTimezoneId(),
-                    dataGeneration = adviceDataGeneration,
-                ),
-            ]
-        }
+        return adviceCallStore.cached(binding, cleanMonth)
     }
 
-    override fun invalidateBudgetAdvice() {
-        synchronized(adviceCacheLock) {
-            // Bump the generation so pre-write in-flight calls can neither be
-            // re-attached nor write the cache on completion, then drop the now
-            // unreachable entries. Attached collectors keep their deferred and
-            // still observe their own (stale) result — that delivery is fine.
-            adviceDataGeneration += 1
-            adviceLastSuccess.clear()
-            adviceInFlight.clear()
-        }
-    }
+    override fun invalidateBudgetAdvice() = adviceCallStore.invalidate()
+
+    /** Freshness sink for server-delivered advice inputs — see
+     *  [BudgetAdviceCallStore.noteAdviceInputSnapshot]. */
+    fun noteAdviceInputSnapshot(source: String, stamp: String) =
+        adviceCallStore.noteAdviceInputSnapshot(source, stamp)
 
     override suspend fun saveMonthlyBudget(
         month: String,
@@ -237,13 +144,6 @@ class BudgetRepository(
 
     private fun currentTimezoneId(): String = TimeZone.getDefault().id
 }
-
-private data class AdviceRequestKey(
-    val binding: LogicalSessionBinding,
-    val month: String,
-    val timezone: String,
-    val dataGeneration: Int,
-)
 
 private val MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
 

@@ -6,6 +6,9 @@ import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.local.LegacySessionProjectionPreferences
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
+import com.ticketbox.data.repository.ADVICE_INPUT_CONFIRMED_EXPENSES
+import com.ticketbox.data.repository.ADVICE_INPUT_INCOME_PLANS
+import com.ticketbox.data.repository.ADVICE_INPUT_RECURRING_ITEMS
 import com.ticketbox.data.repository.AcknowledgeItemsMismatchDispatcher
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
@@ -292,6 +295,22 @@ class AppContainer(context: Context) {
         // checkAfterConfirmedWrite 自身 fire-and-forget，不阻塞确认链路。
         expenseRepository.onConfirmedCommitted = { ledgerId ->
             budgetOverspendChecker.checkAfterConfirmedWrite(ledgerId)
+        }
+        // 218-B4 review: server-side advice inputs (confirmed-expense aggregates,
+        // income plans, recurring items — _inputs_builder.py) can change on ANOTHER
+        // family device; the refresh seams above deliver a cheap stamp of each
+        // applied server snapshot, and the advice cache is invalidated only when
+        // a stamp actually CHANGES (a no-op refresh preserves the cache and
+        // spends zero live-advisor calls on reopen).
+        val adviceFreshness = repositories.budgetRepository
+        expenseRepository.onFullConfirmedSyncSnapshot = { stamp ->
+            adviceFreshness.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, stamp)
+        }
+        recurringRepository.onFullItemsSnapshot = { stamp ->
+            adviceFreshness.noteAdviceInputSnapshot(ADVICE_INPUT_RECURRING_ITEMS, stamp)
+        }
+        incomePlanRepository.onActivePlansSnapshot = { stamp ->
+            adviceFreshness.noteAdviceInputSnapshot(ADVICE_INPUT_INCOME_PLANS, stamp)
         }
     }
 }

@@ -276,6 +276,47 @@ class BudgetRepositoryTest {
  *  unbind + re-pair. Separate class to stay under the per-class function cap. */
 class BudgetRepositoryAdviceBindingTest {
     @Test
+    fun changedAdviceInputStampInvalidatesCache() = runTest {
+        val api = BudgetApiHandler()
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val repository = repository(api, tokenStore)
+
+        repository.requestBudgetAdvice("2026-05").getOrThrow()
+        // First delivery of a source's stamp cannot prove the cache predates
+        // the server state — it invalidates conservatively.
+        repository.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=10;rv=7;ua=t1")
+        assertNull(repository.cachedBudgetAdvice("2026-05"))
+
+        // Re-cache, then a CHANGED server snapshot (e.g. another family device
+        // wrote, and a refresh delivered it) invalidates again — a reopen must
+        // refetch rather than serve pre-change advice.
+        repository.requestBudgetAdvice("2026-05").getOrThrow()
+        repository.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=11;rv=8;ua=t2")
+
+        assertNull(repository.cachedBudgetAdvice("2026-05"))
+        repository.requestBudgetAdvice("2026-05").getOrThrow()
+        assertEquals(3, api.adviceCalls.size)
+    }
+
+    @Test
+    fun identicalAdviceInputStampPreservesCache() = runTest {
+        val api = BudgetApiHandler()
+        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val repository = repository(api, tokenStore)
+
+        val advice = repository.requestBudgetAdvice("2026-05").getOrThrow()
+        repository.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=10;rv=7;ua=t1")
+        repository.requestBudgetAdvice("2026-05").getOrThrow()
+
+        // A no-op refresh re-delivers the SAME stamp — the cache survives and
+        // reopening spends no additional live-advisor call.
+        repository.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=10;rv=7;ua=t1")
+
+        assertEquals(advice, repository.cachedBudgetAdvice("2026-05"))
+        assertEquals(2, api.adviceCalls.size)
+    }
+
+    @Test
     fun adviceInputWriteInvalidatesCache() = runTest {
         val api = BudgetApiHandler()
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }

@@ -56,7 +56,23 @@ class RecurringRepository(
                     timezone = currentTimezoneId(),
                 ).items.map { it.toDomain() }
             }
+        }.onSuccess { items ->
+            // Only the unfiltered full-ledger refresh (the Plan overview's)
+            // delivers the set the advisor consumes; filtered fetches would
+            // fingerprint a different set and flap. Fire-and-forget seam, var
+            // per the onConfirmedCommitted precedent (constructor baseline).
+            if (status == null && month == null && includeArchived) {
+                onFullItemsSnapshot(
+                    "n=${items.size};" +
+                        "rv=${items.maxOfOrNull(RecurringItem::rowVersion) ?: 0};" +
+                        "ua=${items.maxOfOrNull(RecurringItem::updatedAt).orEmpty()}",
+                )
+            }
         }
+
+    /** Fired with a cheap stable stamp after each unfiltered full-ledger items
+     *  refresh. Wired in AppContainer to the budget-advice freshness sink. */
+    var onFullItemsSnapshot: (stamp: String) -> Unit = {}
 
     override suspend fun candidates(): Result<List<RecurringCandidate>> =
         errorHandler.safeCall {
