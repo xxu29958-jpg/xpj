@@ -37,9 +37,12 @@ data class BudgetAdviceUiState(
     val result: BudgetAdviceResult? = null,
     val error: UiText? = null,
 
-    /** Backend error code that produced a terminal [BudgetAdviceLoadState.Unavailable]
-     *  from a failed request, so a later capability increase (member→owner)
-     *  can tell a role-gated terminal apart from a config/data one. */
+    /** Backend error/reason code that produced a terminal
+     *  [BudgetAdviceLoadState.Unavailable] — from a failed request
+     *  (owner_required etc.) or from a null-advice reason_code
+     *  (provider_empty / payload_invalid) — so capability and invalidation
+     *  observers can tell role-gated / data-premise terminals apart from
+     *  config truth. */
     val terminalErrorCode: String? = null,
 )
 
@@ -75,23 +78,35 @@ class BudgetAdviceViewModel(
     private fun observeAdviceInvalidations() {
         // The Plan back stack preserves this VM across domain switches, so a
         // write that invalidated the advice cache elsewhere must also drop the
-        // still-displayed result it was computed from. Only a Ready result is
-        // affected: terminal states are config truth (invalidation changes no
-        // config), in-flight requests are Loading (round-8 generation owns
-        // their lifecycle), and no refetch is fired — the user taps 生成 again.
+        // still-displayed result it was computed from. Two states retire:
+        //  - Ready (its data is stale),
+        //  - the payload_invalid terminal (its premise "same month + unchanged
+        //    data reproduces the failure" dies with the write).
+        // Every OTHER terminal is config/quota truth (provider_empty,
+        // owner_required, not_confirmed, daily_limit_exceeded) and survives;
+        // in-flight requests are Loading (round-8/14 generation guards own
+        // their lifecycle); no refetch is fired — the user taps 生成 again.
         viewModelScope.launch {
             repository.adviceInvalidations.collect { generation ->
                 val displayedAt = displayedResultGeneration
                 displayedResultGeneration = generation
                 if (displayedAt != null && generation > displayedAt) {
                     _state.update { current ->
-                        if (current.loadState != BudgetAdviceLoadState.Ready) {
-                            return@update current
+                        when {
+                            current.loadState == BudgetAdviceLoadState.Ready ->
+                                current.copy(
+                                    loadState = BudgetAdviceLoadState.Idle,
+                                    result = null,
+                                )
+                            current.loadState == BudgetAdviceLoadState.Unavailable &&
+                                current.terminalErrorCode == PAYLOAD_INVALID_REASON ->
+                                current.copy(
+                                    loadState = BudgetAdviceLoadState.Idle,
+                                    error = null,
+                                    terminalErrorCode = null,
+                                )
+                            else -> current
                         }
-                        current.copy(
-                            loadState = BudgetAdviceLoadState.Idle,
-                            result = null,
-                        )
                     }
                 }
             }
@@ -246,11 +261,7 @@ class BudgetAdviceViewModel(
         // month + unchanged data rejects again). Everything else retryable or
         // Empty per below.
         val reasonCode = result.reasonCode?.trim()
-        val terminalBody = when (reasonCode) {
-            PROVIDER_DISABLED_REASON -> UiText.res(R.string.budget_advice_unavailable_body)
-            PAYLOAD_INVALID_REASON -> UiText.res(R.string.budget_advice_payload_invalid_body)
-            else -> null
-        }
+        val terminalBody = terminalBodyFor(reasonCode)
         val terminal = result.advice == null && terminalBody != null
         // Transient live-provider call/parse failures arrive as a 200 with
         // advice == null (last_error_code overrides the default reason), not as
@@ -278,7 +289,10 @@ class BudgetAdviceViewModel(
                 transientCallFailure -> UiText.res(R.string.budget_advice_load_failed)
                 else -> null
             },
-            terminalErrorCode = null,
+            // Record the reason that produced a SUCCESS-path terminal too —
+            // the invalidation collector retires payload_invalid specifically
+            // (its "unchanged data" premise), never the config terminals.
+            terminalErrorCode = if (terminal) reasonCode else null,
         )
     }
 
@@ -301,14 +315,6 @@ class BudgetAdviceViewModel(
     }
 
     private companion object {
-        const val PROVIDER_DISABLED_REASON = "ai_advisor_provider_empty"
-
-        /** The fail-closed outbound-schema guard (_runner.py:72) rejects the
-         *  locally built payload BEFORE the provider call, so the same month
-         *  with unchanged data fails deterministically — terminal, never
-         *  retryable. */
-        const val PAYLOAD_INVALID_REASON = "ai_advisor_payload_invalid"
-
         /** Null-advice reason codes that mean a transient live-provider failure
          *  (retry may succeed): the `openai_compat` `last_error_code` values at
          *  backend/app/services/budget_advisor_service/_providers.py:161-180.
@@ -342,4 +348,22 @@ class BudgetAdviceViewModel(
             "ai_advisor_owner_required",
         )
     }
+}
+
+/** The only genuinely-disabled provider code (non-live provider — retrying
+ *  cannot succeed until the server is configured). */
+private const val PROVIDER_DISABLED_REASON = "ai_advisor_provider_empty"
+
+/** The fail-closed outbound-schema guard (_runner.py:72) rejects the locally
+ *  built payload BEFORE the provider call, so the same month with unchanged
+ *  data fails deterministically — terminal, never retryable; but an input
+ *  write retires it (its premise was unchanged data). */
+private const val PAYLOAD_INVALID_REASON = "ai_advisor_payload_invalid"
+
+/** Maps a terminal null-advice reason_code to its body copy, or null when the
+ *  reason is not terminal. Kept out of `adviceLoaded` (cyclomatic cap). */
+private fun terminalBodyFor(reasonCode: String?): UiText? = when (reasonCode) {
+    PROVIDER_DISABLED_REASON -> UiText.res(R.string.budget_advice_unavailable_body)
+    PAYLOAD_INVALID_REASON -> UiText.res(R.string.budget_advice_payload_invalid_body)
+    else -> null
 }

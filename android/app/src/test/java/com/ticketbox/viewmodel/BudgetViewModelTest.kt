@@ -939,6 +939,58 @@ class BudgetAdviceInvalidationTest {
         assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
         assertNull(state.result)
     }
+
+    @Test
+    fun payloadInvalidTerminalRetiresOnInvalidation() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(
+                    advice = null,
+                    providerName = "live",
+                    reasonCode = "ai_advisor_payload_invalid",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // The terminal's premise was "same month + unchanged data"; an input
+        // write destroys it, so the page re-offers generation (no auto-call).
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertNull(state.error)
+        assertNull(state.terminalErrorCode)
+        assertEquals(1, fake.adviceMonths.size)
+    }
+
+    @Test
+    fun ownerRequiredTerminalSurvivesInvalidation() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "只有账本拥有者可以调用外部 AI 预算建议。",
+                    errorCode = "ai_advisor_owner_required",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // Permission truth is unaffected by input data.
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+    }
 }
 
 /** Pins the advice VM to a fixed month: production resolves the request month
