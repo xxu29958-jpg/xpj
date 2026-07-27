@@ -7,7 +7,11 @@ import re
 
 from ci_gap_shell import shell_tokens
 from ci_gap_trigger_scope import CI_HEAVY_SCOPES
-from ci_gap_workflow_conditions import allows_failure
+from ci_gap_workflow_conditions import (
+    GITHUB_TERMINAL_JOBS,
+    GithubTerminalContract,
+    allows_failure,
+)
 
 HEAVY_JOB_SCOPES = frozenset(CI_HEAVY_SCOPES)
 _GITHUB_SCOPE_OUTPUTS = {
@@ -21,6 +25,20 @@ _GITHUB_SCOPE_OUTPUTS["qualification_source_sha"] = (
 _GITHUB_SCOPE_OUTPUTS["audit_base_sha"] = (
     "${{ steps.qualification.outputs.audit_base_sha }}"
 )
+_GITHUB_ANDROID_SCOPE_OUTPUTS = {
+    "android": "${{ steps.scope.outputs.android }}",
+    "qualification_sha": "${{ steps.qualification.outputs.sha }}",
+    "qualification_source_sha": "${{ steps.qualification.outputs.source_sha }}",
+}
+_GITHUB_SCOPE_CONTRACTS = {
+    "ci.yml": ("CI scope", _GITHUB_SCOPE_OUTPUTS, True),
+    "codeql.yml": ("CodeQL scope", _GITHUB_ANDROID_SCOPE_OUTPUTS, False),
+    "android-connected-test.yml": (
+        "Connected scope",
+        _GITHUB_ANDROID_SCOPE_OUTPUTS,
+        False,
+    ),
+}
 _GITEA_SCOPE_OUTPUTS = {
     scope: f"${{{{ steps.scope.outputs.{scope} }}}}" for scope in HEAVY_JOB_SCOPES
 }
@@ -78,39 +96,6 @@ _GITHUB_QUALIFICATION_ENV = {
         "github.event.before || '' }}"
     ),
 }
-_REQUIRED_GATE_JOB = "backend"
-_REQUIRED_GATE_NEEDS = (
-    "scope",
-    "backend_contracts",
-    "backend_frozen",
-    "windows_packaging",
-)
-_REQUIRED_GATE_ENV = {
-    "SCOPE_RESULT": "${{ needs.scope.result }}",
-    "BACKEND_FROZEN_SCOPE": "${{ needs.scope.outputs.backend_frozen }}",
-    "WINDOWS_SCOPE": "${{ needs.scope.outputs.windows }}",
-    "BACKEND_CONTRACTS_RESULT": "${{ needs.backend_contracts.result }}",
-    "BACKEND_FROZEN_RESULT": "${{ needs.backend_frozen.result }}",
-    "WINDOWS_PACKAGING_RESULT": "${{ needs.windows_packaging.result }}",
-    "EXPECTED_SHA": "${{ github.sha }}",
-    "EXPECTED_SOURCE_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
-    "AGGREGATOR_SHA": "${{ steps.qualification.outputs.sha }}",
-    "AGGREGATOR_SOURCE_SHA": "${{ steps.qualification.outputs.source_sha }}",
-    "SCOPE_SHA": "${{ needs.scope.outputs.qualification_sha }}",
-    "SCOPE_SOURCE_SHA": "${{ needs.scope.outputs.qualification_source_sha }}",
-    "BACKEND_CONTRACTS_SHA": "${{ needs.backend_contracts.outputs.qualification_sha }}",
-    "BACKEND_CONTRACTS_SOURCE_SHA": "${{ needs.backend_contracts.outputs.qualification_source_sha }}",
-    "BACKEND_FROZEN_SHA": "${{ needs.backend_frozen.outputs.qualification_sha }}",
-    "BACKEND_FROZEN_SOURCE_SHA": "${{ needs.backend_frozen.outputs.qualification_source_sha }}",
-    "WINDOWS_PACKAGING_SHA": "${{ needs.windows_packaging.outputs.qualification_sha }}",
-    "WINDOWS_PACKAGING_SOURCE_SHA": "${{ needs.windows_packaging.outputs.qualification_source_sha }}",
-}
-_REQUIRED_GATE_ARGS = (
-    "python",
-    "-E",
-    "-S",
-    "backend/scripts/verify_backend_ci_results.py",
-)
 
 
 def job_needs(raw_job: dict[object, object]) -> tuple[str, ...] | None:
@@ -180,18 +165,34 @@ def _step_execution_shape_is_plain(
     )
 
 
-def _github_qualification_step_is_valid(raw_step: object) -> bool:
+def _github_qualification_step_is_valid(
+    raw_step: object,
+    *,
+    resolves_audit_base: bool,
+    expected_shell: str | None = None,
+    expected_working_directory: str | None = None,
+) -> bool:
+    expected_environment = (
+        _GITHUB_QUALIFICATION_ENV
+        if resolves_audit_base
+        else {
+            "EXPECTED_SHA": "${{ github.sha }}",
+            "SOURCE_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        }
+    )
     return (
         isinstance(raw_step, dict)
         and raw_step.get("name") == "Verify qualification SHA"
         and raw_step.get("id") == "qualification"
-        and raw_step.get("env") == _GITHUB_QUALIFICATION_ENV
+        and raw_step.get("shell") == expected_shell
+        and raw_step.get("working-directory") == expected_working_directory
+        and raw_step.get("timeout-minutes") is None
+        and raw_step.get("env") == expected_environment
         and raw_step.get("if") in {None, True}
         and not allows_failure(raw_step.get("continue-on-error"))
-        and _step_execution_shape_is_plain(raw_step, allow_env=True)
         and _qualification_command_is_valid(
             raw_step.get("run"),
-            resolves_audit_base=True,
+            resolves_audit_base=resolves_audit_base,
         )
     )
 
@@ -213,8 +214,12 @@ def _github_scope_job_is_valid(
     workflow: dict[object, object],
     jobs: dict[object, object],
 ) -> bool:
-    if ".github" not in path.parts or path.name != "ci.yml":
+    if ".github" not in path.parts:
         return False
+    contract = _GITHUB_SCOPE_CONTRACTS.get(path.name)
+    if contract is None:
+        return False
+    expected_name, expected_outputs, resolves_audit_base = contract
     raw_job = jobs.get("scope")
     if (
         not isinstance(raw_job, dict)
@@ -223,10 +228,10 @@ def _github_scope_job_is_valid(
         or job_needs(raw_job) != ()
         or raw_job.get("if") not in {None, True}
         or allows_failure(raw_job.get("continue-on-error"))
-        or raw_job.get("name") != "CI scope"
+        or raw_job.get("name") != expected_name
         or raw_job.get("runs-on") != "ubuntu-latest"
         or raw_job.get("timeout-minutes") != 5
-        or raw_job.get("outputs") != _GITHUB_SCOPE_OUTPUTS
+        or raw_job.get("outputs") != expected_outputs
     ):
         return False
     steps = raw_job.get("steps")
@@ -252,7 +257,10 @@ def _github_scope_job_is_valid(
     return (
         checkout_is_complete
         and setup_is_complete
-        and _github_qualification_step_is_valid(qualification)
+        and _github_qualification_step_is_valid(
+            qualification,
+            resolves_audit_base=resolves_audit_base,
+        )
         and _github_scope_resolver_step_is_valid(resolver)
     )
 
@@ -325,77 +333,122 @@ def _scoped_job_name(raw_job: dict[object, object]) -> str | None:
     return match.group(2)
 
 
-def _required_gate_is_valid(
-    workflow: dict[object, object],
-    jobs: dict[object, object],
+def _terminal_gate_consumes_dependency(
+    raw_job: dict[object, object],
+    dependency: str,
+    contract: GithubTerminalContract,
 ) -> bool:
-    raw_job = jobs.get(_REQUIRED_GATE_JOB)
-    if (
-        not isinstance(raw_job, dict)
-        or not _workflow_execution_shape_is_plain(workflow)
-        or not _job_execution_shape_is_plain(raw_job)
-        or raw_job.get("name") != "Backend"
-        or job_needs(raw_job) != _REQUIRED_GATE_NEEDS
-        or _expression_text(raw_job.get("if")) != "always()"
-        or allows_failure(raw_job.get("continue-on-error"))
-        or raw_job.get("runs-on") != "ubuntu-latest"
-        or raw_job.get("timeout-minutes") != 5
-        or any(
-            not isinstance(jobs.get(dependency), dict)
-            for dependency in _REQUIRED_GATE_NEEDS
+    if dependency not in dict(contract.lane_bindings):
+        return False
+    for step in raw_job.get("steps", []):
+        if (
+            not isinstance(step, dict)
+            or step.get("if") not in {None, True}
+            or step.get("shell") != contract.shell
+            or allows_failure(step.get("continue-on-error"))
+            or not _step_execution_shape_is_plain(step, allow_env=True)
+        ):
+            continue
+        if (
+            step.get("env") == contract.environment()
+            and shell_tokens(str(step.get("run", ""))) == contract.command
+        ):
+            return True
+    return False
+
+
+def _job_has_qualification_output_producer(
+    raw_job: dict[object, object],
+    contract: GithubTerminalContract,
+) -> bool:
+    producers = [
+        step
+        for step in raw_job.get("steps", [])
+        if _github_qualification_step_is_valid(
+            step,
+            resolves_audit_base=False,
+            expected_shell=contract.qualification_shell,
+            expected_working_directory=contract.qualification_working_directory,
         )
+    ]
+    return len(producers) == 1
+
+
+def _self_terminal_enforces_scope(
+    raw_job: dict[object, object],
+    contract: GithubTerminalContract,
+) -> bool:
+    if any(
+        raw_job.get(field) is not None
+        for field in ("env", "container", "services", "strategy")
+    ) or raw_job.get("defaults") != contract.job_defaults() or not (
+        _job_has_qualification_output_producer(raw_job, contract)
     ):
         return False
-    steps = raw_job.get("steps")
-    if not isinstance(steps, list) or len(steps) < 4:
-        return False
-    checkout, setup_python, qualification, step = steps[:4]
-    return (
-        isinstance(checkout, dict)
-        and _CHECKOUT_ACTION.fullmatch(str(checkout.get("uses", ""))) is not None
-        and checkout.get("if") in {None, True}
-        and not allows_failure(checkout.get("continue-on-error"))
-        and _step_execution_shape_is_plain(checkout)
-        and isinstance(setup_python, dict)
-        and _SETUP_PYTHON_ACTION.fullmatch(str(setup_python.get("uses", ""))) is not None
-        and setup_python.get("with") == {"python-version": "3.11"}
-        and setup_python.get("if") in {None, True}
-        and not allows_failure(setup_python.get("continue-on-error"))
-        and _step_execution_shape_is_plain(setup_python)
-        and isinstance(qualification, dict)
-        and qualification.get("name") == "Verify qualification SHA"
-        and qualification.get("id") == "qualification"
-        and qualification.get("env")
-        == {
-            "EXPECTED_SHA": "${{ github.sha }}",
-            "SOURCE_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
-        }
-        and qualification.get("if") in {None, True}
-        and not allows_failure(qualification.get("continue-on-error"))
-        and _step_execution_shape_is_plain(qualification, allow_env=True)
-        and _qualification_command_is_valid(qualification.get("run"))
-        and isinstance(step, dict)
-        and step.get("name") == "Enforce required CI results"
-        and step.get("if") in {None, True}
+    gates = [
+        step
+        for step in raw_job.get("steps", [])
+        if isinstance(step, dict)
+        and _expression_text(step.get("if")) == "always() && !cancelled()"
+        and step.get("shell") == contract.shell
+        and step.get("env") == contract.environment()
         and not allows_failure(step.get("continue-on-error"))
-        and step.get("env") == _REQUIRED_GATE_ENV
         and _step_execution_shape_is_plain(step, allow_env=True)
-        and isinstance(step.get("run"), str)
-        and shell_tokens(str(step["run"]).strip()) == _REQUIRED_GATE_ARGS
+        and shell_tokens(str(step.get("run", ""))) == contract.command
+    ]
+    return len(gates) == 1
+
+
+def _terminal_gate_protects_job(
+    path: pathlib.Path,
+    scope: str,
+    job_name: str,
+    jobs: dict[object, object],
+) -> bool:
+    contract = GITHUB_TERMINAL_JOBS.get((path.name, scope))
+    if contract is None:
+        return False
+    terminal = jobs.get(contract.job)
+    if (
+        not isinstance(terminal, dict)
+        or not _job_has_qualification_output_producer(terminal, contract)
+    ):
+        return False
+    if contract.job == job_name:
+        return _self_terminal_enforces_scope(terminal, contract)
+    return (
+        _job_execution_shape_is_plain(terminal)
+        and _expression_text(terminal.get("if")) == "always()"
+        and not allows_failure(terminal.get("continue-on-error"))
+        and job_name in (job_needs(terminal) or ())
+        and _terminal_gate_consumes_dependency(
+            terminal,
+            job_name,
+            contract,
+        )
     )
 
 
 def scoped_job_protection_scope(
     path: pathlib.Path,
     workflow: dict[object, object],
+    job_name: object,
     raw_job: dict[object, object],
     jobs: dict[object, object],
 ) -> str | None:
     if not _scope_job_is_valid(path, workflow, jobs):
         return None
-    if ".github" in path.parts and not _required_gate_is_valid(workflow, jobs):
+    scope = _scoped_job_name(raw_job)
+    if scope is None:
         return None
-    return _scoped_job_name(raw_job)
+    if ".github" in path.parts and not _terminal_gate_protects_job(
+        path,
+        scope,
+        str(job_name),
+        jobs,
+    ):
+        return None
+    return scope
 
 
 def scoped_step_protection_scope(

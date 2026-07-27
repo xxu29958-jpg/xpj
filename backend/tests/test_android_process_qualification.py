@@ -66,7 +66,7 @@ def test_new_native_crash_is_a_failure() -> None:
     before = qualification.parse_exit_snapshot(_snapshot(""))
     after = qualification.parse_exit_snapshot(_snapshot(_new_record()))
 
-    failures = qualification.new_fatal_exits(
+    failures = qualification.new_unhealthy_exits(
         before,
         after,
         {"com.ticketbox"},
@@ -82,7 +82,7 @@ def test_stale_crash_from_before_the_run_is_ignored() -> None:
     before = qualification.parse_exit_snapshot(evidence)
     after = qualification.parse_exit_snapshot(evidence)
 
-    assert qualification.new_fatal_exits(before, after, {"com.ticketbox"}) == []
+    assert qualification.new_unhealthy_exits(before, after, {"com.ticketbox"}) == []
     with pytest.raises(qualification.EvidenceError, match="no new target"):
         qualification.require_expected_process_exit(
             qualification.new_exit_records(before, after),
@@ -90,14 +90,37 @@ def test_stale_crash_from_before_the_run_is_ignored() -> None:
         )
 
 
-@pytest.mark.parametrize("reason", [4, 5, 6, 7])
-def test_each_android_fatal_exit_reason_is_rejected(reason: int) -> None:
+@pytest.mark.parametrize(
+    ("reason", "status"),
+    [
+        (0, 0),
+        (1, 1),
+        (2, 9),
+        (3, 0),
+        (4, 0),
+        (5, 11),
+        (6, 0),
+        (7, 0),
+        (8, 0),
+        (9, 0),
+        (10, 1),
+        (12, 0),
+        (15, 1),
+        (16, 1),
+        (17, 0),
+        (99, 0),
+    ],
+)
+def test_each_unhealthy_or_unknown_exit_is_rejected(
+    reason: int,
+    status: int,
+) -> None:
     before = qualification.parse_exit_snapshot(_snapshot(""))
     after = qualification.parse_exit_snapshot(
-        _snapshot(_new_record(reason=reason))
+        _snapshot(_new_record(reason=reason, status=status))
     )
 
-    failures = qualification.new_fatal_exits(
+    failures = qualification.new_unhealthy_exits(
         before,
         after,
         {"com.ticketbox"},
@@ -106,11 +129,12 @@ def test_each_android_fatal_exit_reason_is_rejected(reason: int) -> None:
     assert [record.reason for record in failures] == [reason]
 
 
-def test_unrelated_process_exit_is_ignored() -> None:
+@pytest.mark.parametrize("reason", [1, 10, 15, 16])
+def test_expected_process_exit_accepts_only_normal_status(reason: int) -> None:
     before = qualification.parse_exit_snapshot(_snapshot(""))
     after = qualification.parse_exit_snapshot(
         _snapshot(
-            _new_record(process="com.ticketbox", reason=10, status=0)
+            _new_record(process="com.ticketbox", reason=reason, status=0)
             + _new_record(process="com.android.systemui", pid=456)
         )
     )
@@ -122,7 +146,7 @@ def test_unrelated_process_exit_is_ignored() -> None:
         )
         == 1
     )
-    assert qualification.new_fatal_exits(before, after, {"com.ticketbox"}) == []
+    assert qualification.new_unhealthy_exits(before, after, {"com.ticketbox"}) == []
 
 
 def test_exit_snapshot_fails_closed_on_malformed_evidence() -> None:

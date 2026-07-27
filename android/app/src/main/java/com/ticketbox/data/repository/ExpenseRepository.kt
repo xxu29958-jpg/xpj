@@ -64,6 +64,14 @@ class ExpenseRepository(
             core.onConfirmedCommitted = value
         }
 
+    /** See [ExpenseRepositoryCore.onFullConfirmedSyncSnapshot] — AppContainer
+     *  wires it to the budget-advice freshness sink. */
+    var onFullConfirmedSyncSnapshot: (stamp: String) -> Unit
+        get() = core.onFullConfirmedSyncSnapshot
+        set(value) {
+            core.onFullConfirmedSyncSnapshot = value
+        }
+
     private val bindingRepository = ExpenseBindingRepository(core)
     private val connectionRepository = ExpenseConnectionRepository(core)
     private val pendingRepository = ExpensePendingRepository(core)

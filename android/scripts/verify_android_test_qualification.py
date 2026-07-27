@@ -18,11 +18,11 @@ ANDROID_PROCESS_ATTRIBUTE = "{http://schemas.android.com/apk/res/android}process
 EXIT_INFO_HEADER = "ACTIVITY MANAGER PROCESS EXIT INFO"
 TARGET_HEADER_PREFIX = "===== Android target "
 EXIT_RECORD_HEADER_PATTERN = re.compile(r"ApplicationExitInfo #\d+:")
-FATAL_EXIT_REASONS = {
-    4: "crash",
-    5: "native crash",
-    6: "ANR",
-    7: "initialization failure",
+EXPECTED_EXIT_STATUSES = {
+    1: frozenset({0}),  # REASON_EXIT_SELF
+    10: frozenset({0}),  # REASON_USER_REQUESTED
+    15: frozenset({0}),  # REASON_PACKAGE_STATE_CHANGE
+    16: frozenset({0}),  # REASON_PACKAGE_UPDATED
 }
 
 
@@ -599,7 +599,7 @@ def expected_processes(apkanalyzer: Path, apk_output_dirs: Iterable[Path]) -> se
     return processes
 
 
-def new_fatal_exits(
+def new_unhealthy_exits(
     before: ExitSnapshot,
     after: ExitSnapshot,
     expected: set[str],
@@ -609,7 +609,9 @@ def new_fatal_exits(
         (
             record
             for record in new_records
-            if record.process in expected and record.reason in FATAL_EXIT_REASONS
+            if record.process in expected
+            and record.status
+            not in EXPECTED_EXIT_STATUSES.get(record.reason, frozenset())
         ),
         key=lambda record: (
             record.target,
@@ -672,18 +674,18 @@ def verify_process_health(
         new_exit_records(before, after),
         expected,
     )
-    failures = new_fatal_exits(before, after, expected)
+    failures = new_unhealthy_exits(before, after, expected)
     if failures:
         details = "\n".join(
             "  "
             f"{record.target}: {record.process} "
-            f"{FATAL_EXIT_REASONS[record.reason]} "
+            "unexpected exit "
             f"(reason={record.reason}, status={record.status}, "
             f"pid={record.pid}, timestamp={record.timestamp})"
             for record in failures
         )
         raise EvidenceError(
-            "Connected tests produced fatal process exit record(s):\n" + details
+            "Connected tests produced unhealthy process exit record(s):\n" + details
         )
     return expected_record_count
 

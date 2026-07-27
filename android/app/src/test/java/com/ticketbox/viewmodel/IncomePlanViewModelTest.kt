@@ -4,13 +4,18 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -49,6 +54,105 @@ class IncomePlanViewModelTest {
         assertEquals(1, state.activePlans.size)
         assertEquals(1, state.archivedPlans.size)
         assertEquals(100_000L, state.totalActiveAmountCents)
+    }
+
+    @Test
+    fun stableAuthorityRoundTripClearsDraftAndReloadsTheExistingViewModel() = runTest(dispatcher) {
+        val repo = FakeRepository(
+            active = IncomePlanListing(listOf(plan("owner-a", 100_000)), 100_000),
+        )
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+        viewModel.updateDraftLabel("owner draft")
+
+        repo.active = IncomePlanListing(listOf(plan("family", 200_000)), 200_000)
+        repo.activeAccessFlow.value = incomePlanAccess(ownerKey = "owner-b")
+        advanceUntilIdle()
+
+        assertEquals(listOf("family"), viewModel.state.value.activePlans.map(IncomePlan::publicId))
+        assertEquals("", viewModel.state.value.addDraft.label)
+
+        repo.active = IncomePlanListing(listOf(plan("owner-b", 300_000)), 300_000)
+        repo.activeAccessFlow.value = incomePlanAccess(ownerKey = "owner-a-restored")
+        advanceUntilIdle()
+
+        assertEquals(listOf("owner-b"), viewModel.state.value.activePlans.map(IncomePlan::publicId))
+        assertEquals(3, repo.listActiveCalls)
+    }
+
+    @Test
+    fun stalePreviousLedgerRefreshCannotOverwriteCurrentLedger() = runTest(dispatcher) {
+        val staleOwnerResult = CompletableDeferred<Result<IncomePlanListing>>()
+        val familyListing = IncomePlanListing(listOf(plan("family", 200_000)), 200_000)
+        val repo = FakeRepository(active = familyListing)
+        repo.activeResponder = { call ->
+            if (call == 1) staleOwnerResult.await() else Result.success(familyListing)
+        }
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+
+        repo.activeAccessFlow.value = incomePlanAccess(ledgerId = "family", ownerKey = "family-owner")
+        advanceUntilIdle()
+        assertEquals(listOf("family"), viewModel.state.value.activePlans.map(IncomePlan::publicId))
+
+        staleOwnerResult.complete(
+            Result.success(IncomePlanListing(listOf(plan("owner", 100_000)), 100_000)),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("family"), viewModel.state.value.activePlans.map(IncomePlan::publicId))
+    }
+
+    @Test
+    fun staleSameBindingRefreshCannotOverwriteLatestResult() = runTest(dispatcher) {
+        val stale = CompletableDeferred<Result<IncomePlanListing>>()
+        val latest = CompletableDeferred<Result<IncomePlanListing>>()
+        val repo = FakeRepository()
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+        var refreshCall = 0
+        repo.activeResponder = {
+            if (++refreshCall == 1) stale.await() else latest.await()
+        }
+
+        viewModel.refresh()
+        advanceUntilIdle()
+        viewModel.refresh()
+        advanceUntilIdle()
+        latest.complete(
+            Result.success(IncomePlanListing(listOf(plan("latest", 200_000)), 200_000)),
+        )
+        advanceUntilIdle()
+        stale.complete(
+            Result.success(IncomePlanListing(listOf(plan("stale", 100_000)), 100_000)),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("latest"), viewModel.state.value.activePlans.map(IncomePlan::publicId))
+    }
+
+    @Test
+    fun previousLedgerMutationCompletionCannotRefreshCurrentLedger() = runTest(dispatcher) {
+        val archiveResult = CompletableDeferred<Result<IncomePlan>>()
+        val repo = FakeRepository()
+        repo.archiveResponder = { archiveResult.await() }
+        var dataChangedCalls = 0
+        val viewModel = IncomePlanViewModel(repo) { dataChangedCalls += 1 }
+        advanceUntilIdle()
+
+        viewModel.archive("owner-plan", 1L)
+        advanceUntilIdle()
+        repo.activeAccessFlow.value = incomePlanAccess(ledgerId = "family", ownerKey = "family-owner")
+        advanceUntilIdle()
+
+        archiveResult.complete(
+            Result.success(plan("owner-plan", 100, status = IncomePlanStatus.ARCHIVED)),
+        )
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.flashMessage)
+        assertEquals(0, dataChangedCalls)
+        assertEquals(2, repo.listActiveCalls)
     }
 
     @Test
@@ -293,24 +397,43 @@ class IncomePlanViewModelTest {
     )
 
     private class FakeRepository(
-        private val active: IncomePlanListing = IncomePlanListing(emptyList(), 0L),
+        var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L),
         private val archived: List<IncomePlan> = emptyList(),
         private val canModify: Boolean = true,
         private val createResult: Result<IncomePlan>? = null,
     ) : IncomePlanActions {
+        val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(
+            incomePlanAccess(canModify = canModify),
+        )
         var createCalls = 0
+        var listActiveCalls = 0
         var lastDraft: IncomePlanDraft? = null
         var lastArchiveId: String? = null
         var lastRestoreId: String? = null
+        var activeResponder: (suspend (Int) -> Result<IncomePlanListing>)? = null
+        var archiveResponder: (suspend () -> Result<IncomePlan>)? = null
 
         override fun canModifyLedger(): Boolean = canModify
 
-        override suspend fun listActive(): Result<IncomePlanListing> = Result.success(active)
+        override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = activeAccessFlow
 
-        override suspend fun listIncluding(status: IncomePlanStatus): Result<List<IncomePlan>> =
+        override suspend fun listActive(
+            expectedBinding: LogicalSessionBinding,
+        ): Result<IncomePlanListing> {
+            listActiveCalls += 1
+            return activeResponder?.invoke(listActiveCalls) ?: Result.success(active)
+        }
+
+        override suspend fun listIncluding(
+            expectedBinding: LogicalSessionBinding,
+            status: IncomePlanStatus,
+        ): Result<List<IncomePlan>> =
             Result.success(archived)
 
-        override suspend fun create(draft: IncomePlanDraft): Result<IncomePlan> {
+        override suspend fun create(
+            expectedBinding: LogicalSessionBinding,
+            draft: IncomePlanDraft,
+        ): Result<IncomePlan> {
             createCalls += 1
             lastDraft = draft
             return createResult ?: Result.success(stub(draft.label))
@@ -319,12 +442,21 @@ class IncomePlanViewModelTest {
         override suspend fun update(publicId: String, patch: com.ticketbox.data.repository.IncomePlanPatch) =
             Result.success(stub(publicId))
 
-        override suspend fun archive(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
+        override suspend fun archive(
+            expectedBinding: LogicalSessionBinding,
+            publicId: String,
+            expectedRowVersion: Long,
+        ): Result<IncomePlan> {
             lastArchiveId = publicId
-            return Result.success(stub(publicId, IncomePlanStatus.ARCHIVED))
+            return archiveResponder?.invoke()
+                ?: Result.success(stub(publicId, IncomePlanStatus.ARCHIVED))
         }
 
-        override suspend fun restore(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
+        override suspend fun restore(
+            expectedBinding: LogicalSessionBinding,
+            publicId: String,
+            expectedRowVersion: Long,
+        ): Result<IncomePlan> {
             lastRestoreId = publicId
             return Result.success(stub(publicId, IncomePlanStatus.ACTIVE))
         }
@@ -345,3 +477,23 @@ class IncomePlanViewModelTest {
         )
     }
 }
+
+private fun incomePlanBinding(
+    ledgerId: String = "owner",
+    ownerKey: String = "owner",
+): LogicalSessionBinding = LogicalSessionBinding(
+    serverUrl = "https://api.example.com",
+    ledgerId = ledgerId,
+    ownerKey = ownerKey,
+    sessionGeneration = "session-$ownerKey",
+    bindingRevision = "binding-$ownerKey-$ledgerId",
+)
+
+private fun incomePlanAccess(
+    ledgerId: String = "owner",
+    ownerKey: String = "owner",
+    canModify: Boolean = true,
+): LedgerAccessContext = LedgerAccessContext(
+    binding = incomePlanBinding(ledgerId, ownerKey),
+    canModify = canModify,
+)

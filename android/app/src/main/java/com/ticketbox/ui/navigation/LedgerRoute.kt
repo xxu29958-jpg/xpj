@@ -32,6 +32,13 @@ internal fun LedgerRoute(
         screenFactory.repositoryViewModelFactory(shellState::markInsightsDataChanged)
     }
     val ledgerViewModel: LedgerViewModel = viewModel(factory = ledgerFactory)
+    // Narrow hook (218-B4 review P2-23): manual creates and category batch
+    // edits invalidate the advice cache; tag-only batches preserve it.
+    LaunchedEffect(ledgerViewModel) {
+        ledgerViewModel.onAdviceInputsChanged = {
+            screenFactory.budgetRepository.invalidateBudgetAdvice()
+        }
+    }
     val state by ledgerViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingExport by remember { mutableStateOf<CsvExport?>(null) }

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.EventRepeat
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -85,7 +86,16 @@ internal fun PlanBudgetSection(
                 onOpenBudget = actions.onOpenBudget,
             )
         }
-        // 218-B1: 预算建议入口属后续 slice，骨架阶段不在计划页出现。
+        PlanDestinationRow(
+            model = PlanRowModel(
+                title = stringResource(R.string.plan_budget_advice_title),
+                subtitle = stringResource(R.string.plan_budget_advice_subtitle),
+                trailing = stringResource(R.string.plan_action_open),
+                icon = Icons.Filled.Tune,
+                testTag = PlanDestinationTestTags.BudgetAdvice,
+                onClick = actions.onOpenAdvice,
+            ),
+        )
     }
 }
 

@@ -31,7 +31,6 @@ internal fun PlanRoute(
         factory = recurringViewModelFactory(screenFactory.recurringRepository),
     )
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
-        key = IncomePlanViewModelKey,
         factory = incomePlanViewModelFactory(screenFactory.incomePlanRepository),
     )
     val budgetState by budgetViewModel.uiState.collectAsStateWithLifecycle()
@@ -61,6 +60,7 @@ internal fun PlanRoute(
         actions = PlanScreenActions(
             budgetNavigation = PlanBudgetNavigationActions(
                 onOpenBudget = { shellState.openSecondaryPage(ProductSecondaryPage.Budget) },
+                onOpenAdvice = { shellState.openSecondaryPage(ProductSecondaryPage.BudgetAdvice) },
             ),
             onOpenSpendingGoal = { shellState.openSecondaryPage(ProductSecondaryPage.SpendingGoal) },
             onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },

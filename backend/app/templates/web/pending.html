@@ -80,65 +80,69 @@
     <div class="text-end">金额</div>
   </div>
   {% for e in expenses %}
-  <a class="exp-row exp-row-detail" data-expense-id="{{ e.id }}"
-     href="/web/expenses/{{ e.id }}/edit{{ _q }}"
-     data-fragment-url="/web/expenses/{{ e.id }}/edit{{ _q }}&fragment=1"
-     aria-selected="false">
-    <div data-stop="true">
+  {# #218 行结构:选择槽与整行链接是兄弟节点。只读行保留空槽对齐桌面表头,
+     移动端由 CSS 折叠;行链接内不存在嵌套交互元素。 #}
+  <div class="exp-row{% if can_write %} has-check{% endif %}" data-expense-id="{{ e.id }}">
+    <div class="exp-row-selector"{% if not can_write %} aria-hidden="true"{% endif %}>
       {% if can_write %}
       <input class="checkbox row-check" type="checkbox" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单 #{{ e.id }}">
       {% endif %}
     </div>
-    <div>
-      {% if e.image_state == 'available' %}
-        <div class="exp-thumb exp-thumb-receipt"></div>
-      {% else %}
-        <div class="exp-thumb"></div>
-      {% endif %}
-    </div>
-    <div>
-      <div class="exp-merch">{{ e.merchant or '（待识别）' }}</div>
-      <div class="exp-meta">
-        <span>#{{ e.id }}</span>
-        <span class="sep">·</span>
-        <span>{{ e.source_label }}</span>
+    <a class="exp-row-detail"
+       href="/web/expenses/{{ e.id }}/edit{{ _q }}"
+       data-fragment-url="/web/expenses/{{ e.id }}/edit{{ _q }}&fragment=1"
+       aria-selected="false">
+      <div>
+        {% if e.image_state == 'available' %}
+          <div class="exp-thumb exp-thumb-receipt"></div>
+        {% else %}
+          <div class="exp-thumb"></div>
+        {% endif %}
       </div>
-    </div>
-    <div>
-      {% if e.category and e.category not in ['未分类', '其他'] and not e.needs_category %}
-        <span class="exp-cat">{{ e.category }}</span>
-      {% else %}
-        <span class="exp-cat exp-cat-missing">— 待分类</span>
-      {% endif %}
-    </div>
-    <div>
-      <div class="exp-time">{{ e.expense_time or '—' }}</div>
-      <div class="exp-time-meta">上传 {{ e.created_at }}</div>
-    </div>
-    <div>
-      {% set _flags = [] %}
-      {% if e.needs_amount %}{% set _ = _flags.append(('danger', '缺金额')) %}{% endif %}
-      {% if e.needs_merchant %}{% set _ = _flags.append(('warn', '缺商家')) %}{% endif %}
-      {% if e.needs_category %}{% set _ = _flags.append(('warn', '缺分类')) %}{% endif %}
-      {% if e.is_duplicate %}{% set _ = _flags.append(('danger', '疑似重复')) %}{% endif %}
-      {% if e.fx_pending %}{% set _ = _flags.append(('warn', '待汇率')) %}{% endif %}
-      {% if _flags %}
-        <div class="pill-row">
-          {% for cls, label in _flags %}<span class="dt-pill {{ cls }}">{{ label }}</span>{% endfor %}
+      <div>
+        <div class="exp-merch">{{ e.merchant or '（待识别）' }}</div>
+        <div class="exp-meta">
+          <span>#{{ e.id }}</span>
+          <span class="sep">·</span>
+          <span>{{ e.source_label }}</span>
         </div>
-      {% else %}
-        <span class="dt-pill ok">可确认</span>
-      {% endif %}
-    </div>
-    <div class="text-end">
-      {% if e.amount_label %}
-        <span class="exp-amt">{{ e.amount_label }}</span>
-        {% if e.fx_meta %}<div class="exp-meta">{{ e.fx_meta }}</div>{% endif %}
-      {% else %}
-        <span class="exp-amt-missing">未识别</span>
-      {% endif %}
-    </div>
-  </a>
+      </div>
+      <div>
+        {% if e.category and e.category not in ['未分类', '其他'] and not e.needs_category %}
+          <span class="exp-cat">{{ e.category }}</span>
+        {% else %}
+          <span class="exp-cat exp-cat-missing">— 待分类</span>
+        {% endif %}
+      </div>
+      <div>
+        <div class="exp-time">{{ e.expense_time or '—' }}</div>
+        <div class="exp-time-meta">上传 {{ e.created_at }}</div>
+      </div>
+      <div>
+        {% set _flags = [] %}
+        {% if e.needs_amount %}{% set _ = _flags.append(('danger', '缺金额')) %}{% endif %}
+        {% if e.needs_merchant %}{% set _ = _flags.append(('warn', '缺商家')) %}{% endif %}
+        {% if e.needs_category %}{% set _ = _flags.append(('warn', '缺分类')) %}{% endif %}
+        {% if e.is_duplicate %}{% set _ = _flags.append(('danger', '疑似重复')) %}{% endif %}
+        {% if e.fx_pending %}{% set _ = _flags.append(('warn', '待汇率')) %}{% endif %}
+        {% if _flags %}
+          <div class="pill-row">
+            {% for cls, label in _flags %}<span class="dt-pill {{ cls }}">{{ label }}</span>{% endfor %}
+          </div>
+        {% else %}
+          <span class="dt-pill ok">可确认</span>
+        {% endif %}
+      </div>
+      <div class="text-end">
+        {% if e.amount_label %}
+          <span class="exp-amt">{{ e.amount_label }}</span>
+          {% if e.fx_meta %}<div class="exp-meta">{{ e.fx_meta }}</div>{% endif %}
+        {% else %}
+          <span class="exp-amt-missing">未识别</span>
+        {% endif %}
+      </div>
+    </a>
+  </div>
   {% else %}
   <div class="empty-cell">
     {% if filter == 'all' %}

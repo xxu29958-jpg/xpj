@@ -6,6 +6,9 @@ import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.local.LegacySessionProjectionPreferences
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
+import com.ticketbox.data.repository.ADVICE_INPUT_CONFIRMED_EXPENSES
+import com.ticketbox.data.repository.ADVICE_INPUT_INCOME_PLANS
+import com.ticketbox.data.repository.ADVICE_INPUT_RECURRING_ITEMS
 import com.ticketbox.data.repository.AcknowledgeItemsMismatchDispatcher
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
@@ -292,6 +295,30 @@ class AppContainer(context: Context) {
         // checkAfterConfirmedWrite 自身 fire-and-forget，不阻塞确认链路。
         expenseRepository.onConfirmedCommitted = { ledgerId ->
             budgetOverspendChecker.checkAfterConfirmedWrite(ledgerId)
+        }
+        // 218-B4 review: server-side advice inputs (confirmed-expense aggregates,
+        // income plans, recurring items — _inputs_builder.py) can change on ANOTHER
+        // family device; the refresh seams above deliver a cheap stamp of each
+        // applied server snapshot, and the advice cache is invalidated only when
+        // a stamp actually CHANGES (a no-op refresh preserves the cache and
+        // spends zero live-advisor calls on reopen).
+        val adviceFreshness = repositories.budgetRepository
+        expenseRepository.onFullConfirmedSyncSnapshot = { stamp ->
+            adviceFreshness.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, stamp)
+        }
+        recurringRepository.onFullItemsSnapshot = { stamp ->
+            adviceFreshness.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_RECURRING_ITEMS, stamp)
+        }
+        incomePlanRepository.onActivePlansSnapshot = { stamp ->
+            adviceFreshness.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_INCOME_PLANS, stamp)
+        }
+        // ...and the offline twin of the round-7 hook: a queued advice-input
+        // mutation invalidates at ENQUEUE time, but advice generated between
+        // queue and replay used the pre-replay server state — a successful
+        // outbox replay of an input kind invalidates again (the engine gates
+        // kinds and success; see OutboxDrainEngine.ADVICE_INPUT_MUTATION_TYPES).
+        outboxDrainEngine.onAdviceInputReplaySucceeded = {
+            adviceFreshness.invalidateBudgetAdvice()
         }
     }
 }

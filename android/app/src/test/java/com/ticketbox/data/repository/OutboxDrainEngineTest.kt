@@ -847,14 +847,14 @@ class OutboxDrainEngineTest {
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
         return engine to outbox
     }
+
 }
 
 private class StubDispatcher(
     private val result: DispatchResult? = null,
     private val throwError: Throwable? = null,
+    override val type: PendingMutationType = PendingMutationType.PatchExpense,
 ) : OutboxMutationDispatcher {
-    override val type: PendingMutationType = PendingMutationType.PatchExpense
-
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         throwError?.let { throw it }
         return result ?: DispatchResult.Success()

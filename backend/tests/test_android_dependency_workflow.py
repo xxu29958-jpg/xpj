@@ -1,10 +1,59 @@
 from __future__ import annotations
 
+import re
+import shlex
 from pathlib import Path
 
 import yaml
 
 _ROOT = Path(__file__).resolve().parents[2]
+
+
+def _assert_build_tools_authority(build_script: str) -> None:
+    assert (
+        "val ticketboxResolvedBuildToolsVersion = "
+        "providers.provider { android.buildToolsVersion }"
+    ) in build_script
+    assert 'inputs.property("buildToolsVersion", ticketboxResolvedBuildToolsVersion)' in (
+        build_script
+    )
+
+
+def _assert_codeql_workload_contract(steps: list[dict[str, object]]) -> None:
+    by_name = {str(step["name"]): step for step in steps}
+    names = [str(step["name"]) for step in steps]
+    init = by_name["Initialize CodeQL"]
+    build = by_name["Build Android for CodeQL"]
+    analyze = by_name["Perform CodeQL Analysis"]
+    assert names.index("Initialize CodeQL") < names.index(
+        "Build Android for CodeQL"
+    ) < names.index("Perform CodeQL Analysis")
+    assert set(init) == {"name", "uses", "with"}
+    assert init["with"] == {"languages": "java-kotlin", "build-mode": "manual"}
+    assert set(analyze) == {"name", "uses", "with"}
+    assert analyze["with"] == {"category": "/language:java-kotlin"}
+    assert set(build) == {"name", "working-directory", "run"}
+    assert build["working-directory"] == "android"
+    assert shlex.split(str(build["run"])) == [
+        "./gradlew",
+        "--no-daemon",
+        "--no-build-cache",
+        "--max-workers=2",
+        ":app:compileGrayDebugKotlin",
+        ":app:compileGrayDebugJavaWithJavac",
+        ":app:compileInternalDebugKotlin",
+        ":app:compileInternalDebugJavaWithJavac",
+    ]
+    action_commit = r"[0-9a-f]{40}"
+    assert re.fullmatch(
+        rf"github/codeql-action/init@{action_commit}",
+        str(init["uses"]),
+    )
+    assert re.fullmatch(
+        rf"github/codeql-action/analyze@{action_commit}",
+        str(analyze["uses"]),
+    )
+    assert str(init["uses"]).rsplit("@", 1)[1] == str(analyze["uses"]).rsplit("@", 1)[1]
 
 
 def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
@@ -62,7 +111,10 @@ def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
     } <= set(fast_command.split())
     assert next(
         step["run"] for step in debug_apk["steps"] if step["name"] == "Build debug APKs"
-    ).endswith(":app:assembleGrayDebug :app:assembleInternalDebug")
+    ).endswith(
+        ":app:assembleGrayDebug :app:assembleInternalDebug "
+        ":app:writeTicketboxBuildToolsVersion"
+    )
     assert next(
         step["run"]
         for step in release_apk["steps"]
@@ -79,3 +131,72 @@ def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
         "android_apk_release",
         "android_sca",
     }
+
+
+def test_android_cloud_builds_share_one_java_and_sdk_contract() -> None:
+    workflows = {
+        name: yaml.safe_load(
+            (_ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        )
+        for name in (
+            "ci.yml",
+            "codeql.yml",
+            "android-connected-test.yml",
+            "nvd-database.yml",
+        )
+    }
+    for workflow in workflows.values():
+        android_java_steps = [
+            step
+            for job in workflow["jobs"].values()
+            for step in job.get("steps", [])
+            if step.get("name") == "Set up Java"
+        ]
+        assert android_java_steps
+        assert all(
+            step["with"] == {
+                "distribution": "temurin",
+                "java-version-file": "android/.java-version",
+                "verify-signature": True,
+            }
+            for step in android_java_steps
+        )
+
+    codeql_steps = workflows["codeql.yml"]["jobs"]["analyze-android-execution"][
+        "steps"
+    ]
+    _assert_codeql_workload_contract(codeql_steps)
+
+    java_version = (_ROOT / "android" / ".java-version").read_text(
+        encoding="utf-8"
+    ).strip()
+    assert java_version.isdigit()
+    assert "android.builder.sdkDownload=true" in (
+        _ROOT / "android" / "gradle.properties"
+    ).read_text(encoding="utf-8")
+    workflow_text = "\n".join(
+        (_ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        for name in workflows
+    )
+    assert "platforms;android-" not in workflow_text
+    assert "build-tools;" not in workflow_text
+    build_script = (_ROOT / "android" / "app" / "build.gradle.kts").read_text(
+        encoding="utf-8"
+    )
+    _assert_build_tools_authority(build_script)
+
+    debug_signing = next(
+        step["run"]
+        for step in workflows["ci.yml"]["jobs"]["android_apk_debug"]["steps"]
+        if step["name"] == "Verify debug APK signing certificate"
+    )
+    assert 'build-tools/$build_tools_version/apksigner' in debug_signing
+    assert 'find "$ANDROID_HOME/build-tools"' not in debug_signing
+    gitea_workflow = (
+        _ROOT / ".gitea" / "workflows" / "windows-ci.yml"
+    ).read_text(encoding="utf-8")
+    assert (
+        r"$env:ANDROID_HOME\build-tools\$buildToolsVersion\apksigner.bat"
+        in gitea_workflow
+    )
+    assert r"$env:ANDROID_HOME\build-tools\*\apksigner.bat" not in gitea_workflow

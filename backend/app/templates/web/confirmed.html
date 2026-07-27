@@ -67,25 +67,29 @@
       {# amount_label 已是带原币符号的完整串（FX 时是原币如 $12.34,本币时是 ¥X）;
          只把末尾小数拆出来做灰显,不改符号、不强加 ¥。 #}
       {% set _ap = (e.amount_label or '未识别').rsplit('.', 1) %}
-      <a class="timeline-row timeline-row-detail lrow{% if can_write %} has-check{% endif %}" href="/web/expenses/{{ e.id }}/edit{{ _q }}" data-cat="{{ e.category or '' }}">
+      {# #218 行结构:checkbox(.lrow-sel) 与整行链接(a.timeline-row-detail)拆开为
+         兄弟节点,行容器 .timeline-row 不是锚点,不存在交互元素嵌套。 #}
+      <div class="timeline-row lrow{% if can_write %} has-check{% endif %}" data-cat="{{ e.category or '' }}">
         {% if can_write %}
-        <div class="lrow-sel" data-stop="true">
+        <div class="lrow-sel">
           <input class="checkbox row-check" type="checkbox" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单 #{{ e.id }}">
         </div>
         {% endif %}
-        <div class="lrow-ic {{ _icmap.get(e.category, 'other') }}">{{ (e.category or '·')[:1] }}</div>
-        <div class="lrow-mid">
-          <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
-          <div class="lrow-meta">
-            <span class="num">{{ e.expense_time[11:16] if e.expense_time and ' ' in e.expense_time else '—' }}</span>
-            <span class="sep">·</span><span>{{ e.category or '未分类' }}</span>
+        <a class="timeline-row-detail" href="/web/expenses/{{ e.id }}/edit{{ _q }}">
+          <div class="lrow-ic {{ _icmap.get(e.category, 'other') }}">{{ (e.category or '·')[:1] }}</div>
+          <div class="lrow-mid">
+            <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
+            <div class="lrow-meta">
+              <span class="num">{{ e.expense_time[11:16] if e.expense_time and ' ' in e.expense_time else '—' }}</span>
+              <span class="sep">·</span><span>{{ e.category or '未分类' }}</span>
+            </div>
           </div>
-        </div>
-        <div class="lrow-amt">
-          <span class="amt-main">{% if _ap | length == 2 %}{{ _ap[0] }}<span class="d">.{{ _ap[1] }}</span>{% else %}{{ _ap[0] }}{% endif %}</span>
-          {% if e.fx_meta %}<span class="amt-fx">{{ e.fx_meta }}</span>{% endif %}
-        </div>
-      </a>
+          <div class="lrow-amt">
+            <span class="amt-main">{% if _ap | length == 2 %}{{ _ap[0] }}<span class="d">.{{ _ap[1] }}</span>{% else %}{{ _ap[0] }}{% endif %}</span>
+            {% if e.fx_meta %}<span class="amt-fx">{{ e.fx_meta }}</span>{% endif %}
+          </div>
+        </a>
+      </div>
       {% endfor %}
     {% endfor %}
   {% endif %}
