@@ -77,7 +77,8 @@ def test_write_gate_denies_when_ledger_is_not_an_option() -> None:
 class _DesktopSessionRequest:
     """Minimal stand-in for a Request carrying a verified desktop bridge session."""
 
-    def __init__(self, auth) -> None:
+    def __init__(self, auth, *, method: str = "POST") -> None:
+        self.method = method
         self.state = type(
             "_State",
             (),
@@ -247,11 +248,34 @@ def test_desktop_principal_revalidated_inside_the_handler_transaction(identity) 
     assert exc.value.status_code == 403
 
 
-@pytest.mark.parametrize("revoke", ["membership", "device", "token"])
+def _kill_credential_cause(db, cause: str, *, token, account, device) -> None:
+    from app.models import Account, AuthToken, Device, Ledger, LedgerMember
+    from app.services.time_service import now_utc
+
+    if cause == "membership":
+        row = db.scalar(
+            select(LedgerMember)
+            .where(LedgerMember.ledger_id == "owner")
+            .where(LedgerMember.account_id == account.id)
+        )
+        row.disabled_at = now_utc()
+        return
+    if cause == "device":
+        db.get(Device, device.id).revoked_at = now_utc()
+        return
+    if cause == "token":
+        db.get(AuthToken, token.id).revoked_at = now_utc()
+        return
+    if cause == "account":
+        db.get(Account, account.id).disabled_at = now_utc()
+        return
+    db.scalar(select(Ledger).where(Ledger.ledger_id == "owner")).archived_at = now_utc()
+
+
+@pytest.mark.parametrize("revoke", ["membership", "device", "token", "account", "archived"])
 def test_desktop_principal_dead_mid_transaction_is_401(identity, revoke: str) -> None:
     from app.database import SessionLocal
-    from app.models import AuthToken, Device, LedgerMember
-    from app.services.time_service import now_utc
+    from app.models import AuthToken
 
     token, account, device = _mint_desktop_session(role="member")
     auth = _auth_context(token, account, device, ledger_id="owner", role="member")
@@ -259,22 +283,18 @@ def test_desktop_principal_dead_mid_transaction_is_401(identity, revoke: str) ->
     options = [_option("tester_1", "owner")]
 
     with SessionLocal() as db:
-        if revoke == "membership":
-            membership = db.scalar(
-                select(LedgerMember)
-                .where(LedgerMember.ledger_id == "owner")
-                .where(LedgerMember.account_id == account.id)
-            )
-            membership.disabled_at = now_utc()
-        elif revoke == "device":
-            device_row = db.get(Device, device.id)
-            device_row.revoked_at = now_utc()
-        else:
-            token_row = db.get(AuthToken, token.id)
-            token_row.revoked_at = now_utc()
+        _kill_credential_cause(db, revoke, token=token, account=account, device=device)
         db.commit()
 
     with SessionLocal() as db, pytest.raises(AppError) as exc:
         _resolve_selected_ledger_id(db, None, options, request=request)
     assert exc.value.error == "invalid_token"
     assert exc.value.status_code == 401
+
+    # Death is durable (the middleware's membership-loss invariant): when the
+    # cause left the token row alive, the revalidation hard-revoked it, so a
+    # membership re-enable or un-archive cannot resurrect the bearer.
+    with SessionLocal() as db:
+        stored = db.get(AuthToken, token.id)
+    assert stored.revoked_at is not None
+    assert stored.grace_until is None

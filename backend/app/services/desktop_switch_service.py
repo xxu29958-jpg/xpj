@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AuthToken, DesktopActivationAttempt, Device, Ledger, LedgerMember
+from app.models import Account, AuthToken, DesktopActivationAttempt, Device, Ledger, LedgerMember
 from app.services.desktop_activation_service import (
     DESKTOP_PENDING_SCOPE,
     DESKTOP_PLATFORM,
@@ -27,6 +27,7 @@ from app.services.desktop_activation_service import (
 )
 from app.services.ledger_contracts import DesktopLedgerSwitchPrepareResult
 from app.services.ledger_service import _lock_ledger_switch_context
+from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import (
     derive_desktop_activation_token,
     hash_desktop_activation_attempt_secret,
@@ -150,31 +151,51 @@ def prepare_desktop_ledger_switch(
     )
 
 
-def revalidate_desktop_session_under_lock(db: Session, session_auth) -> str:
+def revalidate_desktop_session_under_lock(
+    db: Session,
+    session_auth,
+    *,
+    mutation: bool,
+) -> str:
     """Revalidate the bridged desktop principal in the handler's transaction.
 
     The middleware authenticated the bearer in its own session and stashed a
-    detached AuthContext; a membership disable/demote, or a device/token
-    revocation landing between that check and a mutation's commit, must not
-    let the write through. Re-read token row, device, and membership under
-    FOR UPDATE in the same transaction the handler will commit. Returns the
-    live membership role so the caller can refresh the (frozen) context.
+    detached AuthContext; a membership disable/demote, account/device/token
+    revocation, or ledger archive landing between that check and a mutation's
+    commit must not let the write through. Lock order: mutation requests take
+    the identity advisory lock FIRST (the same
+    ``lock_bootstrap_owner_transaction`` every revocation flow takes, ahead of
+    Ledger → LedgerMember → AuthToken) and then only READ — no row locks, so
+    no ABBA with the credential→Ledger→Member→Token chain. GET/HEAD reads
+    skip the advisory lock (the middleware re-authenticates every request).
+    Death is durable: a still-live token row is hard-revoked before the 401,
+    so a membership re-enable cannot resurrect a discarded bearer.
     """
+    if mutation:
+        lock_bootstrap_owner_transaction(db)
     row = db.execute(
-        select(AuthToken, Device, LedgerMember)
+        select(AuthToken, Device, LedgerMember, Account, Ledger)
         .where(AuthToken.id == session_auth.credential_id)
         .where(AuthToken.revoked_at.is_(None))
         .where(Device.id == AuthToken.device_id)
         .where(Device.revoked_at.is_(None))
+        .where(Account.id == AuthToken.account_id)
+        .where(Account.disabled_at.is_(None))
+        .where(Ledger.ledger_id == session_auth.ledger_id)
+        .where(Ledger.archived_at.is_(None))
         .where(LedgerMember.ledger_id == session_auth.ledger_id)
         .where(LedgerMember.account_id == session_auth.account_id)
         .where(LedgerMember.disabled_at.is_(None))
-        .with_for_update()
         .limit(1)
     ).first()
     if row is None:
+        token = db.get(AuthToken, session_auth.credential_id)
+        if token is not None and token.revoked_at is None:
+            token.revoked_at = now_utc()
+            token.grace_until = None
+            db.commit()
         raise AppError("invalid_token", status_code=401)
-    token, _device, membership = row
+    token, _device, membership, _account, _ledger = row
     expires_at = ensure_utc(token.expires_at)
     if expires_at is not None and expires_at <= now_utc():
         token.revoked_at = now_utc()

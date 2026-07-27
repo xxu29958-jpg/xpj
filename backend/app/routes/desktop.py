@@ -55,7 +55,13 @@ def revoke_desktop_session(
     auth: AuthContext = Depends(_get_current_desktop_context),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Revoke exactly the presented app credential — never a sibling session."""
+    """Revoke the presented credential plus its staged/promoted replacements.
+
+    The kill set is exactly this credential's lineage: still-staged pending
+    rows and already-promoted successors whose activation receipt names the
+    presented credential as predecessor. Unrelated lineages, other devices'
+    sessions, and the device itself stay untouched.
+    """
     revoke_desktop_app_session(
         db,
         auth=auth,
