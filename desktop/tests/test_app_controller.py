@@ -1200,3 +1200,91 @@ def test_unpair_with_dead_primary_still_collects_superseded() -> None:
     assert controller.unpair_product_principal() == {"configured": False}
     assert revoked == ["tbx-superseded-A"]
     assert recoveries == {}
+
+
+# ── P0/P2 regression: 401 self-heal must never kill a live primary ──────────
+
+
+def test_reconcile_401_never_revokes_a_still_live_primary() -> None:
+    """Cross-ledger re-pair staged (superseded=A pre-written), activation
+    transiently failed, staged attempt then expired server-side: A is still
+    the live primary and must NOT be revoked by a status read."""
+    current = _product_session(ledger_id="owner")
+    sessions, recoveries, store = _stores(current)
+    attempt_id, attempt_secret = new_activation_attempt()
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="member",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token=current.session_token,
+    )
+    revoked: list[str] = []
+
+    def dead_attempt(*_args, **_kwargs) -> ProductSession:
+        raise ProductDataError("staged attempt expired", error="invalid_token", status_code=401)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_activator=dead_attempt,
+        product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        **store,
+    )
+
+    projection = controller.product_principal()
+
+    # A was never displaced: it stays the live identity, no revoke is issued,
+    # and only the stale ceremony record is cleaned.
+    assert revoked == []
+    assert projection["configured"] is True
+    assert projection["ledger_id"] == "owner"
+    assert sessions[_INSTALLATION_ID].session_token == current.session_token
+    assert recoveries == {}
+
+
+def test_reconcile_401_keeps_record_when_superseded_revoke_fails_transiently() -> None:
+    sessions, recoveries, store = _stores(None)
+    attempt_id, attempt_secret = new_activation_attempt()
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-old-A",
+    )
+    revoked: list[str] = []
+
+    def dead_attempt(*_args, **_kwargs) -> ProductSession:
+        raise ProductDataError("staged attempt expired", error="invalid_token", status_code=401)
+
+    def flaky_revoker(_origin, token, **_kwargs) -> None:
+        revoked.append(token)
+        if len(revoked) == 1:
+            raise ProductDataError("backend unreachable", status_code=503)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_activator=dead_attempt,
+        product_session_revoker=flaky_revoker,
+        **store,
+    )
+
+    assert controller.product_principal() == {"configured": False}
+    # A non-death failure keeps the cleanup record retryable instead of
+    # orphaning the owed revoke until TTL.
+    assert revoked == ["tbx-old-A"]
+    assert _INSTALLATION_ID in recoveries
+
+    assert controller.product_principal() == {"configured": False}
+    assert revoked == ["tbx-old-A", "tbx-old-A"]
+    assert recoveries == {}

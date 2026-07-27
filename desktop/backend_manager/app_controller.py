@@ -571,19 +571,28 @@ class AppController:
         except ProductDataError as exc:
             if exc.status_code == 401:
                 # The staged attempt expired/was revoked before activation, and
-                # prepare never displaced A. A still-owed superseded revoke
-                # must not die with the record: attempt it (best-effort) before
-                # the self-heal cleanup drops the record. Cleanup itself stays
-                # best-effort so a transient WinCred delete failure cannot make
-                # the still-valid A unusable; later calls retry the same cleanup.
-                if recovery.superseded_session_token:
-                    self._revoke_superseded_session(
+                # prepare never displaced A. Hard gate: never revoke the token
+                # that is still the live primary — when the failed ceremony's
+                # superseded equals the current session, A was never displaced
+                # and stays the user's identity. Only a genuinely orphaned
+                # superseded (primary promoted past it, or already gone) may be
+                # revoked here. A transient (non-death) revoke failure keeps
+                # the record so a later reconcile retries; the record drops
+                # only once the owed revoke succeeded or the token was dead.
+                owed = recovery.superseded_session_token
+                owed_settled = True
+                if owed and (
+                    current is None
+                    or not secrets.compare_digest(current.session_token, owed)
+                ):
+                    owed_settled = self._revoke_superseded_session(
                         config,
                         loopback_origin,
-                        recovery.superseded_session_token,
+                        owed,
                     )
-                with suppress(ProductDataError):
-                    self._delete_rebind_recovery(config)
+                if owed_settled:
+                    with suppress(ProductDataError):
+                        self._delete_rebind_recovery(config)
                 return current
             raise
 
