@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}欠款详情 — 小票夹{% endblock %}
 {% block content %}
+{# D3/P2 金额 422 三向互斥锚定 (全页至多渲染一处错误块)：
+   在途确认表单内 (债权人且错误属于当前在途) / proposal 状态·过往语境 (被提交条目已沉降) /
+   无锚裸块 (debtor 直 POST、伪造 pid 零历史、外部债等两锚都不成立的构造性旁路) —— 文案永不整页消失。 #}
+{% set _pending_pid = pending_proposal.public_id if pending_proposal else none %}
+{% set _anchor_form = confirm_amount_error and debt.is_member and can_write and debt_open and action_keys and viewer_is_debtor == false and confirm_error_proposal_id == _pending_pid %}
+{% set _anchor_zone = confirm_amount_error and proposals and (proposals.pending_line or proposals.has_resolved) and confirm_error_proposal_id != _pending_pid %}
+{% set _anchor_bare = confirm_amount_error and not _anchor_form and not _anchor_zone %}
 <a class="debt-detail-back" href="/web/debts?ledger_id={{ selected_ledger_id }}">← 返回</a>
 <h1 class="page-title page-title--compact">{{ debt.name }}</h1>
 <p class="page-hint">{{ debt.direction_subtitle }}</p>
@@ -33,6 +40,11 @@
 </div>
 {# slice 2b：成员还款 proposal 状态 + 过往历史 (只读；在途一行关系状态句 + 已解决沉降，永不红) #}
 {% if proposals.pending_line or proposals.has_resolved %}
+{% if _anchor_zone %}
+{# P2：金额校验 422 重渲染时,被提交的 proposal 已不在途 (被处理/换了在途条目) —— 错误锚定到
+   本次提交的 proposal 语境 (状态/过往区,被提交条目已沉在这里),不隐藏、也不挂到新的在途 proposal。 #}
+<div id="proposal-confirm-amount-error" class="callout-info callout-info--danger" role="alert" data-proposal-public-id="{{ confirm_error_proposal_id }}">{{ confirm_amount_error }}</div>
+{% endif %}
 {% if proposals.pending_line %}
 <div class="debt-proposal-status">{{ proposals.pending_line }}</div>
 {% endif %}
@@ -102,6 +114,12 @@
 {# 只读角色：安静事实提示 (沿用 readonly-callout 范式,不红)。 #}
 {% if not can_write %}
 <div class="readonly-callout">当前角色可查看欠款事实；还款、调整或作废请联系拥有者或成员。</div>
+{% endif %}
+
+{% if _anchor_bare %}
+{# P2 无锚兜底：两锚点都不成立 (debtor 直 POST 非法金额 / 伪造 pid 且零 proposal 历史 / 外部债)
+   时,422 错误文案仍须可见 —— 渲染在债务操作区顶端 (无具体输入可挂,故无 aria-describedby)。 #}
+<div id="proposal-confirm-amount-error" class="callout-info callout-info--danger" role="alert" data-proposal-public-id="{{ confirm_error_proposal_id }}">{{ confirm_amount_error }}</div>
 {% endif %}
 
 {# ── 写面 (slice C2)：开放中的欠款 + 可写角色 → 处理动作区。
@@ -257,7 +275,13 @@
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_confirm }}">
       <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
-      <input class="dt-input" name="confirmed_amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）">
+      {% if _anchor_form %}
+      {# 金额校验 422 原地重渲染：错误锚定到确认金额输入 (role=alert + aria 双锚)，不漂成顶部泛提示；
+         仅当错误属于这条在途 proposal 时才挂在它的表单上 (P2,三向互斥见页首)。 #}
+      <div id="proposal-confirm-amount-error" class="callout-info callout-info--danger" role="alert" data-proposal-public-id="{{ confirm_error_proposal_id }}">{{ confirm_amount_error }}</div>
+      {% endif %}
+      {# D3 契约：字段名由服务端从 PROPOSAL_CONFIRM_AMOUNT_FIELD 注入，与路由 Form(alias=) 绑定同源。 #}
+      <input class="dt-input" name="{{ proposal_confirm_amount_field }}" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ confirm_amount_value if _anchor_form else pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）"{% if _anchor_form %} aria-invalid="true" aria-describedby="proposal-confirm-amount-error"{% endif %}>
       <button class="dt-btn primary" type="submit">确认到账</button>
     </form>
     <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/reject">
