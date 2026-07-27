@@ -63,6 +63,11 @@ class ManagerShuttingDownError(RuntimeError):
     """Raised when a new action races with an accepted maintenance handoff."""
 
 
+# Attempt-level terminal answers: the ceremony cannot be replayed, so the
+# provisional record must go (distinct from a mere wrong-code rejection).
+_TERMINAL_ATTEMPT_ERRORS = frozenset({"pairing_attempt_expired", "pairing_attempt_closed"})
+
+
 def _snapshot_product_available(snapshot: RuntimeStatus) -> bool:
     """Runtime readiness for the BFF surface (pairing state is NOT included)."""
     return (
@@ -373,16 +378,35 @@ class AppController:
         )
         # Persist the attempt proof BEFORE the pairing code is consumed: a
         # response loss or process death after the backend commits would
-        # otherwise orphan the staged credential forever (the one-time code
+        # otherwise orphan the staged credential forever ( the one-time code
         # rejects any fresh attempt). A retry reuses the exact same proof.
+        # But never overwrite a completed ceremony whose superseded revoke is
+        # still owed: settle that duty first (same semantics as unpair —
+        # transient failure refuses to start the new pair and keeps the record).
+        existing = self._load_rebind_recovery(config)
+        if existing is not None and existing.ledger_id:
+            if existing.superseded_session_token and not self._revoke_superseded_session(
+                config,
+                loopback_origin,
+                existing.superseded_session_token,
+            ):
+                raise ProductDataError(
+                    "旧凭据尚未完成清理，请稍后重试绑定。",
+                    error="product_cleanup_pending",
+                    status_code=503,
+                )
+            with suppress(ProductDataError):
+                self._delete_rebind_recovery(config)
         provisional = self._load_rebind_recovery(config)
         if provisional is not None and not provisional.ledger_id:
             attempt = (
                 provisional.activation_attempt_id,
                 provisional.activation_attempt_secret,
             )
+            attempt_is_fresh = False
         else:
             attempt = new_activation_attempt()
+            attempt_is_fresh = True
             self._stage_rebind_recovery(
                 config,
                 RebindRecovery(
@@ -398,9 +422,19 @@ class AppController:
                 timeout_seconds=config.health_request_timeout_seconds,
             )
         except ProductDataError as exc:
-            if exc.error == "invalid_pairing_code":
-                # Nothing was staged server-side with this proof; drop the
-                # provisional record so the next code starts clean.
+            if exc.error in _TERMINAL_ATTEMPT_ERRORS:
+                # The ceremony is terminally over (code TTL / closed): the proof
+                # has no replay value — drop it so the next pair starts fresh
+                # instead of retrying the same dead attempt forever.
+                with suppress(ProductDataError):
+                    self._delete_rebind_recovery(config)
+            elif exc.error == "invalid_pairing_code" and attempt_is_fresh:
+                # A proof minted in THIS call could never have committed, so
+                # the rejected code really left nothing behind — drop it. A
+                # reused provisional whose code was rejected is NOT cleared:
+                # that 401 is a proof/code mismatch on a possibly committed
+                # ceremony, which only the original code (or unpair/TTL)
+                # resolves honestly.
                 with suppress(ProductDataError):
                     self._delete_rebind_recovery(config)
             raise

@@ -1485,3 +1485,165 @@ def test_invalid_pairing_code_drops_the_provisional_attempt() -> None:
     projection = controller.pair_product_principal("87654321")
     assert projection["configured"] is True
     assert seen_attempts[0] != seen_attempts[1], "a rejected code must not pin the next attempt"
+
+
+# ── Round-4 regressions: owed cleanup survives pairing; terminal attempt drops provisional ──
+
+
+def test_pair_refuses_to_start_while_superseded_cleanup_is_outstanding() -> None:
+    attempt_id, attempt_secret = new_activation_attempt()
+    derived = derive_desktop_pending_token(attempt_secret, attempt_id)
+    current = _product_session(token=derived, ledger_id="family")
+    sessions, recoveries, store = _stores(current)
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-old-X",
+    )
+    pair_calls: list = []
+
+    def failing_revoker(_origin, token, **_kwargs) -> None:
+        raise ProductDataError("backend unreachable", status_code=503)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda *args, **kwargs: pair_calls.append((args, kwargs)),
+        product_session_revoker=failing_revoker,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("12345678")
+
+    assert error.value.status_code == 503
+    assert error.value.error == "product_cleanup_pending"
+    # No provisional overwrite happened: the owed record is fully intact.
+    assert pair_calls == []
+    assert recoveries[_INSTALLATION_ID].superseded_session_token == "tbx-old-X"
+    assert sessions[_INSTALLATION_ID].session_token == derived
+
+
+def test_pair_settles_owed_cleanup_then_proceeds() -> None:
+    attempt_id, attempt_secret = new_activation_attempt()
+    derived = derive_desktop_pending_token(attempt_secret, attempt_id)
+    current = _product_session(token=derived, ledger_id="family")
+    sessions, recoveries, store = _stores(current)
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-old-X",
+    )
+    revoked: list[str] = []
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda _origin, _code, *, attempt, **_kwargs: PendingProductSession(
+            activation_attempt_id=attempt[0],
+            activation_attempt_secret=attempt[1],
+            session=ProductSession(
+                session_token=derive_desktop_pending_token(attempt[1], attempt[0]),
+                account_name="我",
+                ledger_id="family",
+                ledger_name="家庭账本",
+                device_name="小票夹 Desktop",
+                role="member",
+                expires_at=_STAGED_EXPIRY,
+            ),
+        ),
+        product_session_activator=_activate_pending,
+        product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        **store,
+    )
+
+    projection = controller.pair_product_principal("12345678")
+
+    assert projection["configured"] is True
+    assert revoked[0] == "tbx-old-X"
+    assert recoveries == {}
+
+
+def test_terminal_attempt_answers_drop_the_provisional_record() -> None:
+    sessions, recoveries, store = _stores(None)
+    seen_attempts: list[tuple[str, str]] = []
+    calls = {"count": 0}
+
+    def closed_pairer(_origin, _code, *, attempt, **_kwargs) -> PendingProductSession:
+        calls["count"] += 1
+        seen_attempts.append(attempt)
+        if calls["count"] == 1:
+            raise ProductDataError("closed", error="pairing_attempt_closed", status_code=409)
+        return PendingProductSession(
+            activation_attempt_id=attempt[0],
+            activation_attempt_secret=attempt[1],
+            session=ProductSession(
+                session_token=derive_desktop_pending_token(attempt[1], attempt[0]),
+                account_name="我",
+                ledger_id="owner",
+                ledger_name="我的小票夹",
+                device_name="小票夹 Desktop",
+                role="owner",
+                expires_at=_STAGED_EXPIRY,
+            ),
+        )
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=closed_pairer,
+        product_session_activator=_activate_pending,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("12345678")
+    assert error.value.error == "pairing_attempt_closed"
+    assert recoveries == {}
+
+    projection = controller.pair_product_principal("12345678")
+    assert projection["configured"] is True
+    assert seen_attempts[0] != seen_attempts[1], "a closed ceremony must not be retried forever"
+
+
+def test_reused_provisional_with_mismatched_code_keeps_the_record() -> None:
+    sessions, recoveries, store = _stores(None)
+    calls = {"count": 0}
+
+    def wrong_code_pairer(_origin, _code, *, attempt, **_kwargs) -> PendingProductSession:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            # First call commits (response lost); the second, different code,
+            # is a proof/code mismatch on that committed ceremony.
+            raise ProductDataError("response loss", status_code=503)
+        raise ProductDataError("mismatch", error="invalid_pairing_code", status_code=401)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=wrong_code_pairer,
+        product_session_activator=_activate_pending,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError):
+        controller.pair_product_principal("12345678")
+    assert recoveries[_INSTALLATION_ID].ledger_id == ""
+
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("99999999")
+    assert error.value.error == "invalid_pairing_code"
+    # A possibly-committed ceremony is never cleared by a mismatched retry.
+    assert _INSTALLATION_ID in recoveries
