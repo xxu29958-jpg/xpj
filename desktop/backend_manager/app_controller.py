@@ -317,6 +317,18 @@ class AppController:
                 return False
             with suppress(ProductCredentialError):
                 self._product_session_deleter(config.expected_installation_id)
+            # The replacement just died while a superseded revoke was still
+            # owed: attempt it here (best-effort) rather than letting the old
+            # credential live to TTL with no client reference left. The
+            # recovery record itself stays — reconcile owns its lifecycle,
+            # and it may still hold an uncommitted ceremony.
+            recovery = self._load_rebind_recovery(config)
+            if recovery is not None and recovery.superseded_session_token:
+                self._revoke_superseded_session(
+                    config,
+                    self._loopback_origin(config),
+                    recovery.superseded_session_token,
+                )
         return True
 
     def product_ledgers(self) -> list[dict]:
@@ -393,30 +405,44 @@ class AppController:
             return self._unpair_product_principal()
 
     def _unpair_product_principal(self) -> dict:
-        """Revoke the backend token, then remove the local WinCred entry."""
+        """Revoke the backend token(s), then remove the local WinCred entries."""
 
         config = self._product_config(require_available=False)
+        loopback_origin = self._loopback_origin(config)
         session = self._load_product_session(config)
         session = self._reconcile_rebind_recovery(
             config,
-            self._loopback_origin(config),
+            loopback_origin,
             session,
         )
-        if session is None:
-            return {"configured": False}
-        try:
-            self._product_session_revoker(
-                self._loopback_origin(config),
-                session.session_token,
-                timeout_seconds=config.health_request_timeout_seconds,
-            )
-        except ProductDataError as exc:
-            if exc.status_code != 401:
-                raise
-        try:
-            self._product_session_deleter(config.expected_installation_id)
-        except ProductCredentialError as exc:
-            raise self._credential_error(exc) from exc
+        if session is not None:
+            try:
+                self._product_session_revoker(
+                    loopback_origin,
+                    session.session_token,
+                    timeout_seconds=config.health_request_timeout_seconds,
+                )
+            except ProductDataError as exc:
+                if exc.status_code != 401:
+                    raise
+            try:
+                self._product_session_deleter(config.expected_installation_id)
+            except ProductCredentialError as exc:
+                raise self._credential_error(exc) from exc
+        # A recovery record can outlive the primary — an in-flight ceremony
+        # and/or an owed superseded revoke. Unpair is explicit teardown:
+        # attempt the owed revoke (best-effort), then drop the record so no
+        # ceremony resumes and no credential is orphaned client-side.
+        recovery = self._load_rebind_recovery(config)
+        if recovery is not None:
+            if recovery.superseded_session_token:
+                self._revoke_superseded_session(
+                    config,
+                    loopback_origin,
+                    recovery.superseded_session_token,
+                )
+            with suppress(ProductDataError):
+                self._delete_rebind_recovery(config)
         return {"configured": False}
 
     def switch_product_principal_ledger(self, ledger_id: str) -> dict:
@@ -545,9 +571,17 @@ class AppController:
         except ProductDataError as exc:
             if exc.status_code == 401:
                 # The staged attempt expired/was revoked before activation, and
-                # prepare never displaced A. Recovery cleanup is best-effort so
-                # a transient WinCred delete failure cannot make that
-                # still-valid A unusable; later calls retry the same cleanup.
+                # prepare never displaced A. A still-owed superseded revoke
+                # must not die with the record: attempt it (best-effort) before
+                # the self-heal cleanup drops the record. Cleanup itself stays
+                # best-effort so a transient WinCred delete failure cannot make
+                # the still-valid A unusable; later calls retry the same cleanup.
+                if recovery.superseded_session_token:
+                    self._revoke_superseded_session(
+                        config,
+                        loopback_origin,
+                        recovery.superseded_session_token,
+                    )
                 with suppress(ProductDataError):
                     self._delete_rebind_recovery(config)
                 return current

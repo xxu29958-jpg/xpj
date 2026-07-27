@@ -1089,3 +1089,114 @@ def test_bridge_auth_failure_never_wipes_a_fresher_session() -> None:
     assert deleted is False
     assert sessions[_INSTALLATION_ID].session_token == "tbx-fresh-B"
     assert controller.product_principal()["ledger_id"] == "family"
+
+
+# ── P2 regression: the owed superseded revoke survives teardown paths ───────
+
+
+def test_reconcile_401_still_attempts_owed_superseded_revoke() -> None:
+    """B died server-side while the A-revoke was still owed: the reconcile
+    401 branch must attempt it before dropping the recovery record."""
+    sessions, recoveries, store = _stores(None)
+    attempt_id, attempt_secret = new_activation_attempt()
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-superseded-A",
+    )
+    revoked: list[str] = []
+
+    def dead_attempt(*_args, **_kwargs) -> ProductSession:
+        raise ProductDataError("staged attempt dead", error="invalid_token", status_code=401)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_activator=dead_attempt,
+        product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        **store,
+    )
+
+    assert controller.product_principal() == {"configured": False}
+
+    assert revoked == ["tbx-superseded-A"]
+    assert recoveries == {}
+
+
+def test_unpair_revokes_owed_superseded_before_dropping_recovery() -> None:
+    attempt_id, attempt_secret = new_activation_attempt()
+    derived = derive_desktop_pending_token(attempt_secret, attempt_id)
+    current = _product_session(token=derived, ledger_id="family")
+    sessions, recoveries, store = _stores(current)
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-old-A",
+    )
+    revoked: list[str] = []
+
+    def flaky_revoker(_origin, token, **_kwargs) -> None:
+        revoked.append(token)
+        if len(revoked) == 1:
+            # The reconcile-time retry fails transiently; the unpair-time
+            # backstop must still collect the owed revoke afterwards.
+            raise ProductDataError("backend unreachable", status_code=503)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_revoker=flaky_revoker,
+        **store,
+    )
+
+    assert controller.unpair_product_principal() == {"configured": False}
+
+    # Reconcile's superseded retry (failed), the primary revoke, then the
+    # unpair-time backstop for the same superseded token.
+    assert revoked == ["tbx-old-A", derived, "tbx-old-A"]
+    assert sessions == {}
+    assert recoveries == {}
+
+
+def test_unpair_with_dead_primary_still_collects_superseded() -> None:
+    sessions, recoveries, store = _stores(None)
+    attempt_id, attempt_secret = new_activation_attempt()
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-superseded-A",
+    )
+    revoked: list[str] = []
+
+    def dead_attempt(*_args, **_kwargs) -> ProductSession:
+        raise ProductDataError("staged attempt dead", error="invalid_token", status_code=401)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_activator=dead_attempt,
+        product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        **store,
+    )
+
+    assert controller.unpair_product_principal() == {"configured": False}
+    assert revoked == ["tbx-superseded-A"]
+    assert recoveries == {}
