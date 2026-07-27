@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import timedelta
 
 import pytest
 from api_contract_helpers import insert_confirmed_expense
@@ -14,6 +14,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember, RecurringItem
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.time_service import now_utc
 
 
 @pytest.fixture()
@@ -24,10 +25,12 @@ def web_client(client: TestClient) -> TestClient:
 
 
 def _seed_candidate() -> None:
+    # PR #253 R4: 候选扫描窗口为近 6 个月, 播种改相对日期 (固定日期会随时间掉出窗口)。
+    base = now_utc()
     for when in (
-        datetime(2026, 3, 5, 12, 0, tzinfo=UTC),
-        datetime(2026, 4, 5, 12, 0, tzinfo=UTC),
-        datetime(2026, 5, 5, 12, 0, tzinfo=UTC),
+        base - timedelta(days=62),
+        base - timedelta(days=31),
+        base,
     ):
         insert_confirmed_expense(
             amount_cents=20000,
@@ -63,7 +66,7 @@ def _confirm_candidate(web_client: TestClient) -> None:
             "merchant": "ChatGPT Plus",
             "amount_cents": "20000",
             "occurrence_count": "3",
-            "last_seen_at": "2026-05-05T12:00:00Z",
+            "last_seen_at": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "confidence": "high",
         },
         follow_redirects=False,
@@ -246,3 +249,48 @@ def test_web_recurring_pause_resume_use_rendered_token(web_client: TestClient) -
             db.scalar(select(RecurringItem.status).where(RecurringItem.public_id == public_id))
             == "active"
         )
+
+
+def test_web_recurring_candidate_disappears_after_confirm(web_client: TestClient) -> None:
+    """PR #253 R4-2: claimed 过滤下推共享装配后, 已转正商家从候选列表自然消失。"""
+    _seed_candidate()
+    before = web_client.get("/web/recurring?ledger_id=owner")
+    assert before.status_code == 200
+    assert 'action="/web/recurring/confirm-candidate"' in before.text
+
+    _confirm_candidate(web_client)
+
+    after = web_client.get("/web/recurring?ledger_id=owner")
+    assert after.status_code == 200
+    # 正式列表仍在, 候选确认表单不再出现 (候选集已空)。
+    assert "ChatGPT Plus" in after.text
+    assert 'action="/web/recurring/confirm-candidate"' not in after.text
+
+
+def test_web_recurring_confirm_retry_returns_existing_not_error(web_client: TestClient) -> None:
+    """PR #253 R4-2 幂等: 候选消失后重试同一确认, 返回既有正式项而非 404/409。"""
+    _seed_candidate()
+    _confirm_candidate(web_client)
+    # 重试同一确认 payload — 候选已被 claimed 过滤, 幂等前置返回既有项。
+    retry = web_client.post(
+        "/web/recurring/confirm-candidate",
+        data={
+            "ledger_id": "owner",
+            "merchant": "ChatGPT Plus",
+            "amount_cents": "20000",
+            "occurrence_count": "3",
+            "last_seen_at": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "confidence": "high",
+        },
+        follow_redirects=False,
+    )
+    assert retry.status_code == 303
+    with SessionLocal() as db:
+        items = list(
+            db.scalars(
+                select(RecurringItem)
+                .where(RecurringItem.tenant_id == "owner")
+                .where(RecurringItem.merchant_name == "ChatGPT Plus")
+            ).all()
+        )
+        assert len(items) == 1

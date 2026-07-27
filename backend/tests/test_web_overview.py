@@ -409,3 +409,22 @@ def test_overview_pending_card_link_is_readonly_for_viewer(
     assert card is not None
     assert "查看" in card.group(0)
     assert "去处理" not in card.group(0)
+
+
+def test_overview_skips_recurring_candidate_scan_when_card_hidden(
+    web_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #253 R4-1: 固定支出卡隐藏时, 候选扫描 (限界但仍有成本) 整体跳过。"""
+    _save_card_layout(web_client, ordered_keys=WEB_CARD_KEYS, hidden={"recurring"})
+    calls: list[str] = []
+    real_count = web_common.unclaimed_recurring_candidate_count
+
+    def _spy_count(db, *, tenant_id, timezone_name=None):
+        calls.append(tenant_id)
+        return real_count(db, tenant_id=tenant_id, timezone_name=timezone_name)
+
+    monkeypatch.setattr(web_common, "unclaimed_recurring_candidate_count", _spy_count)
+
+    resp = web_client.get("/web/overview?ledger_id=owner")
+    assert resp.status_code == 200
+    assert calls == []

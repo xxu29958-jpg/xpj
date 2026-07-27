@@ -6,6 +6,7 @@ pending 质量计数与旧物化口径逐字一致、recurring 候选排除已�
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -17,10 +18,11 @@ from _web_overview_test_support import (
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
-from app.models import Expense, RecurringItem
+from app.models import Account, AuthToken, Device, Expense, RecurringItem
 from app.routes import web_common
-from app.services import backup_service, expense_service, web_stats_service
+from app.services import backup_service, backup_status_service, expense_service, web_stats_service
 from app.services.data_quality_service import is_usable_pending_merchant
+from app.services.identity_service import hash_secret
 from app.services.insights_service import recurring_candidates, unclaimed_recurring_candidate_count
 from app.services.merchant_service import normalize_merchant
 from app.services.time_service import current_month, now_utc
@@ -31,7 +33,7 @@ def test_latest_backup_lightweight_validates_only_newest_once_and_caches(
 ) -> None:
     """PR #253 R2 bot-P1: 只验最新一个 dump; (name, mtime, size) 缓存命中零重复验证。"""
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
-    backup_service._lightweight_backup_validation.clear()
+    backup_status_service._lightweight_backup_validation.clear()
     _older, newer = write_fake_dumps(tmp_path)
     validations: list[Path] = []
 
@@ -39,10 +41,10 @@ def test_latest_backup_lightweight_validates_only_newest_once_and_caches(
         validations.append(path)
         return True
 
-    monkeypatch.setattr(backup_service, "is_postgres_backup_valid", _fake_validate)
+    monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", _fake_validate)
 
-    first = backup_service.latest_backup_lightweight()
-    second = backup_service.latest_backup_lightweight()
+    first = backup_status_service.latest_backup_lightweight()
+    second = backup_status_service.latest_backup_lightweight()
     assert first is not None and second is not None
     assert first.file_name == "ticketbox-2026-07-20.dump"
     # 旧文件从不验证; 缓存命中 → 同一 dump 只验一次。
@@ -50,7 +52,7 @@ def test_latest_backup_lightweight_validates_only_newest_once_and_caches(
 
     # (path, mtime, size) 变化 = 新 dump → 重新验证一次。
     newer.write_bytes(b"rewritten-dump-payload")
-    third = backup_service.latest_backup_lightweight()
+    third = backup_status_service.latest_backup_lightweight()
     assert third is not None
     assert validations == [newer, newer]
 
@@ -60,11 +62,11 @@ def test_latest_backup_lightweight_corrupt_newest_means_no_restorable_backup(
 ) -> None:
     """损坏的最新 dump → 状态卡按「无可恢复备份」呈现 (backup_available=False)。"""
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
-    backup_service._lightweight_backup_validation.clear()
+    backup_status_service._lightweight_backup_validation.clear()
     write_fake_dumps(tmp_path)
-    monkeypatch.setattr(backup_service, "is_postgres_backup_valid", lambda _path: False)
+    monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", lambda _path: False)
 
-    assert backup_service.latest_backup_lightweight() is None
+    assert backup_status_service.latest_backup_lightweight() is None
 
     with SessionLocal() as db:
         block = web_common._dashboard_status_counts_block(db, "owner", now_utc())
@@ -72,12 +74,39 @@ def test_latest_backup_lightweight_corrupt_newest_means_no_restorable_backup(
     assert block["backup_age_days"] is None
 
 
+def test_latest_backup_lightweight_tool_failure_is_not_cached_as_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #253 R4-3: 工具失败 (超时/不可用) 不缓存为 invalid — 下次成功即有效。"""
+    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
+    backup_status_service._lightweight_backup_validation.clear()
+    _older, newer = write_fake_dumps(tmp_path)
+    verdicts: list[object] = [None, True]  # 首次超时 (None), 重试成功 (True)
+    calls: list[Path] = []
+
+    def _flaky_validate(path: Path):
+        calls.append(path)
+        return verdicts.pop(0)
+
+    monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", _flaky_validate)
+
+    # 首次: 工具失败 → 按「存在但未验证」呈现最新候选, 不写缓存。
+    first = backup_status_service.latest_backup_lightweight()
+    assert first is not None and first.file_name == newer.name
+    assert backup_status_service._lightweight_backup_validation == {}
+    # 重试: 验证成功 → 有效 (且这次才缓存)。
+    second = backup_status_service.latest_backup_lightweight()
+    assert second is not None and second.file_name == newer.name
+    assert calls == [newer, newer]
+    assert list(backup_status_service._lightweight_backup_validation.values()) == [True]
+
+
 def test_latest_backup_lightweight_falls_back_to_older_valid_dump(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """PR #253 R3-1: 最新 dump 损坏时向后找最新有效者 (与 latest_backup 同语义)。"""
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
-    backup_service._lightweight_backup_validation.clear()
+    backup_status_service._lightweight_backup_validation.clear()
     older, newer = write_fake_dumps(tmp_path)
     validations: list[Path] = []
 
@@ -85,14 +114,14 @@ def test_latest_backup_lightweight_falls_back_to_older_valid_dump(
         validations.append(path)
         return path.name == older.name  # 新的坏, 旧的有效
 
-    monkeypatch.setattr(backup_service, "is_postgres_backup_valid", _validate_by_name)
+    monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", _validate_by_name)
 
-    entry = backup_service.latest_backup_lightweight()
+    entry = backup_status_service.latest_backup_lightweight()
     assert entry is not None
     assert entry.file_name == older.name
     # 新→旧逐退, 每个文件只验一次 (再次调用全部缓存命中)。
     assert validations == [newer, older]
-    assert backup_service.latest_backup_lightweight() is not None
+    assert backup_status_service.latest_backup_lightweight() is not None
     assert validations == [newer, older]
 
 
@@ -213,9 +242,9 @@ def test_recurring_candidate_count_excludes_formalized_merchants(
             )
         )
         db.commit()
-        # 确认转正后候选计数清零; 原口径 recurring_candidates 不动。
+        # 确认转正后候选清零; R4 起 claimed 过滤在共享装配内, 原函数同口径。
         assert unclaimed_recurring_candidate_count(db, tenant_id="owner") == 0
-        assert len(recurring_candidates(db, tenant_id="owner")) == 1
+        assert len(recurring_candidates(db, tenant_id="owner")) == 0
 
 
 def test_overview_category_share_merges_overflow_into_existing_other_bucket(
@@ -252,3 +281,52 @@ def test_overview_category_share_merges_overflow_into_existing_other_bucket(
     assert other["count"] == 3
     # 金额仍按全量总额口径 (9000+8000+7000+6000+5000+3000+2000)。
     assert sum(int(row["amount_cents"]) for row in rows) == 40000
+
+
+def test_active_device_count_excludes_pending_and_expired_tokens(
+    web_client: TestClient, *, identity
+) -> None:
+    """PR #253 R4-4: 连接设备只计可认证会话 (app/admin scope 且未过期未吊销)。"""
+    with SessionLocal() as db:
+        baseline = web_stats_service.active_device_count(db, "owner")
+        owner_account = db.query(Account).order_by(Account.id.asc()).first()
+        assert owner_account is not None
+        desktop = Device(account_id=owner_account.id, device_name="pytest-desktop", platform="windows")
+        old_phone = Device(account_id=owner_account.id, device_name="pytest-old-phone", platform="android")
+        db.add_all([desktop, old_phone])
+        db.flush()
+        future = now_utc() + timedelta(days=7)
+        past = now_utc() - timedelta(days=1)
+        db.add_all(
+            [
+                # 待激活 desktop_pending: 不计。
+                AuthToken(
+                    token_hash=hash_secret("pending-tok"),
+                    account_id=owner_account.id,
+                    device_id=desktop.id,
+                    ledger_id="owner",
+                    scope="desktop_pending",
+                    expires_at=future,
+                ),
+                # 已过期未吊销 app: 不计。
+                AuthToken(
+                    token_hash=hash_secret("expired-tok"),
+                    account_id=owner_account.id,
+                    device_id=old_phone.id,
+                    ledger_id="owner",
+                    scope="app",
+                    expires_at=past,
+                ),
+                # 有效 app: 计。
+                AuthToken(
+                    token_hash=hash_secret("valid-tok"),
+                    account_id=owner_account.id,
+                    device_id=desktop.id,
+                    ledger_id="owner",
+                    scope="app",
+                    expires_at=future,
+                ),
+            ]
+        )
+        db.commit()
+        assert web_stats_service.active_device_count(db, "owner") == baseline + 1

@@ -262,7 +262,12 @@ def active_device_count(db: Session, ledger_id: str) -> int:
 
     CurrentLedger is client context, so an AuthToken's compatibility default
     cannot define ledger reachability. Active Membership does.
+
+    PR #253 R4-4: only tokens that can actually authenticate count — session
+    scopes (``app``/``admin``), not staged ``desktop_pending`` credentials, and
+    not expired-but-unrevoked tokens (``expires_at`` null or in the future).
     """
+    now = now_utc()
     return int(
         db.scalar(
             select(func.count(func.distinct(Device.id)))
@@ -274,6 +279,8 @@ def active_device_count(db: Session, ledger_id: str) -> int:
                 & (LedgerMember.ledger_id == ledger_id),
             )
             .where(AuthToken.revoked_at.is_(None))
+            .where(AuthToken.scope.in_(("app", "admin")))
+            .where((AuthToken.expires_at.is_(None)) | (AuthToken.expires_at > now))
             .where(Device.revoked_at.is_(None))
             .where(LedgerMember.disabled_at.is_(None))
         )

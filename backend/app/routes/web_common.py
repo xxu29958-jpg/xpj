@@ -24,7 +24,7 @@ from app.errors import AppError
 from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
 from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
-from app.services import backup_service, bill_split_service, web_stats_service
+from app.services import backup_status_service, bill_split_service, web_stats_service
 from app.services import owner_console_service as owner_svc
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_common import (
@@ -647,7 +647,7 @@ def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
     仍用全量验证的 ``latest_backup()``。
     """
     week_ago = now - timedelta(days=7)
-    latest_backup = backup_service.latest_backup_lightweight()
+    latest_backup = backup_status_service.latest_backup_lightweight()
     backup_age_days = None
     if latest_backup is not None:
         backup_age_days = max(0, (now.astimezone() - latest_backup.created_at).days)
@@ -678,11 +678,17 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     recurring_rows = list_recurring_items(db, tenant_id=ledger_id, include_archived=False)
     active_recurring = sum(1 for item in recurring_rows if item.status == "active")
     paused_recurring = sum(1 for item in recurring_rows if item.status == "paused")
-    candidate_count = unclaimed_recurring_candidate_count(db, tenant_id=ledger_id)
     budget = get_monthly_budget(db, tenant_id=ledger_id, month=month, timezone_name=timezone_name)
     goals = list_goals(db, tenant_id=ledger_id, month=month, timezone_name=timezone_name)
     now = now_utc()
     layout = list_dashboard_cards(db, tenant_id=ledger_id, surface="web")
+    # PR #253 R4: 候选扫描即使限界也有成本, 固定支出卡隐藏时跳过装配。
+    recurring_card_visible = any(item.visible and item.key == "recurring" for item in layout.items)
+    candidate_count = (
+        unclaimed_recurring_candidate_count(db, tenant_id=ledger_id)
+        if recurring_card_visible
+        else 0
+    )
     current_total = int(stats["total_amount_cents"])
     prev_total = int(prev_stats["total_amount_cents"]) if prev_stats else 0
     delta_amount = current_total - prev_total

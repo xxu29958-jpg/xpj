@@ -45,7 +45,8 @@ def test_recurring_candidates_empty(client: TestClient, *, identity) -> None:
 
 def test_recurring_candidates_detects_monthly_merchant(client: TestClient, *, identity) -> None:
     # 3 months of ChatGPT subscription, amounts within 15%.
-    base = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
+    # PR #253 R4: 候选扫描窗口为近 6 个月, 播种改相对日期 (固定日期会随时间掉出窗口)。
+    base = datetime.now(UTC) - timedelta(days=2)
     for month_offset, amount in [(2, 20000), (1, 20000), (0, 20800)]:
         when = base - timedelta(days=30 * month_offset)
         insert_confirmed_expense(
@@ -66,7 +67,7 @@ def test_recurring_candidates_detects_monthly_merchant(client: TestClient, *, id
 
 
 def test_recurring_candidates_ignores_one_off(client: TestClient, *, identity) -> None:
-    when = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
+    when = datetime.now(UTC) - timedelta(days=2)
     insert_confirmed_expense(
         amount_cents=99900,
         merchant="一次性家电",
@@ -82,7 +83,7 @@ def test_recurring_candidates_ignores_one_off(client: TestClient, *, identity) -
 
 def test_recurring_candidates_ignores_amount_drift(client: TestClient, *, identity) -> None:
     # Same merchant 3 months but amounts way off → excluded.
-    base = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
+    base = datetime.now(UTC) - timedelta(days=2)
     for month_offset, amount in [(2, 5000), (1, 30000), (0, 18000)]:
         when = base - timedelta(days=30 * month_offset)
         insert_confirmed_expense(

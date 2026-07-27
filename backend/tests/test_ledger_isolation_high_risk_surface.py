@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -11,6 +12,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import Expense
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.time_service import now_utc
 
 
 @dataclass(frozen=True)
@@ -92,6 +94,42 @@ def _seed_recurring_expense_pairs(client: TestClient, *, identity: Any) -> None:
         merchant="TesterRecurring",
         amount_cents=3400,
         expense_time="2026-02-05T00:00:00Z",
+        category="TesterOnlyCategory",
+    )
+    # PR #253 R4: 候选扫描窗口为近 6 个月 — 上面的固定日期笔供 stats 断言,
+    # 候选判定另补一对相对日期 (固定日期会随时间掉出窗口)。
+    recent = (now_utc() - timedelta(days=32)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    current = now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")
+    _manual_expense(
+        client,
+        identity.app_headers,
+        merchant="OwnerRecurring",
+        amount_cents=1200,
+        expense_time=recent,
+        category="OwnerOnlyCategory",
+    )
+    _manual_expense(
+        client,
+        identity.app_headers,
+        merchant="OwnerRecurring",
+        amount_cents=1200,
+        expense_time=current,
+        category="OwnerOnlyCategory",
+    )
+    _manual_expense(
+        client,
+        identity.gray_app_headers,
+        merchant="TesterRecurring",
+        amount_cents=3400,
+        expense_time=recent,
+        category="TesterOnlyCategory",
+    )
+    _manual_expense(
+        client,
+        identity.gray_app_headers,
+        merchant="TesterRecurring",
+        amount_cents=3400,
+        expense_time=current,
         category="TesterOnlyCategory",
     )
 

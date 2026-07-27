@@ -35,6 +35,16 @@ def confirm_recurring_candidate(
     payload: RecurringCandidateConfirmRequest,
     timezone_name: str | None = None,
 ) -> RecurringItem:
+    # PR #253 R4: 候选装配已过滤 active/paused formal — 确认成功后候选自然消失,
+    # 重试同一确认时走既有幂等返回 (不 404/409)。
+    merchant_key = normalize_merchant(payload.merchant.strip())
+    frequency = _clean_frequency(payload.frequency)
+    if merchant_key:
+        formal = _existing_item(
+            db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency
+        )
+        if formal is not None and formal.status != "archived" and formal.archived_at is None:
+            return formal
     match = _require_recurring_candidate_match(
         db,
         tenant_id=tenant_id,
