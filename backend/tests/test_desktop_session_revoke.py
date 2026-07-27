@@ -86,47 +86,90 @@ def test_revoke_is_not_idempotent_for_the_same_credential(
     assert replay.json()["error"] == "invalid_token"
 
 
-def test_revoke_kills_promoted_replacements_but_not_unrelated_lineages(
+def test_switch_cleanup_revoke_retires_predecessor_but_keeps_promoted_successor(
     identity,
     loopback_client: TestClient,
     client: TestClient,
 ) -> None:
-    """Unpair must not leave promoted replacements alive: a staged+activated
-    successor whose receipt names the revoked credential as predecessor dies
-    in the same transaction; an independently-paired desktop device's session
-    (unrelated lineage) survives."""
+    """P0 regression: the ledger-switch cleanup (revoke the predecessor after
+    the replacement is promoted) must NOT kill the promoted successor — the
+    default revoke retires only the presented row and staged pending rows."""
     from tests.test_desktop_ledger_switch_prepare import _create_ledger
 
     _, headers = _desktop_session(client, identity.pairing_code)
     source_token = headers["Authorization"].removeprefix("Bearer ")
-
-    # Stage + activate a promoted replacement B for the SAME device on another
-    # ledger — its attempt receipt records the source credential as predecessor.
-    target = _create_ledger(client, headers, name="替换账本")
+    target = _create_ledger(client, headers, name="目标账本")
     payload = _prepare_payload()
-    prepared = client.post(
-        f"/api/ledgers/{target}/switch/prepare",
-        headers=headers,
-        json=payload,
+    assert (
+        client.post(
+            f"/api/ledgers/{target}/switch/prepare",
+            headers=headers,
+            json=payload,
+        ).status_code
+        == 200
     )
-    assert prepared.status_code == 200, prepared.text
     activated = _activate_attempt(client, payload)
     assert activated.status_code == 200, activated.text
-    sibling_token = activated.json()["session_token"]
+    successor_token = activated.json()["session_token"]
 
-    # Lineage evidence: the receipt names the source token as predecessor.
+    # The receipt names the source credential as predecessor (the durable
+    # association) — and the default cleanup must ignore it for the successor.
     attempt = _attempt_row(payload["activation_attempt_id"])
     source_row = _token_row(source_token)
     assert attempt.previous_token_id == source_row.id
 
-    # An unrelated desktop device paired independently survives the revoke.
+    response = loopback_client.post(REVOKE_PATH, headers=_bridge_headers(source_token))
+
+    assert response.status_code == 204, response.text
+    assert client.get("/api/auth/check", headers=headers).status_code == 401
+    successor = client.get(
+        "/api/auth/check",
+        headers={"Authorization": f"Bearer {successor_token}"},
+    )
+    assert successor.status_code == 200, successor.text
+    assert successor.json()["ledger_id"] == target
+
+
+def test_unpair_lineage_scope_kills_promoted_replacements_but_not_unrelated_lineages(
+    identity,
+    loopback_client: TestClient,
+    client: TestClient,
+) -> None:
+    """The teardown intent (``?scope=lineage``) additionally kills promoted
+    replacements whose receipt names the revoked credential as predecessor;
+    an independently-paired desktop device's session survives."""
+    from tests.test_desktop_ledger_switch_prepare import _create_ledger
+
+    _, headers = _desktop_session(client, identity.pairing_code)
+    source_token = headers["Authorization"].removeprefix("Bearer ")
+    target = _create_ledger(client, headers, name="替换账本")
+    payload = _prepare_payload()
+    assert (
+        client.post(
+            f"/api/ledgers/{target}/switch/prepare",
+            headers=headers,
+            json=payload,
+        ).status_code
+        == 200
+    )
+    activated = _activate_attempt(client, payload)
+    assert activated.status_code == 200, activated.text
+    sibling_token = activated.json()["session_token"]
+
+    attempt = _attempt_row(payload["activation_attempt_id"])
+    source_row = _token_row(source_token)
+    assert attempt.previous_token_id == source_row.id
+
     other_payload, other_body = _pair_desktop(
         client,
         new_desktop_pairing_code(client, headers),
     )
     assert _activate(client, other_payload).status_code == 200
 
-    response = loopback_client.post(REVOKE_PATH, headers=_bridge_headers(source_token))
+    response = loopback_client.post(
+        f"{REVOKE_PATH}?scope=lineage",
+        headers=_bridge_headers(source_token),
+    )
 
     assert response.status_code == 204, response.text
     assert client.get("/api/auth/check", headers=headers).status_code == 401
@@ -140,6 +183,22 @@ def test_revoke_kills_promoted_replacements_but_not_unrelated_lineages(
         headers={"Authorization": f"Bearer {other_body['session_token']}"},
     )
     assert unrelated.status_code == 200, unrelated.text
+
+
+def test_revoke_rejects_unknown_scope(
+    identity,
+    loopback_client: TestClient,
+    client: TestClient,
+) -> None:
+    _, headers = _desktop_session(client, identity.pairing_code)
+    token = headers["Authorization"].removeprefix("Bearer ")
+
+    response = loopback_client.post(
+        f"{REVOKE_PATH}?scope=everything",
+        headers=_bridge_headers(token),
+    )
+
+    assert response.status_code == 400
 
 
 def test_revoke_requires_bridge_marker(

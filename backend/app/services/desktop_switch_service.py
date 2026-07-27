@@ -166,8 +166,11 @@ def revalidate_desktop_session_under_lock(
     the identity advisory lock FIRST (the same
     ``lock_bootstrap_owner_transaction`` every revocation flow takes, ahead of
     Ledger → LedgerMember → AuthToken) and then only READ — no row locks, so
-    no ABBA with the credential→Ledger→Member→Token chain. GET/HEAD reads
-    skip the advisory lock (the middleware re-authenticates every request).
+    no ABBA with the credential→Ledger→Member→Token chain. Availability
+    trade-off, chosen deliberately: all desktop bridge mutations serialize
+    with all identity writes (a slow bridge write stalls sibling identity
+    work for its duration); reads are unaffected — GET/HEAD skips the lock
+    entirely and the middleware re-authenticates every request anyway.
     Death is durable: a still-live token row is hard-revoked before the 401,
     so a membership re-enable cannot resurrect a discarded bearer.
     """
@@ -210,10 +213,20 @@ def revoke_desktop_app_session(
     *,
     auth: AuthContext,
     token_value: str,
+    lineage: bool = False,
 ) -> None:
-    """Revoke the presented credential, its staged pending rows, and promoted
-    replacements whose receipt names it as predecessor. Other lineages and the
-    device stay untouched.
+    """Revoke the presented credential; scope decides the kill set.
+
+    Default (``lineage=False``, the ledger-switch cleanup intent): retire the
+    predecessor — the presented row plus still-staged ``desktop_pending``
+    rows. A promoted successor stays alive: activation left it as the live
+    session by design, and killing it would suicide the session the client
+    just switched to.
+
+    ``lineage=True`` (the unpair/teardown intent): additionally hard-revoke
+    every already-promoted replacement whose activation receipt names the
+    presented credential as predecessor, so no proof holder keeps a 90-day
+    session after the device is de-authorized.
     """
 
     if (
@@ -226,17 +239,20 @@ def revoke_desktop_app_session(
     if revoked != 1:
         db.rollback()
         raise AppError("invalid_token", status_code=401)
-    promoted_ids = select(DesktopActivationAttempt.token_id).where(
-        DesktopActivationAttempt.previous_token_id == auth.credential_id,
-        DesktopActivationAttempt.activated_at.is_not(None),
-    )
+    kill_filter = AuthToken.scope == DESKTOP_PENDING_SCOPE
+    if lineage:
+        promoted_ids = select(DesktopActivationAttempt.token_id).where(
+            DesktopActivationAttempt.previous_token_id == auth.credential_id,
+            DesktopActivationAttempt.activated_at.is_not(None),
+        )
+        kill_filter = kill_filter | AuthToken.id.in_(promoted_ids)
     replacement_rows = db.scalars(
         select(AuthToken)
         .where(
             AuthToken.account_id == auth.account_id,
             AuthToken.device_id == auth.device_id,
             AuthToken.revoked_at.is_(None),
-            (AuthToken.scope == DESKTOP_PENDING_SCOPE) | AuthToken.id.in_(promoted_ids),
+            kill_filter,
         )
         .with_for_update()
     ).all()

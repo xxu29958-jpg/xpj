@@ -52,19 +52,25 @@ def _get_current_desktop_context(
 @router.post("/session/revoke", status_code=status.HTTP_204_NO_CONTENT)
 def revoke_desktop_session(
     authorization: str | None = Header(default=None),
+    scope: str | None = None,
     auth: AuthContext = Depends(_get_current_desktop_context),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Revoke the presented credential plus its staged/promoted replacements.
+    """Revoke the presented credential (default) or its whole lineage.
 
-    The kill set is exactly this credential's lineage: still-staged pending
-    rows and already-promoted successors whose activation receipt names the
-    presented credential as predecessor. Unrelated lineages, other devices'
-    sessions, and the device itself stay untouched.
+    Default: the presented row plus still-staged pending rows — the
+    ledger-switch cleanup intent, which keeps the promoted successor alive.
+    ``?scope=lineage`` (unpair/teardown intent): additionally kills every
+    promoted replacement whose receipt names this credential as predecessor.
+    Unrelated lineages, other devices' sessions, and the device itself stay
+    untouched.
     """
+    if scope not in (None, "lineage"):
+        raise AppError("invalid_request", status_code=400)
     revoke_desktop_app_session(
         db,
         auth=auth,
         token_value=_bearer_token(authorization),
+        lineage=scope == "lineage",
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

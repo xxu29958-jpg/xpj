@@ -516,11 +516,18 @@ def revoke_product_session(
     session_token: str,
     *,
     timeout_seconds: float,
+    scope: str | None = None,
 ) -> None:
-    """Revoke one exact app session without placing it in a URL or response."""
+    """Revoke one exact app session without placing it in a URL or response.
+
+    ``scope="lineage"`` widens the kill to the credential's staged and
+    promoted replacements — reserved for explicit teardown (unpair); the
+    default retires only the predecessor and keeps the promoted successor.
+    """
 
     parsed = _validated_loopback_origin(backend_origin)
-    url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/desktop/session/revoke", "", ""))
+    query = urllib.parse.urlencode({"scope": scope}) if scope else ""
+    url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/desktop/session/revoke", query, ""))
     request = urllib.request.Request(
         url,
         data=b"",

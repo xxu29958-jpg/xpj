@@ -296,14 +296,13 @@ def authenticate_desktop_session_token(db: Session, token_value: str) -> AuthCon
     try:
         return _context_from_token(db, token)
     except AppError as exc:
-        if exc.error == "ledger_forbidden":
-            # The desktop session is bound to exactly one ledger; losing that
-            # membership retires the credential outright — it can never
-            # succeed again, so report death (401), not an authorization
-            # mismatch. The ?ledger_id= mismatch case lives in the
-            # middleware's own binding check and stays 403 there. Persist the
-            # death too: a later membership re-enable must not resurrect
-            # bearer copies the legitimate client has already discarded.
+        if exc.error in {"invalid_token", "ledger_forbidden"}:
+            # Death is durable on every liveness failure — disabled account or
+            # device, archived ledger, lost membership (ledger_forbidden): a
+            # later re-enable must not resurrect a bearer the legitimate
+            # client already discarded. Persist the revocation, then report
+            # death (401), never an authorization mismatch; the ?ledger_id=
+            # mismatch case lives in the middleware's own check and stays 403.
             if token.revoked_at is None:
                 token.revoked_at = now
                 token.grace_until = None

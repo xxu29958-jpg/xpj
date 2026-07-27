@@ -1917,3 +1917,54 @@ def test_switch_settles_owed_cleanup_then_proceeds_to_next_ledger() -> None:
     assert projection["ledger_id"] == "third"
     assert revoked[0] == "tbx-old-A"
     assert recoveries == {}
+
+
+# ── Round-6: revoke-scope split — switch cleanup never suicides the successor ──
+
+
+def test_switch_cleanup_revokes_predecessor_without_lineage_scope() -> None:
+    current = _product_session(ledger_id="owner")
+    pending = _pending_for(ledger_id="family", role="viewer")
+    sessions, _recoveries, store = _stores(current)
+    calls: list[tuple[str, dict]] = []
+
+    def capture_revoker(_origin, token, **kwargs) -> None:
+        calls.append((token, kwargs))
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_ledger_switcher=lambda *_args, **_kwargs: pending,
+        product_session_activator=_activate_pending,
+        product_session_revoker=capture_revoker,
+        **store,
+    )
+
+    projection = controller.switch_product_principal_ledger("family")
+
+    assert projection["ledger_id"] == "family"
+    # The switch cleanup retires the predecessor ONLY (no lineage scope) —
+    # the promoted successor must stay the live session.
+    assert [token for token, _ in calls] == [current.session_token]
+    assert all(kwargs.get("scope") is None for _, kwargs in calls)
+
+
+def test_unpair_revokes_with_lineage_scope() -> None:
+    current = _product_session()
+    sessions, _recoveries, store = _stores(current)
+    calls: list[tuple[str, dict]] = []
+
+    def capture_revoker(_origin, token, **kwargs) -> None:
+        calls.append((token, kwargs))
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_revoker=capture_revoker,
+        **store,
+    )
+
+    assert controller.unpair_product_principal() == {"configured": False}
+    # Teardown takes the whole staged/promoted lineage down.
+    assert [token for token, _ in calls] == [current.session_token]
+    assert all(kwargs.get("scope") == "lineage" for _, kwargs in calls)

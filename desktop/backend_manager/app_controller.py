@@ -561,6 +561,7 @@ class AppController:
                 config,
                 loopback_origin,
                 recovery.superseded_session_token,
+                lineage=True,
             ):
                 raise ProductDataError(
                     "旧凭据尚未完成清理，请稍后重试解除绑定。",
@@ -575,6 +576,9 @@ class AppController:
                     loopback_origin,
                     session.session_token,
                     timeout_seconds=config.health_request_timeout_seconds,
+                    # Unpair is teardown: take the staged and promoted
+                    # replacements of this lineage down with the session.
+                    scope="lineage",
                 )
             except ProductDataError as exc:
                 if exc.status_code != 401:
@@ -830,14 +834,22 @@ class AppController:
         config: ManagerConfig,
         loopback_origin: str,
         session_token: str,
+        *,
+        lineage: bool = False,
     ) -> bool:
         """Retire one superseded credential. True when it is gone (revoked now
-        or already dead); False when a later reconcile must retry."""
+        or already dead); False when a later reconcile must retry.
+
+        ``lineage=False`` is the ledger-switch cleanup intent: retire the
+        predecessor, keep the promoted successor. ``lineage=True`` is reserved
+        for teardown (unpair): the whole staged/promoted lineage goes with it.
+        """
         try:
             self._product_session_revoker(
                 loopback_origin,
                 session_token,
                 timeout_seconds=config.health_request_timeout_seconds,
+                **({"scope": "lineage"} if lineage else {}),
             )
             return True
         except ProductDataError as exc:

@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import os
 import threading
+import urllib.parse
+import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -572,3 +574,57 @@ def test_real_manager_window_close_reaps_edge_process(
         assert window.is_open()
         assert window.close(timeout=10) is True
         assert window.is_open() is False
+
+
+def test_real_backend_switch_sequence_replacement_session_survives_cleanup(
+    tmp_path: Path,
+    real_backend: RealBackend,
+) -> None:
+    """P0 combination pin: pair → switch to another ledger (two-phase) → the
+    cleanup revoke of the predecessor must leave the promoted successor
+    usable — the /web surface keeps rendering the new ledger afterwards."""
+    stores = CredentialStores()
+    controller = make_controller(real_backend.port, stores)
+    manager = make_manager(controller)
+    manager_origin = f"http://127.0.0.1:{manager.server_address[1]}"
+
+    with _serving(manager):
+        status, projection = manager_post_json(
+            manager.server_address[1],
+            "/api/product/pair",
+            {"pairing_code": real_backend.fresh_pairing_code()},
+            origin=manager_origin,
+        )
+        assert status == 200, projection
+        assert projection["ledger_id"] == real_backend.owner_ledger_id
+
+        # A second ledger the paired account can switch to.
+        request = urllib.request.Request(
+            f"{real_backend.origin}/api/ledgers",
+            data=json.dumps({"name": "切换目标账本"}).encode(),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {real_backend.app_token}",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=10) as resp:
+            target = json.loads(resp.read())["ledger_id"]
+
+        status, switched = manager_post_json(
+            manager.server_address[1],
+            "/api/product/ledger/switch",
+            {"ledger_id": target},
+            origin=manager_origin,
+        )
+        assert status == 200, switched
+        assert switched["ledger_id"] == target
+        assert switched["configured"] is True
+
+        # The promoted successor survived the switch cleanup: /web renders
+        # the new ledger through the bridge (a suicide would 401 here).
+        cookie = manager_bootstrap_cookies(manager, tmp_path / "switch-bootstrap.html")
+        status, body = manager_get(manager, "/web/pending", cookie)
+
+    assert status == 200
+    assert "切换目标账本" in body
