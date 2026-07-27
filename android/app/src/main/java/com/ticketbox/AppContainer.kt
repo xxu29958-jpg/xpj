@@ -312,5 +312,13 @@ class AppContainer(context: Context) {
         incomePlanRepository.onActivePlansSnapshot = { stamp ->
             adviceFreshness.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_INCOME_PLANS, stamp)
         }
+        // ...and the offline twin of the round-7 hook: a queued advice-input
+        // mutation invalidates at ENQUEUE time, but advice generated between
+        // queue and replay used the pre-replay server state — a successful
+        // outbox replay of an input kind invalidates again (the engine gates
+        // kinds and success; see OutboxDrainEngine.ADVICE_INPUT_MUTATION_TYPES).
+        outboxDrainEngine.onAdviceInputReplaySucceeded = {
+            adviceFreshness.invalidateBudgetAdvice()
+        }
     }
 }

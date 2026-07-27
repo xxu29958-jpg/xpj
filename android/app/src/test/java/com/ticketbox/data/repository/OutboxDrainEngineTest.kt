@@ -847,14 +847,81 @@ class OutboxDrainEngineTest {
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
         return engine to outbox
     }
+
+    @Test
+    fun adviceInputReplaySuccessFiresInvalidationSeam() = runTest {
+        // 218-B4 review: advice generated between queue and replay used the
+        // pre-replay server state — a successful replay of an advice-input
+        // kind must invalidate it.
+        val (engine, outbox) = withDispatcher(
+            StubDispatcher(type = PendingMutationType.UpdateIncomePlan),
+        )
+        var fired = 0
+        engine.onAdviceInputReplaySucceeded = { fired += 1 }
+        outbox.enqueue(
+            type = PendingMutationType.UpdateIncomePlan,
+            targetId = "income-plan:1",
+            payloadJson = "{}",
+            expectedRowVersion = 1L,
+        )
+
+        val summary = engine.drainOnce()
+
+        assertEquals(1, summary.done)
+        assertEquals(1, fired)
+    }
+
+    @Test
+    fun nonInputReplaySuccessDoesNotFireInvalidationSeam() = runTest {
+        // Spending goals travel the outbox but are not an advisor input
+        // (nor is the monthly-budget row — it never travels the outbox).
+        val (engine, outbox) = withDispatcher(
+            StubDispatcher(type = PendingMutationType.UpdateGoal),
+        )
+        var fired = 0
+        engine.onAdviceInputReplaySucceeded = { fired += 1 }
+        outbox.enqueue(
+            type = PendingMutationType.UpdateGoal,
+            targetId = "goal:1",
+            payloadJson = "{}",
+            expectedRowVersion = 1L,
+        )
+
+        val summary = engine.drainOnce()
+
+        assertEquals(1, summary.done)
+        assertEquals(0, fired)
+    }
+
+    @Test
+    fun failedAdviceInputReplayDoesNotFireInvalidationSeam() = runTest {
+        // Retry/failure leaves the server state unchanged — no invalidation.
+        val (engine, outbox) = withDispatcher(
+            StubDispatcher(
+                result = DispatchResult.RetryableFailure("offline again"),
+                type = PendingMutationType.ConfirmExpense,
+            ),
+        )
+        var fired = 0
+        engine.onAdviceInputReplaySucceeded = { fired += 1 }
+        outbox.enqueue(
+            type = PendingMutationType.ConfirmExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedRowVersion = 1L,
+        )
+
+        engine.drainOnce()
+
+        assertEquals(0, fired)
+    }
 }
 
 private class StubDispatcher(
     private val result: DispatchResult? = null,
     private val throwError: Throwable? = null,
+    override val type: PendingMutationType = PendingMutationType.PatchExpense,
 ) : OutboxMutationDispatcher {
-    override val type: PendingMutationType = PendingMutationType.PatchExpense
-
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         throwError?.let { throw it }
         return result ?: DispatchResult.Success()

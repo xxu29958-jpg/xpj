@@ -110,6 +110,32 @@ class OutboxDrainEngine(
     private val registry: Map<PendingMutationType, OutboxMutationDispatcher> =
         dispatchers.associateBy { it.type }
 
+    /** Fired after a SUCCESSFULLY replayed mutation whose kind changes the
+     *  server-side inputs the budget advisor consumes
+     *  ([ADVICE_INPUT_MUTATION_TYPES]). Wired in AppContainer to the advice
+     *  cache — var with a no-op default per the onConfirmedCommitted
+     *  precedent (constructor baseline). */
+    var onAdviceInputReplaySucceeded: () -> Unit = {}
+
+    private companion object {
+        /** Mutation kinds whose replay moves the budget advisor's server-side
+         *  inputs (_inputs_builder.py: confirmed-expense aggregates, income
+         *  plans). Create/confirm/patch/items change confirmed-expense rows;
+         *  income-plan update changes the income leg. Excluded on purpose:
+         *  pending-side kinds (reject / OCR / recognize / not-duplicate /
+         *  items-mismatch) never touch confirmed aggregates; splits only
+         *  re-share an unchanged total; rules / aliases / goals are not
+         *  inputs; recurring writes and monthly-budget saves never travel
+         *  the outbox. */
+        val ADVICE_INPUT_MUTATION_TYPES: Set<PendingMutationType> = setOf(
+            PendingMutationType.ConfirmExpense,
+            PendingMutationType.CreateExpense,
+            PendingMutationType.PatchExpense,
+            PendingMutationType.ReplaceItems,
+            PendingMutationType.UpdateIncomePlan,
+        )
+    }
+
     /**
      * Replay every currently-runnable row exactly once. Returns the
      * summary so the caller (worker / UI / tests) can decide whether
@@ -254,6 +280,15 @@ class OutboxDrainEngine(
                         val newToken = result.newRowVersion
                         if (newToken != null && newToken != 0L) {
                             outbox.cascadeFreshToken(row.targetId, newToken)
+                        }
+                        // 218-B4 review: the queue-time hook (round 7) invalidated the
+                        // advice cache when the mutation was ENQUEUED, but advice
+                        // generated in the queue→replay window was computed from the
+                        // pre-replay server state — a successful replay of an
+                        // advice-input mutation must invalidate it. Failure/Retry
+                        // leaves the server unchanged: no invalidation.
+                        if (row.type in ADVICE_INPUT_MUTATION_TYPES) {
+                            onAdviceInputReplaySucceeded()
                         }
                         done++
                     }
