@@ -79,6 +79,15 @@ _BOOTSTRAP_REPLAY_TTL_SECONDS = 300.0
 _BOOTSTRAP_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43,128}\Z")
 _REOPEN_REQUEST_CONTEXT = b"ticketbox-manager-reopen-request-v1\0"
 _REOPEN_RESPONSE_CONTEXT = b"ticketbox-manager-reopen-response-v1\0"
+_OWNER_SHORTCUTS = {
+    "/owner": "open_console",
+    "/owner/pairing": "open_pairing",
+    "/owner/devices": "open_devices",
+    "/owner/upload-links": "open_upload_links",
+    "/owner/backups": "open_backups",
+    "/owner/diagnostics": "open_diagnostics",
+    "/owner/settings": "open_settings",
+}
 _CONTENT_SECURITY_POLICY = (
     "default-src 'none'; "
     "script-src 'unsafe-inline'; "
@@ -280,6 +289,7 @@ class Controller(Protocol):
     def product_principal(self) -> dict: ...
     def product_ledgers(self) -> list[dict]: ...
     def product_bridge_context(self): ...
+    def note_product_bridge_auth_failure(self, status_code: int) -> bool: ...
     def pair_product_principal(self, pairing_code: str) -> dict: ...
     def switch_product_principal_ledger(self, ledger_id: str) -> dict: ...
     def unpair_product_principal(self) -> dict: ...
@@ -325,6 +335,21 @@ def is_authorized(
         expected_origin_tuple is not None
         and _origin_tuple(origin) == expected_origin_tuple
     )
+
+
+def _recovery_page(message: str) -> bytes:
+    """Recovery state with an authenticated route back to the manager UI.
+
+    The Edge app window has no address bar, so the recovery page must carry
+    the way back itself; `/` is gated by the same control cookie the
+    bootstrap issued.
+    """
+    return (
+        "<!doctype html><meta charset=utf-8>"
+        "<title>小票夹需要恢复</title><h1>暂时无法打开账本</h1>"
+        f"<p>{html.escape(message)}</p>"
+        '<p><a href="/">打开系统管理</a></p>'
+    ).encode()
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -489,17 +514,25 @@ class _Handler(BaseHTTPRequestHandler):
             )
             self._send(
                 exc.status_code,
-                (
-                    "<!doctype html><meta charset=utf-8>"
-                    "<title>小票夹需要恢复</title><h1>暂时无法打开账本</h1>"
-                    f"<p>{html.escape(message)}</p>"
-                ).encode(),
+                _recovery_page(message),
                 "text/html; charset=utf-8",
             )
             return
         except WebBridgeError as exc:
             self._send(exc.status, str(exc).encode("utf-8"), "text/plain; charset=utf-8")
             return
+        # A bridged 401 means the stored credential is dead: clear it BEFORE
+        # rendering, so the next principal read reports unconfigured and the
+        # manager card returns to pairing instead of retrying forever.
+        if srv.controller.note_product_bridge_auth_failure(response.status):
+            path = urllib.parse.urlsplit(self.path).path
+            if not path.startswith("/api/"):
+                self._send(
+                    401,
+                    _recovery_page("桌面身份已失效，请从系统管理重新绑定。"),
+                    "text/html; charset=utf-8",
+                )
+                return
         self._web_bridge_response = True
         self.send_response(response.status, response.reason)
         saw_length = False
@@ -576,6 +609,38 @@ class _Handler(BaseHTTPRequestHandler):
         self._send_json(
             {"error": exc.error, "message": str(exc)},
             code=exc.status_code,
+        )
+
+    def _serve_owner_shortcut(self, path: str) -> None:
+        """Hand /owner/* navigations to the manager's default-browser actions.
+
+        The desktop BFF never proxies /owner (it is the server-owner console,
+        not a product surface). Intercept the click instead of 404ing inside
+        the address-bar-less app window: open the task page in the user's
+        default browser via the manager's own authority, then offer the way
+        back. Gated by the same control cookie as the manager page itself.
+        """
+        srv: ControlServer = self.server  # type: ignore[assignment]
+        if not browser_session_valid(
+            self.headers.get("Cookie"),
+            srv.web_session_secret,
+            cookie_name=_CONTROL_SESSION_COOKIE,
+        ):
+            self._send(403, b"forbidden", "text/plain; charset=utf-8")
+            return
+        action = _OWNER_SHORTCUTS.get(path)
+        if action is None:
+            self._send(404, b"not found", "text/plain; charset=utf-8")
+            return
+        getattr(srv.controller, action)()
+        self._send(
+            200,
+            (
+                "<!doctype html><meta charset=utf-8><title>已打开系统管理</title>"
+                "<h1>已在本机默认浏览器打开系统管理页面</h1>"
+                '<p><a href="/web">返回日常账务</a> · <a href="/">返回管理器</a></p>'
+            ).encode(),
+            "text/html; charset=utf-8",
         )
 
     def _serve_product_session(self) -> None:
@@ -684,6 +749,8 @@ class _Handler(BaseHTTPRequestHandler):
         parsed_path = urllib.parse.urlsplit(self.path)
         if parsed_path.path == "/web" or parsed_path.path.startswith(("/web/", "/static/web/", "/static/shared/")):
             self._serve_web_bridge()
+        elif parsed_path.path == "/owner" or parsed_path.path.startswith("/owner/"):
+            self._serve_owner_shortcut(parsed_path.path)
         elif parsed_path.path in ("/", "/index.html") and not parsed_path.query:
             if not browser_session_valid(
                 self.headers.get("Cookie"),
@@ -891,6 +958,13 @@ class ControlServer(ThreadingHTTPServer):
         )
         try:
             descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            # A manager killed between create and consume left unconsumed
+            # launch material at this per-process path; it can never be
+            # consumed now, so replace it instead of crash-looping.
+            self._remove_bootstrap_file(path)
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
             with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
                 stream.write(document)
                 stream.flush()

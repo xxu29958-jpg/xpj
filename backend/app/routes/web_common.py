@@ -278,6 +278,27 @@ def _base_ctx(
     selected_month: str | None = None,
     sidebar_counts: tuple[int, int] | None = None,
 ) -> dict:
+    # Desktop bridge principal: the option list comes from the Owner Console
+    # enumeration, which is the server-owner's full membership roster. A
+    # bridged desktop session is ledger-bound — foreign rows would leak
+    # names/roles/counts and are unreachable anyway (the middleware refuses
+    # foreign ?ledger_id=). Scope the rendered list to the bound ledger.
+    session_auth = getattr(request.state, "web_session_auth", None)
+    if session_auth is not None and getattr(request.state, "web_session_platform", "") == "desktop":
+        options = [opt for opt in options if opt.ledger_id == session_auth.ledger_id]
+        if not options:
+            # The bound ledger is not even in the console roster (a member of
+            # someone else's ledger): fall back to the session's own record.
+            options = [
+                LedgerOption(
+                    ledger_id=session_auth.ledger_id,
+                    name=session_auth.ledger_name,
+                    role=session_auth.role,
+                    is_default=False,
+                    pending_count=0,
+                    confirmed_count=0,
+                )
+            ]
     selected = _selected_option(options, selected_ledger_id)
     pending_count, suspected_count = sidebar_counts or (0, 0)
     return {

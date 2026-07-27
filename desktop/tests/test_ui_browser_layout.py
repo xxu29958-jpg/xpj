@@ -630,3 +630,66 @@ def test_ledger_select_keeps_dirty_selection_until_successful_switch(tmp_path: P
     # A successful switch clears the dirty state and follows the new session.
     assert probe["afterSwitch"] == {"value": "family", "switchDisabled": True}
     assert probe["afterSettle"] == {"value": "family", "switchDisabled": True}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+def test_ledger_list_refreshes_on_cadence_without_clobbering_dirty_selection(tmp_path: Path) -> None:
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the ledger-list cadence gate"
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
+      const session = {json.dumps(_PRODUCT_SESSION, ensure_ascii=False)};
+      const ledgers = {json.dumps(_PRODUCT_LEDGERS, ensure_ascii=False)};
+      let ledgerFetches = 0;
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => session}};
+        if (url === "/api/product/ledgers") {{
+          ledgerFetches += 1;
+          return {{status: 200, ok: true, json: async () => ledgers}};
+        }}
+        if (url === "/api/status") return {{status: 200, ok: true, json: async () => healthy}};
+        throw new Error("unexpected " + url);
+      }};
+      await refresh();
+      const afterFirst = ledgerFetches;
+      await refresh();
+      const afterSecond = ledgerFetches;
+      for (let tick = 0; tick < 10; tick += 1) await refresh();
+      const afterElevenTicks = ledgerFetches;
+      await refresh();
+      const afterTwelveTicks = ledgerFetches;
+      const select = $("ledgerSelect");
+      select.value = "family";
+      select.dispatchEvent(new Event("change", {{bubbles: true}}));
+      for (let tick = 0; tick < 12; tick += 1) await refresh();
+      const afterCadenceWithDirty = {{
+        fetches: ledgerFetches,
+        value: select.value,
+        switchDisabled: $("switchAction").disabled
+      }};
+      document.body.setAttribute("data-cadence-probe", JSON.stringify({{
+        afterFirst, afterSecond, afterElevenTicks, afterTwelveTicks, afterCadenceWithDirty
+      }}));
+    }})();"""
+    page = _render_probe_page(tmp_path, "product-ledger-cadence.html", script)
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / "edge-product-ledger-cadence",
+        url=page.as_uri(),
+        width=820,
+        height=660,
+        expression="document.body && document.body.getAttribute('data-cadence-probe') || undefined",
+    )
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    # Initial load fills the list; ordinary ticks do not refetch; the 12th tick does.
+    assert probe["afterFirst"] == 1
+    assert probe["afterSecond"] == 1
+    assert probe["afterElevenTicks"] == 1
+    assert probe["afterTwelveTicks"] == 2
+    # The cadence refresh keeps the dirty selection alive and switchable.
+    assert probe["afterCadenceWithDirty"] == {
+        "fetches": 3,
+        "value": "family",
+        "switchDisabled": False,
+    }

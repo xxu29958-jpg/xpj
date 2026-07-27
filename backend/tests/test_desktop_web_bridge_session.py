@@ -145,8 +145,11 @@ def test_valid_desktop_bridge_projects_bound_viewer_and_its_ledger(
     principal = _mint_principal(role="viewer")
     with SessionLocal() as db:
         bound = db.scalar(select(Ledger).where(Ledger.ledger_id == "owner"))
+        private = db.scalar(select(Ledger).where(Ledger.ledger_id == "tester_1"))
         assert bound is not None
+        assert private is not None
         bound.name = "Desktop 绑定账本"
+        private.name = "不应泄漏的本机账本"
         db.commit()
 
     response = desktop_bridge_client.get(
@@ -160,6 +163,9 @@ def test_valid_desktop_bridge_projects_bound_viewer_and_its_ledger(
     assert "Desktop 绑定账本" in response.text
     assert 'name="ledger_id" value="owner"' in response.text
     assert "ledger-role-viewer" in response.text
+    # The console roster's other ledgers never reach a bridged desktop page.
+    assert "不应泄漏的本机账本" not in response.text
+    assert "tester_1" not in response.text
     # The bridge never mints a browser cookie session.
     assert SESSION_COOKIE_NAME not in response.headers.get("set-cookie", "")
 
@@ -169,6 +175,44 @@ def test_valid_desktop_bridge_projects_bound_viewer_and_its_ledger(
         json={"theme": "midnight"},
     )
     assert theme_write.status_code == 403, theme_write.text
+
+
+def test_desktop_bridge_options_fall_back_to_session_record_off_console_roster(
+    desktop_bridge_client: TestClient,
+) -> None:
+    """A member bound to a ledger outside the console roster still gets a
+    correctly-scoped single option — derived from the session, never the
+    console enumeration."""
+    with SessionLocal() as db:
+        ledger = Ledger(ledger_id="ledger_foreign", name="外部家庭账本", owner_account_id=0)
+        account = Account(display_name=f"bridge-foreign-{uuid4()}")
+        db.add(account)
+        db.flush()
+        ledger.owner_account_id = account.id
+        db.add(ledger)
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id=ledger.ledger_id,
+                account_id=account.id,
+                role="member",
+            )
+        )
+        db.commit()
+    principal = _mint_principal(ledger_id="ledger_foreign", role="member")
+
+    response = desktop_bridge_client.get(
+        "/web/pending",
+        headers=_principal_headers(principal.token),
+    )
+
+    assert response.status_code == 200, response.text
+    assert "外部家庭账本" in response.text
+    assert "ledger-role-member" in response.text
+    assert 'name="ledger_id" value="ledger_foreign"' in response.text
+    # Neither console-roster ledger leaks into the bridged page.
+    assert "我的小票夹" not in response.text
+    assert "tester_1" not in response.text
 
 
 def test_loopback_without_marker_preserves_legacy_owner_mode(

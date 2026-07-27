@@ -73,8 +73,18 @@ def _snapshot_product_available(snapshot: RuntimeStatus) -> bool:
     )
 
 
-def _recovery_from_pending(pending: PendingProductSession) -> RebindRecovery:
-    """Persist the client-owned attempt proof plus staged display metadata."""
+def _recovery_from_pending(
+    pending: PendingProductSession,
+    *,
+    superseded_session_token: str | None = None,
+) -> RebindRecovery:
+    """Persist the client-owned attempt proof plus staged display metadata.
+
+    ``superseded_session_token`` is the cross-ledger credential the ceremony
+    replaces: activation cannot retire it (the backend only accepts
+    same-ledger predecessors), so it rides along until the post-promotion
+    revoke succeeds — a retryable cleanup record, response-loss safe.
+    """
     return RebindRecovery(
         activation_attempt_id=pending.activation_attempt_id,
         activation_attempt_secret=pending.activation_attempt_secret,
@@ -84,6 +94,7 @@ def _recovery_from_pending(pending: PendingProductSession) -> RebindRecovery:
         device_name=pending.session.device_name,
         role=pending.session.role,
         activation_expires_at=pending.session.expires_at,
+        superseded_session_token=superseded_session_token,
     )
 
 
@@ -283,6 +294,22 @@ class AppController:
                 app_token=session.session_token,
             )
 
+    def note_product_bridge_auth_failure(self, status_code: int) -> bool:
+        """A bridged product request was rejected: drop the dead credential.
+
+        The BFF relays backend responses verbatim, so this hook is the only
+        place a 401 from the product surface can retire the stored token —
+        ``product_principal()`` must then report unconfigured and the manager
+        card returns to pairing instead of retrying the dead credential.
+        """
+        if status_code != 401:
+            return False
+        with self._product_session_lock:
+            config = self._product_config(require_available=False)
+            with suppress(ProductCredentialError):
+                self._product_session_deleter(config.expected_installation_id)
+        return True
+
     def product_ledgers(self) -> list[dict]:
         """List the paired account's memberships for the manager switch UI."""
 
@@ -335,7 +362,14 @@ class AppController:
                 error="product_identity_rotation_required",
                 status_code=502,
             )
-        recovery = _recovery_from_pending(pending)
+        recovery = _recovery_from_pending(
+            pending,
+            superseded_session_token=(
+                current.session_token
+                if current is not None and current.ledger_id != pending.session.ledger_id
+                else None
+            ),
+        )
         self._stage_rebind_recovery(config, recovery)
         activated = self._activate_and_promote_rebind(
             config,
@@ -343,11 +377,6 @@ class AppController:
             recovery,
             current,
         )
-        if current is not None and current.ledger_id != activated.ledger_id:
-            # Cross-account/ledger re-pair: the old credential is not a valid
-            # activation predecessor (the backend binds predecessors to the
-            # staged account+ledger), so it must be retired explicitly.
-            self._revoke_superseded_session(config, loopback_origin, current.session_token)
         return activated.public_projection()
 
     def unpair_product_principal(self) -> dict:
@@ -409,7 +438,10 @@ class AppController:
                 error="product_identity_rotation_required",
                 status_code=502,
             )
-        recovery = _recovery_from_pending(pending)
+        recovery = _recovery_from_pending(
+            pending,
+            superseded_session_token=current.session_token,
+        )
         self._stage_rebind_recovery(config, recovery)
         activated = self._activate_and_promote_rebind(
             config,
@@ -417,10 +449,6 @@ class AppController:
             recovery,
             current,
         )
-        # The source-ledger credential is never a valid activation predecessor
-        # (cross-ledger by definition here), so activation did not retire it:
-        # revoke it explicitly. Best-effort — the credential dies by TTL anyway.
-        self._revoke_superseded_session(config, loopback_origin, current.session_token)
         return activated.public_projection()
 
     def _product_config(self, *, require_available: bool) -> ManagerConfig:
@@ -484,9 +512,17 @@ class AppController:
             recovery.activation_attempt_id,
         )
         if current is not None and secrets.compare_digest(derived, current.session_token):
-            # Primary already contains B. A duplicate recovery-slot cleanup
-            # failure must not make the valid principal unusable; every later
-            # reconciliation retries this idempotent cleanup.
+            # Primary already contains B. A retained superseded token means
+            # the post-promotion revoke is still owed — retry it now; only a
+            # durable cleanup (or a dead predecessor) drops the record.
+            if recovery.superseded_session_token and not self._revoke_superseded_session(
+                config,
+                loopback_origin,
+                recovery.superseded_session_token,
+            ):
+                return current
+            # Duplicate recovery-slot cleanup failure must not make the valid
+            # principal unusable; every later reconciliation retries it.
             with suppress(ProductDataError):
                 self._delete_rebind_recovery(config)
             return current
@@ -559,8 +595,18 @@ class AppController:
                 error="product_rebind_recovery_pending",
                 status_code=503,
             ) from exc
-        # Primary B is durable at this point. The recovery slot holds the same
-        # ceremony's proof, so cleanup is best-effort and safely retryable.
+        # Primary B is durable at this point. A cross-ledger predecessor is
+        # never a valid activation proof, so it must be revoked client-side:
+        # if that revoke fails we deliberately keep the recovery record as a
+        # retryable cleanup marker instead of silently leaking the old token.
+        if recovery.superseded_session_token and not self._revoke_superseded_session(
+            config,
+            loopback_origin,
+            recovery.superseded_session_token,
+        ):
+            return activated
+        # The recovery slot holds the same ceremony's proof, so cleanup is
+        # best-effort and safely retryable.
         with suppress(ProductDataError):
             self._delete_rebind_recovery(config)
         return activated
@@ -570,15 +616,18 @@ class AppController:
         config: ManagerConfig,
         loopback_origin: str,
         session_token: str,
-    ) -> None:
-        # Best-effort: the superseded credential dies by TTL regardless;
-        # the replacement session is already durable in WinCred.
-        with suppress(ProductDataError):
+    ) -> bool:
+        """Retire one superseded credential. True when it is gone (revoked now
+        or already dead); False when a later reconcile must retry."""
+        try:
             self._product_session_revoker(
                 loopback_origin,
                 session_token,
                 timeout_seconds=config.health_request_timeout_seconds,
             )
+            return True
+        except ProductDataError as exc:
+            return exc.status_code == 401
 
     def _required_product_session(self, config: ManagerConfig) -> ProductSession:
         session = self._load_product_session(config)

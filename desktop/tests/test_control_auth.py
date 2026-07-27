@@ -660,3 +660,284 @@ def test_control_server_product_endpoints_stay_manager_plane(tmp_path) -> None:
         ("switch", "family"),
         ("unpair", None),
     ]
+
+
+def _bootstrap_cookie_header(server: ControlServer, tmp_path) -> str:
+    import re as _re
+    import urllib.parse as _urlparse
+
+    bootstrap_path = tmp_path / "bootstrap.html"
+    server.prepare_web_bootstrap(bootstrap_path)
+    document = bootstrap_path.read_text(encoding="utf-8")
+    match = _re.search(r'name="bootstrap_token" value="([^"]+)"', document)
+    assert match is not None
+    body = _urlparse.urlencode({"bootstrap_token": match.group(1)}).encode()
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+    connection.request(
+        "POST",
+        "/api/bootstrap",
+        body=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    response = connection.getresponse()
+    assert response.status == 200
+    cookies = response.headers.get_all("Set-Cookie")
+    response.read()
+    connection.close()
+    assert cookies is not None
+    return "; ".join(cookie.partition(";")[0] for cookie in cookies)
+
+
+def test_unpaired_bootstrap_recovery_page_routes_back_to_manager(tmp_path) -> None:
+    """P1-1: bootstrap lands on /web, but the address-bar-less window must
+    still reach the manager UI: the recovery page carries the way back."""
+
+    from backend_manager.product_data import ProductDataError
+
+    class Controller:
+        def product_bridge_context(self):
+            raise ProductDataError(
+                "请先使用 8 位绑定码连接桌面账本。",
+                error="product_principal_required",
+                status_code=401,
+            )
+
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=Controller(),
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        cookie = _bootstrap_cookie_header(server, tmp_path)
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/web", headers={"Cookie": cookie})
+        recovery = connection.getresponse()
+        assert recovery.status == 401
+        body = recovery.read().decode()
+        assert "桌面账本尚未绑定，请从系统管理完成绑定。" in body
+        assert 'href="/"' in body
+        connection.close()
+
+        # The same bootstrap's control cookie opens the manager page itself.
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/", headers={"Cookie": cookie})
+        manager_page = connection.getresponse()
+        assert manager_page.status == 200
+        assert _TOKEN.encode() in manager_page.read()
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_bridged_401_clears_stored_credential_and_returns_pairing_state(tmp_path) -> None:
+    """P1-3: a backend 401 through the bridge retires the dead WinCred entry."""
+    from backend_manager.app_controller import AppController
+    from backend_manager.config import ManagerConfig, SourceRuntimeConfig
+    from backend_manager.product_identity import ProductSession
+    from backend_manager.runtime import RuntimeStatus
+
+    class _HealthyRuntime:
+        def status(self) -> RuntimeStatus:
+            return RuntimeStatus(
+                mode="source",
+                running=True,
+                healthy=True,
+                pid=None,
+                uptime_seconds=1,
+                auto_restart=True,
+                auto_restart_configurable=True,
+                restarts=0,
+                backend_service_state=None,
+                database_service_state=None,
+                log=["ready"],
+                health_state="healthy",
+                health_detail="identity verified",
+                runtime_access_state="available",
+                owner_state="configured",
+            )
+
+    class _DeadBackend(BaseHTTPRequestHandler):
+        def log_message(self, *_args: object) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            body = b'{"error":"invalid_token","message":"dead"}'
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    backend = ThreadingHTTPServer(("127.0.0.1", 0), _DeadBackend)
+    backend_thread = threading.Thread(target=backend.serve_forever)
+    backend_thread.start()
+
+    installation_id = "ticketbox-0123456789abcdef0123456789abcdef"
+    sessions = {
+        installation_id: ProductSession(
+            session_token="tbx-dead-desktop-token",
+            account_name="我",
+            ledger_id="owner",
+            ledger_name="我的小票夹",
+            device_name="小票夹 Desktop",
+            role="owner",
+            expires_at=None,
+        )
+    }
+    recoveries: dict = {}
+    config = ManagerConfig(
+        runtime=SourceRuntimeConfig(tmp_path / "backend", tmp_path / "python.exe", tmp_path / "backend"),
+        backend_host="127.0.0.1",
+        backend_port=backend.server_address[1],
+        manager_host="127.0.0.1",
+        manager_port=8799,
+        public_base_url=None,
+        expected_backend_version=None,
+        expected_installation_id=installation_id,
+        health_request_timeout_seconds=1.0,
+    )
+    controller = AppController(
+        _HealthyRuntime(),
+        config,
+        product_session_loader=sessions.get,
+        product_session_saver=sessions.__setitem__,
+        product_session_deleter=lambda key: sessions.pop(key, None),
+        product_recovery_loader=recoveries.get,
+        product_recovery_saver=recoveries.__setitem__,
+        product_recovery_deleter=lambda key: recoveries.pop(key, None),
+    )
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=controller,
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        cookie = _bootstrap_cookie_header(server, tmp_path)
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/web", headers={"Cookie": cookie})
+        recovery = connection.getresponse()
+        assert recovery.status == 401
+        body = recovery.read().decode()
+        assert "桌面身份已失效，请从系统管理重新绑定。" in body
+        assert 'href="/"' in body
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+        backend.shutdown()
+        backend.server_close()
+        backend_thread.join(timeout=2)
+
+    # The dead credential was retired BEFORE the recovery state rendered.
+    assert sessions == {}
+    assert controller.product_principal() == {"configured": False}
+
+
+def test_stale_bootstrap_material_is_replaced_not_crash_looping(tmp_path) -> None:
+    """P2-1: a manager killed mid-launch leaves O_EXCL material behind."""
+
+    class Controller:
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=Controller(),
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    try:
+        stale = tmp_path / "edge-session" / "window-0001" / "bootstrap.html"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("<!doctype html><title>stale</title>", encoding="utf-8")
+
+        url = server.prepare_web_bootstrap(stale)
+
+        assert url == stale.as_uri()
+        document = stale.read_text(encoding="utf-8")
+        assert "stale" not in document
+        assert 'name="bootstrap_token"' in document
+    finally:
+        server.server_close()
+    assert not stale.exists()
+
+
+def test_owner_links_hand_off_to_manager_actions_not_404(tmp_path) -> None:
+    """P2-3: /owner/* clicks in the product window invoke manager open_*."""
+    opened: list[str] = []
+
+    class Controller:
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+        def open_pairing(self) -> None:
+            opened.append("open_pairing")
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=Controller(),
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        cookie = _bootstrap_cookie_header(server, tmp_path)
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/owner/pairing")
+        denied = connection.getresponse()
+        assert denied.status == 403
+        denied.read()
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/owner/pairing", headers={"Cookie": cookie})
+        handed_off = connection.getresponse()
+        assert handed_off.status == 200
+        body = handed_off.read().decode()
+        assert "已在本机默认浏览器打开系统管理页面" in body
+        assert 'href="/web"' in body
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/owner/unknown", headers={"Cookie": cookie})
+        unknown = connection.getresponse()
+        assert unknown.status == 404
+        unknown.read()
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert opened == ["open_pairing"]

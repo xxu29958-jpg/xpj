@@ -24,6 +24,7 @@ _SAFE_RESPONSE_HEADERS = {
     "cache-control",
     "vary",
     "accept-ranges",
+    "content-range",
     "content-security-policy",
 }
 _CLIENT_HEADER_ALLOWLIST = {

@@ -713,6 +713,7 @@ def test_primary_store_failure_leaves_recovery_replayable() -> None:
         _config(),
         product_session_pairer=lambda *_args, **_kwargs: pending,
         product_session_activator=_activate_pending,
+        product_session_revoker=lambda *_args, **_kwargs: None,
         **{**store, "product_session_saver": flaky_primary_save},
     )
 
@@ -986,3 +987,91 @@ def test_product_actions_are_serialized_on_the_session_lock() -> None:
 
     assert errors == []
     assert switch_called.is_set()
+
+
+# ── 218-E review fixes: cross-ledger revoke cleanup + bridged 401 clearing ──
+
+
+def test_recovery_promotion_revokes_cross_ledger_predecessor() -> None:
+    """Reconcile path (manager died mid-switch): once the recovered B is
+    durable, the source-ledger credential is revoked, not left to TTL."""
+    current = _product_session(ledger_id="owner")
+    sessions, recoveries, store = _stores(current)
+    attempt_id, attempt_secret = new_activation_attempt()
+    derived = derive_desktop_pending_token(attempt_secret, attempt_id)
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token=current.session_token,
+    )
+    revoked: list[str] = []
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_activator=_activate_pending,
+        product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        **store,
+    )
+
+    projection = controller.product_principal()
+
+    assert projection["ledger_id"] == "family"
+    assert revoked == [current.session_token]
+    assert sessions[_INSTALLATION_ID].session_token == derived
+    assert recoveries == {}
+
+
+def test_superseded_revoke_failure_keeps_retryable_cleanup_record() -> None:
+    current = _product_session(ledger_id="owner")
+    sessions, recoveries, store = _stores(current)
+    pending = _pending_for(ledger_id="family", role="viewer")
+    attempts = {"count": 0}
+
+    def flaky_revoker(_origin, _token, **_kwargs) -> None:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise ProductDataError("backend unreachable", status_code=503)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_ledger_switcher=lambda *_args, **_kwargs: pending,
+        product_session_activator=_activate_pending,
+        product_session_revoker=flaky_revoker,
+        **store,
+    )
+
+    # The switch itself succeeds (replacement is durable), but the owed
+    # revoke is NOT silently dropped: the recovery record stays as a
+    # retryable cleanup marker holding exactly the superseded token.
+    projection = controller.switch_product_principal_ledger("family")
+    assert projection["ledger_id"] == "family"
+    assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
+    assert _INSTALLATION_ID in recoveries
+    assert recoveries[_INSTALLATION_ID].superseded_session_token == current.session_token
+
+    # The next principal read retries the owed revoke; only a durable
+    # cleanup drops the record.
+    assert controller.product_principal()["ledger_id"] == "family"
+    assert attempts["count"] == 2
+    assert recoveries == {}
+
+
+def test_note_product_bridge_auth_failure_clears_dead_credential() -> None:
+    current = _product_session()
+    sessions, _recoveries, store = _stores(current)
+    controller = AppController(FakeRuntime(), _config(), **store)
+
+    assert controller.note_product_bridge_auth_failure(403) is False
+    assert sessions[_INSTALLATION_ID] == current
+
+    assert controller.note_product_bridge_auth_failure(401) is True
+    assert sessions == {}
+    assert controller.product_principal() == {"configured": False}

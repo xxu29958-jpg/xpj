@@ -495,6 +495,10 @@
     let productLedgers = [];
     let productBusy = false;
     let ledgerSelectionDirty = false;
+    // Ledger memberships can change outside this window; re-read the list on
+    // a slow cadence (every 12th 2.5s tick ≈ 30s), never every tick.
+    const PRODUCT_LEDGER_REFRESH_TICKS = 12;
+    let productLedgerRefreshTick = 0;
 
     async function productFetch(path, options = {}) {
       const headers = {"X-Control-Token": window.CONTROL_TOKEN};
@@ -556,12 +560,21 @@
         const payload = await productFetch("/api/product/ledgers");
         productLedgers = payload.ledgers || [];
         const select = $("ledgerSelect");
+        // Rebuilding options resets select.value to the first row — carry a
+        // dirty user selection across the rebuild (or drop it if the ledger
+        // itself vanished from the membership list).
+        const inFlight = ledgerSelectionDirty ? select.value : null;
         select.replaceChildren(...productLedgers.map((row) => {
           const option = document.createElement("option");
           option.value = row.ledger_id;
           option.textContent = row.is_current ? `${row.name}（当前）` : row.name;
           return option;
         }));
+        if (inFlight && [...select.options].some((option) => option.value === inFlight)) {
+          select.value = inFlight;
+        } else if (inFlight) {
+          ledgerSelectionDirty = false;
+        }
         if (!ledgerSelectionDirty) select.value = productSession.ledger_id;
       } catch (_error) {
         productLedgers = [];
@@ -633,8 +646,14 @@
         if (!response.ok) throw new Error("status");
         render(await response.json());
         await loadProductSession();
-        if (productSession && productSession.configured && productLedgers.length === 0) {
-          await loadProductLedgers();
+        if (productSession && productSession.configured) {
+          productLedgerRefreshTick += 1;
+          if (productLedgers.length === 0 || productLedgerRefreshTick >= PRODUCT_LEDGER_REFRESH_TICKS) {
+            productLedgerRefreshTick = 0;
+            await loadProductLedgers();
+          }
+        } else {
+          productLedgerRefreshTick = 0;
         }
       } catch (_error) {
         latestStatus = null;

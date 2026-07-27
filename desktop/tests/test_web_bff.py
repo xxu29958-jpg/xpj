@@ -106,3 +106,51 @@ def test_web_bff_session_and_same_origin_matrix() -> None:
         sec_fetch_site=None,
         manager_origin=origin,
     )
+
+
+def test_relay_forwards_content_range_on_partial_responses() -> None:
+    """A 206 partial is uninterpretable without Content-Range: it must pass."""
+    import http.server
+    import threading
+
+    from backend_manager.web_bff import BridgeContext, relay
+
+    class _PartialHandler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *_args: object) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            body = b"partial-slice"
+            self.send_response(206)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Range", "bytes 0-13/100")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _PartialHandler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        response = relay(
+            BridgeContext(
+                backend_origin=f"http://127.0.0.1:{server.server_address[1]}",
+                app_token="tbx-test",
+            ),
+            method="GET",
+            raw_target="/web",
+            client_headers={"Range": "bytes=0-13"},
+            body=b"",
+            manager_origin="http://127.0.0.1:8799",
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert response.status == 206
+    headers = {name.casefold(): value for name, value in response.headers}
+    assert headers["content-range"] == "bytes 0-13/100"
+    assert headers["accept-ranges"] == "bytes"
+    assert response.body == b"partial-slice"

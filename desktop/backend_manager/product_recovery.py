@@ -41,6 +41,9 @@ class RebindRecovery:
     device_name: str = ""
     role: str = ""
     activation_expires_at: str | None = None
+    # Cross-ledger credential this ceremony replaces; owed a client-side
+    # revoke after promotion. Optional so v1 records decode unchanged.
+    superseded_session_token: str | None = field(default=None, repr=False)
 
 
 def recovery_target(installation_id: str) -> str:
@@ -64,6 +67,7 @@ def _encode_recovery(recovery: RebindRecovery) -> bytes:
         "device_name": recovery.device_name,
         "role": recovery.role,
         "activation_expires_at": recovery.activation_expires_at,
+        "superseded_session_token": recovery.superseded_session_token,
     }
     encoded = json.dumps(
         payload,
@@ -94,6 +98,11 @@ def _decode_recovery(raw: bytes) -> RebindRecovery:
         not isinstance(activation_expires_at, str) or len(activation_expires_at) > 64
     ):
         raise ProductCredentialError("Windows 安全存储中的桌面身份恢复记录无效。")
+    superseded_session_token = payload.get("superseded_session_token")
+    if superseded_session_token is not None and (
+        not isinstance(superseded_session_token, str) or len(superseded_session_token) > 512
+    ):
+        raise ProductCredentialError("Windows 安全存储中的桌面身份恢复记录无效。")
     return RebindRecovery(
         activation_attempt_id=_required_text(payload, "activation_attempt_id", max_length=64),
         activation_attempt_secret=_required_text(payload, "activation_attempt_secret", max_length=128),
@@ -103,6 +112,7 @@ def _decode_recovery(raw: bytes) -> RebindRecovery:
         device_name=_required_text(payload, "device_name", max_length=120),
         role=_required_text(payload, "role", max_length=32),
         activation_expires_at=activation_expires_at,
+        superseded_session_token=superseded_session_token,
     )
 
 
