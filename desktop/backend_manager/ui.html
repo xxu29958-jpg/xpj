@@ -80,6 +80,34 @@
     .overall-state.is-warn .state-dot { background: var(--amber); }
     .overall-state.is-error { border-color: #e0b0aa; color: var(--red); background: var(--red-soft); }
     .overall-state.is-error .state-dot { background: var(--red); }
+    .product-link {
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      margin-left: auto;
+      padding: 5px 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .product-link:hover { color: var(--ink); text-decoration: underline; }
+    .product-link + .overall-state { margin-left: 0; }
+    .product-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .product-actions input[type="text"], .product-actions select {
+      min-height: 34px;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: inherit;
+      font-size: 13px;
+      color: var(--ink);
+      background: var(--card);
+    }
+    .product-actions input[type="text"] { width: 9em; letter-spacing: 0.12em; }
+    /* The hidden attribute is authoritative over every display rule above —
+       pair form / manage group / product link must never coexist. */
+    [hidden] { display: none !important; }
 
     .service-band {
       margin-top: 18px;
@@ -224,6 +252,7 @@
         <div class="brand-name">小票夹管理器</div>
         <div class="brand-meta" id="runtimeLabel">正在读取本机状态</div>
       </div>
+      <a class="product-link" id="productHomeLink" href="/web" hidden>返回日常账务</a>
       <div class="overall-state" id="overallState" role="status" aria-live="polite">
         <span class="state-dot" aria-hidden="true"></span>
         <span id="overallText">检查中</span>
@@ -243,6 +272,28 @@
         <button class="button button-icon manager-action" id="restartAction" type="button" title="重启小票夹" aria-label="重启小票夹" onclick="act('restart', this)">↻</button>
       </div>
     </section>
+
+    <section class="service-band" aria-labelledby="productTitle">
+      <div>
+        <div class="eyebrow">日常账务</div>
+        <h1 class="service-title" id="productTitle">桌面账本</h1>
+        <div class="service-detail" id="productState">正在读取绑定状态</div>
+      </div>
+      <div class="service-actions product-actions">
+        <span class="product-actions" id="productPairGroup" hidden>
+          <input type="text" id="pairingCodeInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="8 位绑定码" aria-label="8 位绑定码">
+          <button class="button button-primary" id="pairAction" type="button" onclick="pairProduct()">绑定</button>
+        </span>
+        <span class="product-actions" id="productManageGroup" hidden>
+          <select id="ledgerSelect" aria-label="切换账本"></select>
+          <button class="button" id="switchAction" type="button" onclick="switchProductLedger()">切换账本</button>
+          <button class="button" id="unpairAction" type="button" onclick="unpairProduct()">解除绑定</button>
+        </span>
+      </div>
+    </section>
+    <div class="message message-error" id="productError" role="alert">
+      <span aria-hidden="true">!</span><span id="productErrorText"></span>
+    </div>
 
     <div class="message message-error" id="controlError" role="alert">
       <span aria-hidden="true">!</span><span id="controlErrorText"></span>
@@ -440,6 +491,169 @@
       applyActionAvailability(s);
     }
 
+    let productSession = null;
+    let productLedgers = [];
+    let productBusy = false;
+    let ledgerSelectionDirty = false;
+    // Ledger memberships can change outside this window; re-read the list on
+    // a slow cadence (every 12th 2.5s tick ≈ 30s), never every tick.
+    const PRODUCT_LEDGER_REFRESH_TICKS = 12;
+    let productLedgerRefreshTick = 0;
+
+    async function productFetch(path, options = {}) {
+      const headers = {"X-Control-Token": window.CONTROL_TOKEN};
+      if (options.body) headers["Content-Type"] = "application/json";
+      const response = await fetch(path, {...options, headers});
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(payload.message || "product");
+        error.payload = payload;
+        throw error;
+      }
+      return payload;
+    }
+
+    function renderProduct() {
+      const configured = Boolean(productSession && productSession.configured);
+      const available = Boolean(latestStatus && latestStatus.product_available);
+      const liveRow = configured
+        ? productLedgers.find((row) => row.ledger_id === productSession.ledger_id)
+        : null;
+      const membershipLost = configured && productLedgers.length > 0 && !liveRow;
+      const showManage = configured && !membershipLost;
+      $("productHomeLink").hidden = !(showManage && available);
+      $("productPairGroup").hidden = showManage;
+      $("productManageGroup").hidden = !showManage;
+      if (!configured) {
+        $("productState").textContent = available
+          ? "输入绑定码把这台电脑连接到账本。"
+          : "服务正常后可以把这台电脑连接到账本。";
+        $("pairAction").disabled = productBusy || !available;
+        $("pairingCodeInput").disabled = productBusy || !available;
+        return;
+      }
+      if (membershipLost) {
+        // The bound ledger vanished from the account's memberships: the stored
+        // session is dead weight — offer the re-pair path, not a phantom role.
+        $("productState").textContent = "原绑定已失效，请使用新的绑定码重新连接。";
+        $("pairAction").disabled = productBusy || !available;
+        $("pairingCodeInput").disabled = productBusy || !available;
+        return;
+      }
+      const roleLabels = {owner: "拥有者", member: "成员", viewer: "只读"};
+      // The displayed role follows the live membership row (30s cadence), not
+      // the role persisted in WinCred at pair/switch time.
+      const role = liveRow ? liveRow.role : productSession.role;
+      $("productState").textContent =
+        `${productSession.ledger_name} · ${roleLabels[role] || role} · ${productSession.account_name}`;
+      const select = $("ledgerSelect");
+      if (select.options.length === 0) {
+        const option = document.createElement("option");
+        option.value = productSession.ledger_id;
+        option.textContent = productSession.ledger_name;
+        select.append(option);
+      }
+      // A user-chosen, not-yet-switched selection survives the 2.5s refresh
+      // ticks; only snap back to the session ledger when nothing is in flight.
+      if (!ledgerSelectionDirty) select.value = productSession.ledger_id;
+      $("switchAction").disabled = productBusy || !available || select.value === productSession.ledger_id;
+      $("unpairAction").disabled = productBusy || !available;
+      select.disabled = productBusy || !available;
+    }
+
+    async function loadProductSession() {
+      try {
+        productSession = await productFetch("/api/product/session");
+      } catch (_error) {
+        productSession = null;
+      }
+      renderProduct();
+    }
+
+    async function loadProductLedgers() {
+      if (!productSession || !productSession.configured) return;
+      try {
+        const payload = await productFetch("/api/product/ledgers");
+        productLedgers = payload.ledgers || [];
+        const select = $("ledgerSelect");
+        // Rebuilding options resets select.value to the first row — carry a
+        // dirty user selection across the rebuild (or drop it if the ledger
+        // itself vanished from the membership list).
+        const inFlight = ledgerSelectionDirty ? select.value : null;
+        select.replaceChildren(...productLedgers.map((row) => {
+          const option = document.createElement("option");
+          option.value = row.ledger_id;
+          option.textContent = row.is_current ? `${row.name}（当前）` : row.name;
+          return option;
+        }));
+        if (inFlight && [...select.options].some((option) => option.value === inFlight)) {
+          select.value = inFlight;
+        } else if (inFlight) {
+          ledgerSelectionDirty = false;
+        }
+        if (!ledgerSelectionDirty) select.value = productSession.ledger_id;
+      } catch (_error) {
+        productLedgers = [];
+      }
+      renderProduct();
+    }
+
+    async function productAction(work) {
+      if (productBusy) return;
+      productBusy = true;
+      renderProduct();
+      try {
+        await work();
+        setMessage("productError", "");
+        ledgerSelectionDirty = false;
+        await loadProductSession();
+        await loadProductLedgers();
+      } catch (error) {
+        setMessage("productError", (error && error.message && error.message !== "product")
+          ? error.message
+          : "未能完成桌面账本操作，请稍后重试。");
+      } finally {
+        productBusy = false;
+        renderProduct();
+      }
+    }
+
+    async function pairProduct() {
+      const code = $("pairingCodeInput").value.trim();
+      if (!/^\d{8}$/.test(code)) {
+        setMessage("productError", "请输入 8 位数字绑定码。");
+        return;
+      }
+      await productAction(async () => {
+        await productFetch("/api/product/pair", {method: "POST", body: JSON.stringify({pairing_code: code})});
+        $("pairingCodeInput").value = "";
+      });
+    }
+
+    async function unpairProduct() {
+      await productAction(async () => {
+        await productFetch("/api/product/unpair", {method: "POST", body: ""});
+        productLedgers = [];
+        $("ledgerSelect").replaceChildren();
+      });
+    }
+
+    async function switchProductLedger() {
+      const ledgerId = $("ledgerSelect").value;
+      if (!ledgerId || (productSession && ledgerId === productSession.ledger_id)) return;
+      await productAction(async () => {
+        await productFetch("/api/product/ledger/switch", {method: "POST", body: JSON.stringify({ledger_id: ledgerId})});
+      });
+    }
+
+    document.addEventListener("change", (event) => {
+      if (event.target !== $("ledgerSelect")) return;
+      ledgerSelectionDirty = Boolean(
+        productSession && $("ledgerSelect").value !== productSession.ledger_id
+      );
+      renderProduct();
+    });
+
     async function refresh() {
       if (refreshInFlight) return;
       refreshInFlight = true;
@@ -447,6 +661,16 @@
         const response = await fetch("/api/status", {headers:{"X-Control-Token": window.CONTROL_TOKEN}});
         if (!response.ok) throw new Error("status");
         render(await response.json());
+        await loadProductSession();
+        if (productSession && productSession.configured) {
+          productLedgerRefreshTick += 1;
+          if (productLedgers.length === 0 || productLedgerRefreshTick >= PRODUCT_LEDGER_REFRESH_TICKS) {
+            productLedgerRefreshTick = 0;
+            await loadProductLedgers();
+          }
+        } else {
+          productLedgerRefreshTick = 0;
+        }
       } catch (_error) {
         latestStatus = null;
         setOverall("error", "管理器离线");

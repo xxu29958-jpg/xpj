@@ -32,6 +32,16 @@ body {
 }
 .ledger-pill.is-default { background: var(--state-info-bg); color: var(--state-info-fg); }
 .ledger-pill.is-secondary { background: var(--state-warn-bg); color: var(--state-warn-fg); }
+.manager-home-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.manager-home-link:hover { color: var(--ink); text-decoration: underline; }
+
 .ledger-role-chip {
     display: inline-flex;
     align-items: center;

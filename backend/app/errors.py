@@ -43,6 +43,7 @@ ERROR_MESSAGES = {
     "client_upgrade_required": "当前客户端版本过旧，无法安全完成此操作，请先升级。",
     "desktop_identity_rotation_required": "这次桌面凭证轮换已完成，请使用当前会话。",
     "desktop_invitation_not_supported": "桌面设备请使用绑定码完成配对，暂不支持通过邀请加入。",
+    "desktop_bridge_required": "该入口仅接受本机桌面产品桥请求。",
     "rate_limited": "尝试太频繁，请稍后再试。",
     "file_too_large": "图片太大，请换一张较小的截图。",
     "unsupported_file_type": "暂不支持这种图片格式。",

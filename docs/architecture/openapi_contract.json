@@ -9235,6 +9235,30 @@
         "title": "LedgerResponse",
         "type": "object"
       },
+      "LedgerSwitchPrepareRequest": {
+        "additionalProperties": false,
+        "description": "Desktop two-phase ledger switch: client-owned attempt proof for staging.",
+        "properties": {
+          "activation_attempt_id": {
+            "format": "uuid",
+            "title": "Activation Attempt Id",
+            "type": "string"
+          },
+          "activation_attempt_secret": {
+            "maxLength": 43,
+            "minLength": 43,
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Activation Attempt Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activation_attempt_id",
+          "activation_attempt_secret"
+        ],
+        "title": "LedgerSwitchPrepareRequest",
+        "type": "object"
+      },
       "LedgerSwitchResponse": {
         "properties": {
           "account_name": {
@@ -9244,6 +9268,22 @@
           "account_public_id": {
             "title": "Account Public Id",
             "type": "string"
+          },
+          "activation_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Expires At"
+          },
+          "activation_required": {
+            "default": false,
+            "title": "Activation Required",
+            "type": "boolean"
           },
           "data_generation": {
             "title": "Data Generation",
@@ -24156,6 +24196,85 @@
           }
         },
         "summary": "Switch Ledger Endpoint",
+        "tags": [
+          "ledgers"
+        ]
+      }
+    },
+    "/api/ledgers/{ledger_id}/switch/prepare": {
+      "post": {
+        "description": "Desktop two-phase switch: stage a pending credential on the target ledger.\n\nThe staged value is the client-derived ``desktop_pending`` credential —\nrejected by every ordinary auth surface; only\n``POST /api/auth/desktop/activate`` promotes it. A response-loss replay\nwith the same attempt proof returns the committed staging unchanged.",
+        "operationId": "prepare_desktop_ledger_switch_endpoint_api_ledgers__ledger_id__switch_prepare_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedgerSwitchPrepareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerSwitchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Prepare Desktop Ledger Switch Endpoint",
         "tags": [
           "ledgers"
         ]

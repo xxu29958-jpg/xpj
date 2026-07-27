@@ -12,6 +12,11 @@ The Bearer token determines who the caller is:
                                         owned by the calling account.
 * ``POST /api/ledgers/{id}/switch``   — app token only; selects a ledger while
                                         preserving the Account/Device session.
+* ``POST /api/ledgers/{id}/switch/prepare``
+                                      — desktop app token only; stages a
+                                        short-lived ``desktop_pending``
+                                        credential on the target ledger that
+                                        only the activate endpoint promotes.
 
 Routes never trust a ledger id as authorization. Listing first proves the
 Account/Device principal; switching additionally validates active membership
@@ -34,8 +39,10 @@ from app.schemas import (
     LedgerCreateRequest,
     LedgerListResponse,
     LedgerResponse,
+    LedgerSwitchPrepareRequest,
     LedgerSwitchResponse,
 )
+from app.services.desktop_switch_service import prepare_desktop_ledger_switch
 from app.services.ledger_service import (
     LedgerSummary,
     create_ledger,
@@ -122,4 +129,51 @@ def switch_ledger_endpoint(
         ),
         account_name=result.account_name,
         device_name=result.device_name,
+    )
+
+
+@router.post("/{ledger_id}/switch/prepare", response_model=LedgerSwitchResponse)
+def prepare_desktop_ledger_switch_endpoint(
+    ledger_id: str,
+    payload: LedgerSwitchPrepareRequest,
+    principal: SessionPrincipal = Depends(get_current_app_principal),
+    db: Session = Depends(get_db),
+) -> LedgerSwitchResponse:
+    """Desktop two-phase switch: stage a pending credential on the target ledger.
+
+    The staged value is the client-derived ``desktop_pending`` credential —
+    rejected by every ordinary auth surface; only
+    ``POST /api/auth/desktop/activate`` promotes it. A response-loss replay
+    with the same attempt proof returns the committed staging unchanged.
+    """
+    result = prepare_desktop_ledger_switch(
+        db,
+        principal=principal,
+        target_ledger_id=ledger_id,
+        activation_attempt_id=str(payload.activation_attempt_id),
+        activation_attempt_secret=payload.activation_attempt_secret,
+    )
+    server = read_server_data_identity(db)
+    return LedgerSwitchResponse(
+        session_token=result.session_token,
+        server_id=server.server_id,
+        data_generation=server.data_generation,
+        account_public_id=result.account_public_id,
+        device_public_id=result.device_public_id,
+        # The session window stays open until activation sets the real app
+        # expiry; ``activation_expires_at`` carries the staging TTL.
+        expires_at=None,
+        soft_refresh_after=None,
+        ledger=LedgerResponse(
+            ledger_id=result.ledger_id,
+            name=result.ledger_name,
+            role=result.role,
+            is_default=result.is_default,
+            created_at=result.created_at,
+            archived_at=result.archived_at,
+        ),
+        account_name=result.account_name,
+        device_name=result.device_name,
+        activation_required=True,
+        activation_expires_at=result.activation_expires_at,
     )

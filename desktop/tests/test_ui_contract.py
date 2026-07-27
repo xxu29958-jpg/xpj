@@ -92,3 +92,42 @@ def test_local_backend_health_does_not_promise_mobile_reachability() -> None:
     assert 's.iphone_upload_state !== "configured_unverified"' in html
     assert "电脑端运行正常；手机连接尚未配置。" in html
     assert "手机连接、上传和网页管理均可使用。" not in html
+
+
+def test_manager_package_ships_only_ui_html_without_product_assets() -> None:
+    spec = (Path(__file__).parents[1] / "packaging" / "ticketbox-manager.spec").read_text(encoding="utf-8")
+
+    assert '"ui.html"' in spec or "'ui.html'" in spec
+    assert "product.html" not in spec
+    assert "product.css" not in spec
+    assert "product.js" not in spec
+
+
+def test_hidden_attribute_is_authoritative_over_product_display_rules() -> None:
+    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
+
+    # .product-actions/.product-link set display:flex; the hidden attribute must
+    # still win or pair form, manage group and the /web link all render at once.
+    assert "[hidden] { display: none !important; }" in html
+
+
+def test_product_card_visibility_matrix_and_dirty_selection_are_declared() -> None:
+    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
+
+    # Paired state shows manage + /web link (never the pair form); unpaired or
+    # a vanished bound ledger shows the pair form (never manage/link).
+    assert 'const showManage = configured && !membershipLost;' in html
+    assert '$("productHomeLink").hidden = !(showManage && available);' in html
+    assert '$("productPairGroup").hidden = showManage;' in html
+    assert '$("productManageGroup").hidden = !showManage;' in html
+    assert "原绑定已失效" in html
+    # The displayed role follows the live membership row, not the persisted one.
+    assert "const role = liveRow ? liveRow.role : productSession.role;" in html
+    # A differing user selection is never clobbered by a refresh tick; the
+    # dirty flag clears only on a successful product action.
+    assert "let ledgerSelectionDirty = false;" in html
+    assert "if (!ledgerSelectionDirty) select.value = productSession.ledger_id;" in html
+    assert "ledgerSelectionDirty = Boolean(" in html
+    assert "ledgerSelectionDirty = false;" in html
+    # The ledger list also loads on initial page load, not only after actions.
+    assert "productLedgers.length === 0" in html

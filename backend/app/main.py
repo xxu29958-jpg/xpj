@@ -32,6 +32,7 @@ from app.routes import (
     dashboard,
     debt_bills,
     debts,
+    desktop,
     devices,
     duplicates,
     exchange_rates,
@@ -304,6 +305,7 @@ app.middleware("http")(cloudflare_access_guard)
 app.middleware("http")(security_headers)
 
 app.include_router(auth.router)
+app.include_router(desktop.router)
 app.include_router(bootstrap.router)
 app.include_router(uploads.router)
 app.include_router(uploads.upload_link_router)

@@ -1,10 +1,15 @@
-"""Public-host /web cookie session gate (v1.0 PR-4).
+"""Application-principal gates for the shared ``/web`` surface.
 
-Same /web router serves two audiences:
+Same /web router serves three audiences:
 
 - **Loopback Host** (127.0.0.1 / localhost / etc): Owner Console operator
   on the local machine. Behaves exactly as before — no cookie required,
   ``_require_local`` (LoopbackOnly) was the only gate.
+
+- **Desktop product bridge** (loopback + explicit bridge marker): a paired
+  ``platform=desktop`` app bearer becomes the application principal for the
+  proxied ``/web`` request.  Marker failures never fall through to the legacy
+  loopback-owner path.
 
 - **Public Host** (Cloudflare Tunnel hostname): family member browser.
   Must have a valid ``__Host-session`` cookie minted by the pairing-code
@@ -38,7 +43,61 @@ from app.routes.web_auth import (
     clear_session_cookie,
     read_session_token,
 )
-from app.services.identity_service import authenticate_web_session_token
+from app.services.identity_service import (
+    authenticate_desktop_session_token,
+    authenticate_web_session_token,
+)
+
+DESKTOP_BRIDGE_HEADER = "X-Ticketbox-Desktop-Bridge"
+DESKTOP_BRIDGE_VERSION = "v1"
+
+
+def _request_id(request: Request) -> str | None:
+    return getattr(request.state, "request_id", None)
+
+
+def _is_web_path(request: Request) -> bool:
+    path = request.url.path
+    return path == "/web" or path.startswith("/web/")
+
+
+def _desktop_bridge_marker(request: Request) -> str | None:
+    if not _is_web_path(request):
+        return None
+    return request.headers.get(DESKTOP_BRIDGE_HEADER)
+
+
+def _desktop_bearer_token(request: Request) -> str | None:
+    authorization = request.headers.get("authorization")
+    if not authorization:
+        return None
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer":
+        return None
+    cleaned = token.strip()
+    return cleaned or None
+
+
+def _app_error_response(request: Request, exc: AppError) -> Response:
+    return error_response(
+        exc.error,
+        exc.message,
+        status_code=exc.status_code,
+        request_id=_request_id(request),
+        details=exc.details,
+    )
+
+
+def _ledger_binding_error(request: Request, ledger_id: str) -> Response | None:
+    requested_ledger = (request.query_params.get("ledger_id") or "").strip()
+    if not requested_ledger or requested_ledger == ledger_id:
+        return None
+    return error_response(
+        "ledger_forbidden",
+        "当前会话只能访问绑定的账本。",
+        status_code=403,
+        request_id=_request_id(request),
+    )
 
 
 def _login_redirect_url(request: Request) -> str:
@@ -73,10 +132,71 @@ def _is_session_required(request: Request) -> bool:
     return not (peer == "testclient" or host_header.startswith("testserver"))
 
 
+async def _desktop_bridge_session_gate(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+    *,
+    marker: str,
+) -> Response:
+    """Bind an explicit loopback Desktop bridge request to its app principal."""
+    if not is_loopback_request(request):
+        return error_response(
+            "desktop_bridge_required",
+            status_code=403,
+            request_id=_request_id(request),
+        )
+    if marker != DESKTOP_BRIDGE_VERSION:
+        return error_response(
+            "desktop_bridge_required",
+            status_code=401,
+            request_id=_request_id(request),
+        )
+
+    token = _desktop_bearer_token(request)
+    if token is None:
+        return error_response(
+            "invalid_token",
+            status_code=401,
+            request_id=_request_id(request),
+        )
+
+    try:
+        with SessionLocal() as db:
+            auth = authenticate_desktop_session_token(db, token)
+    except AppError as exc:
+        return _app_error_response(request, exc)
+    except SQLAlchemyError:
+        return error_response(
+            "server_error",
+            "Desktop 登录状态暂时不可用，请稍后再试。",
+            status_code=503,
+            request_id=_request_id(request),
+        )
+
+    request.state.web_session_auth = auth
+    request.state.web_session_platform = "desktop"
+    ledger_error = _ledger_binding_error(request, auth.ledger_id)
+    if ledger_error is not None:
+        return ledger_error
+    return await call_next(request)
+
+
 async def web_session_gate(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
 ) -> Response:
+    # Header presence means the caller is attempting the privileged Desktop
+    # bridge path.  Validate it before the loopback-owner bypass so malformed,
+    # missing, revoked, or wrong-platform credentials can never fall through
+    # and inherit the legacy local owner projection.
+    desktop_marker = _desktop_bridge_marker(request)
+    if desktop_marker is not None:
+        return await _desktop_bridge_session_gate(
+            request,
+            call_next,
+            marker=desktop_marker,
+        )
+
     if not _is_session_required(request):
         return await call_next(request)
 
@@ -128,4 +248,9 @@ async def web_session_gate(
     return response
 
 
-__all__ = ["web_session_gate", "SESSION_COOKIE_NAME"]
+__all__ = [
+    "DESKTOP_BRIDGE_HEADER",
+    "DESKTOP_BRIDGE_VERSION",
+    "SESSION_COOKIE_NAME",
+    "web_session_gate",
+]

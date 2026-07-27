@@ -93,6 +93,9 @@
         <span class="current">{{ page_title or '仪表盘' }}</span>
       </div>
       <div class="grow"></div>
+      {% if request.state.web_session_platform == "desktop" %}
+      <a class="manager-home-link" href="/" title="返回桌面管理器">管理器</a>
+      {% endif %}
       {% if show_month_picker %}
         {% include "_month_picker.html" %}
       {% endif %}

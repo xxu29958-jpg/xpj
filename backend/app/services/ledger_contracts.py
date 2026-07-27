@@ -30,3 +30,19 @@ class SwitchLedgerResult:
     archived_at: str | None
     account_name: str
     device_name: str
+
+
+@dataclass(frozen=True)
+class DesktopLedgerSwitchPrepareResult:
+    session_token: str
+    account_public_id: str
+    device_public_id: str
+    ledger_id: str
+    ledger_name: str
+    role: str
+    is_default: bool
+    created_at: str | None
+    archived_at: str | None
+    account_name: str
+    device_name: str
+    activation_expires_at: str | None

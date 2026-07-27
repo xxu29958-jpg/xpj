@@ -285,6 +285,12 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/budget/advise": Exempt("append_only_fact", "budget", _ADVISOR_WRITE, "high"),
     "POST /api/imports/csv/{public_id}/apply": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),
     "POST /api/ledgers/{ledger_id}/switch": Exempt("session_rotation", "identity", _SWITCH),
+    # 218-E two-phase desktop switch: stages the client-derived desktop_pending
+    # credential + its activation receipt (hard-superseding any stale staging);
+    # replay safety rests on the attempt proof, not an expected_row_version token.
+    "POST /api/ledgers/{ledger_id}/switch/prepare": Exempt(
+        "session_rotation", "identity", _DESKTOP_ACTIVATE, "medium"
+    ),
     "POST /api/maintenance/cleanup-ai-advisor-audit": Exempt(
         "batch_db_write", "maintenance", ("budget_advisor_audit_logs",)
     ),

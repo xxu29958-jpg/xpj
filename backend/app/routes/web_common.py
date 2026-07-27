@@ -9,6 +9,7 @@ formatting.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -129,6 +130,49 @@ def _stamp_session_role(options: list[LedgerOption] | None, session_auth) -> Non
             return
 
 
+def _scope_options_for_desktop_session(options: list[LedgerOption] | None, session_auth) -> None:
+    """Replace a desktop bridge session's option list with its bound ledger.
+
+    The console enumeration is the server-owner's full membership roster;
+    a bridged desktop session is bound to exactly one ledger (foreign
+    ``?ledger_id=`` is refused by the middleware), so every downstream
+    consumer — the write gate AND the rendered switcher — must see only the
+    session's ledger with the session's role. When the bound ledger is not
+    even in the console roster (a member of someone else's ledger), the
+    option is derived from the session's own record.
+    """
+    if options is None:
+        return
+    scoped = [opt for opt in options if opt.ledger_id == session_auth.ledger_id]
+    if not scoped:
+        scoped = [
+            LedgerOption(
+                ledger_id=session_auth.ledger_id,
+                name=session_auth.ledger_name,
+                role=session_auth.role,
+                is_default=False,
+                pending_count=0,
+                confirmed_count=0,
+            )
+        ]
+    options[:] = scoped
+
+
+def _revalidate_desktop_session_under_lock(db: Session, request: Request, session_auth) -> str:
+    """Service-layer lock-time revalidation for the desktop bridge principal.
+
+    Thin route-side delegate so ``app.routes`` never imports models directly;
+    the real query lives in :mod:`app.services.desktop_switch_service`.
+    Mutation methods serialize through the identity advisory lock; reads don't.
+    """
+    from app.services.desktop_switch_service import (
+        revalidate_desktop_session_under_lock as _service_revalidate,
+    )
+
+    mutation = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
+    return _service_revalidate(db, session_auth, mutation=mutation)
+
+
 def _resolve_selected_ledger_id(
     db: Session,
     requested: str | None,
@@ -152,9 +196,16 @@ def _resolve_selected_ledger_id(
     if request is not None:
         session_auth = getattr(request.state, "web_session_auth", None)
         if session_auth is not None:
-            # ENGINEERING_RULES §14: a Web session's role is the paired device's
-            # role on its ledger, NOT the owner-console role — stamp it on so the
-            # write-gate + rendered role reflect the session (viewer stays RO).
+            if getattr(request.state, "web_session_platform", "") == "desktop":
+                # Desktop bridge principals are bound to one ledger: scope the
+                # option list in place so both the write gate and the switcher
+                # operate on the session ledger (never the console roster) —
+                # and revalidate the principal under lock in THIS transaction
+                # so an auth→commit revocation/demotion cannot slip a write in.
+                _scope_options_for_desktop_session(options, session_auth)
+                live_role = _revalidate_desktop_session_under_lock(db, request, session_auth)
+                session_auth = dataclasses.replace(session_auth, role=live_role)
+                request.state.web_session_auth = session_auth
             _stamp_session_role(options, session_auth)
             return session_auth.ledger_id
 

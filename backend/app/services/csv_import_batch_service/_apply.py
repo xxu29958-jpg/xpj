@@ -6,7 +6,13 @@ Top-level state-machine driver. Each call:
 2. Recovers stale row-level leases from a prior crashed apply.
 3. Claims a row-level lease over ``batch_size`` ``valid`` rows.
 4. Inserts an Expense per row (or marks the row ``insert_failed`` /
-   ``applied`` based on idempotency).
+   ``applied`` based on idempotency). Each row commits independently, so
+   the handler-entry advisory lock dies with the first row commit: when a
+   desktop bridge principal drives the apply (``desktop_session``), it is
+   revalidated under the identity advisory lock before every row — a
+   mid-batch membership disable aborts 401 (durably revoked), a demotion
+   to a read-only role aborts 403 with honest inserted/remaining counts.
+   Non-desktop callers pass ``None`` and skip the revalidation entirely.
 5. Finalises the batch (``_finalize_csv_import_apply_success``).
 6. On AppError / IntegrityError / unexpected Exception: rolls back +
    releases the lease + marks the batch failed if needed.
@@ -49,12 +55,15 @@ from app.services.csv_import_batch_service._row_claim import (
     _claim_csv_import_rows,
     _recover_stale_csv_import_rows,
     _refresh_claimed_csv_import_row,
+    _remaining_importable_rows,
     _reset_claimed_csv_import_rows,
 )
+from app.services.desktop_switch_service import revalidate_desktop_session_under_lock
 from app.services.exchange_rate_service import apply_currency_payload, home_currency_code
 from app.services.import_service import DEFAULT_SOURCE
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
+from app.tenants import AuthContext
 
 
 def _process_csv_import_apply_row(
@@ -127,9 +136,13 @@ def _cleanup_csv_import_apply_app_error(
     public_id: str,
     apply_token: str,
 ) -> None:
-    """Cleanup path for AppError: caller-level validation rejected the
-    batch before any rows mutated, so an empty claim set means we
-    only need to release the apply lease (no row reset needed)."""
+    """Cleanup path for AppError.
+
+    Two shapes share it: caller-level validation rejected the batch before
+    any rows mutated (empty claim set → only the apply lease needs
+    releasing), or a per-row desktop revalidation aborted mid-batch (401 /
+    403 — earlier rows already committed on their own, so only the
+    still-claimed rows are reset and the batch is marked failed)."""
     if claimed_row_ids:
         _reset_claimed_csv_import_rows(
             db, tenant_id=tenant_id, row_ids=claimed_row_ids, apply_token=apply_token
@@ -302,6 +315,36 @@ def _apply_one_claimed_csv_import_row(
         return 0
 
 
+def _revalidate_desktop_apply_session(
+    db: Session,
+    *,
+    desktop_session: AuthContext,
+    batch: CsvImportBatch,
+    tenant_id: str,
+    inserted: int,
+) -> None:
+    """Revalidate the desktop bridge principal between row commits.
+
+    Every row applies in its own transaction, so the handler-entry advisory
+    lock is released by the first row commit — a membership disable or
+    demotion landing mid-batch must stop the remaining rows. Death (401) is
+    raised by the revalidation itself with the durable hard-revoke already
+    committed; a demotion to a read-only role aborts here with 403 and the
+    honest inserted/remaining counts. The row that follows runs in the same
+    transaction as this revalidation, so each row write is itself covered by
+    the lock.
+    """
+    live_role = revalidate_desktop_session_under_lock(db, desktop_session, mutation=True)
+    if live_role in {"owner", "member"}:
+        return
+    remaining = _remaining_importable_rows(db, batch, tenant_id)
+    raise AppError(
+        "permission_denied",
+        f"当前角色已变更为只读，导入已中止：已导入 {inserted} 条，剩余 {remaining} 条未导入。",
+        status_code=403,
+    )
+
+
 def _attempt_csv_import_apply(
     db: Session,
     *,
@@ -311,6 +354,7 @@ def _attempt_csv_import_apply(
     apply_token: str,
     batch_size: int,
     claimed_row_ids: list[int],
+    desktop_session: AuthContext | None,
 ) -> CsvImportApplyResponse:
     """Happy-path body of :func:`apply_csv_import_batch`.
 
@@ -340,6 +384,14 @@ def _attempt_csv_import_apply(
     now = now_utc()
     inserted = 0
     for row_id in claimed_row_ids:
+        if desktop_session is not None:
+            _revalidate_desktop_apply_session(
+                db,
+                desktop_session=desktop_session,
+                batch=batch,
+                tenant_id=tenant_id,
+                inserted=inserted,
+            )
         inserted += _apply_one_claimed_csv_import_row(
             db,
             row_id=row_id,
@@ -372,7 +424,15 @@ def apply_csv_import_batch(
     tenant_id: str,
     public_id: str,
     batch_size: int,
+    desktop_session: AuthContext | None = None,
 ) -> CsvImportApplyResponse:
+    """Apply up to ``batch_size`` valid rows, committing each row independently.
+
+    ``desktop_session`` is the bridged desktop principal stashed by the web
+    session middleware (or ``None`` for any non-desktop caller): when present
+    it is revalidated under the identity advisory lock before every row, so a
+    mid-batch revocation/demotion cannot ride the per-row commits.
+    """
     apply_token = str(uuid4())
     batch = _claim_apply_lease(
         db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token
@@ -387,6 +447,7 @@ def apply_csv_import_batch(
             apply_token=apply_token,
             batch_size=batch_size,
             claimed_row_ids=claimed_row_ids,
+            desktop_session=desktop_session,
         )
     except AppError:
         db.rollback()

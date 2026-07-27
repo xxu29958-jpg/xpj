@@ -390,3 +390,370 @@ def test_production_window_session_owns_every_reopened_edge_process(tmp_path: Pa
         windows.shutdown()
 
     assert not profile_root.exists()
+
+
+# ── Served /web through the Manager BFF (real backend layout probes) ────────
+
+from tests._real_backend import (  # noqa: E402
+    CredentialStores,
+    RealBackend,
+    make_controller,
+    make_manager,
+    manager_post_json,
+    serving,
+)
+
+pytest_plugins = ["tests._real_backend"]
+
+_SERVED_WEB_PROBE = """
+(() => {
+  const atWeb = location.pathname === "/web" || location.pathname === "/web/pending";
+  if (!atWeb || !document.querySelector("#main-content")) return undefined;
+  const interactive = [...document.querySelectorAll("button, a, input, select, textarea")];
+  const visible = interactive.filter((el) => {
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+  });
+  return JSON.stringify({
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    ledgerChip: Boolean(document.querySelector(".ledger-role-chip")),
+    hasOwnerLedger: document.body.innerText.includes("我的小票夹"),
+    unnamedControls: visible.filter((el) =>
+      !(el.getAttribute("aria-label") || (el.textContent || "").trim() || (el.value || "").trim())
+    ).length,
+    href: location.href
+  });
+})()
+"""
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+@pytest.mark.parametrize(("width", "height"), [(1180, 760), (820, 660)])
+def test_served_web_layout_through_manager_bff(
+    tmp_path: Path,
+    real_backend: RealBackend,
+    width: int,
+    height: int,
+) -> None:
+    """The BFF-served /web stays usable at both supported app-window sizes."""
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the served-/web layout gate"
+    stores = CredentialStores()
+    manager = make_manager(make_controller(real_backend.port, stores))
+    manager_origin = f"http://127.0.0.1:{manager.server_address[1]}"
+
+    with serving(manager):
+        status, projection = manager_post_json(
+            manager.server_address[1],
+            "/api/product/pair",
+            {"pairing_code": real_backend.fresh_pairing_code()},
+            origin=manager_origin,
+        )
+        assert status == 200, projection
+        bootstrap_path = tmp_path / f"served-web-{width}x{height}" / "bootstrap.html"
+        bootstrap_url = manager.prepare_web_bootstrap(bootstrap_path)
+        value = evaluate_page(
+            edge,
+            profile=tmp_path / f"edge-served-web-{width}x{height}",
+            url=bootstrap_url,
+            width=width,
+            height=height,
+            expression=_SERVED_WEB_PROBE,
+        )
+
+    assert not bootstrap_path.exists()
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    assert probe["overflow"] is False
+    assert probe["ledgerChip"] is True
+    assert probe["hasOwnerLedger"] is True
+    assert probe["unnamedControls"] == 0
+    assert stores.sessions
+
+
+# ── Manager product card: hidden-authority + live ledger switching (218-E) ──
+
+
+def _product_status() -> dict[str, object]:
+    status = _status(degraded=False)
+    status["product_available"] = True
+    status["product_url"] = "/web"
+    return status
+
+
+_PRODUCT_SESSION = {
+    "configured": True,
+    "account_name": "我",
+    "ledger_id": "owner",
+    "ledger_name": "我的小票夹",
+    "device_name": "小票夹 Desktop",
+    "role": "owner",
+    "expires_at": None,
+}
+_PRODUCT_LEDGERS = {
+    "ledgers": [
+        {"ledger_id": "owner", "name": "我的小票夹", "role": "owner", "is_default": True, "is_current": True},
+        {"ledger_id": "family", "name": "家庭账本", "role": "viewer", "is_default": False, "is_current": False},
+    ]
+}
+
+
+def _render_probe_page(tmp_path: Path, name: str, script: str) -> Path:
+    source = _UI_HTML.read_text(encoding="utf-8")
+    assert source.count(_STARTUP_SCRIPT) == 1
+    page = tmp_path / name
+    page.write_text(source.replace(_STARTUP_SCRIPT, script), encoding="utf-8")
+    return page
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+@pytest.mark.parametrize(("width", "height"), [(1180, 760), (820, 660)])
+def test_product_card_visibility_matrix_is_hidden_authoritative(
+    tmp_path: Path,
+    width: int,
+    height: int,
+) -> None:
+    """Unpaired shows pair form only; paired shows manage + /web link only."""
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the product-card visibility gate"
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
+      const pairedSession = {json.dumps(_PRODUCT_SESSION, ensure_ascii=False)};
+      const ledgers = {json.dumps(_PRODUCT_LEDGERS, ensure_ascii=False)};
+      const displayOf = (id) => getComputedStyle(document.getElementById(id)).display;
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => ({{configured: false}})}};
+        return {{status: 200, ok: true, json: async () => healthy}};
+      }};
+      render(healthy);
+      await loadProductSession();
+      const unpaired = {{
+        link: displayOf("productHomeLink"),
+        pair: displayOf("productPairGroup"),
+        manage: displayOf("productManageGroup")
+      }};
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => pairedSession}};
+        if (url === "/api/product/ledgers") return {{status: 200, ok: true, json: async () => ledgers}};
+        return {{status: 200, ok: true, json: async () => healthy}};
+      }};
+      await loadProductSession();
+      await loadProductLedgers();
+      const paired = {{
+        link: displayOf("productHomeLink"),
+        pair: displayOf("productPairGroup"),
+        manage: displayOf("productManageGroup"),
+        options: [...$("ledgerSelect").options].map((option) => option.value)
+      }};
+      document.body.setAttribute("data-visibility-probe", JSON.stringify({{unpaired, paired}}));
+    }})();"""
+    page = _render_probe_page(tmp_path, f"product-visibility-{width}x{height}.html", script)
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / f"edge-product-visibility-{width}x{height}",
+        url=page.as_uri(),
+        width=width,
+        height=height,
+        expression="document.body && document.body.getAttribute('data-visibility-probe') || undefined",
+    )
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    assert probe["unpaired"] == {"link": "none", "pair": "flex", "manage": "none"}
+    # Chromium reports inline-flex's used display as "flex"; the contract is
+    # "link visible, pair form gone, manage group visible".
+    assert probe["paired"]["link"] in ("inline-flex", "flex")
+    assert probe["paired"]["pair"] == "none"
+    assert probe["paired"]["manage"] == "flex"
+    assert probe["paired"]["options"] == ["owner", "family"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+def test_ledger_select_keeps_dirty_selection_until_successful_switch(tmp_path: Path) -> None:
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the ledger-switch behavior gate"
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
+      const baseSession = {json.dumps(_PRODUCT_SESSION, ensure_ascii=False)};
+      const ledgers = {json.dumps(_PRODUCT_LEDGERS, ensure_ascii=False)};
+      let switched = false;
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") {{
+          return {{
+            status: 200,
+            ok: true,
+            json: async () => (switched
+              ? {{...baseSession, ledger_id: "family", ledger_name: "家庭账本", role: "viewer"}}
+              : baseSession)
+          }};
+        }}
+        if (url === "/api/product/ledgers") return {{status: 200, ok: true, json: async () => ledgers}};
+        if (url === "/api/status") return {{status: 200, ok: true, json: async () => healthy}};
+        if (url === "/api/product/ledger/switch") {{
+          switched = true;
+          return {{status: 200, ok: true, json: async () => ({{configured: true}})}};
+        }}
+        throw new Error("unexpected " + url);
+      }};
+      await refresh();
+      const initialOptions = [...$("ledgerSelect").options].map((option) => option.value);
+      const select = $("ledgerSelect");
+      select.value = "family";
+      select.dispatchEvent(new Event("change", {{bubbles: true}}));
+      const afterPick = {{value: select.value, switchDisabled: $("switchAction").disabled}};
+      await refresh();
+      const afterTick = {{value: select.value, switchDisabled: $("switchAction").disabled}};
+      await switchProductLedger();
+      const afterSwitch = {{value: select.value, switchDisabled: $("switchAction").disabled}};
+      await refresh();
+      const afterSettle = {{value: select.value, switchDisabled: $("switchAction").disabled}};
+      document.body.setAttribute("data-dirty-probe", JSON.stringify({{
+        initialOptions, afterPick, afterTick, afterSwitch, afterSettle
+      }}));
+    }})();"""
+    page = _render_probe_page(tmp_path, "product-dirty-selection.html", script)
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / "edge-product-dirty-selection",
+        url=page.as_uri(),
+        width=820,
+        height=660,
+        expression="document.body && document.body.getAttribute('data-dirty-probe') || undefined",
+    )
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    # The initial page load fills the dropdown (defect 2b).
+    assert probe["initialOptions"] == ["owner", "family"]
+    # A differing user selection survives the refresh tick (defect 2a).
+    assert probe["afterPick"] == {"value": "family", "switchDisabled": False}
+    assert probe["afterTick"] == {"value": "family", "switchDisabled": False}
+    # A successful switch clears the dirty state and follows the new session.
+    assert probe["afterSwitch"] == {"value": "family", "switchDisabled": True}
+    assert probe["afterSettle"] == {"value": "family", "switchDisabled": True}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+def test_ledger_list_refreshes_on_cadence_without_clobbering_dirty_selection(tmp_path: Path) -> None:
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the ledger-list cadence gate"
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
+      const session = {json.dumps(_PRODUCT_SESSION, ensure_ascii=False)};
+      const ledgers = {json.dumps(_PRODUCT_LEDGERS, ensure_ascii=False)};
+      let ledgerFetches = 0;
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => session}};
+        if (url === "/api/product/ledgers") {{
+          ledgerFetches += 1;
+          return {{status: 200, ok: true, json: async () => ledgers}};
+        }}
+        if (url === "/api/status") return {{status: 200, ok: true, json: async () => healthy}};
+        throw new Error("unexpected " + url);
+      }};
+      await refresh();
+      const afterFirst = ledgerFetches;
+      await refresh();
+      const afterSecond = ledgerFetches;
+      for (let tick = 0; tick < 10; tick += 1) await refresh();
+      const afterElevenTicks = ledgerFetches;
+      await refresh();
+      const afterTwelveTicks = ledgerFetches;
+      const select = $("ledgerSelect");
+      select.value = "family";
+      select.dispatchEvent(new Event("change", {{bubbles: true}}));
+      for (let tick = 0; tick < 12; tick += 1) await refresh();
+      const afterCadenceWithDirty = {{
+        fetches: ledgerFetches,
+        value: select.value,
+        switchDisabled: $("switchAction").disabled
+      }};
+      document.body.setAttribute("data-cadence-probe", JSON.stringify({{
+        afterFirst, afterSecond, afterElevenTicks, afterTwelveTicks, afterCadenceWithDirty
+      }}));
+    }})();"""
+    page = _render_probe_page(tmp_path, "product-ledger-cadence.html", script)
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / "edge-product-ledger-cadence",
+        url=page.as_uri(),
+        width=820,
+        height=660,
+        expression="document.body && document.body.getAttribute('data-cadence-probe') || undefined",
+    )
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    # Initial load fills the list; ordinary ticks do not refetch; the 12th tick does.
+    assert probe["afterFirst"] == 1
+    assert probe["afterSecond"] == 1
+    assert probe["afterElevenTicks"] == 1
+    assert probe["afterTwelveTicks"] == 2
+    # The cadence refresh keeps the dirty selection alive and switchable.
+    assert probe["afterCadenceWithDirty"] == {
+        "fetches": 3,
+        "value": "family",
+        "switchDisabled": False,
+    }
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+def test_product_card_role_follows_live_membership_and_handles_vanished_ledger(tmp_path: Path) -> None:
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the live-role rendering gate"
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
+      const session = {{configured: true, account_name: "我", ledger_id: "owner", ledger_name: "我的小票夹", device_name: "小票夹 Desktop", role: "owner", expires_at: null}};
+      const demotedLedgers = {{ledgers: [
+        {{ledger_id: "owner", name: "我的小票夹", role: "viewer", is_default: true, is_current: true}},
+        {{ledger_id: "family", name: "家庭账本", role: "member", is_default: false, is_current: false}}
+      ]}};
+      const vanishedLedgers = {{ledgers: [
+        {{ledger_id: "family", name: "家庭账本", role: "member", is_default: false, is_current: false}}
+      ]}};
+      let ledgersPayload = demotedLedgers;
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => session}};
+        if (url === "/api/product/ledgers") return {{status: 200, ok: true, json: async () => ledgersPayload}};
+        if (url === "/api/status") return {{status: 200, ok: true, json: async () => healthy}};
+        throw new Error("unexpected " + url);
+      }};
+      await loadProductSession();
+      await loadProductLedgers();
+      const demoted = {{
+        state: document.getElementById("productState").textContent,
+        manageHidden: document.getElementById("productManageGroup").hidden,
+        pairHidden: document.getElementById("productPairGroup").hidden
+      }};
+      ledgersPayload = vanishedLedgers;
+      productLedgers = [];
+      await loadProductSession();
+      await loadProductLedgers();
+      const vanished = {{
+        state: document.getElementById("productState").textContent,
+        manageHidden: document.getElementById("productManageGroup").hidden,
+        pairHidden: document.getElementById("productPairGroup").hidden,
+        linkHidden: document.getElementById("productHomeLink").hidden
+      }};
+      document.body.setAttribute("data-live-role-probe", JSON.stringify({{demoted, vanished}}));
+    }})();"""
+    page = _render_probe_page(tmp_path, "product-live-role.html", script)
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / "edge-product-live-role",
+        url=page.as_uri(),
+        width=820,
+        height=660,
+        expression="document.body && document.body.getAttribute('data-live-role-probe') || undefined",
+    )
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    # A demotion arrives via the 30s ledger refresh: the card shows 只读 even
+    # though WinCred persisted 拥有者 at pair time.
+    assert "只读" in probe["demoted"]["state"]
+    assert "拥有者" not in probe["demoted"]["state"]
+    assert probe["demoted"]["manageHidden"] is False
+    # The bound ledger vanishing from memberships shows the re-pair state,
+    # never a phantom owner role.
+    assert "原绑定已失效" in probe["vanished"]["state"]
+    assert probe["vanished"]["manageHidden"] is True
+    assert probe["vanished"]["pairHidden"] is False
+    assert probe["vanished"]["linkHidden"] is True
