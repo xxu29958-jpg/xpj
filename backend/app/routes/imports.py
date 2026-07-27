@@ -19,6 +19,7 @@ from app.services.csv_import_batch_service import (
     get_csv_import_batch,
     list_csv_import_rows,
 )
+from app.services.desktop_switch_service import is_desktop_platform_device
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/imports/csv", tags=["imports"])
@@ -76,11 +77,18 @@ def post_csv_import_batch_apply(
     db: Session = Depends(get_db),
 ) -> CsvImportApplyResponse:
     request = payload or CsvImportApplyRequest()
+    # The generic API surface has no platform gate, so a desktop-paired
+    # bearer (scope=app, platform=desktop) reaches this route like any app
+    # token — give it the same per-row revalidation the /web bridge apply
+    # gets (a mid-batch membership disable/demotion must stop the remaining
+    # rows). Other platforms pay one PK lookup at entry and nothing per row.
+    desktop_session = auth if is_desktop_platform_device(db, auth.device_id) else None
     return apply_csv_import_batch(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
         batch_size=request.batch_size,
+        desktop_session=desktop_session,
     )
 
 

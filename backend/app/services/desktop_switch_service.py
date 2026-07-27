@@ -209,6 +209,44 @@ def revalidate_desktop_session_under_lock(
     return str(membership.role)
 
 
+def is_desktop_platform_device(db: Session, device_id: int | None) -> bool:
+    """True when the device row exists and is ``platform=desktop``.
+
+    The generic API surface has no platform gate, so a desktop-paired bearer
+    authenticates like any app token; callers use this predicate to hand
+    desktop bearers the bridge-grade revalidation (e.g. the CSV batch apply
+    per-row check) without paying for it on other platforms.
+    """
+    if device_id is None:
+        return False
+    platform = db.scalar(select(Device.platform).where(Device.id == device_id))
+    return platform is not None and platform.strip().lower() == "desktop"
+
+
+def _close_raced_presented_refresh_family(db: Session, *, token_value: str) -> None:
+    """Hard-revoke the live refresh family of an already-dead presented row.
+
+    Unpair-vs-refresh race inside the lineage teardown: authentication saw
+    the presented row live, but a refresh (A → A2) committed before the
+    lock, so the conditional update had nothing to revoke. The teardown
+    intent is not exempt — the presented row's live refresh descendants die
+    here, or A2 survives the unpair by its full TTL. The advisory lock is
+    held for the rest of the flow (``revoke_token_value`` took it) and
+    refresh takes the same lock, so this family read is stable.
+    """
+    presented = db.scalar(
+        select(AuthToken).where(AuthToken.token_hash == hash_secret(token_value))
+    )
+    if presented is None:
+        db.rollback()
+        raise AppError("invalid_token", status_code=401)
+    raced_at = now_utc()
+    for member in family_of_token(db, token=presented):
+        if member.revoked_at is None:
+            member.revoked_at = raced_at
+            member.grace_until = None
+
+
 def revoke_desktop_app_session(
     db: Session,
     *,
@@ -229,7 +267,11 @@ def revoke_desktop_app_session(
     presented credential as predecessor — and each replacement's whole
     refresh family (B → B2 …), so no rotated descendant survives either — so
     no proof holder keeps a 90-day session after the device is
-    de-authorized.
+    de-authorized. If the presented row itself already died to a racing
+    refresh (A → A2 committed between authentication and this lock), the
+    teardown is not exempt: it still closes the presented row's live refresh
+    family (A2 …) and returns normally. Only the default scope treats an
+    already-dead presented row as a 401 no-op.
     """
 
     if (
@@ -240,8 +282,10 @@ def revoke_desktop_app_session(
         raise AppError("invalid_token", status_code=401)
     revoked = revoke_token_value(db, token_value=token_value, scope="app")
     if revoked != 1:
-        db.rollback()
-        raise AppError("invalid_token", status_code=401)
+        if not lineage:
+            db.rollback()
+            raise AppError("invalid_token", status_code=401)
+        _close_raced_presented_refresh_family(db, token_value=token_value)
     kill_filter = AuthToken.scope == DESKTOP_PENDING_SCOPE
     if lineage:
         promoted_ids = select(DesktopActivationAttempt.token_id).where(

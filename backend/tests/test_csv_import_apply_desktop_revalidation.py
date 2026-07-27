@@ -15,6 +15,7 @@ revalidates it under the identity advisory lock before every row:
 from __future__ import annotations
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
@@ -26,7 +27,9 @@ from app.services.csv_import_batch_service import (
     create_csv_import_batch,
 )
 from app.services.time_service import now_utc
+from tests.desktop_activation_support import token_row as _token_row
 from tests.test_csv_import_batches_apply_lease import _csv_bytes
+from tests.test_desktop_ledger_switch_prepare import _desktop_session
 from tests.test_web_session_write_gate import _auth_context, _mint_desktop_session
 
 
@@ -193,3 +196,53 @@ def test_apply_without_desktop_session_never_revalidates(identity, monkeypatch) 
     assert applied.inserted_count == 2
     assert applied.remaining_valid_rows == 0
     assert calls == []
+
+
+# ── API surface: a desktop bearer reaches /api/imports/csv (no platform gate) ──
+
+
+def test_api_apply_desktop_bearer_applies_the_batch(identity, client: TestClient) -> None:
+    """Reachability pin: a desktop-paired bearer (scope=app, platform=
+    desktop) authenticates on the generic API surface and can drive the
+    apply — so it needs the same per-row revalidation the /web bridge gets."""
+    _, headers = _desktop_session(client, identity.pairing_code)
+    public_id, _batch_id = _seed_batch(row_count=3)
+
+    response = client.post(
+        f"/api/imports/csv/{public_id}/apply",
+        headers=headers,
+        json={"batch_size": 3},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["inserted_count"] == 3
+    assert response.json()["remaining_valid_rows"] == 0
+
+
+def test_api_apply_desktop_bearer_aborts_when_membership_disabled_mid_batch(
+    identity,
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    """The mid-batch window on the API surface: a membership disable landing
+    after the first row commit must abort the remaining rows (401) with the
+    durable revocation persisted."""
+    _, headers = _desktop_session(client, identity.pairing_code)
+    token_value = headers["Authorization"].removeprefix("Bearer ")
+    account_id = _token_row(token_value).account_id
+    public_id, batch_id = _seed_batch(row_count=3)
+    _patch_first_row_then(monkeypatch, lambda: _update_membership(account_id, disable=True))
+
+    response = client.post(
+        f"/api/imports/csv/{public_id}/apply",
+        headers=headers,
+        json={"batch_size": 3},
+    )
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+
+    with SessionLocal() as db:
+        stored = db.get(AuthToken, _token_row(token_value).id)
+        assert stored.revoked_at is not None
+        assert stored.grace_until is None
+        assert _csv_expense_count(db) == 1
+        assert _row_statuses(db, batch_id=batch_id) == ["applied", "valid", "valid"]

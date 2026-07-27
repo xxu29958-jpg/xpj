@@ -136,9 +136,13 @@ def _cleanup_csv_import_apply_app_error(
     public_id: str,
     apply_token: str,
 ) -> None:
-    """Cleanup path for AppError: caller-level validation rejected the
-    batch before any rows mutated, so an empty claim set means we
-    only need to release the apply lease (no row reset needed)."""
+    """Cleanup path for AppError.
+
+    Two shapes share it: caller-level validation rejected the batch before
+    any rows mutated (empty claim set → only the apply lease needs
+    releasing), or a per-row desktop revalidation aborted mid-batch (401 /
+    403 — earlier rows already committed on their own, so only the
+    still-claimed rows are reset and the batch is marked failed)."""
     if claimed_row_ids:
         _reset_claimed_csv_import_rows(
             db, tenant_id=tenant_id, row_ids=claimed_row_ids, apply_token=apply_token

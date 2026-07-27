@@ -1,8 +1,11 @@
 """Refresh-rotation × desktop switch/revoke lineage interactions (218-E).
 
-Three contracts: switch activation atomically closes the source refresh
+Four contracts: switch activation atomically closes the source refresh
 family; the lineage teardown covers promoted replacements' whole refresh
-family; the default switch-cleanup scope never touches the successor family.
+family; the default switch-cleanup scope never touches the successor family;
+and when a racing refresh kills the presented row first, the lineage
+teardown still closes that row's live refresh family (the default scope
+stays a 401 no-op).
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.errors import AppError
 from app.main import app
 from app.models import AuthToken, DesktopActivationAttempt, SessionRefreshAttempt
 from app.services.desktop_switch_service import revoke_desktop_app_session
@@ -225,3 +229,64 @@ def test_switch_cleanup_default_scope_never_touches_the_successor_family(
     )
     assert successor.status_code == 200, successor.text
     assert successor.json()["ledger_id"] == target
+
+
+def test_lineage_revoke_with_race_dead_presented_row_closes_its_refresh_family(
+    identity,
+    client: TestClient,
+) -> None:
+    """Unpair-vs-refresh race: authentication saw A live, then a refresh
+    A → A2 committed before the teardown's lock. The lineage intent is not
+    exempt: it still closes A's live refresh family (hard) and returns
+    normally (204 semantics) instead of reporting a bare 401."""
+
+    _, headers = _desktop_session(client, identity.pairing_code)
+    source_value = headers["Authorization"].removeprefix("Bearer ")
+    with SessionLocal() as db:
+        auth = authenticate_desktop_session_token(db, source_value)
+
+    rotated = client.post(
+        "/api/auth/refresh",
+        headers=headers,
+        json=session_refresh_payload(),
+    )
+    assert rotated.status_code == 200, rotated.text
+    rotated_value = rotated.json()["session_token"]
+
+    with SessionLocal() as db:
+        revoke_desktop_app_session(db, auth=auth, token_value=source_value, lineage=True)
+
+    source_row = _token_row(source_value)
+    assert source_row.revoked_at is not None
+    rotated_row = _token_row(rotated_value)
+    assert rotated_row.revoked_at is not None
+    assert rotated_row.grace_until is None  # hard teardown, not a grace window
+
+
+def test_default_revoke_with_race_dead_presented_row_stays_a_401_noop(
+    identity,
+    client: TestClient,
+) -> None:
+    """Same race under the default (switch-cleanup) scope: an already-dead
+    presented row stays a 401 no-op and the rotated successor is untouched."""
+
+    _, headers = _desktop_session(client, identity.pairing_code)
+    source_value = headers["Authorization"].removeprefix("Bearer ")
+    with SessionLocal() as db:
+        auth = authenticate_desktop_session_token(db, source_value)
+
+    rotated = client.post(
+        "/api/auth/refresh",
+        headers=headers,
+        json=session_refresh_payload(),
+    )
+    assert rotated.status_code == 200, rotated.text
+    rotated_value = rotated.json()["session_token"]
+
+    with SessionLocal() as db, pytest.raises(AppError) as exc:
+        revoke_desktop_app_session(db, auth=auth, token_value=source_value)
+    assert exc.value.error == "invalid_token"
+    assert exc.value.status_code == 401
+
+    rotated_row = _token_row(rotated_value)
+    assert rotated_row.revoked_at is None
