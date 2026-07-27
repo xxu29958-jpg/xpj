@@ -68,7 +68,7 @@ internal fun ExpenseEditRoute(
     expenseId: Long,
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
-    onCompleted: () -> Unit,
+    onCompleted: (adviceInputsChanged: Boolean) -> Unit,
     onOpenRepaymentDrafts: (String) -> Unit,
 ) {
     val editViewModel: ExpenseEditViewModel = viewModel(
@@ -112,14 +112,14 @@ internal fun ExpenseEditRoute(
 private fun expenseEditPrimaryActions(
     viewModel: ExpenseEditViewModel,
     onBack: () -> Unit,
-    onCompleted: () -> Unit,
+    onCompleted: (adviceInputsChanged: Boolean) -> Unit,
 ): ExpenseEditPrimaryActions = ExpenseEditPrimaryActions(
     onSave = viewModel::save,
     onConfirm = viewModel::confirm,
     onReject = viewModel::reject,
     onDone = {
         if (viewModel.consumeDone()) {
-            onCompleted()
+            onCompleted(viewModel.consumeDoneAdviceInputsChanged())
         } else {
             onBack()
         }

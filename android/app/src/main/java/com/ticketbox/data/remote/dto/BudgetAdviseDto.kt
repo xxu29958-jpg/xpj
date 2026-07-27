@@ -36,4 +36,5 @@ data class BudgetAdviceDto(
 data class BudgetAdviseResponseDto(
     val advice: BudgetAdviceDto?,
     @param:Json(name = "provider_name") val providerName: String,
+    @param:Json(name = "reason_code") val reasonCode: String? = null,
 )

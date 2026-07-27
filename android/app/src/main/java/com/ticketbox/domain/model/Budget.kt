@@ -69,6 +69,24 @@ data class BudgetMonthlyUpdate(
     val categoryBudgets: List<BudgetCategoryDraft> = emptyList(),
 )
 
+data class BudgetAdviceResult(
+    val advice: BudgetAdvice?,
+    val providerName: String,
+    val reasonCode: String?,
+)
+
+data class BudgetAdvice(
+    val summary: String,
+    val suggestions: List<BudgetSuggestion>,
+    val confidence: Double?,
+)
+
+data class BudgetSuggestion(
+    val category: String?,
+    val suggestedAmountCents: Long,
+    val rationale: String,
+)
+
 fun BudgetMonthly.toBudgetProgressStatus(): BudgetProgressStatus = when {
     !configured -> BudgetProgressStatus.Unconfigured
     availableAmountCents <= 0L -> BudgetProgressStatus.ConfiguredWithoutProgress

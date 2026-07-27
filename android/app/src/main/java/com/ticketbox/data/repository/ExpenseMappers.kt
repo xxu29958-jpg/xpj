@@ -331,6 +331,25 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     )
 }
 
+/** 218-B4 review P2-19/P2-22: does this draft move the fields the budget
+ *  advisor's payload aggregates (backend _inputs_builder.py: amount/original
+ *  currency, category, captured date-time) ON A CONFIRMED ROW? Mirrors
+ *  [toRequest]'s change detection. note / tags / merchant / value-or-regret
+ *  edits return false, and so does any edit on a pending/rejected row — it is
+ *  not in the confirmed set the advisor reads (its later confirm transition
+ *  is always-true on its own path). */
+fun ExpenseDraft.changesAdvisorPayloadAgainst(baseline: Expense): Boolean {
+    if (baseline.status != "confirmed") return false
+    val submittedOriginalMinor = originalAmountMinor ?: amountCents
+    val submittedCurrency = originalCurrencyCode
+        ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
+    if (submittedOriginalMinor != baseline.originalAmountMinor) return true
+    if (submittedCurrency != baseline.originalCurrencyCode) return true
+    if (expenseTime != baseline.expenseTime) return true
+    val submittedCategory = category?.trim()?.takeIf { it.isNotBlank() }
+    return submittedCategory != null && submittedCategory != baseline.category?.trim()
+}
+
 fun NotificationDraft.toRequest(notificationKey: String? = null): NotificationDraftRequestDto = NotificationDraftRequestDto(
     source = source.apiValue,
     originalCurrency = FxContract.HomeCurrency.storageKey,

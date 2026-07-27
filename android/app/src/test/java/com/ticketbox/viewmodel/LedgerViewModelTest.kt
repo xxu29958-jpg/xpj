@@ -703,6 +703,62 @@ class LedgerViewModelTest {
     }
 }
 
+/** 218-B4 review P2-23: the ledger batch seam fires advice invalidation only
+ *  when the batch moves CATEGORY (payload) — a tags-only batch preserves the
+ *  advice cache. Separate class (per-class function cap). */
+@OptIn(ExperimentalCoroutinesApi::class)
+class LedgerBatchAdviceInvalidationTest {
+    private fun batchTest(block: suspend TestScope.() -> Unit) = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            block()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun tagOnlyBatchDoesNotFireAdviceInvalidation() = batchTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
+        )
+        val vm = LedgerViewModel(fake)
+        var invalidations = 0
+        vm.onAdviceInputsChanged = { invalidations += 1 }
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchTags("出差")
+        advanceUntilIdle()
+
+        assertEquals(1, fake.batchCallCount)
+        assertEquals(0, invalidations)
+    }
+
+    @Test
+    fun categoryBatchFiresAdviceInvalidation() = batchTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
+        )
+        val vm = LedgerViewModel(fake)
+        var invalidations = 0
+        vm.onAdviceInputsChanged = { invalidations += 1 }
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchCategory("购物")
+        advanceUntilIdle()
+
+        assertEquals(1, fake.batchCallCount)
+        assertEquals(1, invalidations)
+    }
+}
+
 // Fixture expenses sit in 2026-05; tests pin monthFilter here so they stay
 // passing as the wall-clock moves past that month.
 private const val FIXTURE_MONTH = "2026-05"
