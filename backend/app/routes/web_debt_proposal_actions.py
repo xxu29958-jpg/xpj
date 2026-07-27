@@ -189,20 +189,31 @@ def _parse_confirmed_amount(raw: str, *, currency_code: str) -> int | None:
     )
 
 
-def _confirm_amount_raw(confirmed_amount_major: str, legacy_amount_major: str) -> str:
-    """N-1 字段优先级：新字段 ``confirmed_amount_major`` 非空优先；空则回退旧字段
-    ``amount_major`` (D3 修复前路由误读的名字，旧客户端仍按它提交)；两者皆空返回空串，
-    由 ``_parse_confirmed_amount`` 的显式空串分支按对方申报全额处理。
-    两者**均非空且不一致** = 客户端序列化/迁移错误 → 抛 422 (不静默取新字段把冲突写成
-    错误的还款金额事实)；同值视为单字段提交。"""
+def _confirm_amount_raw(confirmed_amount_major: str, legacy_amount_major: str, *, currency_code: str) -> str:
+    """N-1 字段优先级：任一别名单独提交均接受；两者皆空返回空串 (显式全额分支在
+    ``_parse_confirmed_amount``)。两者均非空时**按债务币种解析后**比较 minor-unit 值
+    (等值格式如 50.0/50.00、JPY 前导零 050/50 视为同一提交,校验沿用 ``_parse_major_minor``
+    同一族,不为比较放宽 JPY/KRW 零小数规则)；任一非法 → 维持非法金额 422 族；
+    解析后真不同 = 客户端序列化/迁移错误 → 抛冲突 422 (不写成错误的还款金额事实)。"""
     new_text = (confirmed_amount_major or "").strip()
     legacy_text = (legacy_amount_major or "").strip()
-    if new_text and legacy_text and new_text != legacy_text:
-        raise AppError(
-            "invalid_request",
-            "这次提交里有两个不一样的金额，请刷新后只保留一个再确认。",
-            status_code=422,
+    if new_text and legacy_text:
+        new_minor = _parse_major_minor(
+            new_text,
+            currency_code=currency_code,
+            allow_negative=False,
         )
+        legacy_minor = _parse_major_minor(
+            legacy_text,
+            currency_code=currency_code,
+            allow_negative=False,
+        )
+        if new_minor != legacy_minor:
+            raise AppError(
+                "invalid_request",
+                "这次提交里有两个不一样的金额，请刷新后只保留一个再确认。",
+                status_code=422,
+            )
     return new_text or legacy_text
 
 
@@ -278,12 +289,7 @@ def web_confirm_repayment_proposal(
     actor_account_id = _actor_account_id(request, db, selected_id)
     expected = parse_form_row_version_token(expected_row_version)
     if expected is None:
-        return _action_redirect(
-            public_id,
-            selected_id,
-            message=_STALE_MESSAGE,
-            success=False,
-        )
+        return _action_redirect(public_id, selected_id, message=_STALE_MESSAGE, success=False)
     try:
         debt = get_participant_debt_response(
             db,
@@ -294,7 +300,11 @@ def web_confirm_repayment_proposal(
     except AppError as exc:
         return _confirm_business_error_redirect(public_id, selected_id, exc)
     try:
-        attempted_amount = _confirm_amount_raw(confirmed_amount_major, amount_major)
+        attempted_amount = _confirm_amount_raw(
+            confirmed_amount_major,
+            amount_major,
+            currency_code=debt.home_currency_code,
+        )
         confirmed_amount = _parse_confirmed_amount(
             attempted_amount,
             currency_code=debt.home_currency_code,
@@ -326,12 +336,7 @@ def web_confirm_repayment_proposal(
         )
     except (AppError, ValidationError) as exc:
         return _confirm_business_error_redirect(public_id, selected_id, exc)
-    return _action_redirect(
-        public_id,
-        selected_id,
-        message="收到啦，谢谢 TA～",
-        success=True,
-    )
+    return _action_redirect(public_id, selected_id, message="收到啦，谢谢 TA～", success=True)
 
 
 @router.post("/{public_id}/repayment-proposals/{proposal_public_id}/reject")

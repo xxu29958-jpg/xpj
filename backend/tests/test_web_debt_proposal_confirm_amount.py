@@ -6,9 +6,10 @@
 422 原地重渲染且错误锚定到金额输入 / viewer 直 POST 仍 403 / 模板↔路由同源契约。
 
 Review P1 (N-1)：旧字段名 ``amount_major`` 仍被接受 (新字段非空优先，旧字段兜底，两者皆空按
-申报全额)——否则旧客户端/旧页面的部分确认会再次静默变成全额；两字段均非空且**不一致** =
-客户端序列化/迁移错误 → 422 (不静默取新字段把冲突写成错误金额事实)。P2 的「422 错误锚定到
-本次提交的 proposal」在 ``test_web_debt_proposal_confirm_anchor.py``。
+申报全额)——否则旧客户端/旧页面的部分确认会再次静默变成全额；两字段均非空时按债务币种解析后
+比较 minor-unit (等值格式/JPY 前导零视同单字段)，**真不同** = 客户端序列化/迁移错误 → 422
+(不静默取新字段把冲突写成错误金额事实)。P2 的「422 错误锚定到本次提交的 proposal」在
+``test_web_debt_proposal_confirm_anchor.py``。
 """
 
 from __future__ import annotations
@@ -256,8 +257,8 @@ def test_web_confirm_with_legacy_amount_field_records_edited_partial(
 def test_web_confirm_conflicting_amount_aliases_rerenders_422_anchored(
     web_client: TestClient,
 ) -> None:
-    # P1/P2：新旧字段同时非空且**不一致** = 客户端序列化/迁移错误 → 422 原地重渲染锚定到
-    # 提交的 proposal,零写入 —— 不静默取新字段把冲突写成错误的还款金额事实。
+    # P1/P2：新旧字段同时非空且**解析后真不同** = 客户端序列化/迁移错误 → 422 原地重渲染
+    # 锚定到提交的 proposal,零写入 —— 不静默取新字段把冲突写成错误的还款金额事实。
     public_id, debt_id, _owner_id, _member_id, proposal_public_id = seed_creditor_view()
     before_version = row_version_of(debt_id)
 
@@ -293,7 +294,8 @@ def test_web_confirm_conflicting_amount_aliases_rerenders_422_anchored(
 def test_web_confirm_accepts_matching_amount_aliases(
     web_client: TestClient,
 ) -> None:
-    # P1/P2：新旧字段同时提交但**同值** → 视为单字段提交,按该值入账 (不算冲突)。
+    # P1/P2：新旧字段同时提交且**解析后等值** (50.0 vs 50.00,字符串不同但 minor-unit 相同)
+    # → 视为单字段提交,按该值入账 (不算冲突,不打断兼容客户端)。
     public_id, debt_id, _owner_id, _member_id, proposal_public_id = seed_creditor_view()
     before_version = row_version_of(debt_id)
 
@@ -301,7 +303,7 @@ def test_web_confirm_accepts_matching_amount_aliases(
         f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm",
         data=proposal_form(
             **{
-                PROPOSAL_CONFIRM_AMOUNT_FIELD: "50.00",
+                PROPOSAL_CONFIRM_AMOUNT_FIELD: "50.0",
                 PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY: "50.00",
                 "expected_row_version": str(before_version),
             }
@@ -316,6 +318,71 @@ def test_web_confirm_accepts_matching_amount_aliases(
         assert proposal is not None
         assert proposal.status == "partially_confirmed"
         assert proposal.confirmed_amount_cents == 5_000
+
+
+def test_web_confirm_accepts_zero_decimal_alias_equivalents(
+    web_client: TestClient,
+) -> None:
+    # P1/P2 边界：JPY 前导零等值 (050 vs 50) → 解析后同为 50 minor,接受入账;
+    # 比较不为 JPY/KRW 零小数规则放宽 (沿用 _parse_major_minor 同一校验族)。
+    public_id, debt_id, _owner_id, _member_id, proposal_public_id = seed_creditor_view(currency="JPY")
+    before_version = row_version_of(debt_id)
+
+    confirmed = web_client.post(
+        f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm",
+        data=proposal_form(
+            **{
+                PROPOSAL_CONFIRM_AMOUNT_FIELD: "050",
+                PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY: "50",
+                "expected_row_version": str(before_version),
+            }
+        ),
+    )
+
+    assert confirmed.status_code == 200
+    with SessionLocal() as db:
+        proposal = db.scalar(
+            select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_public_id)
+        )
+        assert proposal is not None
+        assert proposal.status == "partially_confirmed"
+        assert proposal.confirmed_amount_cents == 50
+
+
+def test_web_confirm_one_invalid_one_valid_alias_yields_invalid_amount_422(
+    web_client: TestClient,
+) -> None:
+    # P1/P2：任一别名非法 → 维持非法金额 422 族 (不是冲突文案),同样锚定重渲染、零写入。
+    public_id, debt_id, _owner_id, _member_id, proposal_public_id = seed_creditor_view()
+    before_version = row_version_of(debt_id)
+
+    for new_value, legacy_value in (("abc", "50.00"), ("50.00", "abc")):
+        response = post_confirm(
+            web_client,
+            public_id,
+            proposal_public_id,
+            **{
+                PROPOSAL_CONFIRM_AMOUNT_FIELD: new_value,
+                PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY: legacy_value,
+                "expected_row_version": str(before_version),
+            },
+        )
+        assert response.status_code == 422
+        assert "请填写正确的 CNY 金额" in response.text  # 非法金额族文案
+        assert "两个不一样的金额" not in response.text  # 不是冲突文案
+        assert 'id="proposal-confirm-amount-error"' in response.text
+
+    with SessionLocal() as db:
+        proposal = db.scalar(
+            select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_public_id)
+        )
+        debt = db.get(Debt, debt_id)
+        assert proposal is not None
+        assert debt is not None
+        assert proposal.status == "pending"  # 零写入
+        assert debt.row_version == before_version
+        repayments = db.scalars(select(Repayment).where(Repayment.debt_id == debt_id)).all()
+        assert repayments == []
 
 
 def test_web_confirm_with_neither_amount_field_records_full_declared_amount(
