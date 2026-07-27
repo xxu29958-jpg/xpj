@@ -126,6 +126,11 @@ class OpenApiContractGateTest {
         // the backend doesn't declare would 422), and the debt fields (goal_type /
         // debt_public_ids) must exist in the schema for the debt-goal create to deserialize.
         Pairing(GoalCreateRequestDto::class, "GoalCreateRequest"),
+        // ADR-0041 (slice 8f / #246 detail-edit flow) PATCH body — OCC setter body:
+        // expected_row_version is the only schema-required field (modeled non-null),
+        // the rest are optional setters; additionalProperties=false → the forward
+        // check is the forbid protection.
+        Pairing(GoalUpdateRequestDto::class, "GoalUpdateRequest"),
         Pairing(DebtRepaymentEvaluationDto::class, "DebtRepaymentEvaluation"),
         Pairing(DebtGoalLinkViewDto::class, "DebtGoalLinkView"),
         Pairing(DebtGoalLinksReplaceRequestDto::class, "DebtGoalLinksReplaceRequest"),
@@ -138,6 +143,10 @@ class OpenApiContractGateTest {
         // properties (reverse check needs every required field; +is_forgiven in slice 8e-3); the
         // create body is additionalProperties=false → the forward check is the forbid protection.
         Pairing(DebtDto::class, "DebtResponse"),
+        // Transient OCR/vision parse suggestions (POST /api/debts/parse-bill). The schema
+        // has no required fields; the DTO keeps source_text non-null with a default so the
+        // reverse check stays trivially satisfied while the forward check pins the wire names.
+        Pairing(DebtBillParseResponseDto::class, "DebtBillParseResponse"),
         Pairing(DebtListResponseDto::class, "DebtListResponse"),
         Pairing(DebtCreateRequestDto::class, "DebtCreateRequest"),
         // ADR-0049 §3 (slice 8c) direct fact-write bodies. Each is additionalProperties=false →
