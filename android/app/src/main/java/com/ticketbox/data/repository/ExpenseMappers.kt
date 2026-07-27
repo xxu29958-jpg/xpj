@@ -331,6 +331,22 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     )
 }
 
+/** 218-B4 review P2-19: does this draft move the fields the budget advisor's
+ *  payload aggregates (backend _inputs_builder.py: amount/original currency,
+ *  category, captured date-time)? Mirrors [toRequest]'s change detection.
+ *  note / tags / merchant / value-or-regret edits return false, so the
+ *  edit-completion hook can leave the advice cache intact for them. */
+fun ExpenseDraft.changesAdvisorPayloadAgainst(baseline: Expense): Boolean {
+    val submittedOriginalMinor = originalAmountMinor ?: amountCents
+    val submittedCurrency = originalCurrencyCode
+        ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
+    if (submittedOriginalMinor != baseline.originalAmountMinor) return true
+    if (submittedCurrency != baseline.originalCurrencyCode) return true
+    if (expenseTime != baseline.expenseTime) return true
+    val submittedCategory = category?.trim()?.takeIf { it.isNotBlank() }
+    return submittedCategory != null && submittedCategory != baseline.category?.trim()
+}
+
 fun NotificationDraft.toRequest(notificationKey: String? = null): NotificationDraftRequestDto = NotificationDraftRequestDto(
     source = source.apiValue,
     originalCurrency = FxContract.HomeCurrency.storageKey,

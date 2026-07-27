@@ -110,11 +110,15 @@ internal fun MainNavGraph(
                 expenseId = expenseId,
                 screenFactory = runtime.screenFactory,
                 onBack = { runtime.navController.popBackStack() },
-                onCompleted = {
+                onCompleted = { adviceInputsChanged ->
                     runtime.shellState.markExpenseEditCompleted()
-                    // Expense edits feed the advisor inputs — invalidate the
-                    // process-lifetime advice cache at the same refresh point.
-                    runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
+                    // Narrow hook (218-B4 review P2-19): only edits that moved
+                    // advisor-payload fields (amount / currency / category /
+                    // date-time, or confirmed-set membership) invalidate the
+                    // advice cache — note/tag/merchant-only edits preserve it.
+                    if (adviceInputsChanged) {
+                        runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
+                    }
                     runtime.navController.popBackStack()
                 },
                 onOpenRepaymentDrafts = { draftPublicId ->

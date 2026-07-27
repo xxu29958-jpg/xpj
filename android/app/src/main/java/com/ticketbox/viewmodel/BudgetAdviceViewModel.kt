@@ -199,6 +199,7 @@ class BudgetAdviceViewModel(
         // page kept open across a month rollover generates for the NEW month.
         val month = monthProvider()
         val generation = requestGeneration
+        val invalidationGenerationAtStart = repository.adviceInvalidations.value
         viewModelScope.launch {
             _state.update {
                 it.copy(
@@ -213,6 +214,18 @@ class BudgetAdviceViewModel(
                 .onSuccess { result ->
                     _state.update {
                         if (generation != requestGeneration || month != it.month) return@update it
+                        if (repository.adviceInvalidations.value != invalidationGenerationAtStart) {
+                            // An advice-input write landed mid-flight (domain
+                            // switch during a slow live call): the store already
+                            // refused to cache/restore this result — mirror that
+                            // stale-write guard at the display layer and drop to
+                            // Idle rather than show pre-write advice. No retry is
+                            // fired; the user taps 生成 again for fresh advice.
+                            return@update it.copy(
+                                loadState = BudgetAdviceLoadState.Idle,
+                                result = null,
+                            )
+                        }
                         it.adviceLoaded(result)
                     }
                 }

@@ -906,6 +906,39 @@ class BudgetAdviceInvalidationTest {
         assertEquals(listOf("2026-06"), fake.adviceMonths)
         assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
     }
+
+    @Test
+    fun midFlightInvalidationDropsStaleSuccessToIdle() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val gate = CompletableDeferred<Result<BudgetAdviceResult>>()
+        fake.adviceResponder = { gate.await() }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Loading, adviceViewModel.uiState.value.loadState)
+
+        // An advice-input write lands while the live call is still in flight;
+        // the pre-write success then arrives — it must not be displayed.
+        fake.invalidateBudgetAdvice()
+        gate.complete(
+            Result.success(
+                BudgetAdviceResult(
+                    advice = BudgetAdvice(
+                        summary = "过期建议",
+                        suggestions = emptyList(),
+                        confidence = 0.9,
+                    ),
+                    providerName = "mock",
+                    reasonCode = "advisor_ready",
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertNull(state.result)
+    }
 }
 
 /** Pins the advice VM to a fixed month: production resolves the request month
