@@ -706,6 +706,37 @@ class BudgetAdviceRoleCapabilityTest {
         assertEquals(true, state.canRequest)
         assertEquals("保持弹性支出空间。", state.result?.advice?.summary)
     }
+
+    @Test
+    fun ownerPromotionKeepsNotConfirmedTerminal() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", role = "member"),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "AI 预算助手尚未经过拥有者显式确认，已禁用。",
+                    errorCode = "ai_advisor_not_confirmed",
+                ),
+            )
+        }
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // _runner.py checks not_confirmed BEFORE owner_required: promoting
+        // member→owner does NOT confirm the advisor, so the terminal state
+        // must survive the promotion.
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "owner")
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals("ai_advisor_not_confirmed", state.terminalErrorCode)
+        assertEquals(UiText.raw("AI 预算助手尚未经过拥有者显式确认，已禁用。"), state.error)
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

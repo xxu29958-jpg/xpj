@@ -87,13 +87,6 @@ internal fun NavGraphBuilder.addPlanRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
-        // Budget / recurring / income-plan saves feed the budget-advisor inputs:
-        // alongside the plan refresh, drop the process-lifetime advice cache so
-        // a reopened advice page recomputes instead of restoring pre-write limits.
-        val onPlanDataChanged = {
-            shellState.markPlanDataChanged()
-            screenFactory.budgetRepository.invalidateBudgetAdvice()
-        }
         composable(ProductSecondaryPage.SpendingGoal.route) {
             SpendingGoalsRoute(
                 screenFactory = screenFactory,
@@ -104,7 +97,13 @@ internal fun NavGraphBuilder.addPlanRoutes(
             BudgetRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                onDataChanged = onPlanDataChanged,
+                // The monthly-budget row is NOT an advisor input
+                // (_inputs_builder.py) — a budget save must not invalidate.
+                onDataChanged = {
+                    markPlanWriteCompleted(shellState, invalidatesAdvice = false) {
+                        screenFactory.budgetRepository.invalidateBudgetAdvice()
+                    }
+                },
             )
         }
         composable(ProductSecondaryPage.BudgetAdvice.route) {
@@ -117,16 +116,40 @@ internal fun NavGraphBuilder.addPlanRoutes(
             RecurringRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                onDataChanged = onPlanDataChanged,
+                onDataChanged = {
+                    markPlanWriteCompleted(shellState, invalidatesAdvice = true) {
+                        screenFactory.budgetRepository.invalidateBudgetAdvice()
+                    }
+                },
             )
         }
         composable(ProductSecondaryPage.IncomePlans.route) {
             IncomePlanRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                onDataChanged = onPlanDataChanged,
+                onDataChanged = {
+                    markPlanWriteCompleted(shellState, invalidatesAdvice = true) {
+                        screenFactory.budgetRepository.invalidateBudgetAdvice()
+                    }
+                },
             )
         }
+    }
+}
+
+/** Plan-write refresh composition: every plan save bumps the plan revision;
+ *  only saves that feed the budget-advisor inputs (income plans, recurring —
+ *  NOT the monthly-budget row, see _inputs_builder.py) also drop the
+ *  process-lifetime advice cache, so a reopened advice page recomputes
+ *  instead of restoring pre-write limits without wasting quota on no-ops. */
+internal fun markPlanWriteCompleted(
+    shellState: MainShellState,
+    invalidatesAdvice: Boolean,
+    invalidateBudgetAdvice: () -> Unit,
+) {
+    shellState.markPlanDataChanged()
+    if (invalidatesAdvice) {
+        invalidateBudgetAdvice()
     }
 }
 

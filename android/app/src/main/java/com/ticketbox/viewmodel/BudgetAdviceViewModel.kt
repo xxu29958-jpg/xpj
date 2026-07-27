@@ -269,13 +269,16 @@ class BudgetAdviceViewModel(
             "ai_advisor_daily_limit_exceeded",
         )
 
-        /** Terminal codes a capability increase (member→owner promotion, or the
-         *  owner confirming the advisor) can plausibly clear — re-offered as
-         *  Idle on role increase. Excludes the daily quota cap: a role change
+        /** Terminal codes a capability increase (member→owner promotion) can
+         *  plausibly clear — re-offered as Idle on role increase. Only
+         *  owner_required qualifies: _runner.py checks not_confirmed BEFORE
+         *  owner_required, so promotion never clears an unconfirmed advisor
+         *  (that gate lifts only when the owner confirms server-side, which
+         *  produces no client signal — the page-scoped VM re-offers on its
+         *  next recreation). Also excludes the daily quota cap: a role change
          *  does not reset the 24h window. */
         val ROLE_GATED_ADVISOR_ERROR_CODES = setOf(
             "ai_advisor_owner_required",
-            "ai_advisor_not_confirmed",
         )
     }
 }

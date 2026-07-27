@@ -41,7 +41,7 @@
     <string name="budget_advice_back_to_plan">返回计划</string>
     <string name="budget_advice_start_title">生成本月建议</string>
     <string name="budget_advice_start_body">根据收入计划、固定支出和已入账消费的汇总结构，给出可逐项审阅的分类额度建议。建议不会自动修改预算。</string>
-    <string name="budget_advice_privacy_note">仅使用汇总信息，不发送商家名称或家庭成员明细。</string>
+    <string name="budget_advice_privacy_note">仅发送汇总结构：收支与分类合计，以及每项收入计划的类型、金额和到账日；不发送商家名称或家庭成员明细。</string>
     <string name="budget_advice_generate">生成预算建议</string>
     <string name="budget_advice_loading_title">正在整理本月收支结构</string>
     <string name="budget_advice_loading_body">建议生成完成前，你可以离开此页，现有预算不会发生变化。</string>
