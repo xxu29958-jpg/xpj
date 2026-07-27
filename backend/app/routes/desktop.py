@@ -17,7 +17,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.middleware.web_session import DESKTOP_BRIDGE_HEADER, DESKTOP_BRIDGE_VERSION
 from app.network_boundary import require_owner_console_local
-from app.services.desktop_activation_service import revoke_desktop_app_session
+from app.services.desktop_switch_service import revoke_desktop_app_session
 from app.services.identity_service import authenticate_desktop_session_token
 from app.tenants import AuthContext
 

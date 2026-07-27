@@ -1838,3 +1838,82 @@ def test_provisional_attempt_ttl_mirrors_the_backend_pending_ttl() -> None:
 
     assert _PROVISIONAL_ATTEMPT_TTL_SECONDS == 300
     assert _PROVISIONAL_ATTEMPT_EXPIRY_MARGIN_SECONDS > 0
+
+
+# ── Round-4 regressions: switch gate + live role rendering ──────────────────
+
+
+def test_switch_refuses_to_overwrite_a_recovery_with_owed_cleanup() -> None:
+    """A→B switch whose A-revoke failed transiently leaves the owed record;
+    a second switch (B→C) must settle or refuse — never overwrite the slot."""
+    attempt_id, attempt_secret = new_activation_attempt()
+    derived_b = derive_desktop_pending_token(attempt_secret, attempt_id)
+    current_b = _product_session(token=derived_b, ledger_id="family", role="viewer")
+    sessions, recoveries, store = _stores(current_b)
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-old-A",
+    )
+    switch_calls: list = []
+
+    def failing_revoker(_origin, token, **_kwargs) -> None:
+        raise ProductDataError("backend unreachable", status_code=503)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_ledger_switcher=lambda *args, **kwargs: switch_calls.append((args, kwargs)),
+        product_session_revoker=failing_revoker,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.switch_product_principal_ledger("third")
+
+    assert error.value.status_code == 503
+    assert error.value.error == "product_cleanup_pending"
+    assert switch_calls == []
+    assert recoveries[_INSTALLATION_ID].superseded_session_token == "tbx-old-A"
+    assert sessions[_INSTALLATION_ID].session_token == derived_b
+
+
+def test_switch_settles_owed_cleanup_then_proceeds_to_next_ledger() -> None:
+    attempt_id, attempt_secret = new_activation_attempt()
+    derived_b = derive_desktop_pending_token(attempt_secret, attempt_id)
+    current_b = _product_session(token=derived_b, ledger_id="family", role="viewer")
+    sessions, recoveries, store = _stores(current_b)
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-old-A",
+    )
+    revoked: list[str] = []
+    pending_c = _pending_for(ledger_id="third", role="member")
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_ledger_switcher=lambda *_args, **_kwargs: pending_c,
+        product_session_activator=_activate_pending,
+        product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        **store,
+    )
+
+    projection = controller.switch_product_principal_ledger("third")
+
+    assert projection["ledger_id"] == "third"
+    assert revoked[0] == "tbx-old-A"
+    assert recoveries == {}

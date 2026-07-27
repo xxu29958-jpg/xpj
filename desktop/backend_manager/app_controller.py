@@ -394,6 +394,40 @@ class AppController:
             self._begin_action()
             return self._pair_product_principal(pairing_code)
 
+    def _settle_outstanding_recovery(
+        self,
+        config: ManagerConfig,
+        loopback_origin: str,
+        current: ProductSession | None,
+    ) -> None:
+        """Settle a completed ceremony's owed superseded revoke — or refuse.
+
+        A new pair/switch must never overwrite the single recovery slot while
+        an owed revoke is outstanding (the old credential's only cleanup
+        marker would be lost). P0 guard: only a genuinely orphaned superseded
+        is revoked; when the failed ceremony never displaced A, only the
+        stale attempt record is dropped.
+        """
+        existing = self._load_rebind_recovery(config)
+        if existing is None or not existing.ledger_id:
+            return
+        owed = existing.superseded_session_token
+        owed_is_orphaned = owed and (
+            current is None or not secrets.compare_digest(current.session_token, owed)
+        )
+        if owed_is_orphaned and not self._revoke_superseded_session(
+            config,
+            loopback_origin,
+            owed,
+        ):
+            raise ProductDataError(
+                "旧凭据尚未完成清理，请稍后重试。",
+                error="product_cleanup_pending",
+                status_code=503,
+            )
+        with suppress(ProductDataError):
+            self._delete_rebind_recovery(config)
+
     def _pair_product_principal(self, pairing_code: str) -> dict:
         """Stage, activate, then atomically replace the WinCred principal."""
 
@@ -412,27 +446,7 @@ class AppController:
         # But never overwrite a completed ceremony whose superseded revoke is
         # still owed: settle that duty first (same semantics as unpair —
         # transient failure refuses to start the new pair and keeps the record).
-        # P0 guard: only a genuinely orphaned superseded may be revoked — when
-        # the failed ceremony never displaced A, A is still the live primary
-        # and only its stale attempt record is dropped, never the credential.
-        existing = self._load_rebind_recovery(config)
-        if existing is not None and existing.ledger_id:
-            owed = existing.superseded_session_token
-            owed_is_orphaned = owed and (
-                current is None or not secrets.compare_digest(current.session_token, owed)
-            )
-            if owed_is_orphaned and not self._revoke_superseded_session(
-                config,
-                loopback_origin,
-                owed,
-            ):
-                raise ProductDataError(
-                    "旧凭据尚未完成清理，请稍后重试绑定。",
-                    error="product_cleanup_pending",
-                    status_code=503,
-                )
-            with suppress(ProductDataError):
-                self._delete_rebind_recovery(config)
+        self._settle_outstanding_recovery(config, loopback_origin, current)
         provisional = self._load_rebind_recovery(config)
         if (
             provisional is not None
@@ -584,6 +598,9 @@ class AppController:
         current = self._required_product_session(config)
         if ledger_id == current.ledger_id:
             return current.public_projection()
+        # A second switch must never overwrite a first switch's recovery slot
+        # while its superseded revoke is still owed — settle first or refuse.
+        self._settle_outstanding_recovery(config, loopback_origin, current)
         try:
             pending = self._product_ledger_switcher(
                 loopback_origin,

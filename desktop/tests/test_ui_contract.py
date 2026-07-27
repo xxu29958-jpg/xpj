@@ -114,11 +114,15 @@ def test_hidden_attribute_is_authoritative_over_product_display_rules() -> None:
 def test_product_card_visibility_matrix_and_dirty_selection_are_declared() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 
-    # Paired state shows manage + /web link (never the pair form); unpaired
-    # shows the pair form (never manage/link).
-    assert '$("productPairGroup").hidden = configured;' in html
-    assert '$("productManageGroup").hidden = !configured;' in html
-    assert '$("productHomeLink").hidden = !(configured && available);' in html
+    # Paired state shows manage + /web link (never the pair form); unpaired or
+    # a vanished bound ledger shows the pair form (never manage/link).
+    assert 'const showManage = configured && !membershipLost;' in html
+    assert '$("productHomeLink").hidden = !(showManage && available);' in html
+    assert '$("productPairGroup").hidden = showManage;' in html
+    assert '$("productManageGroup").hidden = !showManage;' in html
+    assert "原绑定已失效" in html
+    # The displayed role follows the live membership row, not the persisted one.
+    assert "const role = liveRow ? liveRow.role : productSession.role;" in html
     # A differing user selection is never clobbered by a refresh tick; the
     # dirty flag clears only on a successful product action.
     assert "let ledgerSelectionDirty = false;" in html

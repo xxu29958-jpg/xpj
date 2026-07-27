@@ -18,8 +18,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AuthToken, DesktopActivationAttempt, Device, Ledger
+from app.models import AuthToken, DesktopActivationAttempt, Device, Ledger, LedgerMember
 from app.services.desktop_activation_service import (
+    DESKTOP_PENDING_SCOPE,
     DESKTOP_PLATFORM,
     find_live_pending_token,
     stage_desktop_pending_token,
@@ -30,9 +31,10 @@ from app.services.session_lifecycle_service import (
     derive_desktop_activation_token,
     hash_desktop_activation_attempt_secret,
     hash_secret,
+    revoke_token_value,
 )
 from app.services.time_service import ensure_utc, now_utc, to_iso
-from app.tenants import DEFAULT_TENANT_ID, SessionPrincipal
+from app.tenants import DEFAULT_TENANT_ID, AuthContext, SessionPrincipal
 
 
 def _stage_or_replay_switch_pending(
@@ -72,6 +74,9 @@ def _stage_or_replay_switch_pending(
             ledger_id=ledger.ledger_id,
             attempt_public_id=activation_attempt_id,
             activation_secret=activation_attempt_secret,
+            # Lineage for unpair: a session revoke must find and kill the
+            # replacements this source credential staged (promoted or not).
+            previous_token_id=locked_principal.credential_id,
             issued_at=checked_at,
         )
         return pending_value, staged.expires_at
@@ -143,3 +148,79 @@ def prepare_desktop_ledger_switch(
         device_name=device.device_name,
         activation_expires_at=to_iso(ensure_utc(pending_expires_at)),
     )
+
+
+def revalidate_desktop_session_under_lock(db: Session, session_auth) -> str:
+    """Revalidate the bridged desktop principal in the handler's transaction.
+
+    The middleware authenticated the bearer in its own session and stashed a
+    detached AuthContext; a membership disable/demote, or a device/token
+    revocation landing between that check and a mutation's commit, must not
+    let the write through. Re-read token row, device, and membership under
+    FOR UPDATE in the same transaction the handler will commit. Returns the
+    live membership role so the caller can refresh the (frozen) context.
+    """
+    row = db.execute(
+        select(AuthToken, Device, LedgerMember)
+        .where(AuthToken.id == session_auth.credential_id)
+        .where(AuthToken.revoked_at.is_(None))
+        .where(Device.id == AuthToken.device_id)
+        .where(Device.revoked_at.is_(None))
+        .where(LedgerMember.ledger_id == session_auth.ledger_id)
+        .where(LedgerMember.account_id == session_auth.account_id)
+        .where(LedgerMember.disabled_at.is_(None))
+        .with_for_update()
+        .limit(1)
+    ).first()
+    if row is None:
+        raise AppError("invalid_token", status_code=401)
+    token, _device, membership = row
+    expires_at = ensure_utc(token.expires_at)
+    if expires_at is not None and expires_at <= now_utc():
+        token.revoked_at = now_utc()
+        token.grace_until = None
+        db.commit()
+        raise AppError("invalid_token", status_code=401)
+    return str(membership.role)
+
+
+def revoke_desktop_app_session(
+    db: Session,
+    *,
+    auth: AuthContext,
+    token_value: str,
+) -> None:
+    """Revoke the presented credential, its staged pending rows, and promoted
+    replacements whose receipt names it as predecessor. Other lineages and the
+    device stay untouched.
+    """
+
+    if (
+        auth.scope != "app"
+        or auth.credential_hash is None
+        or not hmac.compare_digest(hash_secret(token_value), auth.credential_hash)
+    ):
+        raise AppError("invalid_token", status_code=401)
+    revoked = revoke_token_value(db, token_value=token_value, scope="app")
+    if revoked != 1:
+        db.rollback()
+        raise AppError("invalid_token", status_code=401)
+    promoted_ids = select(DesktopActivationAttempt.token_id).where(
+        DesktopActivationAttempt.previous_token_id == auth.credential_id,
+        DesktopActivationAttempt.activated_at.is_not(None),
+    )
+    replacement_rows = db.scalars(
+        select(AuthToken)
+        .where(
+            AuthToken.account_id == auth.account_id,
+            AuthToken.device_id == auth.device_id,
+            AuthToken.revoked_at.is_(None),
+            (AuthToken.scope == DESKTOP_PENDING_SCOPE) | AuthToken.id.in_(promoted_ids),
+        )
+        .with_for_update()
+    ).all()
+    staged_at = now_utc()
+    for replacement in replacement_rows:
+        replacement.revoked_at = staged_at
+        replacement.grace_until = None
+    db.commit()

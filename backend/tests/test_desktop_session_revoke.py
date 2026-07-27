@@ -20,7 +20,16 @@ from tests.desktop_activation_support import (
     activate as _activate,
 )
 from tests.desktop_activation_support import (
+    attempt_row as _attempt_row,
+)
+from tests.desktop_activation_support import (
+    new_desktop_pairing_code,
+)
+from tests.desktop_activation_support import (
     pair_desktop as _pair_desktop,
+)
+from tests.desktop_activation_support import (
+    token_row as _token_row,
 )
 from tests.test_desktop_ledger_switch_prepare import (
     _activate_attempt,
@@ -77,19 +86,23 @@ def test_revoke_is_not_idempotent_for_the_same_credential(
     assert replay.json()["error"] == "invalid_token"
 
 
-def test_revoke_never_touches_sibling_credentials(
+def test_revoke_kills_promoted_replacements_but_not_unrelated_lineages(
     identity,
     loopback_client: TestClient,
     client: TestClient,
 ) -> None:
+    """Unpair must not leave promoted replacements alive: a staged+activated
+    successor whose receipt names the revoked credential as predecessor dies
+    in the same transaction; an independently-paired desktop device's session
+    (unrelated lineage) survives."""
+    from tests.test_desktop_ledger_switch_prepare import _create_ledger
+
     _, headers = _desktop_session(client, identity.pairing_code)
     source_token = headers["Authorization"].removeprefix("Bearer ")
 
-    # Stage + activate a second app credential for the SAME device on another
-    # ledger: two live sibling slots, one per ledger.
-    created = client.post("/api/ledgers", headers=headers, json={"name": "撤销隔离账本"})
-    assert created.status_code == 201, created.text
-    target = created.json()["ledger_id"]
+    # Stage + activate a promoted replacement B for the SAME device on another
+    # ledger — its attempt receipt records the source credential as predecessor.
+    target = _create_ledger(client, headers, name="替换账本")
     payload = _prepare_payload()
     prepared = client.post(
         f"/api/ledgers/{target}/switch/prepare",
@@ -101,6 +114,18 @@ def test_revoke_never_touches_sibling_credentials(
     assert activated.status_code == 200, activated.text
     sibling_token = activated.json()["session_token"]
 
+    # Lineage evidence: the receipt names the source token as predecessor.
+    attempt = _attempt_row(payload["activation_attempt_id"])
+    source_row = _token_row(source_token)
+    assert attempt.previous_token_id == source_row.id
+
+    # An unrelated desktop device paired independently survives the revoke.
+    other_payload, other_body = _pair_desktop(
+        client,
+        new_desktop_pairing_code(client, headers),
+    )
+    assert _activate(client, other_payload).status_code == 200
+
     response = loopback_client.post(REVOKE_PATH, headers=_bridge_headers(source_token))
 
     assert response.status_code == 204, response.text
@@ -109,8 +134,12 @@ def test_revoke_never_touches_sibling_credentials(
         "/api/auth/check",
         headers={"Authorization": f"Bearer {sibling_token}"},
     )
-    assert sibling.status_code == 200, sibling.text
-    assert sibling.json()["ledger_id"] == target
+    assert sibling.status_code == 401
+    unrelated = client.get(
+        "/api/auth/check",
+        headers={"Authorization": f"Bearer {other_body['session_token']}"},
+    )
+    assert unrelated.status_code == 200, unrelated.text
 
 
 def test_revoke_requires_bridge_marker(
@@ -194,8 +223,7 @@ def test_revoke_cancels_outstanding_staged_replacements(
     """Unpair must not leave a staged desktop_pending replacement live: the
     unauthenticated activate endpoint would otherwise restore a full session
     from the retained attempt proof after the session was revoked."""
-    from tests.desktop_activation_support import token_row as _token_row
-    from tests.test_desktop_ledger_switch_prepare import _activate_attempt, _create_ledger
+    from tests.test_desktop_ledger_switch_prepare import _create_ledger
 
     _, headers = _desktop_session(client, identity.pairing_code)
     target = _create_ledger(client, headers)

@@ -128,6 +128,10 @@ def test_switch_prepare_stages_pending_credential(identity, client: TestClient) 
     assert attempt.account_id == row.account_id
     assert attempt.device_id == row.device_id
     assert attempt.ledger_id == target
+    # The receipt names the source credential as predecessor — the durable
+    # association a session revoke uses to kill promoted replacements.
+    source_row = _token_row(headers["Authorization"].removeprefix("Bearer "))
+    assert attempt.previous_token_id == source_row.id
 
     # The authenticated source session stays live and usable.
     check = client.get("/api/auth/check", headers=headers)

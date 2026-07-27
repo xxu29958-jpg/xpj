@@ -516,9 +516,14 @@
     function renderProduct() {
       const configured = Boolean(productSession && productSession.configured);
       const available = Boolean(latestStatus && latestStatus.product_available);
-      $("productHomeLink").hidden = !(configured && available);
-      $("productPairGroup").hidden = configured;
-      $("productManageGroup").hidden = !configured;
+      const liveRow = configured
+        ? productLedgers.find((row) => row.ledger_id === productSession.ledger_id)
+        : null;
+      const membershipLost = configured && productLedgers.length > 0 && !liveRow;
+      const showManage = configured && !membershipLost;
+      $("productHomeLink").hidden = !(showManage && available);
+      $("productPairGroup").hidden = showManage;
+      $("productManageGroup").hidden = !showManage;
       if (!configured) {
         $("productState").textContent = available
           ? "输入绑定码把这台电脑连接到账本。"
@@ -527,9 +532,20 @@
         $("pairingCodeInput").disabled = productBusy || !available;
         return;
       }
+      if (membershipLost) {
+        // The bound ledger vanished from the account's memberships: the stored
+        // session is dead weight — offer the re-pair path, not a phantom role.
+        $("productState").textContent = "原绑定已失效，请使用新的绑定码重新连接。";
+        $("pairAction").disabled = productBusy || !available;
+        $("pairingCodeInput").disabled = productBusy || !available;
+        return;
+      }
       const roleLabels = {owner: "拥有者", member: "成员", viewer: "只读"};
+      // The displayed role follows the live membership row (30s cadence), not
+      // the role persisted in WinCred at pair/switch time.
+      const role = liveRow ? liveRow.role : productSession.role;
       $("productState").textContent =
-        `${productSession.ledger_name} · ${roleLabels[productSession.role] || productSession.role} · ${productSession.account_name}`;
+        `${productSession.ledger_name} · ${roleLabels[role] || role} · ${productSession.account_name}`;
       const select = $("ledgerSelect");
       if (select.options.length === 0) {
         const option = document.createElement("option");

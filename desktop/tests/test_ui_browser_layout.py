@@ -693,3 +693,67 @@ def test_ledger_list_refreshes_on_cadence_without_clobbering_dirty_selection(tmp
         "value": "family",
         "switchDisabled": False,
     }
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+def test_product_card_role_follows_live_membership_and_handles_vanished_ledger(tmp_path: Path) -> None:
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the live-role rendering gate"
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
+      const session = {{configured: true, account_name: "我", ledger_id: "owner", ledger_name: "我的小票夹", device_name: "小票夹 Desktop", role: "owner", expires_at: null}};
+      const demotedLedgers = {{ledgers: [
+        {{ledger_id: "owner", name: "我的小票夹", role: "viewer", is_default: true, is_current: true}},
+        {{ledger_id: "family", name: "家庭账本", role: "member", is_default: false, is_current: false}}
+      ]}};
+      const vanishedLedgers = {{ledgers: [
+        {{ledger_id: "family", name: "家庭账本", role: "member", is_default: false, is_current: false}}
+      ]}};
+      let ledgersPayload = demotedLedgers;
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => session}};
+        if (url === "/api/product/ledgers") return {{status: 200, ok: true, json: async () => ledgersPayload}};
+        if (url === "/api/status") return {{status: 200, ok: true, json: async () => healthy}};
+        throw new Error("unexpected " + url);
+      }};
+      await loadProductSession();
+      await loadProductLedgers();
+      const demoted = {{
+        state: document.getElementById("productState").textContent,
+        manageHidden: document.getElementById("productManageGroup").hidden,
+        pairHidden: document.getElementById("productPairGroup").hidden
+      }};
+      ledgersPayload = vanishedLedgers;
+      productLedgers = [];
+      await loadProductSession();
+      await loadProductLedgers();
+      const vanished = {{
+        state: document.getElementById("productState").textContent,
+        manageHidden: document.getElementById("productManageGroup").hidden,
+        pairHidden: document.getElementById("productPairGroup").hidden,
+        linkHidden: document.getElementById("productHomeLink").hidden
+      }};
+      document.body.setAttribute("data-live-role-probe", JSON.stringify({{demoted, vanished}}));
+    }})();"""
+    page = _render_probe_page(tmp_path, "product-live-role.html", script)
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / "edge-product-live-role",
+        url=page.as_uri(),
+        width=820,
+        height=660,
+        expression="document.body && document.body.getAttribute('data-live-role-probe') || undefined",
+    )
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    # A demotion arrives via the 30s ledger refresh: the card shows 只读 even
+    # though WinCred persisted 拥有者 at pair time.
+    assert "只读" in probe["demoted"]["state"]
+    assert "拥有者" not in probe["demoted"]["state"]
+    assert probe["demoted"]["manageHidden"] is False
+    # The bound ledger vanishing from memberships shows the re-pair state,
+    # never a phantom owner role.
+    assert "原绑定已失效" in probe["vanished"]["state"]
+    assert probe["vanished"]["manageHidden"] is True
+    assert probe["vanished"]["pairHidden"] is False
+    assert probe["vanished"]["linkHidden"] is True

@@ -39,10 +39,8 @@ from app.services.session_lifecycle_service import (
     hash_desktop_activation_attempt_secret,
     hash_secret,
     issue_auth_token,
-    revoke_token_value,
 )
 from app.services.time_service import ensure_utc, now_utc
-from app.tenants import AuthContext
 
 DESKTOP_PENDING_SCOPE = "desktop_pending"
 # Mirrored by the desktop Manager: `desktop/backend_manager/app_controller.py`
@@ -466,39 +464,3 @@ def activate_desktop_session(
         previous_token_value=previous_token_value,
         checked_at=checked_at,
     )
-
-
-def revoke_desktop_app_session(
-    db: Session,
-    *,
-    auth: AuthContext,
-    token_value: str,
-) -> None:
-    """Revoke the presented app credential plus its staged replacements.
-
-    Kills the presented credential AND every live ``desktop_pending`` row for
-    the same account/device (else the unauthenticated activate endpoint would
-    restore a session from a retained attempt proof). Siblings stay untouched.
-    """
-
-    if (
-        auth.scope != "app"
-        or auth.credential_hash is None
-        or not hmac.compare_digest(hash_secret(token_value), auth.credential_hash)
-    ):
-        raise AppError("invalid_token", status_code=401)
-    revoked = revoke_token_value(db, token_value=token_value, scope="app")
-    if revoked != 1:
-        db.rollback()
-        raise AppError("invalid_token", status_code=401)
-    staged_at = now_utc()
-    staged_rows = db.scalars(
-        select(AuthToken)
-        .where(AuthToken.account_id == auth.account_id, AuthToken.device_id == auth.device_id)
-        .where(AuthToken.scope == DESKTOP_PENDING_SCOPE, AuthToken.revoked_at.is_(None))
-        .with_for_update()
-    ).all()
-    for staged in staged_rows:
-        staged.revoked_at = staged_at
-        staged.grace_until = None
-    db.commit()
