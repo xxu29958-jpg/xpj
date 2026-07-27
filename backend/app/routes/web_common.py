@@ -641,8 +641,9 @@ def _dashboard_budget_goals_block(budget, goals) -> dict:
 def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
     """recent/device/backup 状态计数的 ctx 片段(从 ``_dashboard_cards`` 拆出守 80 行债线)。
 
-    PR #253 P2-6: backup 走轻量口径 (mtime 最新, 不逐文件 ``pg_restore --list``
-    验证); 恢复/健康流仍用全量验证的 ``latest_backup()``。
+    PR #253 P2-6: backup 走轻量口径——只验证最新一个 dump (``pg_restore --list``
+    单文件) 并按 (name, mtime, size) 进程内缓存, 稳态每请求零子进程; 损坏则按
+    「无可恢复备份」呈现。恢复/健康流仍用全量验证的 ``latest_backup()``。
     """
     week_ago = now - timedelta(days=7)
     latest_backup = backup_service.latest_backup_lightweight()
