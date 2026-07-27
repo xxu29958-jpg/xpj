@@ -122,9 +122,10 @@
       <a class="{% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>AI 预算建议</a>
       <a class="{% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>固定支出</a>
     {% elif _domain == 'insights' %}
-      <a class="{% if is_overview or is_dashboard_cards %}active{% endif %}" href="/web/overview{{ q }}"{% if is_overview or is_dashboard_cards %} aria-current="page"{% endif %}>总览</a>
+      <a class="{% if is_overview %}active{% endif %}" href="/web/overview{{ q }}"{% if is_overview %} aria-current="page"{% endif %}>总览</a>
       <a class="{% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>报表</a>
       <a class="{% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
+      <a class="{% if is_dashboard_cards %}active{% endif %}" href="/web/dashboard/cards{{ q }}"{% if is_dashboard_cards %} aria-current="page"{% endif %}>模块设置</a>
     {% endif %}
   </nav>
   {% endif %}
@@ -213,9 +214,10 @@
           <a class="{% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>AI 预算建议</a>
           <a class="{% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>固定支出</a>
         {% elif _domain == 'insights' %}
-          <a class="{% if is_overview or is_dashboard_cards %}active{% endif %}" href="/web/overview{{ q }}"{% if is_overview or is_dashboard_cards %} aria-current="page"{% endif %}>总览</a>
+          <a class="{% if is_overview %}active{% endif %}" href="/web/overview{{ q }}"{% if is_overview %} aria-current="page"{% endif %}>总览</a>
           <a class="{% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>报表</a>
           <a class="{% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
+          <a class="{% if is_dashboard_cards %}active{% endif %}" href="/web/dashboard/cards{{ q }}"{% if is_dashboard_cards %} aria-current="page"{% endif %}>模块设置</a>
         {% endif %}
       </nav>
       {% endif %}

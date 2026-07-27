@@ -149,18 +149,30 @@ def test_overview_is_insights_nav_landing(web_client: TestClient) -> None:
     assert re.search(r'href="/web/overview\?ledger_id=owner"[^>]+aria-current="page"', subnav.group(0))
     assert "报表" in subnav.group(0)
     assert "数据体检" in subnav.group(0)
+    assert "模块设置" in subnav.group(0)
     mobile_nav = re.search(r'<nav class="mobile-plan-nav".*?</nav>', body, re.S)
     assert mobile_nav is not None
     assert "总览" in mobile_nav.group(0)
 
-    # 模块设置页 (dashboard/cards) 归属总览: 子导航高亮总览。
+    # 模块设置是独立的子导航项: cards 页它自己挂 aria-current=page, 总览不挂
+    # (aria 语义 page 应指当前 URL — PR #253 复审收口)。
     cards_page = web_client.get("/web/dashboard/cards?ledger_id=owner")
     assert cards_page.status_code == 200
     cards_subnav = re.search(r'<nav class="nav-subnav".*?</nav>', cards_page.text, re.S)
     assert cards_subnav is not None
     assert re.search(
+        r'href="/web/dashboard/cards\?ledger_id=owner"[^>]+aria-current="page"',
+        cards_subnav.group(0),
+    )
+    assert not re.search(
         r'href="/web/overview\?ledger_id=owner"[^>]+aria-current="page"',
         cards_subnav.group(0),
+    )
+    cards_mobile_nav = re.search(r'<nav class="mobile-plan-nav".*?</nav>', cards_page.text, re.S)
+    assert cards_mobile_nav is not None
+    assert re.search(
+        r'href="/web/dashboard/cards\?ledger_id=owner"[^>]+aria-current="page"',
+        cards_mobile_nav.group(0),
     )
 
     # 报表页子导航不再抢占主落点: 报表仍是自己的 aria-current=page。
