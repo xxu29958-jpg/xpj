@@ -351,3 +351,45 @@ def test_confirm_retry_with_different_amount_restores_not_found_guard(
         except AppError as exc:
             assert exc.error == "recurring_candidate_not_found"
             assert exc.status_code == 404
+
+
+def test_confirm_candidate_race_returns_existing_after_candidate_disappears(
+    web_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #253 R5: 并发双请求——前置检查读到提交前快照, candidate 已被对方 claimed
+    过滤时, 按 (merchant_key, frequency, amount_cents) 复查 formal 幂等返回。"""
+    from app.schemas import RecurringCandidateConfirmRequest
+    from app.services import recurring_candidate_confirmation_service as confirmation
+    from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
+
+    _seed_candidate()
+    payload = RecurringCandidateConfirmRequest(
+        merchant="ChatGPT Plus",
+        amount_cents=20000,
+        occurrence_count=3,
+        last_seen_at=now_utc(),
+        confidence="high",
+        frequency="monthly",
+    )
+    with SessionLocal() as db:
+        first = confirm_recurring_candidate(db, tenant_id="owner", payload=payload)
+        db.commit()
+
+        # 模拟请求 B: 第一次 _existing_item 调用 (前置检查) 返回 None —— 即读到
+        # 请求 A 提交前的快照; 随后 candidate 查找已被 claimed 过滤 (not_found)。
+        calls = {"n": 0}
+        real_existing = confirmation._existing_item
+
+        def _stale_existing(db, *, tenant_id, merchant_key, frequency):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return None
+            return real_existing(
+                db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency
+            )
+
+        monkeypatch.setattr(confirmation, "_existing_item", _stale_existing)
+        second = confirm_recurring_candidate(db, tenant_id="owner", payload=payload)
+        assert second.id == first.id
+        # 路径证明: 确实走了兜底 (前置检查返回过 None)。
+        assert calls["n"] >= 2

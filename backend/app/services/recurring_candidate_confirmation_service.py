@@ -28,6 +28,30 @@ class _RecurringCandidateMatch:
     candidate: dict
 
 
+def _idempotent_formal_match(
+    db: Session,
+    *,
+    tenant_id: str,
+    merchant_key: str,
+    frequency: str,
+    amount_cents: int,
+) -> RecurringItem | None:
+    """已 formal (非 archived) 且金额一致的既有项——幂等返回的命中条件。
+
+    复审 agent-60/R5: 金额匹配是守卫的一部分, 两处 (前置幂等/并发兜底) 共用,
+    防止漂移。
+    """
+    formal = _existing_item(db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency)
+    if (
+        formal is not None
+        and formal.status != "archived"
+        and formal.archived_at is None
+        and int(formal.last_amount_cents) == amount_cents
+    ):
+        return formal
+    return None
+
+
 def confirm_recurring_candidate(
     db: Session,
     *,
@@ -41,23 +65,43 @@ def confirm_recurring_candidate(
     # 继续走候选匹配原路径 (恢复 404 守卫), 不静默返回既有项。
     merchant_key = normalize_merchant(payload.merchant.strip())
     frequency = _clean_frequency(payload.frequency)
+    amount_cents = int(payload.amount_cents)
     if merchant_key:
-        formal = _existing_item(
-            db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency
+        formal = _idempotent_formal_match(
+            db,
+            tenant_id=tenant_id,
+            merchant_key=merchant_key,
+            frequency=frequency,
+            amount_cents=amount_cents,
         )
-        if (
-            formal is not None
-            and formal.status != "archived"
-            and formal.archived_at is None
-            and int(formal.last_amount_cents) == int(payload.amount_cents)
-        ):
+        if formal is not None:
             return formal
-    match = _require_recurring_candidate_match(
-        db,
-        tenant_id=tenant_id,
-        payload=payload,
-        timezone_name=timezone_name,
-    )
+    try:
+        match = _require_recurring_candidate_match(
+            db,
+            tenant_id=tenant_id,
+            payload=payload,
+            timezone_name=timezone_name,
+        )
+    except AppError as exc:
+        # 并发兜底 (R5): 双请求确认同一 candidate, 本请求的前置检查读到对方提交前
+        # 快照, candidate 查找读到对方提交后 (已被 claimed 过滤) — 按
+        # (merchant_key, frequency, amount_cents) 复查 formal, 命中即幂等返回,
+        # 未命中才是真的 not_found。
+        if exc.error != "recurring_candidate_not_found":
+            raise
+        if not merchant_key:
+            raise
+        formal = _idempotent_formal_match(
+            db,
+            tenant_id=tenant_id,
+            merchant_key=merchant_key,
+            frequency=frequency,
+            amount_cents=amount_cents,
+        )
+        if formal is not None:
+            return formal
+        raise
     existing = _existing_item(
         db,
         tenant_id=tenant_id,
