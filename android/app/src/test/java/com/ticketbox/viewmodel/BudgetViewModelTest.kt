@@ -69,7 +69,7 @@ class BudgetViewModelTest {
         assertEquals("餐饮", state.form.categoryRows.single().category)
         assertEquals(1, fake.loadCalls)
 
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
         assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
         assertEquals(0, fake.adviceMonths.size)
@@ -209,7 +209,7 @@ class BudgetViewModelTest {
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertFalse(vm.uiState.value.canModify)
 
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
@@ -237,7 +237,7 @@ class BudgetViewModelTest {
         assertEquals(UiText.res(R.string.budget_message_load_failed), state.loadError)
 
         fake.adviceResponder = { Result.failure(RuntimeException()) }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
@@ -339,7 +339,7 @@ class BudgetAdviceViewModelTest {
     @Test
     fun nullAdviceWithoutProviderReasonKeepsRetryableEmptyState() = budgetTest {
         val fake = FakeBudgetActions(budget = budget())
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
 
         // Backend emits reason_code = null or "ai_advisor_no_advice" when a live
@@ -375,7 +375,7 @@ class BudgetAdviceViewModelTest {
     @Test
     fun transientProviderCallFailureKeepsRetryableFailedState() = budgetTest {
         val fake = FakeBudgetActions(budget = budget())
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
 
         // Live openai_compat failures return HTTP 200 with advice == null and
@@ -417,7 +417,7 @@ class BudgetAdviceViewModelTest {
                 ),
             )
         }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
@@ -439,7 +439,7 @@ class BudgetAdviceViewModelTest {
                 ),
             )
         }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
@@ -459,7 +459,7 @@ class BudgetAdviceViewModelTest {
                 ),
             )
         }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
@@ -481,7 +481,7 @@ class BudgetAdviceViewModelTest {
                 ),
             )
         }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
@@ -511,7 +511,7 @@ class BudgetAdviceViewModelTest {
             reasonCode = "advisor_ready",
         )
         val fake = FakeBudgetActions(budget = budget(), cachedAdvice = cached)
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
 
         // A reopen after an already quota-counted call renders the cached result
@@ -525,7 +525,7 @@ class BudgetAdviceViewModelTest {
     @Test
     fun initWithoutCachedAdviceStaysIdle() = budgetTest {
         val fake = FakeBudgetActions(budget = budget())
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
 
         assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
@@ -538,7 +538,7 @@ class BudgetAdviceViewModelTest {
             LedgerAccessState(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
@@ -572,7 +572,7 @@ class BudgetAdviceViewModelTest {
             LedgerAccessState(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
 
         fake.canModify = false
@@ -605,7 +605,7 @@ class BudgetAdviceViewModelTest {
             LedgerAccessState(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), cachedAdvice = cached, accessFlow = accessFlow)
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
         assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
 
@@ -640,7 +640,7 @@ class BudgetAdvicePayloadInvalidTest {
                 ),
             )
         }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
@@ -670,7 +670,7 @@ class BudgetAdviceRoleCapabilityTest {
                 ),
             )
         }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
         assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
@@ -694,7 +694,7 @@ class BudgetAdviceRoleCapabilityTest {
             LedgerAccessState(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
         assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
@@ -722,7 +722,7 @@ class BudgetAdviceRoleCapabilityTest {
                 ),
             )
         }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
         assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
@@ -821,7 +821,7 @@ class BudgetAdviceInvalidationTest {
     @Test
     fun invalidationDropsDisplayedReadyBackToIdle() = budgetTest {
         val fake = FakeBudgetActions(budget = budget())
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
         assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
@@ -841,7 +841,7 @@ class BudgetAdviceInvalidationTest {
     @Test
     fun resultProducedAfterInvalidationSurvivesSameGeneration() = budgetTest {
         val fake = FakeBudgetActions(budget = budget())
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
 
         // Write first, generate after: the fresh result is stamped with the
@@ -873,7 +873,7 @@ class BudgetAdviceInvalidationTest {
                 ),
             )
         }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
         assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
@@ -884,7 +884,41 @@ class BudgetAdviceInvalidationTest {
 
         assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
     }
+
+    @Test
+    fun requestAfterMonthRolloverTargetsCurrentMonth() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        // Constructed in 2026-05; the clock has moved to 2026-06 by request
+        // time (production resolves YearMonth.now() at request start).
+        val adviceViewModel = BudgetAdviceViewModel(
+            fake,
+            initialMonth = "2026-05",
+            monthProvider = { "2026-06" },
+        )
+        advanceUntilIdle()
+        assertEquals("2026-05", adviceViewModel.uiState.value.month)
+
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals("2026-06", state.month)
+        assertEquals(listOf("2026-06"), fake.adviceMonths)
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+    }
 }
+
+/** Pins the advice VM to a fixed month: production resolves the request month
+ *  from the clock at request time (P2-17), so tests inject the same month they
+ *  construct with to keep no-rollover behaviour deterministic. */
+private fun fixedAdviceViewModel(
+    fake: FakeBudgetActions,
+    month: String = "2026-05",
+): BudgetAdviceViewModel = BudgetAdviceViewModel(
+    fake,
+    initialMonth = month,
+    monthProvider = { month },
+)
 
 private class FakeBudgetActions(
     var budget: BudgetMonthly,

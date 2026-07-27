@@ -46,6 +46,11 @@ data class BudgetAdviceUiState(
 class BudgetAdviceViewModel(
     private val repository: BudgetActions,
     initialMonth: String = YearMonth.now().toString(),
+    /** Resolves the request target month (backend `YYYY-MM`) at request time:
+     *  a back-stack-restored page can outlive a month rollover, and the screen
+     *  has no month selector, so generating must always target the CURRENT
+     *  month. Injectable for rollover tests. */
+    private val monthProvider: () -> String = { YearMonth.now().toString() },
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         BudgetAdviceUiState(
@@ -189,11 +194,15 @@ class BudgetAdviceViewModel(
             }
             return
         }
-        val month = _state.value.month
+        // Resolve the target month now — not at construction: the subtitle and
+        // the request (and thereby the cache key) all track this value, so a
+        // page kept open across a month rollover generates for the NEW month.
+        val month = monthProvider()
         val generation = requestGeneration
         viewModelScope.launch {
             _state.update {
                 it.copy(
+                    month = month,
                     loadState = BudgetAdviceLoadState.Loading,
                     canRequest = true,
                     error = null,

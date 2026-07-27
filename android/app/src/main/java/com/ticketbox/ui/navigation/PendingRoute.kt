@@ -50,14 +50,17 @@ internal fun PendingRoute(
     screenFactory: MainScreenFactory,
 ) {
     val pendingFactory = remember(screenFactory, shellState) {
-        screenFactory.repositoryViewModelFactory {
-            shellState.markInsightsDataChanged()
-            // Confirmed-expense writes feed the advisor inputs — drop the
-            // process-lifetime advice cache at the same refresh point.
+        screenFactory.repositoryViewModelFactory(shellState::markInsightsDataChanged)
+    }
+    val pendingViewModel: PendingViewModel = viewModel(factory = pendingFactory)
+    // Narrow hook (218-B4 review): only actions that LAND in confirmed
+    // expenses (confirm paths) invalidate the advice cache — uploads and
+    // pending-side lifecycle leave the advisor inputs unchanged.
+    LaunchedEffect(pendingViewModel) {
+        pendingViewModel.onAdviceInputsChanged = {
             screenFactory.budgetRepository.invalidateBudgetAdvice()
         }
     }
-    val pendingViewModel: PendingViewModel = viewModel(factory = pendingFactory)
     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val uploadScope = rememberCoroutineScope()

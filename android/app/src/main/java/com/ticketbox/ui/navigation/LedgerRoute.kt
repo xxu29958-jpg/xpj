@@ -29,12 +29,15 @@ internal fun LedgerRoute(
     screenFactory: MainScreenFactory,
 ) {
     val ledgerFactory = remember(screenFactory, shellState) {
-        screenFactory.repositoryViewModelFactory {
-            shellState.markInsightsDataChanged()
-            // Confirmed-expense writes feed the advisor inputs — drop the
-            // process-lifetime advice cache at the same refresh point.
-            screenFactory.budgetRepository.invalidateBudgetAdvice()
-        }
+        screenFactory.repositoryViewModelFactory(
+            onExpenseDataChanged = {
+                shellState.markInsightsDataChanged()
+                // Confirmed-expense writes (create/edit on the ledger page)
+                // feed the advisor inputs — drop the process-lifetime advice
+                // cache at the same refresh point.
+                screenFactory.budgetRepository.invalidateBudgetAdvice()
+            },
+        )
     }
     val ledgerViewModel: LedgerViewModel = viewModel(factory = ledgerFactory)
     val state by ledgerViewModel.uiState.collectAsStateWithLifecycle()
