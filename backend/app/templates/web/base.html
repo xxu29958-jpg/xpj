@@ -33,7 +33,7 @@
   '/income-plans' in _path or '/budget-advise' in _path or '/recurring' in _path
 ) %}
 {% set _is_insights_context = (
-  '/reports' in _path or '/data-quality' in _path or '/dashboard/cards' in _path
+  '/overview' in _path or '/reports' in _path or '/data-quality' in _path or '/dashboard/cards' in _path
 ) %}
 {% set _domain = (
   'inbox' if _is_inbox_context else

@@ -27,6 +27,8 @@
 {% set is_income_plans = '/income-plans' in _p %}
 {% set is_budget_advise = '/budget-advise' in _p %}
 {% set is_recurring = '/recurring' in _p %}
+{% set is_overview = '/overview' in _p %}
+{% set is_dashboard_cards = '/dashboard/cards' in _p %}
 {% set is_reports = '/reports' in _p %}
 {% set is_data_quality = '/data-quality' in _p %}
 <aside class="sidebar">
@@ -77,7 +79,7 @@
       </span>
       <span>计划</span>
     </a>
-    <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/reports{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
+    <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/overview{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
              stroke-linecap="round" stroke-linejoin="round">
@@ -120,6 +122,7 @@
       <a class="{% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>AI 预算建议</a>
       <a class="{% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>固定支出</a>
     {% elif _domain == 'insights' %}
+      <a class="{% if is_overview or is_dashboard_cards %}active{% endif %}" href="/web/overview{{ q }}"{% if is_overview or is_dashboard_cards %} aria-current="page"{% endif %}>总览</a>
       <a class="{% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>报表</a>
       <a class="{% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
     {% endif %}
@@ -168,7 +171,7 @@
         </span>
         <span>计划</span>
       </a>
-      <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/reports{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
+      <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/overview{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
         <span class="nav-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
                stroke-linecap="round" stroke-linejoin="round">
@@ -210,6 +213,7 @@
           <a class="{% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>AI 预算建议</a>
           <a class="{% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>固定支出</a>
         {% elif _domain == 'insights' %}
+          <a class="{% if is_overview or is_dashboard_cards %}active{% endif %}" href="/web/overview{{ q }}"{% if is_overview or is_dashboard_cards %} aria-current="page"{% endif %}>总览</a>
           <a class="{% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>报表</a>
           <a class="{% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
         {% endif %}

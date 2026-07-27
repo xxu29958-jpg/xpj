@@ -1,4 +1,4 @@
-"""/web dashboard, dashboard data, and dashboard card settings routes."""
+"""/web dashboard, insights overview, dashboard data, and card settings routes."""
 
 from __future__ import annotations
 
@@ -15,13 +15,45 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _sidebar_counts,
     _web_redirect,
     templates,
 )
 from app.schemas import DashboardCardsUpdateRequest, DashboardCardUpdateRequest
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
+from app.services.expense_service import ledger_has_any_expense
 
 router = APIRouter(prefix="/web", tags=["web"])
+
+
+@router.get("/overview", response_class=HTMLResponse)
+def web_overview(
+    request: Request,
+    ledger_id: str | None = None,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """洞察域首页 (218-D S2, 移植自产品矿 /web/overview)。
+
+    数据全部复用既有装配: ``_dashboard_data_payload`` (本月支出/待办/预算/目标/
+    固定支出/备份/设备卡片 + 分类占比) + ``ledger_has_any_expense`` (空账本引导
+    判定, 与 /web 首页同一口径), 不发明新聚合。只读页——无任何写入口径,
+    viewer 与 owner 看到同一份事实。
+    """
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    ctx = _base_ctx(
+        request,
+        options=options,
+        selected_ledger_id=selected_id,
+        page_title="总览",
+        sidebar_counts=_sidebar_counts(db, selected_id),
+    )
+    payload = _dashboard_data_payload(db, selected_id)
+    ctx["cards"] = payload["cards"]
+    ctx["category_share"] = payload["category_share"]
+    ctx["has_any_expense"] = ledger_has_any_expense(db, selected_id)
+    return templates.TemplateResponse(request=request, name="overview.html", context=ctx)
 
 
 @router.get("/dashboard/data", response_class=JSONResponse)
