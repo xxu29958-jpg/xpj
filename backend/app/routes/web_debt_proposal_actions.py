@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_debt_write import PROPOSAL_CONFIRM_AMOUNT_FIELD
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -22,6 +24,7 @@ from app.routes.web_debt_actions import (
     _actor_account_id,
     _parse_major_minor,
 )
+from app.routes.web_debts import _render_debt_detail
 from app.schemas import (
     MemberRepaymentProposalConfirmRequest,
     MemberRepaymentProposalCreateRequest,
@@ -169,19 +172,75 @@ def web_withdraw_repayment_proposal(
     )
 
 
+def _parse_confirmed_amount(raw: str, *, currency_code: str) -> int | None:
+    """D3 确认金额解析：空串 = 按对方申报全额确认 (``None``，服务层语义)，这是一个
+    **显式分支**而非 Form 默认值巧合；非空走共享的 minor-unit 解析 (两位小数 / JPY/KRW
+    零小数 / 必须大于 0)，非法输入抛 422，由路由原地重渲染并锚定到金额输入。"""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    return _parse_major_minor(
+        text,
+        currency_code=currency_code,
+        allow_negative=False,
+    )
+
+
+def _confirm_amount_error_rerender(
+    request: Request,
+    db: Session,
+    *,
+    options,
+    selected_id: str,
+    public_id: str,
+    exc: AppError,
+    attempted: str,
+) -> HTMLResponse:
+    """金额事实门禁：非法金额输入 → 422 原地重渲染 (照 web_repayment_drafts 同页范式)，
+    错误锚定到确认金额输入，什么都不写 (不落 redirect-flash 让用户误以为操作已生效)。"""
+    db.rollback()
+    return _render_debt_detail(
+        request,
+        db,
+        options=options,
+        selected_id=selected_id,
+        public_id=public_id,
+        confirm_amount_error=_proposal_error_message(exc),
+        confirm_amount_value=attempted,
+        status_code=422,
+    )
+
+
+def _confirm_business_error_redirect(
+    public_id: str,
+    selected_id: str,
+    exc: AppError | ValidationError,
+) -> RedirectResponse:
+    message = (
+        _proposal_error_message(exc) if isinstance(exc, AppError) else "请填写大于 0、且不超过对方发来金额的数额。"
+    )
+    return _action_redirect(
+        public_id,
+        selected_id,
+        message=message,
+        success=False,
+    )
+
+
 @router.post("/{public_id}/repayment-proposals/{proposal_public_id}/confirm")
 def web_confirm_repayment_proposal(
     request: Request,
     public_id: str,
     proposal_public_id: str,
     ledger_id: str = Form(default=""),
-    amount_major: str = Form(default=""),
+    # D3：字段名绑定共享契约常量 (模板侧也从同一常量渲染)，不再是第二个字面量。
+    confirmed_amount_major: str = Form(default="", alias=PROPOSAL_CONFIRM_AMOUNT_FIELD),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -206,15 +265,24 @@ def web_confirm_repayment_proposal(
             ledger_id=selected_id,
             account_id=actor_account_id,
         )
-        confirmed_amount = (
-            _parse_major_minor(
-                amount_major,
-                currency_code=debt.home_currency_code,
-                allow_negative=False,
-            )
-            if (amount_major or "").strip()
-            else None
+    except AppError as exc:
+        return _confirm_business_error_redirect(public_id, selected_id, exc)
+    try:
+        confirmed_amount = _parse_confirmed_amount(
+            confirmed_amount_major,
+            currency_code=debt.home_currency_code,
         )
+    except AppError as exc:
+        return _confirm_amount_error_rerender(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            exc=exc,
+            attempted=confirmed_amount_major,
+        )
+    try:
         confirm_repayment_proposal_idempotently(
             db,
             tenant_id=selected_id,
@@ -228,15 +296,7 @@ def web_confirm_repayment_proposal(
             idempotency_key=(idempotency_key or "").strip() or None,
         )
     except (AppError, ValidationError) as exc:
-        message = (
-            _proposal_error_message(exc) if isinstance(exc, AppError) else "请填写大于 0、且不超过对方发来金额的数额。"
-        )
-        return _action_redirect(
-            public_id,
-            selected_id,
-            message=message,
-            success=False,
-        )
+        return _confirm_business_error_redirect(public_id, selected_id, exc)
     return _action_redirect(
         public_id,
         selected_id,

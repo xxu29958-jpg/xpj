@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routes._web_debt_write import (
+    PROPOSAL_CONFIRM_AMOUNT_FIELD,
     _debt_action_keys,
     _debt_create_context,
     _debt_write_gate,
@@ -399,16 +400,20 @@ def web_debt_new(
     )
 
 
-@router.get("/debts/{public_id}", response_class=HTMLResponse)
-def web_debt_detail(
+def _render_debt_detail(
     request: Request,
+    db: Session,
+    *,
+    options,
+    selected_id: str,
     public_id: str,
-    ledger_id: str | None = None,
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
+    confirm_amount_error: str | None = None,
+    confirm_amount_value: str | None = None,
+    status_code: int = 200,
 ) -> HTMLResponse:
-    options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    """详情页唯一渲染入口：GET 与 proposal 确认 422 原地重渲染共用 (照
+    ``web_repayment_drafts._render_repayment_drafts`` 同页重渲染范式)，保证错误重渲染
+    与正常渲染的页面结构零漂移。"""
     account_id = _web_viewer_account_id(request, db, selected_id)
     # Participant-scoped (§5.2): gives the server-authoritative viewer_is_debtor + is_forgiven,
     # and raises debt_not_found (→ 404 HTML) when the debt isn't in this ledger / viewer.
@@ -424,10 +429,6 @@ def web_debt_detail(
     )
     detail = _detail_view(debt)
     ctx["debt"] = detail
-    # slice 2b: member proposal status + sunk 过往 history (read-only; reuses list_repayment_proposals,
-    # no new endpoint). Only for the communal member card (use_member) with a resolvable viewer account
-    # (loopback ledger with no active owner → account_id None → skip). The viewer here is already a
-    # participant (get_participant_debt_response admitted them above), so list never re-404s.
     # 写面 (slice C2)：开放中的欠款 + 可写角色才给动作面；每渲染一套幂等键。
     can_write = _debt_write_gate(options, selected_id)
     ctx["can_write"] = can_write
@@ -448,6 +449,11 @@ def web_debt_detail(
     ctx["viewer_is_debtor"] = debt.viewer_is_debtor
     ctx["currency_input"] = _currency_input_view(debt.home_currency_code)
     ctx["expected_row_version"] = debt.row_version
+    # D3 表单契约：确认金额输入的字段名从共享常量注入 (路由侧以 Form(alias=...) 绑定同一常量)；
+    # confirm_amount_error/value 只在金额校验 422 原地重渲染时有值 (错误锚定到该输入)。
+    ctx["proposal_confirm_amount_field"] = PROPOSAL_CONFIRM_AMOUNT_FIELD
+    ctx["confirm_amount_error"] = confirm_amount_error
+    ctx["confirm_amount_value"] = confirm_amount_value
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
     if account_id is not None:
         ctx["repayment_facts"] = _fact_rows(
@@ -462,4 +468,22 @@ def web_debt_detail(
         )
     else:
         ctx["repayment_facts"] = []
-    return templates.TemplateResponse(request=request, name="debt_detail.html", context=ctx)
+    return templates.TemplateResponse(
+        request=request,
+        name="debt_detail.html",
+        context=ctx,
+        status_code=status_code,
+    )
+
+
+@router.get("/debts/{public_id}", response_class=HTMLResponse)
+def web_debt_detail(
+    request: Request,
+    public_id: str,
+    ledger_id: str | None = None,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    return _render_debt_detail(request, db, options=options, selected_id=selected_id, public_id=public_id)

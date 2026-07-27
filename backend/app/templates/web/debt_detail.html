@@ -257,7 +257,12 @@
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_confirm }}">
       <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
-      <input class="dt-input" name="confirmed_amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）">
+      {% if confirm_amount_error %}
+      {# 金额校验 422 原地重渲染：错误锚定到确认金额输入 (role=alert + aria 双锚)，不漂成顶部泛提示。 #}
+      <div id="proposal-confirm-amount-error" class="callout-info callout-info--danger" role="alert">{{ confirm_amount_error }}</div>
+      {% endif %}
+      {# D3 契约：字段名由服务端从 PROPOSAL_CONFIRM_AMOUNT_FIELD 注入，与路由 Form(alias=) 绑定同源。 #}
+      <input class="dt-input" name="{{ proposal_confirm_amount_field }}" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ confirm_amount_value or pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）"{% if confirm_amount_error %} aria-invalid="true" aria-describedby="proposal-confirm-amount-error"{% endif %}>
       <button class="dt-btn primary" type="submit">确认到账</button>
     </form>
     <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/reject">

@@ -39,6 +39,12 @@ _PROPOSAL_HISTORY_COLLAPSED = 3  # 折叠时显示前 3 条，其余进 <details
 _PROPOSAL_DATE_CONFIRMED = "{} 对上"
 _PROPOSAL_DATE_PARTIAL = "{} 收了一部分"
 
+# D3 表单契约：详情页「确认到账」金额输入的字段名 (区分同页申报表的 ``amount_major``，
+# 与服务侧 ``confirmed_amount_cents`` 同名)。模板侧由 ``web_debts._render_debt_detail``
+# 注入上下文渲染，路由侧由 ``web_debt_proposal_actions`` 以 ``Form(alias=...)`` 绑定——
+# 两侧消费同一个常量而非各自写字面量，任一侧漂移都会被契约测试钉住。
+PROPOSAL_CONFIRM_AMOUNT_FIELD = "confirmed_amount_major"
+
 
 def _day_label(value) -> str:
     """日粒度日期 (accounting tz Asia/Shanghai)，去对账味 (镜像 Android displayDate 到「日」)。"""
