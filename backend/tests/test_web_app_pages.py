@@ -68,7 +68,11 @@ def test_web_mobile_primary_nav_contract(web_client: TestClient) -> None:
         primary.group(0),
     )
 
-    desktop = re.search(r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>', body, re.S)
+    desktop = re.search(
+        r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>\s*</div>\s*</nav>',
+        body,
+        re.S,
+    )
     assert desktop is not None
     desktop_nav = re.sub(r"\{#.*?#\}", "", desktop.group(0), flags=re.S)
     assert "账单流" not in desktop_nav
@@ -103,13 +107,13 @@ def test_web_mobile_primary_nav_contract(web_client: TestClient) -> None:
     assert reports.status_code == 200
     assert 'data-domain="insights"' in reports.text
     reports_desktop = re.search(
-        r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>',
+        r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>\s*</div>\s*</nav>',
         reports.text,
         re.S,
     )
     assert reports_desktop is not None
     reports_subnav = re.search(
-        r'<div class="nav-subnav".*?</div>', reports_desktop.group(0), re.S
+        r'<nav class="nav-subnav".*?</nav>', reports_desktop.group(0), re.S
     )
     assert reports_subnav is not None
     assert "数据体检" in reports_subnav.group(0)

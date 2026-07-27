@@ -181,7 +181,7 @@
 
       {# 桌面当前域子导航：只展开活跃域的页级链接(与矿 nav-subnav 同语义); 工作区兜底域不渲染。 #}
       {% if _domain != 'workspace' %}
-      <div class="nav-subnav" aria-label="当前领域页面">
+      <nav class="nav-subnav" aria-label="当前领域页面">
         {% if _domain == 'inbox' %}
           <a class="{% if is_today %}active{% endif %}" href="/web{{ q }}"{% if is_today %} aria-current="page"{% endif %}>今日</a>
           <a class="{% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>待确认{% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}</a>
@@ -213,7 +213,7 @@
           <a class="{% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>报表</a>
           <a class="{% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
         {% endif %}
-      </div>
+      </nav>
       {% endif %}
     </div>
   </nav>
