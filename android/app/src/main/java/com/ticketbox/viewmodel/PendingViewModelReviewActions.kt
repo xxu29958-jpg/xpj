@@ -194,6 +194,7 @@ private suspend fun PendingViewModel.confirmAfterAmountPatch(expenseId: Long, ex
                 )
             }
             onDataChanged()
+            onAdviceInputsChanged()
             advanceReviewOrClose(
                 field = ReviewField.AMOUNT,
                 handledId = expenseId,
@@ -272,7 +273,10 @@ fun PendingViewModel.confirmReadyExpenses() {
                 },
             )
         }
-        if (succeeded > 0) onDataChanged()
+        if (succeeded > 0) {
+            onDataChanged()
+            onAdviceInputsChanged()
+        }
     }
 }
 

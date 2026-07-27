@@ -4,6 +4,7 @@ import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.StatsActions
+import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.BudgetProgressStatus
@@ -123,6 +124,9 @@ private class FakeStatsBudgetActions(
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = flowOf(null)
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> = Result.success(budget.copy(month = month))
+
+    override suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult> =
+        Result.failure(UnsupportedOperationException())
 
     override suspend fun monthlyBudget(
         expectedBinding: LogicalSessionBinding,

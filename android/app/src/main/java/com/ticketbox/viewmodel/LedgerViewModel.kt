@@ -167,6 +167,11 @@ class LedgerViewModel(
     private val repository: LedgerActions,
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
+    /** Fired only when a ledger write changes the budget advisor's
+     *  confirmed-expense inputs: manual create, and batch applies that move
+     *  CATEGORY (never tag-only batches — tags are not in the advisor
+     *  payload). var per the repository seam idiom — wired in LedgerRoute. */
+    internal var onAdviceInputsChanged: () -> Unit = {}
     private val _uiState = MutableStateFlow(
         LedgerUiState(
             readOnly = !repository.canModifyLedger(),
@@ -500,7 +505,8 @@ class LedgerViewModel(
                         )
                         next.copy(items = filterItems(allConfirmed, next))
                     }
-                    onDataChanged()
+                    // A fresh confirmed expense is always an advisor input.
+                    onDataChanged().also { onAdviceInputsChanged() }
                 }
                 .onFailure { error ->
                     // Surfaced INSIDE the still-open sheet (not page-level
@@ -614,6 +620,8 @@ class LedgerViewModel(
                     }
                     if (result.synced > 0 || result.queued > 0) {
                         onDataChanged()
+                        // Category moves the advisor's aggregates; tags-only does not.
+                        if (category != null) onAdviceInputsChanged()
                     }
                 }
                 .onFailure { error ->

@@ -101,7 +101,19 @@ class IncomePlanRepository(
                     totalActiveAmountCents = response.totalActiveAmountCents,
                 )
             }
+        }.onSuccess { listing ->
+            // The advisor consumes the active income-plan set; fire-and-forget
+            // seam, var per the onConfirmedCommitted precedent.
+            onActivePlansSnapshot(
+                "n=${listing.plans.size};" +
+                    "rv=${listing.plans.maxOfOrNull(IncomePlan::rowVersion) ?: 0};" +
+                    "ua=${listing.plans.maxOfOrNull(IncomePlan::updatedAt).orEmpty()}",
+            )
         }
+
+    /** Fired with a cheap stable stamp after each successful active-plans
+     *  fetch. Wired in AppContainer to the budget-advice freshness sink. */
+    var onActivePlansSnapshot: (stamp: String) -> Unit = {}
 
     override suspend fun listIncluding(
         expectedBinding: LogicalSessionBinding,

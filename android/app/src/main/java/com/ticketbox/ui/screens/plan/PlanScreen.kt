@@ -31,6 +31,7 @@ import com.ticketbox.viewmodel.RecurringUiState
 
 internal object PlanDestinationTestTags {
     const val Budget = "plan_destination_budget"
+    const val BudgetAdvice = "plan_destination_budget_advice"
     const val SpendingGoal = "plan_destination_spending_goal"
     const val Recurring = "plan_destination_recurring"
     const val IncomePlans = "plan_destination_income_plans"
@@ -47,6 +48,7 @@ internal data class PlanScreenData(
 
 internal data class PlanBudgetNavigationActions(
     val onOpenBudget: () -> Unit,
+    val onOpenAdvice: () -> Unit,
 )
 
 internal data class PlanScreenActions(
