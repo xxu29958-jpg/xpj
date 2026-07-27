@@ -192,8 +192,18 @@ def _parse_confirmed_amount(raw: str, *, currency_code: str) -> int | None:
 def _confirm_amount_raw(confirmed_amount_major: str, legacy_amount_major: str) -> str:
     """N-1 字段优先级：新字段 ``confirmed_amount_major`` 非空优先；空则回退旧字段
     ``amount_major`` (D3 修复前路由误读的名字，旧客户端仍按它提交)；两者皆空返回空串，
-    由 ``_parse_confirmed_amount`` 的显式空串分支按对方申报全额处理。"""
-    return (confirmed_amount_major or "").strip() or (legacy_amount_major or "").strip()
+    由 ``_parse_confirmed_amount`` 的显式空串分支按对方申报全额处理。
+    两者**均非空且不一致** = 客户端序列化/迁移错误 → 抛 422 (不静默取新字段把冲突写成
+    错误的还款金额事实)；同值视为单字段提交。"""
+    new_text = (confirmed_amount_major or "").strip()
+    legacy_text = (legacy_amount_major or "").strip()
+    if new_text and legacy_text and new_text != legacy_text:
+        raise AppError(
+            "invalid_request",
+            "这次提交里有两个不一样的金额，请刷新后只保留一个再确认。",
+            status_code=422,
+        )
+    return new_text or legacy_text
 
 
 def _confirm_amount_error_rerender(
@@ -283,13 +293,14 @@ def web_confirm_repayment_proposal(
         )
     except AppError as exc:
         return _confirm_business_error_redirect(public_id, selected_id, exc)
-    attempted_amount = _confirm_amount_raw(confirmed_amount_major, amount_major)
     try:
+        attempted_amount = _confirm_amount_raw(confirmed_amount_major, amount_major)
         confirmed_amount = _parse_confirmed_amount(
             attempted_amount,
             currency_code=debt.home_currency_code,
         )
     except AppError as exc:
+        # 冲突/非法都走同一条锚定 422；冲突时回填可见输入 (新字段) 的值,与非法输入的回填同义。
         return _confirm_amount_error_rerender(
             request,
             db,
@@ -298,7 +309,7 @@ def web_confirm_repayment_proposal(
             public_id=public_id,
             proposal_public_id=proposal_public_id,
             exc=exc,
-            attempted=attempted_amount,
+            attempted=(confirmed_amount_major or "").strip() or (amount_major or "").strip(),
         )
     try:
         confirm_repayment_proposal_idempotently(
