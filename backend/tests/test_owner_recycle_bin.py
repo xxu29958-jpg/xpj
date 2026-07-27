@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
 from app.models import Budget, BudgetCategory, CategoryRule, Goal, MonthlyIncomePlan, RecurringItem
@@ -19,7 +20,7 @@ from app.services.goal_service import archive_goal
 from app.services.income_plan_service import archive_income_plan, create_income_plan
 from app.services.ledger_service import archive_ledger
 from app.services.merchant_alias_service import create_merchant_alias, delete_merchant_alias
-from app.services.owner_console_service import get_owner_account_id
+from app.services.owner_console_service import get_owner_account_id, get_recycle_bin_vm
 from app.services.recurring_service import archive_recurring_item
 from app.services.time_service import now_utc
 
@@ -291,3 +292,28 @@ def test_owner_recycle_bin_remote_returns_403(client: TestClient, *, identity) -
         ).status_code
         == 403
     )
+
+
+def test_owner_recycle_bin_amount_labels_follow_jpy_home(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    """C5b-3: owner 汇总视图金额同样走 currency_common —— JPY home 零小数，
+    跨账本混合行都按 home 币种 minor units 渲染（行无币种列）。"""
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        _seed_archived_income()
+        _seed_archived_recurring()
+
+        with SessionLocal() as db:
+            vm = get_recycle_bin_vm(db)
+
+        details = {row.title: row.detail for row in vm.rows}
+        assert "¥123,400" in details["收入回收测试"]
+        assert "1,234.00" not in details["收入回收测试"]
+        assert "¥6,800" in details["固定支出回收测试"]
+        assert "68.00" not in details["固定支出回收测试"]
+    finally:
+        get_settings.cache_clear()

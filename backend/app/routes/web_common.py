@@ -27,7 +27,12 @@ from app.network_boundary import require_owner_console_local
 from app.services import backup_service, bill_split_service, web_stats_service
 from app.services import owner_console_service as owner_svc
 from app.services.budget_service import get_monthly_budget
-from app.services.currency_common import currency_input_metadata, minor_amount_major_number
+from app.services.currency_common import (
+    currency_input_metadata,
+    minor_amount_label,
+    minor_amount_major_number,
+    minor_amount_value,
+)
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.data_quality_service import is_uncategorized_expense_category, is_usable_pending_merchant
 from app.services.exchange_rate_service import home_currency_code
@@ -385,22 +390,18 @@ def _currency_symbol(currency_code: str | None) -> str:
 
 
 def _minor_amount_label(amount_minor: int | None, currency_code: str | None) -> str:
-    if amount_minor is None:
-        return ""
-    code = (currency_code or home_currency_code()).upper()
-    symbol = _currency_symbol(code)
-    if code in NO_FRACTION_CURRENCY_CODES:
-        return f"{symbol}{amount_minor:,}"
-    return f"{symbol}{amount_minor / 100:,.2f}"
+    """Symbol label for stored minor units.
+
+    Delegates to ``currency_common.minor_amount_label`` (C5b-3): one divmod
+    implementation owns zero-fraction digits, grouping and sign placement —
+    /web must not re-derive them with ``/100`` floats.
+    """
+    return minor_amount_label(amount_minor, currency_code)
 
 
 def _minor_amount_value(amount_minor: int | None, currency_code: str | None) -> str:
-    if amount_minor is None:
-        return ""
-    code = (currency_code or home_currency_code()).upper()
-    if code in NO_FRACTION_CURRENCY_CODES:
-        return str(amount_minor)
-    return f"{amount_minor / 100:.2f}"
+    """Symbol-less major-unit value; same delegation contract as above."""
+    return minor_amount_value(amount_minor, currency_code)
 
 
 def _home_amount_label(amount_cents: int | None, currency_code: str | None) -> str:
