@@ -218,6 +218,22 @@ def _save_card_layout(
     assert saved.status_code in {303, 307}, saved.text
 
 
+def test_overview_viewer_all_cards_hidden_gets_readonly_guidance(web_client: TestClient) -> None:
+    """PR #253 R8: viewer 的全隐藏空态不引向模块设置 (保存 403), 改只读引导。"""
+    _save_card_layout(web_client, ordered_keys=list(WEB_CARD_KEYS), hidden=set(WEB_CARD_KEYS))
+    _demote_owner_ledger_to_viewer()
+
+    resp = web_client.get("/web/overview?ledger_id=owner")
+    assert resp.status_code == 200
+    # 只钉全隐藏空态块 (页头「模块设置」入口不属于本判定)。
+    empty_state = re.search(r'<div class="product-state">.*?</div>\s*</div>', resp.text, re.S)
+    assert empty_state is not None
+    assert "总览暂时没有可见模块" in empty_state.group(0)
+    assert "只读成员" in empty_state.group(0)
+    assert "/web/dashboard/cards" not in empty_state.group(0)
+    assert "调整总览模块" not in empty_state.group(0)
+
+
 def test_overview_cards_render_in_persisted_order(web_client: TestClient) -> None:
     """PR #253 P2-1: 泳道内卡片顺序跟随模块设置的持久化 position。"""
     custom_order = ["recent_uploads", "pending"] + [

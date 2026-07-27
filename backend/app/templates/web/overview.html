@@ -57,7 +57,12 @@
 <div class="product-state">
   <div class="product-state-title">总览暂时没有可见模块</div>
   <div class="product-state-body">重新启用一个模块后，这里会继续显示对应的账面概况。</div>
+  {% if can_write %}
   <a class="product-state-action" href="/web/dashboard/cards{{ q }}">调整总览模块</a>
+  {% else %}
+  {# PR #253 R8: viewer 在模块设置页控件被禁用 (保存 403), 不引向不可用操作。 #}
+  <div class="product-state-body">你是当前账本的只读成员，请账本拥有者或成员在模块设置里重新启用模块。</div>
+  {% endif %}
 </div>
 {% else %}
 {# 泳道归属固定 (信息架构), 组内卡片按模块设置持久化的 position 渲染 (PR #253
