@@ -8,7 +8,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Budget, CategoryPreference, CategoryRule, MonthlyIncomePlan
+from app.models import (
+    Budget,
+    CategoryPreference,
+    CategoryRule,
+    LedgerMember,
+    MonthlyIncomePlan,
+)
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyUpdateRequest
 from app.services.budget_service import archive_monthly_budget, upsert_monthly_budget
 from app.services.category_preference_service import (
@@ -267,3 +273,61 @@ def test_web_recycle_bin_lists_and_restores_budget(
             .where(Budget.month == month)
         )
     assert archived_at is None
+
+
+def _make_viewer_ledger(client: TestClient, *, identity) -> str:
+    response = client.post(
+        "/api/ledgers",
+        headers=identity.admin_headers,
+        json={"name": "recycle-workbench-viewer"},
+    )
+    assert response.status_code == 201, response.json()
+    ledger_id = response.json()["ledger_id"]
+    with SessionLocal() as db:
+        member = db.scalar(
+            select(LedgerMember).where(LedgerMember.ledger_id == ledger_id).limit(1)
+        )
+        assert member is not None
+        member.role = "viewer"
+        db.commit()
+    return ledger_id
+
+
+def test_web_recycle_bin_workbench_structure_owner(
+    web_client: TestClient, *, identity
+) -> None:
+    """C5b-1 工作台化结构钉：五域 IA 面包屑 + 产品表格 + owner 恢复表单/OCC 字段。"""
+    _seed_archived_income(label="工作台结构收入")
+
+    response = web_client.get("/web/recycle-bin")
+
+    assert response.status_code == 200
+    body = response.text
+    # 五域 IA：回收站属资料库域，页内面包屑表达归属。
+    assert 'aria-label="面包屑"' in body
+    assert "资料库" in body
+    # 工作台面板 + 产品表格 (取代旧 dt-card KPI + dt-table)。
+    assert 'aria-label="可恢复项目"' in body
+    assert 'class="product-table"' in body
+    # owner 可写：恢复表单与 OCC 隐藏字段在；行身份锚在。
+    assert 'action="/web/recycle-bin/restore"' in body
+    assert 'name="expected_row_version"' in body
+    assert 'data-restore-key="income_plan:' in body
+
+
+def test_web_recycle_bin_workbench_viewer_readonly(
+    web_client: TestClient, *, identity
+) -> None:
+    """C5b-1：viewer 只读语义不破 (无恢复表单)；空态给资料库域行动链接。"""
+    ledger_id = _make_viewer_ledger(web_client, identity=identity)
+
+    response = web_client.get(f"/web/recycle-bin?ledger_id={ledger_id}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'action="/web/recycle-bin/restore"' not in body
+    assert ">恢复</button>" not in body
+    assert "只读角色可以查看回收站" in body
+    # 空账本 → 空态：标题 + 回资料库域的行动链接。
+    assert "回收站是空的" in body
+    assert f'href="/web/categories?ledger_id={ledger_id}"' in body

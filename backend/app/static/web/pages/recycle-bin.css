@@ -1,0 +1,231 @@
+/* /web 桌面账本 · 回收站 (C5b-1 工作台化：视觉与信息层级升级)
+ *
+ * 新设计系统语言 (product-*)，参照矿版回收站工作台意而非照抄：
+ *   · 面包屑 = 五域 IA 归属「资料库 / 回收站」(/web/library 由 S1 在建，父级先文本)；
+ *   · 页头 = compact 标题 + 保留政策摘要 + 右侧 hero 计数 (待恢复总数 / 限期保留数)；
+ *   · 工作台面板 = 单容器 (hairline 分隔) + panel 头 (标题 + 限期副标题) + 产品表格，
+ *     状态 pill 语义克制：长期保留=success 绿、限期=warning 琥珀，永不会计红；
+ *   · 反馈 = product-feedback (--success 恢复成功 role=status / --danger 422 role=alert)，
+ *     空态 product-state + 回资料库域行动链接。
+ * 全部尺寸/颜色/字阶走 shared tokens；裸 px 仅 1px 发丝分界 (注明，非布局尺度)。
+ *
+ * 过渡登记 (照 repayment_drafts.css 范式)：product-* 通用件 (page-header/feedback/
+ * state/button/status) 定义在 pages/repayment_drafts.css 并全量加载，本文件直接复用、
+ * 只补变体 (--success) 与本页新件 (product-table/product-state-action)；218-D 视觉主
+ * 切片将整体提升为共享产品组件，届时删除各页域文件中的重复定义。
+ */
+
+/* ── 反馈条变体：恢复成功 (role=status) ───────────────────────────────── */
+.product-feedback--success {
+    border-color: var(--state-success-border);
+    background: var(--state-success-bg);
+    color: var(--state-success-fg);
+}
+
+/* ── 面包屑 (五域 IA 归属；页面内导航，不依赖 sidebar) ─────────────────── */
+.rb-breadcrumb {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin-block-end: var(--space-3);
+    font-size: var(--type-caption-size);
+}
+.rb-breadcrumb-parent {
+    color: var(--text-muted);
+    font-weight: var(--type-subtitle-weight);
+}
+.rb-breadcrumb-sep {
+    color: var(--text-faint);
+}
+.rb-breadcrumb-current {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
+/* ── 页头右侧 hero 计数 ───────────────────────────────────────────────── */
+.rb-header-stats {
+    display: grid;
+    justify-items: end;
+    gap: var(--space-1);
+}
+.rb-header-count {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-hero-size);
+    font-weight: var(--type-hero-weight);
+    line-height: var(--type-hero-line);
+    color: var(--text-default);
+    letter-spacing: -0.01em;
+}
+.rb-header-caption {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+
+/* ── 工作台面板：单容器 + panel 头 + 表格 ─────────────────────────────── */
+.rb-panel {
+    overflow: hidden;
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+}
+.rb-panel-header {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-5) var(--space-5) var(--space-4);
+    border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
+}
+.rb-panel-title {
+    color: var(--text-default);
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+    line-height: var(--type-title-line);
+}
+.rb-panel-subtitle {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+/* ── 产品表格 (通用件候选，与矿版 .product-table 同名便于 218-D 收口) ──── */
+.product-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-default);
+    font-size: var(--type-body-size);
+}
+.product-table th {
+    padding: var(--space-3) var(--space-5);
+    border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
+    color: var(--text-meta);
+    font-size: var(--type-meta-size);
+    font-weight: var(--type-meta-weight);
+    letter-spacing: var(--type-meta-tracking);
+    text-align: start;
+    text-transform: uppercase;
+}
+.product-table td {
+    padding: var(--space-4) var(--space-5);
+    border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
+    vertical-align: middle;
+}
+.product-table tbody tr:last-child td {
+    border-block-end: 0;
+}
+.product-table tbody tr:hover {
+    background: var(--surface-sunken);
+}
+
+/* 窄屏/长文案：包裹可横向滚动，行内容不挤压变形。 */
+.rb-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+/* 类型列：第四级 meta，窄列。 */
+.rb-kind-cell {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    white-space: nowrap;
+}
+
+/* 项目列：标题 (strong body) + 明细 (caption meta) 双层节奏。 */
+.rb-item-title {
+    font-weight: var(--type-subtitle-weight);
+    color: var(--text-default);
+}
+.rb-item-detail {
+    margin-top: var(--space-1);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+/* 操作列：行内 422 错误块 (C5b-2 锚) 收进单元格密度；viewer 只读注记。 */
+.rb-restore-form {
+    display: inline-flex;
+}
+.rb-row-error {
+    margin-block-end: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--type-caption-size);
+}
+.rb-readonly {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* ── 空态：回资料库域行动链接 (通用件候选，与矿版同名) ─────────────────── */
+.rb-state-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-5);
+}
+.product-state-action {
+    color: var(--brand-primary-strong);
+    font-weight: var(--type-subtitle-weight);
+    text-underline-offset: var(--space-1);
+}
+
+/* ── 窄屏 (与 shell 其他页一致的 720px 断点)：页头计数换行；表格行内重构 ──
+ * 行 = 两列网格：类型 eyebrow / 项目 / 状态 pill 纵排在左，恢复按钮右轨居中；
+ * 行内 422 错误块 (C5b-2 锚) 拉通整行，操作单元格 display:contents 让子件直接
+ * 参与行网格 (锚点属性全在元素上，表格语义桌面端不动)。 */
+@media (max-width: 720px) {
+    .product-page-header {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .rb-header-stats {
+        justify-items: start;
+        grid-auto-flow: column;
+        align-items: baseline;
+        gap: var(--space-3);
+    }
+    .rb-panel-header {
+        padding: var(--space-4) var(--space-4) var(--space-3);
+    }
+    .product-table thead {
+        display: none;
+    }
+    .product-table tbody tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        column-gap: var(--space-3);
+        padding: var(--space-3-5) var(--space-4);
+        border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
+    }
+    .product-table tbody tr:last-child {
+        border-block-end: 0;
+    }
+    .product-table td {
+        padding: 0;
+        border-block-end: 0;
+    }
+    .rb-kind-cell {
+        grid-column: 1;
+        grid-row: 1;
+    }
+    .rb-item-cell {
+        grid-column: 1;
+        grid-row: 2;
+        margin-top: var(--space-1);
+    }
+    .rb-status-cell {
+        grid-column: 1;
+        grid-row: 3;
+        margin-top: var(--space-2);
+    }
+    .rb-action-cell {
+        display: contents;
+    }
+    .rb-restore-form,
+    .rb-readonly {
+        grid-column: 2;
+        grid-row: 1 / span 3;
+        align-self: center;
+    }
+    .rb-row-error {
+        grid-column: 1 / -1;
+        grid-row: 4;
+        margin-block-end: 0;
+        margin-top: var(--space-2);
+    }
+}
