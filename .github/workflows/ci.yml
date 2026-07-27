@@ -413,6 +413,8 @@ jobs:
 
       - name: Enforce required CI results
         env:
+          BASH_ENV: ""
+          ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           BACKEND_FROZEN_SCOPE: ${{ needs.scope.outputs.backend_frozen }}
           WINDOWS_SCOPE: ${{ needs.scope.outputs.windows }}
@@ -649,6 +651,8 @@ jobs:
 
       - name: Enforce PostgreSQL lane results
         env:
+          BASH_ENV: ""
+          ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           POSTGRES_SCOPE: ${{ needs.scope.outputs.postgres }}
           ORDINARY_RESULT: ${{ needs.backend_postgres_ordinary.result }}
@@ -666,7 +670,7 @@ jobs:
           REAL_DB_SOURCE_SHA: ${{ needs.backend_postgres_real_db.outputs.qualification_source_sha }}
           RECOVERY_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_sha }}
           RECOVERY_SOURCE_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_source_sha }}
-        run: python -E -S backend/scripts/verify_postgres_ci_results.py
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label PostgreSQL --scope-key POSTGRES_SCOPE --lane ORDINARY --lane REAL_DB --lane RECOVERY
 
   desktop-manager:
     name: Desktop manager
@@ -675,6 +679,9 @@ jobs:
     # The Windows tray/service manager (desktop/). Added after the original
     # ci.yml — pinned in _audit_ci_gap.py so the whole job can't silently vanish.
     runs-on: windows-latest
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     defaults:
       run:
         working-directory: desktop
@@ -690,6 +697,15 @@ jobs:
           cache: pip
           cache-dependency-path: desktop/requirements.txt
 
+      - name: Verify qualification SHA
+        id: qualification
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: |
           python -m venv .ci-venv
@@ -704,6 +720,20 @@ jobs:
 
       - name: Test
         run: .\.ci-venv\Scripts\python.exe -m pytest -q
+
+      - name: Enforce Desktop scope result
+        if: ${{ always() && !cancelled() }}
+        shell: powershell
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          DESKTOP_SCOPE: ${{ needs.scope.outputs.desktop }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+        run: .\.ci-venv\Scripts\python.exe -E -S ..\backend\scripts\verify_scoped_ci_results.py --label Desktop --scope-key DESKTOP_SCOPE
 
   android_fast:
     name: Android fast
@@ -721,7 +751,8 @@ jobs:
     env: &android_environment
       TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
     steps:
-      - name: Checkout
+      - &android_checkout
+        name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
@@ -747,20 +778,17 @@ jobs:
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version-file: android/.java-version
+          verify-signature: true
 
       - &android_setup_gradle
         name: Set up Gradle
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
       - &android_sdk
-        name: Install Android SDK packages
+        name: Accept Android SDK licenses
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0"
 
       - &android_local_properties
         name: Point Gradle at cloud Android SDK
@@ -768,16 +796,6 @@ jobs:
           sdk_dir="${ANDROID_HOME//\\/\\\\}"
           echo "sdk.dir=$sdk_dir" > local.properties
           echo "ticketbox.serverUrl=$TICKETBOX_SERVER_URL" >> local.properties
-
-      - &android_gradle_tuning
-        name: Tune Gradle for cloud runner
-        run: |
-          {
-            echo ""
-            echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
-            echo "org.gradle.workers.max=2"
-            echo "kotlin.daemon.jvmargs=-Xmx2560m"
-          } >> gradle.properties
 
       - name: Force regenerate latest Room schema
         run: |
@@ -851,15 +869,19 @@ jobs:
       - *android_setup_gradle
       - *android_sdk
       - *android_local_properties
-      - *android_gradle_tuning
 
       - name: Build debug APKs
-        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug :app:writeTicketboxBuildToolsVersion
 
       - name: Verify debug APK signing certificate
         run: |
           set -euo pipefail
-          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          build_tools_version="$(tr -d '\r\n' < app/build/ticketbox-ci/build-tools-version.txt)"
+          apksigner="$ANDROID_HOME/build-tools/$build_tools_version/apksigner"
+          if [ -z "$build_tools_version" ] || [ ! -x "$apksigner" ]; then
+            echo "::error::Gradle-resolved apksigner is unavailable: $apksigner"
+            exit 1
+          fi
           expected="$(
             keytool -exportcert -rfc \
               -keystore config/debug/ticketbox-debug.keystore \
@@ -921,7 +943,6 @@ jobs:
       - *android_setup_gradle
       - *android_sdk
       - *android_local_properties
-      - *android_gradle_tuning
 
       - name: Build release APKs
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
@@ -952,7 +973,6 @@ jobs:
       - *android_setup_gradle
       - *android_sdk
       - *android_local_properties
-      - *android_gradle_tuning
 
       - name: Resolve Dependency-Check contract
         id: dependency-check
@@ -1010,13 +1030,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - *android_checkout
+
+      - *android_setup_python
+
+      - *android_qualification
+
       - name: Enforce Android lane results
-        shell: bash
         env:
+          BASH_ENV: ""
+          ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
           EXPECTED_SHA: ${{ github.sha }}
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
           SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
           SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
           FAST_RESULT: ${{ needs.android_fast.result }}
@@ -1031,51 +1060,7 @@ jobs:
           SCA_RESULT: ${{ needs.android_sca.result }}
           SCA_SHA: ${{ needs.android_sca.outputs.qualification_sha }}
           SCA_SOURCE_SHA: ${{ needs.android_sca.outputs.qualification_source_sha }}
-        run: |
-          set -euo pipefail
-          require_equal() {
-            if [ "$1" != "$2" ]; then
-              echo "::error::$3: expected '$2', got '$1'"
-              exit 1
-            fi
-          }
-
-          require_equal "$SCOPE_RESULT" "success" "CI scope result"
-          require_equal "$SCOPE_SHA" "$EXPECTED_SHA" "CI scope qualification SHA"
-          require_equal "$SCOPE_SOURCE_SHA" "$EXPECTED_SOURCE_SHA" "CI scope source SHA"
-
-          if [ "$ANDROID_SCOPE" = "false" ]; then
-            for result in "$FAST_RESULT" "$DEBUG_APK_RESULT" "$RELEASE_APK_RESULT" "$SCA_RESULT"; do
-              require_equal "$result" "skipped" "out-of-scope Android lane result"
-            done
-            for sha in \
-              "$FAST_SHA" "$FAST_SOURCE_SHA" \
-              "$DEBUG_APK_SHA" "$DEBUG_APK_SOURCE_SHA" \
-              "$RELEASE_APK_SHA" "$RELEASE_APK_SOURCE_SHA" \
-              "$SCA_SHA" "$SCA_SOURCE_SHA"
-            do
-              require_equal "$sha" "" "skipped Android lane SHA"
-            done
-            echo "Android scope not affected."
-            exit 0
-          fi
-
-          require_equal "$ANDROID_SCOPE" "true" "Android scope"
-          for result in "$FAST_RESULT" "$DEBUG_APK_RESULT" "$RELEASE_APK_RESULT" "$SCA_RESULT"; do
-            require_equal "$result" "success" "Android lane result"
-          done
-          for sha in "$FAST_SHA" "$DEBUG_APK_SHA" "$RELEASE_APK_SHA" "$SCA_SHA"; do
-            require_equal "$sha" "$EXPECTED_SHA" "Android lane qualification SHA"
-          done
-          for sha in \
-            "$FAST_SOURCE_SHA" \
-            "$DEBUG_APK_SOURCE_SHA" \
-            "$RELEASE_APK_SOURCE_SHA" \
-            "$SCA_SOURCE_SHA"
-          do
-            require_equal "$sha" "$EXPECTED_SOURCE_SHA" "Android lane source SHA"
-          done
-          echo "Required Android lanes are valid."
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label Android --scope-key ANDROID_SCOPE --lane FAST --lane DEBUG_APK --lane RELEASE_APK --lane SCA
 
 # The instrumented (emulator) lane lives in
 # .github/workflows/android-connected-test.yml — path-filtered to Android

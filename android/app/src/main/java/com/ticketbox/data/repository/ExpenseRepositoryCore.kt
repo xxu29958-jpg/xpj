@@ -279,8 +279,22 @@ internal class ExpenseRepositoryCore(
                 settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
             }
         }
+        // Only a full-ledger sync delivers the confirmed set the budget
+        // advisor consumes; filtered syncs fingerprint a subset and would flap.
+        if (isFullLedgerSync) {
+            onFullConfirmedSyncSnapshot(
+                "n=${collectedDtos.size};" +
+                    "rv=${collectedDtos.maxOfOrNull(ExpenseDto::rowVersion) ?: 0};" +
+                    "ua=${collectedDtos.maxOfOrNull(ExpenseDto::updatedAt).orEmpty()}",
+            )
+        }
         return collected
     }
+
+    /** Fired with a cheap stable stamp after each applied FULL-ledger confirmed
+     *  sync. Wired in AppContainer to the budget-advice freshness sink
+     *  (var per the [onConfirmedCommitted] precedent). */
+    var onFullConfirmedSyncSnapshot: (stamp: String) -> Unit = {}
 
     /**
      * issue #64 A3：pending 列表本地优先读的「读缓存」入口。从 Room 取本账本已缓存

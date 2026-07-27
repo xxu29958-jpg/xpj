@@ -4,12 +4,17 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.SessionAwareApiServiceFactory
+import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.SessionCredentialRotator
 import com.ticketbox.security.StoredSessionToken
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import java.io.IOException
 import java.lang.reflect.Proxy
 import java.net.ServerSocket
@@ -20,6 +25,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -138,6 +144,70 @@ class ApiServiceProviderTest {
             requireNotNull(sessionStore.currentSession()).copy(bindingRevision = "binding-2"),
         )
         assertFailsWith<RepositoryException> { bound.requireStillActive() }
+    }
+
+    @Test
+    fun activeLedgerAccessSeparatesRoleFromIdentityAndIgnoresTokenRotation() = runBlocking {
+        val sessionStore = providerSessionStore(token = "token-1")
+        val provider = provider(RecordingApiFactory(), sessionStore)
+        val initial = requireNotNull(sessionStore.currentSession())
+        val emissions = mutableListOf<LedgerAccessContext?>()
+        val collection = launch(start = CoroutineStart.UNDISPATCHED) {
+            provider.observeActiveLedgerAccess().collect(emissions::add)
+        }
+        assertEquals(1, emissions.size)
+
+        sessionStore.replaceForFixture(
+            initial.copy(identity = initial.identity.copy(role = "viewer")),
+        )
+        yield()
+        assertEquals(2, emissions.size)
+        sessionStore.replaceForFixture(
+            requireNotNull(sessionStore.currentSession()).copy(
+                credential = StoredSessionToken("token-2"),
+            ),
+        )
+        yield()
+        assertEquals(2, emissions.size)
+        sessionStore.replaceForFixture(
+            requireNotNull(sessionStore.currentSession()).copy(bindingRevision = "binding-2"),
+        )
+        yield()
+        assertEquals(3, emissions.size)
+        collection.cancelAndJoin()
+
+        val (owner, viewer, rebound) = emissions.map(::requireNotNull)
+        assertTrue(owner.canModify)
+        assertFalse(viewer.canModify)
+        assertEquals(owner.binding, viewer.binding)
+        assertEquals("binding-2", rebound.binding.bindingRevision)
+    }
+
+    @Test
+    fun planRepositoriesRejectAStaleBindingBeforeCreatingAnApiService() = runBlocking {
+        val sessionStore = providerSessionStore()
+        val factory = RecordingApiFactory()
+        val provider = provider(factory, sessionStore)
+        val binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
+        sessionStore.replaceForFixture(
+            requireNotNull(sessionStore.currentSession()).copy(bindingRevision = "binding-2"),
+        )
+
+        val results = listOf(
+            BudgetRepository(provider).monthlyBudget(binding, "2026-05"),
+            RecurringRepository(provider).items(binding, includeArchived = true),
+            IncomePlanRepository(provider).listActive(binding),
+            BudgetRepository(provider).saveMonthlyBudget(
+                binding,
+                "2026-05",
+                BudgetMonthlyUpdate(totalAmountCents = 300_000),
+            ),
+            RecurringRepository(provider).pause(binding, "recurring-1", expectedRowVersion = 1L),
+            IncomePlanRepository(provider).archive(binding, "income-1", expectedRowVersion = 1L),
+        )
+
+        assertTrue(results.all(Result<*>::isFailure))
+        assertTrue(factory.creations.isEmpty())
     }
 
     @Test

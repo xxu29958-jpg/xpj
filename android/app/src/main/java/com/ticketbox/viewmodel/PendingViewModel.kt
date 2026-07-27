@@ -110,6 +110,10 @@ private data class PendingStateTransitionOperation(
     val repoCall: suspend (Expense) -> Result<ExpenseStateOutcome>,
     val dismissBanner: Boolean = true,
     val preCheck: () -> UiText? = { null },
+    /** True only for transitions that LAND in confirmed expenses (the budget
+     *  advisor's expense input) — pending-side lifecycle (reject, duplicate
+     *  handling) leaves it false so no advice invalidation fires. */
+    val landsInConfirmed: Boolean = false,
 )
 
 private data class PendingStateTransitionMessages(
@@ -132,6 +136,11 @@ class PendingViewModel(
     private val thumbnailLoader: PendingThumbnailLoader = PendingThumbnailLoader(repository),
     internal val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
+    /** Fired ONLY when a pending action lands in confirmed expenses (the
+     *  budget advisor's input set): confirm paths. Upload / reject /
+     *  pending-side edits never fire it. var per the repository seam idiom —
+     *  wired in PendingRoute (the factory is at the parameter cap). */
+    internal var onAdviceInputsChanged: () -> Unit = {}
     internal val _uiState = MutableStateFlow(PendingUiState())
     val uiState: StateFlow<PendingUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0
@@ -439,6 +448,9 @@ class PendingViewModel(
                     }
                     _uiState.update { state -> resultHandler.reduceOutcome(state, outcome, message) }
                     onDataChanged()
+                    if (operation.landsInConfirmed) {
+                        onAdviceInputsChanged()
+                    }
                     if (outcome is ExpenseStateOutcome.Synced) {
                         resultHandler.afterSyncedSuccess?.invoke(outcome.expense)
                     }
@@ -460,6 +472,7 @@ class PendingViewModel(
         operation = PendingStateTransitionOperation(
             repoCall = { repository.confirmExpenseAllowingOffline(it) },
             preCheck = { if (expense.amountCents == null) UiText.res(R.string.error_amount_required) else null },
+            landsInConfirmed = true,
         ),
         messages = PendingStateTransitionMessages(
             synced = UiText.res(R.string.pending_msg_confirmed),

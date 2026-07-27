@@ -2,8 +2,12 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.data.repository.LedgerAccessState
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.BudgetAdvice
 import com.ticketbox.domain.model.BudgetAdviceResult
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
@@ -14,7 +18,10 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -25,19 +32,21 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun budgetTest(block: suspend TestScope.() -> Unit) = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    try {
+        block()
+    } finally {
+        Dispatchers.resetMain()
+    }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BudgetViewModelTest {
-    private fun budgetTest(block: suspend TestScope.() -> Unit) = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        Dispatchers.setMain(dispatcher)
-        try {
-            block()
-        } finally {
-            Dispatchers.resetMain()
-        }
-    }
-
     @Test
     fun initialLoadPopulatesBudgetAndForm() = budgetTest {
         val fake = FakeBudgetActions(
@@ -60,7 +69,7 @@ class BudgetViewModelTest {
         assertEquals("餐饮", state.form.categoryRows.single().category)
         assertEquals(1, fake.loadCalls)
 
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
         assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
         assertEquals(0, fake.adviceMonths.size)
@@ -84,8 +93,60 @@ class BudgetViewModelTest {
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
-        assertEquals(BudgetAdviceLoadState.Empty, adviceViewModel.uiState.value.loadState)
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+        assertEquals(
+            UiText.res(R.string.budget_advice_unavailable_body),
+            adviceViewModel.uiState.value.error,
+        )
         assertNull(adviceViewModel.uiState.value.result?.advice)
+    }
+
+    @Test
+    fun stableAuthorityChangeReloadsTheExistingViewModel() = budgetTest {
+        val accessFlow = MutableStateFlow(planAccess(ownerKey = "owner-a"))
+        val fake = FakeBudgetActions(
+            budget = budget(totalAmountCents = 500000),
+            activeAccessFlow = accessFlow,
+        )
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        fake.budget = budget(totalAmountCents = 700000)
+        accessFlow.value = planAccess(ownerKey = "owner-b")
+        advanceUntilIdle()
+
+        assertEquals(2, fake.loadCalls)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
+
+        accessFlow.value = planAccess(ownerKey = "owner-b", canModify = false)
+        advanceUntilIdle()
+
+        assertEquals(3, fake.loadCalls)
+        assertFalse(vm.uiState.value.canModify)
+    }
+
+    @Test
+    fun staleSameMonthRefreshCannotOverwriteLatestBudget() = budgetTest {
+        val stale = CompletableDeferred<Result<BudgetMonthly>>()
+        val latest = CompletableDeferred<Result<BudgetMonthly>>()
+        val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000))
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        var refreshCall = 0
+        fake.monthlyBudgetResponder = {
+            if (++refreshCall == 1) stale.await() else latest.await()
+        }
+
+        vm.refresh()
+        advanceUntilIdle()
+        vm.refresh()
+        advanceUntilIdle()
+        latest.complete(Result.success(budget(totalAmountCents = 700000)))
+        advanceUntilIdle()
+        stale.complete(Result.success(budget(totalAmountCents = 600000)))
+        advanceUntilIdle()
+
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
     }
 
     @Test
@@ -148,7 +209,7 @@ class BudgetViewModelTest {
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertFalse(vm.uiState.value.canModify)
 
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
@@ -176,7 +237,7 @@ class BudgetViewModelTest {
         assertEquals(UiText.res(R.string.budget_message_load_failed), state.loadError)
 
         fake.adviceResponder = { Result.failure(RuntimeException()) }
-        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        val adviceViewModel = fixedAdviceViewModel(fake)
         adviceViewModel.requestAdvice()
         advanceUntilIdle()
 
@@ -270,22 +331,719 @@ class BudgetViewModelTest {
     }
 }
 
+/** 218-B4 review P2: terminal budget-advisor state mapping (provider-disabled
+ *  reason codes and live-advisor 403 gates) vs. the retryable Empty/Failed
+ *  states. Kept in a dedicated class to stay under the per-class function cap. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetAdviceViewModelTest {
+    @Test
+    fun nullAdviceWithoutProviderReasonKeepsRetryableEmptyState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        advanceUntilIdle()
+
+        // Backend emits reason_code = null or "ai_advisor_no_advice" when a live
+        // provider simply produced nothing — the add-data Empty guidance with its
+        // 重新生成 CTA stays the right state there.
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(advice = null, providerName = "mock", reasonCode = null),
+            )
+        }
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Empty, adviceViewModel.uiState.value.loadState)
+        assertNull(adviceViewModel.uiState.value.error)
+
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(
+                    advice = null,
+                    providerName = "mock",
+                    reasonCode = "ai_advisor_no_advice",
+                ),
+            )
+        }
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Empty, adviceViewModel.uiState.value.loadState)
+        assertNull(adviceViewModel.uiState.value.error)
+    }
+
+    @Test
+    fun transientProviderCallFailureKeepsRetryableFailedState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        advanceUntilIdle()
+
+        // Live openai_compat failures return HTTP 200 with advice == null and
+        // last_error_code as the reason (_providers.py:161-180) — they are
+        // transient, so the retryable Failed state (with 重试) must survive;
+        // only ai_advisor_provider_empty and ai_advisor_payload_invalid are
+        // terminal (the latter pinned in BudgetAdvicePayloadInvalidTest).
+        val retryableReasons = listOf(
+            "ai_advisor_provider_call_failed",
+            "ai_advisor_provider_unexpected_error",
+            "ai_advisor_response_parse_failed",
+            "ai_advisor_response_unexpected_error",
+        )
+        for (reason in retryableReasons) {
+            fake.adviceResponder = {
+                Result.success(
+                    BudgetAdviceResult(advice = null, providerName = "live", reasonCode = reason),
+                )
+            }
+            adviceViewModel.requestAdvice()
+            advanceUntilIdle()
+
+            assertEquals(BudgetAdviceLoadState.Failed, adviceViewModel.uiState.value.loadState)
+            assertEquals(
+                UiText.res(R.string.budget_advice_load_failed),
+                adviceViewModel.uiState.value.error,
+            )
+        }
+    }
+
+    @Test
+    fun ownerRequiredErrorMapsToTerminalUnavailableState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "只有账本拥有者可以调用外部 AI 预算建议。",
+                    errorCode = "ai_advisor_owner_required",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        // Terminal (no retry affordance): the server code has no R.string arm, so
+        // the backend's registered copy rides through as Raw via toUiText.
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals(UiText.raw("只有账本拥有者可以调用外部 AI 预算建议。"), state.error)
+    }
+
+    @Test
+    fun advisorNotConfirmedErrorMapsToTerminalUnavailableState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "AI 预算助手尚未经过拥有者显式确认，已禁用。",
+                    errorCode = "ai_advisor_not_confirmed",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals(UiText.raw("AI 预算助手尚未经过拥有者显式确认，已禁用。"), state.error)
+    }
+
+    @Test
+    fun dailyLimitExceededMapsToTerminalUnavailableState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "AI 预算助手今日调用次数已达上限。",
+                    errorCode = "ai_advisor_daily_limit_exceeded",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        // 24h-window quota cap (_audit.py:131-138): retrying today can never
+        // succeed, so this is terminal (no retry affordance in the state model).
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals(UiText.raw("AI 预算助手今日调用次数已达上限。"), state.error)
+    }
+
+    @Test
+    fun rateLimitedStaysRetryableFailedState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "AI 预算助手调用过于频繁，请稍后再试。",
+                    errorCode = "ai_advisor_rate_limited",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        // Short-window 429 (errors.py:147): a later retry IS meaningful, so the
+        // retryable Failed state (with 重试) must survive. The full code has no
+        // R.string arm, so the server copy passes through as Raw.
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Failed, state.loadState)
+        assertEquals(UiText.raw("AI 预算助手调用过于频繁，请稍后再试。"), state.error)
+    }
+
+    @Test
+    fun initRestoresCachedAdviceAsReady() = budgetTest {
+        val cached = BudgetAdviceResult(
+            advice = BudgetAdvice(
+                summary = "保持弹性支出空间。",
+                suggestions = listOf(
+                    BudgetSuggestion(
+                        category = "餐饮",
+                        suggestedAmountCents = 80_000,
+                        rationale = "近期支出稳定。",
+                    ),
+                ),
+                confidence = 0.8,
+            ),
+            providerName = "mock",
+            reasonCode = "advisor_ready",
+        )
+        val fake = FakeBudgetActions(budget = budget(), cachedAdvice = cached)
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        advanceUntilIdle()
+
+        // A reopen after an already quota-counted call renders the cached result
+        // instead of firing a second counted request.
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals(cached, state.result)
+        assertEquals(0, fake.adviceMonths.size)
+    }
+
+    @Test
+    fun initWithoutCachedAdviceStaysIdle() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
+        assertEquals(0, fake.adviceMonths.size)
+    }
+
+    @Test
+    fun roleReprojectionOnSameLedgerRegatesWithoutWipingContent() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", role = "member"),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        advanceUntilIdle()
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
+
+        // Demotion member→viewer on the SAME ledger: re-gate to read-only
+        // immediately, but the already-rendered result is not discarded.
+        fake.canModify = false
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "viewer")
+        advanceUntilIdle()
+
+        var state = adviceViewModel.uiState.value
+        assertFalse(state.canRequest)
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals("保持弹性支出空间。", state.result?.advice?.summary)
+
+        // Promotion viewer→member: the gate opens again with content intact.
+        fake.canModify = true
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "member")
+        advanceUntilIdle()
+
+        state = adviceViewModel.uiState.value
+        assertEquals(true, state.canRequest)
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals("保持弹性支出空间。", state.result?.advice?.summary)
+    }
+
+    @Test
+    fun roleDemotionRestoresReadOnlyShortCircuit() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", role = "member"),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        advanceUntilIdle()
+
+        fake.canModify = false
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "viewer")
+        advanceUntilIdle()
+        assertFalse(adviceViewModel.uiState.value.canRequest)
+
+        // The viewer short-circuit is live again: no repository call is made.
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertEquals(UiText.res(R.string.common_readonly_ledger), state.error)
+        assertEquals(0, fake.adviceMonths.size)
+    }
+
+    @Test
+    fun ledgerChangeResetsThenRestoresFromBindingScopedCache() = budgetTest {
+        val cached = BudgetAdviceResult(
+            advice = BudgetAdvice(
+                summary = "保持弹性支出空间。",
+                suggestions = emptyList(),
+                confidence = 0.8,
+            ),
+            providerName = "mock",
+            reasonCode = "advisor_ready",
+        )
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", role = "member"),
+        )
+        val fake = FakeBudgetActions(budget = budget(), cachedAdvice = cached, accessFlow = accessFlow)
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
+
+        // Ledger switch keeps the round-4 semantics: reset to Idle, then the
+        // binding-scoped cache restore runs for the new ledger.
+        accessFlow.value = LedgerAccessState(ledgerId = "ledger-b", role = "member")
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals(cached, state.result)
+        assertEquals(listOf("2026-05", "2026-05"), fake.cachedAdviceMonths)
+        assertEquals(0, fake.adviceMonths.size)
+    }
+}
+
+/** 218-B4 review P2: ai_advisor_payload_invalid is the deterministic
+ *  fail-closed outbound guard (rejects before the provider call), so it maps
+ *  to the terminal Unavailable state with its own honest copy — separate
+ *  class to stay under the per-class function cap. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetAdvicePayloadInvalidTest {
+    @Test
+    fun payloadInvalidMapsToTerminalUnavailableState() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(
+                    advice = null,
+                    providerName = "live",
+                    reasonCode = "ai_advisor_payload_invalid",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals(UiText.res(R.string.budget_advice_payload_invalid_body), state.error)
+    }
+}
+
+/** 218-B4 review P2-8: the access projection carries the full role, so a
+ *  member→owner promotion on the same ledger is observable and re-offers a
+ *  role-gated terminal state — separate class to stay under the per-class
+ *  function cap. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetAdviceRoleCapabilityTest {
+    @Test
+    fun ownerPromotionReoffersRoleGatedTerminalState() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", role = "member"),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "只有账本拥有者可以调用外部 AI 预算建议。",
+                    errorCode = "ai_advisor_owner_required",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // Promotion member→owner on the SAME ledger: the backend gate now
+        // permits the request, so the terminal state reverts to Idle (the user
+        // still taps 生成 explicitly — nothing auto-requests).
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "owner")
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertEquals(true, state.canRequest)
+        assertNull(state.error)
+        assertNull(state.terminalErrorCode)
+    }
+
+    @Test
+    fun ownerPromotionKeepsReadyContent() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", role = "member"),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
+
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "owner")
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals(true, state.canRequest)
+        assertEquals("保持弹性支出空间。", state.result?.advice?.summary)
+    }
+
+    @Test
+    fun ownerPromotionKeepsNotConfirmedTerminal() = budgetTest {
+        val accessFlow = MutableStateFlow<LedgerAccessState?>(
+            LedgerAccessState(ledgerId = "owner", role = "member"),
+        )
+        val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "AI 预算助手尚未经过拥有者显式确认，已禁用。",
+                    errorCode = "ai_advisor_not_confirmed",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // _runner.py checks not_confirmed BEFORE owner_required: promoting
+        // member→owner does NOT confirm the advisor, so the terminal state
+        // must survive the promotion.
+        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "owner")
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals("ai_advisor_not_confirmed", state.terminalErrorCode)
+        assertEquals(UiText.raw("AI 预算助手尚未经过拥有者显式确认，已禁用。"), state.error)
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetViewModelBindingRaceTest {
+    @Test
+    fun saveKeepsTheBindingThatProducedTheVisibleForm() = budgetTest {
+        val accessFlow = MutableStateFlow(planAccess(ownerKey = "owner-a"))
+        val fake = FakeBudgetActions(
+            budget = budget(totalAmountCents = 500000),
+            activeAccessFlow = accessFlow,
+        )
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        vm.updateTotalAmount("7000")
+
+        val nextBinding = planBinding(ownerKey = "owner-b")
+        fake.authoritativeBinding = nextBinding
+        accessFlow.value = LedgerAccessContext(nextBinding, canModify = true)
+        vm.save()
+        advanceUntilIdle()
+
+        assertEquals(planBinding(ownerKey = "owner-a"), fake.attemptedBindings.single())
+        assertEquals(0, fake.savedRequests.size)
+    }
+
+    @Test
+    fun saveInvalidatesAnOlderInFlightRefresh() = budgetTest {
+        val staleRefresh = CompletableDeferred<Result<BudgetMonthly>>()
+        val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000))
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        fake.monthlyBudgetResponder = { staleRefresh.await() }
+        vm.refresh()
+        advanceUntilIdle()
+
+        vm.updateTotalAmount("7000")
+        vm.save()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.loading)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
+
+        staleRefresh.complete(Result.success(budget(totalAmountCents = 600000)))
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.loading)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
+    }
+
+    @Test
+    fun refreshIsSerializedBehindAnInFlightSave() = budgetTest {
+        val pendingSave = CompletableDeferred<Result<BudgetMonthly>>()
+        val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000)).apply {
+            saveResponder = { pendingSave.await() }
+        }
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        vm.updateTotalAmount("7000")
+
+        vm.save()
+        val loadCallsBeforeRefresh = fake.loadCalls
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.saving)
+        assertEquals(loadCallsBeforeRefresh, fake.loadCalls)
+
+        pendingSave.complete(Result.success(budget(totalAmountCents = 700000)))
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.saving)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
+    }
+}
+
+/** 218-B4 review P2: the Plan back stack preserves the advice VM across
+ *  domain switches, so an advice-input write elsewhere must drop the
+ *  still-displayed result — via the repository's invalidation generation
+ *  flow, never by auto-refetching. Separate class (per-class function cap). */
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetAdviceInvalidationTest {
+    @Test
+    fun invalidationDropsDisplayedReadyBackToIdle() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
+        assertEquals(1, fake.adviceMonths.size)
+
+        // An advice-input write lands elsewhere (round 7/11 invalidation).
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertNull(state.result)
+        // No auto-refetch: the live quota is only spent on an explicit tap.
+        assertEquals(1, fake.adviceMonths.size)
+    }
+
+    @Test
+    fun resultProducedAfterInvalidationSurvivesSameGeneration() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        advanceUntilIdle()
+
+        // Write first, generate after: the fresh result is stamped with the
+        // post-write generation and must not self-clear.
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals("保持弹性支出空间。", state.result?.advice?.summary)
+
+        // ...but a LATER write still retires it.
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
+    }
+
+    @Test
+    fun terminalUnavailableSurvivesInvalidation() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(
+                    advice = null,
+                    providerName = "empty",
+                    reasonCode = "ai_advisor_provider_empty",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // Config truth (provider disabled) is unchanged by data writes.
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+    }
+
+    @Test
+    fun requestAfterMonthRolloverTargetsCurrentMonth() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        // Constructed in 2026-05; the clock has moved to 2026-06 by request
+        // time (production resolves YearMonth.now() at request start).
+        val adviceViewModel = BudgetAdviceViewModel(
+            fake,
+            initialMonth = "2026-05",
+            monthProvider = { "2026-06" },
+        )
+        advanceUntilIdle()
+        assertEquals("2026-05", adviceViewModel.uiState.value.month)
+
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals("2026-06", state.month)
+        assertEquals(listOf("2026-06"), fake.adviceMonths)
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+    }
+
+    @Test
+    fun midFlightInvalidationDropsStaleSuccessToIdle() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val gate = CompletableDeferred<Result<BudgetAdviceResult>>()
+        fake.adviceResponder = { gate.await() }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Loading, adviceViewModel.uiState.value.loadState)
+
+        // An advice-input write lands while the live call is still in flight;
+        // the pre-write success then arrives — it must not be displayed.
+        fake.invalidateBudgetAdvice()
+        gate.complete(
+            Result.success(
+                BudgetAdviceResult(
+                    advice = BudgetAdvice(
+                        summary = "过期建议",
+                        suggestions = emptyList(),
+                        confidence = 0.9,
+                    ),
+                    providerName = "mock",
+                    reasonCode = "advisor_ready",
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertNull(state.result)
+    }
+
+    @Test
+    fun payloadInvalidTerminalRetiresOnInvalidation() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(
+                    advice = null,
+                    providerName = "live",
+                    reasonCode = "ai_advisor_payload_invalid",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // The terminal's premise was "same month + unchanged data"; an input
+        // write destroys it, so the page re-offers generation (no auto-call).
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertNull(state.error)
+        assertNull(state.terminalErrorCode)
+        assertEquals(1, fake.adviceMonths.size)
+    }
+
+    @Test
+    fun ownerRequiredTerminalSurvivesInvalidation() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(
+                RepositoryException(
+                    message = "只有账本拥有者可以调用外部 AI 预算建议。",
+                    errorCode = "ai_advisor_owner_required",
+                ),
+            )
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // Permission truth is unaffected by input data.
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+    }
+}
+
+/** Pins the advice VM to a fixed month: production resolves the request month
+ *  from the clock at request time (P2-17), so tests inject the same month they
+ *  construct with to keep no-rollover behaviour deterministic. */
+private fun fixedAdviceViewModel(
+    fake: FakeBudgetActions,
+    month: String = "2026-05",
+): BudgetAdviceViewModel = BudgetAdviceViewModel(
+    fake,
+    initialMonth = month,
+    monthProvider = { month },
+)
+
 private class FakeBudgetActions(
     var budget: BudgetMonthly,
-    private val canModify: Boolean = true,
-    private val activeLedgerFlow: Flow<String?> = emptyFlow(),
+    canModify: Boolean = true,
+    private val cachedAdvice: BudgetAdviceResult? = null,
+    private val accessFlow: Flow<LedgerAccessState?> = emptyFlow(),
+    private val activeAccessFlow: Flow<LedgerAccessContext?> = flowOf(planAccess(canModify = canModify)),
 ) : BudgetActions {
     val loadedMonths = mutableListOf<String>()
     val savedMonths = mutableListOf<String>()
     val savedRequests = mutableListOf<BudgetMonthlyUpdate>()
     val adviceMonths = mutableListOf<String>()
+    val cachedAdviceMonths = mutableListOf<String>()
+    val attemptedBindings = mutableListOf<LogicalSessionBinding>()
     val loadCalls: Int get() = loadedMonths.size
+    var canModify: Boolean = canModify
     var monthlyBudgetResponder: (suspend (String) -> Result<BudgetMonthly>)? = null
     var adviceResponder: (suspend (String) -> Result<BudgetAdviceResult>)? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
+    override suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? {
+        cachedAdviceMonths += month
+        return cachedAdvice
+    }
+
+    var saveResponder: (suspend (BudgetMonthly) -> Result<BudgetMonthly>)? = null
+    var authoritativeBinding: LogicalSessionBinding = planBinding()
+
+    private val invalidationsFlow = MutableStateFlow(0)
+
+    override val adviceInvalidations: StateFlow<Int> = invalidationsFlow
+
+    override fun invalidateBudgetAdvice() {
+        invalidationsFlow.value += 1
+    }
+
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = activeAccessFlow
+
+    override fun observeLedgerAccessState(): Flow<LedgerAccessState?> = accessFlow
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> {
         loadedMonths += month
@@ -314,23 +1072,54 @@ private class FakeBudgetActions(
             ),
         )
     }
+    override suspend fun monthlyBudget(
+        expectedBinding: LogicalSessionBinding,
+        month: String,
+    ): Result<BudgetMonthly> = monthlyBudget(month)
 
     override suspend fun saveMonthlyBudget(
+        expectedBinding: LogicalSessionBinding,
         month: String,
         update: BudgetMonthlyUpdate,
     ): Result<BudgetMonthly> {
+        attemptedBindings += expectedBinding
+        if (expectedBinding != authoritativeBinding) {
+            return Result.failure(IllegalStateException("binding changed"))
+        }
         savedMonths += month
         savedRequests += update
-        budget = budget.copy(
+        val updatedBudget = budget.copy(
             month = month,
             configured = true,
             totalAmountCents = update.totalAmountCents,
             rolloverAmountCents = update.rolloverAmountCents,
             nonMonthlyAmountCents = update.nonMonthlyAmountCents,
         )
-        return Result.success(budget)
+        val result = saveResponder?.invoke(updatedBudget) ?: Result.success(updatedBudget)
+        result.onSuccess { budget = it }
+        return result
     }
 }
+
+private fun planBinding(
+    ledgerId: String = "owner",
+    ownerKey: String = "owner",
+): LogicalSessionBinding = LogicalSessionBinding(
+    serverUrl = "https://api.example.com",
+    ledgerId = ledgerId,
+    ownerKey = ownerKey,
+    sessionGeneration = "session-$ownerKey",
+    bindingRevision = "binding-$ownerKey-$ledgerId",
+)
+
+private fun planAccess(
+    ledgerId: String = "owner",
+    ownerKey: String = "owner",
+    canModify: Boolean = true,
+): LedgerAccessContext = LedgerAccessContext(
+    binding = planBinding(ledgerId, ownerKey),
+    canModify = canModify,
+)
 
 private fun budget(
     month: String = "2026-05",

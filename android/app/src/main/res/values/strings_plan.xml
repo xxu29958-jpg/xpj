@@ -41,12 +41,15 @@
     <string name="budget_advice_back_to_plan">返回计划</string>
     <string name="budget_advice_start_title">生成本月建议</string>
     <string name="budget_advice_start_body">根据收入计划、固定支出和已入账消费的汇总结构，给出可逐项审阅的分类额度建议。建议不会自动修改预算。</string>
-    <string name="budget_advice_privacy_note">仅使用汇总信息，不发送商家名称或家庭成员明细。</string>
+    <string name="budget_advice_privacy_note">仅发送汇总结构：收支与分类合计，以及每项收入计划的类型、金额和到账日；不发送商家名称或家庭成员明细。</string>
     <string name="budget_advice_generate">生成预算建议</string>
     <string name="budget_advice_loading_title">正在整理本月收支结构</string>
     <string name="budget_advice_loading_body">建议生成完成前，你可以离开此页，现有预算不会发生变化。</string>
     <string name="budget_advice_load_failed">预算建议暂时无法生成，请稍后重试。</string>
     <string name="budget_advice_error_title">没有生成成功</string>
+    <string name="budget_advice_unavailable_title">预算建议暂不可用</string>
+    <string name="budget_advice_unavailable_body">建议服务尚未配置完成，在完成配置前无法生成建议；现有预算不会受到影响。</string>
+    <string name="budget_advice_payload_invalid_body">本月的数据暂时没能用于生成建议，现在重新生成结果也不会改变；补充或调整本月收支记录后再试。</string>
     <string name="budget_advice_empty_title">当前没有可显示的建议</string>
     <string name="budget_advice_empty_body">先补充收入计划或固定支出，再生成一次；现有预算不会被修改。</string>
     <string name="budget_advice_generate_again">重新生成</string>

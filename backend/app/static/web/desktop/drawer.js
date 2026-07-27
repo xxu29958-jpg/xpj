@@ -120,7 +120,7 @@
     }
 
     function markSelected(row) {
-      document.querySelectorAll('.exp-row[aria-selected="true"]').forEach(function (r) {
+      document.querySelectorAll('.exp-row-detail[aria-selected="true"]').forEach(function (r) {
         if (r !== row) r.setAttribute("aria-selected", "false");
       });
       if (row) row.setAttribute("aria-selected", "true");
@@ -129,24 +129,32 @@
     // 批10: confirm/忽略 removes the row from the table; decrement the visible
     // pending counts (active filter + 全部) — short-lived drift on the other
     // filters is acceptable and self-heals on the next page load.
+    // #218 行结构:drawer 操作的是行链接(a.exp-row-detail),移除/找下一行都要
+    // 落到外层行容器 .exp-row 上,否则残留孤立的 checkbox 单元格。
     function removeCurrentRow() {
       if (!currentRow) return null;
       const next = nextRow(currentRow);
-      if (currentRow.parentNode) currentRow.parentNode.removeChild(currentRow);
+      const container = currentRow.closest(".exp-row") || currentRow;
+      if (container.parentNode) container.parentNode.removeChild(container);
       decrementCounts();
       currentRow = null;
       return next;
     }
 
+    function rowLink(container) {
+      return container.querySelector(".exp-row-detail[data-fragment-url]");
+    }
+
     function nextRow(row) {
-      let el = row.nextElementSibling;
+      const container = row.closest(".exp-row") || row;
+      let el = container.nextElementSibling;
       while (el && !el.classList.contains("exp-row")) el = el.nextElementSibling;
-      if (el) return el;
+      if (el) return rowLink(el);
       // No following row: fall back to the previous one so the reviewer keeps
       // moving instead of dead-ending.
-      el = row.previousElementSibling;
+      el = container.previousElementSibling;
       while (el && !el.classList.contains("exp-row")) el = el.previousElementSibling;
-      return el;
+      return el ? rowLink(el) : null;
     }
 
     function decrementCounts() {
@@ -252,7 +260,7 @@
       if (e.key === "Escape" && drawer.classList.contains("on")) close();
     });
 
-    document.querySelectorAll(".exp-row[data-fragment-url]").forEach(function (row) {
+    document.querySelectorAll(".exp-row-detail[data-fragment-url]").forEach(function (row) {
       row.addEventListener("click", function (e) {
         // 批选模式下 bulk-bar.js 负责拦截行导航;它在同一节点上后注册,
         // 所以这里也要自查 aria-disabled,否则监听器执行顺序会让抽屉先开。

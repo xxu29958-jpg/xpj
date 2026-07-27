@@ -1,16 +1,19 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -108,11 +111,11 @@ class RecurringViewModelTest {
     }
 
     @Test
-    fun activeLedgerChangeClearsCandidatesAndRejectsStaleCandidate() = recurringTest {
-        val ledgerFlow = MutableStateFlow<String?>("owner")
+    fun stableAuthorityChangeClearsCandidatesAndRejectsStaleCandidate() = recurringTest {
+        val accessFlow = MutableStateFlow(planAccess(ownerKey = "owner-a"))
         val oldCandidate = candidate("Old Gym")
         val fake = FakeRecurringActions(
-            activeLedgerFlow = ledgerFlow,
+            activeAccessFlow = accessFlow,
             candidatesResult = Result.success(listOf(oldCandidate)),
         )
         val vm = RecurringViewModel(fake)
@@ -121,7 +124,7 @@ class RecurringViewModelTest {
         assertEquals(listOf(oldCandidate), vm.uiState.value.candidates)
 
         fake.candidatesResult = Result.success(emptyList())
-        ledgerFlow.value = "family"
+        accessFlow.value = planAccess(ownerKey = "owner-b")
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.candidates.isEmpty())
@@ -132,33 +135,70 @@ class RecurringViewModelTest {
         assertEquals(UiText.res(R.string.recurring_message_candidate_expired), vm.uiState.value.message)
         assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
     }
+
+    @Test
+    fun staleRefreshCannotOverwriteLatestItems() = recurringTest {
+        val stale = CompletableDeferred<Result<List<RecurringItem>>>()
+        val latest = CompletableDeferred<Result<List<RecurringItem>>>()
+        val fake = FakeRecurringActions(itemsResult = Result.success(listOf(item(merchant = "Initial"))))
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        var refreshCall = 0
+        fake.itemsResponder = {
+            if (++refreshCall == 1) stale.await() else latest.await()
+        }
+
+        vm.refresh()
+        advanceUntilIdle()
+        vm.refresh()
+        advanceUntilIdle()
+        latest.complete(Result.success(listOf(item(merchant = "Latest"))))
+        advanceUntilIdle()
+        stale.complete(Result.success(listOf(item(merchant = "Stale"))))
+        advanceUntilIdle()
+
+        assertEquals("Latest", vm.uiState.value.items.single().merchant)
+    }
 }
 
 private class FakeRecurringActions(
-    private val activeLedgerFlow: Flow<String?> = emptyFlow(),
     var itemsResult: Result<List<RecurringItem>> = Result.success(emptyList()),
     var candidatesResult: Result<List<RecurringCandidate>> = Result.success(emptyList()),
     private val canModify: Boolean = true,
+    private val activeAccessFlow: Flow<LedgerAccessContext?> = flowOf(planAccess(canModify = canModify)),
 ) : RecurringActions {
     var confirmCalls: Int = 0
         private set
+    var itemsResponder: (suspend () -> Result<List<RecurringItem>>)? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = activeAccessFlow
 
     override suspend fun items(
         status: String?,
         includeArchived: Boolean,
         month: String?,
-    ): Result<List<RecurringItem>> = itemsResult
+    ): Result<List<RecurringItem>> = itemsResponder?.invoke() ?: itemsResult
+
+    override suspend fun items(
+        expectedBinding: LogicalSessionBinding,
+        status: String?,
+        includeArchived: Boolean,
+        month: String?,
+    ): Result<List<RecurringItem>> = items(status, includeArchived, month)
 
     override suspend fun candidates(): Result<List<RecurringCandidate>> = candidatesResult
+
+    override suspend fun candidates(
+        expectedBinding: LogicalSessionBinding,
+    ): Result<List<RecurringCandidate>> = candidates()
 
     override suspend fun detail(publicId: String, month: String?): Result<RecurringItem> =
         Result.success(item(publicId = publicId))
 
     override suspend fun confirmCandidate(
+        expectedBinding: LogicalSessionBinding,
         candidate: RecurringCandidate,
         nextExpectedDate: String?,
     ): Result<RecurringItem> {
@@ -166,12 +206,43 @@ private class FakeRecurringActions(
         return Result.success(item(merchant = candidate.merchant))
     }
 
-    override suspend fun pause(publicId: String, expectedRowVersion: Long): Result<RecurringItem> = Result.success(item(publicId = publicId))
+    override suspend fun pause(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<RecurringItem> = Result.success(item(publicId = publicId))
 
-    override suspend fun resume(publicId: String, expectedRowVersion: Long): Result<RecurringItem> = Result.success(item(publicId = publicId))
+    override suspend fun resume(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<RecurringItem> = Result.success(item(publicId = publicId))
 
-    override suspend fun archive(publicId: String): Result<RecurringItem> = Result.success(item(publicId = publicId))
+    override suspend fun archive(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+    ): Result<RecurringItem> = Result.success(item(publicId = publicId))
 }
+
+private fun planBinding(
+    ledgerId: String = "owner",
+    ownerKey: String = "owner",
+): LogicalSessionBinding = LogicalSessionBinding(
+    serverUrl = "https://api.example.com",
+    ledgerId = ledgerId,
+    ownerKey = ownerKey,
+    sessionGeneration = "session-$ownerKey",
+    bindingRevision = "binding-$ownerKey-$ledgerId",
+)
+
+private fun planAccess(
+    ledgerId: String = "owner",
+    ownerKey: String = "owner",
+    canModify: Boolean = true,
+): LedgerAccessContext = LedgerAccessContext(
+    binding = planBinding(ledgerId, ownerKey),
+    canModify = canModify,
+)
 
 private fun candidate(merchant: String): RecurringCandidate = RecurringCandidate(
     merchant = merchant,

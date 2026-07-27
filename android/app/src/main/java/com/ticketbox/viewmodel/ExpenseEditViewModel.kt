@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseEditActions
 import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.SaveOutcome
+import com.ticketbox.data.repository.changesAdvisorPayloadAgainst
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
@@ -119,6 +120,13 @@ data class ExpenseEditUiState(
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
     val done: Boolean = false,
+
+    /** Set alongside [done]: whether the completed save changed fields the
+     *  budget advisor's payload aggregates (amount / currency / category /
+     *  captured date-time) — or changed confirmed-set membership
+     *  (confirm / reject). Consumed by the route to decide advice-cache
+     *  invalidation; note/tag/merchant-only edits stay false. */
+    val doneAdviceInputsChanged: Boolean = false,
 )
 
 /**
@@ -383,6 +391,9 @@ class ExpenseEditViewModel(
                                 message = UiText.res(R.string.expense_edit_save_success),
                                 messageTone = MessageTone.Success,
                                 done = true,
+                                // No baseline → full-field write → always
+                                // payload-relevant.
+                                doneAdviceInputsChanged = true,
                             )
                         }
                     }
@@ -416,6 +427,7 @@ class ExpenseEditViewModel(
                             message = message,
                             messageTone = tone,
                             done = true,
+                            doneAdviceInputsChanged = draft.changesAdvisorPayloadAgainst(baseline),
                         )
                     }
                 }
@@ -477,6 +489,9 @@ class ExpenseEditViewModel(
                                     message = message,
                                     messageTone = tone,
                                     done = true,
+                                    // Confirm adds the row to the confirmed set
+                                    // the advisor aggregates — always relevant.
+                                    doneAdviceInputsChanged = true,
                                 )
                             }
                         }
@@ -531,7 +546,15 @@ class ExpenseEditViewModel(
                             UiText.res(R.string.expense_edit_reject_offline_queued) to MessageTone.Info
                     }
                     _uiState.update {
-                        it.copy(saving = false, message = message, messageTone = tone, done = true)
+                        it.copy(
+                            saving = false,
+                            message = message,
+                            messageTone = tone,
+                            done = true,
+                            // Reject pulls a confirmed row OUT of the aggregated
+                            // set — membership change is payload-relevant.
+                            doneAdviceInputsChanged = true,
+                        )
                     }
                 }
                 .onFailure { error ->
@@ -760,6 +783,14 @@ class ExpenseEditViewModel(
             _uiState.update { it.copy(done = false) }
         }
         return wasDone
+    }
+
+    fun consumeDoneAdviceInputsChanged(): Boolean {
+        val changed = _uiState.value.doneAdviceInputsChanged
+        if (changed) {
+            _uiState.update { it.copy(doneAdviceInputsChanged = false) }
+        }
+        return changed
     }
 
     fun consumeOpenRepaymentDraftPublicId(): String? {
