@@ -361,4 +361,6 @@ def test_web_debt_goals_nav_and_planning_group(web_client: TestClient) -> None:
     resp = web_client.get("/web/debt-goals")
     assert resp.status_code == 200
     assert 'href="/web/debt-goals' in resp.text  # nav link present
-    assert "<span>还债目标</span>" in resp.text
+    assert "还债目标" in resp.text
+    # 五域 IA (218-D S1): 轴2/#228 语义保持——还债目标是规划面, 归计划域。
+    assert 'data-domain="plans"' in resp.text

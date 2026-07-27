@@ -2,7 +2,7 @@
  *
  * 包含:
  *   - .app —— 主网格容器 (sidebar + content)
- *   - .sidebar / .nav-item / .nav-group —— 左侧导航
+ *   - .sidebar / .nav-item / .nav-primary / .nav-subnav —— 左侧五域导航
  *   - .topbar / .crumb —— 顶部面包屑 + 工具按钮
  *   - .content —— 主内容容器
  *   - .readonly-callout —— 只读账本提示条
@@ -83,42 +83,46 @@
 }
 
 .mobile-primary-nav,
-.mobile-more-nav {
+.mobile-plan-nav {
     display: none;
 }
 
-.nav-group { display: flex; flex-direction: column; gap: 2px; }
-.nav-group-collapsible {
-    border: 0;
-    padding: 0;
-    margin: 0;
+/* 五域 IA (218-D S1): nav-primary = 稳定域主项; nav-subnav = 当前域页级链接。 */
+.nav-primary { display: flex; flex-direction: column; gap: 2px; }
+.nav-subnav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-card);
 }
-.nav-group-collapsible > summary {
-    list-style: none;
-    cursor: pointer;
+.nav-subnav > a {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
+    padding: 5px 10px 5px 22px;
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    color: var(--text-meta);
+    text-decoration: none;
+    position: relative;
+    transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
 }
-.nav-group-collapsible > summary::-webkit-details-marker { display: none; }
-.nav-group-collapsible > summary::before {
-    content: "▸";
-    display: inline-block;
-    transform: rotate(0deg);
-    transition: transform var(--motion-fast) var(--ease-standard);
+.nav-subnav > a:hover { background: var(--surface-sunken); color: var(--text-default); }
+.nav-subnav > a.active { color: var(--text-default); font-weight: 500; }
+.nav-subnav > a.active::before {
+    content: "";
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 12px;
+    border-radius: 1px;
+    background: var(--text-default);
 }
-.nav-group-collapsible[open] > summary::before {
-    transform: rotate(90deg);
-}
-.nav-group-title {
-    font-size: 10px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-    padding: 6px 10px;
-    font-weight: 500;
-    font-family: var(--font-num);
-}
+.nav-subnav > a .nav-badge { margin-left: auto; }
 
 .nav-item {
     display: flex;

@@ -1,32 +1,34 @@
-{# 左侧 sidebar：品牌 + 移动端常用入口 + 桌面语义分组 + 底部状态点 #}
-{# 上下文：selected_ledger_id (-> q), backend_version, request.url.path,
+{# 左侧 sidebar：品牌 + 窄屏五域主导航 + 窄屏当前域页签 + 桌面五域分组 + 底部状态点 #}
+{# 五域 IA (218-D S1, 移植自产品矿): 收件/流水/往来/计划/洞察为稳定产品域,
+   路由名只是传输契约。域归属由 base.html 集中判定(_domain), 本文件只补页级标志。 #}
+{# 上下文：selected_ledger_id (-> q), backend_version, request.url.path, _domain,
             pending_count, suspected_duplicate_count（来自 _base_ctx） #}
 {% set _p = request.url.path %}
-{% set is_dashboard = _p in ['/web', '/web/'] %}
-{% set is_reports = '/reports' in _p %}
+{% set is_today = _p in ['/web', '/web/'] %}
+{% set is_pending = '/pending' in _p or ('/expenses/' in _p and _edit_origin == 'pending') %}
+{% set is_duplicates = '/duplicates' in _p or ('/expenses/' in _p and _edit_origin == 'duplicates') %}
+{% set is_tasks = '/tasks' in _p %}
+{% set is_confirmed = '/confirmed' in _p or ('/expenses/' in _p and _edit_origin == 'confirmed') %}
 {% set is_search = '/search' in _p %}
-{% set is_pending = '/pending' in _p %}
-{% set is_confirmed = '/confirmed' in _p %}
-{% set is_duplicates = '/duplicates' in _p %}
-{% set is_bill_split_inbox = '/bill-splits/inbox' in _p %}
-{% set is_bill_split_sent = '/bill-splits/sent' in _p %}
+{% set is_categories = '/categories' in _p %}
+{% set is_merchants = '/merchants' in _p %}
+{% set is_tags = '/tags' in _p %}
+{% set is_rules = '/rules' in _p %}
+{% set is_recycle_bin = '/recycle-bin' in _p %}
+{% set is_import = '/import' in _p or '/export' in _p %}
 {% set is_debts = '/debts' in _p %}
 {% set is_receivables = '/receivables' in _p %}
+{% set is_bill_split_inbox = '/bill-splits/inbox' in _p %}
+{% set is_bill_split_sent = '/bill-splits/sent' in _p %}
 {% set is_repayment_drafts = '/repayment-drafts' in _p %}
-{% set is_import = '/import' in _p or '/export' in _p %}
 {% set is_budgets = '/budgets' in _p %}
-{% set is_goals = '/goals' in _p %}
+{% set is_goals = '/goals' in _p and '/debt-goals' not in _p %}
 {% set is_debt_goals = '/debt-goals' in _p %}
 {% set is_income_plans = '/income-plans' in _p %}
 {% set is_budget_advise = '/budget-advise' in _p %}
 {% set is_recurring = '/recurring' in _p %}
-{% set is_categories = '/categories' in _p %}
-{% set is_rules = '/rules' in _p %}
-{% set is_merchants = '/merchants' in _p %}
-{% set is_tags = '/tags' in _p %}
-{% set is_recycle_bin = '/recycle-bin' in _p %}
+{% set is_reports = '/reports' in _p %}
 {% set is_data_quality = '/data-quality' in _p %}
-{% set mobile_more_open = not (is_dashboard or is_pending or is_confirmed or is_reports) %}
 <aside class="sidebar">
   <div class="brand">
     <div class="brand-mark">夹</div>
@@ -34,20 +36,8 @@
     <div class="brand-version">v{{ backend_version }}</div>
   </div>
 
-  <nav class="mobile-primary-nav" aria-label="常用入口">
-    <a class="nav-item {% if is_dashboard %}active{% endif %}" href="/web{{ q }}"{% if is_dashboard %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="7" rx="1"/>
-          <rect x="14" y="3" width="7" height="7" rx="1"/>
-          <rect x="3" y="14" width="7" height="7" rx="1"/>
-          <rect x="14" y="14" width="7" height="7" rx="1"/>
-        </svg>
-      </span>
-      <span>今日</span>
-    </a>
-    <a class="nav-item {% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>
+  <nav class="mobile-primary-nav" aria-label="产品领域">
+    <a class="nav-item {% if _domain == 'inbox' %}active{% endif %}" href="/web/pending{{ q }}"{% if _domain == 'inbox' %} aria-current="location"{% endif %}>
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
              stroke-linecap="round" stroke-linejoin="round">
@@ -55,19 +45,39 @@
           <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/>
         </svg>
       </span>
-      <span>待确认</span>
+      <span>收件</span>
       {% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
     </a>
-    <a class="nav-item {% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>
+    <a class="nav-item {% if _domain == 'transactions' %}active{% endif %}" href="/web/confirmed{{ q }}"{% if _domain == 'transactions' %} aria-current="location"{% endif %}>
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
              stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       </span>
-      <span>账本</span>
+      <span>流水</span>
     </a>
-    <a class="nav-item {% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>
+    <a class="nav-item {% if _domain == 'obligations' %}active{% endif %}" href="/web/debts{{ q }}"{% if _domain == 'obligations' %} aria-current="location"{% endif %}>
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3 4 7l4 4"/><path d="M4 7h16"/>
+          <path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>
+        </svg>
+      </span>
+      <span>往来</span>
+    </a>
+    <a class="nav-item {% if _domain == 'plans' %}active{% endif %}" href="/web/budgets{{ q }}"{% if _domain == 'plans' %} aria-current="location"{% endif %}>
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="6" width="20" height="12" rx="2"/>
+          <circle cx="12" cy="12" r="2.5"/>
+        </svg>
+      </span>
+      <span>计划</span>
+    </a>
+    <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/reports{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
              stroke-linecap="round" stroke-linejoin="round">
@@ -79,313 +89,133 @@
     </a>
   </nav>
 
-  <details class="mobile-more-nav" {% if mobile_more_open %}open{% endif %}>
-    <summary>更多入口</summary>
-    <div class="mobile-more-grid">
-      <section class="mobile-more-section" aria-label="清算">
-        <div class="mobile-more-title">清算</div>
-        <a class="mobile-more-link {% if is_duplicates %}active{% endif %}" href="/web/duplicates{{ q }}"{% if is_duplicates %} aria-current="page"{% endif %}>疑似重复{% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}</a>
-        <a class="mobile-more-link {% if is_bill_split_inbox %}active{% endif %}" href="/web/bill-splits/inbox{{ q }}"{% if is_bill_split_inbox %} aria-current="page"{% endif %}>拆账收件箱</a>
-        <a class="mobile-more-link {% if is_bill_split_sent %}active{% endif %}" href="/web/bill-splits/sent{{ q }}"{% if is_bill_split_sent %} aria-current="page"{% endif %}>已发拆账</a>
-        <a class="mobile-more-link {% if is_debts %}active{% endif %}" href="/web/debts{{ q }}"{% if is_debts %} aria-current="page"{% endif %}>欠款</a>
-        <a class="mobile-more-link {% if is_receivables %}active{% endif %}" href="/web/receivables{{ q }}"{% if is_receivables %} aria-current="page"{% endif %}>欠我的</a>
-        <a class="mobile-more-link {% if is_repayment_drafts %}active{% endif %}" href="/web/repayment-drafts{{ q }}"{% if is_repayment_drafts %} aria-current="page"{% endif %}>还款捕获</a>
-      </section>
-      <section class="mobile-more-section" aria-label="账本工具">
-        <div class="mobile-more-title">账本工具</div>
-        <a class="mobile-more-link {% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>搜索</a>
-        <a class="mobile-more-link {% if is_import %}active{% endif %}" href="/web/import{{ q }}"{% if is_import %} aria-current="page"{% endif %}>导入导出</a>
-      </section>
-      <section class="mobile-more-section" aria-label="规划">
-        <div class="mobile-more-title">规划</div>
-        <a class="mobile-more-link {% if is_budgets %}active{% endif %}" href="/web/budgets{{ q }}"{% if is_budgets %} aria-current="page"{% endif %}>预算</a>
-        <a class="mobile-more-link {% if is_goals %}active{% endif %}" href="/web/goals{{ q }}"{% if is_goals %} aria-current="page"{% endif %}>目标</a>
-        <a class="mobile-more-link {% if is_debt_goals %}active{% endif %}" href="/web/debt-goals{{ q }}"{% if is_debt_goals %} aria-current="page"{% endif %}>还债目标</a>
-        <a class="mobile-more-link {% if is_income_plans %}active{% endif %}" href="/web/income-plans{{ q }}"{% if is_income_plans %} aria-current="page"{% endif %}>收入记录</a>
-        <a class="mobile-more-link {% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>AI 预算建议</a>
-        <a class="mobile-more-link {% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>固定支出</a>
-      </section>
-      <section class="mobile-more-section" aria-label="治理">
-        <div class="mobile-more-title">治理</div>
-        <a class="mobile-more-link {% if is_categories %}active{% endif %}" href="/web/categories{{ q }}"{% if is_categories %} aria-current="page"{% endif %}>分类</a>
-        <a class="mobile-more-link {% if is_rules %}active{% endif %}" href="/web/rules{{ q }}"{% if is_rules %} aria-current="page"{% endif %}>规则</a>
-        <a class="mobile-more-link {% if is_merchants %}active{% endif %}" href="/web/merchants{{ q }}"{% if is_merchants %} aria-current="page"{% endif %}>商家</a>
-        <a class="mobile-more-link {% if is_tags %}active{% endif %}" href="/web/tags{{ q }}"{% if is_tags %} aria-current="page"{% endif %}>标签</a>
-        <a class="mobile-more-link {% if is_recycle_bin %}active{% endif %}" href="/web/recycle-bin{{ q }}"{% if is_recycle_bin %} aria-current="page"{% endif %}>回收站</a>
-        <a class="mobile-more-link {% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
-      </section>
+  {# 窄屏第二行：只渲染当前域的页级链接, 横向滚动; 工作区兜底域整行不渲染。 #}
+  {% if _domain != 'workspace' %}
+  <nav class="mobile-plan-nav" aria-label="当前领域页面">
+    {% if _domain == 'inbox' %}
+      <a class="{% if is_today %}active{% endif %}" href="/web{{ q }}"{% if is_today %} aria-current="page"{% endif %}>今日</a>
+      <a class="{% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>待确认{% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}</a>
+      <a class="{% if is_duplicates %}active{% endif %}" href="/web/duplicates{{ q }}"{% if is_duplicates %} aria-current="page"{% endif %}>疑似重复{% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}</a>
+      <a class="{% if is_tasks %}active{% endif %}" href="/web/tasks{{ q }}"{% if is_tasks %} aria-current="page"{% endif %}>后台任务</a>
+    {% elif _domain == 'transactions' %}
+      <a class="{% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>已确认</a>
+      <a class="{% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>搜索</a>
+      <a class="{% if is_categories %}active{% endif %}" href="/web/categories{{ q }}"{% if is_categories %} aria-current="page"{% endif %}>分类</a>
+      <a class="{% if is_merchants %}active{% endif %}" href="/web/merchants{{ q }}"{% if is_merchants %} aria-current="page"{% endif %}>商家</a>
+      <a class="{% if is_tags %}active{% endif %}" href="/web/tags{{ q }}"{% if is_tags %} aria-current="page"{% endif %}>标签</a>
+      <a class="{% if is_rules %}active{% endif %}" href="/web/rules{{ q }}"{% if is_rules %} aria-current="page"{% endif %}>规则</a>
+      <a class="{% if is_recycle_bin %}active{% endif %}" href="/web/recycle-bin{{ q }}"{% if is_recycle_bin %} aria-current="page"{% endif %}>回收站</a>
+      <a class="{% if is_import %}active{% endif %}" href="/web/import{{ q }}"{% if is_import %} aria-current="page"{% endif %}>导入导出</a>
+    {% elif _domain == 'obligations' %}
+      <a class="{% if is_debts %}active{% endif %}" href="/web/debts{{ q }}"{% if is_debts %} aria-current="page"{% endif %}>欠款</a>
+      <a class="{% if is_receivables %}active{% endif %}" href="/web/receivables{{ q }}"{% if is_receivables %} aria-current="page"{% endif %}>欠我的</a>
+      <a class="{% if is_bill_split_inbox %}active{% endif %}" href="/web/bill-splits/inbox{{ q }}"{% if is_bill_split_inbox %} aria-current="page"{% endif %}>拆账收件箱</a>
+      <a class="{% if is_bill_split_sent %}active{% endif %}" href="/web/bill-splits/sent{{ q }}"{% if is_bill_split_sent %} aria-current="page"{% endif %}>已发拆账</a>
+      <a class="{% if is_repayment_drafts %}active{% endif %}" href="/web/repayment-drafts{{ q }}"{% if is_repayment_drafts %} aria-current="page"{% endif %}>还款捕获</a>
+    {% elif _domain == 'plans' %}
+      <a class="{% if is_budgets %}active{% endif %}" href="/web/budgets{{ q }}"{% if is_budgets %} aria-current="page"{% endif %}>预算</a>
+      <a class="{% if is_goals %}active{% endif %}" href="/web/goals{{ q }}"{% if is_goals %} aria-current="page"{% endif %}>目标</a>
+      <a class="{% if is_debt_goals %}active{% endif %}" href="/web/debt-goals{{ q }}"{% if is_debt_goals %} aria-current="page"{% endif %}>还债目标</a>
+      <a class="{% if is_income_plans %}active{% endif %}" href="/web/income-plans{{ q }}"{% if is_income_plans %} aria-current="page"{% endif %}>收入记录</a>
+      <a class="{% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>AI 预算建议</a>
+      <a class="{% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>固定支出</a>
+    {% elif _domain == 'insights' %}
+      <a class="{% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>报表</a>
+      <a class="{% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+
+  <nav class="desktop-nav" aria-label="产品导航">
+    <div class="nav-primary">
+      <a class="nav-item {% if _domain == 'inbox' %}active{% endif %}" href="/web/pending{{ q }}"{% if _domain == 'inbox' %} aria-current="location"{% endif %}>
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
+            <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/>
+          </svg>
+        </span>
+        <span>收件</span>
+        {% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
+      </a>
+      <a class="nav-item {% if _domain == 'transactions' %}active{% endif %}" href="/web/confirmed{{ q }}"{% if _domain == 'transactions' %} aria-current="location"{% endif %}>
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </span>
+        <span>流水</span>
+      </a>
+      <a class="nav-item {% if _domain == 'obligations' %}active{% endif %}" href="/web/debts{{ q }}"{% if _domain == 'obligations' %} aria-current="location"{% endif %}>
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3 4 7l4 4"/><path d="M4 7h16"/>
+            <path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>
+          </svg>
+        </span>
+        <span>往来</span>
+      </a>
+      <a class="nav-item {% if _domain == 'plans' %}active{% endif %}" href="/web/budgets{{ q }}"{% if _domain == 'plans' %} aria-current="location"{% endif %}>
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="6" width="20" height="12" rx="2"/>
+            <circle cx="12" cy="12" r="2.5"/>
+          </svg>
+        </span>
+        <span>计划</span>
+      </a>
+      <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/reports{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 21V3"/><path d="M21 21H3"/>
+            <path d="M7 17v-4"/><path d="M12 17V9"/><path d="M17 17v-6"/>
+          </svg>
+        </span>
+        <span>洞察</span>
+      </a>
+
+      {# 桌面当前域子导航：只展开活跃域的页级链接(与矿 nav-subnav 同语义); 工作区兜底域不渲染。 #}
+      {% if _domain != 'workspace' %}
+      <div class="nav-subnav" aria-label="当前领域页面">
+        {% if _domain == 'inbox' %}
+          <a class="{% if is_today %}active{% endif %}" href="/web{{ q }}"{% if is_today %} aria-current="page"{% endif %}>今日</a>
+          <a class="{% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>待确认{% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}</a>
+          <a class="{% if is_duplicates %}active{% endif %}" href="/web/duplicates{{ q }}"{% if is_duplicates %} aria-current="page"{% endif %}>疑似重复{% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}</a>
+          <a class="{% if is_tasks %}active{% endif %}" href="/web/tasks{{ q }}"{% if is_tasks %} aria-current="page"{% endif %}>后台任务</a>
+        {% elif _domain == 'transactions' %}
+          <a class="{% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>已确认</a>
+          <a class="{% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>搜索</a>
+          <a class="{% if is_categories %}active{% endif %}" href="/web/categories{{ q }}"{% if is_categories %} aria-current="page"{% endif %}>分类</a>
+          <a class="{% if is_merchants %}active{% endif %}" href="/web/merchants{{ q }}"{% if is_merchants %} aria-current="page"{% endif %}>商家</a>
+          <a class="{% if is_tags %}active{% endif %}" href="/web/tags{{ q }}"{% if is_tags %} aria-current="page"{% endif %}>标签</a>
+          <a class="{% if is_rules %}active{% endif %}" href="/web/rules{{ q }}"{% if is_rules %} aria-current="page"{% endif %}>规则</a>
+          <a class="{% if is_recycle_bin %}active{% endif %}" href="/web/recycle-bin{{ q }}"{% if is_recycle_bin %} aria-current="page"{% endif %}>回收站</a>
+          <a class="{% if is_import %}active{% endif %}" href="/web/import{{ q }}"{% if is_import %} aria-current="page"{% endif %}>导入导出</a>
+        {% elif _domain == 'obligations' %}
+          <a class="{% if is_debts %}active{% endif %}" href="/web/debts{{ q }}"{% if is_debts %} aria-current="page"{% endif %}>欠款</a>
+          <a class="{% if is_receivables %}active{% endif %}" href="/web/receivables{{ q }}"{% if is_receivables %} aria-current="page"{% endif %}>欠我的</a>
+          <a class="{% if is_bill_split_inbox %}active{% endif %}" href="/web/bill-splits/inbox{{ q }}"{% if is_bill_split_inbox %} aria-current="page"{% endif %}>拆账收件箱</a>
+          <a class="{% if is_bill_split_sent %}active{% endif %}" href="/web/bill-splits/sent{{ q }}"{% if is_bill_split_sent %} aria-current="page"{% endif %}>已发拆账</a>
+          <a class="{% if is_repayment_drafts %}active{% endif %}" href="/web/repayment-drafts{{ q }}"{% if is_repayment_drafts %} aria-current="page"{% endif %}>还款捕获</a>
+        {% elif _domain == 'plans' %}
+          <a class="{% if is_budgets %}active{% endif %}" href="/web/budgets{{ q }}"{% if is_budgets %} aria-current="page"{% endif %}>预算</a>
+          <a class="{% if is_goals %}active{% endif %}" href="/web/goals{{ q }}"{% if is_goals %} aria-current="page"{% endif %}>目标</a>
+          <a class="{% if is_debt_goals %}active{% endif %}" href="/web/debt-goals{{ q }}"{% if is_debt_goals %} aria-current="page"{% endif %}>还债目标</a>
+          <a class="{% if is_income_plans %}active{% endif %}" href="/web/income-plans{{ q }}"{% if is_income_plans %} aria-current="page"{% endif %}>收入记录</a>
+          <a class="{% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>AI 预算建议</a>
+          <a class="{% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>固定支出</a>
+        {% elif _domain == 'insights' %}
+          <a class="{% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>报表</a>
+          <a class="{% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
-  </details>
-
-  <nav class="desktop-nav" aria-label="桌面入口">
-  <div class="nav-group">
-    <div class="nav-group-title">概览</div>
-    <a class="nav-item {% if is_dashboard %}active{% endif %}" href="/web{{ q }}"{% if is_dashboard %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="7" rx="1"/>
-          <rect x="14" y="3" width="7" height="7" rx="1"/>
-          <rect x="3" y="14" width="7" height="7" rx="1"/>
-          <rect x="14" y="14" width="7" height="7" rx="1"/>
-        </svg>
-      </span>
-      <span>今日</span>
-    </a>
-    <a class="nav-item {% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
-          <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/>
-        </svg>
-      </span>
-      <span>待确认</span>
-      {% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
-    </a>
-    <a class="nav-item {% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-      </span>
-      <span>已确认</span>
-    </a>
-    <a class="nav-item {% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="7"/>
-          <path d="m20 20-3.5-3.5"/>
-        </svg>
-      </span>
-      <span>搜索</span>
-    </a>
-  </div>
-
-  <div class="nav-group">
-    <div class="nav-group-title">清算</div>
-    <a class="nav-item {% if is_duplicates %}active{% endif %}" href="/web/duplicates{{ q }}"{% if is_duplicates %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <rect x="9" y="9" width="13" height="13" rx="2"/>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-        </svg>
-      </span>
-      <span>疑似重复</span>
-      {% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}
-    </a>
-    <a class="nav-item {% if is_bill_split_inbox %}active{% endif %}" href="/web/bill-splits/inbox{{ q }}"{% if is_bill_split_inbox %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 4h16v16H4z"/>
-          <path d="M4 9h16"/><path d="M9 4v5"/>
-        </svg>
-      </span>
-      <span>拆账收件箱</span>
-    </a>
-    <a class="nav-item {% if is_bill_split_sent %}active{% endif %}" href="/web/bill-splits/sent{{ q }}"{% if is_bill_split_sent %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>
-        </svg>
-      </span>
-      <span>已发拆账</span>
-    </a>
-    {# 轴2 IA: 欠款是「操作/清算」面(数据血缘 bill_split→成员债)，归清算、接在拆账项后。 #}
-    <a class="nav-item {% if is_debts %}active{% endif %}" href="/web/debts{{ q }}"{% if is_debts %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 3 4 7l4 4"/><path d="M4 7h16"/>
-          <path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>
-        </svg>
-      </span>
-      <span>欠款</span>
-    </a>
-    {# ⑤c-3 creditor 发现: 欠我的(应收)是 欠款 的 sibling——跨账本汇总「别人还没和你对上的份额」
-       (account-scoped, 只读)，归清算、接在欠款后。 #}
-    <a class="nav-item {% if is_receivables %}active{% endif %}" href="/web/receivables{{ q }}"{% if is_receivables %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/>
-          <path d="M5 21h14"/>
-        </svg>
-      </span>
-      <span>欠我的</span>
-    </a>
-    {# 轴2 IA: 还款捕获是「操作/清算」面 (NLS 捕获→还债)，归清算、接在欠款后 (只读审计，确认在手机 App)。 #}
-    <a class="nav-item {% if is_repayment_drafts %}active{% endif %}" href="/web/repayment-drafts{{ q }}"{% if is_repayment_drafts %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-        </svg>
-      </span>
-      <span>还款捕获</span>
-    </a>
-  </div>
-
-  {# 桌面 IA: 报表、预算、目标、固定支出、收入记录归洞察与规划；折叠组在活跃页自动展开。 #}
-  <details class="nav-group nav-group-collapsible" {% if is_reports or is_budgets or is_goals or is_debt_goals or is_income_plans or is_budget_advise or is_recurring %}open{% endif %}>
-    <summary class="nav-group-title">洞察与规划</summary>
-    <a class="nav-item {% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 21V3"/><path d="M21 21H3"/>
-          <path d="M7 17v-4"/><path d="M12 17V9"/><path d="M17 17v-6"/>
-        </svg>
-      </span>
-      <span>报表</span>
-    </a>
-    <a class="nav-item {% if is_budgets %}active{% endif %}" href="/web/budgets{{ q }}"{% if is_budgets %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="6" width="20" height="12" rx="2"/>
-          <circle cx="12" cy="12" r="2.5"/>
-        </svg>
-      </span>
-      <span>预算</span>
-    </a>
-    <a class="nav-item {% if is_goals %}active{% endif %}" href="/web/goals{{ q }}"{% if is_goals %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <circle cx="12" cy="12" r="5"/>
-          <circle cx="12" cy="12" r="1.5"/>
-        </svg>
-      </span>
-      <span>目标</span>
-    </a>
-    {# 轴2 IA: 债务目标是前瞻/规划面 (跟踪关联欠款清偿)，与 目标/预算 同性质，归规划组、接在 目标 后。 #}
-    <a class="nav-item {% if is_debt_goals %}active{% endif %}" href="/web/debt-goals{{ q }}"{% if is_debt_goals %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 6h13"/><path d="M3 12h9"/><path d="M3 18h7"/>
-          <path d="m15 16 2.5 2.5L22 14"/>
-        </svg>
-      </span>
-      <span>还债目标</span>
-    </a>
-    <a class="nav-item {% if is_income_plans %}active{% endif %}" href="/web/income-plans{{ q }}"{% if is_income_plans %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
-          <polyline points="16 7 22 7 22 13"/>
-        </svg>
-      </span>
-      <span>收入记录</span>
-    </a>
-    <a class="nav-item {% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 18h6"/>
-          <path d="M10 22h4"/>
-          <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2Z"/>
-        </svg>
-      </span>
-      <span>AI 预算建议</span>
-    </a>
-    <a class="nav-item {% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-        </svg>
-      </span>
-      <span>固定支出</span>
-    </a>
-  </details>
-
-  {# 治理承接分类、商家、标签、规则、数据体检、回收站与导入导出；标签页保持自动展开。 #}
-  <details class="nav-group nav-group-collapsible" {% if is_categories or is_merchants or is_tags or is_rules or is_data_quality or is_recycle_bin or is_import %}open{% endif %}>
-    <summary class="nav-group-title">治理</summary>
-    <a class="nav-item {% if is_categories %}active{% endif %}" href="/web/categories{{ q }}"{% if is_categories %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"/>
-          <line x1="7" y1="7" x2="7.01" y2="7"/>
-        </svg>
-      </span>
-      <span>分类</span>
-    </a>
-    <a class="nav-item {% if is_merchants %}active{% endif %}" href="/web/merchants{{ q }}"{% if is_merchants %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 9V3h18v6"/>
-          <path d="M3 9h18l-2 12H5L3 9Z"/>
-        </svg>
-      </span>
-      <span>商家</span>
-    </a>
-    <a class="nav-item {% if is_tags %}active{% endif %}" href="/web/tags{{ q }}"{% if is_tags %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
-          <line x1="7" y1="7" x2="7.01" y2="7"/>
-        </svg>
-      </span>
-      <span>标签</span>
-    </a>
-    <a class="nav-item {% if is_rules %}active{% endif %}" href="/web/rules{{ q }}"{% if is_rules %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-        </svg>
-      </span>
-      <span>规则</span>
-    </a>
-    <a class="nav-item {% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <path d="M9 12l2 2 4-4"/>
-        </svg>
-      </span>
-      <span>数据体检</span>
-    </a>
-    <a class="nav-item {% if is_recycle_bin %}active{% endif %}" href="/web/recycle-bin{{ q }}"{% if is_recycle_bin %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 6h18"/>
-          <path d="M8 6V4h8v2"/>
-          <path d="M6 6l1 14h10l1-14"/>
-          <path d="M10 11v5"/><path d="M14 11v5"/>
-        </svg>
-      </span>
-      <span>回收站</span>
-    </a>
-    <a class="nav-item {% if is_import %}active{% endif %}" href="/web/import{{ q }}"{% if is_import %} aria-current="page"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </span>
-      <span>导入导出</span>
-    </a>
-  </details>
   </nav>
 
   <div class="sidebar-foot">
