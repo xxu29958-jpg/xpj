@@ -47,6 +47,14 @@ data class DebtListUiState(
      */
     val addSucceeded: Boolean = false,
     val pendingBillParsePrefill: Boolean = false,
+    /**
+     * 账本 home 币种是否已确认：首次列表请求**成功**落地后 true。false 期间新建草稿的
+     * 金额解析币种只是 [FxContract.HomeCurrency] 兜底，提交被禁用（VM 与 sheet 按钮双
+     * 重守门）——否则 JPY/KRW 账本在加载途中按 CNY 口径提交会放大 100×（PR#255 P1-3）。
+     * 加载**失败**不置位（币种仍未知，创建保持禁用直到重试成功）；[reload] 账本切换时
+     * 重置为 false 重新等待。
+     */
+    val homeCurrencyResolved: Boolean = false,
 )
 
 data class DebtDraftUi(
@@ -64,12 +72,15 @@ data class DebtDraftUi(
      * 金额解析口径：新建流上没有本笔 record，取账本已有欠款的服务端 `homeCurrencyCode`
      * （由 VM 构造草稿时注入）；首笔欠款 / 空账本落 [FxContract.HomeCurrency] 兜底
      * （与 AppViewModel 恒 CurrencyDisplay.Base 的 display home 一致，登记在案）。
-     * 列表响应到达且草稿未被用户触碰时 VM 会回填真实币种（PR#255 P1-2）。
+     * 列表响应到达后 VM 会把草稿币种重绑到账本权威值（保留已输文本，PR#255 P1-2/P1-3），
+     * 金额字段的显示标签同源于本字段（DebtDraftForm 绑定 draft.homeCurrency）。
      */
     val homeCurrency: CurrencyCode = FxContract.HomeCurrency,
     /**
      * 用户是否已改过草稿任一字段（VM 的 updateDraftField 置位；系统侧的账单预填不算）。
-     * 列表加载完成回填草稿币种时只覆盖未触碰草稿，不打断用户已按旧口径输入的内容。
+     * 仅用于权威币种重绑后的**提前重校验**：被触碰的草稿若金额在新币种下解析不出，
+     * 立即亮校验错误提示修改；不再守护旧币种（P1-3 起任何草稿都随响应重绑，
+     * 否则已输入内容会按 CNY 口径提交到 JPY/KRW 账本放大 100×）。
      */
     val userTouched: Boolean = false,
 ) {
@@ -112,7 +123,13 @@ class DebtListViewModel(
      */
     fun reload() {
         _state.update {
-            it.copy(debts = emptyList(), error = null, canModify = repository.canModifyLedger())
+            it.copy(
+                debts = emptyList(),
+                error = null,
+                canModify = repository.canModifyLedger(),
+                // 新账本币种未知，创建重新禁用到本次拉取成功（PR#255 P1-3）。
+                homeCurrencyResolved = false,
+            )
         }
         refresh()
     }
@@ -127,19 +144,13 @@ class DebtListViewModel(
             result.fold(
                 onSuccess = { debts ->
                     _state.update {
-                        // PR#255 P1-2：草稿可能在列表未加载时按 CNY 兜底开好；响应到达后回填
-                        // 账本真实 home 币种 —— 但只覆盖用户尚未触碰的草稿，已输入内容不重解。
-                        val backfilledDraft = if (it.addDraft.userTouched) {
-                            it.addDraft
-                        } else {
-                            it.addDraft.copy(homeCurrency = debtsHomeCurrency(debts))
-                        }
                         it.copy(
                             isLoading = false,
                             canModify = repository.canModifyLedger(),
                             debts = debts,
                             error = null,
-                            addDraft = backfilledDraft,
+                            addDraft = it.addDraft.rebindHomeCurrency(debtsHomeCurrency(debts)),
+                            homeCurrencyResolved = true,
                         )
                     }
                 },
@@ -232,6 +243,9 @@ class DebtListViewModel(
 
     fun submitDraft() {
         val state = _state.value
+        // 币种未确认（初始/切换加载未成功）禁止提交：兜底 CNY 口径送到 JPY/KRW
+        // 账本会放大 100×（PR#255 P1-3；sheet 按钮同步禁用，此处为兜底防线）。
+        if (!state.homeCurrencyResolved) return
         val draft = state.addDraft.withInheritedModelFrom(state.debts)
         val amount = draft.parsedAmountCents()
         val label = draft.counterpartyLabel.trim()
@@ -313,6 +327,25 @@ private fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi
 /** 账本既有欠款的服务端 home 币种（账本内一致）；空账本落 display-home 兜底。 */
 private fun debtsHomeCurrency(debts: List<Debt>): CurrencyCode =
     debts.firstOrNull()?.homeCurrencyCode?.let(CurrencyCode::fromStorageKey) ?: FxContract.HomeCurrency
+
+/**
+ * 列表响应落地后把草稿币种重绑到账本权威值（PR#255 P1-3）：任何草稿都重绑 ——
+ * 保留用户已输文本，但不再让旧币种（CNY 兜底）存活到提交路径。被用户触碰过且
+ * 已输金额在新币种下解析不出的，立即亮校验错误（提前重校验），等用户按新标签
+ * 修正；其余情况静默重绑。
+ */
+private fun DebtDraftUi.rebindHomeCurrency(authoritative: CurrencyCode): DebtDraftUi {
+    val rebound = copy(homeCurrency = authoritative)
+    val amountBroken = userTouched &&
+        authoritative != homeCurrency &&
+        amountYuanInput.isNotBlank() &&
+        rebound.parsedAmountCents() == null
+    return if (amountBroken) {
+        rebound.copy(validationError = UiText.res(R.string.debt_create_validation_error))
+    } else {
+        rebound
+    }
+}
 
 private fun DebtDraftUi.withInheritedModelFrom(debts: List<Debt>): DebtDraftUi {
     if (kind != DebtKinds.UNSPECIFIED) return this

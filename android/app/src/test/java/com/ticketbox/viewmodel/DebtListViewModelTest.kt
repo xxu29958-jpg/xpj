@@ -401,8 +401,9 @@ class DebtListViewModelTest {
 
     @Test
     fun untouchedDraftBackfillsLedgerHomeCurrencyWhenLoadLands() = runTest(dispatcher) {
-        // PR#255 P1-2：add sheet 在初始列表请求未回时已按 CNY 兜底开好草稿；响应到达后
-        // 未触碰的草稿必须回填账本真实 home 币种（JPY 账本下输 1200 → 1200 minor，不 ×100）。
+        // PR#255 P1-2/P1-3：add sheet 在初始列表请求未回时已按 CNY 兜底开好草稿；响应
+        // 到达后未触碰的草稿必须回填账本真实 home 币种（JPY 账本下输 1200 → 1200 minor，
+        // 不 ×100）；回填前 homeCurrencyResolved=false，创建被禁用。
         val gate = CompletableDeferred<Unit>()
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
@@ -411,13 +412,15 @@ class DebtListViewModelTest {
         repo.listGate = gate
         val viewModel = DebtListViewModel(repo)
         runCurrent()
-        // 加载未回：草稿仍是兜底币种。
+        // 加载未回：草稿仍是兜底币种，币种未确认。
         assertEquals(CurrencyCode.CNY, viewModel.state.value.addDraft.homeCurrency)
+        assertEquals(false, viewModel.state.value.homeCurrencyResolved)
 
         gate.complete(Unit)
         advanceUntilIdle()
 
         assertEquals(CurrencyCode.JPY, viewModel.state.value.addDraft.homeCurrency)
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
         // 列表回来后输入的金额按 JPY 解析（整数即 minor，不 ×100）。
         viewModel.updateDraftCounterparty("小王")
         viewModel.updateDraftAmount("1200")
@@ -427,8 +430,9 @@ class DebtListViewModelTest {
     }
 
     @Test
-    fun touchedDraftKeepsUserInputWhenLoadLands() = runTest(dispatcher) {
-        // PR#255 P1-2：用户已在草稿里输入内容时，列表响应不得回填币种打断已输入内容。
+    fun touchedDraftRebindsCurrencyAndRevalidatesWhenLoadLands() = runTest(dispatcher) {
+        // PR#255 P1-3：用户已输入内容的草稿也随响应重绑到权威币种（旧行为让 stale CNY
+        // 存活，提交会放大 100×）；文本保留，若金额在新币种下解析不出则立即亮校验错误。
         val gate = CompletableDeferred<Unit>()
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
@@ -437,16 +441,96 @@ class DebtListViewModelTest {
         val viewModel = DebtListViewModel(repo)
         runCurrent()
 
-        // 加载未回时用户已按兜底口径输入。
+        // 加载未回时用户已按兜底口径输入（"12.00" 在 CNY 是 1200 分，在 JPY 非法）。
         viewModel.updateDraftCounterparty("小王")
         viewModel.updateDraftAmount("12.00")
         gate.complete(Unit)
         advanceUntilIdle()
 
         val draft = viewModel.state.value.addDraft
-        assertEquals(CurrencyCode.CNY, draft.homeCurrency)
+        assertEquals(CurrencyCode.JPY, draft.homeCurrency)
         assertEquals("12.00", draft.amountYuanInput)
         assertTrue(draft.userTouched)
+        assertTrue(draft.validationError != null)
+        // 提前重校验后：金额在新币种下不合法，提交仍被拦，createDebt 不可达。
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertTrue(repo.createDrafts.isEmpty())
+    }
+
+    @Test
+    fun touchedDraftRebindKeepsValidAmountSilently() = runTest(dispatcher) {
+        // P1-3 同伴路径：已输金额在新币种下仍合法时静默重绑，不亮错误、可正常提交。
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+            createResult = Result.success(sampleDebt("created")),
+        )
+        repo.listGate = gate
+        val viewModel = DebtListViewModel(repo)
+        runCurrent()
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val draft = viewModel.state.value.addDraft
+        assertEquals(CurrencyCode.JPY, draft.homeCurrency)
+        assertNull(draft.validationError)
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        // JPY 整数解析：1200 minor，不是 CNY 口径的 120000。
+        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+    }
+
+    @Test
+    fun submitDraftBeforeHomeCurrencyResolvedDoesNotCreate() = runTest(dispatcher) {
+        // PR#255 P1-3 回归：列表请求在途（币种未确认）时提交被 VM 防线拦下 —— 不得按
+        // CNY 兜底口径把 "1200" 放大成 120000 送到 JPY 账本；响应落地重绑后才可提交。
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+            createResult = Result.success(sampleDebt("created")),
+        )
+        repo.listGate = gate
+        val viewModel = DebtListViewModel(repo)
+        runCurrent()
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertTrue(repo.createDrafts.isEmpty())
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+    }
+
+    @Test
+    fun refreshFailureKeepsCreationDisabled() = runTest(dispatcher) {
+        // P1-3：加载失败时币种仍未知，创建保持禁用（不回落 CNY 口径提交），重试成功才放开。
+        val repo = FakeDebtActions(listResult = Result.failure(RuntimeException("offline")))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+        assertEquals(false, viewModel.state.value.homeCurrencyResolved)
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertTrue(repo.createDrafts.isEmpty())
+
+        repo.listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY")))
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
     }
 }
 

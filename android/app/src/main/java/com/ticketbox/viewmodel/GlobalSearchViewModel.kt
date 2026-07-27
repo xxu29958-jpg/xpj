@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.GlobalSearchActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.RECENT_SEARCH_LIMIT
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.appendRecentSearch
 import com.ticketbox.domain.model.expenseLedgerMonth
 import com.ticketbox.domain.model.expenseMatchesSearchAmount
+import com.ticketbox.domain.model.parseSearchAmountsByCurrency
 import com.ticketbox.domain.model.searchableCategories
 import com.ticketbox.domain.model.searchableMonths
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -218,6 +220,9 @@ class GlobalSearchViewModel(
             }
             val criteria = SearchCriteria(
                 term = term,
+                // 每个支持的币种只解析一次（含符号/分隔符归一化），逐行匹配查表复用；
+                // 非数字 term 得空表 → 金额腿零成本判无命中（PR#255 P2-2）。
+                amountsByCurrency = parseSearchAmountsByCurrency(term),
                 category = state.categoryFilter,
                 month = state.monthFilter,
             )
@@ -280,8 +285,8 @@ private fun Expense.toSearchResult(
  *  match. A blank term with active filters matches every filtered row. */
 private fun Expense.matchTerm(criteria: SearchCriteria): UiText? {
     if (criteria.term.isBlank()) return UiText.res(R.string.global_search_field_all)
-    // 金额腿逐行双腿各自口径（home 行 home 解析、外币 original 行原币解析，PR#255 P2）。
-    val amountHit = expenseMatchesSearchAmount(this, criteria.term)
+    // 金额腿逐行双腿各自口径，查 criteria 里按币种预解析的缓存（PR#255 P2 / P2-2）。
+    val amountHit = expenseMatchesSearchAmount(this, criteria.amountsByCurrency)
     val textMatch = textSearchMatch(criteria.term)
     return when {
         textMatch != null -> textMatch
@@ -319,6 +324,8 @@ private fun Expense.textSearchMatch(term: String): UiText? {
 
 private data class SearchCriteria(
     val term: String,
+    /** [term] 按每个支持币种预解析的金额缓存（不可变）；空表 = 金额腿无命中。 */
+    val amountsByCurrency: Map<CurrencyCode, Long>,
     val category: String,
     val month: String,
 )

@@ -217,6 +217,40 @@ class GlobalSearchViewModelTest {
     }
 
     @Test
+    fun formattedAmountQueryHitsRowViaCachedPerCurrencyParse() = searchTest {
+        // PR#255 P2-1/P2-2：query 对每个支持币种只解析一次（含符号/locale 分隔符
+        // 归一化）缓存进 SearchCriteria，逐行匹配复用 —— 从 Android 格式化器复制的
+        // 显示值可直接命中对应币种腿。
+        // KRW-home 行：查 "₩1,200"（ko-KR 分组显示值）按 KRW 解析命中 home 腿。
+        val krwHomeRow = expense(id = 1, status = "confirmed", merchant = "Seoul Deli", amountCents = 1_200L)
+            .copy(
+                homeCurrency = CurrencyCode.KRW,
+                originalCurrencyCode = CurrencyCode.KRW,
+                originalAmountMinor = 1_200L,
+            )
+        // CNY-home 行、EUR 原币 1234.50（minor 123450）：查 de-DE 显示值 "€1.234,50"
+        // 按 EUR 解析原币腿命中（home CNY 解析不出该文本）。
+        val cnyHomeEurRow = expense(id = 2, status = "confirmed", merchant = "Berlin Mart", amountCents = 8_600L)
+            .copy(originalCurrencyCode = CurrencyCode.EUR, originalAmountMinor = 123_450L)
+        val fake = FakeGlobalSearchActions(confirmed = listOf(krwHomeRow, cnyHomeEurRow))
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("₩1,200")
+        advanceUntilIdle()
+        assertEquals(listOf(1L), vm.uiState.value.results.map { it.expense.id })
+
+        vm.setQuery("€1.234,50")
+        advanceUntilIdle()
+        assertEquals(listOf(2L), vm.uiState.value.results.map { it.expense.id })
+
+        // 非数字 query 短路为空金额表：金额腿无命中，走纯文本匹配。
+        vm.setQuery("Berlin")
+        advanceUntilIdle()
+        assertEquals(listOf(2L), vm.uiState.value.results.map { it.expense.id })
+    }
+
+    @Test
     fun stalePendingResponseAfterLedgerChangeIsIgnored() = searchTest {
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val firstResponse = CompletableDeferred<Result<List<Expense>>>()

@@ -137,7 +137,6 @@ fun DebtListScreen(
     if (showAddSheet) {
         DebtAddSheet(
             state = state,
-            currency = currency,
             viewModel = viewModel,
             sheetState = sheetState,
             onClose = { showAddSheet = false; viewModel.resetDraft() },
@@ -364,7 +363,6 @@ private fun ExternalDebtRow(
 @Composable
 private fun DebtAddSheet(
     state: DebtListUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtListViewModel,
     sheetState: SheetState,
     onClose: () -> Unit,
@@ -372,7 +370,6 @@ private fun DebtAddSheet(
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         DebtDraftForm(
             state = state,
-            currency = currency,
             viewModel = viewModel,
             onSubmit = { viewModel.submitDraft() },
             onCancel = onClose,
@@ -383,7 +380,6 @@ private fun DebtAddSheet(
 @Composable
 private fun DebtDraftForm(
     state: DebtListUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtListViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
@@ -402,7 +398,9 @@ private fun DebtDraftForm(
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.debt_create_label_amount),
-                currency = currency.homeCurrency,
+                // 显示与解析同源于草稿币种（VM 由账本欠款回填/重绑），不读恒 Base 的
+                // 路由级 display（PR#255 P1-3）。
+                currency = draft.homeCurrency,
                 value = draft.amountYuanInput,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
                 isError = draft.validationError != null,
@@ -424,7 +422,9 @@ private fun DebtDraftForm(
                     stringResource(R.string.debt_create_save)
                 },
                 onClick = onSubmit,
-                enabled = !state.isSubmitting,
+                // 账本币种未确认（初始/切换加载未成功）禁用创建：兜底 CNY 口径提交到
+                // JPY/KRW 账本会放大 100×（PR#255 P1-3，VM submitDraft 另有同条件防线）。
+                enabled = !state.isSubmitting && state.homeCurrencyResolved,
             ),
             secondary = AppSheetAction(
                 text = stringResource(R.string.common_cancel),

@@ -557,6 +557,30 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun parsesSearchAmountAcceptsDisplayedValuesAcrossCurrencies() {
+        // PR#255 P2-1：从 Android 自己的格式化器（formatAmount，localeTag 同款
+        // DecimalFormatSymbols）复制的显示值，按所选币种归一化符号与分隔符后必须可解析。
+        assertEquals(1_200L, parseSearchAmountCents("₩1,200", CurrencyCode.KRW))
+        assertEquals(123_450L, parseSearchAmountCents("HK$1,234.50", CurrencyCode.HKD))
+        assertEquals(123_450L, parseSearchAmountCents("£1,234.50", CurrencyCode.GBP))
+        // de-DE：点分组、逗号小数。
+        assertEquals(123_450L, parseSearchAmountCents("€1.234,50", CurrencyCode.EUR))
+        // EUR 无符号逗号小数不得误读为分组（旧实现读出 1,250 倍值）。
+        assertEquals(1_250L, parseSearchAmountCents("12,50", CurrencyCode.EUR))
+        // de-DE 用户手输点号 "12.50"：非合法分组形态（尾组 2 位），按小数对待而非放大。
+        assertEquals(1_250L, parseSearchAmountCents("12.50", CurrencyCode.EUR))
+        // EUR 合法点分组整体形态仍按分组剥离。
+        assertEquals(123_400L, parseSearchAmountCents("1.234", CurrencyCode.EUR))
+        // 零小数币种的带符号分组显示值。
+        assertEquals(50_000L, parseSearchAmountCents("¥50,000", CurrencyCode.JPY))
+        // 他币种符号不剥：HK$ 文本在 USD 腿上不可解析（防串币种假命中）。
+        assertNull(parseSearchAmountCents("HK$1,234.50", CurrencyCode.USD))
+        // 残留多小数点 / 字母仍拒。
+        assertNull(parseSearchAmountCents("1.2.3", CurrencyCode.USD))
+        assertNull(parseSearchAmountCents("12,50,30", CurrencyCode.EUR))
+    }
+
+    @Test
     fun expenseMatchesSearchAmountParsesEachLegInItsOwnCurrency() {
         // JPY-home、USD 原币：查 "12.50" 按 USD 解析原币腿命中（home 零小数解析不出，旧实现丢失）。
         val jpyHomeUsdOriginal = expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 18_518)
