@@ -2,6 +2,8 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
@@ -11,7 +13,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -22,19 +25,21 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun budgetTest(block: suspend TestScope.() -> Unit) = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    try {
+        block()
+    } finally {
+        Dispatchers.resetMain()
+    }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BudgetViewModelTest {
-    private fun budgetTest(block: suspend TestScope.() -> Unit) = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        Dispatchers.setMain(dispatcher)
-        try {
-            block()
-        } finally {
-            Dispatchers.resetMain()
-        }
-    }
-
     @Test
     fun initialLoadPopulatesBudgetAndForm() = budgetTest {
         val fake = FakeBudgetActions(
@@ -56,6 +61,54 @@ class BudgetViewModelTest {
         assertEquals("-200", state.form.rolloverAmount)
         assertEquals("餐饮", state.form.categoryRows.single().category)
         assertEquals(1, fake.loadCalls)
+    }
+
+    @Test
+    fun stableAuthorityChangeReloadsTheExistingViewModel() = budgetTest {
+        val accessFlow = MutableStateFlow(planAccess(ownerKey = "owner-a"))
+        val fake = FakeBudgetActions(
+            budget = budget(totalAmountCents = 500000),
+            activeAccessFlow = accessFlow,
+        )
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        fake.budget = budget(totalAmountCents = 700000)
+        accessFlow.value = planAccess(ownerKey = "owner-b")
+        advanceUntilIdle()
+
+        assertEquals(2, fake.loadCalls)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
+
+        accessFlow.value = planAccess(ownerKey = "owner-b", canModify = false)
+        advanceUntilIdle()
+
+        assertEquals(3, fake.loadCalls)
+        assertFalse(vm.uiState.value.canModify)
+    }
+
+    @Test
+    fun staleSameMonthRefreshCannotOverwriteLatestBudget() = budgetTest {
+        val stale = CompletableDeferred<Result<BudgetMonthly>>()
+        val latest = CompletableDeferred<Result<BudgetMonthly>>()
+        val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000))
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        var refreshCall = 0
+        fake.monthlyBudgetResponder = {
+            if (++refreshCall == 1) stale.await() else latest.await()
+        }
+
+        vm.refresh()
+        advanceUntilIdle()
+        vm.refresh()
+        advanceUntilIdle()
+        latest.complete(Result.success(budget(totalAmountCents = 700000)))
+        advanceUntilIdle()
+        stale.complete(Result.success(budget(totalAmountCents = 600000)))
+        advanceUntilIdle()
+
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
     }
 
     @Test
@@ -223,20 +276,95 @@ class BudgetViewModelTest {
     }
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetViewModelBindingRaceTest {
+    @Test
+    fun saveKeepsTheBindingThatProducedTheVisibleForm() = budgetTest {
+        val accessFlow = MutableStateFlow(planAccess(ownerKey = "owner-a"))
+        val fake = FakeBudgetActions(
+            budget = budget(totalAmountCents = 500000),
+            activeAccessFlow = accessFlow,
+        )
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        vm.updateTotalAmount("7000")
+
+        val nextBinding = planBinding(ownerKey = "owner-b")
+        fake.authoritativeBinding = nextBinding
+        accessFlow.value = LedgerAccessContext(nextBinding, canModify = true)
+        vm.save()
+        advanceUntilIdle()
+
+        assertEquals(planBinding(ownerKey = "owner-a"), fake.attemptedBindings.single())
+        assertEquals(0, fake.savedRequests.size)
+    }
+
+    @Test
+    fun saveInvalidatesAnOlderInFlightRefresh() = budgetTest {
+        val staleRefresh = CompletableDeferred<Result<BudgetMonthly>>()
+        val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000))
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        fake.monthlyBudgetResponder = { staleRefresh.await() }
+        vm.refresh()
+        advanceUntilIdle()
+
+        vm.updateTotalAmount("7000")
+        vm.save()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.loading)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
+
+        staleRefresh.complete(Result.success(budget(totalAmountCents = 600000)))
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.loading)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
+    }
+
+    @Test
+    fun refreshIsSerializedBehindAnInFlightSave() = budgetTest {
+        val pendingSave = CompletableDeferred<Result<BudgetMonthly>>()
+        val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000)).apply {
+            saveResponder = { pendingSave.await() }
+        }
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+        vm.updateTotalAmount("7000")
+
+        vm.save()
+        val loadCallsBeforeRefresh = fake.loadCalls
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.saving)
+        assertEquals(loadCallsBeforeRefresh, fake.loadCalls)
+
+        pendingSave.complete(Result.success(budget(totalAmountCents = 700000)))
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.saving)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
+    }
+}
+
 private class FakeBudgetActions(
     var budget: BudgetMonthly,
     private val canModify: Boolean = true,
-    private val activeLedgerFlow: Flow<String?> = emptyFlow(),
+    private val activeAccessFlow: Flow<LedgerAccessContext?> = flowOf(planAccess(canModify = canModify)),
 ) : BudgetActions {
     val loadedMonths = mutableListOf<String>()
     val savedMonths = mutableListOf<String>()
     val savedRequests = mutableListOf<BudgetMonthlyUpdate>()
+    val attemptedBindings = mutableListOf<LogicalSessionBinding>()
     val loadCalls: Int get() = loadedMonths.size
     var monthlyBudgetResponder: (suspend (String) -> Result<BudgetMonthly>)? = null
+    var saveResponder: (suspend (BudgetMonthly) -> Result<BudgetMonthly>)? = null
+    var authoritativeBinding: LogicalSessionBinding = planBinding()
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = activeAccessFlow
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> {
         loadedMonths += month
@@ -244,22 +372,54 @@ private class FakeBudgetActions(
         return Result.success(budget.copy(month = month))
     }
 
+    override suspend fun monthlyBudget(
+        expectedBinding: LogicalSessionBinding,
+        month: String,
+    ): Result<BudgetMonthly> = monthlyBudget(month)
+
     override suspend fun saveMonthlyBudget(
+        expectedBinding: LogicalSessionBinding,
         month: String,
         update: BudgetMonthlyUpdate,
     ): Result<BudgetMonthly> {
+        attemptedBindings += expectedBinding
+        if (expectedBinding != authoritativeBinding) {
+            return Result.failure(IllegalStateException("binding changed"))
+        }
         savedMonths += month
         savedRequests += update
-        budget = budget.copy(
+        val updatedBudget = budget.copy(
             month = month,
             configured = true,
             totalAmountCents = update.totalAmountCents,
             rolloverAmountCents = update.rolloverAmountCents,
             nonMonthlyAmountCents = update.nonMonthlyAmountCents,
         )
-        return Result.success(budget)
+        val result = saveResponder?.invoke(updatedBudget) ?: Result.success(updatedBudget)
+        result.onSuccess { budget = it }
+        return result
     }
 }
+
+private fun planBinding(
+    ledgerId: String = "owner",
+    ownerKey: String = "owner",
+): LogicalSessionBinding = LogicalSessionBinding(
+    serverUrl = "https://api.example.com",
+    ledgerId = ledgerId,
+    ownerKey = ownerKey,
+    sessionGeneration = "session-$ownerKey",
+    bindingRevision = "binding-$ownerKey-$ledgerId",
+)
+
+private fun planAccess(
+    ledgerId: String = "owner",
+    ownerKey: String = "owner",
+    canModify: Boolean = true,
+): LedgerAccessContext = LedgerAccessContext(
+    binding = planBinding(ledgerId, ownerKey),
+    canModify = canModify,
+)
 
 private fun budget(
     month: String = "2026-05",

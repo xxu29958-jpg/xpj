@@ -92,6 +92,10 @@ def test_web_pending_viewer_hides_bulk_actions(web_client: TestClient, *, identi
     # Bulk confirm/reject/keep buttons must be gone.
     assert "批量确认" not in resp.text
     assert "批量忽略" not in resp.text
+    # Read-only desktop rows keep the noninteractive selector slot so their
+    # six detail columns still align with the seven-column table header.
+    assert 'class="exp-row-selector" aria-hidden="true"' in resp.text
+    assert "row-check" not in resp.text
 
 
 def test_web_member_role_keeps_write_buttons(web_client: TestClient, *, identity) -> None:

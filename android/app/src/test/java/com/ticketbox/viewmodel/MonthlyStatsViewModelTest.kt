@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.domain.model.DataQualitySummary
@@ -13,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -488,29 +491,54 @@ private class FakeStatsActions : StatsActions {
 private class FakeStatsRecurringActions : RecurringActions {
     override fun canModifyLedger(): Boolean = true
 
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = flowOf(null)
+
     override suspend fun items(
         status: String?,
         includeArchived: Boolean,
         month: String?,
     ): Result<List<RecurringItem>> = Result.success(emptyList())
 
+    override suspend fun items(
+        expectedBinding: LogicalSessionBinding,
+        status: String?,
+        includeArchived: Boolean,
+        month: String?,
+    ): Result<List<RecurringItem>> = items(status, includeArchived, month)
+
     override suspend fun candidates(): Result<List<RecurringCandidate>> = Result.success(emptyList())
+
+    override suspend fun candidates(
+        expectedBinding: LogicalSessionBinding,
+    ): Result<List<RecurringCandidate>> = candidates()
 
     override suspend fun detail(publicId: String, month: String?): Result<RecurringItem> =
         Result.failure(IllegalArgumentException("not used"))
 
     override suspend fun confirmCandidate(
+        expectedBinding: LogicalSessionBinding,
         candidate: RecurringCandidate,
         nextExpectedDate: String?,
     ): Result<RecurringItem> = Result.failure(IllegalArgumentException("not used"))
 
-    override suspend fun pause(publicId: String, expectedRowVersion: Long): Result<RecurringItem> =
+    override suspend fun pause(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<RecurringItem> =
         Result.failure(IllegalArgumentException("not used"))
 
-    override suspend fun resume(publicId: String, expectedRowVersion: Long): Result<RecurringItem> =
+    override suspend fun resume(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<RecurringItem> =
         Result.failure(IllegalArgumentException("not used"))
 
-    override suspend fun archive(publicId: String): Result<RecurringItem> =
+    override suspend fun archive(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+    ): Result<RecurringItem> =
         Result.failure(IllegalArgumentException("not used"))
 }
 

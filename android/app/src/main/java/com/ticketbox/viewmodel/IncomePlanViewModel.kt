@@ -6,6 +6,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomeSourceType
@@ -15,6 +16,7 @@ import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.YearMonth
@@ -115,19 +117,56 @@ data class IncomePlanDraftUi(
     }
 }
 
+private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
+    val cleanLabel = label.trim().takeIf(String::isNotEmpty) ?: return null
+    val amount = parsedAmountCents() ?: return null
+    val payDay = parsedPayDay() ?: return null
+    val incomeMonth = when (frequency) {
+        IncomeFrequency.MONTHLY -> null
+        IncomeFrequency.ONE_TIME -> parsedIncomeMonth() ?: return null
+    }
+    return IncomePlanDraft(
+        label = cleanLabel,
+        sourceType = sourceType,
+        frequency = frequency,
+        incomeMonth = incomeMonth,
+        amountCents = amount,
+        payDay = payDay,
+    )
+}
+
 class IncomePlanViewModel(
     private val repository: IncomePlanActions,
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(IncomePlanUiState(canModify = repository.canModifyLedger()))
+    private val _state = MutableStateFlow(IncomePlanUiState(canModify = false))
     val state: StateFlow<IncomePlanUiState> = _state.asStateFlow()
+    private var bindingGeneration = 0
+    private var refreshGeneration = 0
+    private var activeBinding: LogicalSessionBinding? = null
+    private var activeCanModify = false
 
     init {
-        refresh()
+        viewModelScope.launch {
+            repository.observeActiveLedgerAccess()
+                .distinctUntilChanged()
+                .collect { access ->
+                    activeBinding = access?.binding
+                    activeCanModify = access?.canModify ?: false
+                    bindingGeneration += 1
+                    _state.value = IncomePlanUiState(
+                        canModify = access?.canModify ?: false,
+                    )
+                    if (access != null) refresh()
+                }
+        }
     }
 
     fun refresh() {
+        val expectedBinding = activeBinding ?: return
+        val binding = bindingGeneration
+        val refresh = ++refreshGeneration
         _state.update {
             it.copy(
                 isLoading = true,
@@ -136,8 +175,9 @@ class IncomePlanViewModel(
             )
         }
         viewModelScope.launch {
-            val active = repository.listActive()
+            val active = repository.listActive(expectedBinding)
             val archived = repository.listIncluding(
+                expectedBinding,
                 com.ticketbox.domain.model.IncomePlanStatus.ARCHIVED,
             )
             val nextState = active.fold(
@@ -146,7 +186,7 @@ class IncomePlanViewModel(
                     _state.value.copy(
                         isLoading = false,
                         loadState = IncomePlanLoadState.Loaded,
-                        canModify = repository.canModifyLedger(),
+                        canModify = activeCanModify,
                         activePlans = listing.plans,
                         archivedPlans = archived.getOrDefault(emptyList()),
                         totalActiveAmountCents = listing.totalActiveAmountCents,
@@ -162,7 +202,9 @@ class IncomePlanViewModel(
                     )
                 },
             )
-            _state.value = nextState
+            if (binding == bindingGeneration && refresh == refreshGeneration) {
+                _state.value = nextState
+            }
         }
     }
 
@@ -208,18 +250,9 @@ class IncomePlanViewModel(
     }
 
     fun submitDraft() {
-        val draft = _state.value.addDraft
-        val amount = draft.parsedAmountCents()
-        val payDay = draft.parsedPayDay()
-        val incomeMonth = if (draft.frequency == IncomeFrequency.ONE_TIME) {
-            draft.parsedIncomeMonth()
-        } else {
-            null
-        }
-        val label = draft.label.trim()
-        if (label.isEmpty() || amount == null || payDay == null ||
-            (draft.frequency == IncomeFrequency.ONE_TIME && incomeMonth == null)
-        ) {
+        val expectedBinding = activeBinding ?: return
+        val draft = _state.value.addDraft.toRepositoryDraftOrNull()
+        if (draft == null) {
             _state.update {
                 it.copy(
                     addDraft = it.addDraft.copy(
@@ -229,18 +262,11 @@ class IncomePlanViewModel(
             }
             return
         }
+        val binding = bindingGeneration
         _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
-            val result = repository.create(
-                IncomePlanDraft(
-                    label = label,
-                    sourceType = draft.sourceType,
-                    frequency = draft.frequency,
-                    incomeMonth = incomeMonth,
-                    amountCents = amount,
-                    payDay = payDay,
-                ),
-            )
+            val result = repository.create(expectedBinding, draft)
+            if (binding != bindingGeneration) return@launch
             result.fold(
                 onSuccess = {
                     _state.update {
@@ -269,16 +295,28 @@ class IncomePlanViewModel(
     }
 
     fun archive(publicId: String, expectedRowVersion: Long) {
+        val expectedBinding = activeBinding ?: return
+        val binding = bindingGeneration
         viewModelScope.launch {
-            val result = repository.archive(publicId, expectedRowVersion)
-            handleSimpleResult(result, success = UiText.res(R.string.income_plan_archived))
+            val result = repository.archive(expectedBinding, publicId, expectedRowVersion)
+            handleSimpleResult(
+                result,
+                success = UiText.res(R.string.income_plan_archived),
+                binding = binding,
+            )
         }
     }
 
     fun restore(publicId: String, expectedRowVersion: Long) {
+        val expectedBinding = activeBinding ?: return
+        val binding = bindingGeneration
         viewModelScope.launch {
-            val result = repository.restore(publicId, expectedRowVersion)
-            handleSimpleResult(result, success = UiText.res(R.string.income_plan_restored))
+            val result = repository.restore(expectedBinding, publicId, expectedRowVersion)
+            handleSimpleResult(
+                result,
+                success = UiText.res(R.string.income_plan_restored),
+                binding = binding,
+            )
         }
     }
 
@@ -286,7 +324,12 @@ class IncomePlanViewModel(
         _state.update { it.copy(flashMessage = null) }
     }
 
-    private fun handleSimpleResult(result: Result<IncomePlan>, success: UiText) {
+    private fun handleSimpleResult(
+        result: Result<IncomePlan>,
+        success: UiText,
+        binding: Int,
+    ) {
+        if (binding != bindingGeneration) return
         result.fold(
             onSuccess = {
                 _state.update { it.copy(flashMessage = success) }

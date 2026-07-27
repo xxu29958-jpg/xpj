@@ -234,7 +234,9 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert "#d6e3ee" not in pending_css.text
     assert "#d1e5d3" not in pending_css.text
     assert "@media (max-width: 900px)" in pending_css.text
-    assert "grid-template-columns: 24px 56px minmax(0, 1fr) auto" in pending_css.text
+    assert "grid-template-columns: 24px minmax(0, 1fr)" in pending_css.text
+    assert "grid-template-columns: 56px minmax(0, 1fr) auto" in pending_css.text
+    assert ".exp-row:not(.has-check) > .exp-row-selector" in pending_css.text
     assert bulk_bar_css.status_code == 200
     assert "@media (max-width: 720px)" in bulk_bar_css.text
     assert ".bulk-bar .bulk-field" in bulk_bar_css.text

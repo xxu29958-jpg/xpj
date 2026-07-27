@@ -8,7 +8,6 @@ import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 import java.io.IOException
 import java.util.UUID
 
@@ -22,10 +21,16 @@ import java.util.UUID
  */
 interface IncomePlanActions {
     fun canModifyLedger(): Boolean
-    fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
-    suspend fun listActive(): Result<IncomePlanListing>
-    suspend fun listIncluding(status: IncomePlanStatus): Result<List<IncomePlan>>
-    suspend fun create(draft: IncomePlanDraft): Result<IncomePlan>
+    fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
+    suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing>
+    suspend fun listIncluding(
+        expectedBinding: LogicalSessionBinding,
+        status: IncomePlanStatus,
+    ): Result<List<IncomePlan>>
+    suspend fun create(
+        expectedBinding: LogicalSessionBinding,
+        draft: IncomePlanDraft,
+    ): Result<IncomePlan>
     suspend fun update(publicId: String, patch: IncomePlanPatch): Result<IncomePlan>
 
     /**
@@ -41,8 +46,16 @@ interface IncomePlanActions {
     ): Result<IncomePlanSaveOutcome> =
         throw NotImplementedError("updateAllowingOffline not wired in this IncomePlanActions")
 
-    suspend fun archive(publicId: String, expectedRowVersion: Long): Result<IncomePlan>
-    suspend fun restore(publicId: String, expectedRowVersion: Long): Result<IncomePlan>
+    suspend fun archive(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<IncomePlan>
+    suspend fun restore(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<IncomePlan>
 }
 
 data class IncomePlanListing(
@@ -74,11 +87,14 @@ class IncomePlanRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override fun observeActiveLedgerId(): Flow<String?> = apiProvider.observeActiveLedgerId()
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
+        apiProvider.observeActiveLedgerAccess()
 
-    override suspend fun listActive(): Result<IncomePlanListing> =
+    override suspend fun listActive(
+        expectedBinding: LogicalSessionBinding,
+    ): Result<IncomePlanListing> =
         errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 val response = api.listIncomePlans(status = "active")
                 IncomePlanListing(
                     plans = response.items.map { it.toDomain() },
@@ -87,20 +103,26 @@ class IncomePlanRepository(
             }
         }
 
-    override suspend fun listIncluding(status: IncomePlanStatus): Result<List<IncomePlan>> =
+    override suspend fun listIncluding(
+        expectedBinding: LogicalSessionBinding,
+        status: IncomePlanStatus,
+    ): Result<List<IncomePlan>> =
         errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.listIncomePlans(status = status.wireValue)
                     .items.map { it.toDomain() }
             }
         }
 
-    override suspend fun create(draft: IncomePlanDraft): Result<IncomePlan> {
+    override suspend fun create(
+        expectedBinding: LogicalSessionBinding,
+        draft: IncomePlanDraft,
+    ): Result<IncomePlan> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.createIncomePlan(draft.toCreateRequest()).toDomain()
             }
         }
@@ -242,12 +264,16 @@ class IncomePlanRepository(
             )
         }
 
-    override suspend fun archive(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
+    override suspend fun archive(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<IncomePlan> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.archiveIncomePlan(
                     publicId,
                     com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto(expectedRowVersion),
@@ -256,12 +282,16 @@ class IncomePlanRepository(
         }
     }
 
-    override suspend fun restore(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
+    override suspend fun restore(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<IncomePlan> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.restoreIncomePlan(
                     publicId,
                     com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto(expectedRowVersion),

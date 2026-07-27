@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.BudgetCategoryDraft
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
@@ -58,70 +58,72 @@ class BudgetViewModel(
     private val _uiState = MutableStateFlow(
         BudgetUiState(
             month = initialMonth,
-            canModify = repository.canModifyLedger(),
+            canModify = false,
         ),
     )
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0
+    private var refreshGeneration = 0
+    private var activeBinding: LogicalSessionBinding? = null
+    private var activeCanModify = false
 
     init {
-        observeLedgerChanges()
-        refresh()
-    }
-
-    private fun observeLedgerChanges() {
         viewModelScope.launch {
-            repository.observeActiveLedgerId()
+            repository.observeActiveLedgerAccess()
                 .distinctUntilChanged()
-                .drop(1)
-                .collect {
+                .collect { access ->
+                    activeBinding = access?.binding
+                    activeCanModify = access?.canModify ?: false
                     requestGeneration += 1
                     _uiState.update {
                         it.copy(
-                            loading = true,
+                            loading = access != null,
                             saving = false,
                             budget = null,
                             form = BudgetFormState(),
                             message = null,
                             messageTone = MessageTone.Neutral,
                             loadError = null,
-                            canModify = repository.canModifyLedger(),
+                            canModify = access?.canModify ?: false,
                         )
                     }
-                    refresh()
+                    if (access != null) refresh()
                 }
         }
     }
 
     fun refresh() {
+        if (_uiState.value.saving) return
+        val binding = activeBinding ?: return
+        val generation = requestGeneration
+        val refresh = ++refreshGeneration
         viewModelScope.launch {
             val month = _uiState.value.month
-            val generation = requestGeneration
             _uiState.update {
                 it.copy(
                     loading = true,
                     message = null,
                     messageTone = MessageTone.Neutral,
                     loadError = null,
-                    canModify = repository.canModifyLedger(),
+                    canModify = activeCanModify,
                 )
             }
-            repository.monthlyBudget(month)
+            repository.monthlyBudget(binding, month)
                 .onSuccess { budget ->
                     _uiState.update {
-                        if (requestGeneration != generation || it.month != month) return@update it
+                        if (!isCurrentRefresh(generation, refresh, month, it.month)) return@update it
                         it.copy(
                             loading = false,
                             budget = budget,
                             form = budget.toFormState(),
                             loadError = null,
-                            canModify = repository.canModifyLedger(),
+                            canModify = activeCanModify,
                         )
                     }
                 }
                 .onFailure { error ->
                     _uiState.update {
-                        if (requestGeneration != generation || it.month != month) return@update it
+                        if (!isCurrentRefresh(generation, refresh, month, it.month)) return@update it
                         // Initial failure → a retryable error state; refresh failure with
                         // readable data keeps the previous budget and surfaces a stale notice.
                         val fallback = if (it.budget == null) {
@@ -132,12 +134,21 @@ class BudgetViewModel(
                         it.copy(
                             loading = false,
                             loadError = error.toUiText(fallback),
-                            canModify = repository.canModifyLedger(),
+                            canModify = activeCanModify,
                         )
                     }
                 }
         }
     }
+
+    private fun isCurrentRefresh(
+        generation: Int,
+        refresh: Int,
+        requestedMonth: String,
+        currentMonth: String,
+    ): Boolean = requestGeneration == generation &&
+        refreshGeneration == refresh &&
+        requestedMonth == currentMonth
 
     fun previousMonth() {
         changeMonth(-1)
@@ -186,6 +197,8 @@ class BudgetViewModel(
     }
 
     fun save() {
+        if (_uiState.value.saving) return
+        val binding = activeBinding ?: return
         if (!repository.canModifyLedger()) {
             _uiState.update {
                 it.copy(
@@ -205,46 +218,36 @@ class BudgetViewModel(
                 _uiState.update { it.copy(message = message, messageTone = MessageTone.Danger) }
                 return
             }
+        refreshGeneration += 1
+        _uiState.update { it.withSaveStarted(activeCanModify) }
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    saving = true,
-                    message = null,
-                    messageTone = MessageTone.Neutral,
-                    canModify = repository.canModifyLedger(),
-                )
-            }
-            repository.saveMonthlyBudget(month, update)
+            repository.saveMonthlyBudget(binding, month, update)
                 .onSuccess { budget ->
-                    _uiState.update {
-                        if (requestGeneration != generation || it.month != month) return@update it
-                        it.copy(
-                            saving = false,
-                            budget = budget,
-                            form = budget.toFormState(),
-                            message = UiText.res(R.string.budget_message_saved),
-                            messageTone = MessageTone.Success,
-                            loadError = null,
-                            canModify = repository.canModifyLedger(),
-                        )
+                    if (requestGeneration != generation ||
+                        activeBinding != binding ||
+                        _uiState.value.month != month
+                    ) {
+                        return@onSuccess
                     }
+                    _uiState.update { it.withSavedBudget(budget, activeCanModify) }
                     onDataChanged()
                 }
                 .onFailure { error ->
                     _uiState.update {
-                        if (requestGeneration != generation || it.month != month) return@update it
-                        it.copy(
-                            saving = false,
-                            message = error.toUiText(R.string.budget_message_save_failed),
-                            messageTone = MessageTone.Danger,
-                            canModify = repository.canModifyLedger(),
-                        )
+                        if (requestGeneration != generation ||
+                            activeBinding != binding ||
+                            it.month != month
+                        ) {
+                            return@update it
+                        }
+                        it.withSaveFailure(error, activeCanModify)
                     }
                 }
         }
     }
 
     private fun changeMonth(delta: Long) {
+        if (_uiState.value.saving) return
         val current = runCatching { YearMonth.parse(_uiState.value.month) }
             .getOrDefault(YearMonth.now())
         requestGeneration += 1
@@ -265,6 +268,39 @@ class BudgetViewModel(
         _uiState.update { it.copy(form = transform(it.form), message = null, messageTone = MessageTone.Neutral) }
     }
 }
+
+private fun BudgetUiState.withSaveStarted(canModify: Boolean): BudgetUiState = copy(
+    loading = false,
+    saving = true,
+    message = null,
+    messageTone = MessageTone.Neutral,
+    canModify = canModify,
+)
+
+private fun BudgetUiState.withSavedBudget(
+    budget: BudgetMonthly,
+    canModify: Boolean,
+): BudgetUiState = copy(
+    loading = false,
+    saving = false,
+    budget = budget,
+    form = budget.toFormState(),
+    message = UiText.res(R.string.budget_message_saved),
+    messageTone = MessageTone.Success,
+    loadError = null,
+    canModify = canModify,
+)
+
+private fun BudgetUiState.withSaveFailure(
+    error: Throwable,
+    canModify: Boolean,
+): BudgetUiState = copy(
+    loading = false,
+    saving = false,
+    message = error.toUiText(R.string.budget_message_save_failed),
+    messageTone = MessageTone.Danger,
+    canModify = canModify,
+)
 
 private fun BudgetMonthly.toFormState(): BudgetFormState {
     if (!configured) {

@@ -20,17 +20,14 @@
 }
 .exp-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 32px minmax(0, 1fr);
     gap: 14px;
     padding: 14px 18px;
     align-items: center;
     transition: background var(--motion-fast) var(--ease-standard);
 }
 /* #218 行结构:checkbox(.exp-row-selector) 与行链接(a.exp-row-detail)是 .exp-row
-   内并列的兄弟节点;可写时选择器占一列,只读时行链接铺满。 */
-.exp-row.has-check {
-    grid-template-columns: 32px minmax(0, 1fr);
-}
+   内并列的兄弟节点;桌面端始终保留选择槽,让只读行也和七列表头对齐。 */
 .exp-row-selector {
     display: flex;
     align-items: center;
@@ -148,6 +145,9 @@
     }
     .exp-row.has-check {
         grid-template-columns: 24px minmax(0, 1fr);
+    }
+    .exp-row:not(.has-check) > .exp-row-selector {
+        display: none;
     }
     .exp-row + .exp-row {
         border-top: 1px solid var(--border-card);

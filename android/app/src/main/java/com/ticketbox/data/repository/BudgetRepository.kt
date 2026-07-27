@@ -4,15 +4,22 @@ import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 import java.time.YearMonth
 import java.util.TimeZone
 
 interface BudgetActions {
     fun canModifyLedger(): Boolean
-    fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
+    fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     suspend fun monthlyBudget(month: String): Result<BudgetMonthly>
-    suspend fun saveMonthlyBudget(month: String, update: BudgetMonthlyUpdate): Result<BudgetMonthly>
+    suspend fun monthlyBudget(
+        expectedBinding: LogicalSessionBinding,
+        month: String,
+    ): Result<BudgetMonthly>
+    suspend fun saveMonthlyBudget(
+        expectedBinding: LogicalSessionBinding,
+        month: String,
+        update: BudgetMonthlyUpdate,
+    ): Result<BudgetMonthly>
 }
 
 class BudgetRepository(
@@ -27,16 +34,33 @@ class BudgetRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override fun observeActiveLedgerId(): Flow<String?> = apiProvider.observeActiveLedgerId()
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
+        apiProvider.observeActiveLedgerAccess()
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> =
         monthlyBudget(month = month, timezone = currentTimezoneId())
 
+    override suspend fun monthlyBudget(
+        expectedBinding: LogicalSessionBinding,
+        month: String,
+    ): Result<BudgetMonthly> =
+        monthlyBudget(expectedBinding, month, currentTimezoneId())
+
     suspend fun monthlyBudget(month: String, timezone: String): Result<BudgetMonthly> {
+        return monthlyBudget(expectedBinding = null, month = month, timezone = timezone)
+    }
+
+    private suspend fun monthlyBudget(
+        expectedBinding: LogicalSessionBinding?,
+        month: String,
+        timezone: String,
+    ): Result<BudgetMonthly> {
         val cleanMonth = validatedMonth(month)
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            val request = expectedBinding?.let(ledgerRequestGuard::bindExact)
+                ?: ledgerRequestGuard.bind()
+            request.call { api ->
                 api.monthlyBudget(
                     month = cleanMonth,
                     timezone = timezone,
@@ -46,6 +70,7 @@ class BudgetRepository(
     }
 
     override suspend fun saveMonthlyBudget(
+        expectedBinding: LogicalSessionBinding,
         month: String,
         update: BudgetMonthlyUpdate,
     ): Result<BudgetMonthly> {
@@ -55,7 +80,7 @@ class BudgetRepository(
         val cleanMonth = validatedMonth(month)
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.updateMonthlyBudget(
                     month = cleanMonth,
                     request = update.toRequest(),

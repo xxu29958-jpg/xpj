@@ -80,14 +80,14 @@
     <div class="text-end">金额</div>
   </div>
   {% for e in expenses %}
-  {# #218 行结构:checkbox 与整行链接拆开为兄弟节点 — 行容器 .exp-row 不是锚点,
-     选择器(.exp-row-selector)与行链接(a.exp-row-detail)并列,不存在交互元素嵌套。 #}
+  {# #218 行结构:选择槽与整行链接是兄弟节点。只读行保留空槽对齐桌面表头,
+     移动端由 CSS 折叠;行链接内不存在嵌套交互元素。 #}
   <div class="exp-row{% if can_write %} has-check{% endif %}" data-expense-id="{{ e.id }}">
-    {% if can_write %}
-    <div class="exp-row-selector">
+    <div class="exp-row-selector"{% if not can_write %} aria-hidden="true"{% endif %}>
+      {% if can_write %}
       <input class="checkbox row-check" type="checkbox" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单 #{{ e.id }}">
+      {% endif %}
     </div>
-    {% endif %}
     <a class="exp-row-detail"
        href="/web/expenses/{{ e.id }}/edit{{ _q }}"
        data-fragment-url="/web/expenses/{{ e.id }}/edit{{ _q }}&fragment=1"
