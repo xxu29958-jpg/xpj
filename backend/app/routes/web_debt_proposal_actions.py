@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_debt_write import (
+    PROPOSAL_CONFIRM_AMOUNT_FIELD,
+    PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY,
+)
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -22,6 +27,7 @@ from app.routes.web_debt_actions import (
     _actor_account_id,
     _parse_major_minor,
 )
+from app.routes.web_debts import _render_debt_detail
 from app.schemas import (
     MemberRepaymentProposalConfirmRequest,
     MemberRepaymentProposalCreateRequest,
@@ -169,19 +175,109 @@ def web_withdraw_repayment_proposal(
     )
 
 
+def _parse_confirmed_amount(raw: str, *, currency_code: str) -> int | None:
+    """D3 确认金额解析：空串 = 按对方申报全额确认 (``None``，服务层语义)，这是一个
+    **显式分支**而非 Form 默认值巧合；非空走共享的 minor-unit 解析 (两位小数 / JPY/KRW
+    零小数 / 必须大于 0)，非法输入抛 422，由路由原地重渲染并锚定到金额输入。"""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    return _parse_major_minor(
+        text,
+        currency_code=currency_code,
+        allow_negative=False,
+    )
+
+
+def _confirm_amount_raw(confirmed_amount_major: str, legacy_amount_major: str, *, currency_code: str) -> str:
+    """N-1 字段优先级：任一别名单独提交均接受；两者皆空返回空串 (显式全额分支在
+    ``_parse_confirmed_amount``)。两者均非空时**按债务币种解析后**比较 minor-unit 值
+    (等值格式如 50.0/50.00、JPY 前导零 050/50 视为同一提交,校验沿用 ``_parse_major_minor``
+    同一族,不为比较放宽 JPY/KRW 零小数规则)；任一非法 → 维持非法金额 422 族；
+    解析后真不同 = 客户端序列化/迁移错误 → 抛冲突 422 (不写成错误的还款金额事实)。"""
+    new_text = (confirmed_amount_major or "").strip()
+    legacy_text = (legacy_amount_major or "").strip()
+    if new_text and legacy_text:
+        new_minor = _parse_major_minor(
+            new_text,
+            currency_code=currency_code,
+            allow_negative=False,
+        )
+        legacy_minor = _parse_major_minor(
+            legacy_text,
+            currency_code=currency_code,
+            allow_negative=False,
+        )
+        if new_minor != legacy_minor:
+            raise AppError(
+                "invalid_request",
+                "这次提交里有两个不一样的金额，请刷新后只保留一个再确认。",
+                status_code=422,
+            )
+    return new_text or legacy_text
+
+
+def _confirm_amount_error_rerender(
+    request: Request,
+    db: Session,
+    *,
+    options,
+    selected_id: str,
+    public_id: str,
+    proposal_public_id: str,
+    exc: AppError,
+    attempted: str,
+) -> HTMLResponse:
+    """金额事实门禁：非法金额输入 → 422 原地重渲染 (照 web_repayment_drafts 同页范式)，
+    错误锚定到确认金额输入，什么都不写 (不落 redirect-flash 让用户误以为操作已生效)。
+    ``proposal_public_id`` 把错误钉在**本次提交**的 proposal 语境上：提交后在途 proposal
+    被处理/换了一条时，错误仍渲染在被提交的 proposal 区域，不隐藏也不挂到新的在途条目。"""
+    db.rollback()
+    return _render_debt_detail(
+        request,
+        db,
+        options=options,
+        selected_id=selected_id,
+        public_id=public_id,
+        confirm_amount_error=_proposal_error_message(exc),
+        confirm_amount_value=attempted,
+        confirm_error_proposal_id=proposal_public_id,
+        status_code=422,
+    )
+
+
+def _confirm_business_error_redirect(
+    public_id: str,
+    selected_id: str,
+    exc: AppError | ValidationError,
+) -> RedirectResponse:
+    message = (
+        _proposal_error_message(exc) if isinstance(exc, AppError) else "请填写大于 0、且不超过对方发来金额的数额。"
+    )
+    return _action_redirect(
+        public_id,
+        selected_id,
+        message=message,
+        success=False,
+    )
+
+
 @router.post("/{public_id}/repayment-proposals/{proposal_public_id}/confirm")
 def web_confirm_repayment_proposal(
     request: Request,
     public_id: str,
     proposal_public_id: str,
     ledger_id: str = Form(default=""),
-    amount_major: str = Form(default=""),
+    # D3：字段名绑定共享契约常量 (模板侧也从同一常量渲染)，不再是第二个字面量。
+    confirmed_amount_major: str = Form(default="", alias=PROPOSAL_CONFIRM_AMOUNT_FIELD),
+    # N-1 兼容：D3 前路由误读的旧字段名仍接受 (新字段非空时忽略)，schema 标记 deprecated。
+    amount_major: str = Form(default="", alias=PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY, deprecated=True),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -193,12 +289,7 @@ def web_confirm_repayment_proposal(
     actor_account_id = _actor_account_id(request, db, selected_id)
     expected = parse_form_row_version_token(expected_row_version)
     if expected is None:
-        return _action_redirect(
-            public_id,
-            selected_id,
-            message=_STALE_MESSAGE,
-            success=False,
-        )
+        return _action_redirect(public_id, selected_id, message=_STALE_MESSAGE, success=False)
     try:
         debt = get_participant_debt_response(
             db,
@@ -206,15 +297,31 @@ def web_confirm_repayment_proposal(
             ledger_id=selected_id,
             account_id=actor_account_id,
         )
-        confirmed_amount = (
-            _parse_major_minor(
-                amount_major,
-                currency_code=debt.home_currency_code,
-                allow_negative=False,
-            )
-            if (amount_major or "").strip()
-            else None
+    except AppError as exc:
+        return _confirm_business_error_redirect(public_id, selected_id, exc)
+    try:
+        attempted_amount = _confirm_amount_raw(
+            confirmed_amount_major,
+            amount_major,
+            currency_code=debt.home_currency_code,
         )
+        confirmed_amount = _parse_confirmed_amount(
+            attempted_amount,
+            currency_code=debt.home_currency_code,
+        )
+    except AppError as exc:
+        # 冲突/非法都走同一条锚定 422；冲突时回填可见输入 (新字段) 的值,与非法输入的回填同义。
+        return _confirm_amount_error_rerender(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            proposal_public_id=proposal_public_id,
+            exc=exc,
+            attempted=(confirmed_amount_major or "").strip() or (amount_major or "").strip(),
+        )
+    try:
         confirm_repayment_proposal_idempotently(
             db,
             tenant_id=selected_id,
@@ -228,21 +335,8 @@ def web_confirm_repayment_proposal(
             idempotency_key=(idempotency_key or "").strip() or None,
         )
     except (AppError, ValidationError) as exc:
-        message = (
-            _proposal_error_message(exc) if isinstance(exc, AppError) else "请填写大于 0、且不超过对方发来金额的数额。"
-        )
-        return _action_redirect(
-            public_id,
-            selected_id,
-            message=message,
-            success=False,
-        )
-    return _action_redirect(
-        public_id,
-        selected_id,
-        message="收到啦，谢谢 TA～",
-        success=True,
-    )
+        return _confirm_business_error_redirect(public_id, selected_id, exc)
+    return _action_redirect(public_id, selected_id, message="收到啦，谢谢 TA～", success=True)
 
 
 @router.post("/{public_id}/repayment-proposals/{proposal_public_id}/reject")

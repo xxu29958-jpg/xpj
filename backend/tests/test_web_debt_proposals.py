@@ -19,6 +19,7 @@ import app.services.debt_proposal_command_service as proposal_commands
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember, MemberRepaymentProposal, Repayment
 from app.routes._web_debt_write import (
+    PROPOSAL_CONFIRM_AMOUNT_FIELD,
     _proposal_pending_line,
     _proposal_section,
     _resolved_proposal_row,
@@ -234,11 +235,14 @@ def test_web_creditor_can_partially_confirm_pending_proposal(
         assert debt is not None
         before_version = debt.row_version
 
+    # D3 (a)：用户改填的部分金额必须按「改填值」入账——字段名走共享契约常量。
     confirmed = web_client.post(
         f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm",
         data=_proposal_form(
-            amount_major="50.00",
-            expected_row_version=str(before_version),
+            **{
+                PROPOSAL_CONFIRM_AMOUNT_FIELD: "50.00",
+                "expected_row_version": str(before_version),
+            }
         ),
     )
 

@@ -1479,7 +1479,13 @@
         "properties": {
           "amount_major": {
             "default": "",
+            "deprecated": true,
             "title": "Amount Major",
+            "type": "string"
+          },
+          "confirmed_amount_major": {
+            "default": "",
+            "title": "Confirmed Amount Major",
             "type": "string"
           },
           "csrf_token": {
