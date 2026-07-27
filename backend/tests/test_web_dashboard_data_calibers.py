@@ -35,6 +35,7 @@ def test_latest_backup_lightweight_validates_only_newest_once_and_caches(
     """PR #253 R2 bot-P1: 只验最新一个 dump; (name, mtime, size) 缓存命中零重复验证。"""
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
     backup_status_service._lightweight_backup_validation.clear()
+    backup_status_service._tool_outage.clear()
     _older, newer = write_fake_dumps(tmp_path)
     validations: list[Path] = []
 
@@ -64,6 +65,7 @@ def test_latest_backup_lightweight_corrupt_newest_means_no_restorable_backup(
     """全部归档畸形 → none 态: 状态卡按「无可恢复备份」呈现 (backup_available=False)。"""
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
     backup_status_service._lightweight_backup_validation.clear()
+    backup_status_service._tool_outage.clear()
     write_fake_dumps(tmp_path)
     monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", lambda _path: False)
 
@@ -84,6 +86,7 @@ def test_latest_backup_lightweight_tool_failure_is_not_cached_as_invalid(
     """PR #253 R4-3: 工具失败 (超时/不可用) 不缓存为 invalid — 下次成功即有效。"""
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
     backup_status_service._lightweight_backup_validation.clear()
+    backup_status_service._tool_outage.clear()
     _older, newer = write_fake_dumps(tmp_path)
     verdict = {"value": None}  # None=工具失败; True=验证通过
     calls: list[Path] = []
@@ -94,17 +97,22 @@ def test_latest_backup_lightweight_tool_failure_is_not_cached_as_invalid(
 
     monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", _flaky_validate)
 
-    # 首次: 全部工具失败 → unverified 第三态 (有文件但无法判定), 不写缓存。
+    # 首次: 工具失败即熔断 → unverified 第三态, 更旧的文件也不再扫 (R6-1)。
     first = backup_status_service.latest_backup_lightweight()
     assert first.state == "unverified"
     assert first.entry is None
     assert backup_status_service._lightweight_backup_validation == {}
-    # 工具恢复后重试: 验证成功 → valid (且这次才缓存)。
-    verdict["value"] = True
+    # 熔断期 (TTL 内) 再请求: 完全不触工具 — 连续两请求只一次工具调用。
     second = backup_status_service.latest_backup_lightweight()
-    assert second.state == "valid" and second.entry is not None
-    assert second.entry.file_name == newer.name
-    assert calls == [newer, _older, newer]
+    assert second.state == "unverified"
+    assert calls == [newer]
+    # 熔断过后工具恢复: 验证成功 → valid (且这次才写缓存)。
+    backup_status_service._tool_outage.clear()
+    verdict["value"] = True
+    third = backup_status_service.latest_backup_lightweight()
+    assert third.state == "valid" and third.entry is not None
+    assert third.entry.file_name == newer.name
+    assert calls == [newer, newer]
     assert list(backup_status_service._lightweight_backup_validation.values()) == [True]
 
 
@@ -114,6 +122,7 @@ def test_latest_backup_lightweight_falls_back_to_older_valid_dump(
     """PR #253 R3-1: 最新 dump 损坏时向后找最新有效者 (与 latest_backup 同语义)。"""
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
     backup_status_service._lightweight_backup_validation.clear()
+    backup_status_service._tool_outage.clear()
     older, newer = write_fake_dumps(tmp_path)
     validations: list[Path] = []
 
@@ -345,6 +354,7 @@ def test_overview_backup_card_renders_all_three_states(
     """PR #253 R5-1: 备份卡三态落 UI — 有效=已备份天数, 工具失败=尚未验证, 无文件=还没有备份。"""
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
     backup_status_service._lightweight_backup_validation.clear()
+    backup_status_service._tool_outage.clear()
 
     def _card_body(text: str) -> str:
         card = re.search(r'data-overview-card="backup_status">.*?</article>', text, re.S)
@@ -370,6 +380,7 @@ def test_overview_backup_card_renders_all_three_states(
     # 3) 验证通过 → 已备份天数。
     monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", lambda _path: True)
     backup_status_service._lightweight_backup_validation.clear()
+    backup_status_service._tool_outage.clear()
     page = web_client.get("/web/overview?ledger_id=owner")
     assert page.status_code == 200
     assert "天前生成最近备份" in _card_body(page.text)

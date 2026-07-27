@@ -302,6 +302,9 @@ def test_category_donut_escapes_tooltip_name_and_prefers_amount_major() -> None:
     # tooltip: 名称进 HTML 前必须转义 — 正向钉完整片段, 负向钉漏洞形态 (复审 P2-1)。
     assert "app.escapeHtml(p.name)" in source
     assert '+ p.name + "</b>' not in source
+    # tooltip 金额与中心/清单同口径按 minor digits 格式化 (R6-2: 12.30 不再打成 12.3)。
+    assert "app.homeMoneyMajor(p.value || 0)" in source
+    assert "(p.value || 0).toLocaleString()" not in source
     # 中心 label: 纯文本, 不用 rich-text DSL — 分类名的 }/{x| 元字符会破坏排版 (复审 P2-2)。
     assert '"{n|"' not in source
     # 中心金额按币种 exponent 格式化 (R5), 不再 Math.round 丢小数。

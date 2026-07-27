@@ -32,8 +32,10 @@
           textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: "'Noto Sans SC', Inter" },
           formatter: function (p) {
             // PR #253 P1-2: 分类名是用户/导入可控文本, 进 HTML tooltip 前必须转义。
+            // R6-2: 金额与中心/清单同口径 — homeMoneyMajor 按 minor digits 格式化
+            // (toLocaleString 会把 12.30 打成 12.3)。
             return '<div style="font-size:12px"><b>' + app.escapeHtml(p.name) + "</b><br/>" +
-                   app.homeMoney((p.value || 0).toLocaleString()) + " · " + p.percent + "%</div>";
+                   app.homeMoneyMajor(p.value || 0) + " · " + p.percent + "%</div>";
           },
         },
         legend: { show: false },

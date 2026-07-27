@@ -253,7 +253,8 @@
       <a class="product-panel-subtitle" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">查看</a>
     </div>
     <div class="insight-stat-value num">{{ cards.recent_confirmed_count }}</div>
-    <div class="text-muted">手动记账与导入入账</div>
+    {# PR #253 R6-3: 计数无 source 谓词 (截图/通知草稿/拆账接受都算), 文案不枚举来源。 #}
+    <div class="text-muted">全部入账来源</div>
   </article>
 
   {% elif item.key == 'backup_status' %}
