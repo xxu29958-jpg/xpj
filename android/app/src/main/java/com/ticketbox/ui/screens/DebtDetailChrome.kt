@@ -167,7 +167,6 @@ private fun LazyListScope.debtDetailMemberItems(
             debt = debt,
             state = proposalState,
             viewModel = proposalViewModel,
-            currency = currency,
         )
     }
 }

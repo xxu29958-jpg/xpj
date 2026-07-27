@@ -22,13 +22,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 
 /**
  * UI/UX 第三波 批 13：跨账本拆账发起 sheet（ADR-0029）。从一笔已确认账单向**本账本
@@ -45,6 +46,8 @@ internal data class BillSplitInviteSheetState(
     val sending: Boolean,
     val message: UiText?,
     val messageTone: MessageTone,
+    // 票据的服务端 home 币种：剩余额显示与邀请金额解析同口径（零小数 home 不 ×100，PR#255 P1）。
+    val currency: CurrencyCode = FxContract.HomeCurrency,
 )
 
 internal data class BillSplitInviteSheetActions(
@@ -77,7 +80,9 @@ internal fun BillSplitInviteSheet(
             )
             BillSplitInviteAmountField(
                 amountText = state.amountText,
-                remainingCents = remainingCents,
+                // 剩余额显示与邀请金额解析同源于票据 record 币种，不读恒 Base 的环境
+                // display（PR#255 P1）；调用侧预格式化也让本函数守在 detekt 参数数门槛内。
+                remainingText = remainingCents?.let { formatAmount(it, state.currency) },
                 remainingUnavailable = remainingUnavailable,
                 sending = state.sending,
                 onUpdateAmount = actions.onUpdateAmount,
@@ -112,12 +117,11 @@ private fun BillSplitInviteMemberLabel() {
 @Composable
 private fun BillSplitInviteAmountField(
     amountText: String,
-    remainingCents: Long?,
+    remainingText: String?,
     remainingUnavailable: Boolean,
     sending: Boolean,
     onUpdateAmount: (String) -> Unit,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
     ExpenseEditTextField(
         state = ExpenseEditTextFieldState(
             label = stringResource(R.string.expense_edit_bill_split_sheet_amount_label),
@@ -128,12 +132,12 @@ private fun BillSplitInviteAmountField(
         ),
         onValueChange = onUpdateAmount,
     )
-    if (remainingCents != null) {
+    if (remainingText != null) {
         ExpenseEditReconciliationRows(
             rows = listOf(
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_bill_split_sheet_remaining),
-                    value = formatDisplayAmount(remainingCents, currencyDisplay),
+                    value = remainingText,
                 ),
             ),
         )

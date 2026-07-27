@@ -56,6 +56,39 @@ fun expenseMatchesAmountCents(expense: Expense, amountCents: Long): Boolean =
         expense.originalAmountMinor == amountCents
 
 /**
+ * Per-row dual-leg amount matching (PR#255 P2): each leg is parsed in **its own**
+ * currency's minor-unit digits before comparing, so cross-exponent rows are
+ * reachable from both directions —
+ *
+ * - home legs (`amountCents` / `homeAmountCents`) parse [query] in the row's
+ *   `homeCurrency`; the original leg joins them only when the row has no foreign
+ *   currency (same-currency legacy rows, where one parse serves all legs);
+ * - a foreign original leg (`originalCurrencyCode` != home) instead parses
+ *   [query] again in that original currency before touching
+ *   `originalAmountMinor` — never against the home parse, so "1250" can't
+ *   coincidentally hit a 12.50-USD minor.
+ *
+ * A JPY-home user searching "12.50" therefore still hits a USD-original row
+ * (12.50 USD → 1250) even though the query isn't a valid zero-decimal home
+ * amount, and a CNY-home user searching "1200" hits a JPY-original row
+ * (1200 ≠ 120000 cents). Returns false when [query] parses on neither leg.
+ */
+fun expenseMatchesSearchAmount(expense: Expense, query: String): Boolean {
+    val originalCurrency = expense.originalCurrencyCode
+    val foreignOriginal = originalCurrency != expense.homeCurrency
+    parseSearchAmountCents(query, expense.homeCurrency)?.let { homeAmount ->
+        if (expense.amountCents == homeAmount || expense.homeAmountCents == homeAmount) return true
+        if (!foreignOriginal && expense.originalAmountMinor == homeAmount) return true
+    }
+    if (foreignOriginal) {
+        parseSearchAmountCents(query, originalCurrency)?.let { originalAmount ->
+            if (expense.originalAmountMinor == originalAmount) return true
+        }
+    }
+    return false
+}
+
+/**
  * Distinct ``yyyy-MM`` ledger months present in [expenses], newest first —
  * fuel for the search month-filter chips and picker. Derived from the local
  * caches (same `expense_time → confirmed_at → created_at` fallback as the rest

@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
@@ -9,6 +10,7 @@ import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
+import com.ticketbox.ui.components.formatAmount
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -146,6 +148,37 @@ class DebtDetailViewModelTest {
         advanceUntilIdle()
 
         assertEquals(1_200L, repo.repaymentCalls.single().amountCents)
+    }
+
+    @Test
+    fun jpyDebtFormDisplaysAndParsesInRecordCurrency() = runTest(dispatcher) {
+        // PR#255 P1-1：显示与解析同源于 record 币种。JPY 欠款余额 50000 minor 按整数
+        // 显示（"¥50,000"，不是 ¥500.00）；用户按显示填 500 → 提交 500 minor（不是 50000）。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(
+                sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY"),
+            ),
+            writeResult = Result.success(
+                sampleDebt("d1", rowVersion = 2L, remaining = 49_500L).copy(homeCurrencyCode = "JPY"),
+            ),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        // 显示侧锚点：表单的币种来自 record，余额按零小数整数渲染。
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.amountInputCurrency)
+        assertEquals(
+            "¥50,000",
+            formatAmount(viewModel.state.value.debt?.remainingAmountCents, viewModel.state.value.amountInputCurrency),
+        )
+
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("500")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(500L, repo.repaymentCalls.single().amountCents)
     }
 
     @Test

@@ -41,7 +41,7 @@ import com.ticketbox.ui.design.tabularNum
 private const val RESOLVED_HISTORY_COLLAPSED_COUNT = 3
 
 @Composable
-internal fun ResolvedHistoryCard(resolved: List<MemberRepaymentProposal>, currency: CurrencyDisplay) {
+internal fun ResolvedHistoryCard(resolved: List<MemberRepaymentProposal>) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val shown = if (expanded) resolved else resolved.take(RESOLVED_HISTORY_COLLAPSED_COUNT)
     // Recession (§3.3) is carried per-row (sunk type/color + per-element alphas below); the card keeps a
@@ -57,7 +57,7 @@ internal fun ResolvedHistoryCard(resolved: List<MemberRepaymentProposal>, curren
                 style = MaterialTheme.typography.labelSmall,
                 color = LocalStateTokens.current.neutral.fg,
             )
-            shown.forEach { proposal -> ResolvedProposalRow(proposal = proposal, currency = currency) }
+            shown.forEach { proposal -> ResolvedProposalRow(proposal = proposal) }
             if (resolved.size > RESOLVED_HISTORY_COLLAPSED_COUNT) {
                 HistoryExpandToggle(total = resolved.size, expanded = expanded, onToggle = { expanded = !expanded })
             }
@@ -81,14 +81,19 @@ private fun HistoryExpandToggle(total: Int, expanded: Boolean, onToggle: () -> U
 }
 
 @Composable
-private fun ResolvedProposalRow(proposal: MemberRepaymentProposal, currency: CurrencyDisplay) {
+private fun ResolvedProposalRow(proposal: MemberRepaymentProposal) {
     Row(
         modifier = Modifier.fillMaxWidth().alpha(AppAlpha.opaque),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                formatDisplayAmount(proposal.proposedAmountCents, currency),
+                // 金额按本条 proposal 自带的服务端 homeCurrencyCode 渲染（record 口径），
+                // 不读恒 Base 的环境 display（PR#255 P1）。
+                formatDisplayAmount(
+                    proposal.proposedAmountCents,
+                    CurrencyDisplay.forRecord(proposal.homeCurrencyCode),
+                ),
                 style = MaterialTheme.typography.bodySmall.tabularNum(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

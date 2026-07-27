@@ -64,8 +64,14 @@ data class DebtDraftUi(
      * 金额解析口径：新建流上没有本笔 record，取账本已有欠款的服务端 `homeCurrencyCode`
      * （由 VM 构造草稿时注入）；首笔欠款 / 空账本落 [FxContract.HomeCurrency] 兜底
      * （与 AppViewModel 恒 CurrencyDisplay.Base 的 display home 一致，登记在案）。
+     * 列表响应到达且草稿未被用户触碰时 VM 会回填真实币种（PR#255 P1-2）。
      */
     val homeCurrency: CurrencyCode = FxContract.HomeCurrency,
+    /**
+     * 用户是否已改过草稿任一字段（VM 的 updateDraftField 置位；系统侧的账单预填不算）。
+     * 列表加载完成回填草稿币种时只覆盖未触碰草稿，不打断用户已按旧口径输入的内容。
+     */
+    val userTouched: Boolean = false,
 ) {
     val isValid: Boolean
         get() = counterpartyLabel.trim().isNotEmpty() && parsedAmountCents() != null
@@ -121,11 +127,19 @@ class DebtListViewModel(
             result.fold(
                 onSuccess = { debts ->
                     _state.update {
+                        // PR#255 P1-2：草稿可能在列表未加载时按 CNY 兜底开好；响应到达后回填
+                        // 账本真实 home 币种 —— 但只覆盖用户尚未触碰的草稿，已输入内容不重解。
+                        val backfilledDraft = if (it.addDraft.userTouched) {
+                            it.addDraft
+                        } else {
+                            it.addDraft.copy(homeCurrency = debtsHomeCurrency(debts))
+                        }
                         it.copy(
                             isLoading = false,
                             canModify = repository.canModifyLedger(),
                             debts = debts,
                             error = null,
+                            addDraft = backfilledDraft,
                         )
                     }
                 },
@@ -150,7 +164,7 @@ class DebtListViewModel(
                 DebtDraftField.InstallmentCount -> state.addDraft.copy(installmentCountInput = value, validationError = null)
                 DebtDraftField.InstallmentPeriod -> state.addDraft.copy(installmentPeriodInput = value, validationError = null)
             }
-            state.copy(addDraft = updated)
+            state.copy(addDraft = updated.copy(userTouched = true))
         }
     }
 

@@ -107,7 +107,6 @@ fun DebtDetailScreen(
     if (state.activeAction != null) {
         DebtActionSheet(
             state = state,
-            currency = currency,
             viewModel = viewModel,
             onClose = viewModel::dismissAction,
         )
@@ -115,7 +114,6 @@ fun DebtDetailScreen(
     if (debt?.isMember == true && proposalState.activeForm != null) {
         ProposalFormSheet(
             state = proposalState,
-            currency = currency,
             viewModel = proposalViewModel,
             debt = debt,
             onClose = proposalViewModel::dismissForm,
@@ -300,7 +298,6 @@ internal fun DebtNoteCard(text: String) {
 @Composable
 private fun DebtActionSheet(
     state: DebtDetailUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtDetailViewModel,
     onClose: () -> Unit,
 ) {
@@ -308,7 +305,6 @@ private fun DebtActionSheet(
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         DebtActionForm(
             state = state,
-            currency = currency,
             viewModel = viewModel,
             onSubmit = viewModel::submit,
             onCancel = onClose,
@@ -319,7 +315,6 @@ private fun DebtActionSheet(
 @Composable
 private fun DebtActionForm(
     state: DebtDetailUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtDetailViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
@@ -330,7 +325,9 @@ private fun DebtActionForm(
             AppAmountInput(
                 state = AppAmountInputState(
                     label = stringResource(debtActionAmountLabelRes(action)),
-                    currency = currency.homeCurrency,
+                    // 显示与解析同源于 record 币种（state.amountInputCurrency），
+                    // 不读恒 Base 的环境 display（PR#255 P1）。
+                    currency = state.amountInputCurrency,
                     value = state.amountInput,
                     placeholder = stringResource(R.string.components_amount_input_placeholder),
                     isError = state.validationError != null,

@@ -132,7 +132,11 @@ class GlobalSearchViewModelTest {
         val fake = FakeGlobalSearchActions(
             confirmed = listOf(
                 expense(id = 1, status = "confirmed", merchant = "Tokyo Cafe", amountCents = 1_200L)
-                    .copy(homeCurrency = CurrencyCode.JPY, originalAmountMinor = 1_200L),
+                    .copy(
+                        homeCurrency = CurrencyCode.JPY,
+                        originalCurrencyCode = CurrencyCode.JPY,
+                        originalAmountMinor = 1_200L,
+                    ),
             ),
         )
         val vm = GlobalSearchViewModel(fake)
@@ -148,6 +152,33 @@ class GlobalSearchViewModelTest {
             UiText.res(R.string.global_search_field_amount),
             state.results.single().matchedField,
         )
+    }
+
+    @Test
+    fun amountQueryHitsForeignOriginalLegInItsOwnCurrency() = searchTest {
+        // PR#255 P2 双腿：JPY-home 行、USD 原币 12.50（minor 1250）—— 查询 "12.50"
+        // 按 home(JPY) 解析不出，但按行自身 originalCurrency(USD) 解析原币腿命中。
+        val jpyHomeUsdRow = expense(id = 1, status = "confirmed", merchant = "Tokyo Books", amountCents = 18_518L)
+            .copy(
+                homeCurrency = CurrencyCode.JPY,
+                originalCurrencyCode = CurrencyCode.USD,
+                originalAmountMinor = 1_250L,
+            )
+        // CNY-home 行、JPY 原币 1200 —— 查询 "1200" 按 home(CNY) 是 120000 碰不到，
+        // 按 originalCurrency(JPY) 解析原币腿命中。
+        val cnyHomeJpyRow = expense(id = 2, status = "confirmed", merchant = "Osaka Mart", amountCents = 5_500L)
+            .copy(originalCurrencyCode = CurrencyCode.JPY, originalAmountMinor = 1_200L)
+        val fake = FakeGlobalSearchActions(confirmed = listOf(jpyHomeUsdRow, cnyHomeJpyRow))
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("12.50")
+        advanceUntilIdle()
+        assertEquals(listOf(1L), vm.uiState.value.results.map { it.expense.id })
+
+        vm.setQuery("1200")
+        advanceUntilIdle()
+        assertEquals(listOf(2L), vm.uiState.value.results.map { it.expense.id })
     }
 
     @Test
@@ -170,7 +201,11 @@ class GlobalSearchViewModelTest {
         val fake = FakeGlobalSearchActions(
             confirmed = listOf(
                 expense(id = 1, status = "confirmed", merchant = "Tokyo Cafe", amountCents = 1_250L)
-                    .copy(homeCurrency = CurrencyCode.JPY, originalAmountMinor = 1_250L),
+                    .copy(
+                        homeCurrency = CurrencyCode.JPY,
+                        originalCurrencyCode = CurrencyCode.JPY,
+                        originalAmountMinor = 1_250L,
+                    ),
             ),
         )
         val vm = GlobalSearchViewModel(fake)

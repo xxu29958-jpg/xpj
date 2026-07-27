@@ -27,7 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
@@ -66,7 +65,6 @@ internal fun MemberProposalSection(
     debt: Debt,
     state: MemberProposalUiState,
     viewModel: MemberRepaymentProposalViewModel,
-    currency: CurrencyDisplay,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
         when {
@@ -76,13 +74,13 @@ internal fun MemberProposalSection(
             // Role is the server-authoritative Debt.viewerIsDebtor (§3.2); null = the viewer is not a
             // party to this member Debt (a third ledger member), so neither action card applies.
             debt.viewerIsDebtor == true -> DebtorProposalCard(state = state, viewModel = viewModel)
-            debt.viewerIsDebtor == false -> CreditorProposalCard(debt = debt, state = state, viewModel = viewModel, currency = currency)
+            debt.viewerIsDebtor == false -> CreditorProposalCard(debt = debt, state = state, viewModel = viewModel)
             else -> DebtNoteCard(stringResource(R.string.debt_proposal_not_party_note))
         }
         // ③ 沉降：只已解决进历史 (空集时整卡不渲染，§3.2/3.6)；在途 pending 在上面的动作卡里。
         val resolved = state.proposals.filter { !it.isPending }
         if (resolved.isNotEmpty()) {
-            ResolvedHistoryCard(resolved = resolved, currency = currency)
+            ResolvedHistoryCard(resolved = resolved)
         }
     }
 }
@@ -141,7 +139,6 @@ private fun CreditorProposalCard(
     debt: Debt,
     state: MemberProposalUiState,
     viewModel: MemberRepaymentProposalViewModel,
-    currency: CurrencyDisplay,
 ) {
     val pending = state.pendingProposal
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -167,7 +164,12 @@ private fun CreditorProposalCard(
                 Text(
                     stringResource(
                         R.string.debt_proposal_creditor_pending,
-                        formatDisplayAmount(pending.proposedAmountCents, currency),
+                        // 提出金额按 proposal 自带的服务端 homeCurrencyCode 渲染（record 口径，
+                        // 与确认表单的解析同源），不读恒 Base 的环境 display（PR#255 P1）。
+                        formatDisplayAmount(
+                            pending.proposedAmountCents,
+                            CurrencyDisplay.forRecord(pending.homeCurrencyCode),
+                        ),
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -243,25 +245,24 @@ private fun CreditorForgiveAction(
 @Composable
 internal fun ProposalFormSheet(
     state: MemberProposalUiState,
-    currency: CurrencyDisplay,
     viewModel: MemberRepaymentProposalViewModel,
-    // 宿主欠款：OCC 载体取 rowVersion，金额解析取其服务端 homeCurrencyCode
-    // （JPY 等零小数 home 不 ×100）。注意输入框标签仍按 CurrencyDisplay 恒 Base
-    // 的币种展示（FxContract 登记局限：AppViewModel 从不喂真值）——金额语义按
-    // record home 解析是正确的，只是装饰性币种标签在 JPY 欠款下会显示 ¥(CNY)。
+    // 宿主欠款：OCC 载体取 rowVersion，金额解析取其服务端 homeCurrencyCode。
+    // 金额输入标签同源于 record 币种（CurrencyDisplay.forRecord）——显示与解析同口径
+    // （PR#255 P1：此前标签读恒 Base 的环境 display，JPY 欠款下显示/解析分裂）。
     debt: Debt,
     onClose: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         ProposalForm(
             state = state,
-            currency = currency,
+            currency = recordDisplay,
             viewModel = viewModel,
             onSubmit = {
                 viewModel.submit(
                     expectedRowVersion = debt.rowVersion,
-                    currency = CurrencyCode.fromStorageKey(debt.homeCurrencyCode),
+                    currency = recordDisplay.homeCurrency,
                 )
             },
             onCancel = onClose,

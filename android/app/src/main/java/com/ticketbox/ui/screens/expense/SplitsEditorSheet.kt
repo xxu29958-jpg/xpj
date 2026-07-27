@@ -25,10 +25,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.FxContract
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.EditableSplit
 
 data class SplitsEditorSheetState(
@@ -194,25 +193,26 @@ private fun SplitsReconciliationFooter(
     parentAmountCents: Long?,
     currency: CurrencyCode,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
+    // 显示与保存/解析同源于票据 record 币种（JPY 零小数整数显示整数），
+    // 不读恒 Base 的 LocalCurrencyDisplay（PR#255 P1）。
     val total = drafts.filter { it.included }.sumOf { parseAmountCents(it.amountText, currency) ?: 0L }
     val diff = parentAmountCents?.let { total - it }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(
             ExpenseEditReconciliationLine(
                 label = stringResource(R.string.expense_edit_splits_footer_total_label),
-                value = formatDisplayAmount(total, currencyDisplay),
+                value = formatAmount(total, currency),
             ),
             parentAmountCents?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_splits_footer_bill_label),
-                    value = formatDisplayAmount(it, currencyDisplay),
+                    value = formatAmount(it, currency),
                 )
             },
             diff?.takeIf { it != 0L }?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_splits_footer_diff_label),
-                    value = formatDisplayAmount(it, currencyDisplay),
+                    value = formatAmount(it, currency),
                     emphasis = true,
                     hint = stringResource(R.string.expense_edit_splits_footer_even_hint),
                 )

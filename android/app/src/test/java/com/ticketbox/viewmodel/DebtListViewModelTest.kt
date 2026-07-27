@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
@@ -396,6 +397,56 @@ class DebtListViewModelTest {
         advanceUntilIdle()
         assertEquals("ledgerB", viewModel.state.value.debts.single().publicId)
         assertEquals(false, viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun untouchedDraftBackfillsLedgerHomeCurrencyWhenLoadLands() = runTest(dispatcher) {
+        // PR#255 P1-2：add sheet 在初始列表请求未回时已按 CNY 兜底开好草稿；响应到达后
+        // 未触碰的草稿必须回填账本真实 home 币种（JPY 账本下输 1200 → 1200 minor，不 ×100）。
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+            createResult = Result.success(sampleDebt("created")),
+        )
+        repo.listGate = gate
+        val viewModel = DebtListViewModel(repo)
+        runCurrent()
+        // 加载未回：草稿仍是兜底币种。
+        assertEquals(CurrencyCode.CNY, viewModel.state.value.addDraft.homeCurrency)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.addDraft.homeCurrency)
+        // 列表回来后输入的金额按 JPY 解析（整数即 minor，不 ×100）。
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+    }
+
+    @Test
+    fun touchedDraftKeepsUserInputWhenLoadLands() = runTest(dispatcher) {
+        // PR#255 P1-2：用户已在草稿里输入内容时，列表响应不得回填币种打断已输入内容。
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+        )
+        repo.listGate = gate
+        val viewModel = DebtListViewModel(repo)
+        runCurrent()
+
+        // 加载未回时用户已按兜底口径输入。
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("12.00")
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val draft = viewModel.state.value.addDraft
+        assertEquals(CurrencyCode.CNY, draft.homeCurrency)
+        assertEquals("12.00", draft.amountYuanInput)
+        assertTrue(draft.userTouched)
     }
 }
 

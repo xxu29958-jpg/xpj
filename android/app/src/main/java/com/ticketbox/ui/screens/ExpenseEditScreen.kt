@@ -219,6 +219,7 @@ fun ExpenseEditScreen(
                 sending = state.billSplitInviteSending,
                 message = state.billSplitInviteMessage,
                 messageTone = state.billSplitInviteMessageTone,
+                currency = expense?.homeCurrency ?: FxContract.HomeCurrency,
             ),
             remainingCents = billSplitRemainingCents(state),
             remainingUnavailable = state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,

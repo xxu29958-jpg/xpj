@@ -4,15 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.GlobalSearchActions
-import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.RECENT_SEARCH_LIMIT
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.appendRecentSearch
 import com.ticketbox.domain.model.expenseLedgerMonth
-import com.ticketbox.domain.model.expenseMatchesAmountCents
-import com.ticketbox.domain.model.parseSearchAmountCents
+import com.ticketbox.domain.model.expenseMatchesSearchAmount
 import com.ticketbox.domain.model.searchableCategories
 import com.ticketbox.domain.model.searchableMonths
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -221,10 +218,6 @@ class GlobalSearchViewModel(
             }
             val criteria = SearchCriteria(
                 term = term,
-                amountCents = parseSearchAmountCents(
-                    term,
-                    searchHomeCurrency(pendingCache, confirmedCache),
-                ),
                 category = state.categoryFilter,
                 month = state.monthFilter,
             )
@@ -252,20 +245,6 @@ class GlobalSearchViewModel(
 
 // Pure search mechanics, file-level so the class stays inside the detekt
 // functions-per-class budget; nothing here touches ViewModel state.
-
-/** Home currency the amount leg is parsed in. The search box has no per-query
- *  currency context, so take it from the cached rows' server `home_currency`
- *  (uniform within a ledger); while both caches are empty there is nothing to
- *  amount-match anyway, so the display-home default is only a placeholder. */
-private fun searchHomeCurrency(
-    pending: List<Expense>,
-    confirmed: List<Expense>,
-): CurrencyCode =
-    (pending.asSequence() + confirmed.asSequence())
-        .firstOrNull()
-        ?.homeCurrency
-        ?: FxContract.HomeCurrency
-
 private fun sliceForScope(
     pendingMatches: List<GlobalSearchResultUi>,
     confirmedMatches: List<GlobalSearchResultUi>,
@@ -301,7 +280,8 @@ private fun Expense.toSearchResult(
  *  match. A blank term with active filters matches every filtered row. */
 private fun Expense.matchTerm(criteria: SearchCriteria): UiText? {
     if (criteria.term.isBlank()) return UiText.res(R.string.global_search_field_all)
-    val amountHit = criteria.amountCents != null && expenseMatchesAmountCents(this, criteria.amountCents)
+    // 金额腿逐行双腿各自口径（home 行 home 解析、外币 original 行原币解析，PR#255 P2）。
+    val amountHit = expenseMatchesSearchAmount(this, criteria.term)
     val textMatch = textSearchMatch(criteria.term)
     return when {
         textMatch != null -> textMatch
@@ -339,7 +319,6 @@ private fun Expense.textSearchMatch(term: String): UiText? {
 
 private data class SearchCriteria(
     val term: String,
-    val amountCents: Long?,
     val category: String,
     val month: String,
 )

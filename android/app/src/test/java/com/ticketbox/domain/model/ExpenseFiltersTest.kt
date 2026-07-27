@@ -557,6 +557,37 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun expenseMatchesSearchAmountParsesEachLegInItsOwnCurrency() {
+        // JPY-home、USD 原币：查 "12.50" 按 USD 解析原币腿命中（home 零小数解析不出，旧实现丢失）。
+        val jpyHomeUsdOriginal = expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 18_518)
+            .copy(
+                homeCurrency = CurrencyCode.JPY,
+                originalCurrencyCode = CurrencyCode.USD,
+                originalAmountMinor = 1_250,
+            )
+        assertTrue(expenseMatchesSearchAmount(jpyHomeUsdOriginal, "12.50"))
+        // home 腿仍按 JPY：查 "18518" 命中 home minor。
+        assertTrue(expenseMatchesSearchAmount(jpyHomeUsdOriginal, "18518"))
+        // 反巧合：查 "1250" 不得撞上 USD minor 1250（跨 exponent 数值巧合，不是用户语义）。
+        assertFalse(expenseMatchesSearchAmount(jpyHomeUsdOriginal, "1250"))
+
+        // CNY-home、JPY 原币：查 "1200" 按 JPY 解析原币腿命中（旧实现解析成 120000 错配）。
+        val cnyHomeJpyOriginal = expense(id = 2, category = "餐饮", expenseTime = null, amountCents = 5_500)
+            .copy(
+                originalCurrencyCode = CurrencyCode.JPY,
+                originalAmountMinor = 1_200,
+            )
+        assertTrue(expenseMatchesSearchAmount(cnyHomeJpyOriginal, "1200"))
+        assertTrue(expenseMatchesSearchAmount(cnyHomeJpyOriginal, "55"))
+
+        // 同币种 legacy 行：original 腿与 home 共用一次解析，行为与 expenseMatchesAmountCents 一致。
+        val sameCurrency = expense(id = 3, category = "餐饮", expenseTime = null, amountCents = 9_900)
+            .copy(originalAmountMinor = 1_250)
+        assertTrue(expenseMatchesSearchAmount(sameCurrency, "12.5"))
+        assertFalse(expenseMatchesSearchAmount(sameCurrency, "12.345"))
+    }
+
+    @Test
     fun searchableMonthsAndCategoriesAreDerivedFromCaches() {
         val items = listOf(
             expense(id = 1, category = "餐饮", expenseTime = "2026-05-10T08:00:00Z"),
