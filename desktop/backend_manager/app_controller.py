@@ -294,18 +294,27 @@ class AppController:
                 app_token=session.session_token,
             )
 
-    def note_product_bridge_auth_failure(self, status_code: int) -> bool:
-        """A bridged product request was rejected: drop the dead credential.
+    def note_product_bridge_auth_failure(self, status_code: int, failed_token: str) -> bool:
+        """A bridged product request was rejected: retire exactly that credential.
 
         The BFF relays backend responses verbatim, so this hook is the only
-        place a 401 from the product surface can retire the stored token —
-        ``product_principal()`` must then report unconfigured and the manager
-        card returns to pairing instead of retrying the dead credential.
+        place a 401 from the product surface can retire the stored token.
+        Deletion is conditional on the failed token still being the stored
+        one: a request that raced a ledger switch may carry the already
+        superseded credential — the fresh session must not be wiped with it.
+        Returns True only when the stored credential was actually cleared
+        (drives whether the bridge renders the rebind recovery page).
         """
         if status_code != 401:
             return False
         with self._product_session_lock:
             config = self._product_config(require_available=False)
+            session = self._load_product_session(config)
+            if session is None or not secrets.compare_digest(
+                session.session_token,
+                failed_token,
+            ):
+                return False
             with suppress(ProductCredentialError):
                 self._product_session_deleter(config.expected_installation_id)
         return True

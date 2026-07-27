@@ -289,7 +289,7 @@ class Controller(Protocol):
     def product_principal(self) -> dict: ...
     def product_ledgers(self) -> list[dict]: ...
     def product_bridge_context(self): ...
-    def note_product_bridge_auth_failure(self, status_code: int) -> bool: ...
+    def note_product_bridge_auth_failure(self, status_code: int, failed_token: str) -> bool: ...
     def pair_product_principal(self, pairing_code: str) -> dict: ...
     def switch_product_principal_ledger(self, ledger_id: str) -> dict: ...
     def unpair_product_principal(self) -> dict: ...
@@ -498,8 +498,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(413, b"request rejected", "text/plain; charset=utf-8")
             return
         try:
+            context = srv.controller.product_bridge_context()
             response = relay(
-                srv.controller.product_bridge_context(),
+                context,
                 method=self.command,
                 raw_target=self.path,
                 client_headers=self.headers,
@@ -521,10 +522,11 @@ class _Handler(BaseHTTPRequestHandler):
         except WebBridgeError as exc:
             self._send(exc.status, str(exc).encode("utf-8"), "text/plain; charset=utf-8")
             return
-        # A bridged 401 means the stored credential is dead: clear it BEFORE
-        # rendering, so the next principal read reports unconfigured and the
-        # manager card returns to pairing instead of retrying forever.
-        if srv.controller.note_product_bridge_auth_failure(response.status):
+        # A bridged 401 means the presented credential is dead: clear it
+        # BEFORE rendering — but only when it is still the stored one, so a
+        # request that raced a switch never wipes the fresh session. The
+        # recovery page renders only when the credential was truly retired.
+        if srv.controller.note_product_bridge_auth_failure(response.status, context.app_token):
             path = urllib.parse.urlsplit(self.path).path
             if not path.startswith("/api/"):
                 self._send(

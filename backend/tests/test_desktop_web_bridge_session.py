@@ -439,3 +439,40 @@ def test_desktop_bridge_database_error_returns_503(
 
     assert response.status_code == 503
     assert response.json()["error"] == "server_error"
+
+
+def test_desktop_bridge_membership_loss_is_a_dead_credential_not_a_mismatch(
+    desktop_bridge_client: TestClient,
+) -> None:
+    """Losing the bound membership retires the desktop credential (401), so
+    the Manager's 401 cleanup path can re-pair — this is NOT the ?ledger_id=
+    mismatch case, which stays 403."""
+    principal = _mint_principal(role="member")
+    with SessionLocal() as db:
+        membership = db.scalar(
+            select(LedgerMember)
+            .where(LedgerMember.ledger_id == principal.ledger_id)
+            .where(LedgerMember.account_id == principal.account_id)
+        )
+        assert membership is not None
+        membership.disabled_at = now_utc()
+        db.commit()
+
+    response = desktop_bridge_client.get(
+        "/web/pending",
+        headers=_principal_headers(principal.token),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+
+    # The distinct ?ledger_id= mismatch case still answers 403.
+    mismatched = _mint_principal(role="member")
+    mismatch_response = desktop_bridge_client.get(
+        "/web/pending?ledger_id=tester_1",
+        headers=_principal_headers(mismatched.token),
+        follow_redirects=False,
+    )
+    assert mismatch_response.status_code == 403
+    assert mismatch_response.json()["error"] == "ledger_forbidden"

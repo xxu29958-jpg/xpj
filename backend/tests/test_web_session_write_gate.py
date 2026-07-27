@@ -69,3 +69,56 @@ def test_write_gate_denies_when_ledger_is_not_an_option() -> None:
     with pytest.raises(AppError) as exc:
         _require_selected_ledger_write(options, "L2-not-listed")
     assert exc.value.status_code == 403
+
+
+class _DesktopSessionRequest:
+    """Minimal stand-in for a Request carrying a verified desktop bridge session."""
+
+    def __init__(self, ledger_id: str, role: str, *, ledger_name: str = "外部家庭账本") -> None:
+        auth = type("_Auth", (), {"ledger_id": ledger_id, "role": role, "ledger_name": ledger_name})()
+        self.state = type(
+            "_State",
+            (),
+            {"web_session_auth": auth, "web_session_platform": "desktop"},
+        )()
+
+
+def test_desktop_session_write_gate_uses_scoped_session_ledger_off_roster() -> None:
+    # The console roster lacks the bound ledger entirely; the write gate must
+    # authorize from the authenticated session, not the console enumeration.
+    options = [_option("L1", "owner")]
+    request = _DesktopSessionRequest("L2", "member")
+
+    selected = _resolve_selected_ledger_id(None, None, options, request=request)
+
+    assert selected == "L2"
+    assert [opt.ledger_id for opt in options] == ["L2"]
+    assert options[0].role == "member"
+    assert options[0].name == "外部家庭账本"
+    _require_selected_ledger_write(options, selected)  # no raise
+
+
+def test_desktop_session_viewer_cannot_write_off_roster() -> None:
+    options = [_option("L1", "owner")]
+    request = _DesktopSessionRequest("L2", "viewer")
+
+    selected = _resolve_selected_ledger_id(None, None, options, request=request)
+
+    with pytest.raises(AppError) as exc:
+        _require_selected_ledger_write(options, selected)
+    assert exc.value.error == "permission_denied"
+    assert exc.value.status_code == 403
+
+
+def test_desktop_session_options_scoped_to_bound_ledger_on_roster() -> None:
+    # The bound ledger IS in the console roster, but with the console's role:
+    # the session's role wins and every foreign row is dropped.
+    options = [_option("L1", "owner"), _option("L2", "viewer")]
+    request = _DesktopSessionRequest("L2", "member", ledger_name="家庭账本")
+
+    selected = _resolve_selected_ledger_id(None, None, options, request=request)
+
+    assert selected == "L2"
+    assert [opt.ledger_id for opt in options] == ["L2"]
+    assert options[0].role == "member"
+    _require_selected_ledger_write(options, selected)  # no raise

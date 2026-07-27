@@ -264,7 +264,7 @@ class _Controller:
     def product_bridge_context(self) -> BridgeContext:
         return BridgeContext(backend_origin=self.backend_origin, app_token=_APP_TOKEN)
 
-    def note_product_bridge_auth_failure(self, status_code: int) -> bool:
+    def note_product_bridge_auth_failure(self, status_code: int, failed_token: str) -> bool:
         return False
 
 

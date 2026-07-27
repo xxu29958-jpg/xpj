@@ -129,6 +129,34 @@ def _stamp_session_role(options: list[LedgerOption] | None, session_auth) -> Non
             return
 
 
+def _scope_options_for_desktop_session(options: list[LedgerOption] | None, session_auth) -> None:
+    """Replace a desktop bridge session's option list with its bound ledger.
+
+    The console enumeration is the server-owner's full membership roster;
+    a bridged desktop session is bound to exactly one ledger (foreign
+    ``?ledger_id=`` is refused by the middleware), so every downstream
+    consumer — the write gate AND the rendered switcher — must see only the
+    session's ledger with the session's role. When the bound ledger is not
+    even in the console roster (a member of someone else's ledger), the
+    option is derived from the session's own record.
+    """
+    if options is None:
+        return
+    scoped = [opt for opt in options if opt.ledger_id == session_auth.ledger_id]
+    if not scoped:
+        scoped = [
+            LedgerOption(
+                ledger_id=session_auth.ledger_id,
+                name=session_auth.ledger_name,
+                role=session_auth.role,
+                is_default=False,
+                pending_count=0,
+                confirmed_count=0,
+            )
+        ]
+    options[:] = scoped
+
+
 def _resolve_selected_ledger_id(
     db: Session,
     requested: str | None,
@@ -156,6 +184,11 @@ def _resolve_selected_ledger_id(
             # role on its ledger, NOT the owner-console role — stamp it on so the
             # write-gate + rendered role reflect the session (viewer stays RO).
             _stamp_session_role(options, session_auth)
+            if getattr(request.state, "web_session_platform", "") == "desktop":
+                # Desktop bridge principals are bound to one ledger: scope the
+                # option list in place so both the write gate and the switcher
+                # operate on the session ledger (never the console roster).
+                _scope_options_for_desktop_session(options, session_auth)
             return session_auth.ledger_id
 
     opts = options if options is not None else _list_ledger_options(db)
@@ -278,27 +311,6 @@ def _base_ctx(
     selected_month: str | None = None,
     sidebar_counts: tuple[int, int] | None = None,
 ) -> dict:
-    # Desktop bridge principal: the option list comes from the Owner Console
-    # enumeration, which is the server-owner's full membership roster. A
-    # bridged desktop session is ledger-bound — foreign rows would leak
-    # names/roles/counts and are unreachable anyway (the middleware refuses
-    # foreign ?ledger_id=). Scope the rendered list to the bound ledger.
-    session_auth = getattr(request.state, "web_session_auth", None)
-    if session_auth is not None and getattr(request.state, "web_session_platform", "") == "desktop":
-        options = [opt for opt in options if opt.ledger_id == session_auth.ledger_id]
-        if not options:
-            # The bound ledger is not even in the console roster (a member of
-            # someone else's ledger): fall back to the session's own record.
-            options = [
-                LedgerOption(
-                    ledger_id=session_auth.ledger_id,
-                    name=session_auth.ledger_name,
-                    role=session_auth.role,
-                    is_default=False,
-                    pending_count=0,
-                    confirmed_count=0,
-                )
-            ]
     selected = _selected_option(options, selected_ledger_id)
     pending_count, suspected_count = sidebar_counts or (0, 0)
     return {

@@ -1069,9 +1069,23 @@ def test_note_product_bridge_auth_failure_clears_dead_credential() -> None:
     sessions, _recoveries, store = _stores(current)
     controller = AppController(FakeRuntime(), _config(), **store)
 
-    assert controller.note_product_bridge_auth_failure(403) is False
+    assert controller.note_product_bridge_auth_failure(403, current.session_token) is False
     assert sessions[_INSTALLATION_ID] == current
 
-    assert controller.note_product_bridge_auth_failure(401) is True
+    assert controller.note_product_bridge_auth_failure(401, current.session_token) is True
     assert sessions == {}
     assert controller.product_principal() == {"configured": False}
+
+
+def test_bridge_auth_failure_never_wipes_a_fresher_session() -> None:
+    """Race: the relayed request carried the already-superseded token A while
+    the store now holds the valid B — the 401 must retire A only, never B."""
+    replacement = _product_session(token="tbx-fresh-B", ledger_id="family")
+    sessions, _recoveries, store = _stores(replacement)
+    controller = AppController(FakeRuntime(), _config(), **store)
+
+    deleted = controller.note_product_bridge_auth_failure(401, "tbx-superseded-A")
+
+    assert deleted is False
+    assert sessions[_INSTALLATION_ID].session_token == "tbx-fresh-B"
+    assert controller.product_principal()["ledger_id"] == "family"

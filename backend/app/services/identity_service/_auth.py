@@ -293,7 +293,17 @@ def authenticate_desktop_session_token(db: Session, token_value: str) -> AuthCon
         token.grace_until = None
         db.commit()
         raise AppError("invalid_token", status_code=401)
-    return _context_from_token(db, token)
+    try:
+        return _context_from_token(db, token)
+    except AppError as exc:
+        if exc.error == "ledger_forbidden":
+            # The desktop session is bound to exactly one ledger; losing that
+            # membership retires the credential outright — it can never
+            # succeed again, so report death (401), not an authorization
+            # mismatch. The ?ledger_id= mismatch case lives in the
+            # middleware's own binding check and stays 403 there.
+            raise AppError("invalid_token", status_code=401) from exc
+        raise
 
 
 def authenticate_web_session_token(
