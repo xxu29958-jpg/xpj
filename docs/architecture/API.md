@@ -1655,7 +1655,7 @@ Authorization: Bearer <session_token>
       "kind_label": "收入",
       "resource_id": "income-public-id",
       "title": "六月工资",
-      "detail": "2026-06 到账 · ¥1234.00 · 28 号",
+      "detail": "2026-06 到账 · ¥1,234.00 · 28 号",
       "removed_at": "2026-06-29T08:00:00Z",
       "retention_label": "长期保留",
       "expected_row_version": 3

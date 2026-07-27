@@ -4,16 +4,20 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models import (
     Budget,
     CategoryPreference,
     CategoryRule,
+    Goal,
     LedgerMember,
     MonthlyIncomePlan,
+    RecurringItem,
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyUpdateRequest
 from app.services.budget_service import archive_monthly_budget, upsert_monthly_budget
@@ -22,7 +26,10 @@ from app.services.category_preference_service import (
     ensure_category_preference_for_name,
 )
 from app.services.classify_service import create_rule, delete_rule
+from app.services.goal_service import archive_goal
 from app.services.income_plan_service import archive_income_plan, create_income_plan
+from app.services.recurring_service import archive_recurring_item
+from app.services.soft_delete_policy import recycle_bin_retention_delta
 from app.services.time_service import now_utc
 
 
@@ -30,6 +37,7 @@ def _seed_archived_income(
     *,
     tenant_id: str = "owner",
     label: str = "回收站收入",
+    amount_cents: int = 123400,
 ) -> tuple[str, int]:
     with SessionLocal() as db:
         plan = create_income_plan(
@@ -37,7 +45,7 @@ def _seed_archived_income(
             tenant_id=tenant_id,
             label=label,
             source_type="salary",
-            amount_cents=123400,
+            amount_cents=amount_cents,
             pay_day=28,
             frequency="one_time",
             income_month="2026-06",
@@ -336,3 +344,142 @@ def test_web_recycle_bin_workbench_viewer_readonly(
     # 空账本 → 空态：标题 + 同域 (分类/商家/标签) 行动链接。
     assert "回收站是空的" in body
     assert f'href="/web/categories?ledger_id={ledger_id}"' in body
+
+
+def _seed_archived_goal_for_label() -> None:
+    with SessionLocal() as db:
+        now = now_utc()
+        goal = Goal(
+            tenant_id="owner",
+            name="回收站目标",
+            goal_type="spending_limit",
+            period="monthly",
+            month="2026-06",
+            category="餐饮",
+            target_amount_cents=10000,
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(goal)
+        db.commit()
+        db.refresh(goal)
+        archive_goal(
+            db,
+            tenant_id="owner",
+            public_id=goal.public_id,
+            timezone_name="Asia/Shanghai",
+        )
+
+
+def _seed_archived_recurring_for_label() -> None:
+    with SessionLocal() as db:
+        now = now_utc()
+        item = RecurringItem(
+            tenant_id="owner",
+            merchant_key="recycle-currency-recurring",
+            merchant_name="回收站固定支出",
+            frequency="monthly",
+            baseline_amount_cents=6800,
+            last_amount_cents=6800,
+            occurrence_count=3,
+            status="active",
+            confidence="high",
+            source="candidate",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        archive_recurring_item(db, tenant_id="owner", public_id=item.public_id)
+
+
+def test_recycle_bin_amount_labels_follow_jpy_home_zero_fraction(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    """C5b-3: JPY home → 回收站金额按零小数渲染（¥5,000 而非 ¥50.00），
+    收入/预算混合行同一规则（行无币种列，金额即 home 币种 minor units）。"""
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        _seed_archived_income(label="JPY收入", amount_cents=5000)
+        month, _row_version = _seed_archived_budget()
+
+        response = client.get("/api/recycle-bin", headers=identity.app_headers)
+
+        assert response.status_code == 200
+        details = {item["title"]: item["detail"] for item in response.json()["items"]}
+        assert "¥5,000" in details["JPY收入"]
+        assert "50.00" not in details["JPY收入"]
+        assert "¥66,000" in details[f"{month} 月度预算"]
+        assert "660.00" not in details[f"{month} 月度预算"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_recycle_bin_amount_labels_follow_cny_home_two_fraction(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    """C5b-3: CNY home → 两位小数；收入/目标/固定支出混合行都走 divmod 标签。"""
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
+    get_settings.cache_clear()
+    try:
+        _seed_archived_income(label="两位小数收入", amount_cents=5000)
+        _seed_archived_goal_for_label()
+        _seed_archived_recurring_for_label()
+
+        response = client.get("/api/recycle-bin", headers=identity.app_headers)
+
+        assert response.status_code == 200
+        details = {item["title"]: item["detail"] for item in response.json()["items"]}
+        assert "¥50.00" in details["两位小数收入"]
+        assert "¥100.00" in details["回收站目标"]
+        assert "¥68.00" in details["回收站固定支出"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_recycle_bin_hides_rows_beyond_retention_window(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    """C5b-3: 超窗行不进列表；窗内金额行的币种标签不受影响。"""
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        _seed_archived_income(label="窗内收入", amount_cents=5000)
+        preference_id, _row_version = _seed_deleted_category_preference()
+        with SessionLocal() as db:
+            preference = db.scalar(
+                select(CategoryPreference).where(
+                    CategoryPreference.public_id == preference_id
+                )
+            )
+            assert preference is not None
+            preference.deleted_at = (
+                now_utc() - recycle_bin_retention_delta() - timedelta(days=1)
+            )
+            db.commit()
+
+        response = client.get("/api/recycle-bin", headers=identity.app_headers)
+
+        assert response.status_code == 200
+        items = response.json()["items"]
+        titles = [item["title"] for item in items]
+        assert "窗内收入" in titles
+        assert "回收分类" not in titles
+        income_detail = next(
+            item["detail"] for item in items if item["title"] == "窗内收入"
+        )
+        assert "¥5,000" in income_detail
+    finally:
+        get_settings.cache_clear()
