@@ -1647,3 +1647,176 @@ def test_reused_provisional_with_mismatched_code_keeps_the_record() -> None:
     assert error.value.error == "invalid_pairing_code"
     # A possibly-committed ceremony is never cleared by a mismatched retry.
     assert _INSTALLATION_ID in recoveries
+
+
+# ── Round-5 regressions: provisional TTL escape, gate P0-guard, gate-revoke branch ──
+
+
+def test_provisional_attempt_expires_so_a_regenerated_code_can_pair() -> None:
+    sessions, recoveries, store = _stores(None)
+    seen_attempts: list[tuple[str, str]] = []
+    calls = {"count": 0}
+
+    def lossy_pairer(_origin, _code, *, attempt, **_kwargs) -> PendingProductSession:
+        calls["count"] += 1
+        seen_attempts.append(attempt)
+        if calls["count"] == 1:
+            raise ProductDataError("synthetic response loss", status_code=503)
+        return PendingProductSession(
+            activation_attempt_id=attempt[0],
+            activation_attempt_secret=attempt[1],
+            session=ProductSession(
+                session_token=derive_desktop_pending_token(attempt[1], attempt[0]),
+                account_name="我",
+                ledger_id="owner",
+                ledger_name="我的小票夹",
+                device_name="小票夹 Desktop",
+                role="owner",
+                expires_at=_STAGED_EXPIRY,
+            ),
+        )
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lossy_pairer,
+        product_session_activator=_activate_pending,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError):
+        controller.pair_product_principal("12345678")
+    assert _INSTALLATION_ID in recoveries
+
+    # The user lost the original code and the provisional proof aged past the
+    # backend pending TTL: it is definitively closed, so it must not wedge
+    # this installation behind proof/code mismatches.
+    stale = recoveries[_INSTALLATION_ID]
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=stale.activation_attempt_id,
+        activation_attempt_secret=stale.activation_attempt_secret,
+        activation_expires_at="2020-01-01T00:00:00+00:00",
+    )
+    assert controller.product_principal() == {"configured": False}
+    assert recoveries == {}
+
+    projection = controller.pair_product_principal("87654321")
+    assert projection["configured"] is True
+    assert seen_attempts[0] != seen_attempts[1], "expired provisional must yield a fresh attempt"
+    assert recoveries == {}
+
+
+def test_pair_gate_revokes_owed_superseded_when_reconcile_retry_failed() -> None:
+    """P2-1 branch: reconcile's owed retry fails transiently, then the pair
+    gate's own revoke succeeds and lets the pair proceed."""
+    attempt_id, attempt_secret = new_activation_attempt()
+    derived = derive_desktop_pending_token(attempt_secret, attempt_id)
+    current = _product_session(token=derived, ledger_id="family")
+    sessions, recoveries, store = _stores(current)
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-old-A",
+    )
+    revoked: list[str] = []
+
+    def flaky_revoker(_origin, token, **_kwargs) -> None:
+        revoked.append(token)
+        if len(revoked) == 1:
+            raise ProductDataError("backend unreachable", status_code=503)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=lambda _origin, _code, *, attempt, **_kwargs: PendingProductSession(
+            activation_attempt_id=attempt[0],
+            activation_attempt_secret=attempt[1],
+            session=ProductSession(
+                session_token=derive_desktop_pending_token(attempt[1], attempt[0]),
+                account_name="我",
+                ledger_id="family",
+                ledger_name="家庭账本",
+                device_name="小票夹 Desktop",
+                role="member",
+                expires_at=_STAGED_EXPIRY,
+            ),
+        ),
+        product_session_activator=_activate_pending,
+        product_session_revoker=flaky_revoker,
+        **store,
+    )
+
+    projection = controller.pair_product_principal("12345678")
+
+    assert projection["configured"] is True
+    assert revoked == ["tbx-old-A", "tbx-old-A"]
+    assert recoveries == {}
+
+
+class _FlippingRuntime:
+    def __init__(self, healthy: RuntimeStatus, degraded: RuntimeStatus) -> None:
+        self._healthy = healthy
+        self._degraded = degraded
+        self.calls = 0
+
+    def status(self) -> RuntimeStatus:
+        self.calls += 1
+        return self._healthy if self.calls == 1 else self._degraded
+
+
+def test_pair_gate_never_revokes_superseded_that_is_still_the_live_primary() -> None:
+    """P2-2 race: config check passes healthy, reconcile's availability check
+    flips negative and early-returns, leaving an uncommitted ceremony whose
+    superseded IS the live primary at the pair gate."""
+    healthy = FakeRuntime().status()
+    degraded = _DegradedRuntime().status()
+    current = _product_session(ledger_id="owner")
+    sessions, recoveries, store = _stores(current)
+    attempt_id, attempt_secret = new_activation_attempt()
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="member",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token=current.session_token,
+    )
+    revoked: list[str] = []
+
+    controller = AppController(
+        _FlippingRuntime(healthy, degraded),
+        _config(),
+        product_session_pairer=lambda _origin, _code, *, attempt, **_kwargs: PendingProductSession(
+            activation_attempt_id=attempt[0],
+            activation_attempt_secret=attempt[1],
+            session=ProductSession(
+                session_token=derive_desktop_pending_token(attempt[1], attempt[0]),
+                account_name="我",
+                ledger_id="owner",
+                ledger_name="我的小票夹",
+                device_name="小票夹 Desktop",
+                role="owner",
+                expires_at=_STAGED_EXPIRY,
+            ),
+        ),
+        product_session_activator=_activate_pending,
+        product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        **store,
+    )
+
+    projection = controller.pair_product_principal("12345678")
+
+    # The live primary was never at risk: no direct revoke, only the stale
+    # attempt record dropped; the re-pair completed through the normal flow.
+    assert projection["configured"] is True
+    assert current.session_token not in revoked
+    assert recoveries == {}

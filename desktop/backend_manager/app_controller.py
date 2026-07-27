@@ -7,6 +7,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import suppress
+from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 
 from backend_manager.config import ConfigError, ManagerConfig
@@ -66,6 +67,30 @@ class ManagerShuttingDownError(RuntimeError):
 # Attempt-level terminal answers: the ceremony cannot be replayed, so the
 # provisional record must go (distinct from a mere wrong-code rejection).
 _TERMINAL_ATTEMPT_ERRORS = frozenset({"pairing_attempt_expired", "pairing_attempt_closed"})
+
+# A provisional pair attempt is only replayable while the backend's staged
+# pending credential could still be live (300s TTL, plus a clock-skew margin).
+_PROVISIONAL_ATTEMPT_TTL_SECONDS = 300
+_PROVISIONAL_ATTEMPT_EXPIRY_MARGIN_SECONDS = 60
+
+
+def _provisional_deadline() -> str:
+    return (
+        datetime.now(UTC) + timedelta(seconds=_PROVISIONAL_ATTEMPT_TTL_SECONDS)
+    ).isoformat()
+
+
+def _provisional_expired(recovery: RebindRecovery) -> bool:
+    """Whether a provisional pair attempt is definitively closed server-side."""
+    if recovery.activation_expires_at is None:
+        # Written before provisional deadlines existed: age unprovable — clear
+        # rather than wedge the installation behind an unreplayable proof.
+        return True
+    try:
+        deadline = datetime.fromisoformat(recovery.activation_expires_at).timestamp()
+    except ValueError:
+        return True
+    return time.time() > deadline + _PROVISIONAL_ATTEMPT_EXPIRY_MARGIN_SECONDS
 
 
 def _snapshot_product_available(snapshot: RuntimeStatus) -> bool:
@@ -378,17 +403,24 @@ class AppController:
         )
         # Persist the attempt proof BEFORE the pairing code is consumed: a
         # response loss or process death after the backend commits would
-        # otherwise orphan the staged credential forever ( the one-time code
+        # otherwise orphan the staged credential forever (the one-time code
         # rejects any fresh attempt). A retry reuses the exact same proof.
         # But never overwrite a completed ceremony whose superseded revoke is
         # still owed: settle that duty first (same semantics as unpair —
         # transient failure refuses to start the new pair and keeps the record).
+        # P0 guard: only a genuinely orphaned superseded may be revoked — when
+        # the failed ceremony never displaced A, A is still the live primary
+        # and only its stale attempt record is dropped, never the credential.
         existing = self._load_rebind_recovery(config)
         if existing is not None and existing.ledger_id:
-            if existing.superseded_session_token and not self._revoke_superseded_session(
+            owed = existing.superseded_session_token
+            owed_is_orphaned = owed and (
+                current is None or not secrets.compare_digest(current.session_token, owed)
+            )
+            if owed_is_orphaned and not self._revoke_superseded_session(
                 config,
                 loopback_origin,
-                existing.superseded_session_token,
+                owed,
             ):
                 raise ProductDataError(
                     "旧凭据尚未完成清理，请稍后重试绑定。",
@@ -398,6 +430,17 @@ class AppController:
             with suppress(ProductDataError):
                 self._delete_rebind_recovery(config)
         provisional = self._load_rebind_recovery(config)
+        if (
+            provisional is not None
+            and not provisional.ledger_id
+            and _provisional_expired(provisional)
+        ):
+            # Past the pending TTL (plus margin), the backend receipt is
+            # closed by construction — drop the proof so a regenerated
+            # code can pair again instead of wedging this installation.
+            with suppress(ProductDataError):
+                self._delete_rebind_recovery(config)
+            provisional = None
         if provisional is not None and not provisional.ledger_id:
             attempt = (
                 provisional.activation_attempt_id,
@@ -412,6 +455,7 @@ class AppController:
                 RebindRecovery(
                     activation_attempt_id=attempt[0],
                     activation_attempt_secret=attempt[1],
+                    activation_expires_at=_provisional_deadline(),
                 ),
             )
         try:
@@ -624,7 +668,12 @@ class AppController:
         if not recovery.ledger_id:
             # Provisional pair attempt (persisted before the pairing code was
             # consumed): only an explicit pair() call completes it — a passive
-            # status read must never spend the proof.
+            # status read must never spend the proof. Once the backend's
+            # pending TTL has definitively lapsed, the proof is dead weight:
+            # drop it so a regenerated code can pair again.
+            if _provisional_expired(recovery):
+                with suppress(ProductDataError):
+                    self._delete_rebind_recovery(config)
             return current
         if not self._product_available():
             # The backend on the configured port is not identity-verified
