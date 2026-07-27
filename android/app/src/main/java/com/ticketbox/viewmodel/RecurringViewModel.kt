@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecurringCandidate
@@ -12,7 +13,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -38,36 +38,45 @@ class RecurringViewModel(
     private val repository: RecurringActions,
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(RecurringUiState(canModify = repository.canModifyLedger()))
+    private val _uiState = MutableStateFlow(RecurringUiState(canModify = false))
     val uiState: StateFlow<RecurringUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0
+    private var refreshGeneration = 0
+    private var activeBinding: LogicalSessionBinding? = null
+    private var activeCanModify = false
 
     init {
-        observeLedgerChanges()
-        refresh()
-    }
-
-    private fun observeLedgerChanges() {
         viewModelScope.launch {
-            repository.observeActiveLedgerId()
+            repository.observeActiveLedgerAccess()
                 .distinctUntilChanged()
-                .drop(1)
-                .collect {
+                .collect { access ->
+                    activeBinding = access?.binding
+                    activeCanModify = access?.canModify ?: false
                     requestGeneration += 1
                     _uiState.value = RecurringUiState(
-                        loading = true,
-                        itemsLoadState = RecurringListLoadState.Loading,
-                        candidatesLoadState = RecurringListLoadState.Loading,
-                        canModify = repository.canModifyLedger(),
+                        loading = access != null,
+                        itemsLoadState = if (access == null) {
+                            RecurringListLoadState.Unknown
+                        } else {
+                            RecurringListLoadState.Loading
+                        },
+                        candidatesLoadState = if (access == null) {
+                            RecurringListLoadState.Unknown
+                        } else {
+                            RecurringListLoadState.Loading
+                        },
+                        canModify = access?.canModify ?: false,
                     )
-                    refresh()
+                    if (access != null) refresh()
                 }
         }
     }
 
     fun refresh() {
+        val binding = activeBinding ?: return
+        val generation = requestGeneration
+        val refresh = ++refreshGeneration
         viewModelScope.launch {
-            val generation = requestGeneration
             _uiState.update {
                 it.copy(
                     loading = true,
@@ -75,12 +84,12 @@ class RecurringViewModel(
                     candidatesLoadState = RecurringListLoadState.Loading,
                     message = null,
                     messageTone = MessageTone.Neutral,
-                    canModify = repository.canModifyLedger(),
+                    canModify = activeCanModify,
                 )
             }
-            val itemsResult = repository.items(includeArchived = true)
-            val candidatesResult = repository.candidates()
-            if (requestGeneration != generation) return@launch
+            val itemsResult = repository.items(binding, includeArchived = true)
+            val candidatesResult = repository.candidates(binding)
+            if (requestGeneration != generation || refreshGeneration != refresh) return@launch
             val message = listOf(itemsResult, candidatesResult)
                 .firstOrNull { it.isFailure }
                 ?.exceptionOrNull()
@@ -94,7 +103,7 @@ class RecurringViewModel(
                     candidates = candidatesResult.getOrElse { state.candidates },
                     itemsLoadState = itemsResult.toRecurringListLoadState(),
                     candidatesLoadState = candidatesResult.toRecurringListLoadState(),
-                    canModify = repository.canModifyLedger(),
+                    canModify = activeCanModify,
                 )
             }
         }
@@ -111,7 +120,7 @@ class RecurringViewModel(
             return
         }
         mutate(
-            action = { repository.confirmCandidate(candidate) },
+            action = { binding -> repository.confirmCandidate(binding, candidate) },
             onSuccessState = { state, item ->
                 state.copy(
                     items = state.items.withRecurringItem(item),
@@ -122,24 +131,25 @@ class RecurringViewModel(
     }
 
     fun pause(publicId: String, expectedRowVersion: Long) {
-        mutate(action = { repository.pause(publicId, expectedRowVersion) })
+        mutate(action = { binding -> repository.pause(binding, publicId, expectedRowVersion) })
     }
 
     fun resume(publicId: String, expectedRowVersion: Long) {
-        mutate(action = { repository.resume(publicId, expectedRowVersion) })
+        mutate(action = { binding -> repository.resume(binding, publicId, expectedRowVersion) })
     }
 
     fun archive(publicId: String) {
-        mutate(action = { repository.archive(publicId) })
+        mutate(action = { binding -> repository.archive(binding, publicId) })
     }
 
     private fun mutate(
-        action: suspend () -> Result<RecurringItem>,
+        action: suspend (LogicalSessionBinding) -> Result<RecurringItem>,
         onSuccessState: (RecurringUiState, RecurringItem) -> RecurringUiState = { state, item ->
             state.copy(items = state.items.withRecurringItem(item))
         },
     ) {
-        if (!repository.canModifyLedger()) {
+        val binding = activeBinding
+        if (binding == null || !repository.canModifyLedger()) {
             _uiState.update {
                 it.copy(
                     message = UiText.res(R.string.common_readonly_ledger),
@@ -149,10 +159,10 @@ class RecurringViewModel(
             }
             return
         }
+        val generation = requestGeneration
         viewModelScope.launch {
-            val generation = requestGeneration
             _uiState.update { it.copy(loading = true, message = null, messageTone = MessageTone.Neutral) }
-            val result = action()
+            val result = action(binding)
             if (requestGeneration != generation) return@launch
             result.fold(
                 onSuccess = { item ->
@@ -162,7 +172,7 @@ class RecurringViewModel(
                                 loading = false,
                                 message = UiText.res(R.string.recurring_message_updated),
                                 messageTone = MessageTone.Success,
-                                canModify = repository.canModifyLedger(),
+                                canModify = activeCanModify,
                             ),
                             item,
                         )
@@ -176,7 +186,7 @@ class RecurringViewModel(
                             loading = false,
                             message = error.toUiText(R.string.recurring_message_action_failed),
                             messageTone = MessageTone.Danger,
-                            canModify = repository.canModifyLedger(),
+                            canModify = activeCanModify,
                         )
                     }
                 },

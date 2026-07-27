@@ -11,6 +11,7 @@ import com.ticketbox.security.PendingSessionRefresh
 import com.ticketbox.security.RequestAuthSnapshot
 import com.ticketbox.security.SessionCredentialRotator
 import com.ticketbox.security.StoredSessionToken
+import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -63,6 +64,17 @@ class ApiServiceProvider(
     internal fun observeActiveLedgerIdentity(): Flow<LocalSessionIdentity?> =
         sessionStore.observeSession()
             .map { session -> session?.identity }
+            .distinctUntilChanged()
+
+    internal fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
+        sessionStore.observeSession()
+            .map { session ->
+                val snapshot = session?.toBoundSessionSnapshotOrNull() ?: return@map null
+                LedgerAccessContext(
+                    binding = snapshot.logicalBinding,
+                    canModify = ledgerRoleCanModify(session.identity.role),
+                )
+            }
             .distinctUntilChanged()
 
     private fun requireServerUrl(value: String?): String {

@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionVersion
 
 internal class LedgerRequestGuard(
@@ -60,21 +61,7 @@ internal class LedgerRequestGuard(
     }
 
     private fun currentSessionSnapshotOrNull(): BoundSessionSnapshot? {
-        val session = apiProvider.currentSession() ?: return null
-        val owner = OutboxOwnerIdentity.fromOrNull(
-            serverId = session.serverId,
-            dataGeneration = session.dataGeneration,
-            accountPublicId = session.identity.accountPublicId,
-            devicePublicId = session.identity.devicePublicId,
-        ) ?: return null
-        return BoundSessionSnapshot(
-            serverUrl = session.serverUrl,
-            ledgerId = session.identity.ledgerId,
-            owner = owner,
-            token = session.credential.token,
-            sessionGeneration = session.sessionGeneration,
-            bindingRevision = session.bindingRevision,
-        )
+        return apiProvider.currentSession()?.toBoundSessionSnapshotOrNull()
     }
 
     companion object {
@@ -105,13 +92,35 @@ internal data class BoundSessionSnapshot(
         )
 }
 
-internal data class LogicalSessionBinding(
+data class LogicalSessionBinding(
     val serverUrl: String,
     val ledgerId: String,
     val ownerKey: String,
     val sessionGeneration: String,
     val bindingRevision: String,
 )
+
+data class LedgerAccessContext(
+    val binding: LogicalSessionBinding,
+    val canModify: Boolean,
+)
+
+internal fun LocalSessionRecord.toBoundSessionSnapshotOrNull(): BoundSessionSnapshot? {
+    val owner = OutboxOwnerIdentity.fromOrNull(
+        serverId = serverId,
+        dataGeneration = dataGeneration,
+        accountPublicId = identity.accountPublicId,
+        devicePublicId = identity.devicePublicId,
+    ) ?: return null
+    return BoundSessionSnapshot(
+        serverUrl = serverUrl,
+        ledgerId = identity.ledgerId,
+        owner = owner,
+        token = credential.token,
+        sessionGeneration = sessionGeneration,
+        bindingRevision = bindingRevision,
+    )
+}
 
 internal class BoundLedgerRequest(
     private val service: ApiService,

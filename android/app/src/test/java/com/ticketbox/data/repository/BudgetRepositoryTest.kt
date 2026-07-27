@@ -44,7 +44,7 @@ class BudgetRepositoryTest {
     fun monthlyBudgetForwardsMonthTimezoneAndMapsDomain() = withTimezone("Asia/Shanghai") {
         runTest {
             val api = BudgetApiHandler()
-            val repository = repository(api)
+            val (repository) = repository(api)
 
             val result = repository.monthlyBudget(" 2026-05 ").getOrThrow()
 
@@ -68,7 +68,7 @@ class BudgetRepositoryTest {
     fun monthlyBudgetCanUseExplicitTimezone() = withTimezone("America/Los_Angeles") {
         runTest {
             val api = BudgetApiHandler()
-            val repository = repository(api)
+            val (repository) = repository(api)
 
             val result = repository.monthlyBudget("2026-05", timezone = "Asia/Shanghai")
                 .getOrThrow()
@@ -83,9 +83,10 @@ class BudgetRepositoryTest {
     fun saveMonthlyBudgetForwardsNormalizedRequest() = withTimezone("UTC") {
         runTest {
             val api = BudgetApiHandler()
-            val repository = repository(api)
+            val (repository, binding) = repository(api)
 
             val result = repository.saveMonthlyBudget(
+                binding,
                 " 2026-05 ",
                 BudgetMonthlyUpdate(
                     totalAmountCents = 300000,
@@ -115,9 +116,10 @@ class BudgetRepositoryTest {
     @Test
     fun viewerSaveShortCircuitsWithoutApiCall() = runTest {
         val api = BudgetApiHandler()
-        val repository = repository(api, role = "viewer")
+        val (repository, binding) = repository(api, role = "viewer")
 
         val result = repository.saveMonthlyBudget(
+            binding,
             "2026-05",
             BudgetMonthlyUpdate(totalAmountCents = 300000),
         )
@@ -147,9 +149,10 @@ class BudgetRepositoryTest {
                 ),
             )
         }
-        val repository = repository(api)
+        val (repository, binding) = repository(api)
 
         val result = repository.saveMonthlyBudget(
+            binding,
             "2026-05",
             BudgetMonthlyUpdate(totalAmountCents = 300000),
         )
@@ -173,7 +176,7 @@ class BudgetRepositoryTest {
                 ),
             )
         }
-        val repository = repository(api)
+        val (repository) = repository(api)
 
         val advice = repository.requestBudgetAdvice("2026-05")
 
@@ -192,7 +195,7 @@ class BudgetRepositoryTest {
             adviceEntered = CountDownLatch(1)
             adviceRelease = CountDownLatch(1)
         }
-        val repository = repository(api)
+        val (repository) = repository(api)
 
         val first = async(Dispatchers.IO) { repository.requestBudgetAdvice("2026-05") }
         assertTrue(api.adviceEntered?.await(5, TimeUnit.SECONDS) == true)
@@ -210,7 +213,7 @@ class BudgetRepositoryTest {
     @Test
     fun adviceSuccessIsCachedAndServedFromCache() = runTest {
         val api = BudgetApiHandler()
-        val repository = repository(api)
+        val (repository) = repository(api)
 
         val advice = repository.requestBudgetAdvice("2026-05").getOrThrow()
 
@@ -230,7 +233,7 @@ class BudgetRepositoryTest {
                 ),
             )
         }
-        val repository = repository(api)
+        val (repository) = repository(api)
 
         assertTrue(repository.requestBudgetAdvice("2026-05").isFailure)
         assertNull(repository.cachedBudgetAdvice("2026-05"))
@@ -239,7 +242,7 @@ class BudgetRepositoryTest {
     @Test
     fun invalidMonthIsRejectedBeforeApiCall() = runTest {
         val api = BudgetApiHandler()
-        val repository = repository(api)
+        val (repository) = repository(api)
 
         val result = repository.monthlyBudget("2026-13")
 
@@ -251,7 +254,7 @@ class BudgetRepositoryTest {
     private fun repository(
         handler: BudgetApiHandler,
         role: String = "owner",
-    ): BudgetRepository {
+    ): BudgetRepositoryFixture {
         val tokenStore = TestSessionFixture(
             identity = LocalSessionIdentity(
                 accountName = "我",
@@ -263,8 +266,10 @@ class BudgetRepositoryTest {
             ),
         ).apply { saveToken("session-token") }
         val apiClient = BudgetApiFactory(handler)
-        return BudgetRepository(
-            apiProvider = testApiServiceProvider(apiClient, tokenStore),
+        val provider = testApiServiceProvider(apiClient, tokenStore)
+        return BudgetRepositoryFixture(
+            repository = BudgetRepository(apiProvider = provider),
+            binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding()),
         )
     }
 }
@@ -284,14 +289,14 @@ class BudgetRepositoryAdviceBindingTest {
         repository.requestBudgetAdvice("2026-05").getOrThrow()
         // First delivery of a source's stamp cannot prove the cache predates
         // the server state — it invalidates conservatively.
-        repository.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=10;rv=7;ua=t1")
+        repository.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=10;rv=7;ua=t1")
         assertNull(repository.cachedBudgetAdvice("2026-05"))
 
         // Re-cache, then a CHANGED server snapshot (e.g. another family device
         // wrote, and a refresh delivered it) invalidates again — a reopen must
         // refetch rather than serve pre-change advice.
         repository.requestBudgetAdvice("2026-05").getOrThrow()
-        repository.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=11;rv=8;ua=t2")
+        repository.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=11;rv=8;ua=t2")
 
         assertNull(repository.cachedBudgetAdvice("2026-05"))
         repository.requestBudgetAdvice("2026-05").getOrThrow()
@@ -305,12 +310,12 @@ class BudgetRepositoryAdviceBindingTest {
         val repository = repository(api, tokenStore)
 
         val advice = repository.requestBudgetAdvice("2026-05").getOrThrow()
-        repository.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=10;rv=7;ua=t1")
+        repository.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=10;rv=7;ua=t1")
         repository.requestBudgetAdvice("2026-05").getOrThrow()
 
         // A no-op refresh re-delivers the SAME stamp — the cache survives and
         // reopening spends no additional live-advisor call.
-        repository.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=10;rv=7;ua=t1")
+        repository.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, "n=10;rv=7;ua=t1")
 
         assertEquals(advice, repository.cachedBudgetAdvice("2026-05"))
         assertEquals(2, api.adviceCalls.size)
@@ -520,6 +525,11 @@ class BudgetRepositoryAdviceBindingTest {
         apiProvider = testApiServiceProvider(BudgetApiFactory(handler), tokenStore),
     )
 }
+
+private data class BudgetRepositoryFixture(
+    val repository: BudgetRepository,
+    val binding: LogicalSessionBinding,
+)
 
 private data class MonthlyBudgetCall(val month: String, val timezone: String?)
 

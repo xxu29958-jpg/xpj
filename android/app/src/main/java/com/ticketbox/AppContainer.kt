@@ -304,13 +304,13 @@ class AppContainer(context: Context) {
         // spends zero live-advisor calls on reopen).
         val adviceFreshness = repositories.budgetRepository
         expenseRepository.onFullConfirmedSyncSnapshot = { stamp ->
-            adviceFreshness.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, stamp)
+            adviceFreshness.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_CONFIRMED_EXPENSES, stamp)
         }
         recurringRepository.onFullItemsSnapshot = { stamp ->
-            adviceFreshness.noteAdviceInputSnapshot(ADVICE_INPUT_RECURRING_ITEMS, stamp)
+            adviceFreshness.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_RECURRING_ITEMS, stamp)
         }
         incomePlanRepository.onActivePlansSnapshot = { stamp ->
-            adviceFreshness.noteAdviceInputSnapshot(ADVICE_INPUT_INCOME_PLANS, stamp)
+            adviceFreshness.adviceCallStore.noteAdviceInputSnapshot(ADVICE_INPUT_INCOME_PLANS, stamp)
         }
     }
 }

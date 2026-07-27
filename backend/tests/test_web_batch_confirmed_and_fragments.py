@@ -1,7 +1,8 @@
-"""Confirmed-ledger and partial-response Web bulk-action contracts."""
+"""Confirmed-ledger, partial-response, and bulk-row-structure Web contracts."""
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
 from pathlib import Path
 
 from _web_bulk_test_support import (
@@ -23,6 +24,69 @@ from app.database import SessionLocal
 from app.models import Expense
 
 
+class _RowLinkNestingProbe(HTMLParser):
+    """Flags interactive elements nested inside a row navigation anchor.
+
+    #218 row structure: the batch checkbox and the whole-row link are siblings
+    under the row container (.exp-row / .timeline-row); the link itself must
+    contain only presentational markup. A nested interactive element inside an
+    anchor is invalid HTML and re-opens the C5a regression where clicking the
+    checkbox also triggers whole-row navigation.
+    """
+
+    _INTERACTIVE = {"a", "button", "input", "select", "textarea"}
+    _VOID = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "source", "track", "wbr",
+    }
+
+    def __init__(self, row_link_class: str) -> None:
+        super().__init__()
+        self._row_link_class = row_link_class
+        self._open_link_depth = 0
+        self.row_links = 0
+        self.nested_interactive: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        classes = (dict(attrs).get("class") or "").split()
+        if self._open_link_depth == 0 and tag == "a" and self._row_link_class in classes:
+            self._open_link_depth = 1
+            self.row_links += 1
+            return
+        if self._open_link_depth > 0:
+            if tag in self._INTERACTIVE:
+                self.nested_interactive.append(tag)
+            if tag not in self._VOID:
+                self._open_link_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._open_link_depth > 0 and tag not in self._VOID:
+            self._open_link_depth -= 1
+
+
+def test_web_bulk_rows_do_not_nest_interactive_elements(web_client: TestClient, *, identity) -> None:
+    """#218 行结构合同:批量行的 checkbox 与整行链接互为兄弟节点 — 行链接
+    (a.exp-row-detail / a.timeline-row-detail) 内不允许出现任何交互元素
+    (<a>/<button>/<input>/<select>/<textarea>),否则回到 C5a 的嵌套交互回归
+    (勾选 checkbox 穿透触发整行跳转,且 <a> 内嵌交互元素是无效 HTML)。"""
+    confirmed_id = _seed_pending_with_amount(web_client, "9.00", "Nesting Confirmed", identity=identity)
+    confirmed = web_confirm_expense(web_client, confirmed_id, identity=identity, follow_redirects=False)
+    assert confirmed.status_code in {303, 307}
+    _seed_pending_with_amount(web_client, "10.00", "Nesting Pending", identity=identity)
+
+    pages = (
+        (web_client.get("/web/pending?ledger_id=owner"), "exp-row-detail"),
+        (web_client.get("/web/confirmed?ledger_id=owner"), "timeline-row-detail"),
+    )
+    for resp, row_link_class in pages:
+        assert resp.status_code == 200
+        probe = _RowLinkNestingProbe(row_link_class)
+        probe.feed(resp.text)
+        probe.close()
+        assert probe.row_links > 0, f"no {row_link_class} rows rendered"
+        assert probe.nested_interactive == []
+
+
 def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, identity) -> None:
     expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe", identity=identity)
     confirmed = web_confirm_expense(web_client, expense_id, identity=identity, follow_redirects=False)
@@ -36,7 +100,8 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
     assert 'id="check-all"' in page.text
     assert 'type="checkbox"' in page.text
     assert 'role="checkbox"' not in page.text
-    # main 的行锚点仍是整行 <a>(未做 #218 的行重构),只补上 JS 契约要求的 class。
+    # 行结构已按 #218 拆开:checkbox(.lrow-sel) 与整行链接(a.timeline-row-detail)
+    # 是兄弟节点,行容器 .timeline-row 不再是锚点。
     assert "timeline-row-detail" in page.text
     assert ('<button class="dt-btn" type="button" data-bulk-clear>取消选择</button>') in page.text
     token = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()["row_version"]

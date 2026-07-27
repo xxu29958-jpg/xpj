@@ -13,14 +13,18 @@ import java.util.TimeZone
 
 interface BudgetActions {
     fun canModifyLedger(): Boolean
-    fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
+    fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
 
-    /** Access projection of the active session identity: re-emits on ledger
+    /** Role projection of the active session identity: re-emits on ledger
      *  switches AND role-only re-projections (viewer↔member↔owner on the same
-     *  ledger), which [observeActiveLedgerId] cannot distinguish. Carries the
-     *  full role — member→owner matters (the live advisor is owner-gated). */
+     *  ledger). Carries the full role — member→owner matters (the live
+     *  advisor is owner-gated). */
     fun observeLedgerAccessState(): Flow<LedgerAccessState?> = emptyFlow()
     suspend fun monthlyBudget(month: String): Result<BudgetMonthly>
+    suspend fun monthlyBudget(
+        expectedBinding: LogicalSessionBinding,
+        month: String,
+    ): Result<BudgetMonthly>
     suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult>
 
     /** Last successful advice for [month] under the CURRENT logical session
@@ -34,7 +38,11 @@ interface BudgetActions {
     /** Drops the process-lifetime advice cache (all bindings). */
     fun invalidateBudgetAdvice() { }
 
-    suspend fun saveMonthlyBudget(month: String, update: BudgetMonthlyUpdate): Result<BudgetMonthly>
+    suspend fun saveMonthlyBudget(
+        expectedBinding: LogicalSessionBinding,
+        month: String,
+        update: BudgetMonthlyUpdate,
+    ): Result<BudgetMonthly>
 }
 
 data class LedgerAccessState(
@@ -53,12 +61,14 @@ class BudgetRepository(
     )
 
     /** In-flight dedupe + process-lifetime advice cache + freshness tracking —
-     *  extracted to [BudgetAdviceCallStore] (per-class function cap). */
-    private val adviceCallStore = BudgetAdviceCallStore(ledgerRequestGuard, errorHandler)
+     *  extracted to [BudgetAdviceCallStore] (per-class function cap). internal
+     *  so AppContainer can wire the refresh seams straight to the store. */
+    internal val adviceCallStore = BudgetAdviceCallStore(ledgerRequestGuard, errorHandler)
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override fun observeActiveLedgerId(): Flow<String?> = apiProvider.observeActiveLedgerId()
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
+        apiProvider.observeActiveLedgerAccess()
 
     override fun observeLedgerAccessState(): Flow<LedgerAccessState?> =
         apiProvider.observeActiveLedgerIdentity()
@@ -73,11 +83,27 @@ class BudgetRepository(
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> =
         monthlyBudget(month = month, timezone = currentTimezoneId())
 
+    override suspend fun monthlyBudget(
+        expectedBinding: LogicalSessionBinding,
+        month: String,
+    ): Result<BudgetMonthly> =
+        monthlyBudget(expectedBinding, month, currentTimezoneId())
+
     suspend fun monthlyBudget(month: String, timezone: String): Result<BudgetMonthly> {
+        return monthlyBudget(expectedBinding = null, month = month, timezone = timezone)
+    }
+
+    private suspend fun monthlyBudget(
+        expectedBinding: LogicalSessionBinding?,
+        month: String,
+        timezone: String,
+    ): Result<BudgetMonthly> {
         val cleanMonth = validatedMonth(month)
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            val request = expectedBinding?.let(ledgerRequestGuard::bindExact)
+                ?: ledgerRequestGuard.bind()
+            request.call { api ->
                 api.monthlyBudget(
                     month = cleanMonth,
                     timezone = timezone,
@@ -117,12 +143,8 @@ class BudgetRepository(
 
     override fun invalidateBudgetAdvice() = adviceCallStore.invalidate()
 
-    /** Freshness sink for server-delivered advice inputs — see
-     *  [BudgetAdviceCallStore.noteAdviceInputSnapshot]. */
-    fun noteAdviceInputSnapshot(source: String, stamp: String) =
-        adviceCallStore.noteAdviceInputSnapshot(source, stamp)
-
     override suspend fun saveMonthlyBudget(
+        expectedBinding: LogicalSessionBinding,
         month: String,
         update: BudgetMonthlyUpdate,
     ): Result<BudgetMonthly> {
@@ -132,7 +154,7 @@ class BudgetRepository(
         val cleanMonth = validatedMonth(month)
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.updateMonthlyBudget(
                     month = cleanMonth,
                     request = update.toRequest(),
@@ -141,9 +163,9 @@ class BudgetRepository(
             }
         }
     }
-
-    private fun currentTimezoneId(): String = TimeZone.getDefault().id
 }
+
+private fun currentTimezoneId(): String = TimeZone.getDefault().id
 
 private val MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
 
