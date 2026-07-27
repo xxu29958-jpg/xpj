@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppSpacing
@@ -34,6 +36,8 @@ data class SplitsEditorSheetState(
     val parentAmountCents: Long?,
     val saving: Boolean,
     val loading: Boolean,
+    // 票据的服务端 home 币种：footer 合计解析与保存侧同口径（零小数 home 不 ×100）。
+    val currency: CurrencyCode = FxContract.HomeCurrency,
 )
 
 data class SplitsEditorSheetActions(
@@ -103,7 +107,11 @@ fun SplitsEditorSheet(
                 enabled = !state.saving && state.drafts.isNotEmpty(),
                 onClick = actions.onEvenSplit,
             )
-            SplitsReconciliationFooter(drafts = state.drafts, parentAmountCents = state.parentAmountCents)
+            SplitsReconciliationFooter(
+                drafts = state.drafts,
+                parentAmountCents = state.parentAmountCents,
+                currency = state.currency,
+            )
             // ADR-0042 P1: never enable Save with an empty draft list — the roster
             // hasn't loaded, and saving would send splits=[] which the backend
             // replace turns into "delete all existing splits".
@@ -184,9 +192,10 @@ private fun SplitEditorRow(
 private fun SplitsReconciliationFooter(
     drafts: List<EditableSplit>,
     parentAmountCents: Long?,
+    currency: CurrencyCode,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val total = drafts.filter { it.included }.sumOf { parseAmountCents(it.amountText) ?: 0L }
+    val total = drafts.filter { it.included }.sumOf { parseAmountCents(it.amountText, currency) ?: 0L }
     val diff = parentAmountCents?.let { total - it }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(

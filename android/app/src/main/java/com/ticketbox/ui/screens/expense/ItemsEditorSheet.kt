@@ -22,7 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseItemKind
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppAdaptiveFieldPairRow
 import com.ticketbox.ui.components.AppAdaptiveFieldPairWeights
 import com.ticketbox.ui.components.AppSegmentedControl
@@ -38,6 +40,8 @@ data class ItemsEditorSheetState(
     val drafts: List<EditableItem>,
     val parentAmountCents: Long?,
     val saving: Boolean,
+    // 票据的服务端 home 币种：footer 合计解析与保存侧同口径（零小数 home 不 ×100）。
+    val currency: CurrencyCode = FxContract.HomeCurrency,
 )
 
 data class ItemsEditorSheetActions(
@@ -60,8 +64,8 @@ private val ITEM_KINDS: List<Pair<String, Int>> = listOf(
 
 private val ITEM_FIELD_WEIGHTS = AppAdaptiveFieldPairWeights(leading = 1.35f, trailing = 1f)
 
-private fun draftSignedCents(draft: EditableItem): Long {
-    val magnitude = parseAmountCents(draft.amountText) ?: 0L
+private fun draftSignedCents(draft: EditableItem, currency: CurrencyCode): Long {
+    val magnitude = parseAmountCents(draft.amountText, currency) ?: 0L
     return if (draft.kind == ExpenseItemKind.DISCOUNT) -abs(magnitude) else magnitude
 }
 
@@ -107,7 +111,11 @@ fun ItemsEditorSheet(
                 }
             }
 
-            ReconciliationFooter(drafts = state.drafts, parentAmountCents = state.parentAmountCents)
+            ReconciliationFooter(
+                drafts = state.drafts,
+                parentAmountCents = state.parentAmountCents,
+                currency = state.currency,
+            )
             ExpenseEditSheetActions(
                 state = ExpenseEditSheetActionState(
                     saving = state.saving,
@@ -223,9 +231,10 @@ private fun ItemRemoveButton(onRemove: () -> Unit) {
 private fun ReconciliationFooter(
     drafts: List<EditableItem>,
     parentAmountCents: Long?,
+    currency: CurrencyCode,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val total = drafts.sumOf { draftSignedCents(it) }
+    val total = drafts.sumOf { draftSignedCents(it, currency) }
     val diff = parentAmountCents?.let { total - it }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(

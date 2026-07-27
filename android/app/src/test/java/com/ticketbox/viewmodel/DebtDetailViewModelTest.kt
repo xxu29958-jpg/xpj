@@ -125,6 +125,30 @@ class DebtDetailViewModelTest {
     }
 
     @Test
+    fun submitRepaymentParsesAmountInDebtHomeCurrency() = runTest(dispatcher) {
+        // 欠款的服务端 homeCurrencyCode=JPY（零小数）："1200" 是 minor 1200（不再 ×100
+        // 成 120000）。home 币种注入路径 —— 解析口径来自 record 而非全局默认。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(
+                sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY"),
+            ),
+            writeResult = Result.success(
+                sampleDebt("d1", rowVersion = 2L, remaining = 48_800L).copy(homeCurrencyCode = "JPY"),
+            ),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("1200")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(1_200L, repo.repaymentCalls.single().amountCents)
+    }
+
+    @Test
     fun submitRepaymentValidationBlocksNonPositiveWithoutWrite() = runTest(dispatcher) {
         val repo = FakeDebtDetailActions()
         val viewModel = DebtDetailViewModel(repo)

@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
@@ -244,7 +245,9 @@ internal fun ProposalFormSheet(
     state: MemberProposalUiState,
     currency: CurrencyDisplay,
     viewModel: MemberRepaymentProposalViewModel,
-    expectedRowVersion: Long,
+    // 宿主欠款：OCC 载体取 rowVersion，金额解析取其服务端 homeCurrencyCode
+    // （与 AppAmountInput 展示币种一致，JPY 等零小数 home 不 ×100）。
+    debt: Debt,
     onClose: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -253,7 +256,12 @@ internal fun ProposalFormSheet(
             state = state,
             currency = currency,
             viewModel = viewModel,
-            onSubmit = { viewModel.submit(expectedRowVersion) },
+            onSubmit = {
+                viewModel.submit(
+                    expectedRowVersion = debt.rowVersion,
+                    currency = CurrencyCode.fromStorageKey(debt.homeCurrencyCode),
+                )
+            },
             onCancel = onClose,
         )
     }

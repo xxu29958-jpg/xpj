@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.MessageTone
@@ -17,6 +18,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+// Goal 不带币种字段（服务端按账本 home 聚合），编辑流上拿不到 homeCurrencyCode，
+// 且 AppViewModel 恒以 CurrencyDisplay.Base 提供 display home，故解析/回填口径显式落
+// FxContract.HomeCurrency（登记：若日后 Goal 带上服务端 home，改这里）。
+private val goalInputCurrency = FxContract.HomeCurrency
 
 enum class SpendingGoalEditField {
     Name,
@@ -48,7 +54,7 @@ data class SpendingGoalDetailUiState(
         get() = canModify &&
             !isSaving &&
             name.trim().isNotEmpty() &&
-            (parseAmountCents(targetAmountInput)?.let { it > 0L } == true)
+            (parseAmountCents(targetAmountInput, goalInputCurrency)?.let { it > 0L } == true)
 }
 
 class SpendingGoalDetailViewModel(
@@ -111,7 +117,7 @@ class SpendingGoalDetailViewModel(
                 isEditing = true,
                 name = goal.name,
                 month = goal.month,
-                targetAmountInput = formatAmountInput(goal.targetAmountCents),
+                targetAmountInput = formatAmountInput(goal.targetAmountCents, goalInputCurrency),
                 category = goal.category.orEmpty(),
                 formError = null,
                 message = null,
@@ -147,7 +153,7 @@ class SpendingGoalDetailViewModel(
         val current = _state.value
         val goal = current.goal ?: return
         if (!current.canModify || current.isSaving || goal.isArchived) return
-        val targetAmountCents = parseAmountCents(current.targetAmountInput)
+        val targetAmountCents = parseAmountCents(current.targetAmountInput, goalInputCurrency)
         if (current.name.trim().isEmpty() || targetAmountCents == null || targetAmountCents <= 0L) {
             _state.update { it.copy(formError = UiText.res(R.string.spending_goal_edit_validation)) }
             return

@@ -14,15 +14,37 @@ import java.util.TimeZone
 class FormattersTest {
     @Test
     fun parsesYuanInputToCents() {
-        assertEquals(3680, parseAmountCents("36.80"))
-        assertEquals(3681, parseAmountCents("36.805"))
-        assertNull(parseAmountCents("abc"))
+        assertEquals(3680, parseAmountCents("36.80", CurrencyCode.CNY))
+        assertEquals(3681, parseAmountCents("36.805", CurrencyCode.CNY))
+        assertNull(parseAmountCents("abc", CurrencyCode.CNY))
     }
 
     @Test
     fun formatsCentsForTextInput() {
-        assertEquals("36.80", formatAmountInput(3680))
-        assertEquals("", formatAmountInput(null))
+        assertEquals("36.80", formatAmountInput(3680, CurrencyCode.CNY))
+        assertEquals("", formatAmountInput(null, CurrencyCode.CNY))
+    }
+
+    @Test
+    fun parsesAndFormatsHomeInputPerCurrency() {
+        // 零小数 home（JPY/KRW）：minor == major，不 ×100，且拒绝任何小数部分。
+        assertEquals(1200, parseAmountCents("1200", CurrencyCode.JPY))
+        assertNull(parseAmountCents("1200.5", CurrencyCode.JPY))
+        assertEquals("1200", formatAmountInput(1200, CurrencyCode.JPY))
+        // 2 位小数 home 保持 ×100 口径。
+        assertEquals(36_805, parseAmountCents("368.05", CurrencyCode.USD))
+        assertEquals("368.05", formatAmountInput(36_805, CurrencyCode.USD))
+    }
+
+    @Test
+    fun rejectsFractionInputForZeroDecimalCurrencies() {
+        // 与后端 422 同语义：零小数币种带小数部分一律 null，不再 HALF_UP 静默进位。
+        assertNull(parseMinorAmount("1200.5", CurrencyCode.JPY))
+        assertNull(parseMinorAmount("1200.0", CurrencyCode.JPY))
+        assertNull(parseMinorAmount("0.00", CurrencyCode.KRW))
+        // 整数与负 scale 记法仍可解析。
+        assertEquals(1200, parseMinorAmount("1200", CurrencyCode.JPY))
+        assertEquals(0, parseMinorAmount("0", CurrencyCode.KRW))
     }
 
     @Test

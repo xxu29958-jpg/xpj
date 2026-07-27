@@ -101,7 +101,11 @@ fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
     return runCatching {
         val decimal = BigDecimal(trimmed)
         val scaled = if (currency.noFractionDigits) {
-            decimal.setScale(0, RoundingMode.HALF_UP)
+            // 零小数币种（JPY/KRW）：任何小数部分都拒绝（与后端 422 同语义），
+            // 不再 HALF_UP 静默进位。输入框已由 sanitizeMinorAmountInput 兜底，
+            // 本守卫守的是直调路径。
+            if (decimal.scale() > 0) return null
+            decimal
         } else {
             decimal.multiply(BigDecimal(100)).setScale(0, RoundingMode.HALF_UP)
         }
@@ -144,21 +148,22 @@ fun formatExpenseExchangeMeta(expense: Expense): String? {
     }
 }
 
-fun formatAmountInput(amountCents: Long?): String {
-    if (amountCents == null) return ""
-    return BigDecimal(amountCents).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
-}
+/**
+ * Home 口径输入框渲染：minor → 主单位文本。币种感知委托（[formatMinorAmountInput]），
+ * 调用方必须显式给币种 —— 服务端 `homeCurrencyCode` 可得处用之；仅当流上没有任何
+ * record 可带币种（新建 Goal / IncomePlan / 首笔欠款）时才落 [FxContract.HomeCurrency]
+ * 兜底（AppViewModel 目前恒以 [CurrencyDisplay.Base] 提供 display home，二者一致）。
+ */
+fun formatAmountInput(amountCents: Long?, currency: CurrencyCode): String =
+    formatMinorAmountInput(amountCents, currency)
 
-fun parseAmountCents(input: String): Long? {
-    val trimmed = input.trim()
-    if (trimmed.isBlank()) return null
-    return runCatching {
-        BigDecimal(trimmed)
-            .multiply(BigDecimal(100))
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
-    }.getOrNull()
-}
+/**
+ * Home 口径输入框解析：主单位文本 → minor。币种感知委托（[parseMinorAmount]）：
+ * 2 位小数币种 ×100（HALF_UP），零小数币种不扩位且拒绝小数部分；负数一律 null。
+ * 传参约定同 [formatAmountInput]。
+ */
+fun parseAmountCents(input: String, currency: CurrencyCode): Long? =
+    parseMinorAmount(input, currency)
 
 fun displayTime(value: String?): String {
     if (value.isNullOrBlank()) return "未填写时间"

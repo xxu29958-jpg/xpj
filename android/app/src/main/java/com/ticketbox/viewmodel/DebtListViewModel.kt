@@ -5,20 +5,22 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtSourceTypes
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 /**
  * ADR-0049 §2 (slice 8) 欠款列表 — Android 生活流：卡片列 → 页头 CTA → 底部抽屉新建外部欠款。
@@ -58,12 +60,19 @@ data class DebtDraftUi(
     val installmentCountInput: String = "",
     val installmentPeriodInput: String = "",
     val validationError: UiText? = null,
+    /**
+     * 金额解析口径：新建流上没有本笔 record，取账本已有欠款的服务端 `homeCurrencyCode`
+     * （由 VM 构造草稿时注入）；首笔欠款 / 空账本落 [FxContract.HomeCurrency] 兜底
+     * （与 AppViewModel 恒 CurrencyDisplay.Base 的 display home 一致，登记在案）。
+     */
+    val homeCurrency: CurrencyCode = FxContract.HomeCurrency,
 ) {
     val isValid: Boolean
         get() = counterpartyLabel.trim().isNotEmpty() && parsedAmountCents() != null
 
-    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；本金须 > 0（符号保持，分空间判等价）。
-    fun parsedAmountCents(): Long? = parseAmountCents(amountYuanInput)?.takeIf { it > 0 }
+    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额），按 [homeCurrency] 扩位
+    // （JPY 等零小数 home 不 ×100）；本金须 > 0（符号保持，分空间判等价）。
+    fun parsedAmountCents(): Long? = parseAmountCents(amountYuanInput, homeCurrency)?.takeIf { it > 0 }
 
     // 分期期数：正整数且 1..600（镜像后端 installment_count 的 gt=0/le=600）；空 / 非数字 / 越界 → null（不排期）。
     fun parsedInstallmentCount(): Int? = installmentCountInput.trim().toIntOrNull()?.takeIf { it in 1..600 }
@@ -148,7 +157,7 @@ class DebtListViewModel(
     fun resetDraft() {
         _state.update {
             it.copy(
-                addDraft = DebtDraftUi(),
+                addDraft = DebtDraftUi(homeCurrency = debtsHomeCurrency(it.debts)),
                 isSubmitting = false,
                 addSucceeded = false,
                 pendingBillParsePrefill = false,
@@ -178,7 +187,7 @@ class DebtListViewModel(
         viewModelScope.launch {
             repository.parseDebtBillImage(fileName, contentType, bytes).fold(
                 onSuccess = { suggestion ->
-                    val filled = DebtDraftUi()
+                    val filled = DebtDraftUi(homeCurrency = debtsHomeCurrency(_state.value.debts))
                         .prefillFrom(suggestion)
                         .withInheritedModelFrom(_state.value.debts)
                     _state.update {
@@ -239,7 +248,7 @@ class DebtListViewModel(
                     _state.update {
                         it.copy(
                             isSubmitting = false,
-                            addDraft = DebtDraftUi(),
+                            addDraft = DebtDraftUi(homeCurrency = debtsHomeCurrency(it.debts)),
                             flashMessage = UiText.res(R.string.debt_create_added),
                             addSucceeded = true,
                         )
@@ -276,13 +285,20 @@ private fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi
     val parsedInstallmentPeriod = suggestion.installmentPeriodMonths?.toIntOrNullIn(1, 120)
     return copy(
         counterpartyLabel = suggestion.merchant?.trim().orEmpty(),
-        amountYuanInput = suggestion.principalAmountCents?.toYuanInput().orEmpty(),
+        // 预填与解析同一币种口径（draft 的 homeCurrency），零小数 home 不 ÷100。
+        amountYuanInput = suggestion.principalAmountCents
+            ?.let { formatMinorAmountInput(it, homeCurrency) }
+            .orEmpty(),
         kind = if (parsedInstallmentCount != null) DebtKinds.INSTALLMENT else DebtKinds.UNSPECIFIED,
         installmentCountInput = parsedInstallmentCount?.toString().orEmpty(),
         installmentPeriodInput = parsedInstallmentPeriod?.toString().orEmpty(),
         validationError = null,
     )
 }
+
+/** 账本既有欠款的服务端 home 币种（账本内一致）；空账本落 display-home 兜底。 */
+private fun debtsHomeCurrency(debts: List<Debt>): CurrencyCode =
+    debts.firstOrNull()?.homeCurrencyCode?.let(CurrencyCode::fromStorageKey) ?: FxContract.HomeCurrency
 
 private fun DebtDraftUi.withInheritedModelFrom(debts: List<Debt>): DebtDraftUi {
     if (kind != DebtKinds.UNSPECIFIED) return this
@@ -330,12 +346,6 @@ private fun String?.normalizedDebtLabel(): String =
 
 private fun Long.toIntOrNullIn(min: Int, max: Int): Int? =
     takeIf { it in min.toLong()..max.toLong() }?.toInt()
-
-private fun Long.toYuanInput(): String {
-    val yuan = this / 100
-    val fen = abs(this % 100)
-    return if (fen == 0L) yuan.toString() else "$yuan.${fen.toString().padStart(2, '0')}"
-}
 
 private fun parseBillDoneRes(suggestion: DebtBillSuggestion): Int =
     if (suggestion.hasAnyPrefill) {

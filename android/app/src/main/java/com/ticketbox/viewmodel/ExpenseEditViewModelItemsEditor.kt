@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ItemsAckOutcome
 import com.ticketbox.data.repository.ReplaceItemsOutcome
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.MessageTone
@@ -144,12 +145,16 @@ fun ExpenseEditViewModel.saveItems() {
     // Audit P3 #11: a non-blank amount that does not parse ("1.2.3", a pasted
     // "¥12"…) used to silently become ¥0 via `parseAmountCents(...) ?: 0L` —
     // every other amount input in the app rejects loudly instead. Refuse to
-    // save and keep the editor open.
-    if (draftRows.any { it.amountText.isNotBlank() && parseAmountCents(it.amountText) == null }) {
+    // save and keep the editor open. Parse in the expense's home currency so a
+    // zero-decimal home (JPY/KRW) doesn't scale by 100.
+    if (draftRows.any {
+        it.amountText.isNotBlank() && parseAmountCents(it.amountText, expense.homeCurrency) == null
+    }
+    ) {
         showItemsDanger(UiText.res(R.string.expense_edit_items_amount_unparsable))
         return
     }
-    val drafts = draftRows.map { it.toDomainDraft() }
+    val drafts = draftRows.map { it.toDomainDraft(expense.homeCurrency) }
     viewModelScope.launch {
         _uiState.update {
             it.copy(itemsSaving = true, itemsMessage = null, itemsMessageTone = MessageTone.Neutral)
@@ -194,8 +199,8 @@ private fun ExpenseEditViewModel.applyItemsSaveOutcome(outcome: ReplaceItemsOutc
     }
 }
 
-private fun EditableItem.toDomainDraft(): ExpenseItemDraft {
-    val magnitude = parseAmountCents(amountText) ?: 0L
+private fun EditableItem.toDomainDraft(currency: CurrencyCode): ExpenseItemDraft {
+    val magnitude = parseAmountCents(amountText, currency) ?: 0L
     // ADR-0035: discount lines carry negative amount_cents; the editor takes
     // the magnitude and the kind chip decides the sign.
     val signed = if (kind == ExpenseItemKind.DISCOUNT) -abs(magnitude) else magnitude

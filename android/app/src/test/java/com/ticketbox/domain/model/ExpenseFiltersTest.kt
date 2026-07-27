@@ -532,6 +532,20 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun parsesSearchAmountInHomeCurrencyMinorDigits() {
+        // 零小数 home（JPY/KRW）："1200" 是 minor 1200，不再扩成 120000 ——
+        // 这是 JPY 用户按金额搜索命中 originalAmountMinor/home 腿的前提。
+        assertEquals(1_200L, parseSearchAmountCents("1200", CurrencyCode.JPY))
+        assertEquals(1_200L, parseSearchAmountCents("¥1200", CurrencyCode.JPY))
+        assertEquals(0L, parseSearchAmountCents("0", CurrencyCode.KRW))
+        // 零小数币种带小数部分 → 不解析为金额（落回文本匹配），不静默进位。
+        assertNull(parseSearchAmountCents("1200.5", CurrencyCode.JPY))
+        assertNull(parseSearchAmountCents("12.0", CurrencyCode.KRW))
+        // 2 位小数 home 显式传参时与默认口径一致。
+        assertEquals(1_250L, parseSearchAmountCents("12.5", CurrencyCode.USD))
+    }
+
+    @Test
     fun expenseMatchesAmountOnHomeOrOriginalLeg() {
         val homeLeg = expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 1_250)
         val foreignLeg = expense(id = 2, category = "餐饮", expenseTime = null, amountCents = 9_900)

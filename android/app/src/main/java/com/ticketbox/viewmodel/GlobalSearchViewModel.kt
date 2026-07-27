@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.GlobalSearchActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.RECENT_SEARCH_LIMIT
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.appendRecentSearch
@@ -219,7 +221,10 @@ class GlobalSearchViewModel(
             }
             val criteria = SearchCriteria(
                 term = term,
-                amountCents = parseSearchAmountCents(term),
+                amountCents = parseSearchAmountCents(
+                    term,
+                    searchHomeCurrency(pendingCache, confirmedCache),
+                ),
                 category = state.categoryFilter,
                 month = state.monthFilter,
             )
@@ -247,6 +252,20 @@ class GlobalSearchViewModel(
 
 // Pure search mechanics, file-level so the class stays inside the detekt
 // functions-per-class budget; nothing here touches ViewModel state.
+
+/** Home currency the amount leg is parsed in. The search box has no per-query
+ *  currency context, so take it from the cached rows' server `home_currency`
+ *  (uniform within a ledger); while both caches are empty there is nothing to
+ *  amount-match anyway, so the display-home default is only a placeholder. */
+private fun searchHomeCurrency(
+    pending: List<Expense>,
+    confirmed: List<Expense>,
+): CurrencyCode =
+    (pending.asSequence() + confirmed.asSequence())
+        .firstOrNull()
+        ?.homeCurrency
+        ?: FxContract.HomeCurrency
+
 private fun sliceForScope(
     pendingMatches: List<GlobalSearchResultUi>,
     confirmedMatches: List<GlobalSearchResultUi>,

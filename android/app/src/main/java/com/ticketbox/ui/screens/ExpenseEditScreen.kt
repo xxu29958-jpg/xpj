@@ -22,6 +22,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.isUncategorizedExpenseCategory
@@ -189,6 +190,7 @@ fun ExpenseEditScreen(
                 drafts = state.itemDrafts,
                 parentAmountCents = state.expenseItems?.parentAmountCents,
                 saving = state.itemsSaving,
+                currency = expense?.homeCurrency ?: FxContract.HomeCurrency,
             ),
             actions = itemizationActions.editor,
         )
@@ -201,6 +203,7 @@ fun ExpenseEditScreen(
                 parentAmountCents = state.expenseSplits?.parentAmountCents,
                 saving = state.splitsSaving,
                 loading = state.splitMembersLoading,
+                currency = expense?.homeCurrency ?: FxContract.HomeCurrency,
             ),
             actions = splitEditingActions.editor,
         )

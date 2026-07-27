@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
@@ -13,6 +14,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+// Goal 不带币种字段（服务端按账本 home 聚合）；新建流上没有 record 可提供
+// homeCurrencyCode，且 AppViewModel 恒以 CurrencyDisplay.Base 提供 display home，
+// 故解析口径显式落 FxContract.HomeCurrency（登记：若日后接入服务端 home，改这里）。
+private val goalInputCurrency = FxContract.HomeCurrency
 
 data class CreateSpendingGoalUiState(
     val canModify: Boolean = true,
@@ -28,7 +34,7 @@ data class CreateSpendingGoalUiState(
         get() = canModify &&
             !isSubmitting &&
             name.trim().isNotEmpty() &&
-            (parseAmountCents(targetAmountInput)?.let { it > 0L } == true)
+            (parseAmountCents(targetAmountInput, goalInputCurrency)?.let { it > 0L } == true)
 }
 
 class CreateSpendingGoalViewModel(
@@ -66,7 +72,7 @@ class CreateSpendingGoalViewModel(
 
     fun submit() {
         val current = _state.value
-        val amountCents = parseAmountCents(current.targetAmountInput)
+        val amountCents = parseAmountCents(current.targetAmountInput, goalInputCurrency)
         if (current.name.trim().isBlank() || amountCents == null || amountCents <= 0L) {
             _state.update { it.copy(formError = UiText.res(R.string.spending_goal_create_validation)) }
             return

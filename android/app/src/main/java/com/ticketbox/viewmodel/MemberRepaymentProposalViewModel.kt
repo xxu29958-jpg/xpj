@@ -6,9 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -109,7 +112,11 @@ class MemberRepaymentProposalViewModel(
                 activeForm = form,
                 targetProposalPublicId = proposal?.publicId,
                 // 确认表单预填 proposal 提出的金额（债权人可下调成部分确认）；发起表单留空。
-                amountInput = proposal?.let { p -> centsToYuanInput(p.proposedAmountCents) }.orEmpty(),
+                // 预填按 proposal 自带的服务端 homeCurrencyCode 渲染 minor（零小数币种不 ÷100），
+                // 与 submit 的解析口径一致。
+                amountInput = proposal?.let { p ->
+                    formatMinorAmountInput(p.proposedAmountCents, CurrencyCode.fromStorageKey(p.homeCurrencyCode))
+                }.orEmpty(),
                 noteInput = "",
                 validationError = null,
             )
@@ -139,14 +146,15 @@ class MemberRepaymentProposalViewModel(
 
     /**
      * 提交当前激活的表单。[expectedRowVersion] 是宿主欠款当前的 `row_version`（fold-changing 的确认走 §2.1
-     * OCC 载体）；发起 proposal 不改折叠，忽略该参数。
+     * OCC 载体）；发起 proposal 不改折叠，忽略该参数。[currency] 取宿主欠款的服务端
+     * `homeCurrencyCode`（调用屏持有该 Debt），零小数 home 币种不 ×100。
      */
-    fun submit(expectedRowVersion: Long) {
+    fun submit(expectedRowVersion: Long, currency: CurrencyCode = FxContract.HomeCurrency) {
         val publicId = debtPublicId ?: return
         val current = _state.value
         val form = current.activeForm ?: return
         // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；>0 由 proposalValidationError 校验。
-        val amountCents = parseAmountCents(current.amountInput)
+        val amountCents = parseAmountCents(current.amountInput, currency)
         proposalValidationError(form, amountCents, current.pendingProposal?.proposedAmountCents)?.let { res ->
             _state.update { it.copy(validationError = UiText.res(res)) }
             return
@@ -248,9 +256,6 @@ class MemberRepaymentProposalViewModel(
         refresh()
     }
 }
-
-/** 把本位币分格式化成元为单位的输入串（用于确认表单预填提出金额），不走浮点避免大额丢精度。 */
-private fun centsToYuanInput(cents: Long): String = "${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
 
 /** 表单输入的校验文案 res，输入可接受时返回 null。 */
 @StringRes

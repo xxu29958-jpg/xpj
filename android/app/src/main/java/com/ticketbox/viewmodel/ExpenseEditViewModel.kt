@@ -17,13 +17,13 @@ import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
-import java.math.BigDecimal
-import java.math.RoundingMode
+import com.ticketbox.ui.components.formatMinorAmountInput
 import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -819,10 +819,15 @@ class ExpenseEditViewModel(
         return true
     }
 
-    /** Yuan-text rendering shared by the items / splits editor extension files. */
+    /**
+     * Minor-unit → 输入框主单位文本，items / splits 编辑器扩展共用。按当前票据的服务端
+     * `homeCurrency` 渲染（JPY 等零小数 home 不 ÷100），与保存侧的解析口径一致；
+     * 票据未加载时落 [FxContract.HomeCurrency] 兜底（此时编辑器也未打开，不会触达）。
+     */
     internal fun centsToYuanText(cents: Long?): String {
         if (cents == null) return ""
-        return BigDecimal(abs(cents)).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
+        val currency = _uiState.value.expense?.homeCurrency ?: FxContract.HomeCurrency
+        return formatMinorAmountInput(abs(cents), currency)
     }
 }
 

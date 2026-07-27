@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomeSourceType
@@ -20,6 +21,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.YearMonth
+
+// IncomePlan 不带币种字段（金额即账本 home minor）；新建流上没有 record 可提供
+// homeCurrencyCode，且 AppViewModel 恒以 CurrencyDisplay.Base 提供 display home，
+// 故解析口径显式落 FxContract.HomeCurrency（登记：若日后接入服务端 home，改这里）。
+private val incomeInputCurrency = FxContract.HomeCurrency
 
 /**
  * v1.1 income plan screen state + actions.
@@ -99,11 +105,12 @@ data class IncomePlanDraftUi(
             parsedPayDay() != null &&
             (frequency == IncomeFrequency.MONTHLY || parsedIncomeMonth() != null)
 
-    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）。允许 0、拒负：极小负额（如 -0.004）在分空间
+    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额），按 incomeInputCurrency 扩位。
+    // 允许 0、拒负：极小负额（如 -0.004）在分空间
     // HALF_UP 会舍入到 0，故先按元符号拒负，保持旧「负数无效」语义、不静默当成 0 元计划。
     fun parsedAmountCents(): Long? {
         if (amountYuanInput.trim().startsWith('-')) return null
-        return parseAmountCents(amountYuanInput)?.takeIf { it >= 0 }
+        return parseAmountCents(amountYuanInput, incomeInputCurrency)?.takeIf { it >= 0 }
     }
 
     fun parsedPayDay(): Int? {

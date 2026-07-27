@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.UiText
@@ -187,9 +188,13 @@ class DebtDetailViewModel(
         val current = _state.value
         val debt = current.debt ?: return
         val action = current.activeAction ?: return
-        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；sign-agnostic，>0 magnitude 由
+        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；按本笔欠款服务端
+        // homeCurrencyCode 扩位（JPY 零小数币种不 ×100）。sign-agnostic，>0 magnitude 由
         // validateDebtAction 按动作类型校验（调整的正负来自 adjustmentIncrease 开关）。
-        val amountCents = parseAmountCents(current.amountInput)
+        val amountCents = parseAmountCents(
+            current.amountInput,
+            CurrencyCode.fromStorageKey(debt.homeCurrencyCode),
+        )
         val reason = current.reasonInput.trim()
         validateDebtAction(action, amountCents, reason)?.let { errorRes ->
             _state.update { it.copy(validationError = UiText.res(errorRes)) }

@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.repository.GlobalSearchActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
@@ -121,6 +123,62 @@ class GlobalSearchViewModelTest {
         vm.setQuery("New")
         advanceUntilIdle()
         assertEquals(listOf(3L), vm.uiState.value.results.map { it.expense.id })
+    }
+
+    @Test
+    fun parsesAmountQueryInCachedHomeCurrencySoJpyRowHits() = searchTest {
+        // JPY-home 账本：搜索 "1200" 必须按零小数 home 解析为 minor 1200（而非
+        // 120000），否则永远碰不到 amountCents/originalAmountMinor = 1200 的行。
+        val fake = FakeGlobalSearchActions(
+            confirmed = listOf(
+                expense(id = 1, status = "confirmed", merchant = "Tokyo Cafe", amountCents = 1_200L)
+                    .copy(homeCurrency = CurrencyCode.JPY, originalAmountMinor = 1_200L),
+            ),
+        )
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("1200")
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(listOf(1L), state.results.map { it.expense.id })
+        // 命中走的是金额腿，不是文本腿。
+        assertEquals(
+            UiText.res(R.string.global_search_field_amount),
+            state.results.single().matchedField,
+        )
+    }
+
+    @Test
+    fun amountQueryStillParsesAsCentsUnderCnyHomeCache() = searchTest {
+        // 回归：2 位小数 home 缓存下 "12" 仍解析为 1200 分并命中金额腿。
+        val fake = FakeGlobalSearchActions(
+            confirmed = listOf(expense(id = 2, status = "confirmed", merchant = "Local Cafe", amountCents = 1_200L)),
+        )
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("12")
+        advanceUntilIdle()
+        assertEquals(listOf(2L), vm.uiState.value.results.map { it.expense.id })
+    }
+
+    @Test
+    fun fractionQueryUnderZeroDecimalHomeFallsBackToTextMatching() = searchTest {
+        // JPY-home 下 "12.5" 不解析为金额（拒绝静默进位）；文本字段也不含它 → 无结果。
+        val fake = FakeGlobalSearchActions(
+            confirmed = listOf(
+                expense(id = 1, status = "confirmed", merchant = "Tokyo Cafe", amountCents = 1_250L)
+                    .copy(homeCurrency = CurrencyCode.JPY, originalAmountMinor = 1_250L),
+            ),
+        )
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("12.5")
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.results.isEmpty())
     }
 
     @Test

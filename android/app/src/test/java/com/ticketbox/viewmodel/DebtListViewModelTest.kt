@@ -200,7 +200,9 @@ class DebtListViewModelTest {
         val draft = viewModel.state.value.addDraft
         assertEquals(listOf("bill.jpg"), repo.parseBillCalls)
         assertEquals("花呗", draft.counterpartyLabel)
-        assertEquals("1200", draft.amountYuanInput)
+        // 预填走币种感知族 formatMinorAmountInput：2 位小数 home 固定两位小数（120000 → "1200.00"，
+        // 与 formatAmountInput 全家口径一致；旧本地 helper 的「整元去尾零」写法已删）。
+        assertEquals("1200.00", draft.amountYuanInput)
         assertEquals(DebtKinds.INSTALLMENT, draft.kind)
         assertEquals("12", draft.installmentCountInput)
         assertEquals("1", draft.installmentPeriodInput)

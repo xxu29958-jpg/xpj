@@ -117,7 +117,7 @@ fun DebtDetailScreen(
             state = proposalState,
             currency = currency,
             viewModel = proposalViewModel,
-            expectedRowVersion = debt.rowVersion,
+            debt = debt,
             onClose = proposalViewModel::dismissForm,
         )
     }

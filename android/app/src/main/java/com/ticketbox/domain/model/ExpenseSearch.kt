@@ -12,26 +12,35 @@ import java.time.ZoneId
 private val SEARCH_AMOUNT_NOISE_REGEX = Regex("[¥￥$＄,，\\s]")
 
 /**
- * Parse a global-search query into an exact `amount_cents` value, or null when
- * the query is not a clean money amount. Money discipline: yuan → cents via
- * [BigDecimal] (never float), reusing the project's "× 100 in one place" rule.
+ * Parse a global-search query into an exact minor-unit amount value, or null when
+ * the query is not a clean money amount. Money discipline: major → minor via
+ * [BigDecimal] (never float), scaled by [currency]'s minor-unit digits — a JPY-home
+ * user typing "1200" means ¥1200 (minor 1200), not 120000.
+ *
+ * [currency] is the ledger's home currency (the search flow has no per-query
+ * currency context; the caller derives it from the cached rows' server
+ * `home_currency`, falling back to the display-home default [FxContract.HomeCurrency]).
  *
  * A query qualifies only when, after stripping a leading currency symbol /
- * grouping marks, what remains is a non-negative decimal with **at most two**
- * fractional digits ("12", "12.5", "¥12.50", "128"). More than two fraction
- * digits ("12.345") or any non-numeric residue yields null so the term falls
- * back to pure text matching rather than silently rounding to a cent value the
- * user never typed.
+ * grouping marks, what remains is a non-negative decimal with **at most
+ * [CurrencyCode.minorUnitDigits]** fractional digits ("12", "12.5", "¥12.50",
+ * "128" for a 2-digit home; integers only for JPY/KRW). More fraction digits
+ * ("12.345", or any fraction under a zero-decimal home) or any non-numeric
+ * residue yields null so the term falls back to pure text matching rather than
+ * silently rounding to a minor value the user never typed.
  */
-fun parseSearchAmountCents(query: String): Long? {
+fun parseSearchAmountCents(
+    query: String,
+    currency: CurrencyCode = FxContract.HomeCurrency,
+): Long? {
     val cleaned = query.trim().replace(SEARCH_AMOUNT_NOISE_REGEX, "")
     if (cleaned.isBlank()) return null
     val fractionDigits = cleaned.substringAfter('.', "").length
-    if (fractionDigits > 2) return null
+    if (fractionDigits > currency.minorUnitDigits) return null
     return runCatching {
         val decimal = BigDecimal(cleaned)
         if (decimal.signum() < 0) return null
-        decimal.movePointRight(2).longValueExact()
+        decimal.movePointRight(currency.minorUnitDigits).longValueExact()
     }.getOrNull()
 }
 
