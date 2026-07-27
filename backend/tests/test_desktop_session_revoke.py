@@ -1,10 +1,19 @@
-"""Desktop bridge self-revoke: only the presented app credential dies.
+"""Desktop bridge self-revoke: the kill set depends on the scope intent.
 
 ``POST /desktop/session/revoke`` (router: :mod:`app.routes.desktop`) is a
 loopback-only bridge route (explicit ``X-Ticketbox-Desktop-Bridge: v1``
-marker + a live ``platform=desktop`` app bearer). It revokes exactly the
-credential that authenticated the call — sibling sessions, other ledgers of
-the same device, and staged pending credentials are all untouched.
+marker + a live ``platform=desktop`` app bearer). Three contracts are pinned
+here:
+
+- Default scope (the ledger-switch cleanup intent): retires exactly the
+  presented credential plus its still-staged ``desktop_pending`` rows — the
+  already-promoted successor stays alive by design, so switching ledgers
+  never suicides the session it just created.
+- ``?scope=lineage`` (the unpair/teardown intent): additionally hard-revokes
+  every promoted replacement whose activation receipt names the presented
+  credential as predecessor; unrelated lineages (independently-paired
+  devices) and the device itself stay untouched.
+- Unknown scope values are rejected with 400.
 """
 
 from __future__ import annotations
