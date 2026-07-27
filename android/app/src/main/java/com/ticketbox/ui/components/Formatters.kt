@@ -101,9 +101,11 @@ fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
     return runCatching {
         val decimal = BigDecimal(trimmed)
         val scaled = if (currency.noFractionDigits) {
-            // 零小数币种（JPY/KRW）：任何小数部分都拒绝（与后端 422 同语义），
-            // 不再 HALF_UP 静默进位。输入框已由 sanitizeMinorAmountInput 兜底，
-            // 本守卫守的是直调路径。
+            // 零小数币种（JPY/KRW）：任何小数部分都拒绝，不再 HALF_UP 静默进位。
+            // 注意这**严于后端 422**：后端按 Decimal 值比较，接受 "1200.0"/"0.00"
+            // 这类等值尾零小数，客户端连它们也拒 —— 方向安全（拒而不腐：绝不把
+            // 用户没输的尾零静默舍掉）。输入框已由 sanitizeMinorAmountInput 兜底
+            // （根本输不进 '.'），本守卫仅直调路径可达。
             if (decimal.scale() > 0) return null
             decimal
         } else {

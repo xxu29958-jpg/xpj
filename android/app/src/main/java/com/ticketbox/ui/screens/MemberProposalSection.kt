@@ -246,7 +246,9 @@ internal fun ProposalFormSheet(
     currency: CurrencyDisplay,
     viewModel: MemberRepaymentProposalViewModel,
     // 宿主欠款：OCC 载体取 rowVersion，金额解析取其服务端 homeCurrencyCode
-    // （与 AppAmountInput 展示币种一致，JPY 等零小数 home 不 ×100）。
+    // （JPY 等零小数 home 不 ×100）。注意输入框标签仍按 CurrencyDisplay 恒 Base
+    // 的币种展示（FxContract 登记局限：AppViewModel 从不喂真值）——金额语义按
+    // record home 解析是正确的，只是装饰性币种标签在 JPY 欠款下会显示 ¥(CNY)。
     debt: Debt,
     onClose: () -> Unit,
 ) {

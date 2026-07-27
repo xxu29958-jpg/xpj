@@ -38,7 +38,8 @@ class FormattersTest {
 
     @Test
     fun rejectsFractionInputForZeroDecimalCurrencies() {
-        // 与后端 422 同语义：零小数币种带小数部分一律 null，不再 HALF_UP 静默进位。
+        // 严于后端 422（后端按值接受等值尾零，客户端连 "0.00" 也拒，方向安全）：
+        // 零小数币种带小数部分一律 null，不再 HALF_UP 静默进位。
         assertNull(parseMinorAmount("1200.5", CurrencyCode.JPY))
         assertNull(parseMinorAmount("1200.0", CurrencyCode.JPY))
         assertNull(parseMinorAmount("0.00", CurrencyCode.KRW))

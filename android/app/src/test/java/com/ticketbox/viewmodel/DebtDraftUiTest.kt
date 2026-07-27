@@ -27,7 +27,8 @@ class DebtDraftUiTest {
     @Test
     fun parsedAmountCentsUsesDraftHomeCurrencyMinorDigits() {
         // 草稿注入账本服务端 home 币种（DebtListViewModel 由既有欠款 derive）：
-        // JPY 零小数 → "1200" 是 minor 1200，不 ×100；小数部分按 422 同语义拒绝。
+        // JPY 零小数 → "1200" 是 minor 1200，不 ×100；小数部分一律拒绝（严于后端 422，
+        // 等值尾零也拒，方向安全）。
         assertEquals(
             1_200L,
             DebtDraftUi(amountYuanInput = "1200", homeCurrency = CurrencyCode.JPY).parsedAmountCents(),
