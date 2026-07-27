@@ -303,9 +303,10 @@ def test_web_recycle_bin_workbench_structure_owner(
 
     assert response.status_code == 200
     body = response.text
-    # 五域 IA：回收站属资料库域，页内面包屑表达归属。
+    # 五域 IA：S1 (218-D) 把回收站归流水 (transactions) 域，页内面包屑与壳同父级；
+    # C5c-1 /web/library 落地时再改挂资料库。
     assert 'aria-label="面包屑"' in body
-    assert "资料库" in body
+    assert 'rb-breadcrumb-parent">流水<' in body
     # 工作台面板 + 产品表格 (取代旧 dt-card KPI + dt-table)。
     assert 'aria-label="可恢复项目"' in body
     assert 'class="product-table"' in body
@@ -318,7 +319,7 @@ def test_web_recycle_bin_workbench_structure_owner(
 def test_web_recycle_bin_workbench_viewer_readonly(
     web_client: TestClient, *, identity
 ) -> None:
-    """C5b-1：viewer 只读语义不破 (无恢复表单)；空态给资料库域行动链接。"""
+    """C5b-1：viewer 只读语义不破 (无恢复表单)；空态给同域 (流水) 行动链接。"""
     ledger_id = _make_viewer_ledger(web_client, identity=identity)
 
     response = web_client.get(f"/web/recycle-bin?ledger_id={ledger_id}")
@@ -328,6 +329,6 @@ def test_web_recycle_bin_workbench_viewer_readonly(
     assert 'action="/web/recycle-bin/restore"' not in body
     assert ">恢复</button>" not in body
     assert "只读角色可以查看回收站" in body
-    # 空账本 → 空态：标题 + 回资料库域的行动链接。
+    # 空账本 → 空态：标题 + 同域 (分类/商家/标签) 行动链接。
     assert "回收站是空的" in body
     assert f'href="/web/categories?ledger_id={ledger_id}"' in body

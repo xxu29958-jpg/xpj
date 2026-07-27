@@ -1,18 +1,19 @@
 {% extends "base.html" %}
-{% block title %}回收站 · 资料库 · 小票夹{% endblock %}
+{% block title %}回收站 · 流水 · 小票夹{% endblock %}
 
-{# C5b-1 工作台化：页面级 CSS 走 pages/recycle-bin.css。base.html 的 pages 挂载列表
-   正由 S1 (218-D IA 切片) 在另一 worktree 改写，本切片不碰 base.html，借 page_scripts
-   块 (位于 <head> 内、全部全局样式之后) 挂载；S1 落地后收编进 base.html pages 列表。 #}
+{# C5b-1 工作台化：页面级 CSS 走 pages/recycle-bin.css。S1 (218-D IA) 已落地并合入
+   本分支，但 base.html 仍是 S1 后续切片的热文件，本切片不与它争抢——借 page_scripts
+   块 (位于 <head> 内、全部全局样式之后) 挂载；218-D 视觉主切片收编 pages 列表时迁移。 #}
 {% block page_scripts %}
 <link rel="stylesheet" href="/static/web/pages/recycle-bin.css?v={{ asset_version }}">
 {% endblock %}
 
 {% block content %}
-{# 五域 IA：回收站属资料库域。/web/library 聚合页由 S1 在建，父级先渲染为文本不留
-   死链；S1 落地后把父级换成 <a href="/web/library{{ q }}">资料库</a>。 #}
+{# 五域 IA：S1 (218-D) 已把 /web/recycle-bin 归流水 (transactions) 域，页内面包屑与
+   壳面包屑同一父级；父级纯文本不留死链。C5c-1 /web/library 落地时改挂资料库
+   (届时 base.html 的域归属同步迁移)。 #}
 <nav class="rb-breadcrumb" aria-label="面包屑">
-  <span class="rb-breadcrumb-parent">资料库</span>
+  <span class="rb-breadcrumb-parent">流水</span>
   <span class="rb-breadcrumb-sep" aria-hidden="true">/</span>
   <span class="rb-breadcrumb-current" aria-current="page">回收站</span>
 </nav>
@@ -53,7 +54,7 @@
     <div class="rb-panel-title">可恢复项目（{{ recycle_bin.items|length }} 项）</div>
     <div class="rb-panel-subtitle">
       {% if recycle_bin.short_window_count %}
-      其中 {{ recycle_bin.short_window_count }} 项处于限期保留窗口，逾期将彻底移除
+      其中 {{ recycle_bin.short_window_count }} 项限期保留，逾期不可恢复
       {% else %}
       当前没有限期保留项目
       {% endif %}
