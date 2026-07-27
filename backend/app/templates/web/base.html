@@ -1,3 +1,57 @@
+{% set q = '?ledger_id=' ~ selected_ledger_id if selected_ledger_id else '' %}
+{% set _path = request.url.path %}
+{% set _role = selected_ledger_role or 'owner' %}
+
+{# 五域 IA (218-D S1, 移植自产品矿): 产品归属显式声明, 遗留路由名只是传输契约。
+   域判定集中在 base, _sidebar_nav.html 复用同一组标志做高亮。 #}
+{# 账单编辑页的来源域: 矿用路由传入的 edit_return_to; main 路由未传该变量,
+   退化为按账单状态归属(pending→收件, 其余→流水, 与矿的默认推导一致)。 #}
+{% set _edit_origin = (
+  edit_return_to if edit_return_to is defined else
+  ('pending' if (expense is defined and expense.status == 'pending') else 'confirmed')
+) %}
+{% set _is_inbox_context = (
+  _path in ['/web', '/web/'] or '/pending' in _path or '/duplicates' in _path or
+  '/tasks' in _path or
+  ('/expenses/' in _path and _edit_origin in ['pending', 'duplicates'])
+) %}
+{% set _is_transactions_context = (
+  '/confirmed' in _path or '/search' in _path or '/categories' in _path or
+  '/merchants' in _path or '/tags' in _path or '/rules' in _path or
+  '/recycle-bin' in _path or '/import' in _path or '/export' in _path or
+  ('/expenses/' in _path and _edit_origin == 'confirmed')
+) %}
+{% set _is_obligations_context = (
+  '/debts' in _path or '/receivables' in _path or '/bill-splits' in _path or
+  '/repayment-drafts' in _path
+) %}
+{# 轴2 IA (#228): 还债目标是前瞻/规划面, 归计划域而非往来(与矿的分歧点, 以 main 语义为准)。 #}
+{% set _is_plans_context = (
+  '/budgets' in _path or
+  ('/goals' in _path and '/debt-goals' not in _path) or
+  '/debt-goals' in _path or
+  '/income-plans' in _path or '/budget-advise' in _path or '/recurring' in _path
+) %}
+{% set _is_insights_context = (
+  '/reports' in _path or '/data-quality' in _path or '/dashboard/cards' in _path
+) %}
+{% set _domain = (
+  'inbox' if _is_inbox_context else
+  'transactions' if _is_transactions_context else
+  'obligations' if _is_obligations_context else
+  'plans' if _is_plans_context else
+  'insights' if _is_insights_context else
+  'workspace'
+) %}
+{% set _domain_label = {
+  'inbox': '收件',
+  'transactions': '流水',
+  'obligations': '往来',
+  'plans': '计划',
+  'insights': '洞察',
+  'workspace': '工作区'
+}.get(_domain, '工作区') %}
+
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}" data-home-currency="{{ home_currency_code }}" data-home-currency-symbol="{{ home_currency_symbol }}">
 <head>
@@ -76,11 +130,8 @@
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
-<body class="desktop-shell-active">
+<body class="desktop-shell-active" data-domain="{{ _domain }}">
 <a class="skip-link" href="#main-content">跳到主内容</a>
-{% set q = '?ledger_id=' ~ selected_ledger_id if selected_ledger_id else '' %}
-{% set _path = request.url.path %}
-{% set _role = selected_ledger_role or 'owner' %}
 <div class="app">
   {% include "_sidebar_nav.html" %}
   <div>
@@ -88,7 +139,7 @@
       <div class="crumb">
         <span>小票夹</span>
         <span class="sep">/</span>
-        <span>桌面账本</span>
+        <span>{{ _domain_label }}</span>
         <span class="sep">/</span>
         <span class="current">{{ page_title or '仪表盘' }}</span>
       </div>
