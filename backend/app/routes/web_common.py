@@ -27,7 +27,7 @@ from app.network_boundary import require_owner_console_local
 from app.services import backup_service, bill_split_service, web_stats_service
 from app.services import owner_console_service as owner_svc
 from app.services.budget_service import get_monthly_budget
-from app.services.currency_common import currency_input_metadata
+from app.services.currency_common import currency_input_metadata, minor_amount_major_number
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.data_quality_service import is_uncategorized_expense_category, is_usable_pending_merchant
 from app.services.exchange_rate_service import home_currency_code
@@ -35,7 +35,7 @@ from app.services.expense_service import list_pending
 from app.services.goal_service import list_goals
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items
-from app.services.spending_contract_service import accounting_zone
+from app.services.spending_contract_service import accounting_zone, default_accounting_timezone_name
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month, ensure_utc, now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
@@ -588,6 +588,7 @@ def _budget_top_rows(budget) -> list[dict]:
                 "limit_yuan": _amount_yuan(limit_cents),
                 "spent_yuan": _amount_yuan(spent_cents),
                 "overspent_yuan": _amount_yuan(int(category.overspent_amount_cents)),
+                "overspent_cents": int(category.overspent_amount_cents),
                 "percent": min(percent, 100),
                 "is_over": category.overspent_amount_cents > 0,
             }
@@ -626,12 +627,32 @@ def _dashboard_budget_goals_block(budget, goals) -> dict:
         "budget_configured": budget.configured,
         "budget_total_yuan": _amount_yuan(int(budget.total_amount_cents)),
         "budget_remaining_yuan": _amount_yuan(int(budget.remaining_amount_cents)),
+        "budget_remaining_cents": int(budget.remaining_amount_cents),
         "budget_overspent_yuan": _amount_yuan(int(budget.overspent_amount_cents)),
         "budget_is_over": budget.remaining_amount_cents < 0,
         "budget_top": _budget_top_rows(budget),
         "goals_count": len(goals),
         "goals_risk_count": goal_risk_count,
         "goals_top": _goals_top_rows(goals),
+    }
+
+
+def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
+    """recent/device/backup 状态计数的 ctx 片段(从 ``_dashboard_cards`` 拆出守 80 行债线)。
+
+    PR #253 P2-6: backup 走轻量口径 (mtime 最新, 不逐文件 ``pg_restore --list``
+    验证); 恢复/健康流仍用全量验证的 ``latest_backup()``。
+    """
+    week_ago = now - timedelta(days=7)
+    latest_backup = backup_service.latest_backup_lightweight()
+    backup_age_days = None
+    if latest_backup is not None:
+        backup_age_days = max(0, (now.astimezone() - latest_backup.created_at).days)
+    return {
+        "recent_count": web_stats_service.recent_expense_count(db, ledger_id, week_ago),
+        "active_device_count": web_stats_service.active_device_count(db, ledger_id),
+        "backup_available": latest_backup is not None,
+        "backup_age_days": backup_age_days,
     }
 
 
@@ -644,7 +665,10 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     suspected = sum(
         1 for e in pending_rows if (getattr(e, "duplicate_status", None) or "") == "suspected"
     )
-    month = current_month("Asia/Shanghai")
+    # 与 monthly_stats 无显式 tz 的口径同源 (PR #253 P2-7): accounting 默认时区,
+    # 不再硬编码 Asia/Shanghai — 月末边界时月份/budget/goal 装配才不错位。
+    timezone_name = default_accounting_timezone_name()
+    month = current_month(timezone_name)
     stats = monthly_stats(db, month, ledger_id)
     prev_month = _previous_month_string(month)
     prev_stats = monthly_stats(db, prev_month, ledger_id) if prev_month else None
@@ -652,16 +676,9 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     active_recurring = sum(1 for item in recurring_rows if item.status == "active")
     paused_recurring = sum(1 for item in recurring_rows if item.status == "paused")
     candidate_count = len(recurring_candidates(db, tenant_id=ledger_id))
-    budget = get_monthly_budget(db, tenant_id=ledger_id, month=month, timezone_name="Asia/Shanghai")
-    goals = list_goals(db, tenant_id=ledger_id, month=month, timezone_name="Asia/Shanghai")
+    budget = get_monthly_budget(db, tenant_id=ledger_id, month=month, timezone_name=timezone_name)
+    goals = list_goals(db, tenant_id=ledger_id, month=month, timezone_name=timezone_name)
     now = now_utc()
-    week_ago = now - timedelta(days=7)
-    recent_count = web_stats_service.recent_expense_count(db, ledger_id, week_ago)
-    active_device_count = web_stats_service.active_device_count(db, ledger_id)
-    latest_backup = backup_service.latest_backup()
-    backup_age_days = None
-    if latest_backup is not None:
-        backup_age_days = max(0, (now.astimezone() - latest_backup.created_at).days)
     layout = list_dashboard_cards(db, tenant_id=ledger_id, surface="web")
     current_total = int(stats["total_amount_cents"])
     prev_total = int(prev_stats["total_amount_cents"]) if prev_stats else 0
@@ -694,35 +711,44 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
         "suspected_duplicate_count": suspected,
         "month": month,
         "total_amount_yuan": _amount_yuan(int(stats["total_amount_cents"])),
+        "total_amount_cents": current_total,
         "confirmed_count": int(stats["count"]),
         "previous_month": prev_month,
         "previous_total_amount_yuan": _amount_yuan(prev_total),
+        "previous_total_amount_cents": prev_total,
         "delta_amount_yuan": _amount_yuan(abs(delta_amount)),
+        "delta_amount_cents": abs(delta_amount),
         "delta_direction": delta_direction,
         "delta_percent": delta_percent,
         "recurring_active_count": active_recurring,
         "recurring_paused_count": paused_recurring,
         "recurring_candidate_count": candidate_count,
         **_dashboard_budget_goals_block(budget, goals),
-        "recent_count": recent_count,
-        "active_device_count": active_device_count,
-        "backup_available": latest_backup is not None,
-        "backup_age_days": backup_age_days,
+        **_dashboard_status_counts_block(db, ledger_id, now),
     }
 
 
 def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
-    month = current_month("Asia/Shanghai")
-    stats = monthly_stats(db, month, selected_id, timezone_name="Asia/Shanghai")
-    return [
-        {
-            "name": item["category"],
-            "amount_yuan": int(item["amount_cents"]) / 100.0,
-            "amount_cents": int(item["amount_cents"]),
-            "count": int(item["count"]),
-        }
-        for item in stats.get("by_category", [])[:6]
-    ]
+    timezone_name = default_accounting_timezone_name()
+    month = current_month(timezone_name)
+    stats = monthly_stats(db, month, selected_id, timezone_name=timezone_name)
+    home = home_currency_code()
+    rows = []
+    for item in stats.get("by_category", [])[:6]:
+        amount_minor = int(item["amount_cents"])
+        rows.append(
+            {
+                "name": item["category"],
+                "amount_yuan": amount_minor / 100.0,
+                "amount_cents": amount_minor,
+                # exponent 感知投影 (PR #253 P1-1): amount_label 给 overview 清单
+                # 展示, amount_major 给 category-donut 的几何与 tooltip。
+                "amount_label": _minor_amount_label(amount_minor, home),
+                "amount_major": minor_amount_major_number(amount_minor, home),
+                "count": int(item["count"]),
+            }
+        )
+    return rows
 
 
 def _dashboard_data_payload(db: Session, selected_id: str) -> dict:

@@ -32,7 +32,8 @@
           borderColor: app.readVar("--chart-tooltip-border"),
           textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: "'Noto Sans SC', Inter" },
           formatter: function (p) {
-            return '<div style="font-size:12px"><b>' + p.name + "</b><br/>" +
+            // PR #253 P1-2: 分类名是用户/导入可控文本, 进 HTML tooltip 前必须转义。
+            return '<div style="font-size:12px"><b>' + app.escapeHtml(p.name) + "</b><br/>" +
                    app.homeMoney((p.value || 0).toLocaleString()) + " · " + p.percent + "%</div>";
           },
         },
@@ -61,12 +62,13 @@
               },
             },
           },
-          // Reads the dashboard category_share payload shape (name / amount_yuan).
-          // Yuan, not cents: tooltip and the center label print the value as-is.
+          // Reads the dashboard category_share payload shape (name / amount_yuan, with
+          // exponent-aware amount_major preferred when present — PR #253 P1-1).
+          // Major units, not minor: tooltip and the center label print the value as-is.
           data: data.slice(0, 6).map(function (d, i) {
             return {
               name: d.name,
-              value: d.amount_yuan,
+              value: d.amount_major == null ? d.amount_yuan : d.amount_major,
               itemStyle: { color: palette[i % palette.length] },
             };
           }),

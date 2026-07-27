@@ -141,6 +141,40 @@ def latest_backup() -> BackupEntry | None:
     return items[0] if items else None
 
 
+def latest_backup_lightweight() -> BackupEntry | None:
+    """Newest backup file by mtime, WITHOUT per-file ``pg_restore --list`` validation.
+
+    ``list_backups()`` validates every dump (up to 60s per file), which is the
+    right caliber for the Owner Console restore picker but too expensive for
+    read-heavy status surfaces (the /web overview landing + dashboard backup
+    card). Those only need "is there a backup, and how old is the newest one" —
+    a corrupt-but-present newest dump still counts as a backup attempt here.
+    Restore/health flows keep the fully validated caliber above.
+    """
+    directory = _backup_dir()
+    newest: Path | None = None
+    newest_mtime = 0.0
+    for path in directory.glob(f"{_PREFIX}*{_SUFFIX}"):
+        try:
+            if not path.is_file():
+                continue
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if newest is None or mtime > newest_mtime:
+            newest = path
+            newest_mtime = mtime
+    if newest is None:
+        return None
+    stat = newest.stat()
+    return BackupEntry(
+        file_name=newest.name,
+        size_bytes=int(stat.st_size),
+        created_at=datetime.fromtimestamp(stat.st_mtime).astimezone(),
+        kind=_classify(newest.name),
+    )
+
+
 @dataclass(frozen=True)
 class BackupHealth:
     """Dashboard view of the newest valid backup's freshness."""

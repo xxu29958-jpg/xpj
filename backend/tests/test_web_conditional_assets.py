@@ -58,6 +58,79 @@ def test_reports_loads_echarts_trend_and_reports_scripts_only(web_client: TestCl
     _assert_chart_script_order(resp.text, [_ECHARTS, _TREND_CHART, _REPORTS_JS])
 
 
+def _seed_overview_expense(client: TestClient, *, identity) -> None:
+    from app.services.time_service import current_month
+
+    resp = client.post(
+        "/api/expenses/manual",
+        headers=identity.app_headers,
+        json={
+            "amount_cents": 8800,
+            "merchant": "海底捞",
+            "category": "餐饮",
+            "expense_time": f"{current_month('Asia/Shanghai')}-15T04:00:00Z",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def _hide_overview_reports_card(client: TestClient) -> None:
+    keys = [
+        "monthly_spend",
+        "budget",
+        "reports",
+        "goals",
+        "recurring",
+        "pending",
+        "recent_uploads",
+        "backup_status",
+        "device_status",
+    ]
+    saved = client.post(
+        "/web/dashboard/cards/save",
+        data={
+            "ledger_id": "owner",
+            "card_key": keys,
+            "card_position": [str(index) for index, _key in enumerate(keys)],
+            "visible_key": [key for key in keys if key != "reports"],
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code in {303, 307}, saved.text
+
+
+def test_overview_skips_echarts_on_empty_ledger(web_client: TestClient) -> None:
+    """PR #253 P2-3: 无分类数据时 overview 不下载 ~1.1MB ECharts。"""
+    resp = web_client.get("/web/overview")
+    assert resp.status_code == 200
+    assert _ECHARTS not in resp.text
+    assert _CATEGORY_DONUT not in resp.text
+
+
+def test_overview_loads_echarts_only_when_category_chart_renders(
+    web_client: TestClient, *, identity
+) -> None:
+    _seed_overview_expense(web_client, identity=identity)
+    resp = web_client.get("/web/overview")
+    assert resp.status_code == 200
+    assert _ECHARTS in resp.text
+    assert _CATEGORY_DONUT in resp.text
+    # overview 只用环图: reports/dashboard 的图表脚本不下放。
+    assert _REPORTS_JS not in resp.text
+    assert _TREND_CHART not in resp.text
+    assert _DASHBOARD_JS not in resp.text
+    _assert_chart_script_order(resp.text, [_ECHARTS, _CATEGORY_DONUT])
+
+
+def test_overview_skips_echarts_when_reports_card_hidden(web_client: TestClient, *, identity) -> None:
+    _seed_overview_expense(web_client, identity=identity)
+    _hide_overview_reports_card(web_client)
+    resp = web_client.get("/web/overview")
+    assert resp.status_code == 200
+    assert _ECHARTS not in resp.text
+    assert _CATEGORY_DONUT not in resp.text
+
+
 def _assert_chart_script_order(html: str, page_block_scripts: list[str]) -> None:
     """Pin the load-bearing order base.html relies on (see its page_scripts note):
     ECharts first within the block (the chart modules reference the global
