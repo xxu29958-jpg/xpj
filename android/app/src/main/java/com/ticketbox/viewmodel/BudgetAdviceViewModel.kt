@@ -56,9 +56,41 @@ class BudgetAdviceViewModel(
     val uiState: StateFlow<BudgetAdviceUiState> = _state.asStateFlow()
     private var requestGeneration = 0
 
+    /** Advice data generation the displayed Ready result was produced under
+     *  (null while nothing advice-bearing is shown). Compared against
+     *  [BudgetActions.adviceInvalidations] emissions. */
+    private var displayedResultGeneration: Int? = null
+
     init {
         observeLedgerChanges()
         restoreCachedAdvice()
+        observeAdviceInvalidations()
+    }
+
+    private fun observeAdviceInvalidations() {
+        // The Plan back stack preserves this VM across domain switches, so a
+        // write that invalidated the advice cache elsewhere must also drop the
+        // still-displayed result it was computed from. Only a Ready result is
+        // affected: terminal states are config truth (invalidation changes no
+        // config), in-flight requests are Loading (round-8 generation owns
+        // their lifecycle), and no refetch is fired — the user taps 生成 again.
+        viewModelScope.launch {
+            repository.adviceInvalidations.collect { generation ->
+                val displayedAt = displayedResultGeneration
+                displayedResultGeneration = generation
+                if (displayedAt != null && generation > displayedAt) {
+                    _state.update { current ->
+                        if (current.loadState != BudgetAdviceLoadState.Ready) {
+                            return@update current
+                        }
+                        current.copy(
+                            loadState = BudgetAdviceLoadState.Idle,
+                            result = null,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private fun restoreCachedAdvice() {
@@ -203,6 +235,13 @@ class BudgetAdviceViewModel(
         // an HTTP error — classify them as the retryable Failed state, not the
         // add-data Empty guidance.
         val transientCallFailure = result.advice == null && reasonCode in RETRYABLE_NULL_ADVICE_REASONS
+        if (result.advice != null) {
+            // Stamp the Ready result with the CURRENT invalidation generation
+            // (read synchronously, not via the collector) so an invalidation
+            // that already landed before this apply can't be mistaken for a
+            // newer one later — the no-self-clearing guarantee.
+            displayedResultGeneration = repository.adviceInvalidations.value
+        }
         return copy(
             loadState = when {
                 result.advice != null -> BudgetAdviceLoadState.Ready

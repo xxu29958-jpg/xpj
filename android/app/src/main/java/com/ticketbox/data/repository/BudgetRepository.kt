@@ -5,6 +5,8 @@ import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
@@ -37,6 +39,12 @@ interface BudgetActions {
 
     /** Drops the process-lifetime advice cache (all bindings). */
     fun invalidateBudgetAdvice() { }
+
+    /** Current advice data generation: bumps on every [invalidateBudgetAdvice].
+     *  A live advice screen stamps its displayed result with the generation it
+     *  was produced under and drops it when a newer generation arrives. */
+    val adviceInvalidations: StateFlow<Int>
+        get() = MutableStateFlow(0)
 
     suspend fun saveMonthlyBudget(
         expectedBinding: LogicalSessionBinding,
@@ -142,6 +150,9 @@ class BudgetRepository(
     }
 
     override fun invalidateBudgetAdvice() = adviceCallStore.invalidate()
+
+    override val adviceInvalidations: StateFlow<Int>
+        get() = adviceCallStore.invalidations
 
     override suspend fun saveMonthlyBudget(
         expectedBinding: LogicalSessionBinding,

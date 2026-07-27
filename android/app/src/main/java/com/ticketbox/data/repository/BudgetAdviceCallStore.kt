@@ -4,6 +4,9 @@ import com.ticketbox.data.remote.dto.BudgetAdviseRequestDto
 import com.ticketbox.domain.model.BudgetAdviceResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.util.TimeZone
 
@@ -45,6 +48,15 @@ internal class BudgetAdviceCallStore(
     private val inFlight = mutableMapOf<AdviceRequestKey, CompletableDeferred<Result<BudgetAdviceResult>>>()
     private val lastSuccess = mutableMapOf<AdviceRequestKey, BudgetAdviceResult>()
     private var dataGeneration = 0
+
+    private val _invalidations = MutableStateFlow(0)
+
+    /** The current advice data generation as an observable flow: the value
+     *  bumps on every [invalidate]. Lets a LIVE advice ViewModel learn that
+     *  the result it is displaying was produced from pre-write inputs (the
+     *  cache it would restore from is already cleared — this is for the
+     *  still-visible state). */
+    val invalidations: StateFlow<Int> = _invalidations.asStateFlow()
 
     /** Last-delivered freshness stamp per advice-input source, same lock and
      *  lifetime as the maps above. See [noteAdviceInputSnapshot]. */
@@ -140,6 +152,7 @@ internal class BudgetAdviceCallStore(
             dataGeneration += 1
             lastSuccess.clear()
             inFlight.clear()
+            _invalidations.value = dataGeneration
         }
     }
 

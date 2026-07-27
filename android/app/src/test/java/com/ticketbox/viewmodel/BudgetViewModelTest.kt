@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -811,6 +812,80 @@ class BudgetViewModelBindingRaceTest {
     }
 }
 
+/** 218-B4 review P2: the Plan back stack preserves the advice VM across
+ *  domain switches, so an advice-input write elsewhere must drop the
+ *  still-displayed result — via the repository's invalidation generation
+ *  flow, never by auto-refetching. Separate class (per-class function cap). */
+@OptIn(ExperimentalCoroutinesApi::class)
+class BudgetAdviceInvalidationTest {
+    @Test
+    fun invalidationDropsDisplayedReadyBackToIdle() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
+        assertEquals(1, fake.adviceMonths.size)
+
+        // An advice-input write lands elsewhere (round 7/11 invalidation).
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Idle, state.loadState)
+        assertNull(state.result)
+        // No auto-refetch: the live quota is only spent on an explicit tap.
+        assertEquals(1, fake.adviceMonths.size)
+    }
+
+    @Test
+    fun resultProducedAfterInvalidationSurvivesSameGeneration() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        // Write first, generate after: the fresh result is stamped with the
+        // post-write generation and must not self-clear.
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
+        assertEquals("保持弹性支出空间。", state.result?.advice?.summary)
+
+        // ...but a LATER write still retires it.
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Idle, adviceViewModel.uiState.value.loadState)
+    }
+
+    @Test
+    fun terminalUnavailableSurvivesInvalidation() = budgetTest {
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.success(
+                BudgetAdviceResult(
+                    advice = null,
+                    providerName = "empty",
+                    reasonCode = "ai_advisor_provider_empty",
+                ),
+            )
+        }
+        val adviceViewModel = BudgetAdviceViewModel(fake, initialMonth = "2026-05")
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+
+        // Config truth (provider disabled) is unchanged by data writes.
+        fake.invalidateBudgetAdvice()
+        advanceUntilIdle()
+
+        assertEquals(BudgetAdviceLoadState.Unavailable, adviceViewModel.uiState.value.loadState)
+    }
+}
+
 private class FakeBudgetActions(
     var budget: BudgetMonthly,
     canModify: Boolean = true,
@@ -838,6 +913,14 @@ private class FakeBudgetActions(
 
     var saveResponder: (suspend (BudgetMonthly) -> Result<BudgetMonthly>)? = null
     var authoritativeBinding: LogicalSessionBinding = planBinding()
+
+    private val invalidationsFlow = MutableStateFlow(0)
+
+    override val adviceInvalidations: StateFlow<Int> = invalidationsFlow
+
+    override fun invalidateBudgetAdvice() {
+        invalidationsFlow.value += 1
+    }
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = activeAccessFlow
 
