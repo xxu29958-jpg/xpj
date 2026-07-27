@@ -470,3 +470,163 @@ def test_served_web_layout_through_manager_bff(
     assert probe["hasOwnerLedger"] is True
     assert probe["unnamedControls"] == 0
     assert stores.sessions
+
+
+# ── Manager product card: hidden-authority + live ledger switching (218-E) ──
+
+
+def _product_status() -> dict[str, object]:
+    status = _status(degraded=False)
+    status["product_available"] = True
+    status["product_url"] = "/web"
+    return status
+
+
+_PRODUCT_SESSION = {
+    "configured": True,
+    "account_name": "我",
+    "ledger_id": "owner",
+    "ledger_name": "我的小票夹",
+    "device_name": "小票夹 Desktop",
+    "role": "owner",
+    "expires_at": None,
+}
+_PRODUCT_LEDGERS = {
+    "ledgers": [
+        {"ledger_id": "owner", "name": "我的小票夹", "role": "owner", "is_default": True, "is_current": True},
+        {"ledger_id": "family", "name": "家庭账本", "role": "viewer", "is_default": False, "is_current": False},
+    ]
+}
+
+
+def _render_probe_page(tmp_path: Path, name: str, script: str) -> Path:
+    source = _UI_HTML.read_text(encoding="utf-8")
+    assert source.count(_STARTUP_SCRIPT) == 1
+    page = tmp_path / name
+    page.write_text(source.replace(_STARTUP_SCRIPT, script), encoding="utf-8")
+    return page
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+@pytest.mark.parametrize(("width", "height"), [(1180, 760), (820, 660)])
+def test_product_card_visibility_matrix_is_hidden_authoritative(
+    tmp_path: Path,
+    width: int,
+    height: int,
+) -> None:
+    """Unpaired shows pair form only; paired shows manage + /web link only."""
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the product-card visibility gate"
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
+      const pairedSession = {json.dumps(_PRODUCT_SESSION, ensure_ascii=False)};
+      const ledgers = {json.dumps(_PRODUCT_LEDGERS, ensure_ascii=False)};
+      const displayOf = (id) => getComputedStyle(document.getElementById(id)).display;
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => ({{configured: false}})}};
+        return {{status: 200, ok: true, json: async () => healthy}};
+      }};
+      render(healthy);
+      await loadProductSession();
+      const unpaired = {{
+        link: displayOf("productHomeLink"),
+        pair: displayOf("productPairGroup"),
+        manage: displayOf("productManageGroup")
+      }};
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => pairedSession}};
+        if (url === "/api/product/ledgers") return {{status: 200, ok: true, json: async () => ledgers}};
+        return {{status: 200, ok: true, json: async () => healthy}};
+      }};
+      await loadProductSession();
+      await loadProductLedgers();
+      const paired = {{
+        link: displayOf("productHomeLink"),
+        pair: displayOf("productPairGroup"),
+        manage: displayOf("productManageGroup"),
+        options: [...$("ledgerSelect").options].map((option) => option.value)
+      }};
+      document.body.setAttribute("data-visibility-probe", JSON.stringify({{unpaired, paired}}));
+    }})();"""
+    page = _render_probe_page(tmp_path, f"product-visibility-{width}x{height}.html", script)
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / f"edge-product-visibility-{width}x{height}",
+        url=page.as_uri(),
+        width=width,
+        height=height,
+        expression="document.body && document.body.getAttribute('data-visibility-probe') || undefined",
+    )
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    assert probe["unpaired"] == {"link": "none", "pair": "flex", "manage": "none"}
+    # Chromium reports inline-flex's used display as "flex"; the contract is
+    # "link visible, pair form gone, manage group visible".
+    assert probe["paired"]["link"] in ("inline-flex", "flex")
+    assert probe["paired"]["pair"] == "none"
+    assert probe["paired"]["manage"] == "flex"
+    assert probe["paired"]["options"] == ["owner", "family"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+def test_ledger_select_keeps_dirty_selection_until_successful_switch(tmp_path: Path) -> None:
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the ledger-switch behavior gate"
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
+      const baseSession = {json.dumps(_PRODUCT_SESSION, ensure_ascii=False)};
+      const ledgers = {json.dumps(_PRODUCT_LEDGERS, ensure_ascii=False)};
+      let switched = false;
+      window.fetch = async (url) => {{
+        if (url === "/api/product/session") {{
+          return {{
+            status: 200,
+            ok: true,
+            json: async () => (switched
+              ? {{...baseSession, ledger_id: "family", ledger_name: "家庭账本", role: "viewer"}}
+              : baseSession)
+          }};
+        }}
+        if (url === "/api/product/ledgers") return {{status: 200, ok: true, json: async () => ledgers}};
+        if (url === "/api/status") return {{status: 200, ok: true, json: async () => healthy}};
+        if (url === "/api/product/ledger/switch") {{
+          switched = true;
+          return {{status: 200, ok: true, json: async () => ({{configured: true}})}};
+        }}
+        throw new Error("unexpected " + url);
+      }};
+      await refresh();
+      const initialOptions = [...$("ledgerSelect").options].map((option) => option.value);
+      const select = $("ledgerSelect");
+      select.value = "family";
+      select.dispatchEvent(new Event("change", {{bubbles: true}}));
+      const afterPick = {{value: select.value, switchDisabled: $("switchAction").disabled}};
+      await refresh();
+      const afterTick = {{value: select.value, switchDisabled: $("switchAction").disabled}};
+      await switchProductLedger();
+      const afterSwitch = {{value: select.value, switchDisabled: $("switchAction").disabled}};
+      await refresh();
+      const afterSettle = {{value: select.value, switchDisabled: $("switchAction").disabled}};
+      document.body.setAttribute("data-dirty-probe", JSON.stringify({{
+        initialOptions, afterPick, afterTick, afterSwitch, afterSettle
+      }}));
+    }})();"""
+    page = _render_probe_page(tmp_path, "product-dirty-selection.html", script)
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / "edge-product-dirty-selection",
+        url=page.as_uri(),
+        width=820,
+        height=660,
+        expression="document.body && document.body.getAttribute('data-dirty-probe') || undefined",
+    )
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    # The initial page load fills the dropdown (defect 2b).
+    assert probe["initialOptions"] == ["owner", "family"]
+    # A differing user selection survives the refresh tick (defect 2a).
+    assert probe["afterPick"] == {"value": "family", "switchDisabled": False}
+    assert probe["afterTick"] == {"value": "family", "switchDisabled": False}
+    # A successful switch clears the dirty state and follows the new session.
+    assert probe["afterSwitch"] == {"value": "family", "switchDisabled": True}
+    assert probe["afterSettle"] == {"value": "family", "switchDisabled": True}

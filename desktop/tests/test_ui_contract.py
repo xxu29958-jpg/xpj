@@ -101,3 +101,29 @@ def test_manager_package_ships_only_ui_html_without_product_assets() -> None:
     assert "product.html" not in spec
     assert "product.css" not in spec
     assert "product.js" not in spec
+
+
+def test_hidden_attribute_is_authoritative_over_product_display_rules() -> None:
+    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
+
+    # .product-actions/.product-link set display:flex; the hidden attribute must
+    # still win or pair form, manage group and the /web link all render at once.
+    assert "[hidden] { display: none !important; }" in html
+
+
+def test_product_card_visibility_matrix_and_dirty_selection_are_declared() -> None:
+    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
+
+    # Paired state shows manage + /web link (never the pair form); unpaired
+    # shows the pair form (never manage/link).
+    assert '$("productPairGroup").hidden = configured;' in html
+    assert '$("productManageGroup").hidden = !configured;' in html
+    assert '$("productHomeLink").hidden = !(configured && available);' in html
+    # A differing user selection is never clobbered by a refresh tick; the
+    # dirty flag clears only on a successful product action.
+    assert "let ledgerSelectionDirty = false;" in html
+    assert "if (!ledgerSelectionDirty) select.value = productSession.ledger_id;" in html
+    assert "ledgerSelectionDirty = Boolean(" in html
+    assert "ledgerSelectionDirty = false;" in html
+    # The ledger list also loads on initial page load, not only after actions.
+    assert "productLedgers.length === 0" in html

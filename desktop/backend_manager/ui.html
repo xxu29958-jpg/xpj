@@ -105,6 +105,9 @@
       background: var(--card);
     }
     .product-actions input[type="text"] { width: 9em; letter-spacing: 0.12em; }
+    /* The hidden attribute is authoritative over every display rule above —
+       pair form / manage group / product link must never coexist. */
+    [hidden] { display: none !important; }
 
     .service-band {
       margin-top: 18px;
@@ -491,6 +494,7 @@
     let productSession = null;
     let productLedgers = [];
     let productBusy = false;
+    let ledgerSelectionDirty = false;
 
     async function productFetch(path, options = {}) {
       const headers = {"X-Control-Token": window.CONTROL_TOKEN};
@@ -529,7 +533,9 @@
         option.textContent = productSession.ledger_name;
         select.append(option);
       }
-      select.value = productSession.ledger_id;
+      // A user-chosen, not-yet-switched selection survives the 2.5s refresh
+      // ticks; only snap back to the session ledger when nothing is in flight.
+      if (!ledgerSelectionDirty) select.value = productSession.ledger_id;
       $("switchAction").disabled = productBusy || !available || select.value === productSession.ledger_id;
       $("unpairAction").disabled = productBusy || !available;
       select.disabled = productBusy || !available;
@@ -556,7 +562,7 @@
           option.textContent = row.is_current ? `${row.name}（当前）` : row.name;
           return option;
         }));
-        select.value = productSession.ledger_id;
+        if (!ledgerSelectionDirty) select.value = productSession.ledger_id;
       } catch (_error) {
         productLedgers = [];
       }
@@ -570,6 +576,7 @@
       try {
         await work();
         setMessage("productError", "");
+        ledgerSelectionDirty = false;
         await loadProductSession();
         await loadProductLedgers();
       } catch (error) {
@@ -611,7 +618,11 @@
     }
 
     document.addEventListener("change", (event) => {
-      if (event.target === $("ledgerSelect")) renderProduct();
+      if (event.target !== $("ledgerSelect")) return;
+      ledgerSelectionDirty = Boolean(
+        productSession && $("ledgerSelect").value !== productSession.ledger_id
+      );
+      renderProduct();
     });
 
     async function refresh() {
@@ -622,6 +633,9 @@
         if (!response.ok) throw new Error("status");
         render(await response.json());
         await loadProductSession();
+        if (productSession && productSession.configured && productLedgers.length === 0) {
+          await loadProductLedgers();
+        }
       } catch (_error) {
         latestStatus = null;
         setOverall("error", "管理器离线");
