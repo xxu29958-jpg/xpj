@@ -92,3 +92,12 @@ def test_local_backend_health_does_not_promise_mobile_reachability() -> None:
     assert 's.iphone_upload_state !== "configured_unverified"' in html
     assert "电脑端运行正常；手机连接尚未配置。" in html
     assert "手机连接、上传和网页管理均可使用。" not in html
+
+
+def test_manager_package_ships_only_ui_html_without_product_assets() -> None:
+    spec = (Path(__file__).parents[1] / "packaging" / "ticketbox-manager.spec").read_text(encoding="utf-8")
+
+    assert '"ui.html"' in spec or "'ui.html'" in spec
+    assert "product.html" not in spec
+    assert "product.css" not in spec
+    assert "product.js" not in spec

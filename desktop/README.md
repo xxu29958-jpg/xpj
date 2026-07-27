@@ -1,6 +1,6 @@
 # 小票夹 桌面后端管理器
 
-一个 Windows 桌面工具，把 headless 的 FastAPI 后端变成普通用户可操作的本机产品入口：**正式安装时控制 Windows 服务**，源码开发时监督 Uvicorn 进程，并提供设备绑定、iPhone 上传、备份、系统体检和诊断包任务入口。管理器不重造后端管理功能，只负责主机运行态、受限服务动作和任务交接。
+一个 Windows 桌面工具，把 headless 的 FastAPI 后端变成普通用户可操作的本机产品入口：**正式安装时控制 Windows 服务**，源码开发时监督 Uvicorn 进程，并提供设备绑定、iPhone 上传、备份、系统体检和诊断包任务入口。管理器不重造后端管理功能，只负责主机运行态、受限服务动作和任务交接。开始菜单默认打开 Manager 同源 `/web`——通过受限 BFF 复用完整 Web 产品作为桌面工作区。
 
 ## 启动
 
@@ -9,7 +9,11 @@ cd desktop
 ..\backend\.venv\Scripts\python.exe -m backend_manager
 ```
 
-UI 只以 HKLM App Paths 动态发现并校验的 Edge `--app` 窗口打开；每个 app-window 使用独立 profile，并通过 Edge 直启参数持有真实、可等待的浏览器进程，最后一个窗口关闭后 Manager 主进程退出。无合格 Edge 时 fail closed，不回退成无法跟踪生命周期的默认浏览器窗口，也不会从用户可写 `PATH` 解析浏览器。Owner 业务任务页仍交给用户默认浏览器打开。
+UI 只以 HKLM App Paths 动态发现并校验的 Edge `--app` 窗口打开；每个 app-window 使用独立且不含秘密的 profile（`edge-session`），并通过 Edge 直启参数持有真实、可等待的浏览器进程，最后一个窗口关闭后 Manager 主进程退出。无合格 Edge 时 fail closed，不回退成无法跟踪生命周期的默认浏览器窗口，也不会从用户可写 `PATH` 解析浏览器。Owner 业务任务页仍交给用户默认浏览器打开。
+
+默认窗口读取当前用户 ACL 限定的临时 bootstrap HTML，以 POST body 提交独立单次 token，建立 4 个 HttpOnly path-scoped Manager 会话 cookie 后进入干净 `/web`；临时文件在消费、取消或关闭时删除。instance proof、app token 与 control token 均不进入 URL、Edge 参数或 profile 路径。
+
+Manager BFF 只连接 `127.0.0.1`，从 WinCred 临时读取既有 app identity，在进程内注入 Bearer 与固定 `X-Ticketbox-Desktop-Bridge: v1`。它只代理 `/web/**`、Web/shared 静态资源和精确的 `PUT /api/me/ui-preferences` 主题写入，其他 `/api/**`、`/owner`、`/desktop`、认证页及歧义路径全部拒绝；浏览器侧敏感头（控制 token、伪造的 Authorization/Bridge 头、非 allowlist cookie）不会进入后端。Manager 不读数据库、不 iframe `/web`，也不复制账务真值。
 
 正式安装后，管理器从 `HKLM\Software\Ticketbox` 动态读取 Inno 写入的安装布局和服务合同，通过 Windows SCM 的只读投影查看状态；启停只调用安装目录中受保护 `ticketbox-manager.exe` 的固定动作短命 UAC helper，当前源码树或复制到用户目录的 Manager 不会被提升。普通用户进程不读取受保护的 `.env`、数据库或后端原始日志。正式运行态不依赖源码目录、Python 或 `.venv`。
 
@@ -40,9 +44,13 @@ backend_manager/
 ├── manager_startup.py 单实例 owner、窗口进程集合与宿主退出状态机
 ├── desktop_shell.py   HKLM Edge 发现、独立 app profile 与可等待窗口进程
 ├── maintenance_gate.py 只读验证 HKLM 安装维护 owner 记录和进程身份
-├── control_server.py  localhost HTTP 控制:token 鉴权 + authenticated reopen
+├── control_server.py  localhost HTTP 控制:token 鉴权 + authenticated reopen + bootstrap 会话 + 产品桥
+├── product_data.py    #219 两阶段身份协议客户端（attempt 证明 + KDF 派生）与 loopback 数据面
+├── product_identity.py WinCred app 会话存取（installation 作用域、fail-closed、token 不进 repr）
+├── product_recovery.py WinCred 重绑定恢复位（attempt 证明持久化,崩溃可幂等重放）
+├── web_bff.py         同源 /web 受限 relay（身份无关,只注入 Bearer + bridge 头）
 ├── netinfo.py         真实 LAN IPv4 发现：psutil 逐网卡枚举（绕开被 Clash 劫持的路由表）+ 过滤 CGNAT/link-local
-└── ui.html            服务 / 连接 / 备份升级 / 自救任务工作台
+└── ui.html            服务 / 连接 / 备份升级 / 自救任务工作台 + 桌面账本绑定控制
 tests/                 supervisor / control-auth / config / netinfo 单测
 requirements.txt       运行依赖（psutil，可选；缺失时 netinfo 降级为主机名解析）
 requirements-build.*   Manager 冻结构建的精确依赖输入与 hash lock
@@ -75,6 +83,7 @@ scripts/               Manager provenance 与冻结构建入口
 - **控制面 loopback-only**:`TICKETBOX_MANAGER_HOST` 非 loopback(`0.0.0.0` / LAN IP)会在启动前被 `config.py` 拒绝——控制服务发 token + 收控制 POST,绝不绑到公网/局域网。
 - **CSRF-safe**:控制 POST 需 per-process token + 同源,跨站页面打不动。
 - **诊断默认脱敏**：一键导出的 ZIP 只含 allowlist 服务状态、OS 版本和构建摘要；不含 token、数据库内容、原始日志、LAN/公网 URL 或数据绝对路径。
+- **桌面身份两阶段提交**：绑定/切账时客户端生成 attempt 证明并以与后端一致的 KDF 派生 5 分钟 `desktop_pending` 暂存值（服务端永不另发 token）；Manager 先把 attempt 证明持久写入 WinCred recovery 位，再调用 `/api/auth/desktop/activate` 同值晋升为正式 app 会话，最后把新会话提升到 primary。激活响应丢失、Manager 崩溃或 primary 写入失败都可从 recovery 幂等重放——重放响应的元数据（真实过期时间）永远以 activate 响应为准，不信陈旧的暂存副本；recovery 写入失败则不会发起激活。切账不把源账本凭据当作激活前任证明（后端只接受同账本前任），新会话落盘后才显式撤销旧凭据，TTL 兜底。
 - **升级权威仍归安装器**：未建立签名发行链前，Manager 不自动选择或提权运行安装包。外部安装、升级和卸载通过绑定生命周期锁 owner 的 HKLM 维护记录回收 Manager 窗口；崩溃残留按 PID 与进程创建时间识别，不会永久阻塞。
 - **零硬编码**:host/port/路径/URL 全来自 `config.py` 解析。
 

@@ -18,6 +18,7 @@ from backend_manager.product_data import (
     ProductDataError,
     activate_product_session,
     derive_desktop_pending_token,
+    list_product_ledgers,
     pair_product_session,
     revoke_product_session,
     switch_product_ledger,
@@ -59,6 +60,17 @@ _NOTICE_SECONDS = 8.0
 
 class ManagerShuttingDownError(RuntimeError):
     """Raised when a new action races with an accepted maintenance handoff."""
+
+
+def _snapshot_product_available(snapshot: RuntimeStatus) -> bool:
+    """Runtime readiness for the BFF surface (pairing state is NOT included)."""
+    return (
+        snapshot.running
+        and snapshot.healthy
+        and snapshot.health_state == "healthy"
+        and snapshot.runtime_access_state == "available"
+        and snapshot.owner_state == "configured"
+    )
 
 
 def _recovery_from_pending(pending: PendingProductSession) -> RebindRecovery:
@@ -112,6 +124,7 @@ class AppController:
         product_ledger_switcher: Callable[..., PendingProductSession] = switch_product_ledger,
         product_session_activator: Callable[..., ProductSession] = activate_product_session,
         product_session_revoker: Callable[..., None] = revoke_product_session,
+        product_ledger_fetcher: Callable[..., list[dict]] = list_product_ledgers,
         product_session_loader: Callable[[str], ProductSession | None] = load_product_session,
         product_session_saver: Callable[[str, ProductSession], None] = save_product_session,
         product_session_deleter: Callable[[str], None] = delete_product_session,
@@ -143,6 +156,7 @@ class AppController:
         self._product_ledger_switcher = product_ledger_switcher
         self._product_session_activator = product_session_activator
         self._product_session_revoker = product_session_revoker
+        self._product_ledger_fetcher = product_ledger_fetcher
         self._product_session_loader = product_session_loader
         self._product_session_saver = product_session_saver
         self._product_session_deleter = product_session_deleter
@@ -190,6 +204,7 @@ class AppController:
             and snapshot.backend_service_state not in {"missing", "unknown"}
             and snapshot.database_service_state not in {"missing", "unknown"}
         )
+        product_available = config is not None and _snapshot_product_available(snapshot)
         return {
             "runtime_mode": snapshot.mode,
             "running": snapshot.running,
@@ -214,6 +229,10 @@ class AppController:
             "owner_state": snapshot.owner_state,
             "owner_recovery_channel": snapshot.owner_recovery_channel,
             "owner_url": config.owner_url if config is not None else None,
+            # The manager-relative BFF entry. Availability tracks runtime
+            # readiness only; pairing state lives in /api/product/session.
+            "product_url": "/web" if product_available else None,
+            "product_available": product_available,
             "version": (
                 config.expected_backend_version
                 if config is not None and config.expected_backend_version
@@ -263,6 +282,29 @@ class AppController:
                 backend_origin=self._loopback_origin(config),
                 app_token=session.session_token,
             )
+
+    def product_ledgers(self) -> list[dict]:
+        """List the paired account's memberships for the manager switch UI."""
+
+        with self._product_session_lock:
+            config = self._product_config(require_available=True)
+            session = self._required_product_session(config)
+            try:
+                rows = self._product_ledger_fetcher(
+                    self._loopback_origin(config),
+                    session.session_token,
+                    timeout_seconds=config.health_request_timeout_seconds,
+                )
+            except ProductDataError as exc:
+                self._clear_invalid_product_session(config, exc)
+                raise
+            return [
+                {
+                    **row,
+                    "is_current": row["ledger_id"] == session.ledger_id,
+                }
+                for row in rows
+            ]
 
     def pair_product_principal(self, pairing_code: str) -> dict:
         with self._product_session_lock:
@@ -394,13 +436,7 @@ class AppController:
             snapshot = self._provider.current().runtime.status()
         except (ConfigError, RuntimeControlError):
             return False
-        return (
-            snapshot.running
-            and snapshot.healthy
-            and snapshot.health_state == "healthy"
-            and snapshot.runtime_access_state == "available"
-            and snapshot.owner_state == "configured"
-        )
+        return _snapshot_product_available(snapshot)
 
     @staticmethod
     def _loopback_origin(config: ManagerConfig) -> str:

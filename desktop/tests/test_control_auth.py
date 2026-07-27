@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from backend_manager.app_controller import AppController
@@ -144,12 +146,101 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         assert _TOKEN.encode() not in response.read()
         connection.close()
 
+        # The instance-secret URL flow is deleted: secrets never travel in URLs.
         connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
         connection.request("GET", f"/?instance={_INSTANCE_SECRET}")
         response = connection.getresponse()
+        assert response.status == 404
+        assert _TOKEN.encode() not in response.read()
+        connection.close()
+
+        # The bootstrap flow replaces it: ACL'd single-use HTML -> POST ->
+        # 4 HttpOnly path-scoped cookies -> manager page with the control token.
+        bootstrap_path = tmp_path / "bootstrap.html"
+        bootstrap_url = server.prepare_web_bootstrap(bootstrap_path)
+        assert _INSTANCE_SECRET not in bootstrap_url
+        assert _INSTANCE_SECRET not in str(bootstrap_path)
+        bootstrap_html = bootstrap_path.read_text(encoding="utf-8")
+        assert _INSTANCE_SECRET not in bootstrap_html
+        match = re.search(r'name="bootstrap_token" value="([^"]+)"', bootstrap_html)
+        assert match is not None
+        bootstrap_body = urllib.parse.urlencode({"bootstrap_token": match.group(1)}).encode()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request(
+            "POST",
+            "/api/bootstrap",
+            body=bootstrap_body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
         assert response.status == 200
-        _assert_security_headers(response)
+        cookies = response.headers.get_all("Set-Cookie")
+        assert cookies is not None and len(cookies) == 4
+        assert any("Path=/web" in cookie for cookie in cookies)
+        assert any("Path=/static" in cookie for cookie in cookies)
+        assert any("Path=/api/me/ui-preferences" in cookie for cookie in cookies)
+        assert any("ticketbox_manager_control=" in cookie and "Path=/" in cookie for cookie in cookies)
+        assert all("HttpOnly" in cookie for cookie in cookies)
+        assert all("SameSite=Strict" in cookie for cookie in cookies)
+        assert _TOKEN.encode() not in response.read()
+        connection.close()
+        assert not bootstrap_path.exists()
+
+        cookie_header = "; ".join(cookie.partition(";")[0] for cookie in cookies)
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/", headers={"Cookie": cookie_header})
+        response = connection.getresponse()
+        assert response.status == 200
         assert _TOKEN.encode() in response.read()
+        connection.close()
+
+        # Single-use: the replay is 410, a foreign token is 401, a cancelled
+        # grant is 410 too.
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request(
+            "POST",
+            "/api/bootstrap",
+            body=bootstrap_body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        assert response.status == 410
+        response.read()
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request(
+            "POST",
+            "/api/bootstrap",
+            body=urllib.parse.urlencode({"bootstrap_token": "invalid-bootstrap-token"}).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        assert response.status == 401
+        response.read()
+        connection.close()
+
+        cancelled_path = tmp_path / "cancelled-bootstrap.html"
+        server.prepare_web_bootstrap(cancelled_path)
+        cancelled_match = re.search(
+            r'name="bootstrap_token" value="([^"]+)"',
+            cancelled_path.read_text(encoding="utf-8"),
+        )
+        assert cancelled_match is not None
+        cancelled_body = urllib.parse.urlencode({"bootstrap_token": cancelled_match.group(1)}).encode()
+        server.cancel_web_bootstrap(cancelled_path)
+        assert not cancelled_path.exists()
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request(
+            "POST",
+            "/api/bootstrap",
+            body=cancelled_body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        assert response.status == 410
+        response.read()
         connection.close()
 
         connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
@@ -403,3 +494,169 @@ def test_control_server_rejects_every_action_and_reopen_after_shutdown_seal(tmp_
         server.shutdown()
         server.server_close()
         server_thread.join(timeout=2)
+
+
+def test_control_server_product_endpoints_stay_manager_plane(tmp_path) -> None:
+    calls: list[tuple[str, str | None]] = []
+
+    class Controller:
+        def product_principal(self) -> dict:
+            calls.append(("session", None))
+            return {
+                "configured": True,
+                "account_name": "我",
+                "ledger_id": "owner",
+                "ledger_name": "我的小票夹",
+                "device_name": "小票夹 Desktop",
+                "role": "owner",
+                "expires_at": None,
+            }
+
+        def product_ledgers(self) -> list[dict]:
+            calls.append(("ledgers", None))
+            return [
+                {
+                    "ledger_id": "owner",
+                    "name": "我的小票夹",
+                    "role": "owner",
+                    "is_default": True,
+                    "is_current": True,
+                },
+                {
+                    "ledger_id": "family",
+                    "name": "家庭账本",
+                    "role": "viewer",
+                    "is_default": False,
+                    "is_current": False,
+                },
+            ]
+
+        def pair_product_principal(self, pairing_code: str) -> dict:
+            calls.append(("pair", pairing_code))
+            return self.product_principal()
+
+        def switch_product_principal_ledger(self, ledger_id: str) -> dict:
+            calls.append(("switch", ledger_id))
+            return {"configured": True, "ledger_id": ledger_id}
+
+        def unpair_product_principal(self) -> dict:
+            calls.append(("unpair", None))
+            return {"configured": False}
+
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=Controller(),
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    port = server.server_address[1]
+    origin = f"http://127.0.0.1:{port}"
+    authorized = {
+        "X-Control-Token": _TOKEN,
+        "Origin": origin,
+        "Sec-Fetch-Site": "same-origin",
+    }
+    try:
+        # Session + ledgers are token-gated reads; pairing state never leaks a token.
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        connection.request("GET", "/api/product/session")
+        denied = connection.getresponse()
+        assert denied.status == 403
+        denied.read()
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        connection.request("GET", "/api/product/session", headers={"X-Control-Token": _TOKEN})
+        session = connection.getresponse()
+        assert session.status == 200
+        session_payload = json.loads(session.read())
+        assert session_payload["ledger_id"] == "owner"
+        assert "session_token" not in session_payload
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        connection.request("GET", "/api/product/ledgers", headers={"X-Control-Token": _TOKEN})
+        ledgers = connection.getresponse()
+        assert ledgers.status == 200
+        ledgers_payload = json.loads(ledgers.read())
+        assert ledgers_payload["ledgers"][1] == {
+            "ledger_id": "family",
+            "name": "家庭账本",
+            "role": "viewer",
+            "is_default": False,
+            "is_current": False,
+        }
+        connection.close()
+
+        # Mutations need the full same-origin authorization.
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        connection.request(
+            "POST",
+            "/api/product/pair",
+            body=json.dumps({"pairing_code": "12345678"}),
+            headers={"Content-Type": "application/json"},
+        )
+        denied_pair = connection.getresponse()
+        assert denied_pair.status == 403
+        denied_pair.read()
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        connection.request(
+            "POST",
+            "/api/product/pair",
+            body=json.dumps({"pairing_code": "12345678"}),
+            headers={**authorized, "Content-Type": "application/json"},
+        )
+        paired = connection.getresponse()
+        assert paired.status == 200
+        paired_payload = json.loads(paired.read())
+        assert paired_payload["configured"] is True
+        assert "session_token" not in paired_payload
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        connection.request(
+            "POST",
+            "/api/product/ledger/switch",
+            body=json.dumps({"ledger_id": "family"}),
+            headers={**authorized, "Content-Type": "application/json"},
+        )
+        switched = connection.getresponse()
+        assert switched.status == 200
+        assert json.loads(switched.read())["ledger_id"] == "family"
+        connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        connection.request(
+            "POST",
+            "/api/product/unpair",
+            body="",
+            headers=authorized,
+        )
+        unpaired = connection.getresponse()
+        assert unpaired.status == 200
+        assert json.loads(unpaired.read()) == {"configured": False}
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert calls == [
+        ("session", None),
+        ("ledgers", None),
+        ("pair", "12345678"),
+        ("session", None),
+        ("switch", "family"),
+        ("unpair", None),
+    ]

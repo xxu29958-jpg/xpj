@@ -75,14 +75,19 @@ def test_app_window_uses_a_dedicated_profile_and_returns_process_handle(
     monkeypatch.setattr(desktop_shell.subprocess, "Popen", popen)
 
     profile = tmp_path / "profile"
-    window = desktop_shell.open_app_window("http://127.0.0.1:8799/", profile=profile)
+    bootstrap_url = (tmp_path / "bootstrap.html").as_uri()
+    instance_secret = "instance-proof-secret-must-not-reach-edge"
+    window = desktop_shell.open_app_window(bootstrap_url, profile=profile)
 
     assert window is not None
     assert window.process.__class__ is Process
     assert f"--user-data-dir={profile.resolve()}" in captured["command"]
     assert "--edge-skip-compat-layer-relaunch" in captured["command"]
     assert "--disable-background-mode" in captured["command"]
-    assert "--app=http://127.0.0.1:8799/" in captured["command"]
+    assert f"--app={bootstrap_url}" in captured["command"]
+    assert "--window-size=1180,760" in captured["command"]
+    assert instance_secret not in " ".join(captured["command"])
+    assert instance_secret not in str(profile)
     assert captured["stdout"] is desktop_shell.subprocess.DEVNULL
     assert captured["stderr"] is desktop_shell.subprocess.DEVNULL
 

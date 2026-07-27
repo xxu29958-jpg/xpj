@@ -390,3 +390,83 @@ def test_production_window_session_owns_every_reopened_edge_process(tmp_path: Pa
         windows.shutdown()
 
     assert not profile_root.exists()
+
+
+# ── Served /web through the Manager BFF (real backend layout probes) ────────
+
+from tests._real_backend import (  # noqa: E402
+    CredentialStores,
+    RealBackend,
+    make_controller,
+    make_manager,
+    manager_post_json,
+    serving,
+)
+
+pytest_plugins = ["tests._real_backend"]
+
+_SERVED_WEB_PROBE = """
+(() => {
+  const atWeb = location.pathname === "/web" || location.pathname === "/web/pending";
+  if (!atWeb || !document.querySelector("#main-content")) return undefined;
+  const interactive = [...document.querySelectorAll("button, a, input, select, textarea")];
+  const visible = interactive.filter((el) => {
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+  });
+  return JSON.stringify({
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    ledgerChip: Boolean(document.querySelector(".ledger-role-chip")),
+    hasOwnerLedger: document.body.innerText.includes("我的小票夹"),
+    unnamedControls: visible.filter((el) =>
+      !(el.getAttribute("aria-label") || (el.textContent || "").trim() || (el.value || "").trim())
+    ).length,
+    href: location.href
+  });
+})()
+"""
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+@pytest.mark.parametrize(("width", "height"), [(1180, 760), (820, 660)])
+def test_served_web_layout_through_manager_bff(
+    tmp_path: Path,
+    real_backend: RealBackend,
+    width: int,
+    height: int,
+) -> None:
+    """The BFF-served /web stays usable at both supported app-window sizes."""
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the served-/web layout gate"
+    stores = CredentialStores()
+    manager = make_manager(make_controller(real_backend.port, stores))
+    manager_origin = f"http://127.0.0.1:{manager.server_address[1]}"
+
+    with serving(manager):
+        status, projection = manager_post_json(
+            manager.server_address[1],
+            "/api/product/pair",
+            {"pairing_code": real_backend.fresh_pairing_code()},
+            origin=manager_origin,
+        )
+        assert status == 200, projection
+        bootstrap_path = tmp_path / f"served-web-{width}x{height}" / "bootstrap.html"
+        bootstrap_url = manager.prepare_web_bootstrap(bootstrap_path)
+        value = evaluate_page(
+            edge,
+            profile=tmp_path / f"edge-served-web-{width}x{height}",
+            url=bootstrap_url,
+            width=width,
+            height=height,
+            expression=_SERVED_WEB_PROBE,
+        )
+
+    assert not bootstrap_path.exists()
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    assert probe["overflow"] is False
+    assert probe["ledgerChip"] is True
+    assert probe["hasOwnerLedger"] is True
+    assert probe["unnamedControls"] == 0
+    assert stores.sessions
