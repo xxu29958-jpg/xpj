@@ -362,3 +362,33 @@ def test_switch_prepare_expired_attempt_replay_fails_closed(identity, client: Te
     # Recovery is a fresh attempt id, which stages cleanly.
     recovery = _prepare(client, target, headers, _prepare_payload())
     assert recovery.status_code == 200, recovery.text
+
+
+def test_switch_prepare_rejects_graced_source_credential(identity, client: TestClient) -> None:
+    """A superseded desktop token inside the rotation grace window must never
+    stage a replacement — its holder could otherwise activate a fresh 90-day
+    session and supersede the legitimate successor."""
+    _, headers = _desktop_session(client, identity.pairing_code)
+    target = _create_ledger(client, headers)
+    source_value = headers["Authorization"].removeprefix("Bearer ")
+    with SessionLocal() as db:
+        token = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(source_value)))
+        assert token is not None
+        token.revoked_at = now_utc()
+        token.grace_until = now_utc() + timedelta(minutes=5)
+        db.commit()
+    payload = _prepare_payload()
+
+    response = _prepare(client, target, headers, payload)
+
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+    with SessionLocal() as db:
+        assert (
+            db.scalar(
+                select(DesktopActivationAttempt).where(
+                    DesktopActivationAttempt.public_id == payload["activation_attempt_id"]
+                )
+            )
+            is None
+        )

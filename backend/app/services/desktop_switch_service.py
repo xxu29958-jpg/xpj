@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import DesktopActivationAttempt, Device, Ledger
+from app.models import AuthToken, DesktopActivationAttempt, Device, Ledger
 from app.services.desktop_activation_service import (
     DESKTOP_PLATFORM,
     find_live_pending_token,
@@ -110,6 +110,13 @@ def prepare_desktop_ledger_switch(
         target_ledger_id=target_ledger_id,
     )
     if (device.platform or "") != DESKTOP_PLATFORM:
+        raise AppError("invalid_token", status_code=401)
+    # A graced (revoked, in rotation window) desktop credential must never
+    # stage a replacement: its holder could otherwise activate a fresh 90-day
+    # session and supersede the legitimate successor. The source credential is
+    # already under the credential lock, so require it to be unrevoked here.
+    source_token = db.get(AuthToken, locked_principal.credential_id)
+    if source_token is None or source_token.revoked_at is not None:
         raise AppError("invalid_token", status_code=401)
     pending_value, pending_expires_at = _stage_or_replay_switch_pending(
         db,

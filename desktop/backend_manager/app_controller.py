@@ -19,6 +19,7 @@ from backend_manager.product_data import (
     activate_product_session,
     derive_desktop_pending_token,
     list_product_ledgers,
+    new_activation_attempt,
     pair_product_session,
     revoke_product_session,
     switch_product_ledger,
@@ -356,6 +357,7 @@ class AppController:
 
     def pair_product_principal(self, pairing_code: str) -> dict:
         with self._product_session_lock:
+            self._begin_action()
             return self._pair_product_principal(pairing_code)
 
     def _pair_product_principal(self, pairing_code: str) -> dict:
@@ -369,15 +371,47 @@ class AppController:
             loopback_origin,
             current,
         )
-        pending = self._product_session_pairer(
-            loopback_origin,
-            pairing_code,
-            timeout_seconds=config.health_request_timeout_seconds,
-        )
+        # Persist the attempt proof BEFORE the pairing code is consumed: a
+        # response loss or process death after the backend commits would
+        # otherwise orphan the staged credential forever (the one-time code
+        # rejects any fresh attempt). A retry reuses the exact same proof.
+        provisional = self._load_rebind_recovery(config)
+        if provisional is not None and not provisional.ledger_id:
+            attempt = (
+                provisional.activation_attempt_id,
+                provisional.activation_attempt_secret,
+            )
+        else:
+            attempt = new_activation_attempt()
+            self._stage_rebind_recovery(
+                config,
+                RebindRecovery(
+                    activation_attempt_id=attempt[0],
+                    activation_attempt_secret=attempt[1],
+                ),
+            )
+        try:
+            pending = self._product_session_pairer(
+                loopback_origin,
+                pairing_code,
+                attempt=attempt,
+                timeout_seconds=config.health_request_timeout_seconds,
+            )
+        except ProductDataError as exc:
+            if exc.error == "invalid_pairing_code":
+                # Nothing was staged server-side with this proof; drop the
+                # provisional record so the next code starts clean.
+                with suppress(ProductDataError):
+                    self._delete_rebind_recovery(config)
+            raise
         if current is not None and secrets.compare_digest(
             current.session_token,
             pending.session.session_token,
         ):
+            # Deliberate abandonment: the staged server credential dies by
+            # TTL; nothing client-side should replay this ceremony later.
+            with suppress(ProductDataError):
+                self._delete_rebind_recovery(config)
             raise ProductDataError(
                 "后端未轮换桌面身份，已保留原绑定。",
                 error="product_identity_rotation_required",
@@ -402,10 +436,16 @@ class AppController:
 
     def unpair_product_principal(self) -> dict:
         with self._product_session_lock:
+            self._begin_action()
             return self._unpair_product_principal()
 
     def _unpair_product_principal(self) -> dict:
-        """Revoke the backend token(s), then remove the local WinCred entries."""
+        """Revoke the backend token(s), then remove the local WinCred entries.
+
+        Owed cleanup settles BEFORE teardown: when a superseded revoke fails
+        transiently, unpair refuses to complete (the cleanup record stays
+        retryable) instead of reporting success while a credential is orphaned.
+        """
 
         config = self._product_config(require_available=False)
         loopback_origin = self._loopback_origin(config)
@@ -415,6 +455,24 @@ class AppController:
             loopback_origin,
             session,
         )
+        # A recovery record can outlive the primary — an in-flight ceremony
+        # and/or an owed superseded revoke. Unpair only starts teardown once
+        # the owed revoke is durably done; a transient failure keeps
+        # everything in place for the next attempt.
+        recovery = self._load_rebind_recovery(config)
+        if recovery is not None:
+            if recovery.superseded_session_token and not self._revoke_superseded_session(
+                config,
+                loopback_origin,
+                recovery.superseded_session_token,
+            ):
+                raise ProductDataError(
+                    "旧凭据尚未完成清理，请稍后重试解除绑定。",
+                    error="product_cleanup_pending",
+                    status_code=503,
+                )
+            with suppress(ProductDataError):
+                self._delete_rebind_recovery(config)
         if session is not None:
             try:
                 self._product_session_revoker(
@@ -429,24 +487,11 @@ class AppController:
                 self._product_session_deleter(config.expected_installation_id)
             except ProductCredentialError as exc:
                 raise self._credential_error(exc) from exc
-        # A recovery record can outlive the primary — an in-flight ceremony
-        # and/or an owed superseded revoke. Unpair is explicit teardown:
-        # attempt the owed revoke (best-effort), then drop the record so no
-        # ceremony resumes and no credential is orphaned client-side.
-        recovery = self._load_rebind_recovery(config)
-        if recovery is not None:
-            if recovery.superseded_session_token:
-                self._revoke_superseded_session(
-                    config,
-                    loopback_origin,
-                    recovery.superseded_session_token,
-                )
-            with suppress(ProductDataError):
-                self._delete_rebind_recovery(config)
         return {"configured": False}
 
     def switch_product_principal_ledger(self, ledger_id: str) -> dict:
         with self._product_session_lock:
+            self._begin_action()
             return self._switch_product_principal_ledger(ledger_id)
 
     def _switch_product_principal_ledger(self, ledger_id: str) -> dict:
@@ -541,6 +586,19 @@ class AppController:
     ) -> ProductSession | None:
         recovery = self._load_rebind_recovery(config)
         if recovery is None:
+            return current
+        if not recovery.ledger_id:
+            # Provisional pair attempt (persisted before the pairing code was
+            # consumed): only an explicit pair() call completes it — a passive
+            # status read must never spend the proof.
+            return current
+        if not self._product_available():
+            # The backend on the configured port is not identity-verified
+            # right now (degraded, mismatched, or simply down). Replaying the
+            # activation proof against whatever answers there could burn it:
+            # a foreign/stale instance's 401 would be mistaken for an expired
+            # attempt and the record deleted. Render the cached non-secret
+            # session and retry the replay once the runtime is verified.
             return current
         derived = derive_desktop_pending_token(
             recovery.activation_attempt_secret,

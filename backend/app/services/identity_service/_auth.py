@@ -301,7 +301,13 @@ def authenticate_desktop_session_token(db: Session, token_value: str) -> AuthCon
             # membership retires the credential outright — it can never
             # succeed again, so report death (401), not an authorization
             # mismatch. The ?ledger_id= mismatch case lives in the
-            # middleware's own binding check and stays 403 there.
+            # middleware's own binding check and stays 403 there. Persist the
+            # death too: a later membership re-enable must not resurrect
+            # bearer copies the legitimate client has already discarded.
+            if token.revoked_at is None:
+                token.revoked_at = now
+                token.grace_until = None
+                db.commit()
             raise AppError("invalid_token", status_code=401) from exc
         raise
 

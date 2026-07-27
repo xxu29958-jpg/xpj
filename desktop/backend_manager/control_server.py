@@ -688,6 +688,9 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             try:
                 response = srv.controller.pair_product_principal(pairing_code)
+            except ManagerShuttingDownError:
+                self._send_json({"error": "manager_shutting_down"}, code=409)
+                return
             except ProductDataError as exc:
                 self._send_product_error(exc)
                 return
@@ -709,6 +712,9 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             try:
                 response = srv.controller.unpair_product_principal()
+            except ManagerShuttingDownError:
+                self._send_json({"error": "manager_shutting_down"}, code=409)
+                return
             except ProductDataError as exc:
                 self._send_product_error(exc)
                 return
@@ -735,6 +741,9 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             try:
                 response = srv.controller.switch_product_principal_ledger(ledger_id)
+            except ManagerShuttingDownError:
+                self._send_json({"error": "manager_shutting_down"}, code=409)
+                return
             except ProductDataError as exc:
                 self._send_product_error(exc)
                 return

@@ -184,3 +184,37 @@ def test_revoke_rejects_pending_and_missing_credentials(
     )
     assert missing.status_code == 401
     assert missing.json()["error"] == "invalid_token"
+
+
+def test_revoke_cancels_outstanding_staged_replacements(
+    identity,
+    loopback_client: TestClient,
+    client: TestClient,
+) -> None:
+    """Unpair must not leave a staged desktop_pending replacement live: the
+    unauthenticated activate endpoint would otherwise restore a full session
+    from the retained attempt proof after the session was revoked."""
+    from tests.desktop_activation_support import token_row as _token_row
+    from tests.test_desktop_ledger_switch_prepare import _activate_attempt, _create_ledger
+
+    _, headers = _desktop_session(client, identity.pairing_code)
+    target = _create_ledger(client, headers)
+    payload = _prepare_payload()
+    prepared = client.post(
+        f"/api/ledgers/{target}/switch/prepare",
+        headers=headers,
+        json=payload,
+    )
+    assert prepared.status_code == 200, prepared.text
+    staged_value = prepared.json()["session_token"]
+
+    token = headers["Authorization"].removeprefix("Bearer ")
+    assert loopback_client.post(REVOKE_PATH, headers=_bridge_headers(token)).status_code == 204
+
+    # The staged attempt can no longer activate: its pending row was revoked
+    # inside the same revocation transaction.
+    activated = _activate_attempt(client, payload)
+    assert activated.status_code == 401
+    staged_row = _token_row(staged_value)
+    assert staged_row.revoked_at is not None
+    assert staged_row.grace_until is None

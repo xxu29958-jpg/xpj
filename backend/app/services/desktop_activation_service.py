@@ -470,11 +470,11 @@ def revoke_desktop_app_session(
     auth: AuthContext,
     token_value: str,
 ) -> None:
-    """Revoke the exact app credential authenticated for this request.
+    """Revoke the presented app credential plus its staged replacements.
 
-    The Desktop bridge's self-revoke: only the presented credential dies —
-    sibling sessions, the device, and any staged pending credential are
-    untouched. Anything short of an exact one-row revocation fails closed.
+    Kills the presented credential AND every live ``desktop_pending`` row for
+    the same account/device (else the unauthenticated activate endpoint would
+    restore a session from a retained attempt proof). Siblings stay untouched.
     """
 
     if (
@@ -483,12 +483,18 @@ def revoke_desktop_app_session(
         or not hmac.compare_digest(hash_secret(token_value), auth.credential_hash)
     ):
         raise AppError("invalid_token", status_code=401)
-    revoked = revoke_token_value(
-        db,
-        token_value=token_value,
-        scope="app",
-    )
+    revoked = revoke_token_value(db, token_value=token_value, scope="app")
     if revoked != 1:
         db.rollback()
         raise AppError("invalid_token", status_code=401)
+    staged_at = now_utc()
+    staged_rows = db.scalars(
+        select(AuthToken)
+        .where(AuthToken.account_id == auth.account_id, AuthToken.device_id == auth.device_id)
+        .where(AuthToken.scope == DESKTOP_PENDING_SCOPE, AuthToken.revoked_at.is_(None))
+        .with_for_update()
+    ).all()
+    for staged in staged_rows:
+        staged.revoked_at = staged_at
+        staged.grace_until = None
     db.commit()

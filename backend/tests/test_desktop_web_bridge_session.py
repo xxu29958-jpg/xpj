@@ -163,6 +163,8 @@ def test_valid_desktop_bridge_projects_bound_viewer_and_its_ledger(
     assert "Desktop 绑定账本" in response.text
     assert 'name="ledger_id" value="owner"' in response.text
     assert "ledger-role-viewer" in response.text
+    # The desktop product surface carries the route back to the manager UI.
+    assert 'class="manager-home-link" href="/"' in response.text
     # The console roster's other ledgers never reach a bridged desktop page.
     assert "不应泄漏的本机账本" not in response.text
     assert "tester_1" not in response.text
@@ -233,6 +235,9 @@ def test_loopback_without_marker_preserves_legacy_owner_mode(
     assert response.status_code == 200, response.text
     assert "无 marker 时仍可见的本机账本" in response.text
     assert "ledger-role-viewer" not in response.text
+    # The manager link is a desktop-bridge affordance only: the loopback owner
+    # console and public cookie flows never render it.
+    assert "manager-home-link" not in response.text
 
 
 @pytest.mark.parametrize(
@@ -466,6 +471,11 @@ def test_desktop_bridge_membership_loss_is_a_dead_credential_not_a_mismatch(
 
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
+    # The death is durable server-side: a later membership re-enable cannot
+    # resurrect bearer copies the legitimate client already discarded.
+    stored = _auth_token(principal.token)
+    assert stored.revoked_at is not None
+    assert stored.grace_until is None
 
     # The distinct ?ledger_id= mismatch case still answers 403.
     mismatched = _mint_principal(role="member")

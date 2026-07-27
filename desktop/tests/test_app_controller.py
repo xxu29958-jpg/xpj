@@ -1163,9 +1163,9 @@ def test_unpair_revokes_owed_superseded_before_dropping_recovery() -> None:
 
     assert controller.unpair_product_principal() == {"configured": False}
 
-    # Reconcile's superseded retry (failed), the primary revoke, then the
-    # unpair-time backstop for the same superseded token.
-    assert revoked == ["tbx-old-A", derived, "tbx-old-A"]
+    # Reconcile's superseded retry (failed), the unpair-time retry that must
+    # succeed BEFORE teardown starts, then the primary revoke.
+    assert revoked == ["tbx-old-A", "tbx-old-A", derived]
     assert sessions == {}
     assert recoveries == {}
 
@@ -1288,3 +1288,200 @@ def test_reconcile_401_keeps_record_when_superseded_revoke_fails_transiently() -
     assert controller.product_principal() == {"configured": False}
     assert revoked == ["tbx-old-A", "tbx-old-A"]
     assert recoveries == {}
+
+
+# ── Round-3 regressions: unpair gate, identity gate, shutdown seal, provisional attempt ──
+
+
+def test_unpair_refuses_to_complete_while_superseded_cleanup_fails() -> None:
+    attempt_id, attempt_secret = new_activation_attempt()
+    derived = derive_desktop_pending_token(attempt_secret, attempt_id)
+    current = _product_session(token=derived, ledger_id="family")
+    sessions, recoveries, store = _stores(current)
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+        superseded_session_token="tbx-old-A",
+    )
+    attempts = {"count": 0}
+
+    def failing_revoker(_origin, token, **_kwargs) -> None:
+        attempts["count"] += 1
+        raise ProductDataError("backend unreachable", status_code=503)
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_revoker=failing_revoker,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.unpair_product_principal()
+
+    assert error.value.status_code == 503
+    assert error.value.error == "product_cleanup_pending"
+    # Teardown never started: the primary and the cleanup record both survive.
+    assert sessions[_INSTALLATION_ID].session_token == derived
+    assert _INSTALLATION_ID in recoveries
+
+    # The next attempt completes once the backend is reachable again.
+    controller2 = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_revoker=lambda _origin, token, **_kwargs: None,
+        **store,
+    )
+    assert controller2.unpair_product_principal() == {"configured": False}
+    assert sessions == {}
+    assert recoveries == {}
+
+
+class _DegradedRuntime:
+    def status(self) -> RuntimeStatus:
+        return RuntimeStatus(
+            mode="source",
+            running=True,
+            healthy=False,
+            pid=None,
+            uptime_seconds=1,
+            auto_restart=True,
+            auto_restart_configurable=True,
+            restarts=0,
+            backend_service_state=None,
+            database_service_state=None,
+            log=["degraded"],
+            health_state="mismatch",
+            health_detail="installation identity mismatch",
+            runtime_access_state="available",
+            owner_state="configured",
+        )
+
+
+def test_reconcile_never_replays_proof_against_unverified_runtime() -> None:
+    sessions, recoveries, store = _stores(None)
+    attempt_id, attempt_secret = new_activation_attempt()
+    recoveries[_INSTALLATION_ID] = RebindRecovery(
+        activation_attempt_id=attempt_id,
+        activation_attempt_secret=attempt_secret,
+        account_name="我",
+        ledger_id="family",
+        ledger_name="家庭账本",
+        device_name="小票夹 Desktop",
+        role="viewer",
+        activation_expires_at=_STAGED_EXPIRY,
+    )
+    activations: list[str] = []
+
+    controller = AppController(
+        _DegradedRuntime(),
+        _config(),
+        product_session_activator=lambda _origin, value, _previous, **_kwargs: (
+            activations.append(value.session_token),
+            _activate_pending(_origin, value, _previous, **_kwargs),
+        )[-1],
+        **store,
+    )
+
+    assert controller.product_principal() == {"configured": False}
+
+    # The proof is never sent to an identity-unverified backend; the record
+    # (the only replay material) survives for the next verified runtime.
+    assert activations == []
+    assert _INSTALLATION_ID in recoveries
+
+
+def test_product_mutations_honor_the_shutdown_seal() -> None:
+    controller = AppController(FakeRuntime(), _config(), **_stores()[2])
+    controller.request_manager_shutdown()
+
+    with pytest.raises(ManagerShuttingDownError):
+        controller.pair_product_principal("12345678")
+    with pytest.raises(ManagerShuttingDownError):
+        controller.unpair_product_principal()
+    with pytest.raises(ManagerShuttingDownError):
+        controller.switch_product_principal_ledger("family")
+
+
+def test_pair_reuses_the_provisional_attempt_after_response_loss() -> None:
+    sessions, recoveries, store = _stores(None)
+    seen_attempts: list[tuple[str, str]] = []
+    calls = {"count": 0}
+
+    def pairer(_origin, _code, *, attempt, **_kwargs) -> PendingProductSession:
+        calls["count"] += 1
+        seen_attempts.append(attempt)
+        if calls["count"] == 1:
+            # Backend committed, but the response died on the wire.
+            raise ProductDataError("synthetic response loss", status_code=503)
+        attempt_id, attempt_secret = attempt
+        return PendingProductSession(
+            activation_attempt_id=attempt_id,
+            activation_attempt_secret=attempt_secret,
+            session=ProductSession(
+                session_token=derive_desktop_pending_token(attempt_secret, attempt_id),
+                account_name="我",
+                ledger_id="owner",
+                ledger_name="我的小票夹",
+                device_name="小票夹 Desktop",
+                role="owner",
+                expires_at=_STAGED_EXPIRY,
+            ),
+        )
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=pairer,
+        product_session_activator=_activate_pending,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("12345678")
+    assert error.value.status_code == 503
+    # The provisional record persisted the proof before the code was consumed.
+    assert _INSTALLATION_ID in recoveries
+    assert recoveries[_INSTALLATION_ID].ledger_id == ""
+
+    projection = controller.pair_product_principal("12345678")
+
+    assert projection["configured"] is True
+    assert seen_attempts[0] == seen_attempts[1], "retry must reuse the exact attempt proof"
+    assert recoveries == {}
+
+
+def test_invalid_pairing_code_drops_the_provisional_attempt() -> None:
+    sessions, recoveries, store = _stores(None)
+    seen_attempts: list[tuple[str, str]] = []
+    calls = {"count": 0}
+
+    def pairer(_origin, _code, *, attempt, **_kwargs) -> PendingProductSession:
+        calls["count"] += 1
+        seen_attempts.append(attempt)
+        if calls["count"] == 1:
+            raise ProductDataError("bad code", error="invalid_pairing_code", status_code=401)
+        return _pending_for(ledger_id="owner")
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_pairer=pairer,
+        product_session_activator=_activate_pending,
+        **store,
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("00000000")
+    assert error.value.error == "invalid_pairing_code"
+    assert recoveries == {}
+
+    projection = controller.pair_product_principal("87654321")
+    assert projection["configured"] is True
+    assert seen_attempts[0] != seen_attempts[1], "a rejected code must not pin the next attempt"

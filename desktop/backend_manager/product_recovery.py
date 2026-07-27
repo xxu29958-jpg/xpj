@@ -86,6 +86,14 @@ def _required_text(payload: dict, key: str, *, max_length: int) -> str:
     return value
 
 
+def _metadata_text(payload: dict, key: str, *, max_length: int) -> str:
+    """Metadata field that may be empty while a pair attempt is provisional."""
+    value = payload.get(key)
+    if not isinstance(value, str) or len(value) > max_length:
+        raise ProductCredentialError("Windows 安全存储中的桌面身份恢复记录无效。")
+    return value
+
+
 def _decode_recovery(raw: bytes) -> RebindRecovery:
     try:
         payload = json.loads(raw.decode("utf-8"))
@@ -106,11 +114,11 @@ def _decode_recovery(raw: bytes) -> RebindRecovery:
     return RebindRecovery(
         activation_attempt_id=_required_text(payload, "activation_attempt_id", max_length=64),
         activation_attempt_secret=_required_text(payload, "activation_attempt_secret", max_length=128),
-        account_name=_required_text(payload, "account_name", max_length=120),
-        ledger_id=_required_text(payload, "ledger_id", max_length=64),
-        ledger_name=_required_text(payload, "ledger_name", max_length=120),
-        device_name=_required_text(payload, "device_name", max_length=120),
-        role=_required_text(payload, "role", max_length=32),
+        account_name=_metadata_text(payload, "account_name", max_length=120),
+        ledger_id=_metadata_text(payload, "ledger_id", max_length=64),
+        ledger_name=_metadata_text(payload, "ledger_name", max_length=120),
+        device_name=_metadata_text(payload, "device_name", max_length=120),
+        role=_metadata_text(payload, "role", max_length=32),
         activation_expires_at=activation_expires_at,
         superseded_session_token=superseded_session_token,
     )
