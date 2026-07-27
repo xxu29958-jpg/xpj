@@ -224,6 +224,7 @@ def test_restore_other_ledger_row_invisible_and_inoperable(web_client: TestClien
     assert 'data-restore-orphan="true"' in html
     assert f'data-restore-key="income_plan:{public_id}"' in html
     assert 'role="alert"' in html
+    assert html.count('id="recycle-restore-error"') == 1
     assert GONE_MESSAGE in html
     # 跨账本零写入：他账本行仍是 archived。
     status, _ = _income_row(public_id)
@@ -245,6 +246,7 @@ def test_restore_already_restored_rerenders_422_orphan(web_client: TestClient, *
     # 行已恢复 → 不在列表 → 裸块兜底；规则保持已恢复 (零回写)。
     assert 'data-restore-orphan="true"' in html
     assert f'data-restore-key="category_rule:{rule_id}"' in html
+    assert html.count('id="recycle-restore-error"') == 1
     assert GONE_MESSAGE in html
     assert _rule_deleted_at(rule_id) is None
 
@@ -266,6 +268,7 @@ def test_restore_past_recycle_window_rerenders_422_orphan(web_client: TestClient
     assert response.status_code == 422
     html = response.text
     assert 'data-restore-orphan="true"' in html
+    assert html.count('id="recycle-restore-error"') == 1
     assert GONE_MESSAGE in html
     # 超窗零写入：deleted_at 保持原样 (仍被软删)。
     assert _rule_deleted_at(rule_id) is not None
