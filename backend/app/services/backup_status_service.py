@@ -74,16 +74,31 @@ def _backup_entry(path: Path, stat: os.stat_result) -> BackupEntry:
     )
 
 
+def _cached_valid_fallback(
+    candidates: list[tuple[Path, os.stat_result]],
+) -> LightweightBackupStatus | None:
+    """熔断期兜底 (PR #253 R7): 缓存里已验证有效的旧 dump 仍按可恢复展示;
+    无缓存键/缓存为畸形都不算兜底 — 新 dump 保持「尚未验证」, 不谎称没有。"""
+    for path, stat in candidates:
+        cache_key = (path.name, stat.st_mtime_ns, int(stat.st_size))
+        if _lightweight_backup_validation.get(cache_key):
+            return LightweightBackupStatus(entry=_backup_entry(path, stat), state="valid")
+    return None
+
+
 def latest_backup_lightweight() -> LightweightBackupStatus:
     """Newest-first validation with tri-state presentation + tool circuit.
 
     Same "newest valid" semantics as ``backup_service.latest_backup()`` (PR
     #253 R3), memoized per ``(name, mtime_ns, size)`` so steady state spawns no
     subprocess and each file is validated at most once per process. A tool
-    failure trips a short circuit (R6-1): the request returns ``unverified``
-    immediately and later requests within ``_TOOL_OUTAGE_TTL_SECONDS`` skip the
-    tool entirely; the first probe after the TTL resets the breaker on any real
-    verdict. Restore/health flows keep the every-dump fully validated caliber.
+    failure trips a short circuit (R6-1): later requests within
+    ``_TOOL_OUTAGE_TTL_SECONDS`` skip the tool entirely and the first probe
+    after the TTL resets the breaker on any real verdict. While the breaker
+    is open (including the tripping request) a cached valid older dump still
+    surfaces as ``valid`` (R7) — only otherwise is ``unverified`` shown, with
+    the newer dump left unknown. Restore/health flows keep the every-dump
+    fully validated caliber.
     """
     candidates: list[tuple[Path, os.stat_result]] = []
     for path in _backup_dir().glob(f"{_PREFIX}*{_SUFFIX}"):
@@ -94,7 +109,11 @@ def latest_backup_lightweight() -> LightweightBackupStatus:
             continue
     candidates.sort(key=lambda item: item[1].st_mtime, reverse=True)
     if _tool_outage_active():
-        # 熔断期: 不逐文件重试工具, 按「有文件但未验证」呈现 (R6-1)。
+        # 熔断期: 不逐文件重试工具 (R6-1); 先回退到缓存里已验证有效的旧 dump
+        # (R7), 没有兜底才按「有文件但未验证」呈现。
+        fallback = _cached_valid_fallback(candidates)
+        if fallback is not None:
+            return fallback
         return LightweightBackupStatus(
             entry=None, state="unverified" if candidates else "none"
         )
@@ -106,8 +125,12 @@ def latest_backup_lightweight() -> LightweightBackupStatus:
                 _lightweight_backup_validation.clear()  # 键只随新 dump 出现, 清空=下次重验
             valid = _validate_dump_for_status(path)
             if valid is None:
-                # 首次工具失败即熔断: 本请求不再扫更旧的文件, TTL 后自动重探。
+                # 首次工具失败即熔断: 本请求不再扫更旧的文件, TTL 后自动重探;
+                # 缓存里已验证有效的旧 dump 兜底展示 (R7), 新 dump 保持未验证。
                 _tool_outage["since"] = time.monotonic()
+                fallback = _cached_valid_fallback(candidates)
+                if fallback is not None:
+                    return fallback
                 return LightweightBackupStatus(entry=None, state="unverified")
             _tool_outage.pop("since", None)  # 拿到真实结论 = 工具可用, 自动复位
             _lightweight_backup_validation[cache_key] = valid

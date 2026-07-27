@@ -141,6 +141,39 @@ def test_latest_backup_lightweight_falls_back_to_older_valid_dump(
     assert validations == [newer, older]
 
 
+def test_latest_backup_lightweight_tool_outage_preserves_cached_valid_dump(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #253 R7: 熔断期缓存里已验证有效的旧 dump 兜底展示, 新 dump 保持未验证。"""
+    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
+    backup_status_service._lightweight_backup_validation.clear()
+    backup_status_service._tool_outage.clear()
+    older, newer = write_fake_dumps(tmp_path)
+    verdicts: dict[str, bool | None] = {older.name: True, newer.name: False}  # 旧有效/新畸形 → 双双入缓存
+    calls: list[Path] = []
+
+    def _validate_by_verdict(path: Path):
+        calls.append(path)
+        return verdicts[path.name]
+
+    monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", _validate_by_verdict)
+    assert backup_status_service.latest_backup_lightweight().state == "valid"
+
+    # 新 dump 加入后验证触发工具失败 → 熔断; 缓存里有效的 older 兜底而不是「尚未验证」。
+    added = tmp_path / "ticketbox-2026-07-27.dump"
+    added.write_bytes(b"fresh-dump-payload")
+    verdicts[added.name] = None
+    first = backup_status_service.latest_backup_lightweight()
+    assert first.state == "valid"
+    assert first.entry is not None and first.entry.file_name == older.name
+    # 熔断窗口内再请求: 完全不触工具, 仍兜底缓存有效项; 新 dump 不进缓存 (保持未验证)。
+    second = backup_status_service.latest_backup_lightweight()
+    assert second.state == "valid"
+    assert second.entry is not None and second.entry.file_name == older.name
+    assert calls == [newer, older, added]
+    assert added.name not in {key[0] for key in backup_status_service._lightweight_backup_validation}
+
+
 def test_overview_category_share_aggregates_overflow_into_other(
     web_client: TestClient, *, identity
 ) -> None:
