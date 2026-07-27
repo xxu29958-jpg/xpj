@@ -66,6 +66,24 @@ class ExpenseAdvisorPayloadDiffTest {
         )
     }
 
+    @Test
+    fun pendingOrRejectedRowPayloadEditIsNotRelevant() {
+        // The advisor aggregates the CONFIRMED set only — a payload-field edit
+        // on a pending or rejected row changes nothing it reads (the later
+        // confirm transition invalidates on its own always-true path).
+        val pending = expense().copy(status = "pending", confirmedAt = null)
+        val rejected = expense().copy(status = "rejected", confirmedAt = null)
+
+        assertFalse(
+            pending.toDraft(originalAmountMinor = 9900)
+                .changesAdvisorPayloadAgainst(pending),
+        )
+        assertFalse(
+            rejected.toDraft(originalAmountMinor = 9900)
+                .changesAdvisorPayloadAgainst(rejected),
+        )
+    }
+
     private fun Expense.toDraft(
         amountCents: Long? = this.amountCents,
         originalCurrencyCode: CurrencyCode? = this.originalCurrencyCode,

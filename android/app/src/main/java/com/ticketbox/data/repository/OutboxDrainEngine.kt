@@ -120,18 +120,21 @@ class OutboxDrainEngine(
     private companion object {
         /** Mutation kinds whose replay moves the budget advisor's server-side
          *  inputs (_inputs_builder.py: confirmed-expense aggregates, income
-         *  plans). Create/confirm/patch/items change confirmed-expense rows;
+         *  plans). Create/confirm/patch change confirmed-expense rows;
          *  income-plan update changes the income leg. Excluded on purpose:
          *  pending-side kinds (reject / OCR / recognize / not-duplicate /
          *  items-mismatch) never touch confirmed aggregates; splits only
          *  re-share an unchanged total; rules / aliases / goals are not
          *  inputs; recurring writes and monthly-budget saves never travel
-         *  the outbox. */
+         *  the outbox; and ReplaceItems only rewrites ExpenseItem sub-lines
+         *  (+ updated_at / items_sum_status) — the advisor aggregates
+         *  Expense.category / amount_cents / month via confirmed_amount_query
+         *  (monthly_report_service.py), never line items, so item replacement
+         *  leaves every advisor aggregate byte-identical. */
         val ADVICE_INPUT_MUTATION_TYPES: Set<PendingMutationType> = setOf(
             PendingMutationType.ConfirmExpense,
             PendingMutationType.CreateExpense,
             PendingMutationType.PatchExpense,
-            PendingMutationType.ReplaceItems,
             PendingMutationType.UpdateIncomePlan,
         )
     }
