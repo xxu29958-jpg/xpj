@@ -28,10 +28,10 @@ def owner_account_id(db) -> int:
     return account_id
 
 
-def seed_creditor_view(*, currency: str = "CNY") -> tuple[str, int, int, int, str]:
-    """Seed an 'owed_to_me' member debt + one pending proposal from the family member;
-    the loopback web viewer (owner) is the creditor who can confirm. Returns
-    (debt_public_id, debt_id, owner_id, member_id, proposal_public_id)."""
+def seed_member_debt(*, direction: str, currency: str = "CNY") -> tuple[str, int, int, int]:
+    """Seed one 'owner'-ledger member debt (no proposal attached). ``direction`` decides
+    the loopback viewer's role: 'owed_to_me' → creditor, 'i_owe' → debtor. Returns
+    (debt_public_id, debt_id, owner_id, member_id)."""
     with SessionLocal() as db:
         member = Account(display_name="家人")
         db.add(member)
@@ -41,7 +41,7 @@ def seed_creditor_view(*, currency: str = "CNY") -> tuple[str, int, int, int, st
             tenant_id="owner",
             owner_account_id=owner_id,
             created_by_account_id=owner_id,
-            direction="owed_to_me",
+            direction=direction,
             counterparty_type="member",
             counterparty_account_id=member.id,
             principal_amount_cents=20000,
@@ -51,46 +51,60 @@ def seed_creditor_view(*, currency: str = "CNY") -> tuple[str, int, int, int, st
             source_id=str(uuid4()),
         )
         db.add(debt)
-        db.flush()
-        proposal_public_id = add_pending_proposal_in(
-            db,
-            debt_id=debt.id,
-            debtor_id=member.id,
-            creditor_id=owner_id,
-            amount_cents=8_000,
-            currency=currency,
-        )
         db.commit()
-        return debt.public_id, debt.id, owner_id, member.id, proposal_public_id
+        return debt.public_id, debt.id, owner_id, member.id
 
 
-def add_pending_proposal_in(
-    db,
-    *,
-    debt_id: int,
-    debtor_id: int,
-    creditor_id: int,
-    amount_cents: int,
-    currency: str = "CNY",
-) -> str:
-    """Insert one pending proposal row on ``db`` (caller commits)."""
-    created = now_utc()
-    proposal = MemberRepaymentProposal(
+def seed_creditor_view(*, currency: str = "CNY") -> tuple[str, int, int, int, str]:
+    """Seed an 'owed_to_me' member debt + one pending proposal from the family member;
+    the loopback web viewer (owner) is the creditor who can confirm. Returns
+    (debt_public_id, debt_id, owner_id, member_id, proposal_public_id)."""
+    public_id, debt_id, owner_id, member_id = seed_member_debt(direction="owed_to_me", currency=currency)
+    proposal_public_id = add_pending_proposal(
         debt_id=debt_id,
-        debtor_account_id=debtor_id,
-        creditor_account_id=creditor_id,
-        proposed_by_account_id=debtor_id,
-        proposed_amount_cents=amount_cents,
-        home_currency_code=currency,
-        paid_at=created,
-        status="pending",
-        created_at=created,
-        expires_at=created + timedelta(days=30),
-        idempotency_key=str(uuid4()),
+        debtor_id=member_id,
+        creditor_id=owner_id,
+        amount_cents=8_000,
+        currency=currency,
     )
-    db.add(proposal)
-    db.flush()
-    return proposal.public_id
+    return public_id, debt_id, owner_id, member_id, proposal_public_id
+
+
+def seed_debtor_view(*, currency: str = "CNY") -> tuple[str, int, int, int, str]:
+    """Seed an 'i_owe' member debt + one pending proposal from the owner; the loopback
+    web viewer (owner) is the DEBTOR — the confirm form is never rendered for them
+    (P2 旁路①的构造前提: debtor 直 POST confirm)。返回同 seed_creditor_view。"""
+    public_id, debt_id, owner_id, member_id = seed_member_debt(direction="i_owe", currency=currency)
+    proposal_public_id = add_pending_proposal(
+        debt_id=debt_id,
+        debtor_id=owner_id,
+        creditor_id=member_id,
+        amount_cents=8_000,
+        currency=currency,
+    )
+    return public_id, debt_id, owner_id, member_id, proposal_public_id
+
+
+def seed_external_debt(*, currency: str = "CNY") -> tuple[str, int, int]:
+    """Seed an external/manual debt (proposal 流程不适用,ctx proposals=None ——
+    P2 旁路③的构造前提)。Returns (debt_public_id, debt_id, owner_id)."""
+    with SessionLocal() as db:
+        owner_id = owner_account_id(db)
+        debt = Debt(
+            tenant_id="owner",
+            owner_account_id=owner_id,
+            created_by_account_id=owner_id,
+            direction="i_owe",
+            counterparty_type="external",
+            counterparty_label="招商信用卡",
+            principal_amount_cents=50000,
+            home_currency_code=currency,
+            status="open",
+            source_type="manual",
+        )
+        db.add(debt)
+        db.commit()
+        return debt.public_id, debt.id, owner_id
 
 
 def add_pending_proposal(
@@ -104,16 +118,23 @@ def add_pending_proposal(
     """Attach one more pending proposal to an existing debt (legal once any previous
     pending row is resolved — ``uq_mrp_one_pending_per_debt`` only gates pending)."""
     with SessionLocal() as db:
-        public_id = add_pending_proposal_in(
-            db,
+        created = now_utc()
+        proposal = MemberRepaymentProposal(
             debt_id=debt_id,
-            debtor_id=debtor_id,
-            creditor_id=creditor_id,
-            amount_cents=amount_cents,
-            currency=currency,
+            debtor_account_id=debtor_id,
+            creditor_account_id=creditor_id,
+            proposed_by_account_id=debtor_id,
+            proposed_amount_cents=amount_cents,
+            home_currency_code=currency,
+            paid_at=created,
+            status="pending",
+            created_at=created,
+            expires_at=created + timedelta(days=30),
+            idempotency_key=str(uuid4()),
         )
+        db.add(proposal)
         db.commit()
-        return public_id
+        return proposal.public_id
 
 
 def resolve_proposal_out_of_band(proposal_public_id: str, *, resolver_account_id: int) -> None:

@@ -19,6 +19,9 @@ from tests._web_debt_proposal_support import (
     resolve_proposal_out_of_band,
     row_version_of,
     seed_creditor_view,
+    seed_debtor_view,
+    seed_external_debt,
+    seed_member_debt,
 )
 
 # Uses the shared ``web_client`` fixture (conftest.py) which bypasses the /web loopback
@@ -101,5 +104,95 @@ def test_web_confirm_invalid_amount_error_not_attached_to_new_pending_proposal(
         )
         assert proposal is not None
         assert proposal.status == "pending"  # B 不受影响
+        repayments = db.scalars(select(Repayment).where(Repayment.debt_id == debt_id)).all()
+        assert repayments == []
+
+
+# ── P2 构造性旁路：两锚点都不成立时,无锚裸错误块仍须让文案可见 ──────────────
+
+
+def test_web_confirm_invalid_amount_by_debtor_still_shows_error(
+    web_client: TestClient,
+) -> None:
+    # P2 旁路① (回归)：debtor 直 POST confirm + 非法金额 —— 解析先于服务层 creditor_only
+    # 检查,确认表单对 debtor 不渲染、历史兜底又被在途匹配抑制 → 无锚裸块必须仍显示错误,
+    # 不得整页无提示 (旧行为 redirect 至少带可见 flash,属退化)。
+    public_id, debt_id, _owner_id, _member_id, proposal_public_id = seed_debtor_view()
+    before_version = row_version_of(debt_id)
+
+    response = post_confirm(
+        web_client,
+        public_id,
+        proposal_public_id,
+        **{
+            PROPOSAL_CONFIRM_AMOUNT_FIELD: "abc",
+            "expected_row_version": str(before_version),
+        },
+    )
+
+    assert response.status_code == 422
+    assert "请填写正确的 CNY 金额" in response.text  # 文案可见 (不整页消失)
+    assert 'role="alert"' in response.text
+    assert f'data-proposal-public-id="{proposal_public_id}"' in response.text
+    assert 'aria-invalid="true"' not in response.text  # 无锚:debtor 没有可挂的确认输入
+    with SessionLocal() as db:
+        proposal = db.scalar(
+            select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_public_id)
+        )
+        assert proposal is not None
+        assert proposal.status == "pending"  # 什么都没写
+        repayments = db.scalars(select(Repayment).where(Repayment.debt_id == debt_id)).all()
+        assert repayments == []
+
+
+def test_web_confirm_invalid_amount_with_forged_proposal_and_no_history_shows_error(
+    web_client: TestClient,
+) -> None:
+    # P2 旁路②：伪造 proposal_public_id + 该债零 proposal 历史 —— 状态/过往区外层条件
+    # 不成立 → 错误仍须以无锚裸块显示。
+    public_id, debt_id, _owner_id, _member_id = seed_member_debt(direction="owed_to_me")
+    before_version = row_version_of(debt_id)
+
+    response = post_confirm(
+        web_client,
+        public_id,
+        "prp_forged000000000000000000000000000",
+        **{
+            PROPOSAL_CONFIRM_AMOUNT_FIELD: "abc",
+            "expected_row_version": str(before_version),
+        },
+    )
+
+    assert response.status_code == 422
+    assert "请填写正确的 CNY 金额" in response.text
+    assert 'role="alert"' in response.text
+    with SessionLocal() as db:
+        proposals = db.scalars(select(MemberRepaymentProposal).where(MemberRepaymentProposal.debt_id == debt_id)).all()
+        assert proposals == []  # 什么都没写 (也没有 proposal 被造出来)
+        repayments = db.scalars(select(Repayment).where(Repayment.debt_id == debt_id)).all()
+        assert repayments == []
+
+
+def test_web_confirm_invalid_amount_on_external_debt_shows_error(
+    web_client: TestClient,
+) -> None:
+    # P2 旁路③：外部 (非成员) 债 ctx proposals=None —— 两锚都不成立 → 无锚裸块显示错误。
+    public_id, debt_id, _owner_id = seed_external_debt()
+    before_version = row_version_of(debt_id)
+
+    response = post_confirm(
+        web_client,
+        public_id,
+        "prp_forged000000000000000000000000000",
+        **{
+            PROPOSAL_CONFIRM_AMOUNT_FIELD: "abc",
+            "expected_row_version": str(before_version),
+        },
+    )
+
+    assert response.status_code == 422
+    assert "请填写正确的 CNY 金额" in response.text
+    assert 'role="alert"' in response.text
+    with SessionLocal() as db:
         repayments = db.scalars(select(Repayment).where(Repayment.debt_id == debt_id)).all()
         assert repayments == []
