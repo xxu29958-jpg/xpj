@@ -10,6 +10,7 @@ loopback gate，viewer 解析为账本 owner)；``client`` 保 gate 验 remote-4
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from uuid import uuid4
 
@@ -361,4 +362,10 @@ def test_web_debt_goals_nav_and_planning_group(web_client: TestClient) -> None:
     resp = web_client.get("/web/debt-goals")
     assert resp.status_code == 200
     assert 'href="/web/debt-goals' in resp.text  # nav link present
-    assert "<span>还债目标</span>" in resp.text
+    # 标签断言 scope 回桌面子导航块: 撤掉侧栏「还债目标」入口本测试必红
+    # (页面正文不含 nav-subnav, 不会恒真)。
+    subnav = re.search(r'<nav class="nav-subnav".*?</nav>', resp.text, re.S)
+    assert subnav is not None
+    assert "还债目标" in subnav.group(0)
+    # 五域 IA (218-D S1): 轴2/#228 语义保持——还债目标是规划面, 归计划域。
+    assert 'data-domain="plans"' in resp.text

@@ -57,84 +57,87 @@ def test_web_mobile_primary_nav_contract(web_client: TestClient) -> None:
     assert resp.status_code == 200
     body = resp.text
 
+    # 五域 IA (218-D S1): base.html 集中判定域, body 带 data-domain。
+    assert 'data-domain="transactions"' in body
+
     primary = re.search(r'<nav class="mobile-primary-nav".*?</nav>', body, re.S)
     assert primary is not None
-    assert all(label in primary.group(0) for label in ["今日", "待确认", "账本", "洞察"])
+    assert all(label in primary.group(0) for label in ["收件", "流水", "往来", "计划", "洞察"])
     assert re.search(
-        r'href="/web/confirmed\?ledger_id=owner"[^>]+aria-current="page"',
+        r'href="/web/confirmed\?ledger_id=owner"[^>]+aria-current="location"',
         primary.group(0),
     )
 
-    desktop = re.search(r'<nav class="desktop-nav" aria-label="桌面入口">.*?</nav>', body, re.S)
+    desktop = re.search(
+        r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>\s*</div>\s*</nav>',
+        body,
+        re.S,
+    )
     assert desktop is not None
     desktop_nav = re.sub(r"\{#.*?#\}", "", desktop.group(0), flags=re.S)
     assert "账单流" not in desktop_nav
-    assert re.search(
-        r'href="/web/confirmed\?ledger_id=owner"[^>]+aria-current="page"',
-        desktop_nav,
-    )
+    # 域主项固定五域、顺序稳定; 当前域(流水)展开自己的页级子导航。
     _assert_in_order(
         desktop_nav,
         [
-            "概览",
-            "今日",
-            "待确认",
+            "收件",
+            "流水",
+            "往来",
+            "计划",
+            "洞察",
             "已确认",
             "搜索",
-            "清算",
-            "疑似重复",
-            "拆账收件箱",
-            "已发拆账",
-            "欠款",
-            "欠我的",
-            "还款捕获",
-            "洞察与规划",
-            "报表",
-            "预算",
-            "目标",
-            "还债目标",
-            "收入记录",
-            "AI 预算建议",
-            "固定支出",
-            "治理",
             "分类",
             "商家",
             "标签",
             "规则",
-            "数据体检",
             "回收站",
             "导入导出",
         ],
     )
+    # 非当前域的页级链接不出现在桌面子导航(五域只展开活跃域)。
+    assert "还款捕获" not in desktop_nav
+    assert "AI 预算建议" not in desktop_nav
+    assert re.search(
+        r'href="/web/confirmed\?ledger_id=owner"[^>]+aria-current="page"',
+        desktop_nav,
+    )
 
     reports = web_client.get("/web/reports?ledger_id=owner")
     assert reports.status_code == 200
+    assert 'data-domain="insights"' in reports.text
     reports_desktop = re.search(
-        r'<nav class="desktop-nav" aria-label="桌面入口">.*?</nav>',
+        r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>\s*</div>\s*</nav>',
         reports.text,
         re.S,
     )
     assert reports_desktop is not None
-    assert re.search(
-        r'<details class="nav-group nav-group-collapsible"[^>]*open>\s*'
-        r'<summary class="nav-group-title">洞察与规划</summary>',
-        reports_desktop.group(0),
+    reports_subnav = re.search(
+        r'<nav class="nav-subnav".*?</nav>', reports_desktop.group(0), re.S
     )
+    assert reports_subnav is not None
+    assert "数据体检" in reports_subnav.group(0)
     assert re.search(
         r'href="/web/reports\?ledger_id=owner"[^>]+aria-current="page"',
-        reports_desktop.group(0),
+        reports_subnav.group(0),
     )
 
 
-def test_web_mobile_more_nav_opens_for_secondary_pages(web_client: TestClient) -> None:
+def test_web_mobile_plan_nav_shows_current_domain_pages(web_client: TestClient) -> None:
+    """窄屏第二行(矿 mobile-plan-nav): 只渲染当前域页级链接, 当前页 aria-current=page。"""
     resp = web_client.get("/web/search?ledger_id=owner")
     assert resp.status_code == 200
     body = resp.text
 
-    assert re.search(r'<details class="mobile-more-nav"[^>]*open', body)
+    plan_nav = re.search(r'<nav class="mobile-plan-nav".*?</nav>', body, re.S)
+    assert plan_nav is not None
+    assert "已确认" in plan_nav.group(0)
+    assert "回收站" in plan_nav.group(0)
+    # 非当前域(计划)的页级链接不出现。
+    assert "AI 预算建议" not in plan_nav.group(0)
     assert re.search(
-        r'class="mobile-more-link active" href="/web/search\?ledger_id=owner"[^>]+aria-current="page"',
-        body,
+        r'class="active" href="/web/search\?ledger_id=owner"[^>]+aria-current="page"',
+        plan_nav.group(0),
     )
 
 
@@ -182,12 +185,15 @@ def test_web_search_local_returns_200(web_client: TestClient) -> None:
 
 
 def test_web_nav_links_orphan_pages_reachable(web_client: TestClient) -> None:
-    """孤儿页接回:四个有路由有模板但曾零入站链接的页面,从仪表盘一次 GET
-    应能看到全部入口(侧栏治理组 ×2 + topbar 任务 + 页头卡片设置),且
-    ledger_id 透传。撤掉任一模板链接本测试必红。"""
-    resp = web_client.get("/web?ledger_id=owner")
-    assert resp.status_code == 200
-    assert 'href="/web/income-plans?ledger_id=owner"' in resp.text
-    assert 'href="/web/budget-advise?ledger_id=owner"' in resp.text
-    assert 'href="/web/tasks?ledger_id=owner"' in resp.text
-    assert 'href="/web/dashboard/cards?ledger_id=owner"' in resp.text
+    """孤儿页接回:四个有路由有模板但曾零入站链接的页面,在五域 IA 下各自从
+    所属域的页面一次 GET 应能看到入口(收件域侧栏子导航 ×1 + 计划域侧栏子导航
+    ×2 + 仪表盘页头卡片设置),且 ledger_id 透传。撤掉任一模板链接本测试必红。"""
+    inbox = web_client.get("/web?ledger_id=owner")
+    assert inbox.status_code == 200
+    assert 'href="/web/tasks?ledger_id=owner"' in inbox.text
+    assert 'href="/web/dashboard/cards?ledger_id=owner"' in inbox.text
+
+    plans = web_client.get("/web/budgets?ledger_id=owner")
+    assert plans.status_code == 200
+    assert 'href="/web/income-plans?ledger_id=owner"' in plans.text
+    assert 'href="/web/budget-advise?ledger_id=owner"' in plans.text
