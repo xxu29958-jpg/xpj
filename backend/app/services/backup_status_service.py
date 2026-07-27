@@ -10,6 +10,7 @@ one verdict per file per process, tri-state about tool failures.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +24,20 @@ from app.services.postgres_backup_validation_service import (
 # 进程内缓存: (file_name, mtime_ns, size) -> ``pg_restore --list`` 验证结果
 # (PR #253 R2 bot-P1)。只原地增删 (dict[key]=value / clear), 不整体重绑。
 _lightweight_backup_validation: dict[tuple[str, int, int], bool] = {}
+
+
+@dataclass(frozen=True)
+class LightweightBackupStatus:
+    """三态备份状态 (PR #253 R5): 不谎称可用, 也不谎称没有。
+
+    - ``valid``: entry = 最新可恢复 dump (验证通过);
+    - ``none``: 没有 dump 文件, 或全部归档畸形 → 「无可恢复备份」;
+    - ``unverified``: 有 dump 文件但验证工具暂时失败 (pg_restore 缺失/超时),
+      无法判定 → 「检测到备份文件, 尚未验证」。
+    """
+
+    entry: BackupEntry | None
+    state: str  # "valid" / "none" / "unverified"
 
 
 def _validate_dump_for_status(path: Path) -> bool | None:
@@ -46,16 +61,16 @@ def _backup_entry(path: Path, stat: os.stat_result) -> BackupEntry:
     )
 
 
-def latest_backup_lightweight() -> BackupEntry | None:
-    """Newest VALID dump — a corrupt newest one yields to older valid ones.
+def latest_backup_lightweight() -> LightweightBackupStatus:
+    """Newest-first validation with tri-state presentation.
 
     Same "newest valid" semantics as ``backup_service.latest_backup()`` (PR
-    #253 R3), but validates candidates newest-first via ``pg_restore --list``,
-    memoized per ``(name, mtime_ns, size)``: steady state spawns no subprocess
-    and each file is validated at most once per process. A tool outage
-    (``_validate_dump_for_status`` → None) is presented as "present but
-    unverified" for the newest candidate and is never cached (R4-3).
-    Restore/health flows keep the every-dump fully validated caliber.
+    #253 R3), memoized per ``(name, mtime_ns, size)`` so steady state spawns no
+    subprocess and each file is validated at most once per process. Tool
+    failures are never cached: a newer valid dump still wins; only when NO dump
+    validates and at least one verdict was a tool failure does the status
+    become ``unverified`` (PR #253 R5). Restore/health flows keep the
+    every-dump fully validated caliber.
     """
     candidates: list[tuple[Path, os.stat_result]] = []
     for path in _backup_dir().glob(f"{_PREFIX}*{_SUFFIX}"):
@@ -65,6 +80,7 @@ def latest_backup_lightweight() -> BackupEntry | None:
         except OSError:
             continue
     candidates.sort(key=lambda item: item[1].st_mtime, reverse=True)
+    saw_tool_failure = False
     for path, stat in candidates:
         cache_key = (path.name, stat.st_mtime_ns, int(stat.st_size))
         valid = _lightweight_backup_validation.get(cache_key)
@@ -73,9 +89,11 @@ def latest_backup_lightweight() -> BackupEntry | None:
                 _lightweight_backup_validation.clear()  # 键只随新 dump 出现, 清空=下次重验
             valid = _validate_dump_for_status(path)
             if valid is None:
-                # 工具暂时失败: 不下结论不缓存, 按「存在但未验证」呈现, 下次重试。
-                return _backup_entry(path, stat)
+                saw_tool_failure = True
+                continue  # 工具失败不下结论不缓存, 继续看更旧的候选
             _lightweight_backup_validation[cache_key] = valid
         if valid:
-            return _backup_entry(path, stat)
-    return None
+            return LightweightBackupStatus(entry=_backup_entry(path, stat), state="valid")
+    return LightweightBackupStatus(
+        entry=None, state="unverified" if saw_tool_failure else "none"
+    )

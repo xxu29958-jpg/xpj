@@ -304,6 +304,9 @@ def test_category_donut_escapes_tooltip_name_and_prefers_amount_major() -> None:
     assert '+ p.name + "</b>' not in source
     # 中心 label: 纯文本, 不用 rich-text DSL — 分类名的 }/{x| 元字符会破坏排版 (复审 P2-2)。
     assert '"{n|"' not in source
+    # 中心金额按币种 exponent 格式化 (R5), 不再 Math.round 丢小数。
+    assert "app.homeMoneyMajor(p.value || 0)" in source
+    assert "Math.round(p.value" not in source
     # exponent 感知的图表数值投影。
     assert "amount_major" in source
 

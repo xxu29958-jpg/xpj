@@ -54,8 +54,8 @@
                 // 纯文本拼接, 不用 ECharts rich-text DSL: 分类名里的 "}"/"{x|" 元字符
                 // 会被当成样式段解析而破坏中心排版 (canvas 无 XSS, 但排版注入同样
                 // 不可接受 — PR #253 R2 复审 P2-2)。
-                return p.name + "\n" + app.homeCurrencySymbol() +
-                       Math.round(p.value || 0).toLocaleString() + "\n" + p.percent + "%";
+                // 中心值按币种 exponent 格式化 (R5: 不再 Math.round 丢小数)。
+                return p.name + "\n" + app.homeMoneyMajor(p.value || 0) + "\n" + p.percent + "%";
               },
             },
           },

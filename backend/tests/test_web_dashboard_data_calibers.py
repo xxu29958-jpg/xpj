@@ -6,6 +6,7 @@ pending 质量计数与旧物化口径逐字一致、recurring 候选排除已�
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from pathlib import Path
 
@@ -45,32 +46,35 @@ def test_latest_backup_lightweight_validates_only_newest_once_and_caches(
 
     first = backup_status_service.latest_backup_lightweight()
     second = backup_status_service.latest_backup_lightweight()
-    assert first is not None and second is not None
-    assert first.file_name == "ticketbox-2026-07-20.dump"
+    assert first.state == "valid" and second.state == "valid"
+    assert first.entry is not None and first.entry.file_name == "ticketbox-2026-07-20.dump"
     # 旧文件从不验证; 缓存命中 → 同一 dump 只验一次。
     assert validations == [newer]
 
     # (path, mtime, size) 变化 = 新 dump → 重新验证一次。
     newer.write_bytes(b"rewritten-dump-payload")
     third = backup_status_service.latest_backup_lightweight()
-    assert third is not None
+    assert third.state == "valid"
     assert validations == [newer, newer]
 
 
 def test_latest_backup_lightweight_corrupt_newest_means_no_restorable_backup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """损坏的最新 dump → 状态卡按「无可恢复备份」呈现 (backup_available=False)。"""
+    """全部归档畸形 → none 态: 状态卡按「无可恢复备份」呈现 (backup_available=False)。"""
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
     backup_status_service._lightweight_backup_validation.clear()
     write_fake_dumps(tmp_path)
     monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", lambda _path: False)
 
-    assert backup_status_service.latest_backup_lightweight() is None
+    status = backup_status_service.latest_backup_lightweight()
+    assert status.state == "none"
+    assert status.entry is None
 
     with SessionLocal() as db:
         block = web_common._dashboard_status_counts_block(db, "owner", now_utc())
     assert block["backup_available"] is False
+    assert block["backup_unverified"] is False
     assert block["backup_age_days"] is None
 
 
@@ -81,23 +85,26 @@ def test_latest_backup_lightweight_tool_failure_is_not_cached_as_invalid(
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
     backup_status_service._lightweight_backup_validation.clear()
     _older, newer = write_fake_dumps(tmp_path)
-    verdicts: list[object] = [None, True]  # 首次超时 (None), 重试成功 (True)
+    verdict = {"value": None}  # None=工具失败; True=验证通过
     calls: list[Path] = []
 
     def _flaky_validate(path: Path):
         calls.append(path)
-        return verdicts.pop(0)
+        return verdict["value"]
 
     monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", _flaky_validate)
 
-    # 首次: 工具失败 → 按「存在但未验证」呈现最新候选, 不写缓存。
+    # 首次: 全部工具失败 → unverified 第三态 (有文件但无法判定), 不写缓存。
     first = backup_status_service.latest_backup_lightweight()
-    assert first is not None and first.file_name == newer.name
+    assert first.state == "unverified"
+    assert first.entry is None
     assert backup_status_service._lightweight_backup_validation == {}
-    # 重试: 验证成功 → 有效 (且这次才缓存)。
+    # 工具恢复后重试: 验证成功 → valid (且这次才缓存)。
+    verdict["value"] = True
     second = backup_status_service.latest_backup_lightweight()
-    assert second is not None and second.file_name == newer.name
-    assert calls == [newer, newer]
+    assert second.state == "valid" and second.entry is not None
+    assert second.entry.file_name == newer.name
+    assert calls == [newer, _older, newer]
     assert list(backup_status_service._lightweight_backup_validation.values()) == [True]
 
 
@@ -116,12 +123,12 @@ def test_latest_backup_lightweight_falls_back_to_older_valid_dump(
 
     monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", _validate_by_name)
 
-    entry = backup_status_service.latest_backup_lightweight()
-    assert entry is not None
-    assert entry.file_name == older.name
+    status = backup_status_service.latest_backup_lightweight()
+    assert status.state == "valid"
+    assert status.entry is not None and status.entry.file_name == older.name
     # 新→旧逐退, 每个文件只验一次 (再次调用全部缓存命中)。
     assert validations == [newer, older]
-    assert backup_status_service.latest_backup_lightweight() is not None
+    assert backup_status_service.latest_backup_lightweight().state == "valid"
     assert validations == [newer, older]
 
 
@@ -330,3 +337,39 @@ def test_active_device_count_excludes_pending_and_expired_tokens(
         )
         db.commit()
         assert web_stats_service.active_device_count(db, "owner") == baseline + 1
+
+
+def test_overview_backup_card_renders_all_three_states(
+    web_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #253 R5-1: 备份卡三态落 UI — 有效=已备份天数, 工具失败=尚未验证, 无文件=还没有备份。"""
+    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
+    backup_status_service._lightweight_backup_validation.clear()
+
+    def _card_body(text: str) -> str:
+        card = re.search(r'data-overview-card="backup_status">.*?</article>', text, re.S)
+        assert card is not None
+        return card.group(0)
+
+    # 1) 无 dump 文件 → 现有「还没有备份」空态。
+    page = web_client.get("/web/overview?ledger_id=owner")
+    assert page.status_code == 200
+    assert "还没有备份" in _card_body(page.text)
+
+    # 2) 有文件但工具失败 → 第三态 (不绿不红, 不谎称可用也不谎称没有)。
+    write_fake_dumps(tmp_path)
+    monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", lambda _path: None)
+    page = web_client.get("/web/overview?ledger_id=owner")
+    assert page.status_code == 200
+    body = _card_body(page.text)
+    assert "检测到备份文件，尚未验证" in body
+    assert "product-status--info" in body
+    assert "天前生成最近备份" not in body
+    assert "还没有备份" not in body
+
+    # 3) 验证通过 → 已备份天数。
+    monkeypatch.setattr(backup_status_service, "_validate_dump_for_status", lambda _path: True)
+    backup_status_service._lightweight_backup_validation.clear()
+    page = web_client.get("/web/overview?ledger_id=owner")
+    assert page.status_code == 200
+    assert "天前生成最近备份" in _card_body(page.text)

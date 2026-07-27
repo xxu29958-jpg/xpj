@@ -263,6 +263,10 @@
     {% if cards.backup_available %}
     <div class="insight-stat-value num">{{ cards.backup_age_days }}</div>
     <div class="text-muted">天前生成最近备份</div>
+    {% elif cards.backup_unverified %}
+    {# PR #253 R5 第三态: 有备份文件但验证工具暂时失败 — 中性呈现, 不谎称可用或没有。 #}
+    <div class="product-status product-status--info">检测到备份文件，尚未验证</div>
+    <div class="text-muted">验证工具暂时不可用，下次访问自动重试</div>
     {% else %}
     <div class="product-status product-status--warning">还没有备份</div>
     {% endif %}

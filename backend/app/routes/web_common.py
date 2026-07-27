@@ -32,6 +32,7 @@ from app.services.currency_common import (
     minor_amount_label,
     minor_amount_major_number,
     minor_amount_value,
+    minor_unit_digits,
 )
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.data_quality_service import is_uncategorized_expense_category, is_usable_pending_merchant
@@ -355,6 +356,7 @@ def _base_ctx(
         "suspected_duplicate_count": suspected_count,
         "home_currency_code": home_currency_code(),
         "home_currency_symbol": _currency_symbol(home_currency_code()),
+        "home_currency_minor_digits": minor_unit_digits(home_currency_code()),
     }
 
 
@@ -641,16 +643,17 @@ def _dashboard_budget_goals_block(budget, goals) -> dict:
 def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
     """recent/device/backup 状态计数的 ctx 片段(从 ``_dashboard_cards`` 拆出守 80 行债线)。
 
-    PR #253 R2/R3: backup 走轻量口径——候选 dump 按 mtime 新→旧逐个
+    PR #253 R2-R5: backup 走轻量口径——候选 dump 按 mtime 新→旧逐个
     ``pg_restore --list`` 验证 (per-(name, mtime, size) 进程内缓存, 稳态每请求
-    零子进程), 返回首个有效者; 全部无效才按「无可恢复备份」呈现。恢复/健康流
-    仍用全量验证的 ``latest_backup()``。
+    零子进程), 返回首个有效者; 三态落 UI: 验证通过=已备份, 全无效/无文件=
+    无可恢复备份, 工具失败=「检测到备份文件, 尚未验证」。恢复/健康流仍用全量
+    验证的 ``latest_backup()``。
     """
     week_ago = now - timedelta(days=7)
-    latest_backup = backup_status_service.latest_backup_lightweight()
+    backup_status = backup_status_service.latest_backup_lightweight()
     backup_age_days = None
-    if latest_backup is not None:
-        backup_age_days = max(0, (now.astimezone() - latest_backup.created_at).days)
+    if backup_status.state == "valid" and backup_status.entry is not None:
+        backup_age_days = max(0, (now.astimezone() - backup_status.entry.created_at).days)
     return {
         "recent_count": web_stats_service.recent_expense_count(db, ledger_id, week_ago),
         # PR #253 R2: overview 最近新增卡链接 /web/confirmed, 专配 confirmed-only
@@ -659,7 +662,9 @@ def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
             db, ledger_id, week_ago
         ),
         "active_device_count": web_stats_service.active_device_count(db, ledger_id),
-        "backup_available": latest_backup is not None,
+        "backup_available": backup_status.state == "valid",
+        # PR #253 R5 第三态: 有 dump 文件但验证工具暂时失败 — 不谎称可用也不谎称没有。
+        "backup_unverified": backup_status.state == "unverified",
         "backup_age_days": backup_age_days,
     }
 
