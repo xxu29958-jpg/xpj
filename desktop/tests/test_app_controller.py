@@ -1820,3 +1820,21 @@ def test_pair_gate_never_revokes_superseded_that_is_still_the_live_primary() -> 
     assert projection["configured"] is True
     assert current.session_token not in revoked
     assert recoveries == {}
+
+
+# ── Round-6: pending-TTL contract pin (backend is the TTL authority) ────────
+
+
+def test_provisional_attempt_ttl_mirrors_the_backend_pending_ttl() -> None:
+    """Contract pin: the backend authority is
+    ``backend/app/services/desktop_activation_service.py::
+    DESKTOP_PENDING_TOKEN_TTL_SECONDS`` (300s). The desktop deadline mirrors it
+    and only the skew margin extends past it, so a provisional proof is never
+    retired while it could still be live server-side."""
+    from backend_manager.app_controller import (
+        _PROVISIONAL_ATTEMPT_EXPIRY_MARGIN_SECONDS,
+        _PROVISIONAL_ATTEMPT_TTL_SECONDS,
+    )
+
+    assert _PROVISIONAL_ATTEMPT_TTL_SECONDS == 300
+    assert _PROVISIONAL_ATTEMPT_EXPIRY_MARGIN_SECONDS > 0

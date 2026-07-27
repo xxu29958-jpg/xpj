@@ -45,6 +45,10 @@ from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
 
 DESKTOP_PENDING_SCOPE = "desktop_pending"
+# Mirrored by the desktop Manager: `desktop/backend_manager/app_controller.py`
+# constant ``_PROVISIONAL_ATTEMPT_TTL_SECONDS`` (its provisional-attempt
+# deadline MUST stay >= this TTL, or the client could retire a still-live
+# proof). Change only together; pinned by tests on both sides.
 DESKTOP_PENDING_TOKEN_TTL_SECONDS = 300
 DESKTOP_PLATFORM = "desktop"
 

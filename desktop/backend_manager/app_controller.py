@@ -70,6 +70,10 @@ _TERMINAL_ATTEMPT_ERRORS = frozenset({"pairing_attempt_expired", "pairing_attemp
 
 # A provisional pair attempt is only replayable while the backend's staged
 # pending credential could still be live (300s TTL, plus a clock-skew margin).
+# Mirrors the backend authority `backend/app/services/desktop_activation_service.py`
+# constant ``DESKTOP_PENDING_TOKEN_TTL_SECONDS`` — the deadline here MUST NOT
+# be shorter than that TTL, or the client could retire a still-live proof.
+# Change only together; pinned by tests on both sides.
 _PROVISIONAL_ATTEMPT_TTL_SECONDS = 300
 _PROVISIONAL_ATTEMPT_EXPIRY_MARGIN_SECONDS = 60
 

@@ -392,3 +392,10 @@ def test_switch_prepare_rejects_graced_source_credential(identity, client: TestC
             )
             is None
         )
+
+
+def test_pending_ttl_matches_the_desktop_manager_mirror() -> None:
+    """Contract pin: the desktop Manager mirrors this TTL in
+    ``desktop/backend_manager/app_controller.py::_PROVISIONAL_ATTEMPT_TTL_SECONDS``
+    (its provisional deadline must not be shorter). Keep both in sync."""
+    assert DESKTOP_PENDING_TOKEN_TTL_SECONDS == 300
