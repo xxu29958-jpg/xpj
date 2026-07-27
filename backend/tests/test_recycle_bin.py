@@ -310,6 +310,10 @@ def test_web_recycle_bin_workbench_structure_owner(
     # 工作台面板 + 产品表格 (取代旧 dt-card KPI + dt-table)。
     assert 'aria-label="可恢复项目"' in body
     assert 'class="product-table"' in body
+    # ≤720px 表头留在无障碍树 (PR#252 P2 钉)：th 文本由 rb-sr-only 视觉隐藏，
+    # 不再 display:none 整个 thead —— 屏幕阅读器保留 保留状态/操作 列关联。
+    assert '<th><span class="rb-sr-only">保留状态</span></th>' in body
+    assert '<th><span class="rb-sr-only">操作</span></th>' in body
     # owner 可写：恢复表单与 OCC 隐藏字段在；行身份锚在。
     assert 'action="/web/recycle-bin/restore"' in body
     assert 'name="expected_row_version"' in body

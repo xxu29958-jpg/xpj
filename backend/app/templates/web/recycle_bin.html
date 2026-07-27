@@ -64,10 +64,12 @@
     <table class="product-table">
       <thead>
         <tr>
-          <th>类型</th>
-          <th>项目</th>
-          <th>保留状态</th>
-          <th>操作</th>
+          {# ≤720px 表头不 display:none (屏幕阅读器会丢列关联)，改为 .rb-sr-only
+             视觉隐藏但留在无障碍树；桌面端 span 为普通内联、视觉零变化。 #}
+          <th><span class="rb-sr-only">类型</span></th>
+          <th><span class="rb-sr-only">项目</span></th>
+          <th><span class="rb-sr-only">保留状态</span></th>
+          <th><span class="rb-sr-only">操作</span></th>
         </tr>
       </thead>
       <tbody>
