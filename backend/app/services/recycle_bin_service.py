@@ -33,6 +33,7 @@ from app.models import (
 from app.services.budget_service import list_archived_budgets, restore_monthly_budget
 from app.services.category_preference_service import restore_category_preference
 from app.services.classify_service import undo_delete_rule
+from app.services.currency_common import minor_amount_label
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
 from app.services.merchant_alias_service import undo_delete_merchant_alias
@@ -449,7 +450,11 @@ def _budget_detail(db: Session, item: Budget) -> str:
 
 
 def _money(amount_cents: int) -> str:
-    return f"¥{int(amount_cents or 0) / 100:.2f}"
+    # Income/goal/budget/recurring rows carry no per-row currency column: their
+    # amounts are stored in home-currency minor units, so None lets
+    # currency_common resolve the deployment home code (JPY/KRW → zero
+    # fraction, divmod-based, no float).
+    return minor_amount_label(int(amount_cents or 0), None)
 
 
 __all__ = [

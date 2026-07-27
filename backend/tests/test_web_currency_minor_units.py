@@ -23,7 +23,11 @@ from app.fx_constants import (
     DEFAULT_SUPPORTED_CURRENCY_CODES,
 )
 from app.models import Budget
-from app.routes.web_common import _expense_amount_labels
+from app.routes.web_common import (
+    _expense_amount_labels,
+    _minor_amount_label,
+    _minor_amount_value,
+)
 from app.services.currency_common import (
     average_minor_amount,
     home_currency_code,
@@ -178,3 +182,17 @@ def test_reports_average_rounds_integer_minor_units_half_up() -> None:
     assert average_minor_amount(101, 2) == 51
     assert average_minor_amount(100, 3) == 33
     assert average_minor_amount(0, 0) == 0
+
+
+def test_web_common_minor_label_delegates_to_currency_common_divmod() -> None:
+    """C5b-3: /web 的 ``_minor_amount_label`` / ``_minor_amount_value`` 委托
+    currency_common 的 divmod 族，不再自实现 ``/100`` float —— 零小数币种、
+    两位小数币种、负数符号位与 None 语义与 currency_common 完全一致。"""
+    assert _minor_amount_label(5000, "JPY") == "¥5,000"
+    assert _minor_amount_label(123400, "CNY") == "¥1,234.00"
+    assert _minor_amount_label(-1234, "CNY") == "-¥12.34"
+    assert _minor_amount_label(None, "CNY") == ""
+    assert _minor_amount_value(5000, "JPY") == "5000"
+    assert _minor_amount_value(1234, "CNY") == "12.34"
+    assert _minor_amount_value(-1234, "CNY") == "-12.34"
+    assert _minor_amount_value(None, "JPY") == ""
