@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
@@ -43,7 +43,12 @@ from app.services.insights_service import unclaimed_recurring_candidate_count
 from app.services.recurring_service import list_recurring_items
 from app.services.spending_contract_service import accounting_zone, default_accounting_timezone_name
 from app.services.stats_service import monthly_stats
-from app.services.time_service import current_month, ensure_utc, now_utc
+from app.services.time_service import (
+    current_month,
+    ensure_utc,
+    now_utc,
+    parse_month_label,
+)
 from app.services.time_service import to_iso as _datetime_to_iso
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
@@ -125,15 +130,43 @@ def _list_ledger_options(db: Session) -> list[LedgerOption]:
     ]
 
 
-def _stamp_session_role(options: list[LedgerOption] | None, session_auth) -> None:
-    """Override the matching ledger option's role with the Web session's role
-    (ENGINEERING_RULES §14: a session's role gates writes, not the owner console)."""
+def _project_session_ledger_options(
+    options: list[LedgerOption] | None,
+    session_auth,
+) -> None:
+    """Project the ledger selector to the single ledger authorized by a Web session.
+
+    ``_list_ledger_options`` is deliberately the loopback Owner Console read
+    surface, so it can contain every ledger visible to the local owner account.
+    A public Web session is a different principal: exposing those rows in the
+    rendered selector would disclose unrelated ledger ids and names even though
+    the middleware correctly blocks cross-ledger data reads.
+
+    Mutate the caller-owned list in place because every /web route resolves the
+    selected ledger before passing that same list to ``_base_ctx``.  Rebuild the
+    option from the authenticated context so both the visible name and role come
+    from the session-bound ledger, never from the local owner's projection.
+
+    (218-D S3 移植自产品矿, 替换旧 ``_stamp_session_role`` 的角色盖章语义;
+    desktop 桥接路径仍先走 ``_scope_options_for_desktop_session`` + 锁内重验,
+    本投影随后以重验后的会话角色重建选项, 行为等价。)
+    """
     if options is None:
         return
-    for opt in options:
-        if opt.ledger_id == session_auth.ledger_id:
-            opt.role = session_auth.role
-            return
+    matched = next(
+        (opt for opt in options if opt.ledger_id == session_auth.ledger_id),
+        None,
+    )
+    options[:] = [
+        LedgerOption(
+            ledger_id=session_auth.ledger_id,
+            name=session_auth.ledger_name,
+            role=session_auth.role,
+            is_default=matched.is_default if matched is not None else False,
+            pending_count=matched.pending_count if matched is not None else 0,
+            confirmed_count=matched.confirmed_count if matched is not None else 0,
+        )
+    ]
 
 
 def _scope_options_for_desktop_session(options: list[LedgerOption] | None, session_auth) -> None:
@@ -212,7 +245,10 @@ def _resolve_selected_ledger_id(
                 live_role = _revalidate_desktop_session_under_lock(db, request, session_auth)
                 session_auth = dataclasses.replace(session_auth, role=live_role)
                 request.state.web_session_auth = session_auth
-            _stamp_session_role(options, session_auth)
+            # ENGINEERING_RULES §14: a Web session is bound to one ledger. Keep
+            # the Owner Console's other ledger ids/names out of the HTML context,
+            # and use the paired principal's role for both rendering and writes.
+            _project_session_ledger_options(options, session_auth)
             return session_auth.ledger_id
 
     opts = options if options is not None else _list_ledger_options(db)
@@ -367,6 +403,34 @@ def _amount_yuan(amount_cents: int | None) -> str:
     if amount_cents is None:
         return ""
     return f"{amount_cents / 100:.2f}"
+
+
+def _month_display_label(value: str | None, *, fallback: str = "所选月份") -> str:
+    """(218-D S3 移植自产品矿) ``YYYY-MM`` → ``2026 年 7 月`` 展示标签;
+    无法解析时回退 ``fallback``, 不把脏月份串渲染进页面。"""
+    parsed = parse_month_label(value)
+    if parsed is None:
+        return fallback
+    year, month = parsed
+    return f"{year} 年 {month} 月"
+
+
+def _calendar_date_label(value: date | datetime | None) -> str:
+    """(218-D S3 移植自产品矿) date/datetime → ``2026 年 7 月 18 日`` 展示标签。
+    datetime 先归一 UTC 再落到账务时区, 与 /web 其余日期口径一致。"""
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        normalized = ensure_utc(value)
+        if normalized is None:
+            return ""
+        calendar_date = normalized.astimezone(accounting_zone()).date()
+    else:
+        calendar_date = value
+    return (
+        f"{calendar_date.year} 年 {calendar_date.month} 月 "
+        f"{calendar_date.day} 日"
+    )
 
 
 def _expense_time_local_input(value) -> str:
