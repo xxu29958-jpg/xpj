@@ -259,6 +259,26 @@ class IncomePlanViewModelTest {
     }
 
     @Test
+    fun updateDraftAmountReportsParseFailureImmediately() = runTest(dispatcher) {
+        // PR#255 R14-2：JPY 账本输 "12.50" 即时报解析失败（不再静默 isValid=false）；改合法即清。
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
+        )
+        val repo = FakeRepository()
+        val viewModel = IncomePlanViewModel(repo, debts)
+        advanceUntilIdle()
+
+        viewModel.updateDraftAmount("12.50")
+        assertEquals(
+            UiText.res(R.string.expense_edit_amount_invalid),
+            viewModel.state.value.addDraft.validationError,
+        )
+
+        viewModel.updateDraftAmount("1250")
+        assertNull(viewModel.state.value.addDraft.validationError)
+    }
+
+    @Test
     fun shiftDraftIncomeMonthKeepsInternalWireValue() = runTest(dispatcher) {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())

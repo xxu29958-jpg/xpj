@@ -55,7 +55,6 @@ import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 @Composable
 fun CreateDebtGoalScreen(
     viewModel: CreateDebtGoalViewModel,
-    currency: CurrencyDisplay,
     onBack: () -> Unit,
     onCreated: () -> Unit,
 ) {
@@ -107,7 +106,6 @@ fun CreateDebtGoalScreen(
             ) {
                 DebtGoalPickerContent(
                     state = state,
-                    currency = currency,
                     onToggle = viewModel::toggleDebt,
                 )
             }
@@ -145,7 +143,6 @@ private fun CreateDebtGoalNameField(name: String, onNameChange: (String) -> Unit
 @Composable
 private fun DebtGoalPickerContent(
     state: CreateDebtGoalUiState,
-    currency: CurrencyDisplay,
     onToggle: (String) -> Unit,
 ) {
     AppListStateContent(
@@ -161,7 +158,6 @@ private fun DebtGoalPickerContent(
             DebtPickerRow(
                 debt = debt,
                 selected = debt.publicId in state.selectedDebtIds,
-                currency = currency,
                 onToggle = { onToggle(debt.publicId) },
                 showDivider = index < state.candidates.lastIndex,
             )
@@ -173,7 +169,6 @@ private fun DebtGoalPickerContent(
 private fun DebtPickerRow(
     debt: Debt,
     selected: Boolean,
-    currency: CurrencyDisplay,
     onToggle: () -> Unit,
     showDivider: Boolean,
 ) {
@@ -198,7 +193,9 @@ private fun DebtPickerRow(
             Text(
                 stringResource(
                     R.string.debt_goal_create_remaining_amount,
-                    formatDisplayAmount(debt.remainingAmountCents, currency),
+                    // R14-3：record 口径（每笔欠款自带 homeCurrencyCode，未知码原样亮码），
+                    // 不用恒 Base 的环境 display。
+                    formatDisplayAmount(debt.remainingAmountCents, CurrencyDisplay.forRecord(debt.homeCurrencyCode)),
                 ),
                 style = MaterialTheme.typography.bodySmall.tabularNum(),
                 fontWeight = FontWeight.SemiBold,

@@ -184,6 +184,8 @@ private fun SpendingGoalDetailFooter(
                 text = stringResource(R.string.spending_goal_edit_action),
                 icon = Icons.Filled.Edit,
                 modifier = Modifier.fillMaxWidth(),
+                // R14-5：账本币种未确认时禁入编辑（回填币种必须与 save 同源，VM 同门兜底）。
+                enabled = state.ledgerCurrency != null,
                 onClick = viewModel::beginEdit,
             )
         }

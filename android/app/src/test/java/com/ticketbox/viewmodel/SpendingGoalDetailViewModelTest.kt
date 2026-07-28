@@ -156,6 +156,47 @@ class SpendingGoalDetailViewModelTest {
     }
 
     @Test
+    fun beginEditBlockedWhenLedgerCurrencyUnresolved() = runTest(dispatcher) {
+        // PR#255 R14-5：capability 未知（VND → null）时不开编辑 —— 回填币种必须与 save 解析
+        // 同源；旧码落 CNY 兜底会把 20000 minor 回填成 "200.00" 假金额。编辑入口与 save 同门。
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "VND"),
+        )
+        val actions = RecordingSpendingGoalActions()
+        val viewModel = SpendingGoalDetailViewModel(actions, debts)
+        viewModel.load("goal-1")
+        advanceUntilIdle()
+
+        viewModel.beginEdit()
+
+        assertFalse(viewModel.state.value.isEditing)
+        assertEquals("", viewModel.state.value.targetAmountInput)
+        assertEquals(
+            UiText.res(R.string.currency_unconfirmed_write_blocked),
+            viewModel.state.value.formError,
+        )
+    }
+
+    @Test
+    fun updateAmountReportsParseFailureImmediately() = runTest(dispatcher) {
+        // PR#255 R14-2：JPY 账本输 "12.50" 即时报解析失败（不再静默 canSave=false）；改合法即清。
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
+        )
+        val actions = RecordingSpendingGoalActions()
+        val viewModel = SpendingGoalDetailViewModel(actions, debts)
+        viewModel.load("goal-1")
+        advanceUntilIdle()
+        viewModel.beginEdit()
+
+        viewModel.updateField(SpendingGoalEditField.Amount, "12.50")
+        assertEquals(UiText.res(R.string.expense_edit_amount_invalid), viewModel.state.value.formError)
+
+        viewModel.updateField(SpendingGoalEditField.Amount, "1250")
+        assertNull(viewModel.state.value.formError)
+    }
+
+    @Test
     fun viewerCannotEnterEditOrRequestArchive() = runTest(dispatcher) {
         val actions = RecordingSpendingGoalActions(canModify = false)
         val viewModel = SpendingGoalDetailViewModel(actions, CapabilityDebtActions())

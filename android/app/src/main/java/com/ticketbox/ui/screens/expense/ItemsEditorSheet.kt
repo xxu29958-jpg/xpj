@@ -23,13 +23,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseItemKind
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppAdaptiveFieldPairRow
 import com.ticketbox.ui.components.AppAdaptiveFieldPairWeights
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.EditableItem
@@ -39,8 +39,9 @@ data class ItemsEditorSheetState(
     val drafts: List<EditableItem>,
     val parentAmountCents: Long?,
     val saving: Boolean,
-    // 票据的服务端 home 币种：footer 合计解析与保存侧同口径（零小数 home 不 ×100）。
-    val currency: CurrencyCode = FxContract.HomeCurrency,
+    // 票据 record 口径的 display context（R14-1）：footer 合计解析与保存侧同源（零小数
+    //  home 不 ×100；未知码经 forRecord 原样亮码+原 minor，不冒枚举兜底符号）。
+    val display: CurrencyDisplay = CurrencyDisplay.Base,
 )
 
 data class ItemsEditorSheetActions(
@@ -113,7 +114,7 @@ fun ItemsEditorSheet(
             ReconciliationFooter(
                 drafts = state.drafts,
                 parentAmountCents = state.parentAmountCents,
-                currency = state.currency,
+                display = state.display,
             )
             ExpenseEditSheetActions(
                 state = ExpenseEditSheetActionState(
@@ -230,28 +231,28 @@ private fun ItemRemoveButton(onRemove: () -> Unit) {
 private fun ReconciliationFooter(
     drafts: List<EditableItem>,
     parentAmountCents: Long?,
-    currency: CurrencyCode,
+    display: CurrencyDisplay,
 ) {
-    // 显示与保存/解析同源于票据 record 币种（JPY 零小数整数显示整数），
-    // 不读恒 Base 的 LocalCurrencyDisplay（PR#255 P1）。
-    val total = drafts.sumOf { draftSignedCents(it, currency) }
+    // 显示与保存/解析同源于票据 record 币种（JPY 零小数整数显示整数；未知码亮原码+原
+    // minor，R14-1），不读恒 Base 的 LocalCurrencyDisplay（PR#255 P1）。
+    val total = drafts.sumOf { draftSignedCents(it, display.homeCurrency) }
     val diff = parentAmountCents?.let { total - it }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(
             ExpenseEditReconciliationLine(
                 label = stringResource(R.string.expense_edit_items_footer_total_label),
-                value = formatAmount(total, currency),
+                value = formatDisplayAmount(total, display),
             ),
             parentAmountCents?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_items_footer_bill_label),
-                    value = formatAmount(it, currency),
+                    value = formatDisplayAmount(it, display),
                 )
             },
             diff?.takeIf { it != 0L }?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_items_footer_diff_label),
-                    value = formatAmount(it, currency),
+                    value = formatDisplayAmount(it, display),
                     emphasis = true,
                 )
             },

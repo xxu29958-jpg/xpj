@@ -4,6 +4,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.FxContract
+import com.ticketbox.domain.model.recordCurrencyDisplay
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.DecimalFormat
@@ -121,15 +122,19 @@ fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
 
 fun formatExpensePrimaryAmount(
     expense: Expense,
-    display: CurrencyDisplay = CurrencyDisplay.Base,
+    display: CurrencyDisplay = expense.recordCurrencyDisplay(),
 ): String {
-    val currency = expense.originalCurrencyCode
-    val homeCurrency = expense.homeCurrency
+    // R14-3：display 默认 record 口径（原始 home 码，未知码原样亮码），调用方不再透传
+    // 恒 Base 的环境 display。原币腿同样 raw 感知：原码未知时按 "1200 VND" 原样亮码，
+    // 不冒回落枚举（CNY）的符号与缩放；两腿 display 相等（含同未知码）时才显 home 腿。
+    val originalDisplay = CurrencyDisplay.forRecord(
+        expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey,
+    )
     val originalAmount = expense.originalAmountMinor
-    return if (currency == homeCurrency || originalAmount == null) {
+    return if (originalDisplay == display || originalAmount == null) {
         formatDisplayAmount(expense.homeAmountCents ?: expense.amountCents, display)
     } else {
-        formatMinorAmount(originalAmount, currency)
+        formatDisplayAmount(originalAmount, originalDisplay)
     }
 }
 

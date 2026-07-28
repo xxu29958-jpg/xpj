@@ -28,3 +28,11 @@ data class CurrencyDisplay(
         }
     }
 }
+
+/**
+ * Expense record 口径的 display context（PR#255 R14-3）：原始 `homeCurrencyCode` 优先
+ * （未知码经 [CurrencyDisplay.forRecord] 原样亮码），手工构造的域对象（raw 为 null）回落
+ * 枚举键。票据/待审等 record 绑定面的金额显示必须用它，而非恒 Base 的环境 display。
+ */
+fun Expense.recordCurrencyDisplay(): CurrencyDisplay =
+    CurrencyDisplay.forRecord(homeCurrencyCode ?: homeCurrency.storageKey)

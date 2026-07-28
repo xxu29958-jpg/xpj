@@ -48,7 +48,7 @@ class CreateSpendingGoalViewModel(
     val state: StateFlow<CreateSpendingGoalUiState> = _state.asStateFlow()
 
     init {
-        resolveLedgerCurrency()
+        refreshLedgerCurrency()
     }
 
     fun reset(month: String = YearMonth.now().toString()) {
@@ -56,14 +56,14 @@ class CreateSpendingGoalViewModel(
             canModify = reports.canModifyLedger(),
             month = month.cleanGoalMonth(),
         )
-        resolveLedgerCurrency()
+        refreshLedgerCurrency()
     }
 
-    /** R12-D：从列表信封的安装级 capability 解析账本币种（严格；未知 → null 禁写）。 */
-    private fun resolveLedgerCurrency() {
+    /** R12-D + R14-6：账本币种按共享同源裁决解析（record 集合 × 信封 capability；未知/冲突 → null 禁写）。 */
+    private fun refreshLedgerCurrency() {
         viewModelScope.launch {
-            val code = debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode
-            _state.update { it.copy(ledgerCurrency = CurrencyCode.fromStorageKeyOrNull(code)) }
+            val page = debts.listDebts().getOrNull()
+            _state.update { it.copy(ledgerCurrency = resolveLedgerCurrency(page)) }
         }
     }
 
@@ -72,7 +72,15 @@ class CreateSpendingGoalViewModel(
     }
 
     fun updateTargetAmount(value: String) {
-        _state.update { it.copy(targetAmountInput = value, formError = null) }
+        _state.update {
+            // R14-2：币种已解析时即时报解析失败（JPY 下输 "12.50" 不再静默 canSubmit=false）。
+            val parseFailed = it.ledgerCurrency != null && value.isNotBlank() &&
+                parseAmountCents(value, it.ledgerCurrency) == null
+            it.copy(
+                targetAmountInput = value,
+                formError = if (parseFailed) UiText.res(R.string.expense_edit_amount_invalid) else null,
+            )
+        }
     }
 
     fun updateCategory(value: String) {

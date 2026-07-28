@@ -6,7 +6,6 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.MessageTone
@@ -83,9 +82,10 @@ class SpendingGoalDetailViewModel(
             )
         }
         loadJob = viewModelScope.launch {
-            // R12-D：随每次 load 重解析账本币种（信封 capability；账本切换后重算）。
-            val code = debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode
-            _state.update { it.copy(ledgerCurrency = CurrencyCode.fromStorageKeyOrNull(code)) }
+            // R12-D + R14-6：随每次 load 重解析账本币种（共享同源裁决：record 集合 × 信封
+            // capability，冲突/未知 → null 禁写；账本切换后重算）。
+            val page = debts.listDebts().getOrNull()
+            _state.update { it.copy(ledgerCurrency = resolveLedgerCurrency(page)) }
             val result = reports.goal(requestedId)
             if (generation != loadGeneration || _state.value.publicId != requestedId) return@launch
             result.fold(
@@ -116,13 +116,22 @@ class SpendingGoalDetailViewModel(
     fun beginEdit() {
         val goal = _state.value.goal ?: return
         if (!_state.value.canModify || goal.isArchived) return
+        // R14-5：账本币种未确认（null）不开编辑 —— 回填币种必须与 save 解析币种同源。
+        // 实证：ledgerCurrency 仅 load() 写入（协程内先于 goal 落定），编辑会话内不变
+        // （load 全量重置 isEditing）；唯一可达的不对称是本门拦截的 null 窗口 —— 旧码
+        // 落 FxContract.HomeCurrency 兜底回填，把非 CNY 账本的 goal minor 格式化成假金额
+        // （JPY 1200 → "12.00"），save 虽另有 R12-D 门，用户看到的已是谎言。
+        val currency = _state.value.ledgerCurrency
+        if (currency == null) {
+            _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }
+            return
+        }
         _state.update {
             it.copy(
                 isEditing = true,
                 name = goal.name,
                 month = goal.month,
-                // 回填走账本币种（未确认时落 display-home 兜底仅作展示，save 由 ledgerCurrency 禁写）。
-                targetAmountInput = formatAmountInput(goal.targetAmountCents, it.ledgerCurrency ?: FxContract.HomeCurrency),
+                targetAmountInput = formatAmountInput(goal.targetAmountCents, currency),
                 category = goal.category.orEmpty(),
                 formError = null,
                 message = null,
@@ -140,7 +149,15 @@ class SpendingGoalDetailViewModel(
         _state.update {
             when (field) {
                 SpendingGoalEditField.Name -> it.copy(name = value, formError = null)
-                SpendingGoalEditField.Amount -> it.copy(targetAmountInput = value, formError = null)
+                SpendingGoalEditField.Amount -> {
+                    // R14-2：币种已解析时即时报解析失败（同 CreateSpendingGoalViewModel）。
+                    val parseFailed = it.ledgerCurrency != null && value.isNotBlank() &&
+                        parseAmountCents(value, it.ledgerCurrency) == null
+                    it.copy(
+                        targetAmountInput = value,
+                        formError = if (parseFailed) UiText.res(R.string.expense_edit_amount_invalid) else null,
+                    )
+                }
                 SpendingGoalEditField.Category -> it.copy(category = value, formError = null)
             }
         }

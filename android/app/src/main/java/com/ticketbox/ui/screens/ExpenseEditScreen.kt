@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -27,6 +28,7 @@ import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppAsyncImageLayout
@@ -190,7 +192,7 @@ fun ExpenseEditScreen(
                 drafts = state.itemDrafts,
                 parentAmountCents = state.expenseItems?.parentAmountCents,
                 saving = state.itemsSaving,
-                currency = expense?.homeCurrency ?: FxContract.HomeCurrency,
+                display = expense?.recordCurrencyDisplay() ?: CurrencyDisplay.Base,
             ),
             actions = itemizationActions.editor,
         )
@@ -203,7 +205,7 @@ fun ExpenseEditScreen(
                 parentAmountCents = state.expenseSplits?.parentAmountCents,
                 saving = state.splitsSaving,
                 loading = state.splitMembersLoading,
-                currency = expense?.homeCurrency ?: FxContract.HomeCurrency,
+                display = expense?.recordCurrencyDisplay() ?: CurrencyDisplay.Base,
             ),
             actions = splitEditingActions.editor,
         )
@@ -219,7 +221,7 @@ fun ExpenseEditScreen(
                 sending = state.billSplitInviteSending,
                 message = state.billSplitInviteMessage,
                 messageTone = state.billSplitInviteMessageTone,
-                currency = expense?.homeCurrency ?: FxContract.HomeCurrency,
+                display = expense?.recordCurrencyDisplay() ?: CurrencyDisplay.Base,
             ),
             remainingCents = billSplitRemainingCents(state),
             remainingUnavailable = state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,

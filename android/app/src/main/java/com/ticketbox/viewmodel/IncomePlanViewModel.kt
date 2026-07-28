@@ -166,12 +166,13 @@ class IncomePlanViewModel(
                     _state.value = IncomePlanUiState(
                         canModify = access?.canModify ?: false,
                     )
-                    // R12-D：每次账本生效/切换都重解析账本币种（信封 capability 严格解析，
-                    // 未知 → 草稿 homeCurrency=null 禁写，不落 CNY 兜底）。
+                    // R12-D + R14-6：每次账本生效/切换都重解析账本币种（共享同源裁决：
+                    // record 集合 × 信封 capability，未知/冲突 → 草稿 homeCurrency=null 禁写，
+                    // 不落 CNY 兜底）。
                     viewModelScope.launch {
-                        val code = debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode
+                        val page = debts.listDebts().getOrNull()
                         _state.update {
-                            it.copy(addDraft = it.addDraft.copy(homeCurrency = CurrencyCode.fromStorageKeyOrNull(code)))
+                            it.copy(addDraft = it.addDraft.copy(homeCurrency = resolveLedgerCurrency(page)))
                         }
                     }
                     if (access != null) refresh()
@@ -240,7 +241,17 @@ class IncomePlanViewModel(
             val nextDraft = when (field) {
                 IncomePlanDraftField.Label -> draft.copy(label = value)
                 IncomePlanDraftField.IncomeMonth -> draft.copy(incomeMonthInput = value)
-                IncomePlanDraftField.Amount -> draft.copy(amountYuanInput = value)
+                IncomePlanDraftField.Amount -> {
+                    // R14-2：币种已注入时即时报解析失败（JPY 下输 "12.50" 不再静默 isValid=false）。
+                    val parseFailed = draft.homeCurrency != null && value.isNotBlank() &&
+                        parseAmountCents(value, draft.homeCurrency) == null
+                    return@update state.copy(
+                        addDraft = draft.copy(
+                            amountYuanInput = value,
+                            validationError = if (parseFailed) UiText.res(R.string.expense_edit_amount_invalid) else null,
+                        ),
+                    )
+                }
                 IncomePlanDraftField.PayDay -> draft.copy(payDayInput = value)
             }
             state.copy(addDraft = nextDraft.copy(validationError = null))
@@ -263,11 +274,11 @@ class IncomePlanViewModel(
 
     fun resetDraft() {
         _state.update { it.copy(addDraft = IncomePlanDraftUi(), isSubmitting = false, addSucceeded = false) }
-        // 草稿重建后重新注入账本币种（R12-D；不清 homeCurrency 则新草稿永远 null 禁写）。
+        // 草稿重建后重新注入账本币种（R12-D + R14-6 共享同源裁决；不清 homeCurrency 则新草稿永远 null 禁写）。
         viewModelScope.launch {
-            val code = debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode
+            val page = debts.listDebts().getOrNull()
             _state.update {
-                it.copy(addDraft = it.addDraft.copy(homeCurrency = CurrencyCode.fromStorageKeyOrNull(code)))
+                it.copy(addDraft = it.addDraft.copy(homeCurrency = resolveLedgerCurrency(page)))
             }
         }
     }

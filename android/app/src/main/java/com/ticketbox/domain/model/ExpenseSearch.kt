@@ -112,20 +112,6 @@ fun parseSearchAmountCents(
 }
 
 /**
- * 把 [query] 按**每个支持的币种各解析一次**并缓存成表（PR#255 P2-2）：逐行匹配
- * （[expenseMatchesSearchAmount] 的 map 重载）按行腿币种查表复用结果，避免在大
- * 账本缓存上每行重复构造 BigDecimal —— 非数字 query（"coffee"）短路为空表，
- * 金额腿直接判无命中，而不是每行抛一次解析异常。
- */
-fun parseSearchAmountsByCurrency(query: String): Map<CurrencyCode, Long> {
-    val trimmed = query.trim()
-    if (trimmed.none(Char::isDigit)) return emptyMap()
-    return CurrencyCode.entries.mapNotNull { currency ->
-        parseSearchAmountCents(trimmed, currency)?.let { currency to it }
-    }.toMap()
-}
-
-/**
  * True when [expense] matches the parsed search amount on any currency leg —
  * the home/base `amount_cents` or the original foreign minor amount — so a
  * search for "12.50" finds a ¥12.50 row regardless of which leg the user
@@ -136,57 +122,8 @@ fun expenseMatchesAmountCents(expense: Expense, amountCents: Long): Boolean =
         expense.homeAmountCents == amountCents ||
         expense.originalAmountMinor == amountCents
 
-/**
- * Per-row dual-leg amount matching (PR#255 P2): each leg is compared against the
- * pre-parsed amount **of its own currency** (see [parseSearchAmountsByCurrency]),
- * so cross-exponent rows are reachable from both directions —
- *
- * - home legs (`amountCents` / `homeAmountCents`) look up the row's
- *   `homeCurrency` parse; the original leg joins them only when the row has no
- *   foreign currency (same-currency legacy rows, where one parse serves all legs);
- * - a foreign original leg (`originalCurrencyCode` != home) instead looks up the
- *   parse of that original currency — never the home parse, so "1250" can't
- *   coincidentally hit a 12.50-USD minor.
- *
- * A JPY-home user searching "12.50" therefore still hits a USD-original row
- * (12.50 USD → 1250) even though the query isn't a valid zero-decimal home
- * amount, and a CNY-home user searching "1200" hits a JPY-original row
- * (1200 ≠ 120000 cents). Returns false when the query parsed on neither leg.
- */
-fun expenseMatchesSearchAmount(expense: Expense, amountsByCurrency: Map<CurrencyCode, Long>): Boolean {
-    if (amountsByCurrency.isEmpty()) return false
-    // PR#255 R10⑥：home 码**非空但**在支持集外（新版服务端币种）时，金额匹配按原 minor
-    // 整数值（与 R8-4 显示口径 "1200 VND" 一致，显示多少搜得到多少）——零小数解析恰好
-    // 是未缩放整数（"1200"→1200；小数查询天然不命中，minor 必为整数），用它作原值代理。
-    // raw 为空/缺省（旧 record / 手工构造）不落此分支，维持枚举口径（行为不回归）。
-    val rawHomeCode = expense.homeCurrencyCode
-    val originalCurrency = expense.originalCurrencyCode
-    val foreignOriginal = originalCurrency != expense.homeCurrency
-    val homeUnknown = !rawHomeCode.isNullOrBlank() && CurrencyCode.fromStorageKeyOrNull(rawHomeCode) == null
-    if (homeUnknown && matchUnknownHomeRawLeg(expense, amountsByCurrency)) return true
-    if (!homeUnknown) {
-        amountsByCurrency[expense.homeCurrency]?.let { homeAmount ->
-            if (expense.amountCents == homeAmount || expense.homeAmountCents == homeAmount) return true
-            if (!foreignOriginal && expense.originalAmountMinor == homeAmount) return true
-        }
-    }
-    if (foreignOriginal) {
-        amountsByCurrency[originalCurrency]?.let { originalAmount ->
-            if (expense.originalAmountMinor == originalAmount) return true
-        }
-    }
-    return false
-}
-
-/** R12-B：未知 home 行的 raw-minor 匹配只比 home 双腿（amountCents/homeAmountCents）——
- *  original 腿交回主函数按其声明币种续配（VND-home/USD-original 双路可达）。 */
-private fun matchUnknownHomeRawLeg(expense: Expense, amountsByCurrency: Map<CurrencyCode, Long>): Boolean {
-    val raw = amountsByCurrency[CurrencyCode.JPY] ?: return false
-    return expense.amountCents == raw || expense.homeAmountCents == raw
-}
-
-/** Convenience overload for single-shot callers/tests: parses [query] per
- *  supported currency once, then runs the cached-map match above. Hot paths
+/** Convenience overload for single-shot callers/tests: parses [query] once
+ *  （含 R14-4b 尾部显式码直查）, then runs the cached/explicit match above. Hot paths
  *  (global search) must pre-parse via [parseSearchAmountsByCurrency] instead. */
 fun expenseMatchesSearchAmount(expense: Expense, query: String): Boolean =
     expenseMatchesSearchAmount(expense, parseSearchAmountsByCurrency(query))

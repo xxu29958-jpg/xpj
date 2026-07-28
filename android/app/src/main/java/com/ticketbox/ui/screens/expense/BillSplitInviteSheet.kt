@@ -23,12 +23,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.FamilyMember
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 
 /**
@@ -46,8 +46,9 @@ internal data class BillSplitInviteSheetState(
     val sending: Boolean,
     val message: UiText?,
     val messageTone: MessageTone,
-    // 票据的服务端 home 币种：剩余额显示与邀请金额解析同口径（零小数 home 不 ×100，PR#255 P1）。
-    val currency: CurrencyCode = FxContract.HomeCurrency,
+    // 票据 record 口径的 display context（R14-1）：剩余额显示与邀请金额解析同源（零小数
+    //  home 不 ×100；未知码亮原码+原 minor，不冒枚举兜底符号）。
+    val display: CurrencyDisplay = CurrencyDisplay.Base,
 )
 
 internal data class BillSplitInviteSheetActions(
@@ -82,7 +83,7 @@ internal fun BillSplitInviteSheet(
                 amountText = state.amountText,
                 // 剩余额显示与邀请金额解析同源于票据 record 币种，不读恒 Base 的环境
                 // display（PR#255 P1）；调用侧预格式化也让本函数守在 detekt 参数数门槛内。
-                remainingText = remainingCents?.let { formatAmount(it, state.currency) },
+                remainingText = remainingCents?.let { formatDisplayAmount(it, state.display) },
                 remainingUnavailable = remainingUnavailable,
                 sending = state.sending,
                 onUpdateAmount = actions.onUpdateAmount,

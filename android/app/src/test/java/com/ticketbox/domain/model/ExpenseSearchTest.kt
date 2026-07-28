@@ -55,6 +55,51 @@ class ExpenseSearchTest {
         assertTrue(expenseMatchesSearchAmount(row, "12.50"))
         assertFalse(expenseMatchesSearchAmount(row, "120000"))
     }
+
+    @Test
+    fun unknownOriginalRawLegMatchesByRawMinorNotHomeCoincidence() {
+        // PR#255 R14-4a：CNY-home / VND-original（原码未知，枚举已回落 CNY）—— foreignOriginal
+        // 判定按原码："1200" 按原 minor 命中原币腿；"12.00" 的 home 解析（1200 分）不得
+        // 巧合命中 1200-VND 原 minor（旧枚举判定会把它当本币行误中）。
+        val row = searchExpense(amountCents = 34L, homeCurrencyCode = "CNY").copy(
+            originalCurrencyCodeRaw = "VND",
+            originalAmountMinor = 1_200L,
+        )
+
+        assertTrue(expenseMatchesSearchAmount(row, "1200"))
+        assertFalse(expenseMatchesSearchAmount(row, "12.00"))
+    }
+
+    @Test
+    fun explicitTrailingUnknownCodeQueryMatchesRawRowsStrictly() {
+        // PR#255 R14-4b："1200 VND" 粘贴直查 —— 命中 VND raw 行（原 minor 原码），
+        // 严格单码：不命中 JPY/CNY 行（不借 JPY 代理外溢）；未知码拒小数（"12.5 VND" 不中）。
+        val vndRow = searchExpense(amountCents = 1_200L, homeCurrencyCode = "VND")
+        val jpyRow = searchExpense(amountCents = 1_200L, homeCurrencyCode = "JPY", homeCurrency = CurrencyCode.JPY)
+        val cnyRow = searchExpense(amountCents = 1_200L, homeCurrencyCode = "CNY")
+
+        assertTrue(expenseMatchesSearchAmount(vndRow, "1200 VND"))
+        assertTrue(expenseMatchesSearchAmount(vndRow, "1200 vnd"))
+        assertFalse(expenseMatchesSearchAmount(jpyRow, "1200 VND"))
+        assertFalse(expenseMatchesSearchAmount(cnyRow, "1200 VND"))
+        assertFalse(expenseMatchesSearchAmount(vndRow, "12.5 VND"))
+    }
+
+    @Test
+    fun explicitKnownCodeQueryMatchesOnlyDeclaredLegs() {
+        // PR#255 R14-4b 已知码："12.50 USD" → 1250 只命中 USD 腿（本行 original），
+        // 不命中同值的 CNY home 腿（跨码巧合）。
+        val usdOriginalRow = searchExpense(amountCents = 8_800L, homeCurrencyCode = "CNY").copy(
+            originalCurrency = CurrencyCode.USD,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalCurrencyCodeRaw = "USD",
+            originalAmountMinor = 1_250L,
+        )
+        val cnyRow = searchExpense(amountCents = 1_250L, homeCurrencyCode = "CNY")
+
+        assertTrue(expenseMatchesSearchAmount(usdOriginalRow, "12.50 USD"))
+        assertFalse(expenseMatchesSearchAmount(cnyRow, "12.50 USD"))
+    }
 }
 
 private fun searchExpense(

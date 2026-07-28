@@ -188,7 +188,8 @@ internal fun SpendingGoalEditContent(
     state: SpendingGoalDetailUiState,
     viewModel: SpendingGoalDetailViewModel,
 ) {
-    val currency = LocalCurrencyDisplay.current.homeCurrency
+    // R14-2：同 CreateSpendingGoalScreen —— 标签随 VM 已解析 capability，未确认落兜底展示。
+    val currency = state.ledgerCurrency ?: LocalCurrencyDisplay.current.homeCurrency
     AppContentCard {
         Text(
             text = stringResource(R.string.spending_goal_edit_section),

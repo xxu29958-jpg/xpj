@@ -3,6 +3,7 @@ package com.ticketbox.ui.components
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.recordCurrencyDisplay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -217,6 +218,49 @@ class FormattersTest {
 
         assertEquals("$123.45", formatExpensePrimaryAmount(expense))
         assertEquals("汇率待同步 · 2026-05-04", formatExpenseExchangeMeta(expense))
+    }
+
+    @Test
+    fun primaryAmountDefaultsToRecordCurrencyDisplay() {
+        // PR#255 R14-3：display 缺省改 record 口径 —— 原始 home 码未知（VND，枚举已回落
+        // CNY）按 "1200 VND" 原样亮码（原 minor 整数），不再冒 env Base 的 ¥12.00；
+        // 已知非 CNY record 码不 ÷100。
+        val unknownHome = formatterExpense(
+            FormatterExpenseFixture(amountCents = 1200, originalAmountMinor = null),
+        ).copy(homeCurrencyCode = "VND")
+        assertEquals("1200 VND", formatExpensePrimaryAmount(unknownHome))
+
+        val jpyHome = formatterExpense(
+            FormatterExpenseFixture(
+                amountCents = 1200,
+                homeCurrency = CurrencyCode.JPY,
+                originalCurrencyCode = CurrencyCode.JPY,
+            ),
+        ).copy(homeCurrencyCode = "JPY")
+        assertEquals("¥1,200", formatExpensePrimaryAmount(jpyHome))
+    }
+
+    @Test
+    fun primaryAmountRendersUnknownOriginalRawCodeHonestly() {
+        // PR#255 R14-3：原币腿原码未知（VND）时按原 minor 亮码，不冒回落枚举（CNY）的
+        // 符号与缩放（旧口径会渲染成 "¥12.00"）。
+        val expense = formatterExpense(
+            FormatterExpenseFixture(amountCents = 34, originalAmountMinor = 1200),
+        ).copy(homeCurrencyCode = "CNY", originalCurrencyCodeRaw = "VND")
+
+        assertEquals("1200 VND", formatExpensePrimaryAmount(expense))
+    }
+
+    @Test
+    fun recordCurrencyDisplayFallsBackToEnumWhenRawMissing() {
+        // PR#255 R14-3：手工构造（raw 缺失）回落枚举口径；raw 在场优先（未知码原样亮码）。
+        val manual = formatterExpense(
+            FormatterExpenseFixture(amountCents = 1200, homeCurrency = CurrencyCode.JPY),
+        )
+        assertEquals(CurrencyDisplay(homeCurrency = CurrencyCode.JPY), manual.recordCurrencyDisplay())
+
+        val servedUnknown = manual.copy(homeCurrencyCode = "vnd")
+        assertEquals(CurrencyDisplay(unknownCode = "VND"), servedUnknown.recordCurrencyDisplay())
     }
 
     @Test

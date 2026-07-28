@@ -111,7 +111,8 @@ fun ExpenseEditViewModel.evenSplitAmounts() {
         if (checked.isEmpty()) return@update state
         // Parse in the expense's home currency (zero-decimal home: no ×100), matching
         // the save path so 合计/差额 reconcile in the same minor space as the parent.
-        val currency = state.expense?.homeCurrency ?: FxContract.HomeCurrency
+        // R14-1：原码严格解析（raw 缺失回落枚举，未知码的保存门在 editParseCurrency 处）。
+        val currency = state.expense?.editParseCurrency() ?: FxContract.HomeCurrency
         // Disabled members already on the split hold fixed amounts the user
         // can't edit — subtract them so 均分 distributes only the REMAINING
         // amount across the active members and 合计 actually reaches the parent

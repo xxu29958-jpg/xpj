@@ -179,7 +179,6 @@ internal fun DebtGoalRoute(
     // overlay 在 open/close 间复用缓存 VM 且跨账本切换存活;每次(重新)进入都 refresh(clearStale=true)
     // (先清旧账本的债务再拉),避免在新账本下短暂看到上一账本的欠款(账本隔离)。
     LaunchedEffect(Unit) { routeModels.debtGoal.refresh(clearStale = true) }
-    val currency = LocalCurrencyDisplay.current
     // 新建还债目标是 overlay 内的子页（与列表/详情互斥渲染）：showCreate 切换,各屏自带
     // BackHandler（互斥 if/else 故同一时刻只有一个生效）。返回回到目标列表,创建成功后
     // 关闭子页并让目标列表重拉。
@@ -189,7 +188,6 @@ internal fun DebtGoalRoute(
     if (showCreate) {
         CreateDebtGoalScreen(
             viewModel = routeModels.createGoal,
-            currency = currency,
             onBack = { showCreate = false },
             onCreated = {
                 showCreate = false
@@ -218,7 +216,6 @@ internal fun DebtGoalRoute(
             // 返回 / overlay 自带回退处理在 DebtGoalScreen 内（详情先收、再关 overlay）。
             DebtGoalScreen(
                 viewModel = routeModels.debtGoal,
-                currency = currency,
                 onBack = onBack,
                 onCreate = { showCreate = true },
                 onOpenLinkedDebt = { linkedDebtId = it },

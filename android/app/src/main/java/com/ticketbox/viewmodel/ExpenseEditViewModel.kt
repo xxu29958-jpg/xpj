@@ -819,17 +819,25 @@ class ExpenseEditViewModel(
         }
         return true
     }
+}
 
-    /**
-     * Minor-unit → 输入框主单位文本，items / splits 编辑器扩展共用。按当前票据的服务端
-     * `homeCurrency` 渲染（JPY 等零小数 home 不 ÷100），与保存侧的解析口径一致；
-     * 票据未加载时落 [FxContract.HomeCurrency] 兜底（此时编辑器也未打开，不会触达）。
-     */
-    internal fun centsToYuanText(cents: Long?): String {
-        if (cents == null) return ""
-        val currency = _uiState.value.expense?.homeCurrency ?: FxContract.HomeCurrency
-        return formatMinorAmountInput(abs(cents), currency)
+/**
+ * Minor-unit → 输入框主单位文本，items / splits 编辑器扩展共用。按当前票据的服务端
+ * `homeCurrency` 渲染（JPY 等零小数 home 不 ÷100），与保存侧的解析口径一致；
+ * 票据未加载时落 [FxContract.HomeCurrency] 兜底（此时编辑器也未打开，不会触达）。
+ * （文件级扩展：类体贴 detekt LargeClass 门，R14-1 起移出类。）
+ */
+internal fun ExpenseEditViewModel.centsToYuanText(cents: Long?): String {
+    if (cents == null) return ""
+    val expense = _uiState.value.expense
+    // R14-1：原码严格解析 —— 未知码不缩放（原 minor 整数原样回填），不冒 CNY 两位
+    // 口径把 1200 VND 写成 "12.00"；已知码维持 formatMinorAmountInput 同口径。
+    val raw = expense?.homeCurrencyCode
+    if (!raw.isNullOrBlank() && CurrencyCode.fromStorageKeyOrNull(raw) == null) {
+        return abs(cents).toString()
     }
+    val currency = expense?.homeCurrency ?: FxContract.HomeCurrency
+    return formatMinorAmountInput(abs(cents), currency)
 }
 
 internal fun Expense.withParentRowVersion(parentRowVersion: Long): Expense =
