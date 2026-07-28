@@ -8,15 +8,15 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Expense
+from app.models import Expense, RecurringItem
 from app.services.merchant_service import normalize_merchant
-from app.services.time_service import ensure_utc, local_month_label
+from app.services.time_service import ensure_utc, local_month_label, now_utc, safe_zone
 
 _RecurringEntry = tuple[datetime, int, str]
 _RecurringCandidate = dict[str, object]
@@ -58,13 +58,43 @@ def _recurring_timezone(timezone_name: str | None) -> str:
     return (timezone_name or "").strip() or get_settings().ocr_default_timezone
 
 
-def _confirmed_expenses_for_recurring(db: Session, *, tenant_id: str) -> list[Expense]:
+# 候选扫描窗口 (PR #253 R4): 候选的可行动口径就是「近 N 个月每月出现 /
+# 已连续 N 个月」(见 _recurring_reason), 扫全历史只会把多年前的老商家
+# 也摆成待确认。取当前月 + 前 5 个月共 6 个月桶——既覆盖 medium/high 两档
+# 置信度所需的最小数据, 又不再无界物化全量 confirmed 流水。
+_CANDIDATE_LOOKBACK_MONTHS = 6
+
+
+def _candidate_lookback_start(timezone_name: str) -> datetime:
+    zone = safe_zone(_recurring_timezone(timezone_name))
+    today = now_utc().astimezone(zone).date()
+    month = today.month - (_CANDIDATE_LOOKBACK_MONTHS - 1)
+    year = today.year
+    while month <= 0:
+        month += 12
+        year -= 1
+    return datetime(year, month, 1, tzinfo=zone)
+
+
+def _confirmed_expenses_for_recurring(
+    db: Session, *, tenant_id: str, timezone_name: str | None = None
+) -> list[Expense]:
+    since_local = _candidate_lookback_start(_recurring_timezone(timezone_name))
+    since_utc = since_local.astimezone(UTC)
     return list(
         db.scalars(
             select(Expense)
             .where(Expense.tenant_id == tenant_id)
             .where(Expense.status == "confirmed")
             .where(Expense.merchant.is_not(None))
+            # 与 _group_recurring_entries 的时间回退同口径: expense_time 优先,
+            # 空则 confirmed_at。
+            .where(
+                or_(
+                    Expense.expense_time >= since_utc,
+                    and_(Expense.expense_time.is_(None), Expense.confirmed_at >= since_utc),
+                )
+            )
         )
     )
 
@@ -141,25 +171,47 @@ def recurring_candidates(
     timezone_name: str | None = None,
     min_occurrences: int = 2,
 ) -> list[dict]:
-    """Detect merchants that recur across distinct months with stable amounts.
+    """Detect merchants that recur across distinct recent months with stable amounts.
 
     Algorithm v1:
-      - Scan confirmed expenses for this tenant.
+      - Scan confirmed expenses within ``_CANDIDATE_LOOKBACK_MONTHS`` month buckets
+        (PR #253 R4: the actionable caliber is "近 N 个月", not全历史).
       - Group by normalized merchant.
       - Within each group, require >= ``min_occurrences`` distinct month buckets.
       - Require amount range within 15% of the max (T24 spec).
+      - Skip merchants already formalized as active/paused ``RecurringItem``
+        (R4: claimed 过滤下推到共享装配, /web/recurring 与 overview 同口径).
       - Output: merchant display label, representative amount (most recent),
         occurrence_count (distinct months), last_seen_at, confidence, reason.
     Never writes.
     """
     tz = _recurring_timezone(timezone_name)
-    grouped = _group_recurring_entries(_confirmed_expenses_for_recurring(db, tenant_id=tenant_id))
+    grouped = _group_recurring_entries(
+        _confirmed_expenses_for_recurring(db, tenant_id=tenant_id, timezone_name=timezone_name)
+    )
+    formal_keys = set(
+        db.scalars(
+            select(RecurringItem.merchant_key)
+            .where(RecurringItem.tenant_id == tenant_id)
+            .where(RecurringItem.status.in_(("active", "paused")))
+        ).all()
+    )
 
     candidates: list[_RecurringCandidate] = []
-    for _, entries in grouped.items():
+    for key, entries in grouped.items():
+        if key in formal_keys:
+            continue
         candidate = _candidate_from_entries(
             entries, timezone_name=tz, min_occurrences=min_occurrences
         )
         if candidate is not None:
             candidates.append(candidate)
     return list(_sort_recurring_candidates(candidates))
+
+
+def unclaimed_recurring_candidate_count(
+    db: Session, *, tenant_id: str, timezone_name: str | None = None
+) -> int:
+    """候选数量 (PR #253 R3/R4): claimed 过滤已下推到 ``recurring_candidates``
+    共享装配, 本函数只是计数薄委托, 保留 R3 引入的调用面。"""
+    return len(recurring_candidates(db, tenant_id=tenant_id, timezone_name=timezone_name))

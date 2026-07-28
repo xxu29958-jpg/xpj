@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import timedelta
 
 import pytest
 from api_contract_helpers import insert_confirmed_expense
@@ -14,6 +14,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember, RecurringItem
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.time_service import now_utc
 
 
 @pytest.fixture()
@@ -24,10 +25,12 @@ def web_client(client: TestClient) -> TestClient:
 
 
 def _seed_candidate() -> None:
+    # PR #253 R4: 候选扫描窗口为近 6 个月, 播种改相对日期 (固定日期会随时间掉出窗口)。
+    base = now_utc()
     for when in (
-        datetime(2026, 3, 5, 12, 0, tzinfo=UTC),
-        datetime(2026, 4, 5, 12, 0, tzinfo=UTC),
-        datetime(2026, 5, 5, 12, 0, tzinfo=UTC),
+        base - timedelta(days=62),
+        base - timedelta(days=31),
+        base,
     ):
         insert_confirmed_expense(
             amount_cents=20000,
@@ -63,7 +66,7 @@ def _confirm_candidate(web_client: TestClient) -> None:
             "merchant": "ChatGPT Plus",
             "amount_cents": "20000",
             "occurrence_count": "3",
-            "last_seen_at": "2026-05-05T12:00:00Z",
+            "last_seen_at": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "confidence": "high",
         },
         follow_redirects=False,
@@ -246,3 +249,147 @@ def test_web_recurring_pause_resume_use_rendered_token(web_client: TestClient) -
             db.scalar(select(RecurringItem.status).where(RecurringItem.public_id == public_id))
             == "active"
         )
+
+
+def test_web_recurring_candidate_disappears_after_confirm(web_client: TestClient) -> None:
+    """PR #253 R4-2: claimed 过滤下推共享装配后, 已转正商家从候选列表自然消失。"""
+    _seed_candidate()
+    before = web_client.get("/web/recurring?ledger_id=owner")
+    assert before.status_code == 200
+    assert 'action="/web/recurring/confirm-candidate"' in before.text
+
+    _confirm_candidate(web_client)
+
+    after = web_client.get("/web/recurring?ledger_id=owner")
+    assert after.status_code == 200
+    # 正式列表仍在, 候选确认表单不再出现 (候选集已空)。
+    assert "ChatGPT Plus" in after.text
+    assert 'action="/web/recurring/confirm-candidate"' not in after.text
+
+
+def test_web_recurring_confirm_retry_returns_existing_not_error(web_client: TestClient) -> None:
+    """PR #253 R4-2 幂等: 候选消失后重试同一确认, 返回既有正式项而非 404/409。"""
+    _seed_candidate()
+    _confirm_candidate(web_client)
+    # 重试同一确认 payload — 候选已被 claimed 过滤, 幂等前置返回既有项。
+    retry = web_client.post(
+        "/web/recurring/confirm-candidate",
+        data={
+            "ledger_id": "owner",
+            "merchant": "ChatGPT Plus",
+            "amount_cents": "20000",
+            "occurrence_count": "3",
+            "last_seen_at": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "confidence": "high",
+        },
+        follow_redirects=False,
+    )
+    assert retry.status_code == 303
+    with SessionLocal() as db:
+        items = list(
+            db.scalars(
+                select(RecurringItem)
+                .where(RecurringItem.tenant_id == "owner")
+                .where(RecurringItem.merchant_name == "ChatGPT Plus")
+            ).all()
+        )
+        assert len(items) == 1
+
+
+def test_confirm_retry_with_different_amount_restores_not_found_guard(
+    web_client: TestClient,
+) -> None:
+    """复审 agent-60: 已 formal 商家以不同金额重试 → 恢复 404 守卫; 同金额 → 幂等返回。"""
+    from app.errors import AppError
+    from app.schemas import RecurringCandidateConfirmRequest
+    from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
+
+    _seed_candidate()
+    with SessionLocal() as db:
+        created = confirm_recurring_candidate(
+            db,
+            tenant_id="owner",
+            payload=RecurringCandidateConfirmRequest(
+                merchant="ChatGPT Plus",
+                amount_cents=20000,
+                occurrence_count=3,
+                last_seen_at=now_utc(),
+                confidence="high",
+                frequency="monthly",
+            ),
+        )
+        db.commit()
+        # 同金额重试: 幂等返回既有项。
+        same = confirm_recurring_candidate(
+            db,
+            tenant_id="owner",
+            payload=RecurringCandidateConfirmRequest(
+                merchant="ChatGPT Plus",
+                amount_cents=20000,
+                occurrence_count=3,
+                last_seen_at=now_utc(),
+                confidence="high",
+                frequency="monthly",
+            ),
+        )
+        assert same.id == created.id
+        # 不同金额重试: 恢复候选匹配的 404 守卫, 不静默返回既有项。
+        try:
+            confirm_recurring_candidate(
+                db,
+                tenant_id="owner",
+                payload=RecurringCandidateConfirmRequest(
+                    merchant="ChatGPT Plus",
+                    amount_cents=21000,
+                    occurrence_count=3,
+                    last_seen_at=now_utc(),
+                    confidence="high",
+                    frequency="monthly",
+                ),
+            )
+            raise AssertionError("different-amount retry must not silently return the formal item")
+        except AppError as exc:
+            assert exc.error == "recurring_candidate_not_found"
+            assert exc.status_code == 404
+
+
+def test_confirm_candidate_race_returns_existing_after_candidate_disappears(
+    web_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #253 R5: 并发双请求——前置检查读到提交前快照, candidate 已被对方 claimed
+    过滤时, 按 (merchant_key, frequency, amount_cents) 复查 formal 幂等返回。"""
+    from app.schemas import RecurringCandidateConfirmRequest
+    from app.services import recurring_candidate_confirmation_service as confirmation
+    from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
+
+    _seed_candidate()
+    payload = RecurringCandidateConfirmRequest(
+        merchant="ChatGPT Plus",
+        amount_cents=20000,
+        occurrence_count=3,
+        last_seen_at=now_utc(),
+        confidence="high",
+        frequency="monthly",
+    )
+    with SessionLocal() as db:
+        first = confirm_recurring_candidate(db, tenant_id="owner", payload=payload)
+        db.commit()
+
+        # 模拟请求 B: 第一次 _existing_item 调用 (前置检查) 返回 None —— 即读到
+        # 请求 A 提交前的快照; 随后 candidate 查找已被 claimed 过滤 (not_found)。
+        calls = {"n": 0}
+        real_existing = confirmation._existing_item
+
+        def _stale_existing(db, *, tenant_id, merchant_key, frequency):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return None
+            return real_existing(
+                db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency
+            )
+
+        monkeypatch.setattr(confirmation, "_existing_item", _stale_existing)
+        second = confirm_recurring_candidate(db, tenant_id="owner", payload=payload)
+        assert second.id == first.id
+        # 路径证明: 确实走了兜底 (前置检查返回过 None)。
+        assert calls["n"] >= 2
