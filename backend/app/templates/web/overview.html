@@ -2,12 +2,18 @@
 {% block title %}总览 · 洞察 · 小票夹{% endblock %}
 
 {# 218-D S2 洞察域首页 (移植自产品矿 /web/overview, 适配 main 现状):
-   数据全走 _dashboard_data_payload 既有口径; 页面级 CSS 走 pages/overview.css,
-   借 page_scripts 块挂载 (照 C5b-1 recycle-bin 范式, 不碰 base.html 全局列表);
+   数据全走 _dashboard_data_payload 既有口径; 页面级 CSS 走 pages/overview.css
+   (218-D S3 裁决: 保留页级文件 — 本页 S2 适配标记 insight-sequence /
+   insight-lane-heading / ov-side / ov-status 在矿的域模块中无对应样式,
+   并入 domains/insights.css 留给 S4 洞察域页面重绘片),
+   经 base.html 的 page_styles 块挂载 (S3 起 base 提供独立样式块);
    分类环图复用 main 既有 echarts + category-donut.js (desktop.js boot 自动 init),
    且只在 reports 卡可见且有分类数据时才下载 (PR #253 P2-3)。 #}
-{% block page_scripts %}
+{% block page_styles %}
 <link rel="stylesheet" href="/static/web/pages/overview.css?v={{ asset_version }}">
+{% endblock %}
+
+{% block page_scripts %}
 {% if overview_load_charts %}
 <script defer src="/static/web/vendor/echarts.min.js"></script>
 <script defer src="/static/web/desktop/category-donut.js?v={{ asset_version }}"></script>

@@ -15,6 +15,7 @@
   '/tasks' in _path or
   ('/expenses/' in _path and _edit_origin in ['pending', 'duplicates'])
 ) %}
+{# 资料库 (/web/library) 是后续切片 C5c-1, 路由尚不存在, 不参与域判定。 #}
 {% set _is_transactions_context = (
   '/confirmed' in _path or '/search' in _path or '/categories' in _path or
   '/merchants' in _path or '/tags' in _path or '/rules' in _path or
@@ -51,6 +52,29 @@
   'insights': '洞察',
   'workspace': '工作区'
 }.get(_domain, '工作区') %}
+{% set _has_domain_subnav = _domain != 'workspace' %}
+
+{# 218-D S3 (移植自产品矿): 页级三态。primary=五域首屏(已迁移, 断旧栈);
+   tertiary=详情工作区(挂 detail.css); 其余=secondary。矿的 category/library-detail
+   三级分组依赖 /web/library (C5c-1), 本片不引入——分类/商家/标签/规则/回收站
+   在 main 仍是流水域普通二级页。 #}
+{% set _is_expense_detail = '/expenses/' in _path and '/edit' in _path %}
+{% set _is_debt_detail = _path.startswith('/web/debts/') %}
+{% set _is_import_detail = _path.startswith('/web/import/') %}
+{% set _page_key = (
+  'expense-detail' if _is_expense_detail else
+  'debt-detail' if _is_debt_detail else
+  'import-detail' if _is_import_detail else
+  _domain
+) %}
+{% set _primary_paths = [
+  '/web/pending', '/web/confirmed', '/web/debts', '/web/budgets', '/web/overview'
+] %}
+{% set _page_level = (
+  'tertiary' if (_is_expense_detail or _is_debt_detail or _is_import_detail) else
+  'primary' if _path in _primary_paths else
+  'secondary'
+) %}
 
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}" data-home-currency="{{ home_currency_code }}" data-home-currency-symbol="{{ home_currency_symbol }}" data-home-currency-minor-digits="{{ home_currency_minor_digits }}">
@@ -66,15 +90,17 @@
   <link rel="apple-touch-icon" href="/static/web/icon.svg">
   <link rel="icon" type="image/svg+xml" href="/static/web/icon.svg">
   <title>{% block title %}小票夹 网页版{% endblock %}</title>
-  {# Token + 全局 reset (legacy 收尾) #}
-  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/web.css?v={{ asset_version }}">
 
-  {# Base & Shell #}
+  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
+
+  {# 旧全局栈并行策略 (218-D S3 裁决): 迁移页(五域 primary)即断旧栈;
+     未迁移页(secondary/tertiary)续用旧栈, 且先于 product 栈加载——
+     类名冲突时 product 新样式胜出, 壳在所有页面保持一致。
+     旧文件的物理删除是独立后续片, 本片不动。 #}
+  {% if _page_level != 'primary' %}
+  <link rel="stylesheet" href="/static/web/web.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/_base.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/_shell.css?v={{ asset_version }}">
-
-  {# Components #}
   <link rel="stylesheet" href="/static/web/components/buttons.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/components/pills.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/components/toolbar.css?v={{ asset_version }}">
@@ -89,8 +115,6 @@
   <link rel="stylesheet" href="/static/web/components/empty-state.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/components/utilities.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/components/a11y.css?v={{ asset_version }}">
-
-  {# Page-scoped (TODO: 按 endpoint 条件加载,目前全量) #}
   <link rel="stylesheet" href="/static/web/pages/dashboard.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/pending.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/confirmed.css?v={{ asset_version }}">
@@ -101,11 +125,24 @@
   <link rel="stylesheet" href="/static/web/pages/debts.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/debt_goals.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/repayment_drafts.css?v={{ asset_version }}">
-
-  {# 杂项(_misc.css 后续继续拆细) #}
   <link rel="stylesheet" href="/static/web/_misc.css?v={{ asset_version }}">
+  {% endif %}
 
+  {# Product 设计系统基座 (218-D S3, 移植自产品矿): 壳 + 共享组件全页挂载,
+     域模块按 _domain 挂载, 三级详情页追加 detail.css。 #}
+  <link rel="stylesheet" href="/static/web/product/shell.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/product/components.css?v={{ asset_version }}">
+  {% if _domain in ['inbox', 'transactions', 'obligations', 'plans', 'insights'] %}
+  <link rel="stylesheet" href="/static/web/product/domains/{{ _domain }}.css?v={{ asset_version }}">
+  {% endif %}
+  {% if _page_level == 'tertiary' %}
+  <link rel="stylesheet" href="/static/web/product/detail.css?v={{ asset_version }}">
+  {% endif %}
+  {% block page_styles %}{% endblock %}
   <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ asset_version }}">
+
+  {# JS 保持 main 现状全量挂载: 矿的按域条件加载属 dashboard.js 演进 (S7),
+     且未迁移页依赖全局脚本 (drawer/bulk-bar/receipt-skeletons 等)。 #}
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/pwa-register.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/core.js?v={{ asset_version }}"></script>
@@ -130,53 +167,46 @@
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
-<body class="desktop-shell-active" data-domain="{{ _domain }}">
+<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
 <a class="skip-link" href="#main-content">跳到主内容</a>
-<div class="app">
+<div class="product-app">
   {% include "_sidebar_nav.html" %}
-  <div>
-    <div class="topbar">
-      <div class="crumb">
-        <span>小票夹</span>
-        <span class="sep">/</span>
-        <span>{{ _domain_label }}</span>
-        <span class="sep">/</span>
-        <span class="current">{{ page_title or '仪表盘' }}</span>
+  <div class="product-workspace">
+    <header class="product-topbar">
+      <div class="topbar-context" aria-label="当前位置">
+        <span class="topbar-domain">{{ _domain_label }}</span>
+        <span class="topbar-title">{{ page_title or _domain_label }}</span>
+        <span class="topbar-ledger">{{ selected_ledger_name }}</span>
       </div>
-      <div class="grow"></div>
+      <div class="topbar-spacer"></div>
       {% if request.state.web_session_platform == "desktop" %}
+      {# Desktop 桥接会话的返回入口 (main 独有, 矿无此面); class 名是测试契约, 勿改。 #}
       <a class="manager-home-link" href="/" title="返回桌面管理器">管理器</a>
       {% endif %}
       {% if show_month_picker %}
         {% include "_month_picker.html" %}
       {% endif %}
-      <a class="icon-btn" href="/web/tasks{{ q }}" title="后台任务" aria-label="后台任务">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <polyline points="12 7 12 12 15.5 14"/>
-        </svg>
-      </a>
-      <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换主题" title="切换主题（纸本 / 墨白 / 玄夜）">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-        </svg>
+      <button id="theme-toggle"
+              class="topbar-action"
+              type="button"
+              aria-label="切换主题"
+              title="切换主题（纸本 / 墨白 / 玄夜）">
+        主题
       </button>
       {% include "_ledger_switcher.html" %}
-    </div>
-    <main class="content" id="main-content" tabindex="-1">
+    </header>
+    <main class="content" id="main-content" tabindex="-1" data-page-level="{{ _page_level }}">
       {% if _role == 'viewer' %}
-      <div class="readonly-callout">
-        你在此账本是<strong>只读角色</strong>，仅能查看；新建、编辑、确认、忽略、导入和规则改写等操作已隐藏或禁用。
+      <div class="readonly-callout" role="status">
+        当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。
       </div>
       {% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>
-  <aside class="drawer-host">
+  <div class="drawer-host">
     {% block drawer %}{% endblock %}
-  </aside>
+  </div>
 </div>
 </body>
 </html>

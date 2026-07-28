@@ -1,0 +1,274 @@
+/* 二、三级页：稳定的工作区骨架，不复制首屏卡片布局。 */
+
+.detail-breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-block-end: var(--space-5);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.detail-breadcrumb a {
+    color: var(--text-muted);
+    text-underline-offset: var(--space-1);
+}
+
+.detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(calc(var(--space-12) * 4), .6fr);
+    align-items: start;
+    gap: var(--space-5);
+}
+
+.detail-main,
+.detail-aside {
+    display: grid;
+    gap: var(--space-5);
+}
+
+.detail-section {
+    padding: var(--space-6);
+    border-block-end: 1px solid var(--border-card);
+}
+
+.detail-section-title {
+    margin: 0 0 var(--space-4);
+    color: var(--text-default);
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+}
+
+.detail-actions {
+    position: sticky;
+    inset-block-start: calc(var(--layout-topbar-h) + var(--space-4));
+}
+
+.expense-detail-layout {
+    margin-block-end: var(--space-6);
+}
+
+.receipt-preview {
+    position: sticky;
+    inset-block-start: calc(var(--layout-topbar-h) + var(--space-4));
+    min-height: calc(var(--space-12) * 4);
+    padding: var(--space-4);
+}
+
+.receipt-image-shell,
+.receipt-image-shell a {
+    display: grid;
+    min-height: inherit;
+    place-items: center;
+}
+
+.receipt-image-shell {
+    position: relative;
+    overflow: hidden;
+}
+
+.receipt-loading {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+}
+
+.receipt-image-shell.is-loaded .receipt-loading {
+    display: none;
+}
+
+.receipt-img {
+    display: block;
+    width: 100%;
+    max-height: calc(var(--space-12) * 8);
+    border-radius: var(--radius-sm);
+    object-fit: contain;
+}
+
+.edit-form,
+.detail-sections form {
+    display: grid;
+    gap: var(--space-5);
+}
+
+.detail-sections {
+    margin-block-start: var(--space-6);
+}
+
+.expense-lines-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.expense-lines-table {
+    min-width: calc(var(--space-12) * 9);
+}
+
+.expense-sub-actions {
+    margin-block-start: var(--space-4);
+}
+
+.split-invite-form {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.split-invite-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(calc(var(--space-12) * 2), .6fr) auto;
+    align-items: end;
+    gap: var(--space-4);
+}
+
+.split-invite-sent {
+    margin-block-start: var(--space-5);
+}
+
+.expense-lines-table input,
+.expense-lines-table select {
+    min-width: calc(var(--space-12) * 2);
+}
+
+.expense-lines-table input:disabled,
+.expense-lines-table select:disabled {
+    color: var(--text-muted);
+    background: var(--surface-sunken);
+}
+
+.expense-reconcile {
+    margin-block-end: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-inline-start: var(--space-1) solid var(--brand-primary);
+    border-radius: var(--radius-xs);
+    background: var(--brand-primary-bg);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+.library-workspace {
+    display: grid;
+    gap: var(--space-6);
+}
+
+.product-inline-editor {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    align-items: end;
+    gap: var(--space-4);
+    margin-block-end: var(--space-6);
+    padding-block-end: var(--space-6);
+    border-block-end: 1px solid var(--border-card);
+}
+
+.product-inline-form,
+.product-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.product-row-menu {
+    position: relative;
+}
+
+.product-row-menu summary {
+    list-style: none;
+}
+
+.product-row-menu summary::-webkit-details-marker {
+    display: none;
+}
+
+.product-row-menu-panel {
+    display: grid;
+    gap: var(--space-4);
+    min-width: calc(var(--space-12) * 6);
+    margin-block-start: var(--space-2);
+    padding: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-raised);
+}
+
+.rules-builder-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-6);
+    margin-block-end: var(--space-6);
+}
+
+.rules-builder-grid .product-form-grid {
+    margin-block-start: var(--space-5);
+}
+
+.rule-impact-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-block: var(--space-5);
+    border-block: 1px solid var(--border-card);
+}
+
+.rule-impact-item {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-4);
+    border-inline-end: 1px solid var(--border-card);
+}
+
+.rule-impact-item:last-child {
+    border-inline-end: 0;
+}
+
+.rule-impact-label,
+.rule-impact-note {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.rule-impact-value {
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: var(--type-headline-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-headline-weight);
+}
+
+.rule-impact-item.is-primary .rule-impact-value {
+    color: var(--brand-primary-strong);
+}
+
+@media (max-width: 56rem) {
+    .detail-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .detail-actions {
+        position: static;
+    }
+
+    .receipt-preview {
+        position: static;
+    }
+
+    .product-inline-editor {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .split-invite-fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .rules-builder-grid,
+    .rule-impact-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .rule-impact-item {
+        border-inline-end: 0;
+        border-block-end: 1px solid var(--border-card);
+    }
+}

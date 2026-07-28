@@ -1,7 +1,15 @@
-{# 左侧 sidebar：品牌 + 窄屏五域主导航 + 窄屏当前域页签 + 桌面五域分组 + 底部状态点 #}
-{# 五域 IA (218-D S1, 移植自产品矿): 收件/流水/往来/计划/洞察为稳定产品域,
-   路由名只是传输契约。域归属由 base.html 集中判定(_domain), 本文件只补页级标志。 #}
-{# 上下文：selected_ledger_id (-> q), backend_version, request.url.path, _domain,
+{# 产品壳侧边导航 (218-D S3, 移植自产品矿): 品牌 + 窄屏五域主导航 + 窄屏当前域页签
+   + 桌面五域主导航/当前域子导航 + 底部账本摘要。 #}
+{# 五域 IA: 收件/流水/往来/计划/洞察为稳定产品域, 路由名只是传输契约。
+   域归属由 base.html 集中判定(_domain), 本文件只补页级标志。
+   与矿的差异(以 main 事实为准):
+   - 保留 main S1 的页级标签措辞(待确认/疑似重复/后台任务/还款捕获/AI 预算建议等,
+     既有测试契约)与 inbox 域「今日」入口(/web 根 = 仪表盘, 尚未迁移);
+   - 资料库 (/web/library) 路由属后续片 C5c-1, 入口不挂——勿造死链;
+     流水域保留 分类/商家/标签/规则/回收站 独立入口 (矿的资料库聚合依赖该路由);
+   - nav-subnav 沿用 <nav> 元素(矿改用了 div): 既有测试选择器契约 + 导航 landmark 语义。 #}
+{# 上下文：selected_ledger_id (-> q), selected_ledger_name, selected_ledger_role,
+            request.url.path, _domain, _edit_origin,
             pending_count, suspected_duplicate_count（来自 _base_ctx） #}
 {% set _p = request.url.path %}
 {% set is_today = _p in ['/web', '/web/'] %}
@@ -31,62 +39,33 @@
 {% set is_dashboard_cards = '/dashboard/cards' in _p %}
 {% set is_reports = '/reports' in _p %}
 {% set is_data_quality = '/data-quality' in _p %}
+{% set _role = selected_ledger_role or 'owner' %}
+{% set _role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_role, '未知角色') %}
+
 <aside class="sidebar">
-  <div class="brand">
-    <div class="brand-mark">夹</div>
-    <div class="brand-name">小票夹</div>
-    <div class="brand-version">v{{ backend_version }}</div>
+  <div class="brand" aria-label="小票夹">
+    <img class="brand-mark" src="/static/web/icon.svg" alt="" aria-hidden="true">
+    <div>
+      <div class="brand-name">小票夹</div>
+      <div class="brand-product">私人账本</div>
+    </div>
   </div>
 
   <nav class="mobile-primary-nav" aria-label="产品领域">
     <a class="nav-item {% if _domain == 'inbox' %}active{% endif %}" href="/web/pending{{ q }}"{% if _domain == 'inbox' %} aria-current="location"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
-          <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/>
-        </svg>
-      </span>
       <span>收件</span>
       {% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
     </a>
     <a class="nav-item {% if _domain == 'transactions' %}active{% endif %}" href="/web/confirmed{{ q }}"{% if _domain == 'transactions' %} aria-current="location"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-      </span>
       <span>流水</span>
     </a>
     <a class="nav-item {% if _domain == 'obligations' %}active{% endif %}" href="/web/debts{{ q }}"{% if _domain == 'obligations' %} aria-current="location"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 3 4 7l4 4"/><path d="M4 7h16"/>
-          <path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>
-        </svg>
-      </span>
       <span>往来</span>
     </a>
     <a class="nav-item {% if _domain == 'plans' %}active{% endif %}" href="/web/budgets{{ q }}"{% if _domain == 'plans' %} aria-current="location"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="6" width="20" height="12" rx="2"/>
-          <circle cx="12" cy="12" r="2.5"/>
-        </svg>
-      </span>
       <span>计划</span>
     </a>
     <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/overview{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 21V3"/><path d="M21 21H3"/>
-          <path d="M7 17v-4"/><path d="M12 17V9"/><path d="M17 17v-6"/>
-        </svg>
-      </span>
       <span>洞察</span>
     </a>
   </nav>
@@ -133,57 +112,15 @@
   <nav class="desktop-nav" aria-label="产品导航">
     <div class="nav-primary">
       <a class="nav-item {% if _domain == 'inbox' %}active{% endif %}" href="/web/pending{{ q }}"{% if _domain == 'inbox' %} aria-current="location"{% endif %}>
-        <span class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-               stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
-            <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/>
-          </svg>
-        </span>
         <span>收件</span>
         {% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
       </a>
-      <a class="nav-item {% if _domain == 'transactions' %}active{% endif %}" href="/web/confirmed{{ q }}"{% if _domain == 'transactions' %} aria-current="location"{% endif %}>
-        <span class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-               stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-        </span>
-        <span>流水</span>
-      </a>
-      <a class="nav-item {% if _domain == 'obligations' %}active{% endif %}" href="/web/debts{{ q }}"{% if _domain == 'obligations' %} aria-current="location"{% endif %}>
-        <span class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M8 3 4 7l4 4"/><path d="M4 7h16"/>
-            <path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>
-          </svg>
-        </span>
-        <span>往来</span>
-      </a>
-      <a class="nav-item {% if _domain == 'plans' %}active{% endif %}" href="/web/budgets{{ q }}"{% if _domain == 'plans' %} aria-current="location"{% endif %}>
-        <span class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-               stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="6" width="20" height="12" rx="2"/>
-            <circle cx="12" cy="12" r="2.5"/>
-          </svg>
-        </span>
-        <span>计划</span>
-      </a>
-      <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/overview{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
-        <span class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 21V3"/><path d="M21 21H3"/>
-            <path d="M7 17v-4"/><path d="M12 17V9"/><path d="M17 17v-6"/>
-          </svg>
-        </span>
-        <span>洞察</span>
-      </a>
+      <a class="nav-item {% if _domain == 'transactions' %}active{% endif %}" href="/web/confirmed{{ q }}"{% if _domain == 'transactions' %} aria-current="location"{% endif %}><span>流水</span></a>
+      <a class="nav-item {% if _domain == 'obligations' %}active{% endif %}" href="/web/debts{{ q }}"{% if _domain == 'obligations' %} aria-current="location"{% endif %}><span>往来</span></a>
+      <a class="nav-item {% if _domain == 'plans' %}active{% endif %}" href="/web/budgets{{ q }}"{% if _domain == 'plans' %} aria-current="location"{% endif %}><span>计划</span></a>
+      <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/overview{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}><span>洞察</span></a>
 
-      {# 桌面当前域子导航：只展开活跃域的页级链接(与矿 nav-subnav 同语义); 工作区兜底域不渲染。 #}
+      {# 桌面当前域子导航：只展开活跃域的页级链接; 工作区兜底域不渲染。 #}
       {% if _domain != 'workspace' %}
       <nav class="nav-subnav" aria-label="当前领域页面">
         {% if _domain == 'inbox' %}
@@ -222,10 +159,15 @@
       </nav>
       {% endif %}
     </div>
-  </nav>
 
-  <div class="sidebar-foot">
-    <span class="dot"></span>
-    <span>后端在线</span>
-  </div>
+    <div class="nav-utilities">
+      <details class="nav-group nav-group-collapsible nav-account" open>
+        <summary class="nav-group-title">工作区</summary>
+        <div class="account-summary">
+          <strong>{{ selected_ledger_name }}</strong>
+          <span>{{ _role_zh }} · 已连接</span>
+        </div>
+      </details>
+    </div>
+  </nav>
 </aside>
