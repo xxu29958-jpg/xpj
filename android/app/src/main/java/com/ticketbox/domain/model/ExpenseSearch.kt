@@ -155,6 +155,15 @@ fun expenseMatchesAmountCents(expense: Expense, amountCents: Long): Boolean =
  */
 fun expenseMatchesSearchAmount(expense: Expense, amountsByCurrency: Map<CurrencyCode, Long>): Boolean {
     if (amountsByCurrency.isEmpty()) return false
+    // PR#255 R10⑥：home 码**非空但**在支持集外（新版服务端币种）时，金额匹配按原 minor
+    // 整数值（与 R8-4 显示口径 "1200 VND" 一致，显示多少搜得到多少）——零小数解析恰好
+    // 是未缩放整数（"1200"→1200；小数查询天然不命中，minor 必为整数），用它作原值代理。
+    // raw 为空/缺省（旧 record / 手工构造）不落此分支，维持枚举口径（行为不回归）。
+    val rawHomeCode = expense.homeCurrencyCode
+    if (!rawHomeCode.isNullOrBlank() && CurrencyCode.fromStorageKeyOrNull(rawHomeCode) == null) {
+        val rawMinor = amountsByCurrency[CurrencyCode.JPY] ?: return false
+        return expenseMatchesAmountCents(expense, rawMinor)
+    }
     val originalCurrency = expense.originalCurrencyCode
     val foreignOriginal = originalCurrency != expense.homeCurrency
     amountsByCurrency[expense.homeCurrency]?.let { homeAmount ->

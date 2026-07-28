@@ -10,6 +10,7 @@ import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.data.repository.changesAdvisorPayloadAgainst
 import com.ticketbox.domain.model.BillSplitSent
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -837,3 +838,13 @@ internal fun Expense.withParentRowVersion(parentRowVersion: Long): Expense =
     } else {
         this
     }
+
+/**
+ * 金额编辑（items/splits/bill-split）的解析币种（PR#255 R10④）：raw 码严格解析，未知码
+ * （支持集外）→ null，调用方禁金额承载编辑；raw 缺失（旧 record / 手工构造的域对象）回落
+ * 枚举口径（mapper 构造时已解析过该枚举，不再二次放宽）。
+ */
+internal fun Expense.editParseCurrency(): CurrencyCode? {
+    val raw = homeCurrencyCode
+    return if (raw.isNullOrBlank()) homeCurrency else CurrencyCode.fromStorageKeyOrNull(raw)
+}

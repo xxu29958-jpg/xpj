@@ -53,9 +53,10 @@ data class DebtDetailUiState(
         get() = debt?.let { CurrencyCode.fromStorageKey(it.homeCurrencyCode) } ?: FxContract.HomeCurrency
 
     /**
-     * record 币种是否在客户端支持集外（PR#255 R7-2）：true 时动作面板禁用（DebtActionPanel
-     * 同条件门），[DebtDetailViewModel.submit] 再有一道 fail-closed —— 未知码禁落 CNY 解析
-     * （零小数币种的 "1200" 会被放大成 120000 minor，100×）。
+     * record 币种是否在客户端支持集外（PR#255 R7-2 / R10⑤）：true 时**金额动作**（还款/调整）
+     * 禁用（DebtActionPanel 同条件门 + [DebtDetailViewModel.submit] fail-closed 双防）——
+     * 未知码禁落 CNY 解析（零小数币种的 "1200" 会被放大成 120000 minor，100×）；
+     * Void 不带金额解析，不在禁用面。
      */
     val currencyUnsupported: Boolean
         get() = debt?.let { CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode) == null } == true
@@ -206,17 +207,18 @@ class DebtDetailViewModel(
         val current = _state.value
         val debt = current.debt ?: return
         val action = current.activeAction ?: return
-        // R7-2 fail closed：record 币种未知（支持集外）禁用一切金额写 —— fromStorageKey 的
-        // 静默 Default 回落会把零小数币种的输入放大 100×（"1200" → 120000 minor）。
+        // R10⑤：Void 不带金额解析（仅 rowVersion+reason），未知码下保活；金额动作（还款/调整）
+        // 维持 R7-2 fail closed —— fromStorageKey 的静默 Default 回落会把零小数币种的输入
+        // 放大 100×（"1200" → 120000 minor）。
         val currency = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode)
-        if (currency == null) {
+        if (action != DebtAction.Void && currency == null) {
             _state.update { it.copy(validationError = UiText.res(R.string.debt_action_currency_unsupported)) }
             return
         }
         // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；按本笔欠款服务端
         // homeCurrencyCode 扩位（JPY 零小数币种不 ×100）。sign-agnostic，>0 magnitude 由
         // validateDebtAction 按动作类型校验（调整的正负来自 adjustmentIncrease 开关）。
-        val amountCents = parseAmountCents(current.amountInput, currency)
+        val amountCents = currency?.let { parseAmountCents(current.amountInput, it) }
         val reason = current.reasonInput.trim()
         validateDebtAction(action, amountCents, reason)?.let { errorRes ->
             _state.update { it.copy(validationError = UiText.res(errorRes)) }

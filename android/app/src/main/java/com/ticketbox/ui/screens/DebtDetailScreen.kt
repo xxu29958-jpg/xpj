@@ -218,38 +218,43 @@ internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActi
     when {
         !debt.isOpen -> DebtNoteCard(stringResource(R.string.debt_detail_closed_note))
         !canModify -> Unit
-        // R7-2：record 币种未知（支持集外）禁用金额动作（fail closed；VM submit 另有同条件防线）。
-        CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) == null -> Unit
         else -> AppSectionGroup(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             showTopDivider = false,
         ) {
-            DebtActionButtons(onAction = onAction)
+            DebtActionButtons(
+                onAction = onAction,
+                // R10⑤：record 币种未知（支持集外）只禁金额动作（还款/调整需币种解析），
+                // Void 不带金额（仅 rowVersion+reason）必须保活——否则用户失去作废错账的安全出口。
+                amountActionsEnabled = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) != null,
+            )
         }
     }
 }
 
 @Composable
-private fun DebtActionButtons(onAction: (DebtAction) -> Unit) {
-    AppAdaptiveEditActionLayout(actionCount = 3, compact = false) { mode ->
+private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabled: Boolean) {
+    AppAdaptiveEditActionLayout(actionCount = if (amountActionsEnabled) 3 else 1, compact = false) { mode ->
         when (mode) {
             AppAdaptiveEditActionMode.Stacked -> Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
-                AppPrimaryButton(
-                    text = stringResource(R.string.debt_action_repayment_title),
-                    icon = Icons.Filled.Check,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onAction(DebtAction.Repayment) },
-                )
-                QuietOutlinedButton(
-                    text = stringResource(R.string.debt_action_adjustment_title),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onAction(DebtAction.Adjustment) },
-                )
+                if (amountActionsEnabled) {
+                    AppPrimaryButton(
+                        text = stringResource(R.string.debt_action_repayment_title),
+                        icon = Icons.Filled.Check,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onAction(DebtAction.Repayment) },
+                    )
+                    QuietOutlinedButton(
+                        text = stringResource(R.string.debt_action_adjustment_title),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onAction(DebtAction.Adjustment) },
+                    )
+                }
                 AppOutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = { onAction(DebtAction.Void) },
@@ -263,15 +268,17 @@ private fun DebtActionButtons(onAction: (DebtAction) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
             ) {
-                AppPrimaryButton(
-                    text = stringResource(R.string.debt_action_repayment_title),
-                    icon = Icons.Filled.Check,
-                    onClick = { onAction(DebtAction.Repayment) },
-                )
-                QuietOutlinedButton(
-                    text = stringResource(R.string.debt_action_adjustment_title),
-                    onClick = { onAction(DebtAction.Adjustment) },
-                )
+                if (amountActionsEnabled) {
+                    AppPrimaryButton(
+                        text = stringResource(R.string.debt_action_repayment_title),
+                        icon = Icons.Filled.Check,
+                        onClick = { onAction(DebtAction.Repayment) },
+                    )
+                    QuietOutlinedButton(
+                        text = stringResource(R.string.debt_action_adjustment_title),
+                        onClick = { onAction(DebtAction.Adjustment) },
+                    )
+                }
                 AppOutlinedButton(
                     onClick = { onAction(DebtAction.Void) },
                     options = AppOutlinedButtonOptions(danger = true),

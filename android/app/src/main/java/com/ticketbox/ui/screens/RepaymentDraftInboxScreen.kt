@@ -194,9 +194,11 @@ private fun RepaymentDraftCard(
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
             AppAdaptiveEditAmountRow(
-                // 草稿金额按 record 自带 homeCurrencyCode 渲染（PR#255 R5 P1）：路由级环境
-                // display 恒 Base，JPY/KRW 账本的捕获金额会按两位小数走样。
-                amount = formatDisplayAmount(draft.amountCents, CurrencyDisplay.forRecord(draft.homeCurrencyCode)),
+                // PR#255 R5 P1 record 口径 → R10③ 契约修正：通知解析器按 CNY 分声明
+                // amountCents（PaymentNotificationParser 无 FX 路径），草稿整数恒为 CNY 分；
+                // 服务端 env 章（homeCurrencyCode）不代表其单位（非 CNY 安装的捕获已由
+                // 后端拒建，跨币种捕获契约挂账 D9）。显示与解析同源用 CNY，不再读 record 章。
+                amount = formatDisplayAmount(draft.amountCents, CurrencyDisplay.forRecord("CNY")),
                 style = AppAdaptiveAmountRowStyle(role = AppAmountRole.Medium),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {

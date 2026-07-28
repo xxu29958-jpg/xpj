@@ -404,6 +404,75 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
+    fun saveItemsBlockedWhenExpenseCurrencyUnsupported() = edit { fake ->
+        // PR#255 R10④：record 币种在支持集外（新版服务端币种）→ 禁金额承载编辑 ——
+        // fromStorageKey 枚举回落会按 CNY 预填/解析放大 100×；repository 不可达。
+        val vm = viewModel(fake)
+        vm._uiState.update {
+            it.copy(
+                expense = it.expense?.copy(homeCurrencyCode = "XXX"),
+                itemEditorOpen = true,
+                expenseItems = fake.items(),
+                itemDrafts = listOf(EditableItem(name = "可乐", amountText = "12")),
+            )
+        }
+        fake.replaceItemsResponder = { _, _, _ -> error("save must not reach the repository") }
+
+        vm.saveItems()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.replaceItemsCalls)
+        assertNotNull(vm.uiState.value.itemsMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.itemsMessageTone)
+        assertTrue(vm.uiState.value.itemEditorOpen)
+    }
+
+    @Test
+    fun saveSplitsBlockedWhenExpenseCurrencyUnsupported() = edit { fake ->
+        // R10④ 同伴路径（splits 编辑器）。
+        val vm = viewModel(fake)
+        vm._uiState.update {
+            it.copy(
+                expense = it.expense?.copy(homeCurrencyCode = "XXX"),
+                splitEditorOpen = true,
+                splitMembersLoading = false,
+                splitDrafts = listOf(EditableSplit(memberId = 1L, displayName = "甲", included = true, amountText = "4.00")),
+            )
+        }
+        fake.replaceSplitsResponder = { _, _, _ -> error("save must not reach the repository") }
+
+        vm.saveSplits()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.replaceSplitsCalls)
+        assertNotNull(vm.uiState.value.splitsMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.splitsMessageTone)
+        assertTrue(vm.uiState.value.splitEditorOpen)
+    }
+
+    @Test
+    fun sendBillSplitInviteBlockedWhenExpenseCurrencyUnsupported() = edit { fake ->
+        // R10④ 同伴路径（bill-split 邀请金额解析）。
+        confirmedExpenseFake(fake)
+        fake.fetchBillSplitSentResponder = { Result.success(emptyList()) }
+        fake.splitMembersResponder = { Result.success(listOf(fake.member(memberId = 3L, accountId = 333L))) }
+        fake.createBillSplitResponder = { _, _, _ -> error("invite must not reach the repository") }
+        val vm = viewModel(fake)
+        vm._uiState.update { it.copy(expense = it.expense?.copy(homeCurrencyCode = "XXX")) }
+
+        vm.openBillSplitInviteSheet()
+        advanceUntilIdle()
+        vm.selectBillSplitInviteMember(3L)
+        vm.updateBillSplitInviteAmount("4.00")
+        vm.sendBillSplitInvite()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.createBillSplitCalls)
+        assertNotNull(vm.uiState.value.billSplitInviteMessage)
+        assertEquals(MessageTone.Danger, vm.uiState.value.billSplitInviteMessageTone)
+    }
+
+    @Test
     fun saveSplitsRefusesUnparsableAmountInsteadOfZero() = edit { fake ->
         val vm = viewModel(fake)
         vm._uiState.update {

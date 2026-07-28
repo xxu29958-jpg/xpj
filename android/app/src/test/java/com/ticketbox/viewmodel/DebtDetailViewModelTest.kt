@@ -124,6 +124,30 @@ class DebtDetailViewModelTest {
     }
 
     @Test
+    fun voidAllowedWhenRecordCurrencyUnsupported() = runTest(dispatcher) {
+        // PR#255 R10⑤：Void 不带金额解析（仅 rowVersion+reason），未知码下保活 ——
+        // 否则用户失去作废错账的安全出口；金额动作（还款/调整）维持 fail closed（见上钉）。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "XXX")),
+            writeResult = Result.success(sampleDebt("d1", rowVersion = 2L, status = DebtLinkStatuses.VOIDED)),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        viewModel.openAction(DebtAction.Void)
+        viewModel.updateReason("记错了")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        val call = repo.voidCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals(1L, call.expectedRowVersion)
+        assertEquals(DebtLinkStatuses.VOIDED, viewModel.state.value.debt?.status)
+        assertNull(viewModel.state.value.validationError)
+    }
+
+    @Test
     fun loadDebtFailureSetsError() = runTest(dispatcher) {
         val repo = FakeDebtDetailActions(getResult = Result.failure(RuntimeException("offline")))
         val viewModel = DebtDetailViewModel(repo)

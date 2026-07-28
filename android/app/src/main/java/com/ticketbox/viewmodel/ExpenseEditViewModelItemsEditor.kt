@@ -147,14 +147,21 @@ fun ExpenseEditViewModel.saveItems() {
     // every other amount input in the app rejects loudly instead. Refuse to
     // save and keep the editor open. Parse in the expense's home currency so a
     // zero-decimal home (JPY/KRW) doesn't scale by 100.
+    // PR#255 R10④：原码严格解析 —— record 币种在支持集外时禁金额承载编辑
+    // （fromStorageKey 枚举回落会按 CNY 预填/解析，零小数币种放大 100×）。
+    val currency = expense.editParseCurrency()
+    if (currency == null) {
+        showItemsDanger(UiText.res(R.string.expense_edit_currency_unsupported))
+        return
+    }
     if (draftRows.any {
-        it.amountText.isNotBlank() && parseAmountCents(it.amountText, expense.homeCurrency) == null
+        it.amountText.isNotBlank() && parseAmountCents(it.amountText, currency) == null
     }
     ) {
         showItemsDanger(UiText.res(R.string.expense_edit_items_amount_unparsable))
         return
     }
-    val drafts = draftRows.map { it.toDomainDraft(expense.homeCurrency) }
+    val drafts = draftRows.map { it.toDomainDraft(currency) }
     viewModelScope.launch {
         _uiState.update {
             it.copy(itemsSaving = true, itemsMessage = null, itemsMessageTone = MessageTone.Neutral)

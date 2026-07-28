@@ -7,6 +7,7 @@ fail closed（``currency_binding_drift`` 409）；空库首笔放行。读路径
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -17,6 +18,7 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense
 from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.exchange_rate_service import apply_currency_payload
 
 
 def _idem_headers(app_headers: dict[str, str]) -> dict[str, str]:
@@ -112,6 +114,101 @@ def test_misconfigured_env_still_fails_fast_before_gate(
         )
         assert response.status_code == 422, response.json()
         assert response.json()["error"] == "currency_not_supported"
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def _seed_cny_expense_fact() -> None:
+    with SessionLocal() as db:
+        db.add(Expense(tenant_id="owner", home_currency_code="CNY"))
+        db.commit()
+
+
+def test_metadata_only_payload_bypasses_gate_and_env_read(monkeypatch) -> None:
+    # PR#255 R10②：纯元数据 PATCH（无金额/无 original 字段）不过门、连 env 都不读 ——
+    # 配错的 env（"ZZZ"）下元数据维护不该 500。
+    _seed_cny_expense_fact()
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "ZZZ")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            expense = Expense(tenant_id="owner", note="before")
+            apply_currency_payload(
+                db,
+                tenant_id="owner",
+                expense=expense,
+                payload=SimpleNamespace(note="after"),
+                amount_was_explicit=False,
+            )
+        assert expense.note == "before"  # 元数据路径不碰金额快照（note 由调用方自管）
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_explicit_amount_payload_still_gated_under_drift(monkeypatch) -> None:
+    # R10② 同伴钉：显式金额 PATCH 在盖章区过门 —— env 漂移（JPY vs CNY 事实）仍 409。
+    _seed_cny_expense_fact()
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            expense = Expense(tenant_id="owner")
+            with pytest.raises(AppError) as excinfo:
+                apply_currency_payload(
+                    db,
+                    tenant_id="owner",
+                    expense=expense,
+                    payload=SimpleNamespace(amount_cents=1200),
+                    amount_was_explicit=True,
+                )
+            assert excinfo.value.error == "currency_binding_drift"
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_binding_prechecked_skips_per_row_gate(monkeypatch) -> None:
+    # PR#255 R10①：批量写路径在批首已校验一次，行内经 binding_checked=True 跳过
+    # per-row 门（避免每行 3 次全表 distinct）；门本身的环境由批首保证。
+    _seed_cny_expense_fact()
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            expense = Expense(tenant_id="owner")
+            apply_currency_payload(
+                db,
+                tenant_id="owner",
+                expense=expense,
+                payload=SimpleNamespace(amount_cents=1200),
+                amount_was_explicit=True,
+                binding_checked=True,
+            )
+        assert expense.amount_cents == 1200
+        assert expense.home_currency_code == "JPY"
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_repayment_draft_capture_rejected_on_non_cny_installation(
+    client: TestClient, monkeypatch, *, identity
+) -> None:
+    # PR#255 R10③：Android 通知解析器按 CNY 分声明 amount_cents（无 FX 路径）——非 CNY
+    # 安装把该整数按 home minor 盖章即 100× 错账，故后端整体拒建（跨币种捕获契约
+    # 挂账 D9）。CNY 放行路径见 test_repayment_drafts.py 的 capture 钉。
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        response = client.post(
+            "/api/repayment-drafts",
+            headers=identity.app_headers,
+            json={"source": "alipay", "amount_cents": 120000},
+        )
+        assert response.status_code == 422, response.json()
+        assert response.json()["error"] == "repayment_draft_currency_unsupported"
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()

@@ -155,7 +155,12 @@ fun ExpenseEditViewModel.saveSplits() {
         showSplitsDanger(UiText.res(R.string.expense_edit_splits_not_loaded_save))
         return
     }
-    val currency = expense.homeCurrency
+    // PR#255 R10④：原码严格解析 —— record 币种在支持集外时禁金额承载编辑（同 saveItems）。
+    val currency = expense.editParseCurrency()
+    if (currency == null) {
+        showSplitsDanger(UiText.res(R.string.expense_edit_currency_unsupported))
+        return
+    }
     val draftRows = _uiState.value.splitDrafts
         .filter { (it.included || it.disabled) && it.amountText.isNotBlank() }
     // Audit P3 #11: same unparsable-amount guard as saveItems — "1.2.3" must

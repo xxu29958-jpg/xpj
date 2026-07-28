@@ -59,7 +59,7 @@ PR#255 复评（2026-07-28 bot P1）：Android 空账本放行依赖服务端列
 
 ### [ADR-0075-C02] 落点与明确的非落点
 
-落点（以 env 盖章新事实的入口）：`debt_service._create.create_debt`、`debt_service._proposal.create_repayment_proposal`（proposal 行按 env 盖章，漂移即造出 proposal/debt 异币种错配实例）、`exchange_rate_service.apply_currency_payload`（expense confirm/manual/edit/CSV 统一口径，且会重盖章存量行）、`expense_service._create.create_pending_expense`（pending 行即成持久事实）。非落点：`record_repayment`——Repayment 表无 `home_currency_code` 列，金额语义继承 parent Debt 冻结币种，env 读值被丢弃，存量欠款的还款不受 env 漂移影响（既有「record 冻结币种优先」契约保持）；`create_bill_split_debt`——按邀请快照冻结而非 env。读路径不走此门：列表信封 capability 在 env 配错时降级 null（PR#255 R8-3），客户端对 null fail closed。
+落点（以 env 盖章新事实的入口）：`debt_service._create.create_debt`、`debt_service._proposal.create_repayment_proposal`（proposal 行按 env 盖章，漂移即造出 proposal/debt 异币种错配实例）、`exchange_rate_service.apply_currency_payload`（expense confirm/manual/edit/CSV 统一口径，且会重盖章存量行）、`expense_service._create.create_pending_expense`（pending 行即成持久事实）。非落点：`record_repayment`——Repayment 表无 `home_currency_code` 列，金额语义继承 parent Debt 冻结币种，env 读值被丢弃，存量欠款的还款不受 env 漂移影响（既有「record 冻结币种优先」契约保持）；`create_bill_split_debt`——按邀请快照冻结而非 env；**纯元数据写**（R10② scope 精化：`apply_currency_payload` 中 `has_original_fields=false 且 amount_was_explicit=false` 的调用不碰任何币种快照，门与 env 读一并跳过——漂移/配错的 env 不得拖死 note/category/tags 维护；显式金额分支同样盖章 `home_currency_code=home`，仍在门内）；读路径不走此门：列表信封 capability 在 env 配错时降级 null（PR#255 R8-3），客户端对 null fail closed。批量写路径（R10①：CSV `_apply.apply_csv_import_batch`、legacy `import_service.import_rows`）在**批首**校验一次，行内经 `binding_checked=True` 跳过 per-row 门，避免每行 3 次全表 distinct（≤1000 行批次退化为数千次扫描）。
 
 ### [ADR-0075-C03] 已知边界
 
@@ -77,7 +77,7 @@ PR#255 复评（2026-07-28 bot P1）：Android 空账本放行依赖服务端列
 
 ## [ADR-0075-EVIDENCE] Verification and Evidence
 
-- `backend/tests/test_debt_binding_drift.py`：env 改 JPY 后首笔 debt 创建 → 409 `currency_binding_drift`；空库放行；全一致放行；expense 事实漂移经 service 级断言拒绝；env 配错（非支持集码）维持 `currency_not_supported` fail-fast 先于门。
+- `backend/tests/test_debt_binding_drift.py`：env 改 JPY 后首笔 debt 创建 → 409 `currency_binding_drift`；空库放行；全一致放行；expense 事实漂移经 service 级断言拒绝；env 配错（非支持集码）维持 `currency_not_supported` fail-fast 先于门；R10② 纯元数据 payload 在配错 env 下不过门不读 env、显式金额 payload 仍 409；R10① `binding_checked=True` 跳过 per-row 门（批首职责）。
 - 既有 `test_web_debt_currency_actions.py`（env 切换后按 record 冻结币种行动作）保持绿——证明 `record_repayment` 非落点语义未回退。
 - Android 客户端不经新映射：AppError JSON 的 `message` 字段经 `backendErrorUserMessage` 通用兜底原样呈现。
 

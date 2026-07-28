@@ -44,6 +44,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, RepaymentDraft
 from app.schemas import (
@@ -198,6 +199,11 @@ def create_repayment_draft(
     # value is always truthful and confirm can never reinterpret a foreign amount as home.
     # (A future foreign-currency capture would add original_currency/original_amount.)
     home_currency = home_currency_code()
+    # PR#255 R10③：Android 通知解析器按 CNY 分声明 amount_cents（PaymentNotificationParser
+    # 无 FX 路径）——env 非 CNY 时把该整数按 home minor 盖章/入账即 100× 错账，故非 CNY
+    # 安装整体拒绝捕获（跨币种捕获契约挂账 D9：原始币种字段 + 权威换算）。
+    if home_currency != DEFAULT_HOME_CURRENCY_CODE:
+        raise AppError("repayment_draft_currency_unsupported", status_code=422)
     captured_at = ensure_utc(payload.captured_at) if payload.captured_at else now
     idempotency_key = _repayment_draft_key(
         source=source,
