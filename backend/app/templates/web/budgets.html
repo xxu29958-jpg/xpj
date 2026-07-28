@@ -100,6 +100,7 @@
   </div>
   {% if can_write %}
   <form method="post" action="/web/budgets/save">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     {# 月份由顶栏月份切换器统一管理；保存针对当前所选月份。 #}
     <input type="hidden" name="month" value="{{ month }}">

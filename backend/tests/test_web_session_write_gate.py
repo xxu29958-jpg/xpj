@@ -2,10 +2,11 @@
 
 ``list_console_ledgers`` reports the local account as ``owner`` on its ledgers,
 but a paired *viewer* device's Web session must stay read-only
-(ENGINEERING_RULES §14). ``_resolve_selected_ledger_id`` stamps the session role
-onto the matching option so the shared write-gate
-(``_require_selected_ledger_write``) sees ``viewer``, not the console's
-``owner``. Without the fix a Web viewer could mutate any /web route.
+(ENGINEERING_RULES §14). ``_resolve_selected_ledger_id`` projects the option
+list down to the session-bound ledger with the session's role
+(``_project_session_ledger_options``, 218-D S3 起替换旧的角色盖章), so the
+shared write-gate (``_require_selected_ledger_write``) sees ``viewer``, not the
+console's ``owner``. Without the fix a Web viewer could mutate any /web route.
 """
 
 from __future__ import annotations
@@ -38,7 +39,11 @@ class _SessionRequest:
     """Minimal stand-in for a Request carrying a verified web session."""
 
     def __init__(self, ledger_id: str, role: str) -> None:
-        auth = type("_Auth", (), {"ledger_id": ledger_id, "role": role})()
+        auth = type(
+            "_Auth",
+            (),
+            {"ledger_id": ledger_id, "role": role, "ledger_name": "家庭账本"},
+        )()
         self.state = type("_State", (), {"web_session_auth": auth})()
 
 

@@ -5,6 +5,9 @@
 {% set _role = selected_ledger_role or 'owner' %}
 {% set _role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_role, _role|upper) %}
 {% set _ledger_kind = '个人账本' if selected_ledger_is_default else '共享账本' %}
+{# 218-D S3: 矿壳以 .ledger-switcher-wrap 作定位锚 (product/shell.css),
+   让绝对定位的 .ledger-popover 对齐切换器而非顶栏。 #}
+<div class="ledger-switcher-wrap">
 <div class="ledger-switcher" id="ledger-switcher" data-open="false">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <div class="ledger-avatar">{{ _initial }}</div>
@@ -29,4 +32,5 @@
     </a>
     {% endfor %}
   </div>
+</div>
 </div>

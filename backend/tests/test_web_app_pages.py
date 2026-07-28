@@ -48,7 +48,8 @@ def test_web_confirmed_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/confirmed")
     assert resp.status_code == 200
     assert "已确认" in resp.text
-    assert f"/static/web/_shell.css?v={STATIC_ASSET_VERSION}" in resp.text
+    # 218-D S3: confirmed 是已迁移 primary 页, 挂 product 壳而非旧 _shell.css。
+    assert f"/static/web/product/shell.css?v={STATIC_ASSET_VERSION}" in resp.text
     assert f"/static/shared/tokens.css?v={STATIC_ASSET_VERSION}" in resp.text
 
 
@@ -68,8 +69,9 @@ def test_web_mobile_primary_nav_contract(web_client: TestClient) -> None:
         primary.group(0),
     )
 
+    # 218-D S3: desktop-nav 尾部新增 nav-utilities 账本摘要, 块锚到 </aside>。
     desktop = re.search(
-        r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>\s*</div>\s*</nav>',
+        r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>\s*</aside>',
         body,
         re.S,
     )
@@ -107,7 +109,7 @@ def test_web_mobile_primary_nav_contract(web_client: TestClient) -> None:
     assert reports.status_code == 200
     assert 'data-domain="insights"' in reports.text
     reports_desktop = re.search(
-        r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>\s*</div>\s*</nav>',
+        r'<nav class="desktop-nav" aria-label="产品导航">.*?</nav>\s*</aside>',
         reports.text,
         re.S,
     )
