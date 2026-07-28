@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.GlobalSearchActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
@@ -174,5 +175,25 @@ class GlobalSearchViewModelFilterRecentTest {
         // Capped to the per-bucket limit, with the truncation flag set.
         assertEquals(state.resultLimit, state.results.size)
         assertTrue(state.truncated)
+    }
+
+    @Test
+    fun resultCarriesRecordHomeCurrencyForAmountDisplay() = searchTest {
+        // PR#255 R5 P2：SearchResultCard 的金额按 expense.homeCurrency 渲染（旧代码落
+        // formatAmount 默认参 CNY，JPY home 的 1200 会显示成两位小数）—— 钉死数据通路：
+        // 命中行的 record 级 home 币种原样留在 result。
+        val fake = FakeGlobalSearchActions(
+            confirmed = listOf(
+                expense(id = 1, status = "confirmed", merchant = "Tokyo Cafe", amountCents = 1_200L)
+                    .copy(homeCurrency = CurrencyCode.JPY),
+            ),
+        )
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("Tokyo")
+        advanceUntilIdle()
+
+        assertEquals(CurrencyCode.JPY, vm.uiState.value.results.single().expense.homeCurrency)
     }
 }
