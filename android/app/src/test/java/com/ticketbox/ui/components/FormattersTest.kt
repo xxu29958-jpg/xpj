@@ -264,6 +264,17 @@ class FormattersTest {
     }
 
     @Test
+    fun parseForDisplayUsesRawMinorSpaceForUnknownCodes() {
+        // PR#255 R15b-2：footer/均分解析 —— 未知码按原 minor 整数（"1200"→1200，不按兜底
+        // 枚举放大成 120000；拒小数）；已知码维持 exponent 口径（JPY 不缩放、CNY ×100）。
+        val unknown = CurrencyDisplay(unknownCode = "VND")
+        assertEquals(1_200L, parseAmountCentsForDisplay("1200", unknown))
+        assertNull(parseAmountCentsForDisplay("12.5", unknown))
+        assertEquals(1_200L, parseAmountCentsForDisplay("1200", CurrencyDisplay(homeCurrency = CurrencyCode.JPY)))
+        assertEquals(120_000L, parseAmountCentsForDisplay("1200", CurrencyDisplay.Base))
+    }
+
+    @Test
     fun displaysIsoTimeWithoutLeakingRawSeparatorInNormalCase() {
         val rendered = displayTime("2026-05-03T04:20:00Z")
 

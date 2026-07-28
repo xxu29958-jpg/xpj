@@ -23,10 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.parseAmountCentsForDisplay
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.EditableSplit
 
@@ -194,8 +193,9 @@ private fun SplitsReconciliationFooter(
     display: CurrencyDisplay,
 ) {
     // 显示与保存/解析同源于票据 record 币种（JPY 零小数整数显示整数；未知码亮原码+原
-    // minor，R14-1），不读恒 Base 的 LocalCurrencyDisplay（PR#255 P1）。
-    val total = drafts.filter { it.included }.sumOf { parseAmountCents(it.amountText, display.homeCurrency) ?: 0L }
+    // minor，R14-1），不读恒 Base 的 LocalCurrencyDisplay（PR#255 P1）。R15b-2：未知码
+    // 草稿金额按原 minor 整数解析（与回填/显示同空间，不按兜底枚举放大 100×）。
+    val total = drafts.filter { it.included }.sumOf { parseAmountCentsForDisplay(it.amountText, display) ?: 0L }
     val diff = parentAmountCents?.let { total - it }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(

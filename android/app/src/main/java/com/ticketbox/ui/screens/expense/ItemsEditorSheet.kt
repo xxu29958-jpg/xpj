@@ -22,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.ui.components.AppAdaptiveFieldPairRow
@@ -30,7 +29,7 @@ import com.ticketbox.ui.components.AppAdaptiveFieldPairWeights
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.parseAmountCentsForDisplay
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.EditableItem
 import kotlin.math.abs
@@ -64,8 +63,9 @@ private val ITEM_KINDS: List<Pair<String, Int>> = listOf(
 
 private val ITEM_FIELD_WEIGHTS = AppAdaptiveFieldPairWeights(leading = 1.35f, trailing = 1f)
 
-private fun draftSignedCents(draft: EditableItem, currency: CurrencyCode): Long {
-    val magnitude = parseAmountCents(draft.amountText, currency) ?: 0L
+private fun draftSignedCents(draft: EditableItem, display: CurrencyDisplay): Long {
+    // R15b-2：未知码按原 minor 整数解析（display 口径），不按兜底枚举放大 100×。
+    val magnitude = parseAmountCentsForDisplay(draft.amountText, display) ?: 0L
     return if (draft.kind == ExpenseItemKind.DISCOUNT) -abs(magnitude) else magnitude
 }
 
@@ -234,8 +234,9 @@ private fun ReconciliationFooter(
     display: CurrencyDisplay,
 ) {
     // 显示与保存/解析同源于票据 record 币种（JPY 零小数整数显示整数；未知码亮原码+原
-    // minor，R14-1），不读恒 Base 的 LocalCurrencyDisplay（PR#255 P1）。
-    val total = drafts.sumOf { draftSignedCents(it, display.homeCurrency) }
+    // minor，R14-1），不读恒 Base 的 LocalCurrencyDisplay（PR#255 P1）。R15b-2：未知码
+    // 草稿金额按原 minor 整数解析（与回填/显示同空间，不按兜底枚举放大 100×）。
+    val total = drafts.sumOf { draftSignedCents(it, display) }
     val diff = parentAmountCents?.let { total - it }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(

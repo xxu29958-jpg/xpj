@@ -132,6 +132,12 @@ data class ExpenseDraft(
     val tags: String?,
     val valueScore: Int?,
     val regretScore: Int?,
+    /**
+     * 提交时 VM 已解析确认的账本币种（PR#255 R15b-1）：离线手记的乐观本地行按它落
+     * `homeCurrencyCode`（旧码恒 CNY 兜底撒谎）。不上 wire（`toManualCreateRequest` 不读）；
+     * 仅乐观投影/本地映射用。null = 非手记路径构造，映射维持 [FxContract.HomeCurrency] 兜底。
+     */
+    val ledgerHomeCurrency: CurrencyCode? = null,
 )
 
 data class ExpenseItem(

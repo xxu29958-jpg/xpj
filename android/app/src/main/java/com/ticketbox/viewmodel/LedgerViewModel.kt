@@ -483,7 +483,9 @@ class LedgerViewModel(
                     manualCreateError = null,
                 )
             }
-            repository.createManualExpense(draft)
+            // R15b-1：离线乐观行按 VM 确认的账本币种落 home（门已保证非 null）——
+            // JPY 安装手记乐观行与同步后权威行同口径。
+            repository.createManualExpense(draft.copy(ledgerHomeCurrency = _uiState.value.ledgerCurrency))
                 .onSuccess { expense ->
                     loadCategories()
                     loadTags()

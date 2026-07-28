@@ -8,7 +8,6 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.screens.expense.evenSplitActiveCents
@@ -112,7 +111,8 @@ fun ExpenseEditViewModel.evenSplitAmounts() {
         // Parse in the expense's home currency (zero-decimal home: no ×100), matching
         // the save path so 合计/差额 reconcile in the same minor space as the parent.
         // R14-1：原码严格解析（raw 缺失回落枚举，未知码的保存门在 editParseCurrency 处）。
-        val currency = state.expense?.editParseCurrency() ?: FxContract.HomeCurrency
+        // R15b-2：未知码按原 minor 整数口径（JPY 代理，与 footer/回填同空间）。
+        val currency = state.expense.editDisplayParseCurrency()
         // Disabled members already on the split hold fixed amounts the user
         // can't edit — subtract them so 均分 distributes only the REMAINING
         // amount across the active members and 合计 actually reaches the parent

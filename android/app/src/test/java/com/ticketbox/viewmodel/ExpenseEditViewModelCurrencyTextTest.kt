@@ -85,4 +85,27 @@ internal class ExpenseEditViewModelCurrencyTextTest {
         assertEquals("601", drafts[0].amountText)
         assertEquals("600", drafts[1].amountText)
     }
+
+    @Test
+    fun evenSplitUsesRawMinorSpaceForUnknownRecordCode() = edit { fake ->
+        // PR#255 R15b-2：未知码（VND）票据的均分按原 minor 整数口径 —— parent 1201
+        // 两人均分 "601"/"600"（旧码落 CNY 兜底解析/渲染，footer 与回填互相放大 100×）。
+        val vm = viewModel(fake)
+        vm._uiState.update {
+            it.copy(
+                expense = fake.baseExpense.copy(homeCurrencyCode = "VND"),
+                expenseSplits = fake.splits(parentAmountCents = 1_201L),
+                splitDrafts = listOf(
+                    EditableSplit(memberId = 1L, displayName = "甲", included = true),
+                    EditableSplit(memberId = 2L, displayName = "乙", included = true),
+                ),
+            )
+        }
+
+        vm.evenSplitAmounts()
+
+        val drafts = vm.uiState.value.splitDrafts
+        assertEquals("601", drafts[0].amountText)
+        assertEquals("600", drafts[1].amountText)
+    }
 }

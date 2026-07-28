@@ -20,6 +20,7 @@ before this gate runs.
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -88,6 +89,17 @@ def assert_currency_binding_consistent(db: Session, home: str) -> None:
 
 
 def _claim_binding_marker(db: Session, home: str) -> None:
-    """同事务写入绑定标记（不 commit —— 与调用方的首笔事实写同生共死）。"""
-    db.add(AppMeta(key=INSTALLATION_HOME_CURRENCY_KEY, value=home, updated_at=now_utc()))
-    db.flush()
+    """同事务写入绑定标记（不 commit —— 与调用方的首笔事实写同生共死）。
+
+    R15b-5：并发首写同 key PK 撞不算失败 —— savepoint 内插入撞键后重读，现有
+    标记==env 即视为 claim 成功（同值并发；撞键即胜者已提交、对读可见），
+    标记!=env 抛 drift（真冲突）。调用方（如 goal create）的 catch-all
+    `except IntegrityError` 不再把标记竞态误报为业务重名（409）。
+    """
+    try:
+        with db.begin_nested():
+            db.add(AppMeta(key=INSTALLATION_HOME_CURRENCY_KEY, value=home, updated_at=now_utc()))
+    except IntegrityError:
+        if get_value(db, INSTALLATION_HOME_CURRENCY_KEY) == home:
+            return
+        raise AppError("currency_binding_drift", status_code=409) from None

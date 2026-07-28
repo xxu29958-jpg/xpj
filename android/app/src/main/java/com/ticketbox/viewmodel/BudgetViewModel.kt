@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.YearMonth
 
 data class BudgetCategoryInput(
@@ -461,14 +460,14 @@ private fun parseOptionalCents(
     return amount
 }
 
-// R13-7：按账本币种 exponent 解析（JPY/KRW 零小数不 ×100；符号语义与旧 parseCents 一致
-// —— rollover 允许负值、HALF_UP）。
+// R13-7：按账本币种 exponent 解析（JPY/KRW 零小数不 ×100）；R15b-3：小数位多于币种
+// minor 位一律拒（JPY "12.5"、CNY "12.345" 不再 HALF_UP 静默舍入，与 parseMinorAmount
+// 同族口径）；负值保留（rollover 允许负）。
 private fun parseCents(value: String, currency: CurrencyCode): Long? {
     return runCatching {
-        BigDecimal(value)
-            .movePointRight(currency.minorUnitDigits)
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
+        val decimal = BigDecimal(value)
+        if (decimal.scale() > currency.minorUnitDigits) return null
+        decimal.movePointRight(currency.minorUnitDigits).longValueExact()
     }.getOrNull()
 }
 

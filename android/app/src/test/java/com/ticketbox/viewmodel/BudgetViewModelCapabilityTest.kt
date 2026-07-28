@@ -53,4 +53,61 @@ class BudgetViewModelCapabilityTest {
             vm.uiState.value.message,
         )
     }
+
+    @Test
+    fun saveRejectsFractionUnderZeroDecimalCapability() = budgetTest {
+        // PR#255 R15b-3：JPY 账本 "12.5" 不再 HALF_UP 静默舍入成 13 —— 与 parseMinorAmount
+        // 同族口径拒小数 + 明示校验错，repository 不可达。
+        val fake = FakeBudgetActions(budget = budget(configured = false))
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
+        )
+        val vm = BudgetViewModel(fake, debts, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        vm.updateTotalAmount("12.5")
+        vm.save()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.savedRequests.size)
+        assertEquals(
+            UiText.res(R.string.budget_validation_amount_invalid),
+            vm.uiState.value.message,
+        )
+    }
+
+    @Test
+    fun saveRejectsExcessFractionDigitsUnderCny() = budgetTest {
+        // R15b-3：CNY "12.345"（多于 2 位小数）同口径拒（不再 HALF_UP 成 1235）。
+        val fake = FakeBudgetActions(budget = budget(configured = false))
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        vm.updateTotalAmount("12.345")
+        vm.save()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.savedRequests.size)
+        assertEquals(
+            UiText.res(R.string.budget_validation_amount_invalid),
+            vm.uiState.value.message,
+        )
+    }
+
+    @Test
+    fun saveKeepsNegativeRolloverSemantics() = budgetTest {
+        // R15b-3 回归：rollover 负值语义保持（"-200" → -20000 minor）。
+        val fake = FakeBudgetActions(budget = budget(configured = false))
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        vm.updateTotalAmount("3000")
+        vm.updateRolloverAmount("-200")
+        vm.save()
+        advanceUntilIdle()
+
+        val request = fake.savedRequests.single()
+        assertEquals(300_000L, request.totalAmountCents)
+        assertEquals(-20_000L, request.rolloverAmountCents)
+    }
 }

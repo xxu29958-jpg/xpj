@@ -856,3 +856,14 @@ internal fun Expense.editParseCurrency(): CurrencyCode? {
     val raw = homeCurrencyCode
     return if (raw.isNullOrBlank()) homeCurrency else CurrencyCode.fromStorageKeyOrNull(raw)
 }
+
+/**
+ * 显示/均分侧的草稿解析币种（PR#255 R15b-2）：已知码同 [editParseCurrency]；未知码
+ * 给 JPY 代理（原 minor 整数空间，与 footer 的 [parseAmountCentsForDisplay] 同口径，
+ * 不按 FxContract 兜底放大 100×）；票据缺失回落 FxContract 兜底（防御，编辑器该态不开）。
+ * 保存侧门禁仍看 [editParseCurrency] 的 null —— 本函数只决定显示/均分值。
+ */
+internal fun Expense?.editDisplayParseCurrency(): CurrencyCode {
+    val expense = this ?: return FxContract.HomeCurrency
+    return expense.editParseCurrency() ?: CurrencyCode.JPY
+}

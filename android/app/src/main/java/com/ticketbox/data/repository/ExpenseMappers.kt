@@ -272,13 +272,24 @@ fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManual
  */
 fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): ExpenseEntity {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
-    val submittedCurrency = originalCurrencyCode ?: FxContract.HomeCurrency
+    // R15b-1：乐观窗 home 币种取提交时 VM 确认的账本币种（旧码恒 CNY，JPY 安装手记
+    // 乐观行显示 ¥12.00 而同步后 ¥1,200）；缺省（非手记路径）维持 FxContract 兜底。
+    val homeCurrency = ledgerHomeCurrency ?: FxContract.HomeCurrency
+    val submittedCurrency = originalCurrencyCode ?: homeCurrency
+    // home 腿诚实：显式 amountCents 优先；同币手记（original==home）原值即 home（同币
+    // 不折算）；跨币不可折算 → null —— 显示走 forRecord 原始腿（R14-3），聚合跳过
+    // （"original≠home 不入 home 合计"），服务端同步后权威行覆盖。
+    val honestHomeAmount = when {
+        amountCents != null -> amountCents
+        submittedCurrency == homeCurrency -> submittedOriginalMinor
+        else -> null
+    }
     return ExpenseEntity(
         ledgerId = ledgerId,
         serverId = null,
         publicId = "local-$clientRef",
-        amountCents = amountCents ?: submittedOriginalMinor,
-        homeCurrencyCode = FxContract.HomeCurrency.storageKey,
+        amountCents = honestHomeAmount,
+        homeCurrencyCode = homeCurrency.storageKey,
         originalCurrencyCode = submittedCurrency.storageKey,
         originalAmountMinor = submittedOriginalMinor,
         exchangeRateToCny = null,
