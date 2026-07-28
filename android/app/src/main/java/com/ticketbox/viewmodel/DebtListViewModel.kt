@@ -48,14 +48,20 @@ data class DebtListUiState(
     val addSucceeded: Boolean = false,
     val pendingBillParsePrefill: Boolean = false,
     /**
-     * 账本 home 币种是否已从 record 级权威值确认：仅在列表请求成功且**响应非空**后
-     * true —— 服务端只在 record 级返回 home 币种，客户端没有账本级/账户级来源
-     * （FxContract.HomeCurrency 登记在案），空账本没有可信币种依据，保持 false 并
-     * 阻断创建（fail closed；空列表落 CNY 兜底再放开提交，会把 JPY/KRW 账本首笔
-     * 放大 100×，违反 ADR-0061 C03 禁默认-CNY 猜测 —— PR#255 R4 P1）。false 期间
-     * 新建草稿的金额解析币种只是 [FxContract.HomeCurrency] 兜底，提交被禁用（VM 与
-     * sheet 按钮双重守门）。加载**失败**不置位（币种仍未知，创建保持禁用直到重试
-     * 成功）；[reload] 账本切换时重置为 false 重新等待。
+     * 裁决后的账本币种（null = 未确认）：非空账本取 record 级 `homeCurrencyCode`（服务端写时
+     * 按 installation binding 盖章的权威值）；**空账本取列表信封的安装级 capability**
+     * （PR#255 R6 P1-1：服务端 GET /api/debts 信封重发同一 binding，空账本首笔创建由此
+     * 放行，打破「等首条 record」的循环论证）。两源在场却不一致 = binding 漂移（ADR-0061
+     * C02 声明 installation currency 不可热切换，漂移即异常）→ 冲突 fail closed 归 null；
+     * 旧服务端不下发 capability + 空账本 → 维持 R4 fail closed 归 null。新建草稿 / 账单预填
+     * 的解析币种一律取本字段（兜底仅作标签显示，提交由 [homeCurrencyResolved] 守门）。
+     */
+    val ledgerHomeCurrency: CurrencyCode? = null,
+    /**
+     * 账本 home 币种是否已确认 = [ledgerHomeCurrency] 非空。false 期间新建草稿的金额解析
+     * 币种只是 [FxContract.HomeCurrency] 兜底，提交被禁用（VM 与 sheet 按钮双重守门）。
+     * 加载**失败**不置位（币种仍未知，创建保持禁用直到重试成功）；[reload] 账本切换时
+     * 重置为 false 重新等待。
      */
     val homeCurrencyResolved: Boolean = false,
 )
@@ -72,12 +78,11 @@ data class DebtDraftUi(
     val installmentPeriodInput: String = "",
     val validationError: UiText? = null,
     /**
-     * 金额解析口径：新建流上没有本笔 record，取账本已有欠款的服务端 `homeCurrencyCode`
-     * （由 VM 构造草稿时注入）；首笔欠款 / 空账本落 [FxContract.HomeCurrency] 兜底
-     * （与 AppViewModel 恒 CurrencyDisplay.Base 的 display home 一致，登记在案）——
-     * 兜底仅作标签显示，空账本下 [DebtListUiState.homeCurrencyResolved] 为 false，
-     * 提交保持阻断（PR#255 R4 P1）。
-     * 列表响应到达后 VM 会把草稿币种重绑到账本权威值（保留已输文本，PR#255 P1-2/P1-3），
+     * 金额解析口径：新建流上没有本笔 record，取账本裁决币种（[DebtListUiState.ledgerHomeCurrency]，
+     * VM 构造/重绑草稿时注入；空账本=信封 capability，非空=record 级）；未确认期间落
+     * [FxContract.HomeCurrency] 兜底 —— 兜底仅作标签显示，未确认下
+     * [DebtListUiState.homeCurrencyResolved] 为 false，提交保持阻断（PR#255 R4 P1 / R6 P1-1）。
+     * 列表响应到达后 VM 会把草稿币种重绑到裁决值（保留已输文本，PR#255 P1-2/P1-3），
      * 金额字段的显示标签同源于本字段（DebtDraftForm 绑定 draft.homeCurrency）。
      */
     val homeCurrency: CurrencyCode = FxContract.HomeCurrency,
@@ -137,6 +142,7 @@ class DebtListViewModel(
                 canModify = repository.canModifyLedger(),
                 // 新账本币种未知，创建重新禁用到本次拉取成功（PR#255 P1-3）。
                 homeCurrencyResolved = false,
+                ledgerHomeCurrency = null,
                 // 账本切换即作废旧账本草稿：币种重绑前的兜底口径文本不得跨账本存活（PR#255 R5 P2）。
                 addDraft = DebtDraftUi(),
             )
@@ -152,18 +158,25 @@ class DebtListViewModel(
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration) return@launch
             result.fold(
-                onSuccess = { debts ->
+                onSuccess = { page ->
+                    val debts = page.debts
+                    // 同源裁决（PR#255 R6 P1-1，ADR-0061 C02/C03）：非空账本取 record 级
+                    // 权威值；空账本取列表信封的安装级 capability（空账本首笔创建由此放行，
+                    // 打破「等首条 record」循环）；两源冲突 / 缺失（旧服务端空账本）→ null，
+                    // fail closed 不重绑、创建保持阻断。
+                    val ledgerCurrency = resolveLedgerCurrency(
+                        recordCode = debts.firstOrNull()?.homeCurrencyCode,
+                        capabilityCode = page.ledgerHomeCurrencyCode,
+                    )
                     _state.update {
                         it.copy(
                             isLoading = false,
                             canModify = repository.canModifyLedger(),
                             debts = debts,
                             error = null,
-                            addDraft = it.addDraft.rebindHomeCurrency(debtsHomeCurrency(debts)),
-                            // 空列表没有 record 级权威币种（服务端只在 record 级返回 home
-                            // 币种）：不得按 CNY 兜底声明币种已确认，创建保持阻断直到账本
-                            // 出现首条记录（PR#255 R4 P1，ADR-0061 C03 fail closed）。
-                            homeCurrencyResolved = debts.isNotEmpty(),
+                            addDraft = ledgerCurrency?.let(it.addDraft::rebindHomeCurrency) ?: it.addDraft,
+                            homeCurrencyResolved = ledgerCurrency != null,
+                            ledgerHomeCurrency = ledgerCurrency,
                         )
                     }
                 },
@@ -195,7 +208,7 @@ class DebtListViewModel(
     fun resetDraft() {
         _state.update {
             it.copy(
-                addDraft = DebtDraftUi(homeCurrency = debtsHomeCurrency(it.debts)),
+                addDraft = DebtDraftUi(homeCurrency = it.ledgerHomeCurrency ?: FxContract.HomeCurrency),
                 isSubmitting = false,
                 addSucceeded = false,
                 pendingBillParsePrefill = false,
@@ -229,7 +242,7 @@ class DebtListViewModel(
         viewModelScope.launch {
             repository.parseDebtBillImage(fileName, contentType, bytes).fold(
                 onSuccess = { suggestion ->
-                    val filled = DebtDraftUi(homeCurrency = debtsHomeCurrency(_state.value.debts))
+                    val filled = DebtDraftUi(homeCurrency = _state.value.ledgerHomeCurrency ?: FxContract.HomeCurrency)
                         .prefillFrom(suggestion)
                         .withInheritedModelFrom(_state.value.debts)
                     _state.update {
@@ -294,7 +307,7 @@ class DebtListViewModel(
                     _state.update {
                         it.copy(
                             isSubmitting = false,
-                            addDraft = DebtDraftUi(homeCurrency = debtsHomeCurrency(it.debts)),
+                            addDraft = DebtDraftUi(homeCurrency = it.ledgerHomeCurrency ?: FxContract.HomeCurrency),
                             flashMessage = UiText.res(R.string.debt_create_added),
                             addSucceeded = true,
                         )
@@ -342,9 +355,28 @@ private fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi
     )
 }
 
-/** 账本既有欠款的服务端 home 币种（账本内一致）；空账本落 display-home 兜底。 */
-private fun debtsHomeCurrency(debts: List<Debt>): CurrencyCode =
-    debts.firstOrNull()?.homeCurrencyCode?.let(CurrencyCode::fromStorageKey) ?: FxContract.HomeCurrency
+/**
+ * 账本币种同源裁决（PR#255 R6 P1-1，ADR-0061 C02/C03）：record 级（服务端写时按 installation
+ * binding 盖章）与列表信封的安装级 capability 必须同源 ——
+ * - 非空账本：record 权威；capability 缺失（旧服务端）不降级。
+ * - 空账本：capability 独立解析（服务端 env binding 随信封下发），空账本首笔创建由此放行。
+ * - 两源在场却不一致：binding 漂移（C02 声明 installation currency 不可热切换，漂移即异常）
+ *   → 冲突 fail closed 归 null，创建保持阻断、草稿不重绑，不猜任一侧。
+ * - 未知键（不在客户端支持集内）视同缺失：归 null fail closed，禁止 [CurrencyCode.fromStorageKey]
+ *   式静默落 CNY（C03 禁默认-CNY 猜测）。
+ */
+private fun resolveLedgerCurrency(recordCode: String?, capabilityCode: String?): CurrencyCode? {
+    val record = knownCurrencyOrNull(recordCode)
+    val capability = knownCurrencyOrNull(capabilityCode)
+    if (record != null && capability != null && record != capability) return null
+    return record ?: capability
+}
+
+/** 严格解析：仅客户端支持集内的 storageKey 得币种，其余（null/blank/未知）归 null。 */
+private fun knownCurrencyOrNull(code: String?): CurrencyCode? {
+    val normalized = code?.trim()?.uppercase().orEmpty()
+    return CurrencyCode.entries.firstOrNull { it.storageKey == normalized }
+}
 
 /**
  * 列表响应落地后把草稿币种重绑到账本权威值（PR#255 P1-3）：任何草稿都重绑 ——

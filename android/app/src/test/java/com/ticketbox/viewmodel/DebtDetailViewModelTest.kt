@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -69,6 +70,34 @@ class DebtDetailViewModelTest {
         advanceUntilIdle()
 
         assertEquals("JPY", viewModel.state.value.debt?.homeCurrencyCode)
+    }
+
+    @Test
+    fun loadedInstallmentDebtCarriesScheduleAndRecordCurrencyForCardLens() = runTest(dispatcher) {
+        // PR#255 R6 P1-2：DebtInstallmentCard 的每期金额走 CurrencyDisplay.forRecord(
+        // debt.homeCurrencyCode)（旧路径吃路由级恒 Base display，JPY ¥50,000/12 期会显示
+        // ¥41.67/期而非 ¥4,167/期）—— 钉死 VM 数据通路：排期字段与 record 级币种原样
+        // 留在 state。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(
+                sampleDebt("d1").copy(
+                    homeCurrencyCode = "JPY",
+                    principalAmountCents = 50_000L,
+                    installmentCount = 12L,
+                    installmentPeriodMonths = 1L,
+                    installmentPayoffDate = "2027-06-15",
+                    installmentPaidCount = 3L,
+                ),
+            ),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        val debt = viewModel.state.value.debt
+        assertEquals("JPY", debt?.homeCurrencyCode)
+        assertEquals(12L, debt?.installmentCount)
+        assertEquals(50_000L, debt?.principalAmountCents)
     }
 
     @Test
@@ -701,7 +730,8 @@ private class FakeDebtDetailActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(): Result<List<Debt>> = Result.success(emptyList())
+    override suspend fun listDebts(): Result<DebtListPage> =
+        Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null))
 
     override suspend fun getDebt(publicId: String): Result<Debt> {
         // Capture the result at entry so a stalled load returns the snapshot it started with, even

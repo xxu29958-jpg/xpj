@@ -152,7 +152,20 @@ class DebtResponse(BaseModel):
 
 
 class DebtListResponse(BaseModel):
+    """Ledger/account-scoped Debt list envelope.
+
+    ``home_currency_code`` repeats the installation-level currency capability at
+    envelope level (ADR-0061 C02/C03; PR#255 R6): it is the SAME server-side binding
+    the write path stamps onto each record (`currency_common.home_currency_code`),
+    surfaced here so a client looking at an EMPTY ledger can still resolve the ledger
+    currency for first-record creation — record-level-only delivery made "wait for
+    the first record" circular. Clients must treat record-level and envelope values
+    as one source: disagreement means binding drift (C02 forbids hot-switching) and
+    writers must fail closed.
+    """
+
     items: list[DebtResponse]
+    home_currency_code: str
 
 
 class DebtBillParseResponse(BaseModel):

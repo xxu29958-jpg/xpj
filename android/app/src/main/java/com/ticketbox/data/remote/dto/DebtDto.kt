@@ -95,6 +95,11 @@ data class DebtDto(
 
 data class DebtListResponseDto(
     val items: List<DebtDto>,
+    // 安装级 currency capability（ADR-0061 C02/C03；PR#255 R6）：服务端把写路径盖章到每条
+    // record 的同一 installation binding 在信封级重发，空账本的客户端由此解析账本币种建首笔
+    // （仅靠 record 级时「等首条 record」是循环论证）。null = 旧服务端未下发 → 客户端 fail closed。
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 /**

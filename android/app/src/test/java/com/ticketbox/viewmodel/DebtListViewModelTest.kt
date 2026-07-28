@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -561,11 +562,13 @@ class DebtListViewModelTest {
     }
 
     @Test
-    fun emptyLedgerLoadKeepsCreationBlockedUntilFirstRecord() = runTest(dispatcher) {
-        // PR#255 R4 P1：空账本（如新建 JPY/KRW 账本）没有任何 record 级权威币种 ——
-        // 列表请求成功但 items 为空时，不得按 CNY 兜底声明币种已确认并放开提交：旧逻辑
-        // 会把 "1200" 以 120000 minor units 提交，后端解释为 ¥120,000/₩120,000（100×
-        // 资损，ADR-0061 C03 禁默认-CNY 猜测）。保持阻断直到首条记录带来权威币种。
+    fun emptyLedgerWithoutCapabilityKeepsCreationBlocked() = runTest(dispatcher) {
+        // PR#255 R4 P1 + R6 P1-1：旧服务端不下发信封 capability 时，空账本（如新建
+        // JPY/KRW 账本）没有任何可信币种依据 —— 不得按 CNY 兜底声明币种已确认并放开
+        // 提交：旧逻辑会把 "1200" 以 120000 minor units 提交，后端解释为 ¥120,000/
+        // ₩120,000（100× 资损，ADR-0061 C03 禁默认-CNY 猜测）。保持阻断直到首条记录
+        // 带来 record 级权威币种。（新服务端空账本由信封 capability 放行，见
+        // emptyLedgerResolvesCurrencyFromEnvelopeCapability。）
         val repo = FakeDebtActions(listResult = Result.success(emptyList()))
         val viewModel = DebtListViewModel(repo)
         advanceUntilIdle()
@@ -666,6 +669,103 @@ class DebtListViewModelTest {
         assertEquals(true, viewModel.markBillParsePreparing())
         assertEquals(true, viewModel.state.value.isParsingBill)
     }
+
+    @Test
+    fun emptyLedgerResolvesCurrencyFromEnvelopeCapability() = runTest(dispatcher) {
+        // PR#255 R6 P1-1：空账本没有 record 级币种可得，但列表信封的安装级 capability
+        // （与 record 同源的 installation binding）独立解析 → 首笔创建放行并按 JPY 零小数
+        // 口径提交（"1200" → 1200 minor，不再被「等首条 record」循环卡死，也不落 CNY 兜底）。
+        val repo = FakeDebtActions(
+            listResult = Result.success(emptyList()),
+            createResult = Result.success(sampleDebt("created")),
+        )
+        repo.listCapability = "JPY"
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.debts.isEmpty())
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerHomeCurrency)
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.addDraft.homeCurrency)
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+    }
+
+    @Test
+    fun envelopeCapabilityMatchingRecordKeepsRecordAuthority() = runTest(dispatcher) {
+        // R6 P1-1 同源路径：非空账本 record 级仍是权威，capability 同值到场不改变口径。
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+            createResult = Result.success(sampleDebt("created")),
+        )
+        repo.listCapability = "JPY"
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerHomeCurrency)
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+    }
+
+    @Test
+    fun conflictingRecordAndEnvelopeCapabilityFailsClosed() = runTest(dispatcher) {
+        // R6 P1-1 冲突裁决：record=JPY 而信封 capability=CNY = binding 漂移（ADR-0061
+        // C02 声明 installation currency 不可热切换，漂移即异常）→ fail closed：创建
+        // 阻断、草稿不重绑到任一冲突源；漂移消除（同源）后恢复 record 权威放行。
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+            createResult = Result.success(sampleDebt("created")),
+        )
+        repo.listCapability = "CNY"
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.homeCurrencyResolved)
+        assertNull(viewModel.state.value.ledgerHomeCurrency)
+        // 不重绑：草稿保持初始兜底（未被猜向任一冲突源）。
+        assertEquals(CurrencyCode.CNY, viewModel.state.value.addDraft.homeCurrency)
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertTrue(repo.createDrafts.isEmpty())
+
+        repo.listCapability = "JPY"
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.addDraft.homeCurrency)
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+    }
+
+    @Test
+    fun unknownEnvelopeCapabilityFailsClosedOnEmptyLedger() = runTest(dispatcher) {
+        // R6 P1-1 未知键裁决：空账本 + 客户端支持集外的 capability（"XXX"）视同缺失 ——
+        // 禁止 fromStorageKey 式静默落 CNY（ADR-0061 C03），创建保持阻断。
+        val repo = FakeDebtActions(listResult = Result.success(emptyList()))
+        repo.listCapability = "XXX"
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.homeCurrencyResolved)
+        assertNull(viewModel.state.value.ledgerHomeCurrency)
+        assertEquals(CurrencyCode.CNY, viewModel.state.value.addDraft.homeCurrency)
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertTrue(repo.createDrafts.isEmpty())
+    }
 }
 
 private class FakeDebtActions(
@@ -681,15 +781,18 @@ private class FakeDebtActions(
     /** When set, listDebts() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
 
+    /** 列表信封的安装级 currency capability（PR#255 R6）；null = 旧服务端不下发。 */
+    var listCapability: String? = null
+
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(): Result<List<Debt>> {
+    override suspend fun listDebts(): Result<DebtListPage> {
         listCalls++
         // Capture the result at entry so a stalled load returns the snapshot it started with, even
         // if a newer load swaps listResult in the meantime.
         val captured = listResult
         listGate?.await()
-        return captured
+        return captured.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = listCapability) }
     }
 
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))

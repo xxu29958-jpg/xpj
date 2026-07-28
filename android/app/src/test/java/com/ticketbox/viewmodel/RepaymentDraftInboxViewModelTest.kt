@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -415,11 +416,11 @@ private class FakeRepayableDebtActions(
     var listGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(): Result<List<Debt>> {
+    override suspend fun listDebts(): Result<DebtListPage> {
         // Capture at entry so a stalled load returns the snapshot it started with.
         val captured = listResult
         listGate?.await()
-        return captured
+        return captured.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = null) }
     }
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(debt(publicId))
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(debt("created"))

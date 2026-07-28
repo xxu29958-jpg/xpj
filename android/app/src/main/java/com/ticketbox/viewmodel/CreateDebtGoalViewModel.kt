@@ -63,12 +63,12 @@ class CreateDebtGoalViewModel(
         )
         viewModelScope.launch {
             debts.listDebts().fold(
-                onSuccess = { all ->
+                onSuccess = { page ->
                     _state.update {
                         it.copy(
                             isLoadingDebts = false,
                             canModify = reports.canModifyLedger(),
-                            candidates = all.filter { debt -> debt.isOpen },
+                            candidates = page.debts.filter { debt -> debt.isOpen },
                             loadError = null,
                         )
                     }

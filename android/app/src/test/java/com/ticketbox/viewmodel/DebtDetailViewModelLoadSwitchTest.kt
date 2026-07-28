@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
@@ -68,7 +69,8 @@ private class SwitchingDebtActions(
 
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(): Result<List<Debt>> = Result.success(emptyList())
+    override suspend fun listDebts(): Result<DebtListPage> =
+        Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null))
 
     override suspend fun getDebt(publicId: String): Result<Debt> {
         val captured = getResult

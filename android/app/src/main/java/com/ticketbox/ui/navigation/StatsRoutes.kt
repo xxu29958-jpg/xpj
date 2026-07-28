@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.mascot.rememberMascotController
 import com.ticketbox.ui.screens.BudgetScreen
@@ -200,7 +199,6 @@ internal fun DebtGoalRoute(
             openDebtId = openLinkedDebtId,
             detailViewModel = routeModels.linkedDetail,
             proposalViewModel = routeModels.linkedProposal,
-            currency = currency,
             onBack = {
                 linkedDebtId = null
                 routeModels.debtGoal.refresh()
@@ -260,7 +258,6 @@ internal fun DebtRoute(
     }
     // 每次进入都 reload，避免账本切换后短暂显示上一账本的数据。
     LaunchedEffect(Unit) { debtListViewModel.reload() }
-    val currency = LocalCurrencyDisplay.current
     // 列表与详情互斥；详情返回时刷新列表以接收最新折叠状态。
     var detailDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openDebtId = detailDebtId
@@ -269,7 +266,6 @@ internal fun DebtRoute(
             openDebtId = openDebtId,
             detailViewModel = detailViewModel,
             proposalViewModel = proposalViewModel,
-            currency = currency,
             onBack = {
                 detailDebtId = null
                 debtListViewModel.refresh()
@@ -327,7 +323,6 @@ private fun DebtDetailHost(
     openDebtId: String,
     detailViewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
-    currency: CurrencyDisplay,
     onBack: () -> Unit,
 ) {
     LaunchedEffect(openDebtId) { detailViewModel.loadDebt(openDebtId) }
@@ -338,7 +333,6 @@ private fun DebtDetailHost(
         DebtDetailScreen(
             viewModel = detailViewModel,
             proposalViewModel = proposalViewModel,
-            currency = currency,
             onBack = onBack,
         )
         DebtSettleCelebrationOverlay(
@@ -376,7 +370,6 @@ internal fun ReceivablesRoute(
         factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
     )
     LaunchedEffect(Unit) { viewModel.reload() }
-    val currency = LocalCurrencyDisplay.current
     var detailDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openDebtId = detailDebtId
     if (openDebtId != null) {
@@ -384,7 +377,6 @@ internal fun ReceivablesRoute(
             openDebtId = openDebtId,
             detailViewModel = detailViewModel,
             proposalViewModel = proposalViewModel,
-            currency = currency,
             onBack = {
                 detailDebtId = null
                 viewModel.refresh()

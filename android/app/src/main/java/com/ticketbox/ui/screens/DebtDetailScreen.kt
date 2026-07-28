@@ -74,7 +74,6 @@ private const val DebtDetailFlashDismissMillis = 4000L
 fun DebtDetailScreen(
     viewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
-    currency: CurrencyDisplay,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -101,7 +100,6 @@ fun DebtDetailScreen(
         state = state,
         proposalState = proposalState,
         proposalViewModel = proposalViewModel,
-        currency = currency,
         callbacks = callbacks,
     )
     if (state.activeAction != null) {
