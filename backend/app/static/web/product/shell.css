@@ -114,6 +114,11 @@ a {
     width: var(--layout-sidebar-w);
     height: 100dvh;
     flex-direction: column;
+    /* S3-R2 (main 适配): 显式归零——旧 _shell.css 同源 .sidebar 的 gap:28px
+       在共存期双栈下存活, 窄屏会让 brand/主导航/域导航间出现异常间隙并带歪
+       sticky 顶栏的紧邻偏移; 矿版侧栏间距全走子元素 (.desktop-nav gap 与
+       padding), 容器本身无 gap 语义。 */
+    gap: 0;
     padding: var(--space-6) var(--space-4) var(--space-5);
     overflow-y: auto;
     border-inline-end: 1px solid var(--border-card);

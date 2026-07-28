@@ -76,6 +76,23 @@
   'secondary'
 ) %}
 
+{# 218-D S3-R1 正文新旧分流 (裁决: 按页面正文标记而非页级一刀切):
+   - 正文仍是旧标记的页 (当前除 overview 外全部, 含四个旧 primary 与全部旧
+     二三级页) 保持 main 原装配: 旧全局栈+页级 CSS 全量, 不挂对应 domain CSS——
+     矿域模块与旧页共享类名谱系 (.exp-row/.timeline-row 等), 双挂则旧规则被盖、
+     新 grid 不认嵌套标记, 行格双失 (S3 #256 P1: 收件行整列塌缩)。
+   - 正文已是新标记的页 (当前仅 overview, S2 新页) 断旧栈、挂域模块。
+   域模块挂载点=下表逐域显式开关: 随 S4(inbox)/S-TX(transactions)/
+   S5(obligations/plans)/S6(insights) 各域正文迁移逐域开启, 勿留隐式魔法。
+   旧文件的物理删除是独立后续片, 本片不动。
+   S3-R2: 分流同一条件同时驱动 body hook —— 旧标记页补回 desktop-shell-active
+   (旧 _base.css/_misc.css/a11y.css 的作用域规则依赖它), 新标记页改挂
+   data-body-stack="product" (product drawer 族规则的作用域锚)。 #}
+{% set _product_body_domains = {
+  '/web/overview': 'insights',
+} %}
+{% set _product_body_domain = _product_body_domains.get(_path) %}
+
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}" data-home-currency="{{ home_currency_code }}" data-home-currency-symbol="{{ home_currency_symbol }}" data-home-currency-minor-digits="{{ home_currency_minor_digits }}">
 <head>
@@ -93,19 +110,8 @@
 
   <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
 
-  {# 218-D S3-R1 正文新旧分流 (裁决: 按页面正文标记而非页级一刀切):
-     - 正文仍是旧标记的页 (当前除 overview 外全部, 含四个旧 primary 与全部旧
-       二三级页) 保持 main 原装配: 旧全局栈+页级 CSS 全量, 不挂对应 domain CSS——
-       矿域模块与旧页共享类名谱系 (.exp-row/.timeline-row 等), 双挂则旧规则被盖、
-       新 grid 不认嵌套标记, 行格双失 (S3 #256 P1: 收件行整列塌缩)。
-     - 正文已是新标记的页 (当前仅 overview, S2 新页) 断旧栈、挂域模块。
-     域模块挂载点=下表逐域显式开关: 随 S4(inbox)/S-TX(transactions)/
-     S5(obligations/plans)/S6(insights) 各域正文迁移逐域开启, 勿留隐式魔法。
-     旧文件的物理删除是独立后续片, 本片不动。 #}
-  {% set _product_body_domains = {
-    '/web/overview': 'insights',
-  } %}
-  {% set _product_body_domain = _product_body_domains.get(_path) %}
+  {# 装配分流 (_product_body_domain 的判定与注释见文件顶部):
+     旧标记页全量旧栈, 新标记页断旧栈。 #}
   {% if not _product_body_domain %}
   <link rel="stylesheet" href="/static/web/web.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/_base.css?v={{ asset_version }}">
@@ -177,7 +183,7 @@
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
-<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
+<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if not _product_body_domain %} desktop-shell-active{% endif %}"{% if _product_body_domain %} data-body-stack="product"{% endif %} data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
 <a class="skip-link" href="#main-content">跳到主内容</a>
 <div class="product-app">
   {% include "_sidebar_nav.html" %}

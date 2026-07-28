@@ -614,7 +614,12 @@ textarea:focus {
     width: min(18rem, 22vw) !important;
 }
 
-.scrim {
+/* S3-R2 (main 适配): drawer 族规则收窄到 product 新壳上下文。
+   共存期旧标记页仍用旧 drawer 标记 (aside.drawer + components/drawer.css
+   的 820px / 320px 1fr grid): 裸类名规则会覆盖宽度却不重置 grid tracks, 编辑列
+   塌成零宽 (P1)。新标记页经 base.html 的 _product_body_domains 开关在 body 挂
+   data-body-stack="product", 只有它们吃这组规则; S4 各域正文迁移时自动获得。 */
+[data-body-stack="product"] .scrim {
     position: fixed;
     inset: 0;
     z-index: var(--z-drawer);
@@ -622,11 +627,11 @@ textarea:focus {
     background: var(--drawer-overlay-bg);
 }
 
-.scrim.on {
+[data-body-stack="product"] .scrim.on {
     display: block;
 }
 
-.drawer {
+[data-body-stack="product"] .drawer {
     position: fixed;
     inset-block: 0;
     inset-inline-end: 0;
@@ -641,11 +646,11 @@ textarea:focus {
     transition: transform var(--motion-normal) var(--ease-emphasized);
 }
 
-.drawer.on {
+[data-body-stack="product"] .drawer.on {
     transform: translateX(0);
 }
 
-.drawer-head {
+[data-body-stack="product"] .drawer-head {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;

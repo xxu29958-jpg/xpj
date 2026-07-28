@@ -113,6 +113,51 @@ def test_old_body_row_grids_have_their_stylesheets(web_client: TestClient) -> No
     assert ".timeline-row-detail" in css.text
 
 
+def test_old_body_pages_keep_desktop_hook_and_legacy_drawer_source(
+    web_client: TestClient,
+) -> None:
+    """S3-R2 (#256): 旧标记页补回 desktop-shell-active body hook (旧 _base/_misc/
+    a11y 作用域规则依赖), 且旧 drawer 的样式来源 (components/drawer.css) 在场;
+    product drawer 族规则已收窄到 [data-body-stack="product"], 不再吃旧 drawer。"""
+    pending = web_client.get("/web/pending?ledger_id=owner")
+    assert pending.status_code == 200
+    body = pending.text
+    body_tag = re.search(r"<body [^>]+>", body)
+    assert body_tag is not None
+    assert "desktop-shell-active" in body_tag.group(0)
+    assert 'data-body-stack="product"' not in body_tag.group(0)
+    assert "/static/web/components/drawer.css" in body
+    assert 'id="drawer"' in body
+
+    css = web_client.get("/static/web/product/components.css")
+    assert css.status_code == 200
+    assert not re.search(r"^\.drawer\s*\{", css.text, re.M)
+    assert not re.search(r"^\.drawer-head\s*\{", css.text, re.M)
+    assert not re.search(r"^\.scrim\s*\{", css.text, re.M)
+    assert '[data-body-stack="product"] .drawer {' in css.text
+    assert '[data-body-stack="product"] .scrim {' in css.text
+    assert '[data-body-stack="product"] .drawer-head {' in css.text
+
+
+def test_overview_new_body_omits_desktop_hook(web_client: TestClient) -> None:
+    """新标记页 (overview) 不挂 desktop-shell-active (其规则面向旧栈),
+    改挂 data-body-stack="product" 作为 product drawer 族规则作用域锚。"""
+    response = web_client.get("/web/overview?ledger_id=owner")
+    assert response.status_code == 200
+    body_tag = re.search(r"<body [^>]+>", response.text)
+    assert body_tag is not None
+    assert "desktop-shell-active" not in body_tag.group(0)
+    assert 'data-body-stack="product"' in body_tag.group(0)
+
+
+def test_product_shell_resets_legacy_sidebar_gap(web_client: TestClient) -> None:
+    """S3-R2 (#256): 旧 _shell.css .sidebar{gap:28px} 在双栈下存活, product
+    shell.css 必须显式重置 .sidebar gap (矿版间距全走子元素, 容器无 gap 语义)。"""
+    css = web_client.get("/static/web/product/shell.css")
+    assert css.status_code == 200
+    assert re.search(r"\.sidebar\s*\{[^}]*gap:\s*0\s*;", css.text, re.S)
+
+
 def test_overview_new_body_mounts_insights_module(web_client: TestClient) -> None:
     """overview (S2 新页, 正文已是新标记): 断旧栈, 挂 insights 域模块 +
     页级 pages/overview.css (样式归属裁决: 保留页级文件, 并入留给 S6)。"""
