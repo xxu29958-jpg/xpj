@@ -37,7 +37,7 @@ def test_repository_contract_registry_is_current() -> None:
         legacy_baseline_path=LEGACY_BASELINE_PATH,
     )
 
-    assert len(registry.entries) == 71
+    assert len(registry.entries) == 72
     assert stale_view_errors(registry) == []
     entries = {entry.adr_id: entry for entry in registry.entries}
     amendments = {

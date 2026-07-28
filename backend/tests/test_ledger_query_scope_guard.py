@@ -53,6 +53,19 @@ class QuerySite:
 
 EXEMPTIONS: tuple[ScopeExemption, ...] = (
     ScopeExemption(
+        path="services/currency_binding_service.py",
+        function="assert_currency_binding_consistent",
+        model="Expense",
+        occurrences=1,
+        reason=(
+            "ADR-0075 write-time currency-binding drift gate: the installation "
+            "home-currency binding is installation-global (ADR-0061 C02 — one "
+            "env binding shared by every ledger), so the consistency check must "
+            "inspect persisted facts across ALL ledgers; a tenant filter would "
+            "miss drift that happened under another ledger."
+        ),
+    ),
+    ScopeExemption(
         path="services/cleanup_service.py",
         function="purge_expired_soft_deletes",
         model="MerchantAlias",
