@@ -43,15 +43,33 @@ class DebtRepositoryTest {
     @Test
     fun listDebtsMapsDomainModels() = runTest {
         val handler = DebtApiHandler().apply {
-            debtsResult = DebtListResponseDto(items = listOf(debtDto(publicId = "d1", remaining = 4_200L)))
+            debtsResult = DebtListResponseDto(
+                items = listOf(debtDto(publicId = "d1", remaining = 4_200L)),
+                homeCurrencyCode = "JPY",
+            )
         }
 
-        val debts = repository(handler).listDebts().getOrThrow()
+        val page = repository(handler).listDebts().getOrThrow()
 
-        assertEquals(1, debts.size)
-        assertEquals("d1", debts.single().publicId)
-        assertEquals(4_200L, debts.single().remainingAmountCents)
-        assertTrue(debts.single().isExternal)
+        assertEquals(1, page.debts.size)
+        assertEquals("d1", page.debts.single().publicId)
+        assertEquals(4_200L, page.debts.single().remainingAmountCents)
+        assertTrue(page.debts.single().isExternal)
+        // PR#255 R6：信封级安装 currency capability 原样透传给调用方裁决。
+        assertEquals("JPY", page.ledgerHomeCurrencyCode)
+    }
+
+    @Test
+    fun listDebtsWithoutEnvelopeCapabilityYieldsNull() = runTest {
+        // 旧服务端响应没有信封字段 → DTO 默认 null 透传（调用方 fail closed，PR#255 R6）。
+        val handler = DebtApiHandler().apply {
+            debtsResult = DebtListResponseDto(items = listOf(debtDto(publicId = "d1")))
+        }
+
+        val page = repository(handler).listDebts().getOrThrow()
+
+        assertEquals(1, page.debts.size)
+        assertNull(page.ledgerHomeCurrencyCode)
     }
 
     @Test

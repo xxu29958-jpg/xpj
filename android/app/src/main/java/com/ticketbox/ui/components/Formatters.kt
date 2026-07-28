@@ -4,6 +4,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.FxContract
+import com.ticketbox.domain.model.recordCurrencyDisplay
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.DecimalFormat
@@ -46,6 +47,9 @@ fun formatAmount(amountCents: Long?, currency: CurrencyCode = CurrencyCode.Defau
 
 fun formatDisplayAmount(amountCents: Long?, display: CurrencyDisplay = CurrencyDisplay.Base): String {
     if (amountCents == null) return "待填写金额"
+    // 未知码原样亮码（PR#255 R7-2 / R8-4）：原 minor 整数 + 原始码（"1200 VND"）——
+    // 未知 exponent 的任何缩放都是猜（不得按 CNY 两位渲染成 "VND12.00"），不冒符号不缩放。
+    display.unknownCode?.let { code -> return "$amountCents $code" }
     return formatAmount(amountCents, display.homeCurrency)
 }
 
@@ -101,7 +105,13 @@ fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
     return runCatching {
         val decimal = BigDecimal(trimmed)
         val scaled = if (currency.noFractionDigits) {
-            decimal.setScale(0, RoundingMode.HALF_UP)
+            // 零小数币种（JPY/KRW）：任何小数部分都拒绝，不再 HALF_UP 静默进位。
+            // 注意这**严于后端 422**：后端按 Decimal 值比较，接受 "1200.0"/"0.00"
+            // 这类等值尾零小数，客户端连它们也拒 —— 方向安全（拒而不腐：绝不把
+            // 用户没输的尾零静默舍掉）。输入框已由 sanitizeMinorAmountInput 兜底
+            // （根本输不进 '.'），本守卫仅直调路径可达。
+            if (decimal.scale() > 0) return null
+            decimal
         } else {
             decimal.multiply(BigDecimal(100)).setScale(0, RoundingMode.HALF_UP)
         }
@@ -112,15 +122,19 @@ fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
 
 fun formatExpensePrimaryAmount(
     expense: Expense,
-    display: CurrencyDisplay = CurrencyDisplay.Base,
+    display: CurrencyDisplay = expense.recordCurrencyDisplay(),
 ): String {
-    val currency = expense.originalCurrencyCode
-    val homeCurrency = expense.homeCurrency
+    // R14-3：display 默认 record 口径（原始 home 码，未知码原样亮码），调用方不再透传
+    // 恒 Base 的环境 display。原币腿同样 raw 感知：原码未知时按 "1200 VND" 原样亮码，
+    // 不冒回落枚举（CNY）的符号与缩放；两腿 display 相等（含同未知码）时才显 home 腿。
+    val originalDisplay = CurrencyDisplay.forRecord(
+        expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey,
+    )
     val originalAmount = expense.originalAmountMinor
-    return if (currency == homeCurrency || originalAmount == null) {
+    return if (originalDisplay == display || originalAmount == null) {
         formatDisplayAmount(expense.homeAmountCents ?: expense.amountCents, display)
     } else {
-        formatMinorAmount(originalAmount, currency)
+        formatDisplayAmount(originalAmount, originalDisplay)
     }
 }
 
@@ -144,21 +158,35 @@ fun formatExpenseExchangeMeta(expense: Expense): String? {
     }
 }
 
-fun formatAmountInput(amountCents: Long?): String {
-    if (amountCents == null) return ""
-    return BigDecimal(amountCents).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
-}
+/**
+ * Home 口径输入框渲染：minor → 主单位文本。币种感知委托（[formatMinorAmountInput]），
+ * 调用方必须显式给币种 —— 服务端 `homeCurrencyCode` 可得处用之；仅当流上没有任何
+ * record 可带币种（新建 Goal / IncomePlan / 首笔欠款）时才落 [FxContract.HomeCurrency]
+ * 兜底（AppViewModel 目前恒以 [CurrencyDisplay.Base] 提供 display home，二者一致）。
+ */
+fun formatAmountInput(amountCents: Long?, currency: CurrencyCode): String =
+    formatMinorAmountInput(amountCents, currency)
 
-fun parseAmountCents(input: String): Long? {
-    val trimmed = input.trim()
-    if (trimmed.isBlank()) return null
-    return runCatching {
-        BigDecimal(trimmed)
-            .multiply(BigDecimal(100))
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
-    }.getOrNull()
-}
+/**
+ * Home 口径输入框解析：主单位文本 → minor。币种感知委托（[parseMinorAmount]）：
+ * 2 位小数币种 ×100（HALF_UP），零小数币种不扩位且拒绝小数部分；负数一律 null。
+ * 传参约定同 [formatAmountInput]。
+ */
+fun parseAmountCents(input: String, currency: CurrencyCode): Long? =
+    parseMinorAmount(input, currency)
+
+/**
+ * Display 口径的草稿金额解析（PR#255 R15b-2，编辑器 footer/均分用）：已知码同
+ * [parseAmountCents]；未知码按原 minor 整数（JPY 零小数代理：不缩放、拒小数）——
+ * 与 R8-4 显示（"1200 VND"）/ R10⑥ 搜索代理 / R14-1 回填同一诚实算术空间，不再按
+ * 兜底枚举（CNY）把 footer 合计放大 100×。保存侧 `editParseCurrency` 门已 fail-closed，
+ * 本函数只决定显示值。
+ */
+fun parseAmountCentsForDisplay(input: String, display: CurrencyDisplay): Long? =
+    parseMinorAmount(
+        input,
+        if (display.unknownCode != null) CurrencyCode.JPY else display.homeCurrency,
+    )
 
 fun displayTime(value: String?): String {
     if (value.isNullOrBlank()) return "未填写时间"

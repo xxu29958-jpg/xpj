@@ -24,7 +24,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
@@ -66,7 +65,6 @@ private const val DebtGoalFlashDismissMillis = 4000L
 @Composable
 fun DebtGoalScreen(
     viewModel: DebtGoalViewModel,
-    currency: CurrencyDisplay,
     onBack: () -> Unit,
     onCreate: () -> Unit,
     onOpenLinkedDebt: (String) -> Unit = {},
@@ -97,7 +95,7 @@ fun DebtGoalScreen(
             onSetTargetDate = { showDatePicker = true },
         ),
     )
-    DebtGoalScreenBody(state = state, currency = currency, viewModel = viewModel, callbacks = callbacks)
+    DebtGoalScreenBody(state = state, viewModel = viewModel, callbacks = callbacks)
     DebtTargetDatePickerDialog(
         visible = showDatePicker,
         selected = selected,
@@ -116,7 +114,6 @@ private data class DebtGoalScreenBodyCallbacks(
 @Composable
 private fun DebtGoalScreenBody(
     state: DebtGoalUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtGoalViewModel,
     callbacks: DebtGoalScreenBodyCallbacks,
 ) {
@@ -159,7 +156,6 @@ private fun DebtGoalScreenBody(
         if (selected != null) {
             debtGoalDetailSection(
                 state = state,
-                currency = currency,
                 viewModel = viewModel,
                 onOpenLinkedDebt = callbacks.onOpenLinkedDebt,
                 callbacks = callbacks.detailCallbacks,
@@ -322,7 +318,6 @@ private fun DebtGoalListRow(
 
 private fun LazyListScope.debtGoalDetailSection(
     state: DebtGoalUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtGoalViewModel,
     onOpenLinkedDebt: (String) -> Unit,
     callbacks: DebtGoalDetailCallbacks,
@@ -333,7 +328,6 @@ private fun LazyListScope.debtGoalDetailSection(
     item {
         DebtPlanProgressCard(
             evaluation = evaluation,
-            currency = currency,
             canModify = state.canModify,
             onSetTargetDate = callbacks.onSetTargetDate,
         )
@@ -374,7 +368,6 @@ private fun LazyListScope.debtGoalDetailSection(
     itemsIndexed(links, key = { _, link -> link.debtPublicId }) { index, link ->
         DebtGoalLinkRow(
             link = link,
-            currency = currency,
             onClick = onOpenLinkedDebt,
             showDivider = index < links.lastIndex,
         )

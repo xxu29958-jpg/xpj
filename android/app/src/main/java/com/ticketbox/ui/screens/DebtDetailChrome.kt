@@ -5,7 +5,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -38,7 +37,6 @@ internal fun DebtDetailContent(
     state: DebtDetailUiState,
     proposalState: MemberProposalUiState,
     proposalViewModel: MemberRepaymentProposalViewModel,
-    currency: CurrencyDisplay,
     callbacks: DebtDetailScreenCallbacks,
 ) {
     val debt = state.debt
@@ -86,13 +84,11 @@ internal fun DebtDetailContent(
                         debt = loaded,
                         proposalState = readableProposalState,
                         proposalViewModel = proposalViewModel,
-                        currency = currency,
                     )
                 } else {
                     debtDetailExternalItems(
                         debt = loaded,
                         canModify = state.canModify,
-                        currency = currency,
                         callbacks = callbacks,
                     )
                 }
@@ -159,15 +155,13 @@ private fun LazyListScope.debtDetailMemberItems(
     debt: Debt,
     proposalState: MemberProposalUiState,
     proposalViewModel: MemberRepaymentProposalViewModel,
-    currency: CurrencyDisplay,
 ) {
-    item { MemberSharedThingCard(debt = debt, currency = currency) }
+    item { MemberSharedThingCard(debt = debt) }
     item {
         MemberProposalSection(
             debt = debt,
             state = proposalState,
             viewModel = proposalViewModel,
-            currency = currency,
         )
     }
 }
@@ -175,10 +169,9 @@ private fun LazyListScope.debtDetailMemberItems(
 private fun LazyListScope.debtDetailExternalItems(
     debt: Debt,
     canModify: Boolean,
-    currency: CurrencyDisplay,
     callbacks: DebtDetailScreenCallbacks,
 ) {
-    item { DebtSummaryCard(debt = debt, currency = currency) }
+    item { DebtSummaryCard(debt = debt) }
     item {
         DebtKindCardWithEditor(
             debt = debt,
@@ -186,7 +179,7 @@ private fun LazyListScope.debtDetailExternalItems(
             onSelect = callbacks.onSelectKind,
         )
     }
-    debtInstallmentItem(debt = debt, currency = currency)
+    debtInstallmentItem(debt = debt)
     item {
         DebtActionPanel(
             debt = debt,

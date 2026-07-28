@@ -35,6 +35,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
@@ -89,7 +90,6 @@ private data class DebtListScreenCallbacks(
 @Composable
 fun DebtListScreen(
     viewModel: DebtListViewModel,
-    currency: CurrencyDisplay,
     actions: DebtListScreenActions,
     chromeOverride: RelationsListChrome? = null,
 ) {
@@ -130,14 +130,12 @@ fun DebtListScreen(
     )
     DebtListContent(
         state = state,
-        currency = currency,
         callbacks = callbacks,
         chromeOverride = chromeOverride,
     )
     if (showAddSheet) {
         DebtAddSheet(
             state = state,
-            currency = currency,
             viewModel = viewModel,
             sheetState = sheetState,
             onClose = { showAddSheet = false; viewModel.resetDraft() },
@@ -148,7 +146,6 @@ fun DebtListScreen(
 @Composable
 private fun DebtListContent(
     state: DebtListUiState,
-    currency: CurrencyDisplay,
     callbacks: DebtListScreenCallbacks,
     chromeOverride: RelationsListChrome?,
 ) {
@@ -186,7 +183,7 @@ private fun DebtListContent(
         readableListInlineError(hasRows = state.debts.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
-        debtListSection(state = state, currency = currency, onOpenDebt = callbacks.onOpenDebt)
+        debtListSection(state = state, onOpenDebt = callbacks.onOpenDebt)
     }
 }
 
@@ -235,7 +232,6 @@ private fun DebtListHeaderActions(
 }
 private fun LazyListScope.debtListSection(
     state: DebtListUiState,
-    currency: CurrencyDisplay,
     onOpenDebt: (Debt) -> Unit,
 ) {
     when (
@@ -256,7 +252,6 @@ private fun LazyListScope.debtListSection(
         }
         ReadableListBodyState.Content -> debtRowsSection(
             debts = state.debts,
-            currency = currency,
             onOpenDebt = onOpenDebt,
         )
     }
@@ -264,7 +259,6 @@ private fun LazyListScope.debtListSection(
 
 internal fun LazyListScope.debtRowsSection(
     debts: List<Debt>,
-    currency: CurrencyDisplay,
     onOpenDebt: (Debt) -> Unit,
 ) {
     val (members, externals) = groupDebtsForList(debts)
@@ -297,7 +291,6 @@ internal fun LazyListScope.debtRowsSection(
                 externals.forEachIndexed { index, debt ->
                     ExternalDebtRow(
                         debt = debt,
-                        currency = currency,
                         onClick = { onOpenDebt(debt) },
                         showDivider = index < externals.lastIndex,
                     )
@@ -310,12 +303,14 @@ internal fun LazyListScope.debtRowsSection(
 @Composable
 private fun ExternalDebtRow(
     debt: Debt,
-    currency: CurrencyDisplay,
     onClick: () -> Unit,
     showDivider: Boolean,
 ) {
     val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
         ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
+    // 行内金额按 record 自带 homeCurrencyCode 渲染（PR#255 R5 P2）：屏级环境 display 恒
+    // Base，JPY/KRW 账本下零小数 minor 会按两位小数显示（与解析同源的 D8 范式）。
+    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
     AppListRow(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
@@ -344,14 +339,14 @@ private fun ExternalDebtRow(
         Spacer(Modifier.width(AppSpacing.smallGap))
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                formatDisplayAmount(debt.remainingAmountCents, currency),
+                formatDisplayAmount(debt.remainingAmountCents, recordDisplay),
                 style = MaterialTheme.typography.titleLarge.tabularNum(),
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
                 stringResource(
                     R.string.debt_list_card_principal,
-                    formatDisplayAmount(debt.principalAmountCents, currency),
+                    formatDisplayAmount(debt.principalAmountCents, recordDisplay),
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -364,7 +359,6 @@ private fun ExternalDebtRow(
 @Composable
 private fun DebtAddSheet(
     state: DebtListUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtListViewModel,
     sheetState: SheetState,
     onClose: () -> Unit,
@@ -372,7 +366,6 @@ private fun DebtAddSheet(
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         DebtDraftForm(
             state = state,
-            currency = currency,
             viewModel = viewModel,
             onSubmit = { viewModel.submitDraft() },
             onCancel = onClose,
@@ -383,7 +376,6 @@ private fun DebtAddSheet(
 @Composable
 private fun DebtDraftForm(
     state: DebtListUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtListViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
@@ -402,7 +394,9 @@ private fun DebtDraftForm(
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.debt_create_label_amount),
-                currency = currency.homeCurrency,
+                // 显示与解析同源于草稿币种（VM 由账本欠款回填/重绑），不读恒 Base 的
+                // 路由级 display（PR#255 P1-3）。
+                currency = draft.homeCurrency,
                 value = draft.amountYuanInput,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
                 isError = draft.validationError != null,
@@ -416,6 +410,14 @@ private fun DebtDraftForm(
         draft.validationError?.let { err ->
             AppStatusBanner(message = err, tone = MessageTone.Danger)
         }
+        // 空账本 fail closed（PR#255 R4 P1）：列表加载完成但币种仍无 record 级权威依据
+        // （空账本）时，说明创建为何禁用 —— 兜底 CNY 口径提交会放大零小数账本 100×。
+        if (!state.homeCurrencyResolved && !state.isLoading) {
+            AppStatusBanner(
+                message = UiText.res(R.string.debt_create_currency_unconfirmed),
+                tone = MessageTone.Info,
+            )
+        }
         AppSheetActionRow(
             primary = AppSheetAction(
                 text = if (state.isSubmitting) {
@@ -424,7 +426,9 @@ private fun DebtDraftForm(
                     stringResource(R.string.debt_create_save)
                 },
                 onClick = onSubmit,
-                enabled = !state.isSubmitting,
+                // 账本币种未确认（初始/切换加载未成功）禁用创建：兜底 CNY 口径提交到
+                // JPY/KRW 账本会放大 100×（PR#255 P1-3，VM submitDraft 另有同条件防线）。
+                enabled = !state.isSubmitting && state.homeCurrencyResolved,
             ),
             secondary = AppSheetAction(
                 text = stringResource(R.string.common_cancel),

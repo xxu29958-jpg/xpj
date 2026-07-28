@@ -38,6 +38,8 @@ from app.schemas import (
     MemberRepaymentProposalRejectRequest,
     MemberRepaymentProposalResponse,
 )
+from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_common import home_currency_code
 from app.services.debt_service._fold import compute_remaining
 from app.services.debt_service._guards import (
     guard_actor_is_creditor,
@@ -282,6 +284,9 @@ def create_repayment_proposal(
     _, creditor_account_id = proposal_debtor_creditor(debt)
 
     paid_at = payload.paid_at or now_utc()
+    # ADR-0061 C02 桥接门（PR#255 R9）：proposal 行按 env 盖章 home_currency_code，
+    # env 与已持久事实漂移时 fail closed（否则造出 proposal/debt 异币种错配实例）。
+    assert_currency_binding_consistent(db, home_currency_code())
     money = _freeze_proposal_money(db, tenant_id=tenant_id, payload=payload, paid_at=paid_at)
     proposed_amount_cents = money.pop("amount_cents")
 

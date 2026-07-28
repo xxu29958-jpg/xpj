@@ -224,7 +224,12 @@ private fun ExpenseEditViewModel.currentBillSplitInviteRequest(): BillSplitInvit
     if (member == null) {
         return reject(UiText.res(R.string.expense_edit_bill_split_pick_member))
     }
-    val amountCents = parseAmountCents(_uiState.value.billSplitInviteAmountText)
+    // 邀请金额与 expense.amountCents 同 minor 空间对账（remaining 比较在下方），
+    // 故按票据服务端 homeCurrency 解析（JPY 等零小数 home 不 ×100）。
+    // PR#255 R10④：原码严格解析 —— record 币种在支持集外时禁金额承载编辑（同 saveItems）。
+    val currency = expense.editParseCurrency()
+        ?: return reject(UiText.res(R.string.expense_edit_currency_unsupported))
+    val amountCents = parseAmountCents(_uiState.value.billSplitInviteAmountText, currency)
     if (amountCents == null || amountCents <= 0L) {
         return reject(UiText.res(R.string.expense_edit_bill_split_amount_invalid))
     }

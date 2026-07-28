@@ -11,13 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.duplicateNoticeBody
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.tabularNum
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,8 +28,6 @@ internal fun DuplicateConfirmSheetContent(
     onKeepBoth: () -> Unit,
     onIgnoreCurrent: () -> Unit,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
-
     ReviewSheetScaffold(
         title = stringResource(R.string.pending_duplicate_sheet_title),
         subtitle = stringResource(R.string.pending_duplicate_sheet_hint),
@@ -45,7 +43,7 @@ internal fun DuplicateConfirmSheetContent(
                 fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
-                text = formatDisplayAmount(expense.amountCents, currencyDisplay),
+                text = formatDisplayAmount(expense.amountCents, expense.recordCurrencyDisplay()),
                 style = MaterialTheme.typography.bodyLarge.tabularNum(),
                 fontWeight = AppTextHierarchy.body.weight,
             )

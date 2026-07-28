@@ -48,6 +48,7 @@ class IncomePlanViewModelLoadStateTest {
             LoadStateIncomePlanRepository(
                 activeResult = Result.failure(RuntimeException("offline")),
             ),
+            CapabilityDebtActions(),
         )
         advanceUntilIdle()
 
@@ -60,7 +61,7 @@ class IncomePlanViewModelLoadStateTest {
 
     @Test
     fun loadedEmptyAndArchivedFailureStayExplicit() = runTest(dispatcher) {
-        val loadedEmpty = IncomePlanViewModel(LoadStateIncomePlanRepository())
+        val loadedEmpty = IncomePlanViewModel(LoadStateIncomePlanRepository(), CapabilityDebtActions())
         advanceUntilIdle()
         assertEquals(IncomePlanLoadState.Loaded, loadedEmpty.state.value.loadState)
         assertNull(loadedEmpty.state.value.error)
@@ -69,6 +70,7 @@ class IncomePlanViewModelLoadStateTest {
             LoadStateIncomePlanRepository(
                 archivedResult = Result.failure(RuntimeException("archived offline")),
             ),
+            CapabilityDebtActions(),
         )
         advanceUntilIdle()
 

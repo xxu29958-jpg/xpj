@@ -2,6 +2,8 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
@@ -9,6 +11,7 @@ import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
+import com.ticketbox.ui.components.formatAmount
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -52,6 +55,96 @@ class DebtDetailViewModelTest {
         assertEquals(4_200L, viewModel.state.value.debt?.remainingAmountCents)
         assertEquals(false, viewModel.state.value.canModify)
         assertEquals(false, viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun loadedDebtCarriesRecordHomeCurrencyForSummaryLens() = runTest(dispatcher) {
+        // PR#255 R5 P1：DebtSummaryCard / MemberSharedThingCard 的金额渲染走
+        // CurrencyDisplay.forRecord(debt.homeCurrencyCode) —— 钉死 VM 数据通路：加载后
+        // record 级 homeCurrencyCode 原样留在 state（JPY 不被恒 Base 的环境 display 覆盖）。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1").copy(homeCurrencyCode = "JPY")),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        assertEquals("JPY", viewModel.state.value.debt?.homeCurrencyCode)
+    }
+
+    @Test
+    fun loadedInstallmentDebtCarriesScheduleAndRecordCurrencyForCardLens() = runTest(dispatcher) {
+        // PR#255 R6 P1-2：DebtInstallmentCard 的每期金额走 CurrencyDisplay.forRecord(
+        // debt.homeCurrencyCode)（旧路径吃路由级恒 Base display，JPY ¥50,000/12 期会显示
+        // ¥41.67/期而非 ¥4,167/期）—— 钉死 VM 数据通路：排期字段与 record 级币种原样
+        // 留在 state。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(
+                sampleDebt("d1").copy(
+                    homeCurrencyCode = "JPY",
+                    principalAmountCents = 50_000L,
+                    installmentCount = 12L,
+                    installmentPeriodMonths = 1L,
+                    installmentPayoffDate = "2027-06-15",
+                    installmentPaidCount = 3L,
+                ),
+            ),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        val debt = viewModel.state.value.debt
+        assertEquals("JPY", debt?.homeCurrencyCode)
+        assertEquals(12L, debt?.installmentCount)
+        assertEquals(50_000L, debt?.principalAmountCents)
+    }
+
+    @Test
+    fun submitBlockedWhenRecordCurrencyUnsupported() = runTest(dispatcher) {
+        // PR#255 R7-2：record 币种在支持集外（新版服务端币种）→ 动作 fail closed：
+        // currencyUnsupported 置位（面板禁用同源条件），submit 亮错误且不可达写路径 ——
+        // 禁落 CNY 解析（零小数币种的 "1200" 会放大成 120000 minor）。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "XXX")),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.currencyUnsupported)
+
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("100")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.validationError != null)
+        assertTrue(repo.repaymentCalls.isEmpty())
+        assertEquals(false, viewModel.state.value.isSubmitting)
+    }
+
+    @Test
+    fun voidAllowedWhenRecordCurrencyUnsupported() = runTest(dispatcher) {
+        // PR#255 R10⑤：Void 不带金额解析（仅 rowVersion+reason），未知码下保活 ——
+        // 否则用户失去作废错账的安全出口；金额动作（还款/调整）维持 fail closed（见上钉）。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "XXX")),
+            writeResult = Result.success(sampleDebt("d1", rowVersion = 2L, status = DebtLinkStatuses.VOIDED)),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        viewModel.openAction(DebtAction.Void)
+        viewModel.updateReason("记错了")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        val call = repo.voidCalls.single()
+        assertEquals("d1", call.publicId)
+        assertEquals(1L, call.expectedRowVersion)
+        assertEquals(DebtLinkStatuses.VOIDED, viewModel.state.value.debt?.status)
+        assertNull(viewModel.state.value.validationError)
     }
 
     @Test
@@ -122,6 +215,61 @@ class DebtDetailViewModelTest {
         advanceUntilIdle()
 
         assertEquals(101L, repo.repaymentCalls.single().amountCents)
+    }
+
+    @Test
+    fun submitRepaymentParsesAmountInDebtHomeCurrency() = runTest(dispatcher) {
+        // 欠款的服务端 homeCurrencyCode=JPY（零小数）："1200" 是 minor 1200（不再 ×100
+        // 成 120000）。home 币种注入路径 —— 解析口径来自 record 而非全局默认。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(
+                sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY"),
+            ),
+            writeResult = Result.success(
+                sampleDebt("d1", rowVersion = 2L, remaining = 48_800L).copy(homeCurrencyCode = "JPY"),
+            ),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("1200")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(1_200L, repo.repaymentCalls.single().amountCents)
+    }
+
+    @Test
+    fun jpyDebtFormDisplaysAndParsesInRecordCurrency() = runTest(dispatcher) {
+        // PR#255 P1-1：显示与解析同源于 record 币种。JPY 欠款余额 50000 minor 按整数
+        // 显示（"¥50,000"，不是 ¥500.00）；用户按显示填 500 → 提交 500 minor（不是 50000）。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(
+                sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY"),
+            ),
+            writeResult = Result.success(
+                sampleDebt("d1", rowVersion = 2L, remaining = 49_500L).copy(homeCurrencyCode = "JPY"),
+            ),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        // 显示侧锚点：表单的币种来自 record，余额按零小数整数渲染。
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.amountInputCurrency)
+        assertEquals(
+            "¥50,000",
+            formatAmount(viewModel.state.value.debt?.remainingAmountCents, viewModel.state.value.amountInputCurrency),
+        )
+
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("500")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(500L, repo.repaymentCalls.single().amountCents)
     }
 
     @Test
@@ -629,7 +777,8 @@ private class FakeDebtDetailActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(): Result<List<Debt>> = Result.success(emptyList())
+    override suspend fun listDebts(): Result<DebtListPage> =
+        Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null))
 
     override suspend fun getDebt(publicId: String): Result<Debt> {
         // Capture the result at entry so a stalled load returns the snapshot it started with, even

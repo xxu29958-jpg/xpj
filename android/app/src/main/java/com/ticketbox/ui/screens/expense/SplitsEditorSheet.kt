@@ -23,10 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.parseAmountCentsForDisplay
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.EditableSplit
 
 data class SplitsEditorSheetState(
@@ -34,6 +34,8 @@ data class SplitsEditorSheetState(
     val parentAmountCents: Long?,
     val saving: Boolean,
     val loading: Boolean,
+    // 票据的服务端 home 币种：footer 合计解析与保存侧同口径（零小数 home 不 ×100）。
+    val display: CurrencyDisplay = CurrencyDisplay.Base,
 )
 
 data class SplitsEditorSheetActions(
@@ -103,7 +105,11 @@ fun SplitsEditorSheet(
                 enabled = !state.saving && state.drafts.isNotEmpty(),
                 onClick = actions.onEvenSplit,
             )
-            SplitsReconciliationFooter(drafts = state.drafts, parentAmountCents = state.parentAmountCents)
+            SplitsReconciliationFooter(
+                drafts = state.drafts,
+                parentAmountCents = state.parentAmountCents,
+                display = state.display,
+            )
             // ADR-0042 P1: never enable Save with an empty draft list — the roster
             // hasn't loaded, and saving would send splits=[] which the backend
             // replace turns into "delete all existing splits".
@@ -184,26 +190,29 @@ private fun SplitEditorRow(
 private fun SplitsReconciliationFooter(
     drafts: List<EditableSplit>,
     parentAmountCents: Long?,
+    display: CurrencyDisplay,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
-    val total = drafts.filter { it.included }.sumOf { parseAmountCents(it.amountText) ?: 0L }
+    // 显示与保存/解析同源于票据 record 币种（JPY 零小数整数显示整数；未知码亮原码+原
+    // minor，R14-1），不读恒 Base 的 LocalCurrencyDisplay（PR#255 P1）。R15b-2：未知码
+    // 草稿金额按原 minor 整数解析（与回填/显示同空间，不按兜底枚举放大 100×）。
+    val total = drafts.filter { it.included }.sumOf { parseAmountCentsForDisplay(it.amountText, display) ?: 0L }
     val diff = parentAmountCents?.let { total - it }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(
             ExpenseEditReconciliationLine(
                 label = stringResource(R.string.expense_edit_splits_footer_total_label),
-                value = formatDisplayAmount(total, currencyDisplay),
+                value = formatDisplayAmount(total, display),
             ),
             parentAmountCents?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_splits_footer_bill_label),
-                    value = formatDisplayAmount(it, currencyDisplay),
+                    value = formatDisplayAmount(it, display),
                 )
             },
             diff?.takeIf { it != 0L }?.let {
                 ExpenseEditReconciliationLine(
                     label = stringResource(R.string.expense_edit_splits_footer_diff_label),
-                    value = formatDisplayAmount(it, currencyDisplay),
+                    value = formatDisplayAmount(it, display),
                     emphasis = true,
                     hint = stringResource(R.string.expense_edit_splits_footer_even_hint),
                 )

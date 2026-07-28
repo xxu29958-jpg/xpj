@@ -24,8 +24,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, Repayment
 from app.schemas import RepaymentCreateRequest
+from app.services.currency_common import home_currency_code
 from app.services.debt_service._guards import guard_direct_fact_writable
 from app.services.debt_service._money import freeze_home_amount
 from app.services.debt_service._serialize import lock_and_fold
@@ -75,6 +77,20 @@ def record_repayment(
     [[0042]] idempotency-success record in one transaction.
     """
     paid_at = payload.paid_at or now_utc()
+    # PR#255 R12-C：外币还款的换算按 env home 进行（freeze_home_amount），随后整数按
+    # parent debt 的冻结币种折叠 —— payload 带 original 币种字段且 debt.home_currency_code
+    # ≠ env 时，换算口径与折叠口径错位（错额或误报 overpay，bot 09:28 P1）→ 按
+    # currency_binding_drift 拒（与库级 drift 门同码同 409：都是「配置与已冻结事实不一致」
+    # 的写拒绝；无 original 字段=整数透传，record 冻结语义豁免不动）。轻查 parent 冻结
+    # 币种于 freeze 之前；debt 不存在时不拦（lock_and_fold 的 404 自会处理）。
+    if payload.original_currency is not None or payload.original_amount is not None:
+        parent_home = db.scalar(
+            ledger_scoped_select(Debt, tenant_id)
+            .where(Debt.public_id == public_id)
+            .with_only_columns(Debt.home_currency_code)
+        )
+        if parent_home is not None and parent_home != home_currency_code():
+            raise AppError("currency_binding_drift", status_code=409)
     money = freeze_home_amount(
         db,
         tenant_id=tenant_id,

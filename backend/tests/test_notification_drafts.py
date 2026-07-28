@@ -7,6 +7,7 @@ import json
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
 
@@ -240,3 +241,52 @@ def test_notification_draft_viewer_is_read_only(client: TestClient, *, identity)
     assert response.status_code == 403
     assert response.json()["error"] == "permission_denied"
     assert response.json()["message"] == VIEWER_WRITE_MESSAGE
+
+
+def test_notification_draft_rejected_on_non_cny_without_original_fields(
+    client: TestClient, monkeypatch, *, identity,
+) -> None:
+    # PR#255 R11：expense 通知草稿与 repayment 同洞 —— 解析器按 CNY 分声明 amount_cents
+    # （无 FX 路径），非 CNY 安装按 home minor 盖章即 100×；无任何 original 币种/金额
+    # 字段的捕获整体拒绝（跨币种捕获契约挂账 D9）。CNY 放行见既有 capture 钉。
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        response = client.post(
+            "/api/expenses/notification-drafts",
+            headers=identity.app_headers,
+            json=_payload(),
+        )
+        assert response.status_code == 422, response.json()
+        assert response.json()["error"] == "notification_draft_currency_unsupported"
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_notification_draft_with_original_fields_allowed_on_non_cny(
+    client: TestClient, monkeypatch, *, identity,
+) -> None:
+    # R11 同伴钉：带 original 字段的显式 FX 捕获不被条件门误伤 —— original=JPY（== env
+    # home，rate=1 base 通道）按零小数 home 1:1 换算入账。
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        payload = _payload()
+        payload.pop("amount_cents")
+        payload["original_currency"] = "JPY"
+        payload["original_amount"] = "1200"
+        response = client.post(
+            "/api/expenses/notification-drafts",
+            headers=identity.app_headers,
+            json=payload,
+        )
+        assert response.status_code == 200, response.json()
+        body = response.json()
+        assert body["home_currency"] == "JPY"
+        assert body["original_currency_code"] == "JPY"
+        assert body["original_amount_minor"] == 1200
+        assert body["amount_cents"] == 1200
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()

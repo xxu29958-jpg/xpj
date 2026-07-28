@@ -80,7 +80,7 @@ class RepaymentDraftInboxViewModel(
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val draftResult = drafts.listPendingDrafts()
-            val repayable = debts.listDebts().getOrNull()?.filter(::isRepayableDebt)
+            val repayable = debts.listDebts().getOrNull()?.debts?.filter(::isRepayableDebt)
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration) return@launch
             _state.update { current ->

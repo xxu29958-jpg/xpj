@@ -31,7 +31,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
@@ -57,7 +56,6 @@ import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.StateTone
 
@@ -217,8 +215,7 @@ private fun PendingExpenseAmountBlock(
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
     ) {
-        val currencyDisplay = LocalCurrencyDisplay.current
-        PendingAmountValue(expense = expense, currencyDisplay = currencyDisplay)
+        PendingAmountValue(expense = expense)
         PendingExpenseExchangeMetaText(expense = expense, stacked = stacked)
         TextButton(
             enabled = actions.canMutate,
@@ -236,8 +233,8 @@ private fun PendingExpenseAmountBlock(
 }
 
 @Composable
-private fun PendingAmountValue(expense: Expense, currencyDisplay: CurrencyDisplay) {
-    val amount = expense.amountCents?.let { formatExpensePrimaryAmount(expense, currencyDisplay) }
+private fun PendingAmountValue(expense: Expense) {
+    val amount = expense.amountCents?.let { formatExpensePrimaryAmount(expense) }
     Box(
         modifier = Modifier
             .fillMaxWidth()

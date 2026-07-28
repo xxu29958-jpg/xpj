@@ -93,9 +93,9 @@ def _target_option(candidate, *, suggested_id: str | None, attempted_id: str | N
         "public_id": candidate.public_id,
         "row_version": candidate.row_version,
         "name": (candidate.counterparty_label or "").strip() or _COUNTERPARTY_FALLBACK["external"],
-        # 候选的 remaining 是折叠后的本位币额 (match 服务只产 home-folded 行)，
-        # RepaymentMatchCandidate 不带币种字段 → None 走 home 兜底。
-        "remaining_label": _home_amount_label(candidate.remaining_amount_cents, None),
+        # 候选的 remaining 是折叠后的本位币额 (match 服务只产 home-folded 行) ——
+        # R13-8c 按候选 record 冻结币种渲染（不吃 env 兜底，与 confirm 的 R13-8b 同口径）。
+        "remaining_label": _home_amount_label(candidate.remaining_amount_cents, candidate.home_currency_code),
         "is_suggested": candidate.public_id == suggested_id,
         # 422 原地重渲染时回填「刚才选择」，不让用户在错误后猜自己点了哪项。
         "is_selected": attempted_id is not None and candidate.public_id == attempted_id,

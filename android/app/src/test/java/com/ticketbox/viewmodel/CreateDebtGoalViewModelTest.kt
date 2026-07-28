@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
@@ -253,7 +254,8 @@ private class FakeCreateDebtActions(
     private val listResult: Result<List<Debt>> = Result.success(emptyList()),
 ) : DebtActions {
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(): Result<List<Debt>> = listResult
+    override suspend fun listDebts(): Result<DebtListPage> =
+        listResult.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = null) }
     override suspend fun getDebt(publicId: String): Result<Debt> =
         Result.failure(UnsupportedOperationException())
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> =

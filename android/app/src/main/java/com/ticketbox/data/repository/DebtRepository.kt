@@ -27,7 +27,7 @@ import java.util.UUID
  */
 interface DebtActions {
     fun canModifyLedger(): Boolean
-    suspend fun listDebts(): Result<List<Debt>>
+    suspend fun listDebts(): Result<DebtListPage>
     suspend fun getDebt(publicId: String): Result<Debt>
     suspend fun createDebt(draft: DebtDraft): Result<Debt>
     suspend fun parseDebtBillImage(fileName: String, contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
@@ -49,6 +49,17 @@ interface DebtActions {
     // swaps in. Direct-only online; viewer role short-circuits before the network.
     suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt>
 }
+
+/**
+ * 账本欠款列表页（PR#255 R6）：[debts] + 服务端随列表信封下发的**安装级 currency capability**
+ * （ADR-0061 C02/C03；与每条 record 的 `homeCurrencyCode` 同一 binding）。空账本没有 record 级
+ * 币种可得时，消费方（DebtListViewModel）用 [ledgerHomeCurrencyCode] 解析账本币种放行首笔创建；
+ * null = 旧服务端未下发（调用方 fail closed，不得回落默认 CNY 猜测）。
+ */
+data class DebtListPage(
+    val debts: List<Debt>,
+    val ledgerHomeCurrencyCode: String?,
+)
 
 /**
  * ADR-0049 P3b / ⑤c (slice ⑤c-2) the creditor-discovery read surface, split from [DebtActions] so
@@ -123,10 +134,14 @@ class DebtRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun listDebts(): Result<List<Debt>> =
+    override suspend fun listDebts(): Result<DebtListPage> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
-                api.debts().items.map { it.toDomain() }
+                val response = api.debts()
+                DebtListPage(
+                    debts = response.items.map { it.toDomain() },
+                    ledgerHomeCurrencyCode = response.homeCurrencyCode,
+                )
             }
         }
 

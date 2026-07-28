@@ -63,6 +63,8 @@ fun ExpenseDto.toDomain(): Expense {
         amountCents = amountCents,
         homeAmountCents = homeAmountCents ?: amountCents,
         homeCurrency = CurrencyCode.fromStorageKey(homeCurrency),
+        // R7-2：原始码同步透传（支持集外时显示侧经 CurrencyDisplay.forRecord 原样亮码）。
+        homeCurrencyCode = homeCurrency,
         originalCurrency = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode),
         originalAmount = originalAmount ?: minorToMajorText(originalAmountMinor, CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode)),
         fxRate = resolvedFxRate,
@@ -70,6 +72,8 @@ fun ExpenseDto.toDomain(): Expense {
         fxSource = resolvedFxSource,
         fxStatus = fxStatus.orEmpty(),
         originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode),
+        // R13-4：original 原码透传（未知码严格解析/禁金额编辑用；与 homeCurrencyCode 的 R7-2 同构）。
+        originalCurrencyCodeRaw = originalCurrency ?: originalCurrencyCode,
         originalAmountMinor = originalAmountMinor,
         exchangeRateToCny = resolvedFxRate,
         exchangeRateDate = resolvedFxRateDate,
@@ -107,8 +111,11 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     serverId = id,
     publicId = requiredPublicId(),
     amountCents = amountCents,
-    homeCurrencyCode = CurrencyCode.fromStorageKey(homeCurrency).storageKey,
-    originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode).storageKey,
+    // R7-2：原码透传，不做 fromStorageKey 枚举往返 —— 未知码（新版服务端币种）若被静默
+    // 改写成 CNY 落本地缓存，后续同步会把它回写服务端（币种篡改）。blank 才落既有 CNY 兜底。
+    homeCurrencyCode = homeCurrency?.takeIf { it.isNotBlank() } ?: FxContract.HomeCurrency.storageKey,
+    originalCurrencyCode = (originalCurrency ?: originalCurrencyCode)?.takeIf { it.isNotBlank() }
+        ?: FxContract.HomeCurrency.storageKey,
     originalAmountMinor = originalAmountMinor ?: amountCents,
     exchangeRateToCny = resolvedFxRate,
     exchangeRateDate = resolvedFxRateDate,
@@ -175,6 +182,8 @@ fun ExpenseEntity.toDomain(): Expense {
         amountCents = amountCents,
         homeAmountCents = amountCents,
         homeCurrency = CurrencyCode.fromStorageKey(homeCurrencyCode),
+        // R7-2：缓存原码透传（同 ExpenseDto.toDomain 的 homeCurrencyCode）。
+        homeCurrencyCode = homeCurrencyCode,
         originalCurrency = CurrencyCode.fromStorageKey(originalCurrencyCode),
         originalAmount = minorToMajorText(originalAmountMinor, CurrencyCode.fromStorageKey(originalCurrencyCode)),
         fxRate = exchangeRateToCny,
@@ -182,6 +191,8 @@ fun ExpenseEntity.toDomain(): Expense {
         fxSource = exchangeRateSource,
         fxStatus = fxStatus,
         originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrencyCode),
+        // R13-4：original 缓存原码透传（同 DTO 侧）。
+        originalCurrencyCodeRaw = originalCurrencyCode,
         originalAmountMinor = originalAmountMinor,
         exchangeRateToCny = exchangeRateToCny,
         exchangeRateDate = exchangeRateDate,
@@ -261,13 +272,24 @@ fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManual
  */
 fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): ExpenseEntity {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
-    val submittedCurrency = originalCurrencyCode ?: FxContract.HomeCurrency
+    // R15b-1：乐观窗 home 币种取提交时 VM 确认的账本币种（旧码恒 CNY，JPY 安装手记
+    // 乐观行显示 ¥12.00 而同步后 ¥1,200）；缺省（非手记路径）维持 FxContract 兜底。
+    val homeCurrency = ledgerHomeCurrency ?: FxContract.HomeCurrency
+    val submittedCurrency = originalCurrencyCode ?: homeCurrency
+    // home 腿诚实：显式 amountCents 优先；同币手记（original==home）原值即 home（同币
+    // 不折算）；跨币不可折算 → null —— 显示走 forRecord 原始腿（R14-3），聚合跳过
+    // （"original≠home 不入 home 合计"），服务端同步后权威行覆盖。
+    val honestHomeAmount = when {
+        amountCents != null -> amountCents
+        submittedCurrency == homeCurrency -> submittedOriginalMinor
+        else -> null
+    }
     return ExpenseEntity(
         ledgerId = ledgerId,
         serverId = null,
         publicId = "local-$clientRef",
-        amountCents = amountCents ?: submittedOriginalMinor,
-        homeCurrencyCode = FxContract.HomeCurrency.storageKey,
+        amountCents = honestHomeAmount,
+        homeCurrencyCode = homeCurrency.storageKey,
         originalCurrencyCode = submittedCurrency.storageKey,
         originalAmountMinor = submittedOriginalMinor,
         exchangeRateToCny = null,

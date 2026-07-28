@@ -119,7 +119,9 @@ private fun SpendingGoalForm(
     state: CreateSpendingGoalUiState,
     viewModel: CreateSpendingGoalViewModel,
 ) {
-    val currency = LocalCurrencyDisplay.current.homeCurrency
+    // R14-2：金额输入标签随 VM 已解析的账本 capability（JPY 亮 ¥ 即 JPY 语义+整数口径），
+    // 未确认时落 display-home 兜底仅作展示（写面由 VM canSubmit/禁写门拦截）。
+    val currency = state.ledgerCurrency ?: LocalCurrencyDisplay.current.homeCurrency
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         AppTextInput(
             state = AppTextInputState(

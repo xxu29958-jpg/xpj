@@ -6,6 +6,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.ui.components.MonthPickerSheet
@@ -91,6 +92,9 @@ private fun LedgerManualSheetHost(
                 categories = state.categories,
                 saving = state.creatingManual,
                 recentMerchants = state.recentMerchants,
+                // R13-6：初始币种取账本 capability（未确认时落 display-home 兜底仅作展示，
+                // 提交由 VM 的 ledgerCurrency 门拦截）。
+                initialCurrency = state.ledgerCurrency ?: FxContract.HomeCurrency,
                 errorMessage = state.manualCreateError?.asString(),
             ),
             actions = ManualExpenseSheetActions(

@@ -3,9 +3,11 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.CsvExport
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -119,6 +121,9 @@ data class LedgerUiState(
     // manual-entry sheet. A tap is a manual fill, so the "AI only fills blanks"
     // rule doesn't apply.
     val recentMerchants: List<RecentMerchant> = emptyList(),
+    /** 账本币种（R13-6）：VM 由列表信封 capability 注入；null=未确认 → 手记禁提交
+     *  （JPY 安装下速记不再按 CNY 默认币种落 FX 放大）。 */
+    val ledgerCurrency: CurrencyCode? = null,
 ) {
     val selectedCount: Int get() = selectedIds.size
 
@@ -165,6 +170,7 @@ data class LedgerUiState(
 
 class LedgerViewModel(
     private val repository: LedgerActions,
+    private val debts: DebtActions,
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
     /** Fired only when a ledger write changes the budget advisor's
@@ -186,6 +192,9 @@ class LedgerViewModel(
         loadCategories()
         loadTags()
         loadMonths()
+        // R13-6 + R15a-2：解析账本币种（信封 capability 严格解析，未知 → 手记禁提交）；
+        // 代际守卫 last-writer-wins，写尝试时可重解析（一次性门闩解除）。
+        viewModelScope.launch { refreshLedgerCurrency() }
         viewModelScope.launch {
             repository.observeConfirmed().collect { expenses ->
                 allConfirmed = expenses
@@ -455,18 +464,8 @@ class LedgerViewModel(
     }
 
     fun createManualExpense(draft: ExpenseDraft) {
-        if (!repository.canModifyLedger()) {
-            _uiState.update {
-                it.copy(
-                    readOnly = true,
-                    creatingManual = false,
-                    message = readOnlyMessage(),
-                    messageTone = MessageTone.Danger,
-                )
-            }
-            return
-        }
         viewModelScope.launch {
+            if (blockManualCreateIfUnwritable()) return@launch
             if (draft.amountCents == null && draft.originalAmountMinor == null) {
                 _uiState.update {
                     it.copy(
@@ -484,7 +483,9 @@ class LedgerViewModel(
                     manualCreateError = null,
                 )
             }
-            repository.createManualExpense(draft)
+            // R15b-1：离线乐观行按 VM 确认的账本币种落 home（门已保证非 null）——
+            // JPY 安装手记乐观行与同步后权威行同口径。
+            repository.createManualExpense(draft.copy(ledgerHomeCurrency = _uiState.value.ledgerCurrency))
                 .onSuccess { expense ->
                     loadCategories()
                     loadTags()
@@ -523,6 +524,49 @@ class LedgerViewModel(
      *  dismissed (gives up a failed attempt) — clears the outcome channel. */
     fun manualCreateSettled() {
         _uiState.update { it.copy(manualCreateDone = false, manualCreateError = null) }
+    }
+
+    /** 手记可写性门（R13-6）：只读账本或账本币种未确认时亮错并返回 true。 */
+    private suspend fun blockManualCreateIfUnwritable(): Boolean {
+        if (!repository.canModifyLedger()) {
+            _uiState.update {
+                it.copy(
+                    readOnly = true,
+                    creatingManual = false,
+                    message = readOnlyMessage(),
+                    messageTone = MessageTone.Danger,
+                )
+            }
+            return true
+        }
+        // R13-6 + R15a-2：账本币种未确认时先重解析再裁决 —— 离线冷启动的一次性门闩解除
+        // （init 解析失败后网络恢复，写尝试自带重解析，不再会话级锁死）；仍 null 才拦截
+        // （不落 CNY 默认币种落 FX 放大；sheet 的初始币种已由 ledgerCurrency 引导，
+        // 此为用户变更选择器后仍未知来源的兜底防线）。
+        if (_uiState.value.ledgerCurrency == null) refreshLedgerCurrency()
+        if (_uiState.value.ledgerCurrency == null) {
+            _uiState.update {
+                it.copy(
+                    creatingManual = false,
+                    manualCreateError = UiText.res(R.string.currency_unconfirmed_write_blocked),
+                )
+            }
+            return true
+        }
+        return false
+    }
+
+    private var currencyResolutionGeneration = 0L
+
+    /** （重新）解析账本币种（R15a-2）：代际守卫 last-writer-wins —— 并发解析旧结果不得
+     *  后于新结果落定（快速切账本/恢复重试乱序安全）。 */
+    private suspend fun refreshLedgerCurrency() {
+        val generation = ++currencyResolutionGeneration
+        val resolved = CurrencyCode.fromStorageKeyOrNull(debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode)
+        _uiState.update {
+            if (generation != currencyResolutionGeneration) return@update it
+            it.copy(ledgerCurrency = resolved)
+        }
     }
 
     // ADR-0042 Slice C — multi-select + batch edit -------------------------

@@ -19,13 +19,16 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppAsyncImageLayout
@@ -189,6 +192,7 @@ fun ExpenseEditScreen(
                 drafts = state.itemDrafts,
                 parentAmountCents = state.expenseItems?.parentAmountCents,
                 saving = state.itemsSaving,
+                display = expense?.recordCurrencyDisplay() ?: CurrencyDisplay.Base,
             ),
             actions = itemizationActions.editor,
         )
@@ -201,6 +205,7 @@ fun ExpenseEditScreen(
                 parentAmountCents = state.expenseSplits?.parentAmountCents,
                 saving = state.splitsSaving,
                 loading = state.splitMembersLoading,
+                display = expense?.recordCurrencyDisplay() ?: CurrencyDisplay.Base,
             ),
             actions = splitEditingActions.editor,
         )
@@ -216,6 +221,7 @@ fun ExpenseEditScreen(
                 sending = state.billSplitInviteSending,
                 message = state.billSplitInviteMessage,
                 messageTone = state.billSplitInviteMessageTone,
+                display = expense?.recordCurrencyDisplay() ?: CurrencyDisplay.Base,
             ),
             remainingCents = billSplitRemainingCents(state),
             remainingUnavailable = state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,
@@ -244,13 +250,19 @@ fun ExpenseEditScreen(
     var currency by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(currentExpense.originalCurrencyCode)
     }
-    var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(
-            formatMinorAmountInput(
-                initialExpenseAmountInputMinor(currentExpense),
-                currentExpense.originalCurrencyCode,
-            )
+    // R13-4：original 原码严格解析 —— record 原码在支持集外时，按 lossy 枚举（CNY）改金额
+    // 会 100× 缩放；禁金额承载编辑（选择器显式改币种的除外：用户已重新声明口径）。
+    val originalRawCode = currentExpense.originalCurrencyCodeRaw
+    val originalUnsupported = !originalRawCode.isNullOrBlank() &&
+        CurrencyCode.fromStorageKeyOrNull(originalRawCode) == null
+    val initialAmountText = remember(currentExpense.id, currentExpense.updatedAt) {
+        formatMinorAmountInput(
+            initialExpenseAmountInputMinor(currentExpense),
+            currentExpense.originalCurrencyCode,
         )
+    }
+    var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+        mutableStateOf(initialAmountText)
     }
     var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.merchant.orEmpty()) }
     var category by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
@@ -288,6 +300,7 @@ fun ExpenseEditScreen(
     val scoreOutOfRangeTemplate = stringResource(R.string.expense_edit_score_out_of_range)
     val amountInvalidMessage = stringResource(R.string.expense_edit_amount_invalid)
     val amountRequiredMessage = stringResource(R.string.expense_edit_amount_required)
+    val currencyUnsupportedMessage = stringResource(R.string.expense_edit_currency_unsupported)
     val isPendingExpense = currentExpense.status == "pending"
     val headerTitle = stringResource(
         if (isPendingExpense) {
@@ -341,6 +354,11 @@ fun ExpenseEditScreen(
     }
 
     fun draftOrMessage(): ExpenseDraft? {
+        // R13-4：original 原码未知且金额被改动过（未改=元数据/原值回写，放行）→ 禁写+明示。
+        if (originalUnsupported && currency == currentExpense.originalCurrencyCode && amountText != initialAmountText) {
+            message = currencyUnsupportedMessage
+            return null
+        }
         val originalMinor = parseMinorAmount(amountText, currency)
         if (amountText.isNotBlank() && originalMinor == null) {
             message = amountInvalidMessage

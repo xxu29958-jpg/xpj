@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -109,7 +111,13 @@ class MemberRepaymentProposalViewModel(
                 activeForm = form,
                 targetProposalPublicId = proposal?.publicId,
                 // 确认表单预填 proposal 提出的金额（债权人可下调成部分确认）；发起表单留空。
-                amountInput = proposal?.let { p -> centsToYuanInput(p.proposedAmountCents) }.orEmpty(),
+                // 预填按 proposal 自带的服务端 homeCurrencyCode 渲染 minor（零小数币种不 ÷100），
+                // 与 submit 的解析口径一致（R7-3）。proposal 码在支持集外 → 不预填（R7-2：
+                // 禁落 CNY 兜底渲染；submit 会 fail closed）。
+                amountInput = proposal?.let { p ->
+                    CurrencyCode.fromStorageKeyOrNull(p.homeCurrencyCode)
+                        ?.let { currency -> formatMinorAmountInput(p.proposedAmountCents, currency) }
+                }.orEmpty(),
                 noteInput = "",
                 validationError = null,
             )
@@ -139,14 +147,37 @@ class MemberRepaymentProposalViewModel(
 
     /**
      * 提交当前激活的表单。[expectedRowVersion] 是宿主欠款当前的 `row_version`（fold-changing 的确认走 §2.1
-     * OCC 载体）；发起 proposal 不改折叠，忽略该参数。
+     * OCC 载体）；发起 proposal 不改折叠，忽略该参数。[currency] 取宿主欠款服务端 `homeCurrencyCode` 的
+     * **严格解析**（调用屏持该 Debt；未知码必须传 null —— 无 CNY 默认参，R7-2 起 fail closed）。
+     * R7-3：确认表单的金额按 **proposal 冻结币种**解析（服务端把 `confirmed_amount_cents` 与
+     * `proposed_amount_cents` 同单位比较，_proposal.py `_confirmed_amount`）；proposal 码未知或与
+     * 宿主欠款币种不一致 = installation 漂移 → fail closed 禁确认（服务端会把 repayment 按
+     * proposal 口径折进异币种欠款，客户端不得放行），超额校验随之同币种化。
      */
-    fun submit(expectedRowVersion: Long) {
+    fun submit(expectedRowVersion: Long, currency: CurrencyCode?) {
         val publicId = debtPublicId ?: return
         val current = _state.value
         val form = current.activeForm ?: return
+        // R7-2 fail closed：宿主欠款 record 币种未知 → 一切表单写禁用（禁落 CNY 解析）。
+        if (currency == null) {
+            _state.update { it.copy(validationError = UiText.res(R.string.debt_action_currency_unsupported)) }
+            return
+        }
         // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；>0 由 proposalValidationError 校验。
-        val amountCents = parseAmountCents(current.amountInput)
+        val amountCents = when (form) {
+            ProposalForm.Propose -> parseAmountCents(current.amountInput, currency)
+            ProposalForm.Confirm -> {
+                val pending = current.pendingProposal ?: return
+                val proposalCurrency = CurrencyCode.fromStorageKeyOrNull(pending.homeCurrencyCode)
+                if (proposalCurrency == null || proposalCurrency != currency) {
+                    _state.update {
+                        it.copy(validationError = UiText.res(R.string.debt_proposal_currency_mismatch))
+                    }
+                    return
+                }
+                parseAmountCents(current.amountInput, proposalCurrency)
+            }
+        }
         proposalValidationError(form, amountCents, current.pendingProposal?.proposedAmountCents)?.let { res ->
             _state.update { it.copy(validationError = UiText.res(res)) }
             return
@@ -248,9 +279,6 @@ class MemberRepaymentProposalViewModel(
         refresh()
     }
 }
-
-/** 把本位币分格式化成元为单位的输入串（用于确认表单预填提出金额），不走浮点避免大额丢精度。 */
-private fun centsToYuanInput(cents: Long): String = "${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
 
 /** 表单输入的校验文案 res，输入可接受时返回 null。 */
 @StringRes

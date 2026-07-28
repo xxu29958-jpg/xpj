@@ -532,6 +532,20 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun parsesSearchAmountInHomeCurrencyMinorDigits() {
+        // 零小数 home（JPY/KRW）："1200" 是 minor 1200，不再扩成 120000 ——
+        // 这是 JPY 用户按金额搜索命中 originalAmountMinor/home 腿的前提。
+        assertEquals(1_200L, parseSearchAmountCents("1200", CurrencyCode.JPY))
+        assertEquals(1_200L, parseSearchAmountCents("¥1200", CurrencyCode.JPY))
+        assertEquals(0L, parseSearchAmountCents("0", CurrencyCode.KRW))
+        // 零小数币种带小数部分 → 不解析为金额（落回文本匹配），不静默进位。
+        assertNull(parseSearchAmountCents("1200.5", CurrencyCode.JPY))
+        assertNull(parseSearchAmountCents("12.0", CurrencyCode.KRW))
+        // 2 位小数 home 显式传参时与默认口径一致。
+        assertEquals(1_250L, parseSearchAmountCents("12.5", CurrencyCode.USD))
+    }
+
+    @Test
     fun expenseMatchesAmountOnHomeOrOriginalLeg() {
         val homeLeg = expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 1_250)
         val foreignLeg = expense(id = 2, category = "餐饮", expenseTime = null, amountCents = 9_900)
@@ -540,6 +554,76 @@ class ExpenseFiltersTest {
         assertTrue(expenseMatchesAmountCents(homeLeg, 1_250))
         assertTrue(expenseMatchesAmountCents(foreignLeg, 1_250))
         assertFalse(expenseMatchesAmountCents(homeLeg, 800))
+    }
+
+    @Test
+    fun parsesSearchAmountAcceptsDisplayedValuesAcrossCurrencies() {
+        // PR#255 P2-1：从 Android 自己的格式化器（formatAmount，localeTag 同款
+        // DecimalFormatSymbols）复制的显示值，按所选币种归一化符号与分隔符后必须可解析。
+        assertEquals(1_200L, parseSearchAmountCents("₩1,200", CurrencyCode.KRW))
+        assertEquals(123_450L, parseSearchAmountCents("HK$1,234.50", CurrencyCode.HKD))
+        assertEquals(123_450L, parseSearchAmountCents("£1,234.50", CurrencyCode.GBP))
+        // de-DE：点分组、逗号小数。
+        assertEquals(123_450L, parseSearchAmountCents("€1.234,50", CurrencyCode.EUR))
+        // EUR 无符号逗号小数不得误读为分组（旧实现读出 1,250 倍值）。
+        assertEquals(1_250L, parseSearchAmountCents("12,50", CurrencyCode.EUR))
+        // de-DE 用户手输点号 "12.50"：非合法分组形态（尾组 2 位），按小数对待而非放大。
+        assertEquals(1_250L, parseSearchAmountCents("12.50", CurrencyCode.EUR))
+        // EUR 合法点分组整体形态仍按分组剥离。
+        assertEquals(123_400L, parseSearchAmountCents("1.234", CurrencyCode.EUR))
+        // 零小数币种的带符号分组显示值。
+        assertEquals(50_000L, parseSearchAmountCents("¥50,000", CurrencyCode.JPY))
+        // 他币种符号不剥：HK$ 文本在 USD 腿上不可解析（防串币种假命中）。
+        assertNull(parseSearchAmountCents("HK$1,234.50", CurrencyCode.USD))
+        // 残留多小数点 / 字母仍拒。
+        assertNull(parseSearchAmountCents("1.2.3", CurrencyCode.USD))
+        assertNull(parseSearchAmountCents("12,50,30", CurrencyCode.EUR))
+    }
+
+    @Test
+    fun parsesSearchAmountNormalizesFullwidthGroupingComma() {
+        // PR#255 R4 P2：全角分组逗号 `，`（中文键盘/复制文本，如 ￥1，280）先归一化为
+        // locale 分组符再判定 —— 被替换的 SEARCH_AMOUNT_NOISE_REGEX 显式接受它，拒绝即回归。
+        assertEquals(128_000L, parseSearchAmountCents("1，280"))
+        assertEquals(128_000L, parseSearchAmountCents("￥1，280"))
+        // 零小数 home 的全角分组显示值：￥1，200 → 1200 minor，不 ×100。
+        assertEquals(1_200L, parseSearchAmountCents("￥1，200", CurrencyCode.JPY))
+        // 归一化后仍按 locale 规则判定：de-DE 下 `，`→ 分组符点号，"12，50" 非合法分组
+        // 形态（尾组 2 位）→ 按小数对待，与半角 "12,50"（逗号小数）同值。
+        assertEquals(1_250L, parseSearchAmountCents("12，50", CurrencyCode.EUR))
+        // 多个全角逗号不构成合法分组也不作小数 → 仍拒（落回文本匹配）。
+        assertNull(parseSearchAmountCents("1，2，3"))
+    }
+
+    @Test
+    fun expenseMatchesSearchAmountParsesEachLegInItsOwnCurrency() {
+        // JPY-home、USD 原币：查 "12.50" 按 USD 解析原币腿命中（home 零小数解析不出，旧实现丢失）。
+        val jpyHomeUsdOriginal = expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 18_518)
+            .copy(
+                homeCurrency = CurrencyCode.JPY,
+                originalCurrencyCode = CurrencyCode.USD,
+                originalAmountMinor = 1_250,
+            )
+        assertTrue(expenseMatchesSearchAmount(jpyHomeUsdOriginal, "12.50"))
+        // home 腿仍按 JPY：查 "18518" 命中 home minor。
+        assertTrue(expenseMatchesSearchAmount(jpyHomeUsdOriginal, "18518"))
+        // 反巧合：查 "1250" 不得撞上 USD minor 1250（跨 exponent 数值巧合，不是用户语义）。
+        assertFalse(expenseMatchesSearchAmount(jpyHomeUsdOriginal, "1250"))
+
+        // CNY-home、JPY 原币：查 "1200" 按 JPY 解析原币腿命中（旧实现解析成 120000 错配）。
+        val cnyHomeJpyOriginal = expense(id = 2, category = "餐饮", expenseTime = null, amountCents = 5_500)
+            .copy(
+                originalCurrencyCode = CurrencyCode.JPY,
+                originalAmountMinor = 1_200,
+            )
+        assertTrue(expenseMatchesSearchAmount(cnyHomeJpyOriginal, "1200"))
+        assertTrue(expenseMatchesSearchAmount(cnyHomeJpyOriginal, "55"))
+
+        // 同币种 legacy 行：original 腿与 home 共用一次解析，行为与 expenseMatchesAmountCents 一致。
+        val sameCurrency = expense(id = 3, category = "餐饮", expenseTime = null, amountCents = 9_900)
+            .copy(originalAmountMinor = 1_250)
+        assertTrue(expenseMatchesSearchAmount(sameCurrency, "12.5"))
+        assertFalse(expenseMatchesSearchAmount(sameCurrency, "12.345"))
     }
 
     @Test

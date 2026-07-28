@@ -64,6 +64,19 @@ data class Expense(
     // (its CreateExpense outbox row hasn't drained). Derived from
     // ``serverId == null`` in ExpenseEntity.toDomain. A synced row is false.
     val pendingSync: Boolean = false,
+    /**
+     * 服务端/缓存带来的**原始** home 币种码（PR#255 R7-2）：与 [homeCurrency]（枚举，未知码
+     * 已回落 CNY）并存，给显示侧做诚实化兜底 —— 支持集外的码经 `CurrencyDisplay.forRecord`
+     * 原样亮码而非冒 CNY 符号。仅 mapper 注入（DTO/Entity 原码）；手工构造的域对象为 null，
+     * 显示侧回落 [homeCurrency].storageKey。
+     */
+    val homeCurrencyCode: String? = null,
+    /**
+     * 服务端/缓存带来的**原始币种原码**（PR#255 R13-4）：与 [originalCurrencyCode]（枚举，
+     * 未知码已回落 CNY）并存 —— 金额编辑按 [fromStorageKeyOrNull] 严格解析，未知码禁
+     * 金额承载编辑（R7-2 home 侧同构）；mapper 注入（DTO/Entity 原码），手工构造为 null。
+     */
+    val originalCurrencyCodeRaw: String? = null,
 )
 
 /**
@@ -119,6 +132,12 @@ data class ExpenseDraft(
     val tags: String?,
     val valueScore: Int?,
     val regretScore: Int?,
+    /**
+     * 提交时 VM 已解析确认的账本币种（PR#255 R15b-1）：离线手记的乐观本地行按它落
+     * `homeCurrencyCode`（旧码恒 CNY 兜底撒谎）。不上 wire（`toManualCreateRequest` 不读）；
+     * 仅乐观投影/本地映射用。null = 非手记路径构造，映射维持 [FxContract.HomeCurrency] 兜底。
+     */
+    val ledgerHomeCurrency: CurrencyCode? = null,
 )
 
 data class ExpenseItem(

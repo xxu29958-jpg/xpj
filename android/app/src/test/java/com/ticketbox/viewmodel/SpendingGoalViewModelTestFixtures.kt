@@ -1,10 +1,40 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import java.lang.reflect.Proxy
+
+/** R12-D 三个写面（goal 新建/编辑、收入计划）的账本币种 fake：listDebts 返回带 capability
+ *  的页型（默认 CNY），其余方法不支持。 */
+internal class CapabilityDebtActions(
+    private val canModify: Boolean = true,
+    var page: DebtListPage = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY"),
+) : DebtActions by unsupportedDebtActions() {
+    var listCalls = 0
+        private set
+
+    override fun canModifyLedger(): Boolean = canModify
+
+    override suspend fun listDebts(): Result<DebtListPage> {
+        listCalls += 1
+        return Result.success(page)
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun unsupportedDebtActions(): DebtActions = Proxy.newProxyInstance(
+    DebtActions::class.java.classLoader,
+    arrayOf(DebtActions::class.java),
+) { _, method, _ ->
+    when (method.name) {
+        "toString" -> "UnsupportedDebtActions"
+        else -> throw UnsupportedOperationException(method.name)
+    }
+} as DebtActions
 
 internal data class SpendingGoalListCall(
     val month: String?,

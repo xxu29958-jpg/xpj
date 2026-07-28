@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -12,14 +12,20 @@ from app.database import get_db
 from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
-    _amount_yuan,
     _base_ctx,
+    _currency_input_view,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
     templates,
+)
+from app.services.currency_common import (
+    home_currency_code,
+    major_amount_to_minor,
+    minor_amount_value,
+    minor_unit_digits,
 )
 from app.services.income_plan_service import (
     archive_income_plan,
@@ -43,7 +49,19 @@ def _parse_yuan(raw: str, *, label: str) -> int:
         raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
     if amount < 0:
         raise AppError("invalid_request", f"{label}不能为负数。", status_code=422)
-    return int((amount * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    # R13-3：按 env home 的 minor 语义解析（JPY 零小数：整数直存、拒小数；不再硬编 ×100）。
+    home = home_currency_code()
+    digits = minor_unit_digits(home)
+    try:
+        exact = amount.quantize(Decimal(1).scaleb(-digits))
+    except InvalidOperation as exc:
+        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
+    if exact != amount:
+        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
+        raise AppError("invalid_request", f"{label}按 {home} {detail}。", status_code=422)
+    result = major_amount_to_minor(amount, home)
+    assert result is not None
+    return result
 
 
 def _parse_pay_day(raw: str) -> int:
@@ -125,10 +143,14 @@ def page_income_plans(
         selected_ledger_id=selected,
         page_title="收入记录",
     )
+    # R13-3：金额渲染/输入步进随 env home（JPY 零小数无小数位、不 ÷100）。
+    home = home_currency_code()
     ctx.update(
         plans_active=plans_active,
         plans_archived=plans_archived,
-        total_yuan=_amount_yuan(total_cents),
+        total_yuan=minor_amount_value(total_cents, home),
+        minor_label=lambda cents: minor_amount_value(cents, home),
+        currency_input=_currency_input_view(home),
         can_write=can_write,
         message=message,
         error=error,

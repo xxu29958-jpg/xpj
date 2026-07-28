@@ -42,6 +42,7 @@ from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense
 from app.services.category_service import normalize_category
+from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.exchange_rate_service import (
     BASE_CURRENCY_CODE,
     apply_currency_payload,
@@ -452,6 +453,9 @@ def import_rows(
     Rows with ``error`` set are silently skipped — the caller already
     surfaced them in the preview UI.
     """
+    # PR#255 R10①：批量边界一次 binding 校验（行内 apply_currency_payload 经
+    # binding_checked 跳过），避免每行 3 次全表 distinct 把导入打成数千次扫描。
+    assert_currency_binding_consistent(db, home_currency_code())
     inserted = 0
     now = now_utc()
     created: list[Expense] = []
@@ -477,6 +481,7 @@ def import_rows(
             expense=expense,
             payload=row,
             amount_was_explicit=row.original_currency_code == home_currency_code() and row.amount_cents is not None,
+            binding_checked=True,
         )
         db.add(expense)
         created.append(expense)

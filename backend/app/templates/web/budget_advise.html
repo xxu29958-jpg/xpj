@@ -31,11 +31,11 @@
   </div>
   <div class="dt-form-row">
     <label>储蓄目标（元）</label>
-    <input class="dt-input" type="number" name="savings_target_yuan" min="0" step="0.01" value="{{ savings_target_yuan }}">
+    <input class="dt-input" type="number" name="savings_target_yuan" min="0" step="{{ currency_input.amount_step }}" value="{{ savings_target_yuan }}">
   </div>
   <div class="dt-form-row">
     <label>备用金（元）</label>
-    <input class="dt-input" type="number" name="reserved_buffer_yuan" min="0" step="0.01" value="{{ reserved_buffer_yuan }}">
+    <input class="dt-input" type="number" name="reserved_buffer_yuan" min="0" step="{{ currency_input.amount_step }}" value="{{ reserved_buffer_yuan }}">
   </div>
   <div class="dt-actions">
     <button class="dt-btn" type="submit">重新计算</button>
@@ -78,7 +78,7 @@
       {% for s in advice.suggestions %}
       <tr>
         <td>{{ s.category if s.category is not none else '（整体）' }}</td>
-        <td class="amount">{{ home_currency_symbol }}{{ '%.2f' % (s.suggested_amount_cents / 100) }}</td>
+        <td class="amount">{{ home_currency_symbol }}{{ minor_amount_label(s.suggested_amount_cents) }}</td>
         <td>{{ s.rationale }}</td>
       </tr>
       {% endfor %}

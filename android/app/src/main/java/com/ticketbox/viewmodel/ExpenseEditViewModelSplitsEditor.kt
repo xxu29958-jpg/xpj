@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ReplaceSplitsOutcome
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
@@ -107,13 +108,18 @@ fun ExpenseEditViewModel.evenSplitAmounts() {
         val parent = state.expenseSplits?.parentAmountCents ?: return@update state
         val checked = state.splitDrafts.filter { it.included && !it.disabled }
         if (checked.isEmpty()) return@update state
+        // Parse in the expense's home currency (zero-decimal home: no ×100), matching
+        // the save path so 合计/差额 reconcile in the same minor space as the parent.
+        // R14-1：原码严格解析（raw 缺失回落枚举，未知码的保存门在 editParseCurrency 处）。
+        // R15b-2：未知码按原 minor 整数口径（JPY 代理，与 footer/回填同空间）。
+        val currency = state.expense.editDisplayParseCurrency()
         // Disabled members already on the split hold fixed amounts the user
         // can't edit — subtract them so 均分 distributes only the REMAINING
         // amount across the active members and 合计 actually reaches the parent
         // total (otherwise 差额 can never reach zero when a disabled share exists).
         val fixedDisabledTotal = state.splitDrafts
             .filter { it.disabled }
-            .sumOf { parseAmountCents(it.amountText) ?: 0L }
+            .sumOf { parseAmountCents(it.amountText, currency) ?: 0L }
         val shares = evenSplitActiveCents(parent, fixedDisabledTotal, checked.size)
         val shareByMember = checked.mapIndexed { index, draft -> draft.memberId to shares[index] }.toMap()
         val drafts = state.splitDrafts.map { draft ->
@@ -150,15 +156,22 @@ fun ExpenseEditViewModel.saveSplits() {
         showSplitsDanger(UiText.res(R.string.expense_edit_splits_not_loaded_save))
         return
     }
+    // PR#255 R10④：原码严格解析 —— record 币种在支持集外时禁金额承载编辑（同 saveItems）。
+    val currency = expense.editParseCurrency()
+    if (currency == null) {
+        showSplitsDanger(UiText.res(R.string.expense_edit_currency_unsupported))
+        return
+    }
     val draftRows = _uiState.value.splitDrafts
         .filter { (it.included || it.disabled) && it.amountText.isNotBlank() }
     // Audit P3 #11: same unparsable-amount guard as saveItems — "1.2.3" must
-    // not silently land as a ¥0 split share.
-    if (draftRows.any { parseAmountCents(it.amountText) == null }) {
+    // not silently land as a ¥0 split share. Parsed in the expense's home
+    // currency so a zero-decimal home (JPY/KRW) doesn't scale by 100.
+    if (draftRows.any { parseAmountCents(it.amountText, currency) == null }) {
         showSplitsDanger(UiText.res(R.string.expense_edit_splits_amount_unparsable))
         return
     }
-    val drafts = draftRows.map { it.toDomainDraft() }
+    val drafts = draftRows.map { it.toDomainDraft(currency) }
     viewModelScope.launch {
         _uiState.update {
             it.copy(splitsSaving = true, splitsMessage = null, splitsMessageTone = MessageTone.Neutral)
@@ -249,8 +262,8 @@ private fun ExpenseEditViewModel.buildSplitDrafts(
     return rosterDrafts + orphanDrafts
 }
 
-private fun EditableSplit.toDomainDraft(): ExpenseSplitDraft = ExpenseSplitDraft(
+private fun EditableSplit.toDomainDraft(currency: CurrencyCode): ExpenseSplitDraft = ExpenseSplitDraft(
     memberId = memberId,
-    amountCents = parseAmountCents(amountText) ?: 0L,
+    amountCents = parseAmountCents(amountText, currency) ?: 0L,
     note = null,
 )

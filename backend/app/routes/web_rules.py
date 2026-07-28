@@ -40,6 +40,12 @@ from app.services.classify_service import (
     update_rule,
     validate_rule_application_preview,
 )
+from app.services.currency_common import (
+    home_currency_code,
+    major_amount_to_minor,
+    minor_amount_value,
+    minor_unit_digits,
+)
 
 if TYPE_CHECKING:
     from app.models import CategoryRule
@@ -55,10 +61,15 @@ def _parse_optional_amount_cents(raw: str) -> int | None:
         amount = Decimal(text)
     except InvalidOperation as exc:
         raise AppError("invalid_request", "金额条件不是合法数字。", status_code=422) from exc
-    cents = int((amount * Decimal("100")).to_integral_value())
-    if cents < 0:
+    if amount < 0:
         raise AppError("invalid_request", "金额条件不能为负数。", status_code=422)
-    return cents
+    # R13-3：按 env home 的 minor 语义解析（JPY 零小数：整数直存、拒小数；不再硬编 ×100）。
+    home = home_currency_code()
+    digits = minor_unit_digits(home)
+    if amount != amount.quantize(Decimal(1).scaleb(-digits)):
+        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
+        raise AppError("invalid_request", f"金额条件按 {home} {detail}。", status_code=422)
+    return major_amount_to_minor(amount, home)
 
 
 @router.get("/rules", response_class=HTMLResponse)
@@ -113,6 +124,8 @@ def web_rules(
             limit=20,
         )
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    # R15a-3：规则金额条件回显按 env home minor 语义（JPY 零小数不 ÷100；R13-3 未竟面）。
+    ctx["minor_amount_label"] = lambda cents: minor_amount_value(cents, home_currency_code())
     ctx["rules"] = rules
     ctx["rule_applications"] = rule_applications
     ctx["preview"] = preview

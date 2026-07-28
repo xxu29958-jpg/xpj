@@ -5300,7 +5300,19 @@
         "type": "object"
       },
       "DebtListResponse": {
+        "description": "Ledger/account-scoped Debt list envelope.\n\n``home_currency_code`` repeats the installation-level currency capability at\nenvelope level (ADR-0061 C02/C03; PR#255 R6): it is the SAME server-side binding\nthe write path stamps onto each record (`currency_common.home_currency_code`),\nsurfaced here so a client looking at an EMPTY ledger can still resolve the ledger\ncurrency for first-record creation — record-level-only delivery made \"wait for\nthe first record\" circular. Clients must treat record-level and envelope values\nas one source: disagreement means binding drift (C02 forbids hot-switching) and\nwriters must fail closed. Read path is best-effort (R8-3): a misconfigured env\ndegrades the field to ``null`` instead of failing the whole list; clients\nalready fail closed on a null capability, so degrading is safe.",
         "properties": {
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/DebtResponse"
@@ -5310,7 +5322,8 @@
           }
         },
         "required": [
-          "items"
+          "items",
+          "home_currency_code"
         ],
         "title": "DebtListResponse",
         "type": "object"

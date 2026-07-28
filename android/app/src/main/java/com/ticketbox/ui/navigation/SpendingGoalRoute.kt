@@ -48,11 +48,11 @@ internal fun SpendingGoalsRoute(
             ),
             detail = viewModel(
                 key = SpendingGoalDetailViewModelKey,
-                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository),
+                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.debtRepository),
             ),
             create = viewModel(
                 key = CreateSpendingGoalViewModelKey,
-                factory = createSpendingGoalViewModelFactory(screenFactory.reportsRepository),
+                factory = createSpendingGoalViewModelFactory(screenFactory.reportsRepository, screenFactory.debtRepository),
             ),
         ),
         onBack = onBack,

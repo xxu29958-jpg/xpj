@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.annotation.StringRes
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.PendingPrimaryReviewAction
@@ -118,6 +119,7 @@ fun PendingViewModel.saveAmountDraft(expenseId: Long, originalAmountMinor: Long)
         return
     }
     val expense = _uiState.value.items.firstOrNull { it.id == expenseId }
+    if (originalCurrencyUnsupportedOf(expense)) return
     patchExpense(
         expenseId = expenseId,
         field = ReviewField.AMOUNT,
@@ -138,6 +140,7 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: 
     }
     if (expenseId in _uiState.value.actionInProgressIds) return
     val expense = _uiState.value.items.firstOrNull { it.id == expenseId }
+    if (originalCurrencyUnsupportedOf(expense)) return
     viewModelScope.launch {
         _uiState.update {
             it.copy(
@@ -430,4 +433,15 @@ internal fun sheetForReviewField(field: ReviewField, expense: Expense): PendingS
     ReviewField.AMOUNT -> PendingSheet.MissingAmount(expense)
     ReviewField.MERCHANT -> PendingSheet.QuickMerchant(expense)
     ReviewField.CATEGORY -> PendingSheet.QuickCategory(expense)
+}
+
+/** R13-5：original 原码未知（支持集外）时金额承载写被禁 —— 返回 true 并亮明示文案
+ *  （sheet 层同门已拦按钮，此为 VM 兜底防线）。 */
+private fun PendingViewModel.originalCurrencyUnsupportedOf(expense: Expense?): Boolean {
+    val raw = expense?.originalCurrencyCodeRaw
+    val unsupported = !raw.isNullOrBlank() && CurrencyCode.fromStorageKeyOrNull(raw) == null
+    if (unsupported) {
+        _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_currency_unsupported)) }
+    }
+    return unsupported
 }

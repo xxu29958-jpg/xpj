@@ -376,6 +376,8 @@
     <string name="debt_create_label_amount">金额（%1$s）</string>
     <string name="debt_create_save">保存</string>
     <string name="debt_create_submitting">保存中…</string>
+    <string name="debt_create_currency_unconfirmed">账本还没有欠款记录，无法确认账本币种口径，暂不能新建欠款。</string>
+    <string name="currency_unconfirmed_write_blocked">账本币种口径还没确认，暂时不能提交；请稍后重试。</string>
     <string name="debt_create_validation_error">请填写欠款对象和大于 0 的金额。</string>
     <string name="debt_create_added">已记录欠款。</string>
     <string name="debt_create_failed">保存失败，请稍后再试。</string>
@@ -438,6 +440,7 @@
     <string name="debt_detail_loading_body">会按当前账本重新读取最新状态。</string>
     <string name="debt_detail_load_failed_hint">刷新后再显示剩余金额、状态和可用操作。</string>
     <string name="debt_action_repayment_title">记还款</string>
+    <string name="debt_action_currency_unsupported">这笔欠款的币种暂不受支持，请升级小票夹后再操作。</string>
     <string name="debt_action_adjustment_title">调整本金</string>
     <string name="debt_action_void_title">作废欠款</string>
     <string name="debt_action_amount_label">金额（%1$s）</string>
@@ -511,6 +514,7 @@
     <string name="debt_proposal_not_party_note">这件事不是你们俩之间的，你只能看看。</string>
     <string name="debt_proposal_amount_validation">请填一个大于 0 的金额～</string>
     <string name="debt_proposal_confirm_over">收到的不能比 TA 给的那份多哦。</string>
+    <string name="debt_proposal_currency_mismatch">这笔还款与欠款的币种信息不一致，请刷新或升级小票夹后再确认。</string>
     <string name="debt_proposal_propose_done">已经发给 TA 啦，等 TA 确认一下～</string>
     <string name="debt_proposal_confirm_done">收到啦，谢谢 TA～</string>
     <string name="debt_proposal_withdraw_done">已经撤回啦。</string>

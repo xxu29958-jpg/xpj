@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -62,6 +63,24 @@ class RepaymentDraftInboxViewModelTest {
         // Only open + external/manual debts can take a direct repayment (mirrors guard_direct_fact_writable).
         assertEquals(listOf("open-external"), viewModel.state.value.targetDebts.map { it.publicId })
         assertEquals(false, viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun draftsAndTargetDebtsCarryRecordHomeCurrencyForDisplayLens() = runTest(dispatcher) {
+        // PR#255 R5 P1：草稿行金额与选债面板 remaining 走 CurrencyDisplay.forRecord(
+        // record.homeCurrencyCode) —— 钉死 VM 数据通路：两类 record 的 homeCurrencyCode
+        // 原样留在 state（JPY 不被恒 Base 的环境 display 覆盖）。
+        val draftsRepo = FakeRepaymentDraftActions(
+            listResult = Result.success(listOf(draft("d1").copy(homeCurrencyCode = "JPY"))),
+        )
+        val debtsRepo = FakeRepayableDebtActions(
+            listResult = Result.success(listOf(debt("open-external").copy(homeCurrencyCode = "JPY"))),
+        )
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        advanceUntilIdle()
+
+        assertEquals("JPY", viewModel.state.value.drafts.single().homeCurrencyCode)
+        assertEquals("JPY", viewModel.state.value.targetDebts.single().homeCurrencyCode)
     }
 
     @Test
@@ -397,11 +416,11 @@ private class FakeRepayableDebtActions(
     var listGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(): Result<List<Debt>> {
+    override suspend fun listDebts(): Result<DebtListPage> {
         // Capture at entry so a stalled load returns the snapshot it started with.
         val captured = listResult
         listGate?.await()
-        return captured
+        return captured.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = null) }
     }
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(debt(publicId))
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(debt("created"))

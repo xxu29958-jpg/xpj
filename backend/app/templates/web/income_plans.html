@@ -63,8 +63,8 @@
       </div>
     </div>
     <div class="dt-form-row">
-      <label>金额（元）</label>
-      <input class="dt-input" type="number" name="amount_yuan" step="0.01" min="0" required>
+      <label>金额（{{ currency_input.currency_symbol }}）</label>
+      <input class="dt-input" type="number" name="amount_yuan" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" placeholder="{{ currency_input.amount_placeholder }}" inputmode="{{ currency_input.inputmode }}" required>
     </div>
     <div class="dt-form-row">
       <label>发薪日 / 到账日（1-31）</label>
@@ -95,7 +95,7 @@
       <tr>
         <td>{{ plan.label }}</td>
         <td>{{ plan.source_type }}</td>
-        <td class="amount">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
+        <td class="amount">{{ home_currency_symbol }}{{ minor_label(plan.amount_cents) }}</td>
         <td>
           {% if plan.frequency == 'one_time' %}
             实际到账 · {{ income_month_label(plan.income_month) }} · {{ plan.pay_day }} 号
@@ -141,7 +141,7 @@
       <tr>
         <td class="text-muted">{{ plan.label }}</td>
         <td class="text-muted">{{ plan.source_type }}</td>
-        <td class="amount text-muted">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
+        <td class="amount text-muted">{{ home_currency_symbol }}{{ minor_label(plan.amount_cents) }}</td>
         {% if can_write %}
         <td>
           <form method="post" action="/web/income-plans/{{ plan.public_id }}/restore" class="dt-inline-form">

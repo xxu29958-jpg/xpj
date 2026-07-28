@@ -530,7 +530,9 @@ private fun AddIncomePlanSheet(
                 } else {
                     stringResource(R.string.income_plan_sheet_label_amount_monthly)
                 },
-                currency = currency.homeCurrency,
+                // R14-2：金额输入标签随草稿注入的账本 capability（VM 已解析）；未确认时
+                // 落路由 display 兜底仅作展示（写面由 VM homeCurrency=null 禁写）。
+                currency = draft.homeCurrency ?: currency.homeCurrency,
                 value = draft.amountYuanInput,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
                 enabled = !state.isSubmitting,

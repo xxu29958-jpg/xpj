@@ -3,10 +3,12 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomeSourceType
@@ -92,6 +94,9 @@ data class IncomePlanDraftUi(
     val amountYuanInput: String = "",
     val payDayInput: String = "10",
     val validationError: UiText? = null,
+    /** 账本币种（R12-D）：VM 由列表信封 capability 注入；null=未确认 → parsedAmountCents 归
+     *  null → isValid false → 禁写（不落 CNY 兜底）。 */
+    val homeCurrency: CurrencyCode? = null,
 ) {
     val isValid: Boolean
         get() = label.trim().isNotEmpty() &&
@@ -99,11 +104,13 @@ data class IncomePlanDraftUi(
             parsedPayDay() != null &&
             (frequency == IncomeFrequency.MONTHLY || parsedIncomeMonth() != null)
 
-    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）。允许 0、拒负：极小负额（如 -0.004）在分空间
-    // HALF_UP 会舍入到 0，故先按元符号拒负，保持旧「负数无效」语义、不静默当成 0 元计划。
+    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额），按账本币种扩位（R12-D：
+    // 零小数 home 不 ×100；未确认 → null 禁写）。允许 0、拒负：极小负额（如 -0.004）
+    // 在分空间 HALF_UP 会舍入到 0，故先按元符号拒负，保持旧「负数无效」语义。
     fun parsedAmountCents(): Long? {
         if (amountYuanInput.trim().startsWith('-')) return null
-        return parseAmountCents(amountYuanInput)?.takeIf { it >= 0 }
+        val currency = homeCurrency ?: return null
+        return parseAmountCents(amountYuanInput, currency)?.takeIf { it >= 0 }
     }
 
     fun parsedPayDay(): Int? {
@@ -137,6 +144,7 @@ private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
 
 class IncomePlanViewModel(
     private val repository: IncomePlanActions,
+    private val debts: DebtActions,
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
 
@@ -158,6 +166,15 @@ class IncomePlanViewModel(
                     _state.value = IncomePlanUiState(
                         canModify = access?.canModify ?: false,
                     )
+                    // R12-D + R14-6：每次账本生效/切换都重解析账本币种（共享同源裁决：
+                    // record 集合 × 信封 capability，未知/冲突 → 草稿 homeCurrency=null 禁写，
+                    // 不落 CNY 兜底）。
+                    viewModelScope.launch {
+                        val page = debts.listDebts().getOrNull()
+                        _state.update {
+                            it.copy(addDraft = it.addDraft.copy(homeCurrency = resolveLedgerCurrency(page)))
+                        }
+                    }
                     if (access != null) refresh()
                 }
         }
@@ -224,7 +241,17 @@ class IncomePlanViewModel(
             val nextDraft = when (field) {
                 IncomePlanDraftField.Label -> draft.copy(label = value)
                 IncomePlanDraftField.IncomeMonth -> draft.copy(incomeMonthInput = value)
-                IncomePlanDraftField.Amount -> draft.copy(amountYuanInput = value)
+                IncomePlanDraftField.Amount -> {
+                    // R14-2：币种已注入时即时报解析失败（JPY 下输 "12.50" 不再静默 isValid=false）。
+                    val parseFailed = draft.homeCurrency != null && value.isNotBlank() &&
+                        parseAmountCents(value, draft.homeCurrency) == null
+                    return@update state.copy(
+                        addDraft = draft.copy(
+                            amountYuanInput = value,
+                            validationError = if (parseFailed) UiText.res(R.string.expense_edit_amount_invalid) else null,
+                        ),
+                    )
+                }
                 IncomePlanDraftField.PayDay -> draft.copy(payDayInput = value)
             }
             state.copy(addDraft = nextDraft.copy(validationError = null))
@@ -247,10 +274,28 @@ class IncomePlanViewModel(
 
     fun resetDraft() {
         _state.update { it.copy(addDraft = IncomePlanDraftUi(), isSubmitting = false, addSucceeded = false) }
+        // 草稿重建后重新注入账本币种（R12-D + R14-6 共享同源裁决；不清 homeCurrency 则新草稿永远 null 禁写）。
+        viewModelScope.launch {
+            val page = debts.listDebts().getOrNull()
+            _state.update {
+                it.copy(addDraft = it.addDraft.copy(homeCurrency = resolveLedgerCurrency(page)))
+            }
+        }
     }
 
     fun submitDraft() {
         val expectedBinding = activeBinding ?: return
+        if (_state.value.addDraft.homeCurrency == null) {
+            // R12-D：币种未确认禁写（不落 CNY 兜底）。
+            _state.update {
+                it.copy(
+                    addDraft = it.addDraft.copy(
+                        validationError = UiText.res(R.string.currency_unconfirmed_write_blocked),
+                    ),
+                )
+            }
+            return
+        }
         val draft = _state.value.addDraft.toRepositoryDraftOrNull()
         if (draft == null) {
             _state.update {
@@ -272,7 +317,7 @@ class IncomePlanViewModel(
                     _state.update {
                         it.copy(
                             isSubmitting = false,
-                            addDraft = IncomePlanDraftUi(),
+                            addDraft = IncomePlanDraftUi(homeCurrency = it.addDraft.homeCurrency),
                             flashMessage = UiText.res(R.string.income_plan_added),
                             addSucceeded = true,
                         )

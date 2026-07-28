@@ -43,7 +43,6 @@ import com.ticketbox.ui.design.tabularNum
 @Composable
 internal fun DebtPlanProgressCard(
     evaluation: DebtRepaymentEvaluation,
-    currency: CurrencyDisplay,
     canModify: Boolean,
     onSetTargetDate: () -> Unit,
 ) {
@@ -74,7 +73,7 @@ internal fun DebtPlanProgressCard(
                 ),
             )
             if (evaluation.sharedHomeCurrencyCode != null) {
-                PlanAmountLine(evaluation, currency)
+                PlanAmountLine(evaluation)
             }
             if (evaluation.composition == DebtGoalComposition.External) {
                 DebtExternalKpiBlock(
@@ -194,7 +193,10 @@ private fun PlanCountHeadline(evaluation: DebtRepaymentEvaluation) {
 
 /** 金额副文案（小字弱化，tabularNum）：仅同一本位币时显示（混币整条隐藏由调用方守）；成员**永不带「欠」字**（§6.2）。 */
 @Composable
-private fun PlanAmountLine(evaluation: DebtRepaymentEvaluation, currency: CurrencyDisplay) {
+private fun PlanAmountLine(evaluation: DebtRepaymentEvaluation) {
+    // R14-3：record 口径——共享码由服务端 evaluation 给出（调用方已守非空），未知码原样亮码，
+    // 不用恒 Base 的环境 display。
+    val currency = CurrencyDisplay.forRecord(evaluation.sharedHomeCurrencyCode)
     val total = formatDisplayAmount(evaluation.principalSumCents, currency)
     val remaining = formatDisplayAmount(evaluation.remainingSumCents, currency)
     val isMember = evaluation.composition == DebtGoalComposition.Member
@@ -224,7 +226,6 @@ private fun PlanAmountLine(evaluation: DebtRepaymentEvaluation, currency: Curren
 @Composable
 internal fun DebtGoalLinkRow(
     link: DebtGoalLink,
-    currency: CurrencyDisplay,
     onClick: (String) -> Unit,
     showDivider: Boolean = true,
 ) {
@@ -269,14 +270,14 @@ internal fun DebtGoalLinkRow(
                     height = AppSpacing.miniGap,
                 )
             }
-            DebtGoalLinkNote(link = link, currency = currency, isMember = isMember)
+            DebtGoalLinkNote(link = link, isMember = isMember)
         }
     }
 }
 
 /** 每笔行的一句话：成员行暖语（已两清 / 进度程度语 / 这件事不算了），外部行会计 meta。 */
 @Composable
-private fun DebtGoalLinkNote(link: DebtGoalLink, currency: CurrencyDisplay, isMember: Boolean) {
+private fun DebtGoalLinkNote(link: DebtGoalLink, isMember: Boolean) {
     if (isMember) {
         val res = when {
             link.isVoided -> R.string.debt_link_member_note_voided
@@ -289,6 +290,8 @@ private fun DebtGoalLinkNote(link: DebtGoalLink, currency: CurrencyDisplay, isMe
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     } else {
+        // R14-3：record 口径（每笔关联欠款自带 homeCurrencyCode，未知码原样亮码）。
+        val currency = CurrencyDisplay.forRecord(link.homeCurrencyCode)
         Text(
             stringResource(
                 R.string.debt_goal_link_meta,

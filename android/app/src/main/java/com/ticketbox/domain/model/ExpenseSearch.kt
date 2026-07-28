@@ -1,37 +1,113 @@
 package com.ticketbox.domain.model
 
 import java.math.BigDecimal
+import java.text.DecimalFormatSymbols
 import java.time.ZoneId
+import java.util.Locale
 
 // Global-search query domain: amount parsing, amount matching, filter-chip
 // facets and recent-search folding. Split from ExpenseFilters.kt to keep both
 // files inside the detekt functions-per-file budget.
 
-/** Currency symbols / grouping marks a user may type before an amount in the
- *  global-search box ("¥12.50", "￥12", "1,280"). Stripped before parsing. */
-private val SEARCH_AMOUNT_NOISE_REGEX = Regex("[¥￥$＄,，\\s]")
+/** 全角符号别名：从各渠道复制的金额文本可能带全角 ￥/＄，与半角同义归一化。 */
+private val FULLWIDTH_SYMBOL_ALIASES = mapOf('¥' to '￥', '$' to '＄')
+
+/** 全角分组逗号（中文键盘/复制文本常见，如 ￥1，280）：解析前归一化为 locale 分组符。 */
+private const val FULLWIDTH_GROUPING_COMMA = '，'
+
+/** 剥掉 [currency] 自己的币种符号（含全角别名，前/后缀皆可）与全部空白。 */
+private fun stripSearchAmountContext(query: String, currency: CurrencyCode): String {
+    var text = query.trim().replace(currency.symbol, "")
+    FULLWIDTH_SYMBOL_ALIASES[currency.symbol.singleOrNull()]?.let { alias ->
+        text = text.replace(alias.toString(), "")
+    }
+    return text.filterNot(Char::isWhitespace)
+}
 
 /**
- * Parse a global-search query into an exact `amount_cents` value, or null when
- * the query is not a clean money amount. Money discipline: yuan → cents via
- * [BigDecimal] (never float), reusing the project's "× 100 in one place" rule.
+ * 按 [currency] 的 locale 规则把已剥符号的金额文本归一化为 BigDecimal 可读的
+ * ``digits[.fraction]`` 形态（PR#255 P2-1）：小数符/分组符取自该币种 `localeTag`
+ * 的 [DecimalFormatSymbols]，与显示侧 formatAmount 同源 —— 因此 ``€1.234,50``
+ * （de-DE：点分组、逗号小数）、``HK$1,234.50``、``₩1,200`` 这类从 Android 自己的
+ * 格式化器复制出来的值都能解析，EUR 无符号的 ``12,50`` 也不会被误读成 1,250。
  *
- * A query qualifies only when, after stripping a leading currency symbol /
- * grouping marks, what remains is a non-negative decimal with **at most two**
- * fractional digits ("12", "12.5", "¥12.50", "128"). More than two fraction
- * digits ("12.345") or any non-numeric residue yields null so the term falls
- * back to pure text matching rather than silently rounding to a cent value the
- * user never typed.
+ * 分隔符判定：两种都出现时靠右的是小数符；只出现分组符时，仅当整体是合法分组
+ * 形态（``1.234`` / ``1,234,567``）才按分组剥离，否则按小数符对待 —— de-DE
+ * 用户手输点号小数 ``12.50`` 不会被当分组放大成 1250。全角分组逗号 `，`（中文
+ * 键盘常见）先归一化为 locale 分组符再参与判定。返回 null = 不是干净金额。
  */
-fun parseSearchAmountCents(query: String): Long? {
-    val cleaned = query.trim().replace(SEARCH_AMOUNT_NOISE_REGEX, "")
-    if (cleaned.isBlank()) return null
-    val fractionDigits = cleaned.substringAfter('.', "").length
-    if (fractionDigits > 2) return null
+private fun normalizeSearchAmountDigits(query: String, currency: CurrencyCode): String? {
+    val stripped = stripSearchAmountContext(query, currency)
+    if (stripped.isEmpty()) return null
+    val symbols = DecimalFormatSymbols.getInstance(Locale.forLanguageTag(currency.localeTag))
+    val decimal = symbols.decimalSeparator
+    val grouping = symbols.groupingSeparator
+    // 全角逗号先归一化为 locale 分组符再判定：被替换的 SEARCH_AMOUNT_NOISE_REGEX
+    // 显式接受 `，`（￥1，280），新正则拒绝它是中文键盘输入的回归（PR#255 R4 P2）。
+    // 同类全角符号审计：全角句点/全角数字旧实现同样拒绝（非回归，不扩面），全角
+    // 空格已由 isWhitespace 剥离，故只归一化逗号。
+    val normalized = stripped.replace(FULLWIDTH_GROUPING_COMMA, grouping)
+    val hasDecimal = normalized.indexOf(decimal) >= 0
+    val hasGrouping = decimal != grouping && normalized.indexOf(grouping) >= 0
+
+    var text = normalized
+    val decimalChar: Char? = when {
+        hasDecimal && hasGrouping -> {
+            // 两种分隔符都在：靠右的是小数符，另一种整组剥掉。
+            val resolved = if (normalized.lastIndexOf(decimal) > normalized.lastIndexOf(grouping)) decimal else grouping
+            val groupingChar = if (resolved == decimal) grouping else decimal
+            text = text.replace(groupingChar.toString(), "")
+            resolved
+        }
+        hasGrouping -> {
+            val groupingPattern = Regex("^\\d{1,3}(\\Q$grouping\\E\\d{3})+$")
+            if (groupingPattern.matches(text)) {
+                text = text.replace(grouping.toString(), "")
+                null
+            } else {
+                grouping
+            }
+        }
+        hasDecimal -> decimal
+        else -> null
+    }
+    if (decimalChar != null) {
+        if (text.count { it == decimalChar } != 1) return null
+        text = text.replace(decimalChar, '.')
+    }
+    return text.takeIf { it.matches(Regex("^\\d+(\\.\\d+)?$")) }
+}
+
+/**
+ * Parse a global-search query into an exact minor-unit amount value, or null when
+ * the query is not a clean money amount. Money discipline: major → minor via
+ * [BigDecimal] (never float), scaled by [currency]'s minor-unit digits — a JPY-home
+ * user typing "1200" means ¥1200 (minor 1200), not 120000.
+ *
+ * [currency] selects both the minor-unit scale and the display conventions that
+ * are normalized away first: its own symbol (half/full-width, prefix or suffix)
+ * and its locale's grouping/decimal separators (see [normalizeSearchAmountDigits]).
+ * Other currencies' symbols are deliberately NOT stripped, so a formatted value
+ * can only parse on its own currency's leg ("HK$1,234.50" never hits a USD leg).
+ *
+ * A query qualifies only when the normalized residue is a non-negative decimal
+ * with **at most [CurrencyCode.minorUnitDigits]** fractional digits ("12", "12.5",
+ * "¥12.50", "128" for a 2-digit currency; integers only for JPY/KRW). More
+ * fraction digits ("12.345", or any fraction under a zero-decimal currency) or
+ * any non-numeric residue yields null so the term falls back to pure text
+ * matching rather than silently rounding to a minor value the user never typed.
+ */
+fun parseSearchAmountCents(
+    query: String,
+    currency: CurrencyCode = FxContract.HomeCurrency,
+): Long? {
+    val normalized = normalizeSearchAmountDigits(query, currency) ?: return null
+    val fractionDigits = normalized.substringAfter('.', "").length
+    if (fractionDigits > currency.minorUnitDigits) return null
     return runCatching {
-        val decimal = BigDecimal(cleaned)
+        val decimal = BigDecimal(normalized)
         if (decimal.signum() < 0) return null
-        decimal.movePointRight(2).longValueExact()
+        decimal.movePointRight(currency.minorUnitDigits).longValueExact()
     }.getOrNull()
 }
 
@@ -45,6 +121,12 @@ fun expenseMatchesAmountCents(expense: Expense, amountCents: Long): Boolean =
     expense.amountCents == amountCents ||
         expense.homeAmountCents == amountCents ||
         expense.originalAmountMinor == amountCents
+
+/** Convenience overload for single-shot callers/tests: parses [query] once
+ *  （含 R14-4b 尾部显式码直查）, then runs the cached/explicit match above. Hot paths
+ *  (global search) must pre-parse via [parseSearchAmountsByCurrency] instead. */
+fun expenseMatchesSearchAmount(expense: Expense, query: String): Boolean =
+    expenseMatchesSearchAmount(expense, parseSearchAmountsByCurrency(query))
 
 /**
  * Distinct ``yyyy-MM`` ledger months present in [expenses], newest first —

@@ -109,14 +109,17 @@ internal fun DebtInstallmentPeriodField(kind: String, periodInput: String, onVal
  * 详情屏的分期计划卡 item：仅对**进行中且已排期**的 installment 外部债渲染（[Debt.isInstallmentScheduled]）。
  * 已结清 / 作废债不显示（合约还清日对已早还清的债是未来值，显示会矛盾；状态以摘要卡的状态徽章为准）。
  */
-fun LazyListScope.debtInstallmentItem(debt: Debt, currency: CurrencyDisplay) {
+fun LazyListScope.debtInstallmentItem(debt: Debt) {
     if (!shouldShowInstallmentCard(debt)) return
-    item { DebtInstallmentCard(debt = debt, currency = currency) }
+    item { DebtInstallmentCard(debt = debt) }
 }
 
 @Composable
-private fun DebtInstallmentCard(debt: Debt, currency: CurrencyDisplay) {
+private fun DebtInstallmentCard(debt: Debt) {
     val count = debt.installmentCount ?: return
+    // 每期金额按 record 自带 homeCurrencyCode 渲染（PR#255 R6 P1-2）：路由级环境 display
+    // 恒 Base，JPY 5 万分 12 期会显示成 ¥41.67/期而非 ¥4,167/期（与摘要卡同一 D8 范式）。
+    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
     val period = debt.installmentPeriodMonths
     val (paidPeriods, totalPeriods) = installmentProgressPair(debt.installmentPaidCount, count)
     val scheduleText = if (period == null || period == 1L) {
@@ -150,7 +153,7 @@ private fun DebtInstallmentCard(debt: Debt, currency: CurrencyDisplay) {
         Text(
             stringResource(
                 R.string.debt_installment_per_period,
-                formatDisplayAmount(installmentPerPeriodCents(debt.principalAmountCents, count), currency),
+                formatDisplayAmount(installmentPerPeriodCents(debt.principalAmountCents, count), recordDisplay),
             ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

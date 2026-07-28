@@ -73,6 +73,8 @@ class RepaymentMatchCandidate:
     counterparty_label: str | None
     remaining_amount_cents: int
     row_version: int = 0
+    # R13-8c：候选行自带 record 冻结币种（web 渲染与 confirm 比对用，不吃 env 兜底）。
+    home_currency_code: str = ""
 
 
 def list_repayment_match_candidates(db: Session, *, tenant_id: str) -> list[RepaymentMatchCandidate]:
@@ -104,6 +106,7 @@ def list_repayment_match_candidates(db: Session, *, tenant_id: str) -> list[Repa
                 counterparty_label=debt.counterparty_label,
                 remaining_amount_cents=remaining,
                 row_version=debt.row_version,
+                home_currency_code=debt.home_currency_code,
             )
         )
     return candidates

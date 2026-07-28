@@ -47,11 +47,11 @@ import kotlin.math.roundToInt
  * [DebtSummaryRow] 与 DebtGoalLabels 的 [DebtStatusBadge]。
  */
 @Composable
-internal fun MemberSharedThingCard(debt: Debt, currency: CurrencyDisplay) {
+internal fun MemberSharedThingCard(debt: Debt) {
     // §2.6 外币防御：成员债当前必是 home-shape (slice4 把 received Debt 冻结成严格本位币)，但若未来放开
     // 外币 member Debt，关系叙事的"无金额主句 + 单币进度"语义不再成立 → 退回会计卡的中性金额渲染。
     if (debt.originalCurrencyCode != null && debt.originalCurrencyCode != debt.homeCurrencyCode) {
-        DebtSummaryCard(debt = debt, currency = currency)
+        DebtSummaryCard(debt = debt)
         return
     }
     val ratio = communalRatio(debt.paidAmountCents, debt.principalAmountCents)
@@ -88,7 +88,7 @@ internal fun MemberSharedThingCard(debt: Debt, currency: CurrencyDisplay) {
             }
             Spacer(Modifier.size(AppSpacing.compactGap))
             HorizontalDivider()
-            MemberDebtDetailExpander(debt = debt, currency = currency)
+            MemberDebtDetailExpander(debt = debt)
         }
     }
 }
@@ -118,7 +118,10 @@ private fun CommunalProgressBar(ratio: Float) {
 
 /** "看看账"可展开明细：只两个真实数 (一共/已对上) + 状态徽章，无 remaining 欠条行 (§2.3 businesslike F4)。 */
 @Composable
-private fun MemberDebtDetailExpander(debt: Debt, currency: CurrencyDisplay) {
+private fun MemberDebtDetailExpander(debt: Debt) {
+    // 与 DebtSummaryCard 同一 record 口径（PR#255 R5 P1）：环境 display 恒 Base，必须按
+    // debt.homeCurrencyCode 渲染，否则 JPY/KRW 欠款金额小数位走样。
+    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
     var expanded by rememberSaveable { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = AppSpacing.smallGap),
@@ -141,12 +144,12 @@ private fun MemberDebtDetailExpander(debt: Debt, currency: CurrencyDisplay) {
         Column(modifier = Modifier.fillMaxWidth()) {
             DebtSummaryRow(
                 label = stringResource(R.string.debt_member_detail_total),
-                value = formatDisplayAmount(debt.principalAmountCents, currency),
+                value = formatDisplayAmount(debt.principalAmountCents, recordDisplay),
             )
             Spacer(Modifier.size(AppSpacing.smallGap))
             DebtSummaryRow(
                 label = stringResource(R.string.debt_member_detail_paid),
-                value = formatDisplayAmount(debt.paidAmountCents, currency),
+                value = formatDisplayAmount(debt.paidAmountCents, recordDisplay),
             )
             Spacer(Modifier.size(AppSpacing.smallGap))
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

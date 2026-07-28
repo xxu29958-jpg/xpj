@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
@@ -74,7 +75,6 @@ private const val DebtDetailFlashDismissMillis = 4000L
 fun DebtDetailScreen(
     viewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
-    currency: CurrencyDisplay,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -101,13 +101,11 @@ fun DebtDetailScreen(
         state = state,
         proposalState = proposalState,
         proposalViewModel = proposalViewModel,
-        currency = currency,
         callbacks = callbacks,
     )
     if (state.activeAction != null) {
         DebtActionSheet(
             state = state,
-            currency = currency,
             viewModel = viewModel,
             onClose = viewModel::dismissAction,
         )
@@ -115,9 +113,8 @@ fun DebtDetailScreen(
     if (debt?.isMember == true && proposalState.activeForm != null) {
         ProposalFormSheet(
             state = proposalState,
-            currency = currency,
             viewModel = proposalViewModel,
-            expectedRowVersion = debt.rowVersion,
+            debt = debt,
             onClose = proposalViewModel::dismissForm,
         )
     }
@@ -151,7 +148,11 @@ private fun DebtDetailEffects(
 // Member debt routes to MemberSharedThingCard; this businesslike accounting card serves external
 // debt (unchanged) and the member foreign-currency defensive fallback (§2.6) — hence internal.
 @Composable
-internal fun DebtSummaryCard(debt: Debt, currency: CurrencyDisplay) {
+internal fun DebtSummaryCard(debt: Debt) {
+    // 金额全部按 record 自身 homeCurrencyCode 渲染（CurrencyDisplay.forRecord）：路由级环境
+    // display 恒 Base，JPY/KRW 欠款会把零小数 minor 按两位小数显示（PR#255 R5 P1，与解析
+    // 同源的 D8 范式）。
+    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
     AppSectionGroup(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
@@ -163,18 +164,18 @@ internal fun DebtSummaryCard(debt: Debt, currency: CurrencyDisplay) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            formatDisplayAmount(debt.remainingAmountCents, currency),
+            formatDisplayAmount(debt.remainingAmountCents, recordDisplay),
             style = MaterialTheme.typography.headlineMedium.tabularNum(),
             fontWeight = FontWeight.SemiBold,
         )
         HorizontalDivider()
         DebtSummaryRow(
             label = stringResource(R.string.debt_detail_principal),
-            value = formatDisplayAmount(debt.principalAmountCents, currency),
+            value = formatDisplayAmount(debt.principalAmountCents, recordDisplay),
         )
         DebtSummaryRow(
             label = stringResource(R.string.debt_detail_paid),
-            value = formatDisplayAmount(debt.paidAmountCents, currency),
+            value = formatDisplayAmount(debt.paidAmountCents, recordDisplay),
         )
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -223,30 +224,37 @@ internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActi
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             showTopDivider = false,
         ) {
-            DebtActionButtons(onAction = onAction)
+            DebtActionButtons(
+                onAction = onAction,
+                // R10⑤：record 币种未知（支持集外）只禁金额动作（还款/调整需币种解析），
+                // Void 不带金额（仅 rowVersion+reason）必须保活——否则用户失去作废错账的安全出口。
+                amountActionsEnabled = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) != null,
+            )
         }
     }
 }
 
 @Composable
-private fun DebtActionButtons(onAction: (DebtAction) -> Unit) {
-    AppAdaptiveEditActionLayout(actionCount = 3, compact = false) { mode ->
+private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabled: Boolean) {
+    AppAdaptiveEditActionLayout(actionCount = if (amountActionsEnabled) 3 else 1, compact = false) { mode ->
         when (mode) {
             AppAdaptiveEditActionMode.Stacked -> Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
-                AppPrimaryButton(
-                    text = stringResource(R.string.debt_action_repayment_title),
-                    icon = Icons.Filled.Check,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onAction(DebtAction.Repayment) },
-                )
-                QuietOutlinedButton(
-                    text = stringResource(R.string.debt_action_adjustment_title),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onAction(DebtAction.Adjustment) },
-                )
+                if (amountActionsEnabled) {
+                    AppPrimaryButton(
+                        text = stringResource(R.string.debt_action_repayment_title),
+                        icon = Icons.Filled.Check,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onAction(DebtAction.Repayment) },
+                    )
+                    QuietOutlinedButton(
+                        text = stringResource(R.string.debt_action_adjustment_title),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onAction(DebtAction.Adjustment) },
+                    )
+                }
                 AppOutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = { onAction(DebtAction.Void) },
@@ -260,15 +268,17 @@ private fun DebtActionButtons(onAction: (DebtAction) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
             ) {
-                AppPrimaryButton(
-                    text = stringResource(R.string.debt_action_repayment_title),
-                    icon = Icons.Filled.Check,
-                    onClick = { onAction(DebtAction.Repayment) },
-                )
-                QuietOutlinedButton(
-                    text = stringResource(R.string.debt_action_adjustment_title),
-                    onClick = { onAction(DebtAction.Adjustment) },
-                )
+                if (amountActionsEnabled) {
+                    AppPrimaryButton(
+                        text = stringResource(R.string.debt_action_repayment_title),
+                        icon = Icons.Filled.Check,
+                        onClick = { onAction(DebtAction.Repayment) },
+                    )
+                    QuietOutlinedButton(
+                        text = stringResource(R.string.debt_action_adjustment_title),
+                        onClick = { onAction(DebtAction.Adjustment) },
+                    )
+                }
                 AppOutlinedButton(
                     onClick = { onAction(DebtAction.Void) },
                     options = AppOutlinedButtonOptions(danger = true),
@@ -300,7 +310,6 @@ internal fun DebtNoteCard(text: String) {
 @Composable
 private fun DebtActionSheet(
     state: DebtDetailUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtDetailViewModel,
     onClose: () -> Unit,
 ) {
@@ -308,7 +317,6 @@ private fun DebtActionSheet(
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
         DebtActionForm(
             state = state,
-            currency = currency,
             viewModel = viewModel,
             onSubmit = viewModel::submit,
             onCancel = onClose,
@@ -319,7 +327,6 @@ private fun DebtActionSheet(
 @Composable
 private fun DebtActionForm(
     state: DebtDetailUiState,
-    currency: CurrencyDisplay,
     viewModel: DebtDetailViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
@@ -330,7 +337,9 @@ private fun DebtActionForm(
             AppAmountInput(
                 state = AppAmountInputState(
                     label = stringResource(debtActionAmountLabelRes(action)),
-                    currency = currency.homeCurrency,
+                    // 显示与解析同源于 record 币种（state.amountInputCurrency），
+                    // 不读恒 Base 的环境 display（PR#255 P1）。
+                    currency = state.amountInputCurrency,
                     value = state.amountInput,
                     placeholder = stringResource(R.string.components_amount_input_placeholder),
                     isError = state.validationError != null,

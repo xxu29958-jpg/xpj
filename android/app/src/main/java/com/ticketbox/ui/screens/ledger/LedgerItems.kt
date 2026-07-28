@@ -32,7 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
@@ -40,6 +40,7 @@ import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
@@ -271,7 +272,7 @@ internal fun LedgerExpenseCard(
                 ) {
                     LedgerAmountOrPending(
                         amountCents = expense.amountCents,
-                        currency = expense.homeCurrency,
+                        display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
@@ -343,7 +344,7 @@ internal fun LedgerExpenseListRow(
             }
             LedgerAmountOrPending(
                 amountCents = expense.amountCents,
-                currency = expense.homeCurrency,
+                display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
                 modifier = Modifier.widthIn(
                     min = AppAdaptiveAmountRowDefaults.statusMinWidth,
                     max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
@@ -427,7 +428,7 @@ internal fun LedgerExpenseTableRow(
             action = { amountModifier, _ ->
                 LedgerAmountOrPending(
                     amountCents = expense.amountCents,
-                    currency = expense.homeCurrency,
+                    display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
                     modifier = amountModifier,
                 )
             },
@@ -439,14 +440,14 @@ internal fun LedgerExpenseTableRow(
 @Composable
 private fun LedgerAmountOrPending(
     amountCents: Long?,
-    currency: CurrencyCode,
+    display: CurrencyDisplay,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.CenterEnd) {
         amountCents?.let {
             AppEndAlignedAmountText(
                 modifier = Modifier.fillMaxWidth(),
-                text = formatAmount(it, currency),
+                text = formatDisplayAmount(it, display),
                 role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
             )

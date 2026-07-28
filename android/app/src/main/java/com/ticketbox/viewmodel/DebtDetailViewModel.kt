@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +42,25 @@ data class DebtDetailUiState(
     val validationError: UiText? = null,
     val isSubmitting: Boolean = false,
     val flashMessage: UiText? = null,
-)
+) {
+    /**
+     * 金额输入框的显示/解析同源币种：本笔欠款的服务端 `homeCurrencyCode`（JPY 零小数
+     * 整数显示整数），未加载时落 display-home 兜底。显示侧（DebtActionForm 标签）与
+     * 解析侧（[DebtDetailViewModel.submit]）都必须从这一条派生，禁止再读恒 Base 的
+     * 环境 CurrencyDisplay（否则 JPY 欠款显示 ¥500.00 却按 JPY 实扣 500，见 PR#255 P1）。
+     */
+    val amountInputCurrency: CurrencyCode
+        get() = debt?.let { CurrencyCode.fromStorageKey(it.homeCurrencyCode) } ?: FxContract.HomeCurrency
+
+    /**
+     * record 币种是否在客户端支持集外（PR#255 R7-2 / R10⑤）：true 时**金额动作**（还款/调整）
+     * 禁用（DebtActionPanel 同条件门 + [DebtDetailViewModel.submit] fail-closed 双防）——
+     * 未知码禁落 CNY 解析（零小数币种的 "1200" 会被放大成 120000 minor，100×）；
+     * Void 不带金额解析，不在禁用面。
+     */
+    val currencyUnsupported: Boolean
+        get() = debt?.let { CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode) == null } == true
+}
 
 /** The three direct fact writes a detail action panel can submit (ADR-0049 §3.1 / §3.3 / §3.5). */
 enum class DebtAction { Repayment, Adjustment, Void }
@@ -187,9 +207,18 @@ class DebtDetailViewModel(
         val current = _state.value
         val debt = current.debt ?: return
         val action = current.activeAction ?: return
-        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；sign-agnostic，>0 magnitude 由
+        // R10⑤：Void 不带金额解析（仅 rowVersion+reason），未知码下保活；金额动作（还款/调整）
+        // 维持 R7-2 fail closed —— fromStorageKey 的静默 Default 回落会把零小数币种的输入
+        // 放大 100×（"1200" → 120000 minor）。
+        val currency = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode)
+        if (action != DebtAction.Void && currency == null) {
+            _state.update { it.copy(validationError = UiText.res(R.string.debt_action_currency_unsupported)) }
+            return
+        }
+        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；按本笔欠款服务端
+        // homeCurrencyCode 扩位（JPY 零小数币种不 ×100）。sign-agnostic，>0 magnitude 由
         // validateDebtAction 按动作类型校验（调整的正负来自 adjustmentIncrease 开关）。
-        val amountCents = parseAmountCents(current.amountInput)
+        val amountCents = currency?.let { parseAmountCents(current.amountInput, it) }
         val reason = current.reasonInput.trim()
         validateDebtAction(action, amountCents, reason)?.let { errorRes ->
             _state.update { it.copy(validationError = UiText.res(errorRes)) }

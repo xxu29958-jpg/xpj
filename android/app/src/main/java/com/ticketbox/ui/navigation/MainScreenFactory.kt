@@ -12,6 +12,7 @@ import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.RepaymentDraftRepository
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.TagRepository
+import com.ticketbox.viewmodel.RepositoryViewModelRepositories
 import com.ticketbox.viewmodel.repositoryViewModelFactory as createRepositoryViewModelFactory
 
 internal class MainScreenFactory(
@@ -38,19 +39,25 @@ internal class MainScreenFactory(
     val appearanceViewModelFactory: ViewModelProvider.Factory get() = viewModelFactories.appearanceViewModelFactory
 
     val repositoryViewModelFactory: ViewModelProvider.Factory = createRepositoryViewModelFactory(
-        repository = repositories.repository,
-        recurringRepository = repositories.recurringRepository,
-        budgetRepository = repositories.budgetRepository,
-        reportsRepository = repositories.reportsRepository,
+        RepositoryViewModelRepositories(
+            repository = repositories.repository,
+            recurringRepository = repositories.recurringRepository,
+            budgetRepository = repositories.budgetRepository,
+            reportsRepository = repositories.reportsRepository,
+            debtRepository = repositories.debtRepository,
+        ),
     )
 
     fun repositoryViewModelFactory(
         onExpenseDataChanged: () -> Unit,
     ): ViewModelProvider.Factory = createRepositoryViewModelFactory(
-        repository = repositories.repository,
-        recurringRepository = repositories.recurringRepository,
-        budgetRepository = repositories.budgetRepository,
-        reportsRepository = repositories.reportsRepository,
+        RepositoryViewModelRepositories(
+            repository = repositories.repository,
+            recurringRepository = repositories.recurringRepository,
+            budgetRepository = repositories.budgetRepository,
+            reportsRepository = repositories.reportsRepository,
+            debtRepository = repositories.debtRepository,
+        ),
         onExpenseDataChanged = onExpenseDataChanged,
     )
 }

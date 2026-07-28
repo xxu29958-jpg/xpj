@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -38,7 +37,6 @@ import com.ticketbox.viewmodel.ReceivablesViewModel
 @Composable
 fun ReceivablesScreen(
     viewModel: ReceivablesViewModel,
-    currency: CurrencyDisplay,
     onOpenReceivable: (Debt) -> Unit,
     onBack: () -> Unit,
     chromeOverride: RelationsListChrome? = null,
@@ -77,14 +75,12 @@ fun ReceivablesScreen(
         }
         receivablesSection(
             state = state,
-            currency = currency,
             onOpenReceivable = onOpenReceivable,
         )
     }
 }
 private fun LazyListScope.receivablesSection(
     state: ReceivablesUiState,
-    currency: CurrencyDisplay,
     onOpenReceivable: (Debt) -> Unit,
 ) {
     val bodyState = readableListBodyState(
@@ -103,7 +99,6 @@ private fun LazyListScope.receivablesSection(
     }
     debtRowsSection(
         debts = state.receivables,
-        currency = currency,
         onOpenDebt = onOpenReceivable,
     )
 }

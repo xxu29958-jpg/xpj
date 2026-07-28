@@ -17,6 +17,7 @@ from app.fx_constants import (
 )
 from app.ledger_scope import ledger_scoped_select
 from app.models import ExchangeRate, Expense
+from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import (
     RATE_QUANT,
     format_decimal_rate,
@@ -248,6 +249,7 @@ def apply_currency_payload(
     expense: Expense,
     payload: CurrencyPayload,
     amount_was_explicit: bool,
+    binding_checked: bool = False,
 ) -> None:
     has_original_fields = any(
         value is not None
@@ -262,18 +264,23 @@ def apply_currency_payload(
             _payload_attr(payload, "exchange_rate_date"),
         )
     )
+    if not has_original_fields and not amount_was_explicit:
+        # R10②：纯元数据维护不读 env、不过门（不碰币种快照，漂移/配错 env 不拖死它）。
+        return
     home = home_currency_code()
+    # R9 门（漂移 fail closed）；R10① 批量路径批首已校验一次，经 binding_checked 跳过。
+    if not binding_checked:
+        assert_currency_binding_consistent(db, home)
     if not has_original_fields:
         amount_cents = _payload_attr(payload, "amount_cents")
-        if amount_was_explicit:
-            expense.amount_cents = amount_cents
-            expense.home_currency_code = home
-            expense.original_currency_code = home
-            expense.original_amount_minor = amount_cents
-            expense.exchange_rate_to_cny = Decimal("1") if amount_cents is not None else None
-            expense.exchange_rate_date = default_rate_date(expense.expense_time) if amount_cents is not None else None
-            expense.exchange_rate_source = FX_SOURCE_BASE if amount_cents is not None else None
-            expense.fx_status = FX_STATUS_READY
+        expense.amount_cents = amount_cents
+        expense.home_currency_code = home
+        expense.original_currency_code = home
+        expense.original_amount_minor = amount_cents
+        expense.exchange_rate_to_cny = Decimal("1") if amount_cents is not None else None
+        expense.exchange_rate_date = default_rate_date(expense.expense_time) if amount_cents is not None else None
+        expense.exchange_rate_source = FX_SOURCE_BASE if amount_cents is not None else None
+        expense.fx_status = FX_STATUS_READY
         return
 
     code = _payload_original_currency(payload, expense)

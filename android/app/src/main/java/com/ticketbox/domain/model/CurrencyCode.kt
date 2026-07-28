@@ -35,5 +35,16 @@ enum class CurrencyCode(
             val normalized = value.trim().uppercase()
             return entries.firstOrNull { it.storageKey == normalized } ?: Default
         }
+
+        /**
+         * 严格解析（PR#255 R7-2）：仅支持集内的 storageKey 得币种；null/blank/未知码归 null，
+         * 不做 [fromStorageKey] 的静默 [Default] 回落。写路径（解析/校验/裁决）一律用本变体 ——
+         * 未知 record 币种落 CNY 解析会把零小数币种的 "1200" 放大成 120000 minor（100×）。
+         */
+        fun fromStorageKeyOrNull(value: String?): CurrencyCode? {
+            if (value.isNullOrBlank()) return null
+            val normalized = value.trim().uppercase()
+            return entries.firstOrNull { it.storageKey == normalized }
+        }
     }
 }

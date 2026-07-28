@@ -10,6 +10,7 @@ import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.data.repository.changesAdvisorPayloadAgainst
 import com.ticketbox.domain.model.BillSplitSent
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -17,13 +18,13 @@ import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
-import java.math.BigDecimal
-import java.math.RoundingMode
+import com.ticketbox.ui.components.formatMinorAmountInput
 import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -818,12 +819,25 @@ class ExpenseEditViewModel(
         }
         return true
     }
+}
 
-    /** Yuan-text rendering shared by the items / splits editor extension files. */
-    internal fun centsToYuanText(cents: Long?): String {
-        if (cents == null) return ""
-        return BigDecimal(abs(cents)).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
+/**
+ * Minor-unit → 输入框主单位文本，items / splits 编辑器扩展共用。按当前票据的服务端
+ * `homeCurrency` 渲染（JPY 等零小数 home 不 ÷100），与保存侧的解析口径一致；
+ * 票据未加载时落 [FxContract.HomeCurrency] 兜底（此时编辑器也未打开，不会触达）。
+ * （文件级扩展：类体贴 detekt LargeClass 门，R14-1 起移出类。）
+ */
+internal fun ExpenseEditViewModel.centsToYuanText(cents: Long?): String {
+    if (cents == null) return ""
+    val expense = _uiState.value.expense
+    // R14-1：原码严格解析 —— 未知码不缩放（原 minor 整数原样回填），不冒 CNY 两位
+    // 口径把 1200 VND 写成 "12.00"；已知码维持 formatMinorAmountInput 同口径。
+    val raw = expense?.homeCurrencyCode
+    if (!raw.isNullOrBlank() && CurrencyCode.fromStorageKeyOrNull(raw) == null) {
+        return abs(cents).toString()
     }
+    val currency = expense?.homeCurrency ?: FxContract.HomeCurrency
+    return formatMinorAmountInput(abs(cents), currency)
 }
 
 internal fun Expense.withParentRowVersion(parentRowVersion: Long): Expense =
@@ -832,3 +846,24 @@ internal fun Expense.withParentRowVersion(parentRowVersion: Long): Expense =
     } else {
         this
     }
+
+/**
+ * 金额编辑（items/splits/bill-split）的解析币种（PR#255 R10④）：raw 码严格解析，未知码
+ * （支持集外）→ null，调用方禁金额承载编辑；raw 缺失（旧 record / 手工构造的域对象）回落
+ * 枚举口径（mapper 构造时已解析过该枚举，不再二次放宽）。
+ */
+internal fun Expense.editParseCurrency(): CurrencyCode? {
+    val raw = homeCurrencyCode
+    return if (raw.isNullOrBlank()) homeCurrency else CurrencyCode.fromStorageKeyOrNull(raw)
+}
+
+/**
+ * 显示/均分侧的草稿解析币种（PR#255 R15b-2）：已知码同 [editParseCurrency]；未知码
+ * 给 JPY 代理（原 minor 整数空间，与 footer 的 [parseAmountCentsForDisplay] 同口径，
+ * 不按 FxContract 兜底放大 100×）；票据缺失回落 FxContract 兜底（防御，编辑器该态不开）。
+ * 保存侧门禁仍看 [editParseCurrency] 的 null —— 本函数只决定显示/均分值。
+ */
+internal fun Expense?.editDisplayParseCurrency(): CurrencyCode {
+    val expense = this ?: return FxContract.HomeCurrency
+    return expense.editParseCurrency() ?: CurrencyCode.JPY
+}
