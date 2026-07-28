@@ -35,17 +35,6 @@ from app.services.debt_service._installment import (
 )
 
 
-def _list_response(items: list[DebtResponse]) -> DebtListResponse:
-    """Debt list envelope carrying the installation currency capability.
-
-    Same helper the write path stamps onto each record (``currency_common.
-    home_currency_code``), so envelope and record-level values are one source
-    (see ``DebtListResponse`` docstring; PR#255 R6). A misconfigured/unsupported
-    env raises here exactly as it does on the write path — fail closed.
-    """
-    return DebtListResponse(items=items, home_currency_code=home_currency_code())
-
-
 def participant_can_access(
     debt: Debt, *, ledger_id: str, account_id: int | None
 ) -> tuple[bool, bool]:
@@ -290,7 +279,7 @@ def list_debts(
                 update={"viewer_is_debtor": _viewer_is_debtor(debt, viewer_account_id)}
             )
         items.append(response)
-    return _list_response(items=items)
+    return DebtListResponse(items=items, home_currency_code=home_currency_code())
 
 
 def _list_personal_ledger_debts(
@@ -348,7 +337,7 @@ def _list_personal_ledger_debts(
             if owner_name:
                 update["counterparty_label"] = owner_name
         items.append(_debt_response_with_fold(db, debt).model_copy(update=update))
-    return _list_response(items=items)
+    return DebtListResponse(items=items, home_currency_code=home_currency_code())
 
 
 def list_payables_for_account(
@@ -404,7 +393,7 @@ def list_receivables_for_account(
             continue
         seen.add(debt.public_id)
         items.append(debt)
-    return _list_response(items=items)
+    return DebtListResponse(items=items, home_currency_code=home_currency_code())
 
 
 def list_member_receivables_for_account(
@@ -480,7 +469,7 @@ def list_member_receivables_for_account(
         if debtor_name:
             update["counterparty_label"] = debtor_name
         items.append(response.model_copy(update=update))
-    return _list_response(items=items)
+    return DebtListResponse(items=items, home_currency_code=home_currency_code())
 
 
 def count_open_external_debts(db: Session, tenant_ids: list[str]) -> dict[str, int]:
