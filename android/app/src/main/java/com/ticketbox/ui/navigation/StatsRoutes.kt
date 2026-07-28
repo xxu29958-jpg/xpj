@@ -278,7 +278,6 @@ internal fun DebtRoute(
     } else {
         DebtListScreen(
             viewModel = debtListViewModel,
-            currency = currency,
             actions = DebtListScreenActions(
                 onBack = onBack,
                 onOpenDebt = { detailDebtId = it.publicId },
@@ -394,7 +393,6 @@ internal fun ReceivablesRoute(
     } else {
         ReceivablesScreen(
             viewModel = viewModel,
-            currency = currency,
             onOpenReceivable = { detailDebtId = it.publicId },
             onBack = onBack,
             chromeOverride = chromeOverride,
@@ -425,7 +423,6 @@ internal fun RepaymentDraftRoute(
     }
     RepaymentDraftInboxScreen(
         viewModel = viewModel,
-        currency = LocalCurrencyDisplay.current,
         onBack = onBack,
     )
 }

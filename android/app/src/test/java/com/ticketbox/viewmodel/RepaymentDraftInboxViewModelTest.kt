@@ -65,6 +65,24 @@ class RepaymentDraftInboxViewModelTest {
     }
 
     @Test
+    fun draftsAndTargetDebtsCarryRecordHomeCurrencyForDisplayLens() = runTest(dispatcher) {
+        // PR#255 R5 P1：草稿行金额与选债面板 remaining 走 CurrencyDisplay.forRecord(
+        // record.homeCurrencyCode) —— 钉死 VM 数据通路：两类 record 的 homeCurrencyCode
+        // 原样留在 state（JPY 不被恒 Base 的环境 display 覆盖）。
+        val draftsRepo = FakeRepaymentDraftActions(
+            listResult = Result.success(listOf(draft("d1").copy(homeCurrencyCode = "JPY"))),
+        )
+        val debtsRepo = FakeRepayableDebtActions(
+            listResult = Result.success(listOf(debt("open-external").copy(homeCurrencyCode = "JPY"))),
+        )
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        advanceUntilIdle()
+
+        assertEquals("JPY", viewModel.state.value.drafts.single().homeCurrencyCode)
+        assertEquals("JPY", viewModel.state.value.targetDebts.single().homeCurrencyCode)
+    }
+
+    @Test
     fun refreshFailureSetsError() = runTest(dispatcher) {
         val draftsRepo = FakeRepaymentDraftActions(listResult = Result.failure(RuntimeException("offline")))
         val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())

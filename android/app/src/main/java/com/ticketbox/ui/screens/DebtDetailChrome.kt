@@ -86,7 +86,6 @@ internal fun DebtDetailContent(
                         debt = loaded,
                         proposalState = readableProposalState,
                         proposalViewModel = proposalViewModel,
-                        currency = currency,
                     )
                 } else {
                     debtDetailExternalItems(
@@ -159,9 +158,8 @@ private fun LazyListScope.debtDetailMemberItems(
     debt: Debt,
     proposalState: MemberProposalUiState,
     proposalViewModel: MemberRepaymentProposalViewModel,
-    currency: CurrencyDisplay,
 ) {
-    item { MemberSharedThingCard(debt = debt, currency = currency) }
+    item { MemberSharedThingCard(debt = debt) }
     item {
         MemberProposalSection(
             debt = debt,
@@ -177,7 +175,7 @@ private fun LazyListScope.debtDetailExternalItems(
     currency: CurrencyDisplay,
     callbacks: DebtDetailScreenCallbacks,
 ) {
-    item { DebtSummaryCard(debt = debt, currency = currency) }
+    item { DebtSummaryCard(debt = debt) }
     item {
         DebtKindCardWithEditor(
             debt = debt,

@@ -155,6 +155,26 @@ class GlobalSearchViewModelTest {
     }
 
     @Test
+    fun resultCarriesRecordHomeCurrencyForAmountDisplay() = searchTest {
+        // PR#255 R5 P2：SearchResultCard 的金额按 expense.homeCurrency 渲染（旧代码落
+        // formatAmount 默认参 CNY，JPY home 的 1200 会显示成两位小数）—— 钉死数据通路：
+        // 命中行的 record 级 home 币种原样留在 result。
+        val fake = FakeGlobalSearchActions(
+            confirmed = listOf(
+                expense(id = 1, status = "confirmed", merchant = "Tokyo Cafe", amountCents = 1_200L)
+                    .copy(homeCurrency = CurrencyCode.JPY),
+            ),
+        )
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("Tokyo")
+        advanceUntilIdle()
+
+        assertEquals(CurrencyCode.JPY, vm.uiState.value.results.single().expense.homeCurrency)
+    }
+
+    @Test
     fun amountQueryHitsForeignOriginalLegInItsOwnCurrency() = searchTest {
         // PR#255 P2 双腿：JPY-home 行、USD 原币 12.50（minor 1250）—— 查询 "12.50"
         // 按 home(JPY) 解析不出，但按行自身 originalCurrency(USD) 解析原币腿命中。

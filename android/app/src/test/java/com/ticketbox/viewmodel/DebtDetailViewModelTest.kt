@@ -57,6 +57,21 @@ class DebtDetailViewModelTest {
     }
 
     @Test
+    fun loadedDebtCarriesRecordHomeCurrencyForSummaryLens() = runTest(dispatcher) {
+        // PR#255 R5 P1：DebtSummaryCard / MemberSharedThingCard 的金额渲染走
+        // CurrencyDisplay.forRecord(debt.homeCurrencyCode) —— 钉死 VM 数据通路：加载后
+        // record 级 homeCurrencyCode 原样留在 state（JPY 不被恒 Base 的环境 display 覆盖）。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1").copy(homeCurrencyCode = "JPY")),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+
+        assertEquals("JPY", viewModel.state.value.debt?.homeCurrencyCode)
+    }
+
+    @Test
     fun loadDebtFailureSetsError() = runTest(dispatcher) {
         val repo = FakeDebtDetailActions(getResult = Result.failure(RuntimeException("offline")))
         val viewModel = DebtDetailViewModel(repo)

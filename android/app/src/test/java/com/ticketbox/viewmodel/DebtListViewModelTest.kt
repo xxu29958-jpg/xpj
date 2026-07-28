@@ -190,6 +190,8 @@ class DebtListViewModelTest {
     @Test
     fun parseDebtBillPrefillsDraftAndRequestsSheetOpen() = runTest(dispatcher) {
         val repo = FakeDebtActions(
+            // R5 P3 起解析入口与 submitDraft 同门：账本币种须先 resolved（非空列表）才放行。
+            listResult = Result.success(listOf(sampleDebt())),
             parseBillResult = Result.success(
                 DebtBillSuggestion(
                     merchant = "花呗",
@@ -587,6 +589,82 @@ class DebtListViewModelTest {
         viewModel.submitDraft()
         advanceUntilIdle()
         assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+    }
+
+    @Test
+    fun loadedDebtsCarryRecordHomeCurrencyForRowLens() = runTest(dispatcher) {
+        // PR#255 R5 P2：ExternalDebtRow 的金额渲染走 CurrencyDisplay.forRecord(
+        // debt.homeCurrencyCode) —— 钉死 VM 数据通路：列表加载后每条 Debt 的 record 级
+        // homeCurrencyCode 原样留在 state（不被恒 Base 的环境 display 覆盖）。
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+        )
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals("JPY", viewModel.state.value.debts.single().homeCurrencyCode)
+    }
+
+    @Test
+    fun reloadClearsStaleLedgerDraftAndBlocksSubmitUntilResolved() = runTest(dispatcher) {
+        // PR#255 R5 P2 + 测试钉：JPY 账本已输 "1200" 的草稿切账本时不得随 rebind 静默
+        // 重解释（落 CNY 账本即 120000 minor，100×）—— reload() 同步清掉草稿；新账本
+        // 响应未回期间 homeCurrencyResolved=false，submitDraft 被拒（旧草稿永不可达
+        // 创建路径）。
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+            createResult = Result.success(sampleDebt("created")),
+        )
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+
+        // 账本切换：reload 的拉取 stall 在 listDebts（响应未回）。
+        repo.listResult = Result.success(listOf(sampleDebt("cny-debt").copy(homeCurrencyCode = "CNY")))
+        repo.listGate = gate
+        viewModel.reload()
+        runCurrent()
+
+        // 草稿已同步清空、币种回到未确认，提交被 VM 防线拦下。
+        val cleared = viewModel.state.value.addDraft
+        assertEquals("", cleared.counterpartyLabel)
+        assertEquals("", cleared.amountYuanInput)
+        assertEquals(false, cleared.userTouched)
+        assertEquals(CurrencyCode.CNY, cleared.homeCurrency) // 重绑前只剩兜底口径
+        assertEquals(false, viewModel.state.value.homeCurrencyResolved)
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertTrue(repo.createDrafts.isEmpty())
+
+        // 新账本响应落地：创建重新放开，全新草稿重绑到新账本权威币种。
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
+        assertEquals(CurrencyCode.CNY, viewModel.state.value.addDraft.homeCurrency)
+    }
+
+    @Test
+    fun markBillParsePreparingRejectedUntilHomeCurrencyResolved() = runTest(dispatcher) {
+        // PR#255 R5 P3：解析入口与 submitDraft 同一道 homeCurrencyResolved 门 —— 币种
+        // 未确认时预填必按兜底口径格式化、重绑后静默变义，故空账本期间入口拒绝开启；
+        // 首条记录带来 record 级权威币种后放行。
+        val repo = FakeDebtActions(listResult = Result.success(emptyList()))
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.homeCurrencyResolved)
+        assertEquals(false, viewModel.markBillParsePreparing())
+        assertEquals(false, viewModel.state.value.isParsingBill)
+
+        repo.listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY")))
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(true, viewModel.markBillParsePreparing())
+        assertEquals(true, viewModel.state.value.isParsingBill)
     }
 }
 

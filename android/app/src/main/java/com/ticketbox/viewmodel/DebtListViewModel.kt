@@ -125,6 +125,9 @@ class DebtListViewModel(
     /**
      * 进入 overlay 时调用：先清掉上一账本残留的欠款再拉，避免在新账本下短暂看到旧账本的欠款
      * （账本隔离；overlay VM 跨账本切换存活，见 DebtGoalViewModel.refresh(clearStale = true)）。
+     * 草稿一并重置：旧账本草稿文本若存活到新账本，响应落地时会被 rebind 静默重解释
+     * （JPY 账本的 "1200" 落到 CNY 账本变 120000 minor，100× —— PR#255 R5 P2）；与
+     * 打开新建抽屉必先 [resetDraft] 同一语义。
      */
     fun reload() {
         _state.update {
@@ -134,6 +137,8 @@ class DebtListViewModel(
                 canModify = repository.canModifyLedger(),
                 // 新账本币种未知，创建重新禁用到本次拉取成功（PR#255 P1-3）。
                 homeCurrencyResolved = false,
+                // 账本切换即作废旧账本草稿：币种重绑前的兜底口径文本不得跨账本存活（PR#255 R5 P2）。
+                addDraft = DebtDraftUi(),
             )
         }
         refresh()
@@ -200,7 +205,11 @@ class DebtListViewModel(
 
     fun markBillParsePreparing(): Boolean {
         val current = _state.value
-        if (!current.canModify || current.isParsingBill || current.isSubmitting) return false
+        // homeCurrencyResolved 门与 submitDraft 对齐（PR#255 R5 P3）：币种未确认时预填必按
+        // 兜底口径格式化，重绑后金额文本静默变义（JPY 账本的 "1200.00" 重绑后非法/变值）。
+        if (!current.canModify || current.isParsingBill || current.isSubmitting || !current.homeCurrencyResolved) {
+            return false
+        }
         _state.update { it.copy(isParsingBill = true, error = null) }
         return true
     }
@@ -341,7 +350,8 @@ private fun debtsHomeCurrency(debts: List<Debt>): CurrencyCode =
  * 列表响应落地后把草稿币种重绑到账本权威值（PR#255 P1-3）：任何草稿都重绑 ——
  * 保留用户已输文本，但不再让旧币种（CNY 兜底）存活到提交路径。被用户触碰过且
  * 已输金额在新币种下解析不出的，立即亮校验错误（提前重校验），等用户按新标签
- * 修正；其余情况静默重绑。
+ * 修正；其余情况静默重绑。账本切换的跨账本残留不由这里兜底 —— [DebtListViewModel.reload]
+ * 已把草稿一并重置（PR#255 R5 P2），本函数只覆盖本账本加载窗口内新输/预填的草稿。
  */
 private fun DebtDraftUi.rebindHomeCurrency(authoritative: CurrencyCode): DebtDraftUi {
     val rebound = copy(homeCurrency = authoritative)

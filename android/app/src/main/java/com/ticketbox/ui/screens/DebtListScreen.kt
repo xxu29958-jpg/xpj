@@ -90,7 +90,6 @@ private data class DebtListScreenCallbacks(
 @Composable
 fun DebtListScreen(
     viewModel: DebtListViewModel,
-    currency: CurrencyDisplay,
     actions: DebtListScreenActions,
     chromeOverride: RelationsListChrome? = null,
 ) {
@@ -131,7 +130,6 @@ fun DebtListScreen(
     )
     DebtListContent(
         state = state,
-        currency = currency,
         callbacks = callbacks,
         chromeOverride = chromeOverride,
     )
@@ -148,7 +146,6 @@ fun DebtListScreen(
 @Composable
 private fun DebtListContent(
     state: DebtListUiState,
-    currency: CurrencyDisplay,
     callbacks: DebtListScreenCallbacks,
     chromeOverride: RelationsListChrome?,
 ) {
@@ -186,7 +183,7 @@ private fun DebtListContent(
         readableListInlineError(hasRows = state.debts.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
-        debtListSection(state = state, currency = currency, onOpenDebt = callbacks.onOpenDebt)
+        debtListSection(state = state, onOpenDebt = callbacks.onOpenDebt)
     }
 }
 
@@ -235,7 +232,6 @@ private fun DebtListHeaderActions(
 }
 private fun LazyListScope.debtListSection(
     state: DebtListUiState,
-    currency: CurrencyDisplay,
     onOpenDebt: (Debt) -> Unit,
 ) {
     when (
@@ -256,7 +252,6 @@ private fun LazyListScope.debtListSection(
         }
         ReadableListBodyState.Content -> debtRowsSection(
             debts = state.debts,
-            currency = currency,
             onOpenDebt = onOpenDebt,
         )
     }
@@ -264,7 +259,6 @@ private fun LazyListScope.debtListSection(
 
 internal fun LazyListScope.debtRowsSection(
     debts: List<Debt>,
-    currency: CurrencyDisplay,
     onOpenDebt: (Debt) -> Unit,
 ) {
     val (members, externals) = groupDebtsForList(debts)
@@ -297,7 +291,6 @@ internal fun LazyListScope.debtRowsSection(
                 externals.forEachIndexed { index, debt ->
                     ExternalDebtRow(
                         debt = debt,
-                        currency = currency,
                         onClick = { onOpenDebt(debt) },
                         showDivider = index < externals.lastIndex,
                     )
@@ -310,12 +303,14 @@ internal fun LazyListScope.debtRowsSection(
 @Composable
 private fun ExternalDebtRow(
     debt: Debt,
-    currency: CurrencyDisplay,
     onClick: () -> Unit,
     showDivider: Boolean,
 ) {
     val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
         ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
+    // 行内金额按 record 自带 homeCurrencyCode 渲染（PR#255 R5 P2）：屏级环境 display 恒
+    // Base，JPY/KRW 账本下零小数 minor 会按两位小数显示（与解析同源的 D8 范式）。
+    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
     AppListRow(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
@@ -344,14 +339,14 @@ private fun ExternalDebtRow(
         Spacer(Modifier.width(AppSpacing.smallGap))
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                formatDisplayAmount(debt.remainingAmountCents, currency),
+                formatDisplayAmount(debt.remainingAmountCents, recordDisplay),
                 style = MaterialTheme.typography.titleLarge.tabularNum(),
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
                 stringResource(
                     R.string.debt_list_card_principal,
-                    formatDisplayAmount(debt.principalAmountCents, currency),
+                    formatDisplayAmount(debt.principalAmountCents, recordDisplay),
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

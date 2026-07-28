@@ -80,7 +80,9 @@ internal fun SearchResultCard(
                 )
             }
             Text(
-                text = formatAmount(expense.amountCents),
+                // Record 口径（PR#255 R5 P2）：默认参落 CNY，JPY/KRW home 的命中行会按
+                // 两位小数显示 minor（如 1200 → ¥12.00）。
+                text = formatAmount(expense.amountCents, expense.homeCurrency),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleMedium.tabularNum(),
                 fontWeight = AppTypography.amountMedium.weight,

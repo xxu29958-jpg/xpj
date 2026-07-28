@@ -74,7 +74,6 @@ private enum class DraftRowAction { Idle, Busy, Disabled }
 @Composable
 fun RepaymentDraftInboxScreen(
     viewModel: RepaymentDraftInboxViewModel,
-    currency: CurrencyDisplay,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -113,7 +112,6 @@ fun RepaymentDraftInboxScreen(
         }
         repaymentDraftListSection(
             state = state,
-            currency = currency,
             onConfirmSuggested = { draft, debt -> viewModel.confirm(draft.publicId, debt) },
             onOpenPicker = { draft -> pickerDraftId = draft.publicId },
             onDismiss = viewModel::dismiss,
@@ -126,7 +124,6 @@ fun RepaymentDraftInboxScreen(
                 debts = state.targetDebts,
                 suggestedPublicId = state.suggestedDebtByDraftId[activeDraftId]?.publicId,
             ),
-            currency = currency,
             sheetState = sheetState,
             onPick = { debt ->
                 viewModel.confirm(activeDraftId, debt)
@@ -139,7 +136,6 @@ fun RepaymentDraftInboxScreen(
 
 private fun LazyListScope.repaymentDraftListSection(
     state: RepaymentDraftInboxUiState,
-    currency: CurrencyDisplay,
     onConfirmSuggested: (RepaymentDraft, Debt) -> Unit,
     onOpenPicker: (RepaymentDraft) -> Unit,
     onDismiss: (String) -> Unit,
@@ -162,7 +158,6 @@ private fun LazyListScope.repaymentDraftListSection(
         val suggested = state.suggestedDebtByDraftId[draft.publicId]
         RepaymentDraftCard(
             draft = draft,
-            currency = currency,
             suggestedDebt = suggested,
             action = draftRowAction(state, draft.publicId),
             callbacks = RepaymentDraftCardCallbacks(
@@ -192,7 +187,6 @@ private fun draftRowAction(state: RepaymentDraftInboxUiState, draftPublicId: Str
 @Composable
 private fun RepaymentDraftCard(
     draft: RepaymentDraft,
-    currency: CurrencyDisplay,
     suggestedDebt: Debt?,
     action: DraftRowAction,
     callbacks: RepaymentDraftCardCallbacks,
@@ -200,7 +194,9 @@ private fun RepaymentDraftCard(
     AppGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
             AppAdaptiveEditAmountRow(
-                amount = formatDisplayAmount(draft.amountCents, currency),
+                // 草稿金额按 record 自带 homeCurrencyCode 渲染（PR#255 R5 P1）：路由级环境
+                // display 恒 Base，JPY/KRW 账本的捕获金额会按两位小数走样。
+                amount = formatDisplayAmount(draft.amountCents, CurrencyDisplay.forRecord(draft.homeCurrencyCode)),
                 style = AppAdaptiveAmountRowStyle(role = AppAmountRole.Medium),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -352,7 +348,6 @@ private class DebtPickerModel(
 @Composable
 private fun DebtPickerSheet(
     model: DebtPickerModel,
-    currency: CurrencyDisplay,
     sheetState: androidx.compose.material3.SheetState,
     onPick: (Debt) -> Unit,
     onClose: () -> Unit,
@@ -373,7 +368,6 @@ private fun DebtPickerSheet(
                 ordered.forEachIndexed { index, debt ->
                     DebtPickerRow(
                         debt = debt,
-                        currency = currency,
                         isSuggested = debt.publicId == model.suggestedPublicId,
                         showDivider = index != ordered.lastIndex,
                         onPick = { onPick(debt) },
@@ -387,7 +381,6 @@ private fun DebtPickerSheet(
 @Composable
 private fun DebtPickerRow(
     debt: Debt,
-    currency: CurrencyDisplay,
     isSuggested: Boolean,
     showDivider: Boolean,
     onPick: () -> Unit,
@@ -414,7 +407,8 @@ private fun DebtPickerRow(
         AppEndAlignedAmountText(
             stringResource(
                 R.string.repayment_draft_picker_remaining,
-                formatDisplayAmount(debt.remainingAmountCents, currency),
+                // 同上：record 级 homeCurrencyCode 口径（PR#255 R5 P1）。
+                formatDisplayAmount(debt.remainingAmountCents, CurrencyDisplay.forRecord(debt.homeCurrencyCode)),
             ),
             modifier = Modifier.weight(0.42f),
             role = AppAmountRole.Compact,

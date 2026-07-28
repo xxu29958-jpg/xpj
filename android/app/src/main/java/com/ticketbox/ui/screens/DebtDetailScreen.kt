@@ -149,7 +149,11 @@ private fun DebtDetailEffects(
 // Member debt routes to MemberSharedThingCard; this businesslike accounting card serves external
 // debt (unchanged) and the member foreign-currency defensive fallback (§2.6) — hence internal.
 @Composable
-internal fun DebtSummaryCard(debt: Debt, currency: CurrencyDisplay) {
+internal fun DebtSummaryCard(debt: Debt) {
+    // 金额全部按 record 自身 homeCurrencyCode 渲染（CurrencyDisplay.forRecord）：路由级环境
+    // display 恒 Base，JPY/KRW 欠款会把零小数 minor 按两位小数显示（PR#255 R5 P1，与解析
+    // 同源的 D8 范式）。
+    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
     AppSectionGroup(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
@@ -161,18 +165,18 @@ internal fun DebtSummaryCard(debt: Debt, currency: CurrencyDisplay) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            formatDisplayAmount(debt.remainingAmountCents, currency),
+            formatDisplayAmount(debt.remainingAmountCents, recordDisplay),
             style = MaterialTheme.typography.headlineMedium.tabularNum(),
             fontWeight = FontWeight.SemiBold,
         )
         HorizontalDivider()
         DebtSummaryRow(
             label = stringResource(R.string.debt_detail_principal),
-            value = formatDisplayAmount(debt.principalAmountCents, currency),
+            value = formatDisplayAmount(debt.principalAmountCents, recordDisplay),
         )
         DebtSummaryRow(
             label = stringResource(R.string.debt_detail_paid),
-            value = formatDisplayAmount(debt.paidAmountCents, currency),
+            value = formatDisplayAmount(debt.paidAmountCents, recordDisplay),
         )
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
