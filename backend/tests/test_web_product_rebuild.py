@@ -2,15 +2,14 @@
 
 本片只落「壳基座」: base.html / _sidebar_nav.html 重写 + product 设计系统 CSS
 + web_common 展示 helper。页面模板重绘属 S4+ 各域片, 因此矿版测试中与页面内容
-重写耦合的用例 (新文案标题、dt-* DOM 清除、正文零内联样式) 不在本片断言——
-本片钉的是壳契约: 五域 primary 页挂新栈且断旧栈、页级三态 data 属性、
-三级页挂 detail.css、壳 chrome 无内联样式、product CSS 全部 token 驱动。
+重写耦合的用例 (新文案标题、dt-* DOM 清除、正文零内联样式) 不在本片断言。
 
-与矿版的分歧 (以 main 事实为准):
-- /web/library 路由属 C5c-1, 资料库聚合断言不移植; 回收站在 main 仍是流水域
-  普通二级页 (矿归 library-detail 三级)。
-- overview 页级 pages/overview.css 保留 (S2 适配标记矿域模块未覆盖),
-  因此 retired 清单对 overview 允许该一个文件。
+218-D S3-R1 翻转 (#256 P1: 收件行整列塌缩): 挂载策略按页面正文标记新旧分流——
+- 正文仍是旧标记的页 (当前除 overview 外全部): 旧全局栈+页级 CSS 保持在场
+  (本文件钉死防回归), 对应 domain 模块不双挂 (矿域模块与旧页共享类名谱系
+  .exp-row/.timeline-row 等, 双挂则旧规则被盖、新 grid 不认嵌套标记)。
+- 正文已是新标记的页 (当前仅 overview): 断旧栈, 挂 domains/insights.css +
+  页级 pages/overview.css (S2 适配标记矿域模块未覆盖)。
 """
 
 from __future__ import annotations
@@ -42,21 +41,32 @@ def _demote_owner_ledger_to_viewer() -> None:
         db.commit()
 
 
+def _assert_shell_chrome_has_no_inline_style(body: str) -> None:
+    """壳 chrome (侧边导航 + 顶栏) 零内联样式; 页面正文残留的数据驱动内联
+    (进度条宽度等) 随 S4+ 页面重绘清除, 本片不钉。"""
+    sidebar = re.search(r'<aside class="sidebar">.*?</aside>', body, re.S)
+    assert sidebar is not None
+    assert 'style="' not in sidebar.group(0)
+    topbar = re.search(r'<header class="product-topbar">.*?</header>', body, re.S)
+    assert topbar is not None
+    assert 'style="' not in topbar.group(0)
+
+
 @pytest.mark.parametrize(
-    ("path", "domain", "primary_href"),
+    ("path", "domain", "primary_href", "page_css"),
     [
-        ("/web/pending?ledger_id=owner", "inbox", "/web/pending?ledger_id=owner"),
-        ("/web/confirmed?ledger_id=owner", "transactions", "/web/confirmed?ledger_id=owner"),
-        ("/web/debts?ledger_id=owner", "obligations", "/web/debts?ledger_id=owner"),
-        ("/web/budgets?ledger_id=owner", "plans", "/web/budgets?ledger_id=owner"),
-        ("/web/overview?ledger_id=owner", "insights", "/web/overview?ledger_id=owner"),
+        ("/web/pending?ledger_id=owner", "inbox", "/web/pending?ledger_id=owner", "/static/web/pages/pending.css"),
+        ("/web/confirmed?ledger_id=owner", "transactions", "/web/confirmed?ledger_id=owner", "/static/web/pages/confirmed.css"),
+        ("/web/debts?ledger_id=owner", "obligations", "/web/debts?ledger_id=owner", "/static/web/pages/debts.css"),
+        ("/web/budgets?ledger_id=owner", "plans", "/web/budgets?ledger_id=owner", "/static/web/pages/budgets.css"),
     ],
 )
-def test_primary_domains_render_new_modular_product_shell(
+def test_old_body_primary_pages_keep_legacy_page_css(
     web_client: TestClient,
     path: str,
     domain: str,
     primary_href: str,
+    page_css: str,
 ) -> None:
     response = web_client.get(path)
 
@@ -69,32 +79,72 @@ def test_primary_domains_render_new_modular_product_shell(
         rf'href="{re.escape(primary_href)}"[^>]+aria-current="location"', body
     )
 
-    # The rebuilt shell mounts the product design system…
+    # 壳 chrome 走 product 基座…
     assert f"/static/web/product/shell.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/components.css?v={STATIC_ASSET_VERSION}" in body
-    assert f"/static/web/product/domains/{domain}.css?v={STATIC_ASSET_VERSION}" in body
-
-    # …and a migrated primary page owns its presentation module: the retired
-    # global stack cannot silently leak back in. (物理删除是独立后续片, 本片只
-    # 钉「primary 页不引旧栈」。)
-    for retired in _RETIRED_GLOBAL_STACK:
-        assert retired not in body
-    if domain == "insights":
-        # overview 样式归属裁决: 保留 S2 页级文件 (见模块 docstring)。
-        assert f"/static/web/pages/overview.css?v={STATIC_ASSET_VERSION}" in body
-    else:
-        assert "/static/web/pages/" not in body
+    # …正文仍是旧标记: 旧全局栈与本页页级 CSS 必须在场 (S3-R1 防回归钉),
+    # 且对应 domain 模块不得双挂 (类名谱系碰撞 = 行格双失)。
+    for legacy in ("/static/web/web.css", "/static/web/_base.css", "/static/web/_shell.css"):
+        assert legacy in body
+    assert f"{page_css}?v={STATIC_ASSET_VERSION}" in body
+    assert "/static/web/product/domains/" not in body
 
     assert "<style" not in body
+    _assert_shell_chrome_has_no_inline_style(body)
 
-    # 壳 chrome (侧边导航 + 顶栏) 零内联样式; 页面正文残留的数据驱动内联
-    # (进度条宽度等) 随 S4+ 页面重绘清除, 本片不钉。
-    sidebar = re.search(r'<aside class="sidebar">.*?</aside>', body, re.S)
-    assert sidebar is not None
-    assert 'style="' not in sidebar.group(0)
-    topbar = re.search(r'<header class="product-topbar">.*?</header>', body, re.S)
-    assert topbar is not None
-    assert 'style="' not in topbar.group(0)
+
+def test_old_body_row_grids_have_their_stylesheets(web_client: TestClient) -> None:
+    """行格渲染钉 (S3-R1): pending 六格嵌套行 (a.exp-row-detail) 的 grid 规则
+    在 pages/pending.css; confirmed 时间线行 (.timeline-row-detail) 在
+    pages/confirmed.css。样式链接或规则缺失 = 整列塌缩回归。"""
+    pending = web_client.get("/web/pending?ledger_id=owner")
+    assert pending.status_code == 200
+    assert "/static/web/pages/pending.css" in pending.text
+    css = web_client.get("/static/web/pages/pending.css")
+    assert css.status_code == 200
+    assert re.search(r"\.exp-row\s*\{", css.text)
+    assert re.search(r"\.exp-row-detail\s*\{", css.text)
+
+    confirmed = web_client.get("/web/confirmed?ledger_id=owner")
+    assert confirmed.status_code == 200
+    assert "/static/web/pages/confirmed.css" in confirmed.text
+    css = web_client.get("/static/web/pages/confirmed.css")
+    assert css.status_code == 200
+    assert ".timeline-row-detail" in css.text
+
+
+def test_overview_new_body_mounts_insights_module(web_client: TestClient) -> None:
+    """overview (S2 新页, 正文已是新标记): 断旧栈, 挂 insights 域模块 +
+    页级 pages/overview.css (样式归属裁决: 保留页级文件, 并入留给 S6)。"""
+    response = web_client.get("/web/overview?ledger_id=owner")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-domain="insights"' in body
+    assert 'data-page="insights" data-page-level="primary"' in body
+    assert re.search(
+        r'href="/web/overview\?ledger_id=owner"[^>]+aria-current="location"', body
+    )
+
+    assert f"/static/web/product/shell.css?v={STATIC_ASSET_VERSION}" in body
+    assert f"/static/web/product/components.css?v={STATIC_ASSET_VERSION}" in body
+    assert f"/static/web/product/domains/insights.css?v={STATIC_ASSET_VERSION}" in body
+    assert f"/static/web/pages/overview.css?v={STATIC_ASSET_VERSION}" in body
+
+    # 新标记页断旧栈: 退役全局栈不得回流 (物理删除是独立后续片)。
+    for retired in _RETIRED_GLOBAL_STACK:
+        assert retired not in body
+    for retired_page in (
+        "/static/web/pages/dashboard.css",
+        "/static/web/pages/pending.css",
+        "/static/web/pages/confirmed.css",
+        "/static/web/pages/budgets.css",
+        "/static/web/pages/debts.css",
+    ):
+        assert retired_page not in body
+
+    assert "<style" not in body
+    _assert_shell_chrome_has_no_inline_style(body)
 
 
 def test_product_shell_owns_month_picker_styles(web_client: TestClient) -> None:
@@ -102,8 +152,9 @@ def test_product_shell_owns_month_picker_styles(web_client: TestClient) -> None:
 
     assert response.status_code == 200
     assert '<div class="month-picker">' in response.text
+    # 月份选择器是壳 chrome, 样式归属 product/shell.css (旧 _shell.css 虽因
+    # 正文旧标记分流而在场, 其旧规则对新的壳标记不生效)。
     assert "/static/web/product/shell.css" in response.text
-    assert "/static/web/_shell.css" not in response.text
 
     css = web_client.get("/static/web/product/shell.css")
     assert css.status_code == 200

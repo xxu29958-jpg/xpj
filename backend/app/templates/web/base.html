@@ -93,11 +93,20 @@
 
   <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
 
-  {# 旧全局栈并行策略 (218-D S3 裁决): 迁移页(五域 primary)即断旧栈;
-     未迁移页(secondary/tertiary)续用旧栈, 且先于 product 栈加载——
-     类名冲突时 product 新样式胜出, 壳在所有页面保持一致。
+  {# 218-D S3-R1 正文新旧分流 (裁决: 按页面正文标记而非页级一刀切):
+     - 正文仍是旧标记的页 (当前除 overview 外全部, 含四个旧 primary 与全部旧
+       二三级页) 保持 main 原装配: 旧全局栈+页级 CSS 全量, 不挂对应 domain CSS——
+       矿域模块与旧页共享类名谱系 (.exp-row/.timeline-row 等), 双挂则旧规则被盖、
+       新 grid 不认嵌套标记, 行格双失 (S3 #256 P1: 收件行整列塌缩)。
+     - 正文已是新标记的页 (当前仅 overview, S2 新页) 断旧栈、挂域模块。
+     域模块挂载点=下表逐域显式开关: 随 S4(inbox)/S-TX(transactions)/
+     S5(obligations/plans)/S6(insights) 各域正文迁移逐域开启, 勿留隐式魔法。
      旧文件的物理删除是独立后续片, 本片不动。 #}
-  {% if _page_level != 'primary' %}
+  {% set _product_body_domains = {
+    '/web/overview': 'insights',
+  } %}
+  {% set _product_body_domain = _product_body_domains.get(_path) %}
+  {% if not _product_body_domain %}
   <link rel="stylesheet" href="/static/web/web.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/_base.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/_shell.css?v={{ asset_version }}">
@@ -128,12 +137,13 @@
   <link rel="stylesheet" href="/static/web/_misc.css?v={{ asset_version }}">
   {% endif %}
 
-  {# Product 设计系统基座 (218-D S3, 移植自产品矿): 壳 + 共享组件全页挂载,
-     域模块按 _domain 挂载, 三级详情页追加 detail.css。 #}
+  {# Product 设计系统基座 (218-D S3, 移植自产品矿): 壳 + 共享组件全页挂载
+     (chrome 层, 与旧栈类名不碰撞; 旧栈先加载, 壳样式在所有页面一致);
+     域模块仅随正文迁移开关挂载; 三级详情页追加 detail.css。 #}
   <link rel="stylesheet" href="/static/web/product/shell.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/product/components.css?v={{ asset_version }}">
-  {% if _domain in ['inbox', 'transactions', 'obligations', 'plans', 'insights'] %}
-  <link rel="stylesheet" href="/static/web/product/domains/{{ _domain }}.css?v={{ asset_version }}">
+  {% if _product_body_domain %}
+  <link rel="stylesheet" href="/static/web/product/domains/{{ _product_body_domain }}.css?v={{ asset_version }}">
   {% endif %}
   {% if _page_level == 'tertiary' %}
   <link rel="stylesheet" href="/static/web/product/detail.css?v={{ asset_version }}">
