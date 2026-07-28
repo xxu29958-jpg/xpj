@@ -155,6 +155,27 @@ class ExpenseMappersTest {
     }
 
     @Test
+    fun toEntityPassesThroughUnknownHomeCurrencyCodeVerbatim() {
+        // PR#255 R7-2：写侧原码透传 —— 未知码（新版服务端币种）不得被 fromStorageKey 枚举
+        // 往返静默改写成 CNY 落缓存（后续同步会把它回写服务端，币种篡改）；blank 才落兜底。
+        val entity = expenseDto(publicId = "p1").copy(homeCurrency = "XXX", originalCurrencyCode = "XXX")
+            .toEntity(ledgerId = "owner")
+
+        assertEquals("XXX", entity.homeCurrencyCode)
+        assertEquals("XXX", entity.originalCurrencyCode)
+    }
+
+    @Test
+    fun toDomainCarriesRawHomeCurrencyCodeForHonestDisplay() {
+        // R7-2：读侧原始码透传到域对象（未知码经 CurrencyDisplay.forRecord 原样亮码），
+        // null（旧服务端/手工构造）保持 null 由显示侧回落枚举口径。
+        val expense = expenseDto(publicId = "p1").copy(homeCurrency = "JPY").toDomain()
+
+        assertEquals("JPY", expense.homeCurrencyCode)
+        assertEquals(CurrencyCode.JPY, expense.homeCurrency)
+    }
+
+    @Test
     fun baselineAwareToRequestOmitsFxFieldsWhenUnchanged() {
         val baseline = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",

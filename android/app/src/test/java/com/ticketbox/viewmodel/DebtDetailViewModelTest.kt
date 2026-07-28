@@ -101,6 +101,29 @@ class DebtDetailViewModelTest {
     }
 
     @Test
+    fun submitBlockedWhenRecordCurrencyUnsupported() = runTest(dispatcher) {
+        // PR#255 R7-2：record 币种在支持集外（新版服务端币种）→ 动作 fail closed：
+        // currencyUnsupported 置位（面板禁用同源条件），submit 亮错误且不可达写路径 ——
+        // 禁落 CNY 解析（零小数币种的 "1200" 会放大成 120000 minor）。
+        val repo = FakeDebtDetailActions(
+            getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "XXX")),
+        )
+        val viewModel = DebtDetailViewModel(repo)
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.currencyUnsupported)
+
+        viewModel.openAction(DebtAction.Repayment)
+        viewModel.updateAmount("100")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.validationError != null)
+        assertTrue(repo.repaymentCalls.isEmpty())
+        assertEquals(false, viewModel.state.value.isSubmitting)
+    }
+
+    @Test
     fun loadDebtFailureSetsError() = runTest(dispatcher) {
         val repo = FakeDebtDetailActions(getResult = Result.failure(RuntimeException("offline")))
         val viewModel = DebtDetailViewModel(repo)

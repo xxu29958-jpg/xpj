@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -99,7 +100,7 @@ class MemberRepaymentProposalViewModelTest {
         viewModel.openForm(ProposalForm.Propose)
         viewModel.updateAmount("150")
         viewModel.updateNote("微信转账")
-        viewModel.submit(expectedRowVersion = 7L)
+        viewModel.submit(expectedRowVersion = 7L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         val call = repo.proposeCalls.single()
@@ -124,7 +125,7 @@ class MemberRepaymentProposalViewModelTest {
 
         viewModel.openForm(ProposalForm.Propose)
         viewModel.updateAmount("1.005")
-        viewModel.submit(expectedRowVersion = 7L)
+        viewModel.submit(expectedRowVersion = 7L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         assertEquals(101L, repo.proposeCalls.single().proposedAmountCents)
@@ -139,7 +140,7 @@ class MemberRepaymentProposalViewModelTest {
 
         viewModel.openForm(ProposalForm.Propose)
         viewModel.updateAmount("0")
-        viewModel.submit(expectedRowVersion = 1L)
+        viewModel.submit(expectedRowVersion = 1L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.validationError != null)
@@ -158,7 +159,7 @@ class MemberRepaymentProposalViewModelTest {
         advanceUntilIdle()
 
         viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
-        viewModel.submit(expectedRowVersion = 5L)
+        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         val call = repo.confirmCalls.single()
@@ -181,7 +182,7 @@ class MemberRepaymentProposalViewModelTest {
 
         viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
         viewModel.updateAmount("150")
-        viewModel.submit(expectedRowVersion = 5L)
+        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         // A lower amount than proposed → a partial confirm carries the explicit cents.
@@ -199,7 +200,7 @@ class MemberRepaymentProposalViewModelTest {
 
         viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
         viewModel.updateAmount("300")
-        viewModel.submit(expectedRowVersion = 5L)
+        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.validationError != null)
@@ -272,7 +273,7 @@ class MemberRepaymentProposalViewModelTest {
         advanceUntilIdle()
 
         viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
-        viewModel.submit(expectedRowVersion = 5L)
+        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.validationError != null)
@@ -432,6 +433,76 @@ class MemberRepaymentProposalViewModelTest {
         gate.complete(Unit)
         advanceUntilIdle()
         assertEquals("pB", viewModel.state.value.proposals.single().publicId)
+    }
+
+    @Test
+    fun confirmParsesInProposalFrozenCurrencyWhenMatched() = runTest(dispatcher) {
+        // PR#255 R7-3：确认金额按 proposal 冻结币种解析（服务端 confirmed 与 proposed 同单位
+        // 比较）。JPY proposal 1200 minor 预填 "1200"（零小数整数），与宿主欠款同币种时
+        // 全额确认成功（confirmedAmountCents=null），不被 CNY 口径拒/缩放。
+        val repo = FakeProposalActions(
+            listResult = Result.success(
+                listOf(sampleProposal(publicId = "p1", proposedAmountCents = 1_200).copy(homeCurrencyCode = "JPY")),
+            ),
+        )
+        val viewModel = MemberRepaymentProposalViewModel(repo)
+        viewModel.load("d1")
+        advanceUntilIdle()
+
+        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        assertEquals("1200", viewModel.state.value.amountInput)
+        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.JPY)
+        advanceUntilIdle()
+
+        val call = repo.confirmCalls.single()
+        assertNull(call.confirmedAmountCents) // 等于提出金额 → 全额确认
+        assertEquals(1, viewModel.state.value.foldChangedAt)
+    }
+
+    @Test
+    fun confirmBlockedWhenProposalCurrencyDriftsFromDebt() = runTest(dispatcher) {
+        // R7-3：installation 漂移实例 —— CNY proposal（50000 minor 预填 "500.00"）挂在 JPY
+        // 宿主欠款上：JPY 解析会拒/缩 100×，服务端又会把 repayment 按 proposal 口径折进
+        // 异币种欠款 → fail closed 禁确认（亮 mismatch 错误，不可达写路径）。
+        val repo = FakeProposalActions(
+            listResult = Result.success(
+                listOf(sampleProposal(publicId = "p1", proposedAmountCents = 50_000)),
+            ),
+        )
+        val viewModel = MemberRepaymentProposalViewModel(repo)
+        viewModel.load("d1")
+        advanceUntilIdle()
+
+        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        assertEquals("500.00", viewModel.state.value.amountInput)
+        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.JPY)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.validationError != null)
+        assertTrue(repo.confirmCalls.isEmpty())
+        assertEquals(false, viewModel.state.value.isSubmitting)
+    }
+
+    @Test
+    fun prefillSkippedAndSubmitBlockedWhenProposalCurrencyUnsupported() = runTest(dispatcher) {
+        // R7-2/R7-3：proposal 码在支持集外 → 不预填（禁落 CNY 兜底渲染），submit 同样
+        // fail closed。
+        val repo = FakeProposalActions(
+            listResult = Result.success(
+                listOf(sampleProposal(publicId = "p1", proposedAmountCents = 1_200).copy(homeCurrencyCode = "XXX")),
+            ),
+        )
+        val viewModel = MemberRepaymentProposalViewModel(repo)
+        viewModel.load("d1")
+        advanceUntilIdle()
+
+        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        assertEquals("", viewModel.state.value.amountInput)
+        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.validationError != null)
+        assertTrue(repo.confirmCalls.isEmpty())
     }
 }
 

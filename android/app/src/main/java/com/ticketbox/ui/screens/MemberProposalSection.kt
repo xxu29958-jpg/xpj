@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
@@ -262,7 +263,8 @@ internal fun ProposalFormSheet(
             onSubmit = {
                 viewModel.submit(
                     expectedRowVersion = debt.rowVersion,
-                    currency = recordDisplay.homeCurrency,
+                    // 严格解析（R7-2）：未知 record 码传 null，VM fail closed 禁用表单写。
+                    currency = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode),
                 )
             },
             onCancel = onClose,

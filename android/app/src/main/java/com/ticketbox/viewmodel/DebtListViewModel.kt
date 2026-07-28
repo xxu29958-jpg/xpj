@@ -160,12 +160,13 @@ class DebtListViewModel(
             result.fold(
                 onSuccess = { page ->
                     val debts = page.debts
-                    // 同源裁决（PR#255 R6 P1-1，ADR-0061 C02/C03）：非空账本取 record 级
+                    // 同源裁决（PR#255 R6 P1-1 / R7-1，ADR-0061 C02/C03）：非空账本取 record 级
                     // 权威值；空账本取列表信封的安装级 capability（空账本首笔创建由此放行，
                     // 打破「等首条 record」循环）；两源冲突 / 缺失（旧服务端空账本）→ null，
-                    // fail closed 不重绑、创建保持阻断。
+                    // fail closed 不重绑、创建保持阻断。R7-1 起校验**全行** record 码集合：
+                    // 混币（>1 已知码）或任一未知键同样归 null。
                     val ledgerCurrency = resolveLedgerCurrency(
-                        recordCode = debts.firstOrNull()?.homeCurrencyCode,
+                        recordCodes = debts.map { it.homeCurrencyCode },
                         capabilityCode = page.ledgerHomeCurrencyCode,
                     )
                     _state.update {
@@ -356,27 +357,33 @@ private fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi
 }
 
 /**
- * 账本币种同源裁决（PR#255 R6 P1-1，ADR-0061 C02/C03）：record 级（服务端写时按 installation
- * binding 盖章）与列表信封的安装级 capability 必须同源 ——
+ * 账本币种同源裁决（PR#255 R6 P1-1 / R7-1，ADR-0061 C02/C03）：record 级（服务端写时按
+ * installation binding 盖章）与列表信封的安装级 capability 必须同源 ——
  * - 非空账本：record 权威；capability 缺失（旧服务端）不降级。
  * - 空账本：capability 独立解析（服务端 env binding 随信封下发），空账本首笔创建由此放行。
  * - 两源在场却不一致：binding 漂移（C02 声明 installation currency 不可热切换，漂移即异常）
  *   → 冲突 fail closed 归 null，创建保持阻断、草稿不重绑，不猜任一侧。
- * - 未知键（不在客户端支持集内）视同缺失：归 null fail closed，禁止 [CurrencyCode.fromStorageKey]
- *   式静默落 CNY（C03 禁默认-CNY 猜测）。
+ * - 全行集合校验（R7-1）：列表 >1 个已知 record 码 = 漂移后新旧 record 并存 → fail closed；
+ *   任一 record 未知键（支持集外）→ fail closed —— 只验首行会在混币列表首行恰好匹配信封时
+ *   放行（币种漂移安装的新旧 record 混存场景）。
+ * - 未知键视同缺失的规则只适用于 capability 一侧（R6 既有：未知 capability + 空列表 → null；
+ *   未知 capability + 已知 record → record 权威）。
  */
-private fun resolveLedgerCurrency(recordCode: String?, capabilityCode: String?): CurrencyCode? {
-    val record = knownCurrencyOrNull(recordCode)
+private fun resolveLedgerCurrency(recordCodes: List<String>, capabilityCode: String?): CurrencyCode? {
+    val records = recordCodes.map { knownCurrencyOrNull(it) }
+    if (records.any { it == null }) return null
+    val distinct = records.filterNotNull().distinct()
+    // >1 个已知码 = binding 漂移（新旧 record 并存）→ fail closed（不得落 capability 放行）；
+    // 空列表无 record 权威，走 capability。
+    if (distinct.size > 1) return null
+    val record = distinct.singleOrNull()
     val capability = knownCurrencyOrNull(capabilityCode)
     if (record != null && capability != null && record != capability) return null
     return record ?: capability
 }
 
-/** 严格解析：仅客户端支持集内的 storageKey 得币种，其余（null/blank/未知）归 null。 */
-private fun knownCurrencyOrNull(code: String?): CurrencyCode? {
-    val normalized = code?.trim()?.uppercase().orEmpty()
-    return CurrencyCode.entries.firstOrNull { it.storageKey == normalized }
-}
+/** 严格解析：仅客户端支持集内的 storageKey 得币种，其余（null/blank/未知）归 null（R7-2 起委托共享变体）。 */
+private fun knownCurrencyOrNull(code: String?): CurrencyCode? = CurrencyCode.fromStorageKeyOrNull(code)
 
 /**
  * 列表响应落地后把草稿币种重绑到账本权威值（PR#255 P1-3）：任何草稿都重绑 ——

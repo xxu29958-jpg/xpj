@@ -64,6 +64,13 @@ data class Expense(
     // (its CreateExpense outbox row hasn't drained). Derived from
     // ``serverId == null`` in ExpenseEntity.toDomain. A synced row is false.
     val pendingSync: Boolean = false,
+    /**
+     * 服务端/缓存带来的**原始** home 币种码（PR#255 R7-2）：与 [homeCurrency]（枚举，未知码
+     * 已回落 CNY）并存，给显示侧做诚实化兜底 —— 支持集外的码经 `CurrencyDisplay.forRecord`
+     * 原样亮码而非冒 CNY 符号。仅 mapper 注入（DTO/Entity 原码）；手工构造的域对象为 null，
+     * 显示侧回落 [homeCurrency].storageKey。
+     */
+    val homeCurrencyCode: String? = null,
 )
 
 /**

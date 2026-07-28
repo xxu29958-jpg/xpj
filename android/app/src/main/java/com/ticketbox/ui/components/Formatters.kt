@@ -46,6 +46,11 @@ fun formatAmount(amountCents: Long?, currency: CurrencyCode = CurrencyCode.Defau
 
 fun formatDisplayAmount(amountCents: Long?, display: CurrencyDisplay = CurrencyDisplay.Base): String {
     if (amountCents == null) return "待填写金额"
+    // 未知码原样亮码（PR#255 R7-2）：符号位亮服务端原始码（"XXX12.00"），数字沿用默认
+    // 两位小数渲染 —— 不冒 CNY 符号撒谎，也不猜未知币种的 exponent。
+    display.unknownCode?.let { code ->
+        return code + formatAmount(amountCents, CurrencyCode.Default).removePrefix(CurrencyCode.Default.symbol)
+    }
     return formatAmount(amountCents, display.homeCurrency)
 }
 

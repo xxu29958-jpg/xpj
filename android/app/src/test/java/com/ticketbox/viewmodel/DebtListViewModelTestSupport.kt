@@ -1,0 +1,116 @@
+package com.ticketbox.viewmodel
+
+import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtBillSuggestion
+import com.ticketbox.domain.model.DebtCounterpartyTypes
+import com.ticketbox.domain.model.DebtDirections
+import com.ticketbox.domain.model.DebtLinkStatuses
+import com.ticketbox.domain.model.DebtSourceTypes
+import kotlinx.coroutines.CompletableDeferred
+
+// Shared fixtures for the DebtListViewModel test classes (split to stay inside the
+// detekt class-size budget; mirrors GlobalSearchViewModelTestSupport).
+
+internal class FakeDebtActions(
+    private val canModify: Boolean = true,
+    var listResult: Result<List<Debt>> = Result.success(emptyList()),
+    var createResult: Result<Debt> = Result.success(sampleDebt()),
+    var parseBillResult: Result<DebtBillSuggestion> = Result.success(blankBillSuggestion()),
+) : DebtActions {
+    val createDrafts = mutableListOf<DebtDraft>()
+    val parseBillCalls = mutableListOf<String>()
+    var listCalls = 0
+
+    /** When set, listDebts() stalls until completed — used to interleave a slow load. */
+    var listGate: CompletableDeferred<Unit>? = null
+
+    /** 列表信封的安装级 currency capability（PR#255 R6）；null = 旧服务端不下发。 */
+    var listCapability: String? = null
+
+    override fun canModifyLedger(): Boolean = canModify
+
+    override suspend fun listDebts(): Result<DebtListPage> {
+        listCalls++
+        // Capture the result at entry so a stalled load returns the snapshot it started with, even
+        // if a newer load swaps listResult in the meantime.
+        val captured = listResult
+        listGate?.await()
+        return captured.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = listCapability) }
+    }
+
+    override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))
+
+    override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
+        createDrafts += draft
+        return createResult
+    }
+
+    override suspend fun parseDebtBillImage(
+        fileName: String,
+        contentType: String?,
+        bytes: ByteArray,
+    ): Result<DebtBillSuggestion> {
+        parseBillCalls += fileName
+        return parseBillResult
+    }
+
+    override suspend fun recordRepayment(
+        publicId: String,
+        expectedRowVersion: Long,
+        amountCents: Long,
+    ): Result<Debt> = Result.success(sampleDebt(publicId))
+
+    override suspend fun recordAdjustment(
+        publicId: String,
+        expectedRowVersion: Long,
+        amountCents: Long,
+        reason: String,
+    ): Result<Debt> = Result.success(sampleDebt(publicId))
+
+    override suspend fun voidDebt(
+        publicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> = Result.success(sampleDebt(publicId))
+
+    override suspend fun setDebtKind(
+        publicId: String,
+        expectedRowVersion: Long,
+        debtKind: String,
+    ): Result<Debt> = Result.success(sampleDebt(publicId))
+}
+
+internal fun blankBillSuggestion(): DebtBillSuggestion = DebtBillSuggestion(
+    merchant = null,
+    principalAmountCents = null,
+    installmentCount = null,
+    installmentPeriodMonths = null,
+    perPeriodAmountCents = null,
+    repaymentDay = null,
+    sourceText = "",
+    confidence = null,
+)
+
+internal fun sampleDebt(publicId: String = "debt-1"): Debt = Debt(
+    publicId = publicId,
+    ledgerId = "owner",
+    direction = DebtDirections.I_OWE,
+    counterpartyType = DebtCounterpartyTypes.EXTERNAL,
+    counterpartyAccountId = null,
+    counterpartyLabel = "房东",
+    principalAmountCents = 50_000,
+    remainingAmountCents = 50_000,
+    paidAmountCents = 0,
+    status = DebtLinkStatuses.OPEN,
+    sourceType = DebtSourceTypes.MANUAL,
+    sourceId = null,
+    homeCurrencyCode = "CNY",
+    originalCurrencyCode = null,
+    originalAmountMinor = null,
+    createdAt = "2026-06-15T00:00:00Z",
+    updatedAt = "2026-06-15T00:00:00Z",
+    rowVersion = 1,
+)

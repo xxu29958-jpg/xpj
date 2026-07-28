@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
@@ -217,6 +218,8 @@ internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActi
     when {
         !debt.isOpen -> DebtNoteCard(stringResource(R.string.debt_detail_closed_note))
         !canModify -> Unit
+        // R7-2：record 币种未知（支持集外）禁用金额动作（fail closed；VM submit 另有同条件防线）。
+        CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) == null -> Unit
         else -> AppSectionGroup(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(vertical = AppSpacing.contentGap),

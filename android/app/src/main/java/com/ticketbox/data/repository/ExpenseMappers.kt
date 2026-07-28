@@ -63,6 +63,8 @@ fun ExpenseDto.toDomain(): Expense {
         amountCents = amountCents,
         homeAmountCents = homeAmountCents ?: amountCents,
         homeCurrency = CurrencyCode.fromStorageKey(homeCurrency),
+        // R7-2：原始码同步透传（支持集外时显示侧经 CurrencyDisplay.forRecord 原样亮码）。
+        homeCurrencyCode = homeCurrency,
         originalCurrency = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode),
         originalAmount = originalAmount ?: minorToMajorText(originalAmountMinor, CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode)),
         fxRate = resolvedFxRate,
@@ -107,8 +109,11 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     serverId = id,
     publicId = requiredPublicId(),
     amountCents = amountCents,
-    homeCurrencyCode = CurrencyCode.fromStorageKey(homeCurrency).storageKey,
-    originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode).storageKey,
+    // R7-2：原码透传，不做 fromStorageKey 枚举往返 —— 未知码（新版服务端币种）若被静默
+    // 改写成 CNY 落本地缓存，后续同步会把它回写服务端（币种篡改）。blank 才落既有 CNY 兜底。
+    homeCurrencyCode = homeCurrency?.takeIf { it.isNotBlank() } ?: FxContract.HomeCurrency.storageKey,
+    originalCurrencyCode = (originalCurrency ?: originalCurrencyCode)?.takeIf { it.isNotBlank() }
+        ?: FxContract.HomeCurrency.storageKey,
     originalAmountMinor = originalAmountMinor ?: amountCents,
     exchangeRateToCny = resolvedFxRate,
     exchangeRateDate = resolvedFxRateDate,
@@ -175,6 +180,8 @@ fun ExpenseEntity.toDomain(): Expense {
         amountCents = amountCents,
         homeAmountCents = amountCents,
         homeCurrency = CurrencyCode.fromStorageKey(homeCurrencyCode),
+        // R7-2：缓存原码透传（同 ExpenseDto.toDomain 的 homeCurrencyCode）。
+        homeCurrencyCode = homeCurrencyCode,
         originalCurrency = CurrencyCode.fromStorageKey(originalCurrencyCode),
         originalAmount = minorToMajorText(originalAmountMinor, CurrencyCode.fromStorageKey(originalCurrencyCode)),
         fxRate = exchangeRateToCny,

@@ -22,10 +22,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTypography
@@ -81,8 +82,13 @@ internal fun SearchResultCard(
             }
             Text(
                 // Record 口径（PR#255 R5 P2）：默认参落 CNY，JPY/KRW home 的命中行会按
-                // 两位小数显示 minor（如 1200 → ¥12.00）。
-                text = formatAmount(expense.amountCents, expense.homeCurrency),
+                // 两位小数显示 minor（如 1200 → ¥12.00）。R7-2 起走原始码 forRecord：
+                // 支持集外的码原样亮码（"XXX12.00"）而非冒 CNY 符号；枚举兜底兼容
+                // 手工构造（raw 为 null）的域对象。
+                text = formatDisplayAmount(
+                    expense.amountCents,
+                    CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
+                ),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleMedium.tabularNum(),
                 fontWeight = AppTypography.amountMedium.weight,

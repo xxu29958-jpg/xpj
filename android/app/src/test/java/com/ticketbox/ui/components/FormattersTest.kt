@@ -101,6 +101,33 @@ class FormattersTest {
     }
 
     @Test
+    fun formatsUnknownRecordCurrencyWithRawCodeNotCnySymbol() {
+        // PR#255 R7-2：支持集外的 record 码原样亮码（"XXX12.00"），不冒 CNY 符号撒谎；
+        // 数字沿用默认两位小数渲染（不猜未知币种 exponent）。空码仍回落 Base 同款。
+        assertEquals(
+            "XXX12.00",
+            formatDisplayAmount(
+                amountCents = 1200,
+                display = CurrencyDisplay.forRecord("XXX"),
+            ),
+        )
+        assertEquals(
+            "¥12.00",
+            formatDisplayAmount(
+                amountCents = 1200,
+                display = CurrencyDisplay.forRecord(null),
+            ),
+        )
+        assertEquals(
+            "¥1,200",
+            formatDisplayAmount(
+                amountCents = 1200,
+                display = CurrencyDisplay.forRecord("jpy"),
+            ),
+        )
+    }
+
+    @Test
     fun formatsForeignExpenseWithOriginalPrimaryAndCnyMeta() {
         val expense = formatterExpense(
             FormatterExpenseFixture(
