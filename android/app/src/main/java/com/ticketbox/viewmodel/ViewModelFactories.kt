@@ -83,10 +83,11 @@ fun recurringViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun incomePlanViewModelFactory(
     repository: IncomePlanActions,
+    debts: DebtActions,
     onDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return IncomePlanViewModel(repository, onDataChanged = onDataChanged) as T
+        return IncomePlanViewModel(repository, debts, onDataChanged = onDataChanged) as T
     }
 }
 
@@ -160,9 +161,10 @@ fun createDebtGoalViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun createSpendingGoalViewModelFactory(
     reportsRepository: ReportsActions,
+    debtRepository: DebtActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return CreateSpendingGoalViewModel(reportsRepository) as T
+        return CreateSpendingGoalViewModel(reportsRepository, debtRepository) as T
     }
 }
 

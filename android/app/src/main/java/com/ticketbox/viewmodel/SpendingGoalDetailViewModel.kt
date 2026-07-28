@@ -3,7 +3,9 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalUpdate
@@ -18,11 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-// Goal 不带币种字段（服务端按账本 home 聚合），编辑流上拿不到 homeCurrencyCode，
-// 且 AppViewModel 恒以 CurrencyDisplay.Base 提供 display home，故解析/回填口径显式落
-// FxContract.HomeCurrency（登记：若日后 Goal 带上服务端 home，改这里）。
-private val goalInputCurrency = FxContract.HomeCurrency
 
 enum class SpendingGoalEditField {
     Name,
@@ -49,16 +46,20 @@ data class SpendingGoalDetailUiState(
     val isArchiving: Boolean = false,
     val archiveCompleted: Boolean = false,
     val mutationRevision: Int = 0,
+    /** 账本币种（R12-D，同 CreateSpendingGoalViewModel）：信封 capability 严格解析，null=未确认禁写。 */
+    val ledgerCurrency: CurrencyCode? = null,
 ) {
     val canSave: Boolean
         get() = canModify &&
             !isSaving &&
+            ledgerCurrency != null &&
             name.trim().isNotEmpty() &&
-            (parseAmountCents(targetAmountInput, goalInputCurrency)?.let { it > 0L } == true)
+            (ledgerCurrency.let { parseAmountCents(targetAmountInput, it)?.let { a -> a > 0L } == true })
 }
 
 class SpendingGoalDetailViewModel(
     private val reports: ReportsActions,
+    private val debts: DebtActions,
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         SpendingGoalDetailUiState(
@@ -82,6 +83,9 @@ class SpendingGoalDetailViewModel(
             )
         }
         loadJob = viewModelScope.launch {
+            // R12-D：随每次 load 重解析账本币种（信封 capability；账本切换后重算）。
+            val code = debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode
+            _state.update { it.copy(ledgerCurrency = CurrencyCode.fromStorageKeyOrNull(code)) }
             val result = reports.goal(requestedId)
             if (generation != loadGeneration || _state.value.publicId != requestedId) return@launch
             result.fold(
@@ -117,7 +121,8 @@ class SpendingGoalDetailViewModel(
                 isEditing = true,
                 name = goal.name,
                 month = goal.month,
-                targetAmountInput = formatAmountInput(goal.targetAmountCents, goalInputCurrency),
+                // 回填走账本币种（未确认时落 display-home 兜底仅作展示，save 由 ledgerCurrency 禁写）。
+                targetAmountInput = formatAmountInput(goal.targetAmountCents, it.ledgerCurrency ?: FxContract.HomeCurrency),
                 category = goal.category.orEmpty(),
                 formError = null,
                 message = null,
@@ -153,7 +158,13 @@ class SpendingGoalDetailViewModel(
         val current = _state.value
         val goal = current.goal ?: return
         if (!current.canModify || current.isSaving || goal.isArchived) return
-        val targetAmountCents = parseAmountCents(current.targetAmountInput, goalInputCurrency)
+        // R12-D：币种未确认禁写（不落 CNY 兜底）。
+        val currency = current.ledgerCurrency
+        if (currency == null) {
+            _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }
+            return
+        }
+        val targetAmountCents = parseAmountCents(current.targetAmountInput, currency)
         if (current.name.trim().isEmpty() || targetAmountCents == null || targetAmountCents <= 0L) {
             _state.update { it.copy(formError = UiText.res(R.string.spending_goal_edit_validation)) }
             return

@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
@@ -47,7 +49,7 @@ class IncomePlanViewModelTest {
             ),
             archived = listOf(plan("p2", 50_000, status = IncomePlanStatus.ARCHIVED)),
         )
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         val state = viewModel.state.value
         assertFalse(state.isLoading)
@@ -61,7 +63,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository(
             active = IncomePlanListing(listOf(plan("owner-a", 100_000)), 100_000),
         )
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.updateDraftLabel("owner draft")
 
@@ -88,7 +90,7 @@ class IncomePlanViewModelTest {
         repo.activeResponder = { call ->
             if (call == 1) staleOwnerResult.await() else Result.success(familyListing)
         }
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
 
         repo.activeAccessFlow.value = incomePlanAccess(ledgerId = "family", ownerKey = "family-owner")
@@ -108,7 +110,7 @@ class IncomePlanViewModelTest {
         val stale = CompletableDeferred<Result<IncomePlanListing>>()
         val latest = CompletableDeferred<Result<IncomePlanListing>>()
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         var refreshCall = 0
         repo.activeResponder = {
@@ -137,7 +139,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         repo.archiveResponder = { archiveResult.await() }
         var dataChangedCalls = 0
-        val viewModel = IncomePlanViewModel(repo) { dataChangedCalls += 1 }
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions()) { dataChangedCalls += 1 }
         advanceUntilIdle()
 
         viewModel.archive("owner-plan", 1L)
@@ -158,7 +160,7 @@ class IncomePlanViewModelTest {
     @Test
     fun submitDraftValidatesBeforeNetworkCall() = runTest(dispatcher) {
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.updateDraftLabel("")
         viewModel.updateDraftAmount("abc")
@@ -172,7 +174,7 @@ class IncomePlanViewModelTest {
     @Test
     fun submitDraftHappyPathClearsAndRefreshes() = runTest(dispatcher) {
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.updateDraftLabel("工资")
         viewModel.updateDraftSource(IncomeSourceType.SALARY)
@@ -193,7 +195,7 @@ class IncomePlanViewModelTest {
     @Test
     fun submitOneTimeDraftSendsIncomeMonth() = runTest(dispatcher) {
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.updateDraftLabel("项目尾款")
         viewModel.updateDraftSource(IncomeSourceType.FREELANCE)
@@ -211,9 +213,55 @@ class IncomePlanViewModelTest {
     }
 
     @Test
+    fun submitDraftParsesAmountInLedgerCapability() = runTest(dispatcher) {
+        // PR#255 R12-D：解析口径取列表信封 capability（R6 同源）—— JPY 账本 "1200" →
+        // 1200 minor（零小数不 ×100），不再落 CNY 兜底放大 100×。
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
+        )
+        val repo = FakeRepository()
+        val viewModel = IncomePlanViewModel(repo, debts)
+        advanceUntilIdle()
+
+        viewModel.updateDraftLabel("工资")
+        viewModel.updateDraftAmount("1200")
+        viewModel.updateDraftPayDay("10")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertEquals(1, repo.createCalls)
+        assertEquals(1_200L, repo.lastDraft?.amountCents)
+    }
+
+    @Test
+    fun submitDraftBlockedWhenCapabilityUnsupported() = runTest(dispatcher) {
+        // R12-D：capability 在支持集外（新版服务端币种）→ 草稿 homeCurrency=null → 禁写 +
+        // 明示文案，create 不可达。
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "VND"),
+        )
+        val repo = FakeRepository()
+        val viewModel = IncomePlanViewModel(repo, debts)
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.addDraft.homeCurrency)
+        viewModel.updateDraftLabel("工资")
+        viewModel.updateDraftAmount("1200")
+        viewModel.updateDraftPayDay("10")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertEquals(0, repo.createCalls)
+        assertEquals(
+            UiText.res(R.string.currency_unconfirmed_write_blocked),
+            viewModel.state.value.addDraft.validationError,
+        )
+    }
+
+    @Test
     fun shiftDraftIncomeMonthKeepsInternalWireValue() = runTest(dispatcher) {
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.updateDraftIncomeMonth("2026-06")
 
@@ -227,7 +275,7 @@ class IncomePlanViewModelTest {
     @Test
     fun submitDraftSurfacesRepositoryError() = runTest(dispatcher) {
         val repo = FakeRepository(createResult = Result.failure(RuntimeException("网络异常")))
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.updateDraftLabel("x")
         viewModel.updateDraftAmount("100")
@@ -244,7 +292,7 @@ class IncomePlanViewModelTest {
         // create success, then cleared by resetDraft when the screen closes (mirrors the
         // LedgerViewModel.manualCreateDone ack convention).
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.updateDraftLabel("工资")
         viewModel.updateDraftAmount("10000")
@@ -262,7 +310,7 @@ class IncomePlanViewModelTest {
         // A backend failure must NOT signal the screen to close — the sheet stays open with its
         // validationError instead of vanishing while the user believes the plan was created.
         val repo = FakeRepository(createResult = Result.failure(RuntimeException("网络异常")))
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.updateDraftLabel("x")
         viewModel.updateDraftAmount("100")
@@ -276,7 +324,7 @@ class IncomePlanViewModelTest {
     @Test
     fun archiveTriggersRepositoryAndFlashMessage() = runTest(dispatcher) {
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.archive("some-id", 1L)
         advanceUntilIdle()
@@ -287,7 +335,7 @@ class IncomePlanViewModelTest {
     @Test
     fun restoreTriggersRepositoryAndFlashMessage() = runTest(dispatcher) {
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.restore("some-id", 1L)
         advanceUntilIdle()
@@ -298,7 +346,7 @@ class IncomePlanViewModelTest {
     @Test
     fun dismissFlashClearsMessage() = runTest(dispatcher) {
         val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.archive("x", 1L)
         advanceUntilIdle()
@@ -309,25 +357,26 @@ class IncomePlanViewModelTest {
     @Test
     fun viewerRoleBlocksWriteAttempts() = runTest(dispatcher) {
         val repo = FakeRepository(canModify = false)
-        val viewModel = IncomePlanViewModel(repo)
+        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         assertFalse(viewModel.state.value.canModify)
     }
 
     @Test
     fun draftAmountParsing() {
-        val draft = IncomePlanDraftUi(amountYuanInput = "123.45")
+        // R12-D 起解析币种由草稿持有（信封 capability 注入）；裸构造须显式给币种。
+        val draft = IncomePlanDraftUi(amountYuanInput = "123.45", homeCurrency = CurrencyCode.CNY)
         assertEquals(12345L, draft.parsedAmountCents())
         // §3 BigDecimal 精度：>2 位小数 HALF_UP 精确进位。"1.005" → 101；旧 Double Math.round 给 100
         // （1.005*100 的 double 是 100.4999… → 100），故此断言会在退回 Double 时变红。
-        assertEquals(101L, IncomePlanDraftUi(amountYuanInput = "1.005").parsedAmountCents())
+        assertEquals(101L, IncomePlanDraftUi(amountYuanInput = "1.005", homeCurrency = CurrencyCode.CNY).parsedAmountCents())
         // 收入计划允许 0（与 DebtList 的 > 0 不同：这里是 >= 0 边界）。
-        assertEquals(0L, IncomePlanDraftUi(amountYuanInput = "0").parsedAmountCents())
+        assertEquals(0L, IncomePlanDraftUi(amountYuanInput = "0", homeCurrency = CurrencyCode.CNY).parsedAmountCents())
         // 拒负：极小负额在分空间 HALF_UP 舍入到 0，也按元符号拒，不静默当成 0 元计划。
-        assertEquals(null, IncomePlanDraftUi(amountYuanInput = "-0.004").parsedAmountCents())
+        assertEquals(null, IncomePlanDraftUi(amountYuanInput = "-0.004", homeCurrency = CurrencyCode.CNY).parsedAmountCents())
         // 溢出 Long 安全返回 null（旧 Double Math.round 会回 Long.MAX 垃圾值）。
-        assertEquals(null, IncomePlanDraftUi(amountYuanInput = "99999999999999999999").parsedAmountCents())
-        assertEquals(null, IncomePlanDraftUi(amountYuanInput = "abc").parsedAmountCents())
+        assertEquals(null, IncomePlanDraftUi(amountYuanInput = "99999999999999999999", homeCurrency = CurrencyCode.CNY).parsedAmountCents())
+        assertEquals(null, IncomePlanDraftUi(amountYuanInput = "abc", homeCurrency = CurrencyCode.CNY).parsedAmountCents())
         assertEquals(null, IncomePlanDraftUi(amountYuanInput = "-5").parsedAmountCents())
         assertEquals(null, IncomePlanDraftUi(amountYuanInput = "").parsedAmountCents())
     }
@@ -350,7 +399,7 @@ class IncomePlanViewModelTest {
     @Test
     fun draftIsValidRequiresAllThree() {
         assertTrue(
-            IncomePlanDraftUi(label = "x", amountYuanInput = "100", payDayInput = "1").isValid,
+            IncomePlanDraftUi(label = "x", amountYuanInput = "100", payDayInput = "1", homeCurrency = CurrencyCode.CNY).isValid,
         )
         assertTrue(
             IncomePlanDraftUi(
@@ -359,6 +408,7 @@ class IncomePlanViewModelTest {
                 incomeMonthInput = "2026-06",
                 amountYuanInput = "100",
                 payDayInput = "1",
+                homeCurrency = CurrencyCode.CNY,
             ).isValid,
         )
         assertFalse(

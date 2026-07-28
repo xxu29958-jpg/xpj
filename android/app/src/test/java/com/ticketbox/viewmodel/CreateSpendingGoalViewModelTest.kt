@@ -1,9 +1,12 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -17,6 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import java.lang.reflect.Proxy
 
@@ -37,7 +41,7 @@ class CreateSpendingGoalViewModelTest {
     @Test
     fun resetUsesRequestedMonthAndReflectsRole() = runTest(dispatcher) {
         val reports = RecordingSpendingReportsActions(canModify = false)
-        val viewModel = CreateSpendingGoalViewModel(reports.actions)
+        val viewModel = CreateSpendingGoalViewModel(reports.actions, CapabilityDebtActions())
 
         viewModel.reset("2026-07")
 
@@ -49,8 +53,9 @@ class CreateSpendingGoalViewModelTest {
     @Test
     fun submitValidationBlocksMissingAmountWithoutApiCall() = runTest(dispatcher) {
         val reports = RecordingSpendingReportsActions()
-        val viewModel = CreateSpendingGoalViewModel(reports.actions)
+        val viewModel = CreateSpendingGoalViewModel(reports.actions, CapabilityDebtActions())
 
+        advanceUntilIdle() // 币种先就位（默认 CNY fake），本钉专验金额校验分支
         viewModel.updateName("本月外卖")
         viewModel.submit()
         advanceUntilIdle()
@@ -60,11 +65,56 @@ class CreateSpendingGoalViewModelTest {
     }
 
     @Test
-    fun submitSuccessPassesSpendingGoalDraftAndSetsCreatedSignal() = runTest(dispatcher) {
+    fun submitParsesTargetAmountInLedgerCapability() = runTest(dispatcher) {
+        // PR#255 R12-D：解析口径取列表信封 capability —— JPY 账本 "1200" → 1200 minor
+        // （零小数不 ×100），不再落 CNY 兜底放大 100×。
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
+        )
         val reports = RecordingSpendingReportsActions(createResult = Result.success(spendingGoal("goal-new")))
-        val viewModel = CreateSpendingGoalViewModel(reports.actions)
+        val viewModel = CreateSpendingGoalViewModel(reports.actions, debts)
 
         viewModel.reset("2026-07")
+        advanceUntilIdle()
+        viewModel.updateName("本月外卖")
+        viewModel.updateTargetAmount("1200")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(1_200L, reports.createGoalCalls.single().targetAmountCents)
+    }
+
+    @Test
+    fun submitBlockedWhenCapabilityUnsupported() = runTest(dispatcher) {
+        // R12-D：capability 在支持集外 → 禁写 + 明示文案，create 不可达。
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "VND"),
+        )
+        val reports = RecordingSpendingReportsActions()
+        val viewModel = CreateSpendingGoalViewModel(reports.actions, debts)
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.ledgerCurrency)
+        assertFalse(viewModel.state.value.canSubmit)
+        viewModel.updateName("本月外卖")
+        viewModel.updateTargetAmount("1200")
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertTrue(reports.createGoalCalls.isEmpty())
+        assertEquals(
+            UiText.res(R.string.currency_unconfirmed_write_blocked),
+            viewModel.state.value.formError,
+        )
+    }
+
+    @Test
+    fun submitSuccessPassesSpendingGoalDraftAndSetsCreatedSignal() = runTest(dispatcher) {
+        val reports = RecordingSpendingReportsActions(createResult = Result.success(spendingGoal("goal-new")))
+        val viewModel = CreateSpendingGoalViewModel(reports.actions, CapabilityDebtActions())
+
+        viewModel.reset("2026-07")
+        advanceUntilIdle() // R12-D：等账本币种（信封 capability）解析后再提交
         viewModel.updateName("本月外卖")
         viewModel.updateTargetAmount("128.50")
         viewModel.updateCategory("餐饮")

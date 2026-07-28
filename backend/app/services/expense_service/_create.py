@@ -373,20 +373,18 @@ def _guard_notification_capture_currency(payload: NotificationDraftCreateRequest
     """PR#255 R11 条件门：非 CNY 安装拒绝无 original 字段的通知捕获。
 
     Android 通知解析器按 CNY 分声明 amount_cents（PaymentNotificationParser 无 FX 路径，
-    与 repayment 草稿同洞）——非 CNY 安装把该整数按 home minor 盖章即 100×。无任何
-    original 币种/金额字段的捕获整体拒绝；带 original 字段的显式 FX 捕获放行
-    （apply_currency_payload 的 has_original_fields 分支本就诚实换算，不误伤；与
-    repayment 草稿的无条件门的差异即此 original 通道）。跨币种契约挂账 D9。
+    与 repayment 草稿同洞）——非 CNY 安装把该整数按 home minor 盖章即 100×。仅当币种
+    与金额字段**成对完整**（R12-E：仅其一的残缺 FX 载荷按无 original 处理，该路径不为
+    部分 FX 设计）才视为显式 FX 放行；否则非 CNY 安装整体拒绝。跨币种契约挂账 D9。
     """
     home_currency = home_currency_code()
-    has_original_money = any(
-        value is not None
-        for value in (
-            payload.original_currency,
-            payload.original_currency_code,
-            payload.original_amount,
-            payload.original_amount_minor,
-        )
+    # R12-E 硬化：只有币种+金额**成对完整**才算显式 FX —— 仅其一的残缺 FX 载荷按无
+    # original 处理（该路径不为部分 FX 设计：金额缺失会回落到 None 行值，汇率/金额
+    # 语义不可判定）。CNY 下门不触发，行为与之前一致。
+    has_original_money = (
+        payload.original_currency is not None or payload.original_currency_code is not None
+    ) and (
+        payload.original_amount is not None or payload.original_amount_minor is not None
     )
     if home_currency != DEFAULT_HOME_CURRENCY_CODE and not has_original_money:
         raise AppError("notification_draft_currency_unsupported", status_code=422)

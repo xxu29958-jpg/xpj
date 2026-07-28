@@ -123,8 +123,7 @@ def _process_csv_import_apply_row(
         tenant_id=tenant_id,
         expense=expense,
         payload=row,
-        amount_was_explicit=row.original_currency_code == home_currency_code()
-        and row.amount_cents is not None,
+        amount_was_explicit=row.original_currency_code == home_currency_code() and row.amount_cents is not None,
         binding_checked=True,
     )
     return expense
@@ -435,8 +434,7 @@ def apply_csv_import_batch(
     it is revalidated under the identity advisory lock before every row, so a
     mid-batch revocation/demotion cannot ride the per-row commits.
     """
-    # PR#255 R10①：批量边界一次 binding 校验（行内经 binding_checked 跳过，
-    # 避免 ≤1000 行 × 3 次全表 distinct）。
+    # R10①：批量边界一次 binding 校验（行内经 binding_checked 跳过）。
     assert_currency_binding_consistent(db, home_currency_code())
     apply_token = str(uuid4())
     batch = _claim_apply_lease(

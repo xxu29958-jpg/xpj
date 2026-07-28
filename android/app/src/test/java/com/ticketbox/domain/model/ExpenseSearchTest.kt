@@ -37,6 +37,24 @@ class ExpenseSearchTest {
         assertTrue(expenseMatchesSearchAmount(cnyRow, "12"))
         assertFalse(expenseMatchesSearchAmount(cnyRow, "1200"))
     }
+
+    @Test
+    fun unknownHomeRowStillMatchesSupportedOriginalLeg() {
+        // PR#255 R12-B：raw-minor 只比 home 双腿，original 腿按其声明币种续配 ——
+        // VND-home/USD-original 行："1200" 命中 raw home，"12.50" 命中 USD 原币腿。
+        val row = searchExpense(
+            amountCents = 1_200L,
+            homeCurrencyCode = "VND",
+        ).copy(
+            originalCurrency = CurrencyCode.USD,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalAmountMinor = 1_250L,
+        )
+
+        assertTrue(expenseMatchesSearchAmount(row, "1200"))
+        assertTrue(expenseMatchesSearchAmount(row, "12.50"))
+        assertFalse(expenseMatchesSearchAmount(row, "120000"))
+    }
 }
 
 private fun searchExpense(

@@ -3123,7 +3123,7 @@
       "reviewed_at": null,
       "reviewed_against_commit": null,
       "calibration_reason": null,
-      "history_fingerprint": "adr-history-v2:6fee8aa8f1e7fe07770d56d34cb1eef2fe99716a5c6ce2a3ccd00bba46baad79",
+      "history_fingerprint": "adr-history-v2:e5caa38568a392456eb5affdfe23f9ae6f7ce6e687628677260db0612130e3f6",
       "id": "0075",
       "declared_current_scope": "currency_binding_drift 写时门（debt/proposal/expense 盖章入口）、读路径降级分工、与全量持久绑定的边界",
       "declared_implementation_status": "implemented",

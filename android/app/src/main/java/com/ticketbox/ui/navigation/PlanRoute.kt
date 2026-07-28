@@ -31,7 +31,7 @@ internal fun PlanRoute(
         factory = recurringViewModelFactory(screenFactory.recurringRepository),
     )
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
-        factory = incomePlanViewModelFactory(screenFactory.incomePlanRepository),
+        factory = incomePlanViewModelFactory(screenFactory.incomePlanRepository, screenFactory.debtRepository),
     )
     val budgetState by budgetViewModel.uiState.collectAsStateWithLifecycle()
     val recurringState by recurringViewModel.uiState.collectAsStateWithLifecycle()

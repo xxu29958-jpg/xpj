@@ -160,15 +160,15 @@ fun expenseMatchesSearchAmount(expense: Expense, amountsByCurrency: Map<Currency
     // 是未缩放整数（"1200"→1200；小数查询天然不命中，minor 必为整数），用它作原值代理。
     // raw 为空/缺省（旧 record / 手工构造）不落此分支，维持枚举口径（行为不回归）。
     val rawHomeCode = expense.homeCurrencyCode
-    if (!rawHomeCode.isNullOrBlank() && CurrencyCode.fromStorageKeyOrNull(rawHomeCode) == null) {
-        val rawMinor = amountsByCurrency[CurrencyCode.JPY] ?: return false
-        return expenseMatchesAmountCents(expense, rawMinor)
-    }
     val originalCurrency = expense.originalCurrencyCode
     val foreignOriginal = originalCurrency != expense.homeCurrency
-    amountsByCurrency[expense.homeCurrency]?.let { homeAmount ->
-        if (expense.amountCents == homeAmount || expense.homeAmountCents == homeAmount) return true
-        if (!foreignOriginal && expense.originalAmountMinor == homeAmount) return true
+    val homeUnknown = !rawHomeCode.isNullOrBlank() && CurrencyCode.fromStorageKeyOrNull(rawHomeCode) == null
+    if (homeUnknown && matchUnknownHomeRawLeg(expense, amountsByCurrency)) return true
+    if (!homeUnknown) {
+        amountsByCurrency[expense.homeCurrency]?.let { homeAmount ->
+            if (expense.amountCents == homeAmount || expense.homeAmountCents == homeAmount) return true
+            if (!foreignOriginal && expense.originalAmountMinor == homeAmount) return true
+        }
     }
     if (foreignOriginal) {
         amountsByCurrency[originalCurrency]?.let { originalAmount ->
@@ -176,6 +176,13 @@ fun expenseMatchesSearchAmount(expense: Expense, amountsByCurrency: Map<Currency
         }
     }
     return false
+}
+
+/** R12-B：未知 home 行的 raw-minor 匹配只比 home 双腿（amountCents/homeAmountCents）——
+ *  original 腿交回主函数按其声明币种续配（VND-home/USD-original 双路可达）。 */
+private fun matchUnknownHomeRawLeg(expense: Expense, amountsByCurrency: Map<CurrencyCode, Long>): Boolean {
+    val raw = amountsByCurrency[CurrencyCode.JPY] ?: return false
+    return expense.amountCents == raw || expense.homeAmountCents == raw
 }
 
 /** Convenience overload for single-shot callers/tests: parses [query] per
