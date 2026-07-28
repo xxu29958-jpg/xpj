@@ -189,4 +189,47 @@ class DebtListViewModelCapabilityTest {
         advanceUntilIdle()
         assertTrue(repo.createDrafts.isEmpty())
     }
+
+    @Test
+    fun knownRecordWithUnknownEnvelopeCapabilityFailsClosed() = runTest(dispatcher) {
+        // PR#255 R8-1：capability **在场但未知**（新服务端 VND，客户端支持集外）≠ 缺失 ——
+        // 服务端已宣告当前 binding 是客户端无法解释的币种，新写入会被按其盖章；即便 record
+        // 已知（CNY）也不得按 record 口径放行（"1200" 按 CNY 解析 120000 → 服务端按 VND
+        // 盖章 = 100×）。判定用原始串（blank 才算缺失）。
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("cny-debt").copy(homeCurrencyCode = "CNY"))),
+        )
+        repo.listCapability = "VND"
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.homeCurrencyResolved)
+        assertNull(viewModel.state.value.ledgerHomeCurrency)
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertTrue(repo.createDrafts.isEmpty())
+    }
+
+    @Test
+    fun blankEnvelopeCapabilityKeepsRecordAuthority() = runTest(dispatcher) {
+        // R8-1 回归钉：capability **缺失**（blank = 旧服务端无信封字段）时 record 权威维持，
+        // 创建放行（与 null 信封同义；不得被「在场未知」分支误伤）。
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+            createResult = Result.success(sampleDebt("created")),
+        )
+        repo.listCapability = ""
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerHomeCurrency)
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+    }
 }

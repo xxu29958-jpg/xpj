@@ -229,6 +229,42 @@ class DebtListViewModelTest {
     }
 
     @Test
+    fun parseDebtBillSkipsAmountPrefillOnNonCnyLedger() = runTest(dispatcher) {
+        // PR#255 R8-2：provider 声明金额单位为 CNY 分（两位小数）。JPY/KRW 零小数账本接受
+        // 建议时，预填会把 120000 分当账本 minor 提交（100×）→ 金额字段不预填、留用户
+        // 手填；其它字段（平台/期数/周期）保留预填。CNY 账本路径见上钉。
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
+            parseBillResult = Result.success(
+                DebtBillSuggestion(
+                    merchant = "花呗",
+                    principalAmountCents = 120_000,
+                    installmentCount = 12,
+                    installmentPeriodMonths = 1,
+                    perPeriodAmountCents = 10_000,
+                    repaymentDay = 10,
+                    sourceText = "花呗 分期 12期",
+                    confidence = 0.8,
+                ),
+            ),
+        )
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.markBillParsePreparing())
+        viewModel.parseDebtBillImage("bill.jpg", "image/jpeg", byteArrayOf(1, 2, 3))
+        advanceUntilIdle()
+
+        val draft = viewModel.state.value.addDraft
+        assertEquals("花呗", draft.counterpartyLabel)
+        assertEquals("", draft.amountYuanInput) // 金额不预填（分单位与账本 minor 不同源）
+        assertEquals(DebtKinds.INSTALLMENT, draft.kind)
+        assertEquals("12", draft.installmentCountInput)
+        assertEquals(CurrencyCode.JPY, draft.homeCurrency)
+        assertTrue(viewModel.state.value.pendingBillParsePrefill)
+    }
+
+    @Test
     fun submitDraftWithBlankCounterpartyShowsValidationWithoutCreate() = runTest(dispatcher) {
         val repo = FakeDebtActions(listResult = Result.success(listOf(sampleDebt())))
         val viewModel = DebtListViewModel(repo)

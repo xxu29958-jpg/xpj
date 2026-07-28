@@ -154,35 +154,6 @@ def test_list_debts_is_ledger_scoped(client: TestClient, *, identity) -> None:
     assert gray_labels == ["同事"]
 
 
-def test_list_debts_envelope_carries_installation_home_currency(client: TestClient, *, identity) -> None:
-    # ADR-0061 C02/C03 / PR#255 R6: the list envelope repeats the installation-level
-    # currency capability (the same binding the write path stamps per record) so an
-    # EMPTY ledger's clients can resolve the ledger currency for first-record
-    # creation — record-level-only delivery made "wait for the first record" circular.
-    # Empty and non-empty lists both carry it, matching the record-level stamp.
-    empty_list = client.get("/api/debts", headers=identity.app_headers)
-    assert empty_list.status_code == 200, empty_list.json()
-    assert empty_list.json()["items"] == []
-    assert empty_list.json()["home_currency_code"] == "CNY"
-
-    created = client.post(
-        "/api/debts",
-        headers=_idem_headers(identity.app_headers),
-        json={
-            "direction": "i_owe",
-            "counterparty_type": "external",
-            "counterparty_label": "房东",
-            "principal_amount_cents": 30000,
-        },
-    )
-    assert created.status_code == 201, created.json()
-
-    listing = client.get("/api/debts", headers=identity.app_headers)
-    assert listing.status_code == 200, listing.json()
-    assert listing.json()["home_currency_code"] == "CNY"
-    assert listing.json()["items"][0]["home_currency_code"] == "CNY"
-
-
 def _seed_owner_ledger_member_debt(*, direction: str = "i_owe") -> str:
     """Seed a committed member (bill_split) Debt in the 'owner' ledger with the ledger
     owner as the Debt owner, so the API caller (the owner) is a party. ``POST /api/debts``

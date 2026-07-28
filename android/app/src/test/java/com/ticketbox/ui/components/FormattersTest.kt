@@ -102,10 +102,11 @@ class FormattersTest {
 
     @Test
     fun formatsUnknownRecordCurrencyWithRawCodeNotCnySymbol() {
-        // PR#255 R7-2：支持集外的 record 码原样亮码（"XXX12.00"），不冒 CNY 符号撒谎；
-        // 数字沿用默认两位小数渲染（不猜未知币种 exponent）。空码仍回落 Base 同款。
+        // PR#255 R7-2 / R8-4：支持集外的 record 码原样亮码 —— 原 minor 整数 + 原始码
+        // （"1200 XXX"），未知 exponent 不缩放（不按 CNY 两位渲染成 "XXX12.00"）。
+        // 空码仍回落 Base 同款；已知码维持既有口径。
         assertEquals(
-            "XXX12.00",
+            "1200 XXX",
             formatDisplayAmount(
                 amountCents = 1200,
                 display = CurrencyDisplay.forRecord("XXX"),

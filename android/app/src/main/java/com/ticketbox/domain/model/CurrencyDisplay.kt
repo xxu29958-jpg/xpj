@@ -4,8 +4,8 @@ data class CurrencyDisplay(
     val homeCurrency: CurrencyCode = FxContract.HomeCurrency,
     /**
      * 服务端 record 带来但客户端支持集外的原始币种码（PR#255 R7-2，如新版服务端新增的
-     * 币种）。非 null 时显示侧必须原样亮码（"XXX12.00"），不得用 [homeCurrency]（此时是
-     * 兜底 CNY）的符号撒谎 —— 数字仍按默认两位小数渲染（不猜未知币种 exponent）。
+     * 币种）。非 null 时显示侧必须原样亮码（R8-4：原 minor 整数 + 原始码，"1200 VND"），
+     * 不得用 [homeCurrency]（此时是兜底 CNY）的符号撒谎，也不得按任何已知 exponent 缩放。
      */
     val unknownCode: String? = null,
 ) {

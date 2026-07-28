@@ -161,11 +161,13 @@ class DebtListResponse(BaseModel):
     currency for first-record creation — record-level-only delivery made "wait for
     the first record" circular. Clients must treat record-level and envelope values
     as one source: disagreement means binding drift (C02 forbids hot-switching) and
-    writers must fail closed.
+    writers must fail closed. Read path is best-effort (R8-3): a misconfigured env
+    degrades the field to ``null`` instead of failing the whole list; clients
+    already fail closed on a null capability, so degrading is safe.
     """
 
     items: list[DebtResponse]
-    home_currency_code: str
+    home_currency_code: str | None
 
 
 class DebtBillParseResponse(BaseModel):

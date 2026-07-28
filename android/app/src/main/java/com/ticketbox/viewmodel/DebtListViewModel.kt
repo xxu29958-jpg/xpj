@@ -345,8 +345,12 @@ private fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi
     val parsedInstallmentPeriod = suggestion.installmentPeriodMonths?.toIntOrNullIn(1, 120)
     return copy(
         counterpartyLabel = suggestion.merchant?.trim().orEmpty(),
-        // 预填与解析同一币种口径（draft 的 homeCurrency），零小数 home 不 ÷100。
+        // R8-2：provider 声明金额单位为 **CNY 分**（debt_bill_parse_service prompt：两位小数
+        // 分单位，mock ¥1,200.00→120000）。草稿绑定非 CNY（JPY/KRW 零小数账本）时预填会把
+        // 分当账本 minor 提交（100×）→ 金额字段不预填、留用户手填（其它字段保留预填）；
+        // 不做换算（无 FX 路径，换算属新设计）。CNY 账本维持原口径（零小数 home 不 ÷100）。
         amountYuanInput = suggestion.principalAmountCents
+            ?.takeIf { homeCurrency == CurrencyCode.CNY }
             ?.let { formatMinorAmountInput(it, homeCurrency) }
             .orEmpty(),
         kind = if (parsedInstallmentCount != null) DebtKinds.INSTALLMENT else DebtKinds.UNSPECIFIED,
@@ -357,19 +361,23 @@ private fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi
 }
 
 /**
- * 账本币种同源裁决（PR#255 R6 P1-1 / R7-1，ADR-0061 C02/C03）：record 级（服务端写时按
+ * 账本币种同源裁决（PR#255 R6 P1-1 / R7-1 / R8-1，ADR-0061 C02/C03）：record 级（服务端写时按
  * installation binding 盖章）与列表信封的安装级 capability 必须同源 ——
- * - 非空账本：record 权威；capability 缺失（旧服务端）不降级。
+ * - 非空账本：record 权威；capability **缺失**（null/blank = 旧服务端无信封字段）不降级。
  * - 空账本：capability 独立解析（服务端 env binding 随信封下发），空账本首笔创建由此放行。
  * - 两源在场却不一致：binding 漂移（C02 声明 installation currency 不可热切换，漂移即异常）
  *   → 冲突 fail closed 归 null，创建保持阻断、草稿不重绑，不猜任一侧。
  * - 全行集合校验（R7-1）：列表 >1 个已知 record 码 = 漂移后新旧 record 并存 → fail closed；
- *   任一 record 未知键（支持集外）→ fail closed —— 只验首行会在混币列表首行恰好匹配信封时
- *   放行（币种漂移安装的新旧 record 混存场景）。
- * - 未知键视同缺失的规则只适用于 capability 一侧（R6 既有：未知 capability + 空列表 → null；
- *   未知 capability + 已知 record → record 权威）。
+ *   任一 record 未知键（支持集外）→ fail closed。
+ * - capability **在场但未知**（R8-1：非 blank 却不在客户端支持集）≠ 缺失 —— 新服务端已宣告
+ *   当前 binding 是客户端无法解释的币种，新写入会被服务端按该币种盖章；此时即便 record 已知，
+ *   按其口径解析输入也会放大/缩小（VND 零小数 + CNY 解析 "1200" → 120000 minor）→ 一律
+ *   fail closed 归 null。判定必须用原始串（先过 knownCurrencyOrNull 会把两态并成 null）。
  */
 private fun resolveLedgerCurrency(recordCodes: List<String>, capabilityCode: String?): CurrencyCode? {
+    val capabilityBlank = capabilityCode.isNullOrBlank()
+    val capability = knownCurrencyOrNull(capabilityCode)
+    if (!capabilityBlank && capability == null) return null // R8-1：在场未知 → fail closed
     val records = recordCodes.map { knownCurrencyOrNull(it) }
     if (records.any { it == null }) return null
     val distinct = records.filterNotNull().distinct()
@@ -377,7 +385,6 @@ private fun resolveLedgerCurrency(recordCodes: List<String>, capabilityCode: Str
     // 空列表无 record 权威，走 capability。
     if (distinct.size > 1) return null
     val record = distinct.singleOrNull()
-    val capability = knownCurrencyOrNull(capabilityCode)
     if (record != null && capability != null && record != capability) return null
     return record ?: capability
 }
