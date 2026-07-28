@@ -17,10 +17,6 @@
     return homeCurrencySymbol() + text(value);
   }
 
-  function moneyRounded(value) {
-    return homeCurrencySymbol() + Math.round(Number(value || 0));
-  }
-
   function el(tag, className, content) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -172,7 +168,7 @@
           bar,
           styled(el("div", "cat-bar-fill"), "width:" + width.toFixed(2) + "%;background:" + color + ";opacity:" + opacity.toFixed(2))
         ),
-        el("div", "cat-amt", moneyRounded(c.amount_yuan))
+        el("div", "cat-amt", text(c.amount_label))
       );
       append(list, row);
     });

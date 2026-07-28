@@ -21,6 +21,28 @@
       "";
   };
 
+  // PR #253 R5: 币种 exponent 经 base.html 的 data-home-currency-minor-digits
+  // 下发 (源: currency_common.minor_unit_digits), 图表中心值/大数字按此格式化。
+  app.homeCurrencyMinorDigits = function homeCurrencyMinorDigits() {
+    const raw = document.documentElement.getAttribute("data-home-currency-minor-digits");
+    const parsed = Number.parseInt(raw == null ? "" : raw, 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : 2;
+  };
+
+  app.homeMajorNumber = function homeMajorNumber(value) {
+    const amount = Number(value || 0);
+    const digits = app.homeCurrencyMinorDigits();
+    return new Intl.NumberFormat("zh-CN", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+      useGrouping: true,
+    }).format(Number.isFinite(amount) ? amount : 0);
+  };
+
+  app.homeMoneyMajor = function homeMoneyMajor(value) {
+    return app.homeCurrencySymbol() + app.homeMajorNumber(value);
+  };
+
   app.homeMoney = function homeMoney(value) {
     return app.homeCurrencySymbol() + app.escapeHtml(value);
   };

@@ -35482,6 +35482,56 @@
         ]
       }
     },
+    "/web/overview": {
+      "get": {
+        "description": "洞察域首页 (218-D S2, 移植自产品矿 /web/overview)。\n\n数据全部复用既有装配: ``_dashboard_data_payload`` (本月支出/待办/预算/目标/\n固定支出/备份/设备卡片 + 分类占比) + ``ledger_has_any_expense`` (空账本引导\n判定, 与 /web 首页同一口径), 不发明新聚合。只读页——无任何写入口径,\nviewer 与 owner 看到同一份事实。",
+        "operationId": "web_overview_web_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Overview",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/pending": {
       "get": {
         "operationId": "web_pending_web_pending_get",

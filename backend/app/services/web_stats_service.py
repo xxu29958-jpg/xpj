@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuthToken, Device, Expense, LedgerMember
+from app.services.data_quality_service import is_usable_pending_merchant
 from app.services.expense_service import NOTIFICATION_DRAFT_SOURCE_PREFIX
 from app.services.spending_contract_service import (
     accounting_zone,
@@ -190,6 +191,39 @@ def _month_bounds(month: str, zone: ZoneInfo) -> tuple[datetime, datetime]:
     return month_bounds_utc(month, zone.key)
 
 
+def pending_quality_counts(db: Session, ledger_id: str) -> dict[str, int]:
+    """Dashboard pending-card counts without materializing full pending rows.
+
+    total / needs-amount / suspected are plain COUNT()s with the same predicates
+    as ``list_pending`` + the dashboard card block; needs-merchant projects only
+    the merchant column because ``is_usable_pending_merchant`` is a Kotlin-ported
+    Unicode predicate that must stay byte-exact (PR #253 R3 — count semantics
+    identical to the old materialize-then-count caliber, pinned by tests).
+    """
+    pending_count, suspected = sidebar_counts(db, ledger_id)
+    needs_amount = int(
+        db.scalar(
+            select(func.count(Expense.id))
+            .where(Expense.tenant_id == ledger_id)
+            .where(Expense.status == "pending")
+            .where(Expense.amount_cents.is_(None))
+        )
+        or 0
+    )
+    merchants = db.scalars(
+        select(Expense.merchant)
+        .where(Expense.tenant_id == ledger_id)
+        .where(Expense.status == "pending")
+    ).all()
+    needs_merchant = sum(1 for merchant in merchants if not is_usable_pending_merchant(merchant))
+    return {
+        "pending_count": pending_count,
+        "needs_amount_count": needs_amount,
+        "needs_merchant_count": needs_merchant,
+        "suspected_duplicate_count": suspected,
+    }
+
+
 def recent_expense_count(db: Session, ledger_id: str, since: datetime) -> int:
     """Number of expenses created on/after ``since`` for the given ledger."""
     return int(
@@ -203,12 +237,37 @@ def recent_expense_count(db: Session, ledger_id: str, since: datetime) -> int:
     )
 
 
+def recent_confirmed_expense_count(db: Session, ledger_id: str, since: datetime) -> int:
+    """Number of CONFIRMED expenses created on/after ``since``.
+
+    This is the caliber the overview 最近新增 card links to (/web/confirmed):
+    count and destination must agree (PR #253 R2) — the all-status
+    ``recent_expense_count`` could show a positive number while the confirmed
+    list it linked to was empty.
+    """
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(Expense)
+            .where(Expense.tenant_id == ledger_id)
+            .where(Expense.created_at >= since)
+            .where(Expense.status == "confirmed")
+        )
+        or 0
+    )
+
+
 def active_device_count(db: Session, ledger_id: str) -> int:
     """Number of active account devices authorized for ``ledger_id``.
 
     CurrentLedger is client context, so an AuthToken's compatibility default
     cannot define ledger reachability. Active Membership does.
+
+    PR #253 R4-4: only tokens that can actually authenticate count — session
+    scopes (``app``/``admin``), not staged ``desktop_pending`` credentials, and
+    not expired-but-unrevoked tokens (``expires_at`` null or in the future).
     """
+    now = now_utc()
     return int(
         db.scalar(
             select(func.count(func.distinct(Device.id)))
@@ -220,6 +279,8 @@ def active_device_count(db: Session, ledger_id: str) -> int:
                 & (LedgerMember.ledger_id == ledger_id),
             )
             .where(AuthToken.revoked_at.is_(None))
+            .where(AuthToken.scope.in_(("app", "admin")))
+            .where((AuthToken.expires_at.is_(None)) | (AuthToken.expires_at > now))
             .where(Device.revoked_at.is_(None))
             .where(LedgerMember.disabled_at.is_(None))
         )

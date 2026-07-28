@@ -26,6 +26,13 @@ class PostgresBackupValidationError(RuntimeError):
     """Raised when a file is not a restorable Ticketbox pg_dump archive."""
 
 
+class PostgresBackupToolError(PostgresBackupValidationError):
+    """pg_restore itself could not produce a verdict (missing binary / launch
+    failure / timeout) — transient; says nothing about the archive's health.
+    Subclasses the validation error so existing ``except`` sites are unaffected
+    (PR #253 R4-3: status surfaces must not cache this as "archive invalid")."""
+
+
 # Windows installs often keep client tools below the machine's ProgramFiles root
 # without putting them on PATH. Keep the resolved root injectable for tests, but
 # never assume the system drive or an English absolute path.
@@ -78,7 +85,7 @@ def _pg_restore_binary() -> str:
     """Locate ``pg_restore`` (``PG_RESTORE_PATH`` override → PATH → install glob)."""
     binary = find_pg_binary("pg_restore", "PG_RESTORE_PATH")
     if not binary:
-        raise PostgresBackupValidationError(
+        raise PostgresBackupToolError(
             "pg_restore not found; install the PostgreSQL client tools or set PG_RESTORE_PATH"
         )
     return binary
@@ -101,9 +108,9 @@ def validate_postgres_backup_file(path: Path | str) -> None:
             timeout=_PG_RESTORE_LIST_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
-        raise PostgresBackupValidationError("pg_restore --list timed out") from exc
+        raise PostgresBackupToolError("pg_restore --list timed out") from exc
     except OSError as exc:
-        raise PostgresBackupValidationError(f"pg_restore could not run: {exc}") from exc
+        raise PostgresBackupToolError(f"pg_restore could not run: {exc}") from exc
 
     if result.returncode != 0:
         detail = result.stderr.strip().splitlines()

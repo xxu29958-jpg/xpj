@@ -1,4 +1,4 @@
-"""/web dashboard, dashboard data, and dashboard card settings routes."""
+"""/web dashboard, insights overview, dashboard data, and card settings routes."""
 
 from __future__ import annotations
 
@@ -10,18 +10,101 @@ from app.database import get_db
 from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
+    _amount_segments,
     _base_ctx,
     _dashboard_data_payload,
     _list_ledger_options,
+    _minor_amount_label,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _sidebar_counts,
     _web_redirect,
     templates,
 )
 from app.schemas import DashboardCardsUpdateRequest, DashboardCardUpdateRequest
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
+from app.services.exchange_rate_service import home_currency_code
+from app.services.expense_service import ledger_has_any_expense
 
 router = APIRouter(prefix="/web", tags=["web"])
+
+# 泳道归属是信息架构 (哪些事实属于同一组), 持久化 position 是组内顺序
+# (PR #253 P2-1/P2-2): 组内卡片按用户保存的顺序渲染, 空泳道整组不出。
+_OVERVIEW_LANE_SPECS: tuple[tuple[str, str, frozenset[str]], ...] = (
+    ("需处理", "优先处理会影响账面可信度的记录", frozenset({"pending", "recent_uploads"})),
+    (
+        "本月事实",
+        "已入账金额、结构与基础状态",
+        frozenset({"monthly_spend", "reports", "backup_status", "device_status"}),
+    ),
+    ("计划状态", "预算、目标和固定支出的执行情况", frozenset({"budget", "goals", "recurring"})),
+)
+
+
+def _overview_lanes(visible_cards: list[dict]) -> list[dict]:
+    """Group persisted-order visible cards into lanes; drop empty lanes."""
+    lanes = []
+    for title, summary, keys in _OVERVIEW_LANE_SPECS:
+        cards = [item for item in visible_cards if item["key"] in keys]
+        if cards:
+            lanes.append({"title": title, "summary": summary, "cards": cards})
+    return lanes
+
+
+def _overview_amount_views(cards: dict) -> dict:
+    """exponent 感知的金额展示投影 (PR #253 P1-1)。
+
+    payload 的 ``*_yuan`` 键固定 /100, 零小数币种 (JPY/KRW) 会错两位;
+    这里统一走 C5b-3 的 minor-units 格式化族, 模板不再自己拼币种符号。
+    """
+    home = home_currency_code()
+    for row in cards["budget_top"]:
+        row["overspent_label"] = _minor_amount_label(row["overspent_cents"], home)
+    return {
+        "hero_amount": _amount_segments(cards["total_amount_cents"], home),
+        "delta_amount_label": _minor_amount_label(cards["delta_amount_cents"], home),
+        "previous_total_label": _minor_amount_label(cards["previous_total_amount_cents"], home),
+        "budget_remaining_label": _minor_amount_label(cards["budget_remaining_cents"], home),
+    }
+
+
+@router.get("/overview", response_class=HTMLResponse)
+def web_overview(
+    request: Request,
+    ledger_id: str | None = None,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """洞察域首页 (218-D S2, 移植自产品矿 /web/overview)。
+
+    数据全部复用既有装配: ``_dashboard_data_payload`` (本月支出/待办/预算/目标/
+    固定支出/备份/设备卡片 + 分类占比) + ``ledger_has_any_expense`` (空账本引导
+    判定, 与 /web 首页同一口径), 不发明新聚合。只读页——无任何写入口径,
+    viewer 与 owner 看到同一份事实。
+    """
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    ctx = _base_ctx(
+        request,
+        options=options,
+        selected_ledger_id=selected_id,
+        page_title="总览",
+        sidebar_counts=_sidebar_counts(db, selected_id),
+    )
+    payload = _dashboard_data_payload(db, selected_id, include_trend=False)
+    cards = payload["cards"]
+    category_share = payload["category_share"]
+    visible_cards = [item for item in cards["layout"] if item["visible"]]
+    ctx["cards"] = cards
+    ctx["category_share"] = category_share
+    ctx["has_any_expense"] = ledger_has_any_expense(db, selected_id)
+    ctx["overview_lanes"] = _overview_lanes(visible_cards)
+    ctx.update(_overview_amount_views(cards))
+    # P2-3: ~1.1MB ECharts 只在环图真的渲染时才下载 (reports 卡可见且有分类数据)。
+    ctx["overview_load_charts"] = bool(category_share) and any(
+        item["key"] == "reports" for item in visible_cards
+    )
+    return templates.TemplateResponse(request=request, name="overview.html", context=ctx)
 
 
 @router.get("/dashboard/data", response_class=JSONResponse)
