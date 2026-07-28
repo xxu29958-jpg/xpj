@@ -40,7 +40,12 @@ from app.services.classify_service import (
     update_rule,
     validate_rule_application_preview,
 )
-from app.services.currency_common import home_currency_code, major_amount_to_minor, minor_unit_digits
+from app.services.currency_common import (
+    home_currency_code,
+    major_amount_to_minor,
+    minor_amount_value,
+    minor_unit_digits,
+)
 
 if TYPE_CHECKING:
     from app.models import CategoryRule
@@ -119,6 +124,8 @@ def web_rules(
             limit=20,
         )
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    # R15a-3：规则金额条件回显按 env home minor 语义（JPY 零小数不 ÷100；R13-3 未竟面）。
+    ctx["minor_amount_label"] = lambda cents: minor_amount_value(cents, home_currency_code())
     ctx["rules"] = rules
     ctx["rule_applications"] = rule_applications
     ctx["preview"] = preview

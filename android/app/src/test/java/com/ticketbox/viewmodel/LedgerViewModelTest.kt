@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.domain.model.CurrencyCode
@@ -24,6 +25,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -944,3 +946,103 @@ private fun expense(
     confirmedAt = "2026-05-17T08:01:00Z",
     rejectedAt = null,
 )
+
+/**
+ * PR#255 R15a-2：LedgerViewModel 币种一次性门闩解除 + 代际守卫的钉（同文件新类 ——
+ * 复用文件级 FakeLedgerActions/manualDraft；LedgerViewModelTest 已贴 detekt 门类门）。
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class LedgerViewModelCurrencyRelatchTest {
+    private fun relatchTest(block: suspend TestScope.() -> Unit) = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            block()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun manualCreateReresolvesCurrencyAfterRecovery() = relatchTest {
+        // R15a-2：离线冷启动（init 解析失败 → 门闩 null）→ 网络恢复 → 写尝试自带重解析，
+        // 同一 attempt 放行手记（不再会话级锁死，也不再误报币种未确认）。
+        val debts = RecoverableLedgerDebtActions(online = false)
+        val fake = FakeLedgerActions(expenses = emptyList())
+        val vm = LedgerViewModel(fake, debts)
+        advanceUntilIdle()
+        assertEquals(null, vm.uiState.value.ledgerCurrency)
+
+        debts.online = true
+        vm.createManualExpense(manualDraft())
+        advanceUntilIdle()
+
+        assertEquals(1, fake.manualCreateCallCount)
+        assertTrue(vm.uiState.value.manualCreateDone)
+    }
+
+    @Test
+    fun staleResolutionDoesNotOverwriteNewerResult() = relatchTest {
+        // R15a-2 代际守卫 last-writer-wins：init 解析挂起中写尝试触发第二次解析，
+        // 新结果（JPY）先落定后，旧结果（CNY）不得覆盖。
+        val debts = DeferredLedgerDebtActions()
+        val fake = FakeLedgerActions(expenses = emptyList())
+        val vm = LedgerViewModel(fake, debts)
+        advanceUntilIdle()
+
+        vm.createManualExpense(manualDraft())
+        runCurrent()
+        assertEquals(2, debts.calls.size)
+
+        debts.calls[1].complete(
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY")),
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, vm.uiState.value.ledgerCurrency)
+        assertEquals(1, fake.manualCreateCallCount)
+
+        debts.calls[0].complete(
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY")),
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, vm.uiState.value.ledgerCurrency)
+    }
+}
+
+/** 可切换在线态的账本币种 fake（R15a-2 钉）：offline 时 listDebts 失败，online 时返回 CNY 页。 */
+private class RecoverableLedgerDebtActions(
+    var online: Boolean,
+) : DebtActions by unsupportedLedgerDebtActions() {
+    override fun canModifyLedger(): Boolean = true
+
+    override suspend fun listDebts(): Result<DebtListPage> =
+        if (online) {
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY"))
+        } else {
+            Result.failure(IllegalStateException("offline"))
+        }
+}
+
+/** 逐调用挂起闸门的账本币种 fake（代际乱序钉）：每次 listDebts 给一个待完成的 deferred。 */
+private class DeferredLedgerDebtActions : DebtActions by unsupportedLedgerDebtActions() {
+    val calls = mutableListOf<CompletableDeferred<Result<DebtListPage>>>()
+
+    override fun canModifyLedger(): Boolean = true
+
+    override suspend fun listDebts(): Result<DebtListPage> {
+        val gate = CompletableDeferred<Result<DebtListPage>>()
+        calls += gate
+        return gate.await()
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun unsupportedLedgerDebtActions(): DebtActions = Proxy.newProxyInstance(
+    DebtActions::class.java.classLoader,
+    arrayOf(DebtActions::class.java),
+) { _, method, _ ->
+    when (method.name) {
+        "toString" -> "UnsupportedLedgerDebtActions"
+        else -> throw UnsupportedOperationException(method.name)
+    }
+} as DebtActions

@@ -14,7 +14,6 @@ from app.database import get_db
 from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
-    _amount_yuan,
     _base_ctx,
     _list_ledger_options,
     _resolve_selected_ledger_id,
@@ -28,7 +27,12 @@ from app.services.budget_baseline_service import (
     total_active_recurring_monthly_cents,
     total_confirmed_spent_cents,
 )
-from app.services.currency_common import home_currency_code, major_amount_to_minor
+from app.services.currency_common import (
+    currency_input_metadata,
+    home_currency_code,
+    major_amount_to_minor,
+    minor_amount_value,
+)
 from app.services.income_plan_service import total_monthly_income_cents
 from app.services.spending_contract_service import current_accounting_month
 
@@ -145,12 +149,16 @@ def _render_budget_advise(
         month=month_label,
         provider_name=provider_name,
         provider_enabled=provider_name != "empty",
-        income_yuan=_amount_yuan(breakdown.monthly_income_cents),
-        fixed_yuan=_amount_yuan(breakdown.fixed_expenses_cents),
-        spent_yuan=_amount_yuan(breakdown.spent_amount_cents),
-        savings_yuan=_amount_yuan(breakdown.savings_target_cents),
-        reserved_yuan=_amount_yuan(breakdown.reserved_buffer_cents),
-        discretionary_yuan=_amount_yuan(breakdown.discretionary_cents),
+        # R15a-3：breakdown/建议表回显按 env home minor 语义（JPY 零小数不 ÷100；
+        # 解析侧 R13-3 已同源），输入 step 走币种元数据（不再硬编 0.01）。
+        income_yuan=minor_amount_value(breakdown.monthly_income_cents, home),
+        fixed_yuan=minor_amount_value(breakdown.fixed_expenses_cents, home),
+        spent_yuan=minor_amount_value(breakdown.spent_amount_cents, home),
+        savings_yuan=minor_amount_value(breakdown.savings_target_cents, home),
+        reserved_yuan=minor_amount_value(breakdown.reserved_buffer_cents, home),
+        discretionary_yuan=minor_amount_value(breakdown.discretionary_cents, home),
+        currency_input=currency_input_metadata(home),
+        minor_amount_label=lambda cents: minor_amount_value(cents, home),
         savings_target_yuan=savings_target_yuan,
         reserved_buffer_yuan=reserved_buffer_yuan,
         advice=advice,

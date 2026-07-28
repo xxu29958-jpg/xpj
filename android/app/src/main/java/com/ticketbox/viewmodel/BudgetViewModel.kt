@@ -91,16 +91,40 @@ class BudgetViewModel(
                             messageTone = MessageTone.Neutral,
                             loadError = null,
                             canModify = access?.canModify ?: false,
+                            // R15a-1：账本切换清旧币种重解析 —— 旧币种不得在解析窗口内
+                            // 参与回填/放行（R13-7 竞态变体）。
+                            ledgerCurrency = null,
                         )
                     }
-                    if (access != null) refresh()
-                    // R13-7：每次账本生效/切换都重解析账本币种（信封 capability 严格解析，
-                    // 未知 → ledgerCurrency=null 禁写，不落 CNY 兜底 ×100）。
-                    viewModelScope.launch {
-                        val code = debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode
-                        _uiState.update { it.copy(ledgerCurrency = CurrencyCode.fromStorageKeyOrNull(code)) }
+                    if (access != null) {
+                        // R15a-1+R15a-2：同协程串行 —— 先解析币种（代际守卫 last-writer-wins），
+                        // 后 refresh/回填；离线 null 时读面仍刷新，表单空 + 禁写，不按兜底
+                        // 币种缩放回填（R13-7 回填×save 分裂竞态的修复）。
+                        refreshLedgerCurrency()
+                        refresh()
                     }
                 }
+        }
+    }
+
+    private var currencyResolutionGeneration = 0L
+
+    /**
+     * （重新）解析账本币种（R15a-2，信封 capability 严格解析，未知 → null 禁写）。
+     * 代际守卫：并发解析 last-writer-wins（快速切账本旧结果不得后于新结果落定）。
+     * 币种到达且表单仍处未触碰默认态（解析窗口内 refresh 落了空表单）时按确认币种重回填。
+     */
+    private suspend fun refreshLedgerCurrency() {
+        val generation = ++currencyResolutionGeneration
+        val resolved = CurrencyCode.fromStorageKeyOrNull(debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode)
+        _uiState.update { state ->
+            if (generation != currencyResolutionGeneration) return@update state
+            val budget = state.budget
+            val rebackfill = resolved != null && budget != null && state.form == BudgetFormState()
+            state.copy(
+                ledgerCurrency = resolved,
+                form = if (rebackfill) budget.toFormState(resolved) else state.form,
+            )
         }
     }
 
@@ -127,7 +151,10 @@ class BudgetViewModel(
                         it.copy(
                             loading = false,
                             budget = budget,
-                            form = budget.toFormState(it.ledgerCurrency ?: CurrencyCode.CNY),
+                            // R15a-1：币种已确认才回填（init 已串行解析；null=离线/未知 →
+                            // 空表单 + 禁写，不按兜底币种缩放撒谎）。
+                            form = it.ledgerCurrency?.let { currency -> budget.toFormState(currency) }
+                                ?: BudgetFormState(),
                             loadError = null,
                             canModify = activeCanModify,
                         )
@@ -221,52 +248,75 @@ class BudgetViewModel(
             }
             return
         }
-        // R13-7：币种未确认禁写（不落 CNY 兜底 ×100；表单回填的显示兜底不影响写门）。
-        val currency = _uiState.value.ledgerCurrency
+        // 写按点按瞬间快照构建（binding + form + 已确认币种）：切账本事件在队列中先于
+        // 保存协程处理时，也不得拿新账本的状态写旧表单（binding 竞态钉合同）。
+        val month = _uiState.value.month
+        val generation = requestGeneration
+        val formSnapshot = _uiState.value.form
+        val currencySnapshot = _uiState.value.ledgerCurrency
+        // saving 同步置位：refresh/重复 save 从点按瞬间即串行（串行化钉合同）。
+        _uiState.update { it.withSaveStarted(activeCanModify) }
+        viewModelScope.launch {
+            performSave(binding, month, generation, formSnapshot, currencySnapshot)
+        }
+    }
+
+    private suspend fun performSave(
+        binding: LogicalSessionBinding,
+        month: String,
+        generation: Int,
+        formSnapshot: BudgetFormState,
+        currencySnapshot: CurrencyCode?,
+    ) {
+        // R15a-2：币种未确认时先重解析再裁决 —— 离线冷启动的一次性门闩解除（网络恢复
+        // 后写尝试自带重解析，不再会话级锁死）；R13-7 禁写口径不变（不落 CNY 兜底 ×100）。
+        val currency = currencySnapshot ?: run {
+            refreshLedgerCurrency()
+            _uiState.value.ledgerCurrency
+        }
         if (currency == null) {
             _uiState.update {
                 it.copy(
+                    saving = false,
                     message = UiText.res(R.string.currency_unconfirmed_write_blocked),
                     messageTone = MessageTone.Danger,
                 )
             }
             return
         }
-        val month = _uiState.value.month
-        val generation = requestGeneration
-        val update = parseBudgetUpdate(_uiState.value.form, currency)
+        // 快照在场路径坚持点按瞬间表单（binding 竞态钉合同）；快照缺失的恢复路径
+        // （R15a-2）以重解析后的当前表单为准 —— 未触碰表单已按确认币种重回填。
+        val formForWrite = if (currencySnapshot != null) formSnapshot else _uiState.value.form
+        val update = parseBudgetUpdate(formForWrite, currency)
             .getOrElse { error ->
                 val message = (error as? BudgetInputError)?.uiText
                     ?: error.toUiText(R.string.budget_message_content_invalid)
-                _uiState.update { it.copy(message = message, messageTone = MessageTone.Danger) }
+                _uiState.update { it.copy(saving = false, message = message, messageTone = MessageTone.Danger) }
                 return
             }
         refreshGeneration += 1
-        _uiState.update { it.withSaveStarted(activeCanModify) }
-        viewModelScope.launch {
-            repository.saveMonthlyBudget(binding, month, update)
-                .onSuccess { budget ->
+        repository.saveMonthlyBudget(binding, month, update)
+            .onSuccess { budget ->
+                if (requestGeneration != generation ||
+                    activeBinding != binding ||
+                    _uiState.value.month != month
+                ) {
+                    return@onSuccess
+                }
+                _uiState.update { it.withSavedBudget(budget, activeCanModify) }
+                onDataChanged()
+            }
+            .onFailure { error ->
+                _uiState.update {
                     if (requestGeneration != generation ||
                         activeBinding != binding ||
-                        _uiState.value.month != month
+                        it.month != month
                     ) {
-                        return@onSuccess
+                        return@update it
                     }
-                    _uiState.update { it.withSavedBudget(budget, activeCanModify) }
-                    onDataChanged()
+                    it.withSaveFailure(error, activeCanModify)
                 }
-                .onFailure { error ->
-                    _uiState.update {
-                        if (requestGeneration != generation ||
-                            activeBinding != binding ||
-                            it.month != month
-                        ) {
-                            return@update it
-                        }
-                        it.withSaveFailure(error, activeCanModify)
-                    }
-                }
-        }
+            }
     }
 
     private fun changeMonth(delta: Long) {
@@ -307,7 +357,8 @@ private fun BudgetUiState.withSavedBudget(
     loading = false,
     saving = false,
     budget = budget,
-    form = budget.toFormState(ledgerCurrency ?: CurrencyCode.CNY),
+    // 保存成功重回填：save 门已保证币种非 null（R15a-1 同口径，null 时保留当前表单不撒谎）。
+    form = ledgerCurrency?.let { budget.toFormState(it) } ?: form,
     message = UiText.res(R.string.budget_message_saved),
     messageTone = MessageTone.Success,
     loadError = null,
