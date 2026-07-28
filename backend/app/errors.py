@@ -53,6 +53,7 @@ ERROR_MESSAGES = {
     "currency_not_supported": "暂不支持这个币种。",
     "currency_binding_drift": "服务端币种配置与账本已有记录的币种不一致，已停止写入；请检查服务端币种配置后再试。",
     "repayment_draft_currency_unsupported": "还款通知草稿目前只支持人民币账本捕获（通知金额按人民币分解析），暂不能入账到其它币种的账本。",
+    "notification_draft_currency_unsupported": "通知捕获目前只支持人民币账本：通知金额按人民币分解析，暂不能入账到其它币种的账本。",
     "exchange_rate_required": "请先填写这一天的汇率。",
     "exchange_rate_invalid": "汇率格式不正确。",
     "exchange_rate_base_currency": "人民币是基准币种，不需要维护汇率。",

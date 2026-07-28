@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateRequest
@@ -368,6 +369,29 @@ def create_manual_expense(
         raise
 
 
+def _guard_notification_capture_currency(payload: NotificationDraftCreateRequest) -> None:
+    """PR#255 R11 条件门：非 CNY 安装拒绝无 original 字段的通知捕获。
+
+    Android 通知解析器按 CNY 分声明 amount_cents（PaymentNotificationParser 无 FX 路径，
+    与 repayment 草稿同洞）——非 CNY 安装把该整数按 home minor 盖章即 100×。无任何
+    original 币种/金额字段的捕获整体拒绝；带 original 字段的显式 FX 捕获放行
+    （apply_currency_payload 的 has_original_fields 分支本就诚实换算，不误伤；与
+    repayment 草稿的无条件门的差异即此 original 通道）。跨币种契约挂账 D9。
+    """
+    home_currency = home_currency_code()
+    has_original_money = any(
+        value is not None
+        for value in (
+            payload.original_currency,
+            payload.original_currency_code,
+            payload.original_amount,
+            payload.original_amount_minor,
+        )
+    )
+    if home_currency != DEFAULT_HOME_CURRENCY_CODE and not has_original_money:
+        raise AppError("notification_draft_currency_unsupported", status_code=422)
+
+
 def create_notification_draft(
     db: Session,
     payload: NotificationDraftCreateRequest,
@@ -375,6 +399,7 @@ def create_notification_draft(
 ) -> Expense:
     now = now_utc()
     source = _clean_notification_source(payload.source)
+    _guard_notification_capture_currency(payload)
     idempotency_key = _notification_draft_key(
         source=source,
         merchant=payload.merchant,
