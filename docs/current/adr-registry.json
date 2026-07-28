@@ -10,7 +10,7 @@
       "path": "docs/DECISIONS/0001-money-uses-cents.md",
       "title": "金额使用分保存",
       "summary": "历史决定：整数金额、禁 float；当前 minor-unit 语义见 0061",
-      "current_scope": "ADR-0001 未被后继关系覆盖的 declared_current_scope：权威金额使用有界整数 minor-unit 与显式币种；0061/0073 定义 binding、舍入、更正和投影；当前修订：ADR-0061 后继修订（金额单位从固定人民币分收紧为 currency-aware integer minor units）：home-currency identity、minor-unit exponent、rounding、跨端 capability 与 FX snapshot",
+      "current_scope": "ADR-0001 未被后继关系覆盖的 declared_current_scope：权威金额使用有界整数 minor-unit 与显式币种；0061/0073 定义 binding、舍入、更正和投影；当前修订：ADR-0061 后继修订（金额单位从固定人民币分收紧为 currency-aware integer minor units）：ADR-0061 未被后继关系覆盖的 declared_current_scope：home-currency identity、minor-unit exponent、rounding、跨端 capability 与 FX snapshot；当前修订：ADR-0075 后继修订（C02/C03 全量持久绑定未落地期间的最小写时桥接门；不替代版本化绑定行与修订握手）：currency_binding_drift 写时门（debt/proposal/expense 盖章入口）、读路径降级分工、与全量持久绑定的边界",
       "schema_version": 1,
       "source_kind": "legacy-baseline",
       "decision_status": "accepted",
@@ -821,7 +821,7 @@
       "path": "docs/DECISIONS/0027-backend-authoritative-fx.md",
       "title": "Backend Authoritative FX",
       "summary": "后端唯一汇率权威；冻结快照；缺率返 pending",
-      "current_scope": "ADR-0027 未被后继关系覆盖的 declared_current_scope：后端以 Decimal 和发生日裁决并冻结原币/home snapshot；0061/0073 补 currency binding 与更正事实；当前修订：ADR-0061 后继修订（home currency 从固定 CNY 收紧为持久 installation-global binding）：home-currency identity、minor-unit exponent、rounding、跨端 capability 与 FX snapshot",
+      "current_scope": "ADR-0027 未被后继关系覆盖的 declared_current_scope：后端以 Decimal 和发生日裁决并冻结原币/home snapshot；0061/0073 补 currency binding 与更正事实；当前修订：ADR-0061 后继修订（home currency 从固定 CNY 收紧为持久 installation-global binding）：ADR-0061 未被后继关系覆盖的 declared_current_scope：home-currency identity、minor-unit exponent、rounding、跨端 capability 与 FX snapshot；当前修订：ADR-0075 后继修订（C02/C03 全量持久绑定未落地期间的最小写时桥接门；不替代版本化绑定行与修订握手）：currency_binding_drift 写时门（debt/proposal/expense 盖章入口）、读路径降级分工、与全量持久绑定的边界",
       "schema_version": 1,
       "source_kind": "legacy-baseline",
       "decision_status": "accepted",
@@ -2036,7 +2036,7 @@
       "path": "docs/DECISIONS/0061-home-currency-minor-unit-semantics.md",
       "title": "Home currency 与整数 minor-unit 绑定",
       "summary": "兼容 *_cents 字段名，但金额语义由持久 installation currency revision 与显式 exponent 裁决",
-      "current_scope": "home-currency identity、minor-unit exponent、rounding、跨端 capability 与 FX snapshot",
+      "current_scope": "ADR-0061 未被后继关系覆盖的 declared_current_scope：home-currency identity、minor-unit exponent、rounding、跨端 capability 与 FX snapshot；当前修订：ADR-0075 后继修订（C02/C03 全量持久绑定未落地期间的最小写时桥接门；不替代版本化绑定行与修订握手）：currency_binding_drift 写时门（debt/proposal/expense 盖章入口）、读路径降级分工、与全量持久绑定的边界",
       "schema_version": 2,
       "source_kind": "frontmatter",
       "decision_status": "accepted",
@@ -2084,7 +2084,14 @@
       "declared_current_scope": "home-currency identity、minor-unit exponent、rounding、跨端 capability 与 FX snapshot",
       "declared_implementation_status": "nonconformant",
       "declared_verification_status": "failed",
-      "effective_amendments": []
+      "effective_amendments": [
+        {
+          "source": "0075",
+          "scope": "C02/C03 全量持久绑定未落地期间的最小写时桥接门；不替代版本化绑定行与修订握手",
+          "implementation_status": "implemented",
+          "verification_status": "verified"
+        }
+      ]
     },
     {
       "path": "docs/DECISIONS/0062-windows-installer-lifecycle-transaction.md",
@@ -3068,6 +3075,59 @@
       "declared_current_scope": "Windows 正式安装、修复、升级中的 lifecycle identity、owner handoff、installer recovery latch、runtime guard、委托操作租约、legacy 状态迁移、发布审计基线与未来宿主拓扑扩展边界",
       "declared_implementation_status": "partial",
       "declared_verification_status": "unverified",
+      "effective_amendments": []
+    },
+    {
+      "path": "docs/DECISIONS/0075-currency-binding-write-drift-gate.md",
+      "title": "写时币种绑定 drift 门（ADR-0061 C02/C03 桥接）",
+      "summary": "持久版本化绑定落地前，写入口以 env 盖章新事实前校验与已持久事实的 home_currency_code 一致，漂移 fail closed",
+      "current_scope": "currency_binding_drift 写时门（debt/proposal/expense 盖章入口）、读路径降级分工、与全量持久绑定的边界",
+      "schema_version": 2,
+      "source_kind": "frontmatter",
+      "decision_status": "accepted",
+      "implementation_status": "implemented",
+      "verification_status": "verified",
+      "decision_type": "domain",
+      "risk_level": "high",
+      "confidence": "high",
+      "decision_owner": "owner / 项目维护者",
+      "implementation_owner": "金额、FX 与跨端协议维护者",
+      "verification_owner": "独立财务正确性 reviewer",
+      "risk_owner": "owner / 项目维护者",
+      "relations": [
+        {
+          "kind": "amends",
+          "target": "0061",
+          "scope": "C02/C03 全量持久绑定未落地期间的最小写时桥接门；不替代版本化绑定行与修订握手"
+        },
+        {
+          "kind": "depends-on",
+          "target": "0061",
+          "scope": "home currency 语义身份与 fail-closed 原则来自 0061 C01-C03"
+        }
+      ],
+      "clause_ids": [
+        "ADR-0075-SCOPE",
+        "ADR-0075-ASSUMPTIONS",
+        "ADR-0075-DRIVERS",
+        "ADR-0075-ALTERNATIVES",
+        "ADR-0075-DECISION",
+        "ADR-0075-C01",
+        "ADR-0075-C02",
+        "ADR-0075-C03",
+        "ADR-0075-CONSEQUENCES",
+        "ADR-0075-REVERSIBILITY",
+        "ADR-0075-EVIDENCE",
+        "ADR-0075-REFERENCES"
+      ],
+      "reviewed_at": null,
+      "reviewed_against_commit": null,
+      "calibration_reason": null,
+      "history_fingerprint": "adr-history-v2:f6d4b4c064c33b3c83aa72aae43c17c378df2e9c2c283c324adc995f664cd3c6",
+      "id": "0075",
+      "declared_current_scope": "currency_binding_drift 写时门（debt/proposal/expense 盖章入口）、读路径降级分工、与全量持久绑定的边界",
+      "declared_implementation_status": "implemented",
+      "declared_verification_status": "verified",
       "effective_amendments": []
     }
   ]

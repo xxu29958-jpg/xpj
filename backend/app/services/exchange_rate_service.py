@@ -17,6 +17,7 @@ from app.fx_constants import (
 )
 from app.ledger_scope import ledger_scoped_select
 from app.models import ExchangeRate, Expense
+from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import (
     RATE_QUANT,
     format_decimal_rate,
@@ -263,6 +264,9 @@ def apply_currency_payload(
         )
     )
     home = home_currency_code()
+    # ADR-0061 C02 桥接门（PR#255 R9）：env 与已持久事实漂移 → fail closed（先于任何
+    # 重盖章/新盖章；空库首笔放行）。
+    assert_currency_binding_consistent(db, home)
     if not has_original_fields:
         amount_cents = _payload_attr(payload, "amount_cents")
         if amount_was_explicit:

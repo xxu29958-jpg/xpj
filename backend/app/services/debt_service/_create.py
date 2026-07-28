@@ -26,6 +26,8 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Debt
 from app.schemas import DebtCreateRequest
+from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_common import home_currency_code
 from app.services.debt_service._money import freeze_home_amount
 from app.services.time_service import now_utc
 
@@ -141,6 +143,9 @@ def create_debt(
     together with the [[0042]] idempotency-success record in one transaction.
     """
     direction = _clean_direction(payload.direction)
+    # ADR-0061 C02 桥接门（PR#255 R9）：新 Debt 按 env 盖章 home_currency_code，
+    # env 与已持久事实漂移时 fail closed（空库首笔放行；先于任何新事实落库）。
+    assert_currency_binding_consistent(db, home_currency_code())
     counterparty_type = _clean_counterparty_type(payload.counterparty_type)
     source_type = _clean_source_type(payload.source_type)
     counterparty_account_id, counterparty_label = _clean_counterparty(

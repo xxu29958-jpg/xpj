@@ -101,6 +101,8 @@ flowchart LR
   A0074["0074"] -->|depends on| A0065["0065"]
   A0074["0074"] -->|refines| A0066["0066"]
   A0074["0074"] -->|informational| A0006["0006"]
+  A0075["0075"] -->|amends| A0061["0061"]
+  A0075["0075"] -->|depends on| A0061["0061"]
 ```
 
 ## 未迁移 legacy ADR
@@ -208,3 +210,5 @@ flowchart LR
 | 0074 | depends-on | 0065 | accepted 历史不改写，以后继 ADR 修订当前 Windows adapter 裁决 |
 | 0074 | refines | 0066 | 安装器、SCM、Inno 与 PowerShell 保持平台适配层，不进入家庭财务核心 |
 | 0074 | informational | 0006 | PS5.1/PS7 只是同一 Windows 脚本合同的兼容宿主 |
+| 0075 | amends | 0061 | C02/C03 全量持久绑定未落地期间的最小写时桥接门；不替代版本化绑定行与修订握手 |
+| 0075 | depends-on | 0061 | home currency 语义身份与 fail-closed 原则来自 0061 C01-C03 |

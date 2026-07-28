@@ -19,6 +19,7 @@ from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateRequest
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.classify_service import classify_expense
+from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import home_currency_code
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import apply_currency_payload
@@ -112,6 +113,9 @@ def create_pending_expense(
     try:
         now = now_utc()
         frozen_home_currency = home_currency_code()
+        # ADR-0061 C02 桥接门（PR#255 R9）：pending 行即按 env 盖章成持久事实，漂移时
+        # 不得放行（与 freeze_home_amount / apply_currency_payload 同一防线）。
+        assert_currency_binding_consistent(db, frozen_home_currency)
         thumbnail_path = (
             _try_generate_thumbnail(saved_file.relative_path, tenant_id)
             if run_enrichment
