@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -27,6 +28,7 @@ from app.services.budget_baseline_service import (
     total_active_recurring_monthly_cents,
     total_confirmed_spent_cents,
 )
+from app.services.currency_common import home_currency_code, major_amount_to_minor
 from app.services.income_plan_service import total_monthly_income_cents
 from app.services.spending_contract_service import current_accounting_month
 
@@ -110,8 +112,10 @@ def _render_budget_advise(
         month=month_label,
         timezone_name="Asia/Shanghai",
     )
-    savings_cents = int(round(savings_target_yuan * 100))
-    reserved_cents = int(round(reserved_buffer_yuan * 100))
+    # R13-3：按 env home 的 minor 语义换算（JPY 零小数不 ×100；不再硬编 *100 round）。
+    home = home_currency_code()
+    savings_cents = major_amount_to_minor(Decimal(str(savings_target_yuan)), home)
+    reserved_cents = major_amount_to_minor(Decimal(str(reserved_buffer_yuan)), home)
     breakdown = compute_monthly_discretionary(
         monthly_income_cents=income,
         fixed_expenses_cents=fixed,

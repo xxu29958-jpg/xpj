@@ -248,13 +248,19 @@ fun ExpenseEditScreen(
     var currency by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(currentExpense.originalCurrencyCode)
     }
-    var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(
-            formatMinorAmountInput(
-                initialExpenseAmountInputMinor(currentExpense),
-                currentExpense.originalCurrencyCode,
-            )
+    // R13-4：original 原码严格解析 —— record 原码在支持集外时，按 lossy 枚举（CNY）改金额
+    // 会 100× 缩放；禁金额承载编辑（选择器显式改币种的除外：用户已重新声明口径）。
+    val originalRawCode = currentExpense.originalCurrencyCodeRaw
+    val originalUnsupported = !originalRawCode.isNullOrBlank() &&
+        CurrencyCode.fromStorageKeyOrNull(originalRawCode) == null
+    val initialAmountText = remember(currentExpense.id, currentExpense.updatedAt) {
+        formatMinorAmountInput(
+            initialExpenseAmountInputMinor(currentExpense),
+            currentExpense.originalCurrencyCode,
         )
+    }
+    var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+        mutableStateOf(initialAmountText)
     }
     var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.merchant.orEmpty()) }
     var category by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
@@ -292,6 +298,7 @@ fun ExpenseEditScreen(
     val scoreOutOfRangeTemplate = stringResource(R.string.expense_edit_score_out_of_range)
     val amountInvalidMessage = stringResource(R.string.expense_edit_amount_invalid)
     val amountRequiredMessage = stringResource(R.string.expense_edit_amount_required)
+    val currencyUnsupportedMessage = stringResource(R.string.expense_edit_currency_unsupported)
     val isPendingExpense = currentExpense.status == "pending"
     val headerTitle = stringResource(
         if (isPendingExpense) {
@@ -345,6 +352,11 @@ fun ExpenseEditScreen(
     }
 
     fun draftOrMessage(): ExpenseDraft? {
+        // R13-4：original 原码未知且金额被改动过（未改=元数据/原值回写，放行）→ 禁写+明示。
+        if (originalUnsupported && currency == currentExpense.originalCurrencyCode && amountText != initialAmountText) {
+            message = currencyUnsupportedMessage
+            return null
+        }
         val originalMinor = parseMinorAmount(amountText, currency)
         if (amountText.isNotBlank() && originalMinor == null) {
             message = amountInvalidMessage

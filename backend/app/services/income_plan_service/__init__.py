@@ -23,6 +23,8 @@ from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import add_ledger_scope, ledger_filter, ledger_scoped_select
 from app.models import MonthlyIncomePlan
+from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_common import home_currency_code
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
@@ -103,6 +105,8 @@ def create_income_plan(
     if amount_cents < 0:
         raise AppError("invalid_request", "金额不能为负数。", status_code=422)
     _validate_pay_day(pay_day)
+    # R13-2：无币种列的收入计划写按 env 口径入账 —— 先过绑定门（漂移/未决拒写）。
+    assert_currency_binding_consistent(db, home_currency_code())
 
     when = now or now_utc()
     row = MonthlyIncomePlan(
@@ -143,6 +147,8 @@ def update_income_plan(
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     _require_active_income_plan(plan)
+    # R13-2：同 create —— 编辑写先过绑定门（漂移/未决拒写）。
+    assert_currency_binding_consistent(db, home_currency_code())
 
     when = now or now_utc()
     new_frequency = _updated_income_frequency(plan, frequency)

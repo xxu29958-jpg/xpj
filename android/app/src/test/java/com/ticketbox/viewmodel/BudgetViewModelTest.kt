@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.LedgerAccessState
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.BudgetAdvice
@@ -35,7 +36,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
-private fun budgetTest(block: suspend TestScope.() -> Unit) = runTest {
+internal fun budgetTest(block: suspend TestScope.() -> Unit) = runTest {
     val dispatcher = StandardTestDispatcher(testScheduler)
     Dispatchers.setMain(dispatcher)
     try {
@@ -57,7 +58,7 @@ class BudgetViewModelTest {
             ),
         )
 
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
 
         val state = vm.uiState.value
@@ -108,7 +109,7 @@ class BudgetViewModelTest {
             budget = budget(totalAmountCents = 500000),
             activeAccessFlow = accessFlow,
         )
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
 
         fake.budget = budget(totalAmountCents = 700000)
@@ -130,7 +131,7 @@ class BudgetViewModelTest {
         val stale = CompletableDeferred<Result<BudgetMonthly>>()
         val latest = CompletableDeferred<Result<BudgetMonthly>>()
         val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000))
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
         var refreshCall = 0
         fake.monthlyBudgetResponder = {
@@ -152,7 +153,7 @@ class BudgetViewModelTest {
     @Test
     fun saveBuildsUpdateAndReloadsReturnedBudget() = budgetTest {
         val fake = FakeBudgetActions(budget = budget(configured = false))
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
 
         vm.updateTotalAmount(" 3000 ")
@@ -178,7 +179,7 @@ class BudgetViewModelTest {
     @Test
     fun saveRejectsInvalidAmountsBeforeRepositoryCall() = budgetTest {
         val fake = FakeBudgetActions(budget = budget(configured = false))
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
 
         vm.updateTotalAmount("3000")
@@ -197,7 +198,7 @@ class BudgetViewModelTest {
             budget = budget(configured = true),
             canModify = false,
         )
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
 
         vm.updateTotalAmount("3000")
@@ -227,7 +228,7 @@ class BudgetViewModelTest {
         // failure resolves to the screen fallback string (toUiText).
         val fake = FakeBudgetActions(budget = budget())
         fake.monthlyBudgetResponder = { Result.failure(RuntimeException()) }
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
 
         val state = vm.uiState.value
@@ -249,7 +250,7 @@ class BudgetViewModelTest {
     fun retryAfterLoadFailureClearsErrorAndPopulatesBudget() = budgetTest {
         val fake = FakeBudgetActions(budget = budget(totalAmountCents = 700000))
         fake.monthlyBudgetResponder = { Result.failure(RuntimeException()) }
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
         assertEquals(UiText.res(R.string.budget_message_load_failed), vm.uiState.value.loadError)
 
@@ -266,7 +267,7 @@ class BudgetViewModelTest {
     @Test
     fun refreshFailureAfterLoadedBudgetKeepsDataAndShowsRefreshError() = budgetTest {
         val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000))
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
 
         fake.monthlyBudgetResponder = { Result.failure(RuntimeException()) }
@@ -289,7 +290,7 @@ class BudgetViewModelTest {
     @Test
     fun monthChangeLoadsRequestedMonth() = budgetTest {
         val fake = FakeBudgetActions(budget = budget(month = "2026-05"))
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
 
         fake.budget = budget(month = "2026-04")
@@ -310,7 +311,7 @@ class BudgetViewModelTest {
         fake.monthlyBudgetResponder = { month ->
             if (month == "2026-05") mayResponse.await() else aprilResponse.await()
         }
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
 
         vm.previousMonth()
@@ -749,7 +750,7 @@ class BudgetViewModelBindingRaceTest {
             budget = budget(totalAmountCents = 500000),
             activeAccessFlow = accessFlow,
         )
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
         vm.updateTotalAmount("7000")
 
@@ -767,7 +768,7 @@ class BudgetViewModelBindingRaceTest {
     fun saveInvalidatesAnOlderInFlightRefresh() = budgetTest {
         val staleRefresh = CompletableDeferred<Result<BudgetMonthly>>()
         val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000))
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
         fake.monthlyBudgetResponder = { staleRefresh.await() }
         vm.refresh()
@@ -792,7 +793,7 @@ class BudgetViewModelBindingRaceTest {
         val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000)).apply {
             saveResponder = { pendingSave.await() }
         }
-        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        val vm = BudgetViewModel(fake, CapabilityDebtActions(), initialMonth = "2026-05")
         advanceUntilIdle()
         vm.updateTotalAmount("7000")
 
@@ -1005,7 +1006,7 @@ private fun fixedAdviceViewModel(
     monthProvider = { month },
 )
 
-private class FakeBudgetActions(
+internal class FakeBudgetActions(
     var budget: BudgetMonthly,
     canModify: Boolean = true,
     private val cachedAdvice: BudgetAdviceResult? = null,
@@ -1121,7 +1122,7 @@ private fun planAccess(
     canModify = canModify,
 )
 
-private fun budget(
+internal fun budget(
     month: String = "2026-05",
     configured: Boolean = true,
     totalAmountCents: Long = 300000,

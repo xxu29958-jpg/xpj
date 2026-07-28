@@ -74,13 +74,15 @@ from app.services.debt_service._repayment import (
 from app.services.debt_service._repayment_activity import list_repayment_facts
 from app.services.debt_service._repayment_draft import (
     RepaymentDraftAuditRow,
-    confirm_repayment_draft,
     create_repayment_draft,
-    dismiss_repayment_draft,
     get_repayment_draft_response,
     list_repayment_draft_audit_for_account,
     list_repayment_drafts,
     repayment_draft_response,
+)
+from app.services.debt_service._repayment_draft_confirm import (
+    confirm_repayment_draft,
+    dismiss_repayment_draft,
 )
 from app.services.debt_service._void import void_debt, void_repayment
 

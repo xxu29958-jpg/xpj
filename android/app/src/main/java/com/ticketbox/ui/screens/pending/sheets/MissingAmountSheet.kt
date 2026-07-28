@@ -45,6 +45,11 @@ internal fun MissingAmountSheetContent(
 ) {
     val saving = chrome.saving
     val currency = expense.originalCurrencyCode
+    // R13-5：original 原码严格解析 —— 未知码（支持集外）禁快补金额与确认（按 lossy 枚举
+    // 解析会 100× 缩放），主表单同门（R13-4）。
+    val originalRawCode = expense.originalCurrencyCodeRaw
+    val originalUnsupported = !originalRawCode.isNullOrBlank() &&
+        CurrencyCode.fromStorageKeyOrNull(originalRawCode) == null
     val suggestedMinor = expense.originalAmountMinor?.takeIf { it > 0 }
     val suggestedInput = remember(expense.id, suggestedMinor, currency) {
         formatMinorAmountInput(suggestedMinor, currency)
@@ -54,7 +59,7 @@ internal fun MissingAmountSheetContent(
     }
     val originalMinor = parseMinorAmount(input, currency)
     val invalid = input.isNotBlank() && (originalMinor == null || originalMinor <= 0)
-    val canSave = originalMinor != null && originalMinor > 0 && !saving
+    val canSave = originalMinor != null && originalMinor > 0 && !saving && !originalUnsupported
     // P1-2: auto-focus the single amount field in the OCR review flow.
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -92,6 +97,15 @@ internal fun MissingAmountSheetContent(
                 null
             },
         )
+
+        if (originalUnsupported) {
+            // R13-5：原码未知时按钮禁用之外的明示文案（金额解析不可信，先升级再补录）。
+            Text(
+                stringResource(R.string.expense_edit_currency_unsupported),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
 
         ReviewSheetActionFeedback(
             chrome = chrome,

@@ -72,6 +72,8 @@ fun ExpenseDto.toDomain(): Expense {
         fxSource = resolvedFxSource,
         fxStatus = fxStatus.orEmpty(),
         originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode),
+        // R13-4：original 原码透传（未知码严格解析/禁金额编辑用；与 homeCurrencyCode 的 R7-2 同构）。
+        originalCurrencyCodeRaw = originalCurrency ?: originalCurrencyCode,
         originalAmountMinor = originalAmountMinor,
         exchangeRateToCny = resolvedFxRate,
         exchangeRateDate = resolvedFxRateDate,
@@ -189,6 +191,8 @@ fun ExpenseEntity.toDomain(): Expense {
         fxSource = exchangeRateSource,
         fxStatus = fxStatus,
         originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrencyCode),
+        // R13-4：original 缓存原码透传（同 DTO 侧）。
+        originalCurrencyCodeRaw = originalCurrencyCode,
         originalAmountMinor = originalAmountMinor,
         exchangeRateToCny = exchangeRateToCny,
         exchangeRateDate = exchangeRateDate,

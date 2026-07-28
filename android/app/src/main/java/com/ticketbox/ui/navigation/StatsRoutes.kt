@@ -95,6 +95,7 @@ internal fun BudgetRoute(
     val budgetViewModel: BudgetViewModel = viewModel(
         factory = budgetViewModelFactory(
             repository = screenFactory.budgetRepository,
+            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )

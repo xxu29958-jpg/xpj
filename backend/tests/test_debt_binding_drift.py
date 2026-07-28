@@ -20,14 +20,15 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense, LedgerMember, MonthlyIncomePlan
 from app.schemas import RepaymentCreateRequest
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import (
+    assert_currency_binding_consistent,
+)
 from app.services.debt_service._repayment import record_repayment
 from app.services.exchange_rate_service import apply_currency_payload
 
 
 def _idem_headers(app_headers: dict[str, str]) -> dict[str, str]:
     return {**app_headers, "Idempotency-Key": str(uuid4())}
-
 
 def _create_cny_debt(client: TestClient, identity) -> None:
     response = client.post(
@@ -42,7 +43,6 @@ def _create_cny_debt(client: TestClient, identity) -> None:
     )
     assert response.status_code == 201, response.json()
     assert response.json()["home_currency_code"] == "CNY"
-
 
 def test_debt_create_rejected_when_env_drifts_from_persisted_facts(
     client: TestClient, monkeypatch, *, identity
@@ -70,19 +70,16 @@ def test_debt_create_rejected_when_env_drifts_from_persisted_facts(
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
-
 def test_binding_gate_allows_first_record_on_empty_installation() -> None:
     # 空库（无任何持久事实）= 首笔 claim binding，放行。
     with SessionLocal() as db:
         assert_currency_binding_consistent(db, "JPY")
-
 
 def test_binding_gate_allows_write_when_facts_share_binding(client: TestClient, *, identity) -> None:
     # 全一致（既有事实与 env 同币种）放行。
     _create_cny_debt(client, identity)
     with SessionLocal() as db:
         assert_currency_binding_consistent(db, "CNY")
-
 
 def test_binding_gate_rejects_drift_via_expense_facts() -> None:
     # expense 臂：以 ORM 直接落一条 CNY 账单事实，门检查三表（debts/expenses/
@@ -94,7 +91,6 @@ def test_binding_gate_rejects_drift_via_expense_facts() -> None:
             assert_currency_binding_consistent(db, "JPY")
         assert excinfo.value.error == "currency_binding_drift"
         assert excinfo.value.status_code == 409
-
 
 def test_misconfigured_env_still_fails_fast_before_gate(
     client: TestClient, monkeypatch, *, identity
@@ -122,12 +118,10 @@ def test_misconfigured_env_still_fails_fast_before_gate(
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
-
 def _seed_cny_expense_fact() -> None:
     with SessionLocal() as db:
         db.add(Expense(tenant_id="owner", home_currency_code="CNY"))
         db.commit()
-
 
 def test_metadata_only_payload_bypasses_gate_and_env_read(monkeypatch) -> None:
     # PR#255 R10②：纯元数据 PATCH（无金额/无 original 字段）不过门、连 env 都不读 ——
@@ -150,7 +144,6 @@ def test_metadata_only_payload_bypasses_gate_and_env_read(monkeypatch) -> None:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
-
 def test_explicit_amount_payload_still_gated_under_drift(monkeypatch) -> None:
     # R10② 同伴钉：显式金额 PATCH 在盖章区过门 —— env 漂移（JPY vs CNY 事实）仍 409。
     _seed_cny_expense_fact()
@@ -171,7 +164,6 @@ def test_explicit_amount_payload_still_gated_under_drift(monkeypatch) -> None:
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
-
 
 def test_binding_prechecked_skips_per_row_gate(monkeypatch) -> None:
     # PR#255 R10①：批量写路径在批首已校验一次，行内经 binding_checked=True 跳过
@@ -196,7 +188,6 @@ def test_binding_prechecked_skips_per_row_gate(monkeypatch) -> None:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
-
 def test_repayment_draft_capture_rejected_on_non_cny_installation(
     client: TestClient, monkeypatch, *, identity
 ) -> None:
@@ -217,7 +208,6 @@ def test_repayment_draft_capture_rejected_on_non_cny_installation(
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
-
 def _owner_account_id() -> int:
     with SessionLocal() as db:
         account_id = db.scalar(
@@ -227,7 +217,6 @@ def _owner_account_id() -> int:
         )
         assert account_id is not None
         return account_id
-
 
 def _create_jpy_debt(client: TestClient, identity, monkeypatch) -> str:
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
@@ -245,7 +234,6 @@ def _create_jpy_debt(client: TestClient, identity, monkeypatch) -> str:
     assert response.status_code == 201, response.json()
     assert response.json()["home_currency_code"] == "JPY"
     return response.json()["public_id"]
-
 
 def test_repayment_draft_capture_rejected_when_env_drifts_back_to_cny(
     client: TestClient, monkeypatch, *, identity
@@ -266,7 +254,6 @@ def test_repayment_draft_capture_rejected_when_env_drifts_back_to_cny(
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
-
 
 def test_foreign_repayment_rejected_when_debt_currency_differs_from_env(
     client: TestClient, monkeypatch, *, identity
@@ -297,7 +284,6 @@ def test_foreign_repayment_rejected_when_debt_currency_differs_from_env(
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
-
 def test_foreign_repayment_allowed_when_debt_currency_matches_env(
     client: TestClient, monkeypatch, *, identity
 ) -> None:
@@ -323,7 +309,6 @@ def test_foreign_repayment_allowed_when_debt_currency_matches_env(
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
-
 
 def test_home_integer_repayment_allowed_under_drift(
     client: TestClient, monkeypatch, *, identity
@@ -351,7 +336,6 @@ def test_home_integer_repayment_allowed_under_drift(
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
-
 def test_notification_draft_rejected_on_non_cny_with_partial_original_fields(
     client: TestClient, monkeypatch, *, identity
 ) -> None:
@@ -371,7 +355,6 @@ def test_notification_draft_rejected_on_non_cny_with_partial_original_fields(
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
-
 def test_notification_draft_cny_with_partial_original_fields_matches_main_behavior(
     client: TestClient, *, identity
 ) -> None:
@@ -385,7 +368,6 @@ def test_notification_draft_cny_with_partial_original_fields_matches_main_behavi
     assert response.status_code == 200, response.json()
     assert response.json()["original_currency_code"] == "USD"
     assert response.json()["fx_status"] == "pending"
-
 
 def test_unbound_monetary_rows_block_non_cny_binding_claim(monkeypatch) -> None:
     # R12-F：仅有无币种列的遗留金额行（MonthlyIncomePlan，CNY 时代整数）+ env≠CNY →
@@ -409,7 +391,6 @@ def test_unbound_monetary_rows_block_non_cny_binding_claim(monkeypatch) -> None:
         # env==CNY 放行：存量无绑定行定义上即 CNY 分。
         assert_currency_binding_consistent(db, "CNY")
 
-
 def test_unbound_rows_with_bound_fact_follow_drift_gate(client: TestClient, monkeypatch, *, identity) -> None:
     # R12-F：有绑定事实时仅按既有三表门裁决（不重复触发 unresolved）—— JPY debt +
     # income plan 行 + env=CNY → drift 门拒。
@@ -431,3 +412,8 @@ def test_unbound_rows_with_bound_fact_follow_drift_gate(client: TestClient, monk
         assert excinfo.value.error == "currency_binding_drift"
     monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
     get_settings.cache_clear()
+
+def _seed_cny_expense_fact_row() -> None:
+    with SessionLocal() as db:
+        db.add(Expense(tenant_id="owner", home_currency_code="CNY"))
+        db.commit()

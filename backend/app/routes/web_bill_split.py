@@ -37,6 +37,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import bill_split_service as bsplit
+from app.services.currency_common import home_currency_code, major_amount_to_minor, minor_amount_value
 from app.services.invitation_members import list_members
 from app.services.ledger_service import (
     find_owner_account_id_for_ledger,
@@ -411,16 +412,18 @@ def web_split_cancel(
 
 
 def _cents_to_yuan(cents: int | None) -> str:
+    # R13-3：按 env home 的 minor 语义渲染（JPY 零小数整数直显，不 ÷100）。
     if cents is None:
-        return "0.00"
-    return f"{cents / 100:.2f}"
+        cents = 0
+    return minor_amount_value(cents, home_currency_code())
 
 
 def _yuan_to_cents(value: str) -> int | None:
+    # R13-3：按 env home 的 minor 语义解析（JPY 零小数：整数直存、拒小数）。
     cleaned = (value or "").strip()
     if not cleaned:
         return None
     try:
-        return int((Decimal(cleaned) * 100).to_integral_value())
-    except (InvalidOperation, ValueError):
+        return major_amount_to_minor(Decimal(cleaned), home_currency_code())
+    except (InvalidOperation, ValueError, AppError):
         return None

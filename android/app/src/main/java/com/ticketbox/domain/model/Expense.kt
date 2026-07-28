@@ -71,6 +71,12 @@ data class Expense(
      * 显示侧回落 [homeCurrency].storageKey。
      */
     val homeCurrencyCode: String? = null,
+    /**
+     * 服务端/缓存带来的**原始币种原码**（PR#255 R13-4）：与 [originalCurrencyCode]（枚举，
+     * 未知码已回落 CNY）并存 —— 金额编辑按 [fromStorageKeyOrNull] 严格解析，未知码禁
+     * 金额承载编辑（R7-2 home 侧同构）；mapper 注入（DTO/Entity 原码），手工构造为 null。
+     */
+    val originalCurrencyCodeRaw: String? = null,
 )
 
 /**

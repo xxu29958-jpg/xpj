@@ -66,6 +66,38 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
         ),
     ),
     ScopeExemption(
+        path="services/currency_binding_service.py",
+        function="assert_currency_binding_consistent",
+        model="Budget",
+        occurrences=1,
+        reason=(
+            "Same installation-global drift gate (R12-F unbound-legacy-row arm): "
+            "legacy monetary rows carry no currency column, so the gate must see "
+            "them across ALL ledgers to judge whether a non-CNY first binding is "
+            "safe; a tenant filter would hide cross-ledger legacy rows."
+        ),
+    ),
+    ScopeExemption(
+        path="services/currency_binding_service.py",
+        function="assert_currency_binding_consistent",
+        model="Goal",
+        occurrences=1,
+        reason=(
+            "Same installation-global drift gate (R12-F unbound-legacy-row arm; "
+            "see the Budget exemption for the full rationale)."
+        ),
+    ),
+    ScopeExemption(
+        path="services/currency_binding_service.py",
+        function="assert_currency_binding_consistent",
+        model="RecurringItem",
+        occurrences=1,
+        reason=(
+            "Same installation-global drift gate (R12-F unbound-legacy-row arm; "
+            "see the Budget exemption for the full rationale)."
+        ),
+    ),
+    ScopeExemption(
         path="services/cleanup_service.py",
         function="purge_expired_soft_deletes",
         model="MerchantAlias",

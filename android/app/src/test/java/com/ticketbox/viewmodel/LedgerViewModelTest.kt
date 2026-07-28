@@ -1,7 +1,9 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.LedgerActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
@@ -47,7 +49,7 @@ class LedgerViewModelTest {
                 expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         // LedgerViewModel.monthFilter defaults to YearMonth.now() — pin to the
@@ -73,7 +75,7 @@ class LedgerViewModelTest {
                 expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         // Same date-rollover guard as above.
@@ -100,7 +102,7 @@ class LedgerViewModelTest {
                 expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setTagFilter("旅行")
         vm.setQuery("地铁")
@@ -131,7 +133,7 @@ class LedgerViewModelTest {
                     .copy(expenseTime = "2026-05-10T08:00:00Z"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         // Recent merchants come from the WHOLE confirmed cache, independent of
@@ -158,7 +160,7 @@ class LedgerViewModelTest {
                 expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -188,7 +190,7 @@ class LedgerViewModelTest {
                 expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -217,7 +219,7 @@ class LedgerViewModelTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -241,7 +243,7 @@ class LedgerViewModelTest {
             ),
             batchResult = BatchApplyResult(synced = 1, queued = 1, failed = 1),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -271,7 +273,7 @@ class LedgerViewModelTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         vm.createManualExpense(manualDraft())
@@ -293,7 +295,7 @@ class LedgerViewModelTest {
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
             manualCreate = ManualCreateBehavior(pendingSync = true),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         vm.createManualExpense(manualDraft())
@@ -306,6 +308,40 @@ class LedgerViewModelTest {
     }
 
     @Test
+    fun ledgerCurrencyResolvesFromEnvelopeCapability() = ledgerTest {
+        // R13-6：手记初始币种取列表信封 capability（R6 同源）—— JPY 账本解析为 JPY，
+        // 不再恒落 CNY 默认（JPY 安装速记 FX 静默放大的根因）。
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
+        )
+        val vm = LedgerViewModel(FakeLedgerActions(expenses = emptyList()), debts)
+        advanceUntilIdle()
+
+        assertEquals(CurrencyCode.JPY, vm.uiState.value.ledgerCurrency)
+    }
+
+    @Test
+    fun manualCreateBlockedWhenCapabilityUnresolved() = ledgerTest {
+        // R13-6：capability 未知（支持集外）→ 手记禁提交 + sheet 内联明示，repository 不可达。
+        val debts = CapabilityDebtActions(
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "VND"),
+        )
+        val fake = FakeLedgerActions(expenses = emptyList())
+        val vm = LedgerViewModel(fake, debts)
+        advanceUntilIdle()
+
+        vm.createManualExpense(manualDraft())
+        advanceUntilIdle()
+
+        assertEquals(0, fake.manualCreateCallCount)
+        assertEquals(
+            UiText.res(R.string.currency_unconfirmed_write_blocked),
+            vm.uiState.value.manualCreateError,
+        )
+        assertFalse(vm.uiState.value.manualCreateDone)
+    }
+
+    @Test
     fun manualCreateFailureKeepsSheetOpenWithInlineError() = ledgerTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
@@ -313,7 +349,7 @@ class LedgerViewModelTest {
             // screen-specific fallback resource asserted below.
             manualCreate = ManualCreateBehavior(failure = RuntimeException()),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         vm.createManualExpense(manualDraft())
@@ -337,7 +373,7 @@ class LedgerViewModelTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -360,7 +396,7 @@ class LedgerViewModelTest {
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
             batchFailure = RuntimeException("offline"),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -387,7 +423,7 @@ class LedgerViewModelTest {
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
             batchGate = gate,
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -412,7 +448,7 @@ class LedgerViewModelTest {
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
             canModify = false,
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -430,7 +466,7 @@ class LedgerViewModelTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -454,7 +490,7 @@ class LedgerViewModelTest {
                 expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         vm.setCategoryFilter("餐饮")
@@ -473,7 +509,7 @@ class LedgerViewModelTest {
                 expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
@@ -566,7 +602,7 @@ class LedgerViewModelTest {
         val syncGate = CompletableDeferred<Unit>()
         fake.syncGate = syncGate
 
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         runCurrent()
         assertEquals(1, fake.syncCallCount)
 
@@ -589,7 +625,7 @@ class LedgerViewModelTest {
             monthResult = Result.success(listOf("2026-07", "2026-06"))
         }
 
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         runCurrent()
 
         assertEquals(LedgerMonthsLoadState.Loading, vm.uiState.value.monthsLoadState)
@@ -608,7 +644,7 @@ class LedgerViewModelTest {
             monthResult = Result.failure(RuntimeException("months offline"))
         }
 
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         assertEquals(LedgerMonthsLoadState.Failed, vm.uiState.value.monthsLoadState)
@@ -622,7 +658,7 @@ class LedgerViewModelTest {
         ).apply {
             monthResult = Result.success(listOf("2026-05"))
         }
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
         assertEquals(LedgerMonthsLoadState.Loaded, vm.uiState.value.monthsLoadState)
 
@@ -642,7 +678,7 @@ class LedgerViewModelTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "未分类", merchant = "A")),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         vm.applyDataQualityFilter(LedgerDataQualityFilter.MissingCategory)
@@ -673,7 +709,7 @@ class LedgerViewModelTest {
                     .copy(hasImage = true, imageDeletedAt = "2026-05-01T00:00:00Z"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         vm.applyDataQualityFilter(LedgerDataQualityFilter.ConfirmedWithoutImage)
@@ -693,7 +729,7 @@ class LedgerViewModelTest {
                 expense(id = 3, amountCents = 1400, category = "未分类", merchant = "C"),
             ),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
 
         vm.applyDataQualityFilter(LedgerDataQualityFilter.MissingCategory)
@@ -723,7 +759,7 @@ class LedgerBatchAdviceInvalidationTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         var invalidations = 0
         vm.onAdviceInputsChanged = { invalidations += 1 }
         advanceUntilIdle()
@@ -743,7 +779,7 @@ class LedgerBatchAdviceInvalidationTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
         )
-        val vm = LedgerViewModel(fake)
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
         var invalidations = 0
         vm.onAdviceInputsChanged = { invalidations += 1 }
         advanceUntilIdle()
@@ -791,6 +827,8 @@ private class FakeLedgerActions(
         private set
     var exportCallCount = 0
         private set
+    var manualCreateCallCount = 0
+        private set
     var syncGate: CompletableDeferred<Unit>? = null
     var monthResult: Result<List<String>> = Result.success(listOf("2026-05"))
     var monthGate: CompletableDeferred<Unit>? = null
@@ -831,6 +869,7 @@ private class FakeLedgerActions(
     }
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> {
+        manualCreateCallCount += 1
         manualCreate.failure?.let { return Result.failure(it) }
         val created = expense(
             id = if (manualCreate.pendingSync) {

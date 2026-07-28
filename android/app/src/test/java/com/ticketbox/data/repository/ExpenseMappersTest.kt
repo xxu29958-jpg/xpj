@@ -176,6 +176,21 @@ class ExpenseMappersTest {
     }
 
     @Test
+    fun toDomainPassesThroughRawOriginalCurrencyCode() {
+        // R13-4：original 原码透传（DTO 侧 originalCurrencyCode 字段 + Entity 缓存侧）——
+        // 未知码进原码字段供金额编辑严格解析/禁写，枚举侧维持回落语义不动。
+        val expense = expenseDto(publicId = "p1").copy(originalCurrencyCode = "VND").toDomain()
+
+        assertEquals("VND", expense.originalCurrencyCodeRaw)
+        assertEquals(CurrencyCode.CNY, expense.originalCurrencyCode) // 枚举回落语义不动
+
+        val entity = expenseDto(publicId = "p1").copy(originalCurrencyCode = "VND")
+            .toEntity(ledgerId = "owner")
+        val fromCache = entity.toDomain()
+        assertEquals("VND", fromCache.originalCurrencyCodeRaw)
+    }
+
+    @Test
     fun baselineAwareToRequestOmitsFxFieldsWhenUnchanged() {
         val baseline = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",

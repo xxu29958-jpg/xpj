@@ -187,6 +187,26 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
     }
 
     @Test
+    fun saveAmountDraftBlockedWhenOriginalCurrencyUnsupported() = review {
+        // R13-5：original 原码未知（支持集外）→ 快补金额与确认双双被拦（按 lossy 枚举
+        // 解析会 100× 缩放），repository 不可达 + 明示文案（sheet 层同门，此为 VM 防线）。
+        val target = expense(id = 5L, amountCents = null).copy(originalCurrencyCodeRaw = "VND")
+        val fake = FakeReviewActions(pending = listOf(target))
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.saveAmountDraft(target.id, 1200L)
+        advanceUntilIdle()
+        assertEquals(0, fake.updateCalls)
+        assertEquals(UiText.res(R.string.expense_edit_currency_unsupported), vm.uiState.value.message)
+
+        vm.saveAmountAndConfirm(target.id, 1200L)
+        advanceUntilIdle()
+        assertEquals(0, fake.updateCalls)
+        assertEquals(0, fake.confirmCalls)
+    }
+
+    @Test
     fun saveAmountAndConfirmKeepsItemWhenUpdateFails() = review {
         val target = expense(id = 8L, amountCents = null)
         val fake = FakeReviewActions(pending = listOf(target))

@@ -65,6 +65,8 @@ PR#255 复评（2026-07-28 bot P1）：Android 空账本放行依赖服务端列
 
 R12 门族扩展：①**批量边界一次校验**（见上 R10①）；②**record_repayment 外币路径按笔拒**（R12-C：payload 带 original 币种字段且 parent Debt 冻结币种 ≠ env 时——换算口径（env）与折叠口径（debt）错位——按 `currency_binding_drift` 拒；无 original 字段的整数透传维持 record 冻结语义豁免不动，原「豁免」论证被 bot 证伪的部分以此精化为准）；③**无绑定金额行视为存量事实**（R12-F：三表皆空但存在无币种列的遗留金额行——Budget / Goal / MonthlyIncomePlan / RecurringItem（CNY 时代整数，单位不可判定）——且 env≠CNY 时，不得视为空库放行首笔绑定 → `currency_binding_unresolved`（409）；env==CNY 放行，多币种未发布、存量无绑定行定义上即 CNY 分；有绑定事实时仅按三表门裁决不重复触发）；④**goal/income 写面取同一信封 capability**（R12-D：Android 三处写面——goal 新建/编辑、收入计划——经列表信封 capability 严格解析，未知/不支持 → 禁写+明示文案，不再落 `FxContract.HomeCurrency` 兜底）。
 
+R13 门族再扩：①**AppMeta 最小绑定标记**（`installation_home_currency` 单行键，0061 C02 持久绑定的最小前驱：write-once、无 revision 握手——首次以 env 盖章的写在同事务 claim，其后写只读裁决；codes 空时按「标记==env 放行 / 标记≠env drift 拒 / 无标记无遗留行则 claim / 无标记有遗留行则 env≠CNY unresolved 拒、env==CNY 自愈补标」裁决，解 R12-F「先建绑定事实恰是被拒操作」死锁）；②**无绑定写服务接门**（budget upsert、goal create/update、income create/update 在写前过同一门——此前漂移下绑定写全 409 而规划写按 env 口径照过，env 回摆后永久错值且无列可识别）；③**事实集纳入 RepaymentDraft + confirm 双闸**（草稿冻结 `home_currency_code` 参与三表 distinct 同款裁决——空库 CNY 草稿 + env 翻非 CNY → 首笔非 CNY 债建门即拒；`confirm_repayment_draft` 比对 draft 与 parent debt 的冻结币种，不等 → `currency_binding_drift`；web 候选 remaining 按候选 record 冻结币种渲染不吃 env 兜底）；④**全端解析口径能力化**（/web 收入/拆账/规则/预算建议四路由按 env home minor 语义解析渲染；Android ledger 手记与预算写面取同一信封 capability——JPY "1200" → 1200 minor、未知 → 禁写；expense 主表单与 MissingAmountSheet 对 original 原码严格解析（新增 `originalCurrencyCodeRaw` 透传字段），未知码禁金额承载编辑+明示）。
+
 ### [ADR-0075-C03] 已知边界
 
 本门不防多实例并发不同 env 的 TOCTOU 竞争（写时校验只认写时事实，不防两进程交错），不治理漂移已发生后的存量混币；两者均属版本化绑定的管辖范围，见 [[0061]] C02/C03 与 [ADR-0075-SCOPE] 的分工声明。
@@ -85,6 +87,7 @@ R12 门族扩展：①**批量边界一次校验**（见上 R10①）；②**rec
 - R11 expense 通知草稿条件门（`backend/tests/test_notification_drafts.py`）：非 CNY + 无 original 字段 → 422 `notification_draft_currency_unsupported`；非 CNY + original 字段（JPY↔JPY base 通道）→ 放行且 1:1 诚实换算；CNY 放行由既有 capture 钉保持。
 - R12（`backend/tests/test_debt_binding_drift.py` + Android VM 测试）：repayment 草稿 CNY 门 + drift 门交集（JPY 事实 + env 漂回 CNY → 409 drift）；record_repayment 外币路径按笔拒（JPY debt + env CNY + original 字段 → drift；matching 三方一致放行；无 original 透传放行）；R12-E 残缺 FX 载荷非 CNY 拒、CNY 行为与 main 一致；R12-F 仅无绑定金额行 + env≠CNY → `currency_binding_unresolved`、env==CNY 放行、有绑定事实走既有 drift 门；R12-D 三个 Android 写面（goal 新建/编辑、收入计划）取信封 capability 解析（JPY "1200" → 1200 minor），capability 未知/不支持 → 禁写+明示文案。
 - R12-B（Android `ExpenseSearchTest`）：未知 home 码行 raw-minor 只比 home 双腿，已知 original 币种继续按其声明解析匹配（VND-home/USD-original 双路可达）。
+- R13（`backend/tests/test_debt_binding_drift.py` + `test_web_currency_minor_lanes.py` + Android VM/mapper 测试）：JPY 新装先写 income plan 再写 expense 全程放行且标记=JPY（死锁复现场景）；遗留行+无标记+env=JPY → unresolved；env=CNY → 自愈补标；标记≠env → drift；budget/goal/income 三写服务漂移下各 409；空库 CNY 草稿 + env 翻 JPY → 首笔债建门拒；confirm 币种错配拒；/web 四路由 JPY 下解析/回显零缩放、小数按口径拒；Android ledger 手记与预算写面 JPY 解析 1200 minor、未知禁写；expense mapper 原码双通道透传、MissingAmount 快补未知码禁写。
 - 既有 `test_web_debt_currency_actions.py`（env 切换后按 record 冻结币种行动作）保持绿——证明 `record_repayment` 非落点语义未回退。
 - Android 客户端不经新映射：AppError JSON 的 `message` 字段经 `backendErrorUserMessage` 通用兜底原样呈现。
 

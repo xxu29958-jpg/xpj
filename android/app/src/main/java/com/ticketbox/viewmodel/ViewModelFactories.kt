@@ -30,22 +30,33 @@ fun appViewModelFactory(
     }
 }
 
+/** [repositoryViewModelFactory] 的仓库打包（保持工厂签名在 detekt 参数门内）。 */
+data class RepositoryViewModelRepositories(
+    val repository: ExpenseRepository,
+    val recurringRepository: RecurringRepository,
+    val budgetRepository: BudgetActions? = null,
+    val reportsRepository: ReportsActions? = null,
+    val debtRepository: DebtActions? = null,
+)
+
 @Suppress("UNCHECKED_CAST")
 fun repositoryViewModelFactory(
-    repository: ExpenseRepository,
-    recurringRepository: RecurringRepository,
-    budgetRepository: BudgetActions? = null,
-    reportsRepository: ReportsActions? = null,
+    repositories: RepositoryViewModelRepositories,
     onExpenseDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        val repository = repositories.repository
         return when (modelClass) {
             PendingViewModel::class.java -> PendingViewModel(repository, onDataChanged = onExpenseDataChanged)
-            LedgerViewModel::class.java -> LedgerViewModel(repository, onDataChanged = onExpenseDataChanged)
+            LedgerViewModel::class.java -> LedgerViewModel(
+                repository,
+                checkNotNull(repositories.debtRepository) { "LedgerViewModel requires DebtActions for R13-6 capability" },
+                onDataChanged = onExpenseDataChanged,
+            )
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
-            MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository, recurringRepository)
-            StatsBudgetViewModel::class.java -> StatsBudgetViewModel(repository, budgetRepository)
-            StatsReportsViewModel::class.java -> StatsReportsViewModel(reportsRepository)
+            MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository, repositories.recurringRepository)
+            StatsBudgetViewModel::class.java -> StatsBudgetViewModel(repository, repositories.budgetRepository)
+            StatsReportsViewModel::class.java -> StatsReportsViewModel(repositories.reportsRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
     }
@@ -54,10 +65,11 @@ fun repositoryViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun budgetViewModelFactory(
     repository: BudgetActions,
+    debts: DebtActions,
     onDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BudgetViewModel(repository, onDataChanged = onDataChanged) as T
+        return BudgetViewModel(repository, debts, onDataChanged = onDataChanged) as T
     }
 }
 
