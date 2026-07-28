@@ -18,6 +18,7 @@ from _web_overview_test_support import (
 )
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Account, AuthToken, Device, Expense, RecurringItem
 from app.routes import web_common
@@ -417,3 +418,41 @@ def test_overview_backup_card_renders_all_three_states(
     page = web_client.get("/web/overview?ledger_id=owner")
     assert page.status_code == 200
     assert "天前生成最近备份" in _card_body(page.text)
+
+
+def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_currency(
+    web_client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity
+) -> None:
+    """PR #253 R9: 旧首页 reports 卡清单改吃 amount_label, 与同卡环图 amount_major
+    同 exponent 口径 — JPY 本位下 donut ¥1,234 而清单 ¥12 (amount_yuan=minor/100)
+    的 100× 自相矛盾不再出现。撤掉任一消费点的 amount_label 本测试红。"""
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        seed_confirmed_expense(
+            web_client, identity=identity, amount_cents=1234, merchant="すき家", category="餐饮"
+        )
+        # 数据层: amount_label / amount_major 同按 minor digits 投影 (donut 优先消费后者)。
+        data = web_client.get("/web/dashboard/data?ledger_id=owner")
+        assert data.status_code == 200, data.text
+        row = data.json()["category_share"][0]
+        assert row["amount_major"] == 1234
+        assert row["amount_label"] == "¥1,234"
+
+        # 服务端渲染清单 (no-JS 路径): 与环图同为 ¥1,234; 旧键 amount_yuan 会渲染成 ¥12。
+        page = web_client.get("/web?ledger_id=owner")
+        assert page.status_code == 200
+        assert '<div class="cat-amt">¥1,234</div>' in page.text
+        assert '<div class="cat-amt">¥12</div>' not in page.text
+    finally:
+        get_settings.cache_clear()
+
+    # JS 渐进渲染同口径静态钉 (无 JS runner): 清单吃 amount_label (label 自带符号),
+    # 不再用 homeCurrencySymbol()+moneyRounded 拼 amount_yuan。
+    static_root = Path(__file__).resolve().parents[1] / "app"
+    dashboard_js = (static_root / "static/web/desktop/dashboard.js").read_text(encoding="utf-8")
+    assert 'el("div", "cat-amt", text(c.amount_label))' in dashboard_js
+    assert "moneyRounded(c.amount_yuan)" not in dashboard_js
+    dashboard_html = (static_root / "templates/web/dashboard.html").read_text(encoding="utf-8")
+    assert "{{ c.amount_label }}" in dashboard_html
+    assert "'%.0f' % c.amount_yuan" not in dashboard_html

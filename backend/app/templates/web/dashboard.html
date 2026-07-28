@@ -171,7 +171,7 @@
             <div class="cat-bar">
               <div class="cat-bar-fill" style="width:{{ (c.amount_cents / _max_cat * 100) if _max_cat else 0 }}%;background:{% if loop.index0 == 0 %}var(--brand-primary){% else %}var(--text-default){% endif %};opacity:{{ 1 - loop.index0 * 0.12 }}"></div>
             </div>
-            <div class="cat-amt">{{ home_currency_symbol }}{{ '%.0f' % c.amount_yuan }}</div>
+            <div class="cat-amt">{{ c.amount_label }}</div>
           </div>
           {% else %}
           <div class="source-empty">本月还没有已确认账单。</div>

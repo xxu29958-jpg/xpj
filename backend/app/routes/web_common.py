@@ -773,8 +773,8 @@ def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
                 "name": item["category"],
                 "amount_yuan": amount_minor / 100.0,
                 "amount_cents": amount_minor,
-                # exponent 感知投影 (PR #253 P1-1): amount_label 给 overview 清单
-                # 展示, amount_major 给 category-donut 的几何与 tooltip。
+                # exponent 感知投影 (PR #253 P1-1): amount_label 给 overview 与旧首页
+                # 清单展示 (R9 统一口径), amount_major 给 category-donut 的几何与 tooltip。
                 "amount_label": _minor_amount_label(amount_minor, home),
                 "amount_major": minor_amount_major_number(amount_minor, home),
                 "count": int(item["count"]),
