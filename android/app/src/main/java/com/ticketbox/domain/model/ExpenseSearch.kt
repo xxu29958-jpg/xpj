@@ -12,6 +12,9 @@ import java.util.Locale
 /** 全角符号别名：从各渠道复制的金额文本可能带全角 ￥/＄，与半角同义归一化。 */
 private val FULLWIDTH_SYMBOL_ALIASES = mapOf('¥' to '￥', '$' to '＄')
 
+/** 全角分组逗号（中文键盘/复制文本常见，如 ￥1，280）：解析前归一化为 locale 分组符。 */
+private const val FULLWIDTH_GROUPING_COMMA = '，'
+
 /** 剥掉 [currency] 自己的币种符号（含全角别名，前/后缀皆可）与全部空白。 */
 private fun stripSearchAmountContext(query: String, currency: CurrencyCode): String {
     var text = query.trim().replace(currency.symbol, "")
@@ -30,7 +33,8 @@ private fun stripSearchAmountContext(query: String, currency: CurrencyCode): Str
  *
  * 分隔符判定：两种都出现时靠右的是小数符；只出现分组符时，仅当整体是合法分组
  * 形态（``1.234`` / ``1,234,567``）才按分组剥离，否则按小数符对待 —— de-DE
- * 用户手输点号小数 ``12.50`` 不会被当分组放大成 1250。返回 null = 不是干净金额。
+ * 用户手输点号小数 ``12.50`` 不会被当分组放大成 1250。全角分组逗号 `，`（中文
+ * 键盘常见）先归一化为 locale 分组符再参与判定。返回 null = 不是干净金额。
  */
 private fun normalizeSearchAmountDigits(query: String, currency: CurrencyCode): String? {
     val stripped = stripSearchAmountContext(query, currency)
@@ -38,14 +42,19 @@ private fun normalizeSearchAmountDigits(query: String, currency: CurrencyCode): 
     val symbols = DecimalFormatSymbols.getInstance(Locale.forLanguageTag(currency.localeTag))
     val decimal = symbols.decimalSeparator
     val grouping = symbols.groupingSeparator
-    val hasDecimal = stripped.indexOf(decimal) >= 0
-    val hasGrouping = decimal != grouping && stripped.indexOf(grouping) >= 0
+    // 全角逗号先归一化为 locale 分组符再判定：被替换的 SEARCH_AMOUNT_NOISE_REGEX
+    // 显式接受 `，`（￥1，280），新正则拒绝它是中文键盘输入的回归（PR#255 R4 P2）。
+    // 同类全角符号审计：全角句点/全角数字旧实现同样拒绝（非回归，不扩面），全角
+    // 空格已由 isWhitespace 剥离，故只归一化逗号。
+    val normalized = stripped.replace(FULLWIDTH_GROUPING_COMMA, grouping)
+    val hasDecimal = normalized.indexOf(decimal) >= 0
+    val hasGrouping = decimal != grouping && normalized.indexOf(grouping) >= 0
 
-    var text = stripped
+    var text = normalized
     val decimalChar: Char? = when {
         hasDecimal && hasGrouping -> {
             // 两种分隔符都在：靠右的是小数符，另一种整组剥掉。
-            val resolved = if (stripped.lastIndexOf(decimal) > stripped.lastIndexOf(grouping)) decimal else grouping
+            val resolved = if (normalized.lastIndexOf(decimal) > normalized.lastIndexOf(grouping)) decimal else grouping
             val groupingChar = if (resolved == decimal) grouping else decimal
             text = text.replace(groupingChar.toString(), "")
             resolved

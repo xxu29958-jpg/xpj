@@ -35,6 +35,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
@@ -413,6 +414,14 @@ private fun DebtDraftForm(
         DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, onValueChange = viewModel::updateDraftInstallmentPeriod)
         draft.validationError?.let { err ->
             AppStatusBanner(message = err, tone = MessageTone.Danger)
+        }
+        // 空账本 fail closed（PR#255 R4 P1）：列表加载完成但币种仍无 record 级权威依据
+        // （空账本）时，说明创建为何禁用 —— 兜底 CNY 口径提交会放大零小数账本 100×。
+        if (!state.homeCurrencyResolved && !state.isLoading) {
+            AppStatusBanner(
+                message = UiText.res(R.string.debt_create_currency_unconfirmed),
+                tone = MessageTone.Info,
+            )
         }
         AppSheetActionRow(
             primary = AppSheetAction(

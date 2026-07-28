@@ -581,6 +581,21 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun parsesSearchAmountNormalizesFullwidthGroupingComma() {
+        // PR#255 R4 P2：全角分组逗号 `，`（中文键盘/复制文本，如 ￥1，280）先归一化为
+        // locale 分组符再判定 —— 被替换的 SEARCH_AMOUNT_NOISE_REGEX 显式接受它，拒绝即回归。
+        assertEquals(128_000L, parseSearchAmountCents("1，280"))
+        assertEquals(128_000L, parseSearchAmountCents("￥1，280"))
+        // 零小数 home 的全角分组显示值：￥1，200 → 1200 minor，不 ×100。
+        assertEquals(1_200L, parseSearchAmountCents("￥1，200", CurrencyCode.JPY))
+        // 归一化后仍按 locale 规则判定：de-DE 下 `，`→ 分组符点号，"12，50" 非合法分组
+        // 形态（尾组 2 位）→ 按小数对待，与半角 "12,50"（逗号小数）同值。
+        assertEquals(1_250L, parseSearchAmountCents("12，50", CurrencyCode.EUR))
+        // 多个全角逗号不构成合法分组也不作小数 → 仍拒（落回文本匹配）。
+        assertNull(parseSearchAmountCents("1，2，3"))
+    }
+
+    @Test
     fun expenseMatchesSearchAmountParsesEachLegInItsOwnCurrency() {
         // JPY-home、USD 原币：查 "12.50" 按 USD 解析原币腿命中（home 零小数解析不出，旧实现丢失）。
         val jpyHomeUsdOriginal = expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 18_518)

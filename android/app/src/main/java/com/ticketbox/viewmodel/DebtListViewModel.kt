@@ -48,11 +48,14 @@ data class DebtListUiState(
     val addSucceeded: Boolean = false,
     val pendingBillParsePrefill: Boolean = false,
     /**
-     * 账本 home 币种是否已确认：首次列表请求**成功**落地后 true。false 期间新建草稿的
-     * 金额解析币种只是 [FxContract.HomeCurrency] 兜底，提交被禁用（VM 与 sheet 按钮双
-     * 重守门）——否则 JPY/KRW 账本在加载途中按 CNY 口径提交会放大 100×（PR#255 P1-3）。
-     * 加载**失败**不置位（币种仍未知，创建保持禁用直到重试成功）；[reload] 账本切换时
-     * 重置为 false 重新等待。
+     * 账本 home 币种是否已从 record 级权威值确认：仅在列表请求成功且**响应非空**后
+     * true —— 服务端只在 record 级返回 home 币种，客户端没有账本级/账户级来源
+     * （FxContract.HomeCurrency 登记在案），空账本没有可信币种依据，保持 false 并
+     * 阻断创建（fail closed；空列表落 CNY 兜底再放开提交，会把 JPY/KRW 账本首笔
+     * 放大 100×，违反 ADR-0061 C03 禁默认-CNY 猜测 —— PR#255 R4 P1）。false 期间
+     * 新建草稿的金额解析币种只是 [FxContract.HomeCurrency] 兜底，提交被禁用（VM 与
+     * sheet 按钮双重守门）。加载**失败**不置位（币种仍未知，创建保持禁用直到重试
+     * 成功）；[reload] 账本切换时重置为 false 重新等待。
      */
     val homeCurrencyResolved: Boolean = false,
 )
@@ -71,7 +74,9 @@ data class DebtDraftUi(
     /**
      * 金额解析口径：新建流上没有本笔 record，取账本已有欠款的服务端 `homeCurrencyCode`
      * （由 VM 构造草稿时注入）；首笔欠款 / 空账本落 [FxContract.HomeCurrency] 兜底
-     * （与 AppViewModel 恒 CurrencyDisplay.Base 的 display home 一致，登记在案）。
+     * （与 AppViewModel 恒 CurrencyDisplay.Base 的 display home 一致，登记在案）——
+     * 兜底仅作标签显示，空账本下 [DebtListUiState.homeCurrencyResolved] 为 false，
+     * 提交保持阻断（PR#255 R4 P1）。
      * 列表响应到达后 VM 会把草稿币种重绑到账本权威值（保留已输文本，PR#255 P1-2/P1-3），
      * 金额字段的显示标签同源于本字段（DebtDraftForm 绑定 draft.homeCurrency）。
      */
@@ -150,7 +155,10 @@ class DebtListViewModel(
                             debts = debts,
                             error = null,
                             addDraft = it.addDraft.rebindHomeCurrency(debtsHomeCurrency(debts)),
-                            homeCurrencyResolved = true,
+                            // 空列表没有 record 级权威币种（服务端只在 record 级返回 home
+                            // 币种）：不得按 CNY 兜底声明币种已确认，创建保持阻断直到账本
+                            // 出现首条记录（PR#255 R4 P1，ADR-0061 C03 fail closed）。
+                            homeCurrencyResolved = debts.isNotEmpty(),
                         )
                     }
                 },
@@ -243,8 +251,9 @@ class DebtListViewModel(
 
     fun submitDraft() {
         val state = _state.value
-        // 币种未确认（初始/切换加载未成功）禁止提交：兜底 CNY 口径送到 JPY/KRW
-        // 账本会放大 100×（PR#255 P1-3；sheet 按钮同步禁用，此处为兜底防线）。
+        // 币种未确认（初始/切换加载未成功，或空账本没有 record 级权威币种）禁止提交：
+        // 兜底 CNY 口径送到 JPY/KRW 账本会放大 100×（PR#255 P1-3 / R4 P1；sheet 按钮
+        // 同步禁用，此处为兜底防线）。
         if (!state.homeCurrencyResolved) return
         val draft = state.addDraft.withInheritedModelFrom(state.debts)
         val amount = draft.parsedAmountCents()
