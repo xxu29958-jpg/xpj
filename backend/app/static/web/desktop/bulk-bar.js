@@ -12,14 +12,14 @@
     const checks = Array.from(document.querySelectorAll(".row-check"));
     const clearButton = form.querySelector("[data-bulk-clear]");
     const navigationRows = Array.from(
-      document.querySelectorAll(".exp-row[href], .exp-row-detail[href], .timeline-row-detail[href]")
+      document.querySelectorAll(".exp-row-detail[href], .timeline-row-detail[href]")
     );
     let batchModeActive = false;
     let navigationState = [];
 
-    // 218-D S4: 双模式 checkbox。收件新页 (a.exp-row 整行锚点) 的勾选控件是
-    // div.checkbox[role=checkbox] + .checked class/aria-checked (矿行结构;
-    // product/components.css 的 .checkbox 族只认 .checked); confirmed 等旧页
+    // 218-D S4/R1: 双模式 checkbox。收件新页 (#218 同构: 选择槽与行链接兄弟)
+    // 的勾选控件是 div.checkbox[role=checkbox] + .checked class/aria-checked
+    // (product/components.css 的 .checkbox 族只认 .checked); confirmed 等旧页
     // 仍是 input[type=checkbox]。两栈共用本文件, 读写统一走这两个助手。
     function isNativeBox(el) {
       return el.tagName === "INPUT";
@@ -129,12 +129,8 @@
         const checked = isChecked(cb);
         const row = cb.closest(".exp-row, .timeline-row");
         if (row) {
+          // 选中态视觉: 容器 .selected 类 (旧页旧 CSS / 新栈 inbox.css 同名规则)。
           row.classList.toggle("selected", checked);
-          // 新页行本体就是导航锚点 (a.exp-row[href]): 与 drawer 共用
-          // aria-selected 高亮通道 (矿同)。旧页行容器不是锚点, 不吃该属性。
-          if (row.hasAttribute("href")) {
-            row.setAttribute("aria-selected", checked ? "true" : "false");
-          }
         }
       });
       setBatchNavigationMode(entries.length > 0);
@@ -198,9 +194,9 @@
           applyRowToggle(cb, index, e, isChecked(cb));
         });
       } else {
-        // div[role=checkbox] 在整行锚点内部: 点击与 Space/Enter 都要吃掉事件
-        // (preventDefault 取消锚点跳转, stopPropagation 拦住 drawer.js 的行
-        // 点击), 否则勾选穿透触发整行打开抽屉 (C5a 教训, 矿同款 bindCheckbox)。
+        // div[role=checkbox]: 点击与 Space/Enter 都走同一 toggle; 吞事件是
+        // 防嵌套回归的兜底 (控件若再被移进行链接, 勾选也不会穿透触发整行
+        // 跳转/开抽屉 — C5a 教训, 矿同款 bindCheckbox)。
         const handler = function (e) {
           e.preventDefault();
           e.stopPropagation();

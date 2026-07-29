@@ -100,6 +100,7 @@ def web_duplicates(
     request: Request,
     ledger_id: str = "",
     msg: str = "",
+    flash_type: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -161,6 +162,9 @@ def web_duplicates(
     )
     ctx["duplicate_pairs"] = pairs
     ctx["flash_message"] = msg
+    # S4-R1: 与 pending 同族 — 只有 error/success 两个合法值, 其余回落默认
+    # info 样式, 避免查询参数驱动任意类名。
+    ctx["flash_type"] = flash_type if flash_type in ("success", "error") else ""
     ctx["q"] = "?ledger_id=" + selected_id
     return templates.TemplateResponse(
         request=request, name="duplicates.html", context=ctx
@@ -194,7 +198,9 @@ def web_duplicate_keep(
             return drawer_fragment_error(
                 db, request, options, selected_id, expense_id, _STALE_DUPLICATE_MSG
             )
-        return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
+        return _web_redirect(
+            "/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG, flash_type="error"
+        )
     error_msg: str | None = None
     try:
         mark_expense_not_duplicate(
@@ -210,7 +216,12 @@ def web_duplicate_keep(
                 db, request, options, selected_id, expense_id, error_msg
             )
         return drawer_fragment_ok("keep")
-    return _web_redirect("/web/duplicates", selected_id, msg=msg)
+    return _web_redirect(
+        "/web/duplicates",
+        selected_id,
+        msg=msg,
+        flash_type="error" if error_msg is not None else "success",
+    )
 
 
 @router.post("/duplicates/{expense_id}/reject-current")
@@ -227,13 +238,22 @@ def web_duplicate_reject_current(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
+        return _web_redirect(
+            "/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG, flash_type="error"
+        )
+    error_msg: str | None = None
     try:
         reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
         msg = "已忽略当前记录。"
     except AppError as exc:
-        msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
-    return _web_redirect("/web/duplicates", selected_id, msg=msg)
+        error_msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
+        msg = error_msg
+    return _web_redirect(
+        "/web/duplicates",
+        selected_id,
+        msg=msg,
+        flash_type="error" if error_msg is not None else "success",
+    )
 
 
 @router.post("/duplicates/{expense_id}/reject-original")
@@ -250,8 +270,11 @@ def web_duplicate_reject_original(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
+        return _web_redirect(
+            "/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG, flash_type="error"
+        )
     msg = "已忽略参考记录，并保留当前记录。"
+    error_msg: str | None = None
     try:
         current, original = _load_pair(db, tenant_id=selected_id, expense_id=expense_id)
         if original is None:
@@ -269,5 +292,11 @@ def web_duplicate_reject_original(
             db, current.id, selected_id, expected_row_version=parsed
         )
     except AppError as exc:
-        msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
-    return _web_redirect("/web/duplicates", selected_id, msg=msg)
+        error_msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
+        msg = error_msg
+    return _web_redirect(
+        "/web/duplicates",
+        selected_id,
+        msg=msg,
+        flash_type="error" if error_msg is not None else "success",
+    )

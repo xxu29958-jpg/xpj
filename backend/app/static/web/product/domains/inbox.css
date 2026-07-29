@@ -70,8 +70,25 @@
     padding: var(--space-3) var(--space-4);
     border-block-end: 1px solid var(--border-card);
     color: var(--text-default);
-    text-decoration: none;
     transition: background var(--motion-fast) var(--ease-standard);
+}
+
+/* S4-R1: 勾选控件是容器内兄弟节点, 行链接只占后 6 列 (子树零交互控件);
+   链接自身的 6 格轨道 = 容器 7 轨去掉选择槽。 */
+.exp-row-detail {
+    display: grid;
+    grid-column: 2 / -1;
+    grid-template-columns:
+        var(--space-10)
+        minmax(calc(var(--space-12) * 2), 1.4fr)
+        minmax(calc(var(--space-12) * 1.5), .8fr)
+        minmax(calc(var(--space-12) * 1.6), .9fr)
+        minmax(calc(var(--space-12) * 1.4), 1fr)
+        minmax(calc(var(--space-12) * 1.4), auto);
+    align-items: center;
+    gap: var(--space-4);
+    color: inherit;
+    text-decoration: none;
 }
 
 .exp-row:last-of-type {
@@ -79,8 +96,13 @@
 }
 
 .exp-row:hover,
-.exp-row[aria-selected="true"] {
+.exp-row.is-current {
     background: var(--surface-sunken);
+}
+
+.exp-row.selected,
+.exp-row.selected:hover {
+    background: var(--brand-primary-bg);
 }
 
 .exp-thumb {
@@ -162,10 +184,18 @@
             minmax(calc(var(--space-12) * 1.4), auto);
     }
 
+    .exp-row-detail {
+        grid-template-columns:
+            var(--space-10)
+            minmax(calc(var(--space-12) * 2), 1.4fr)
+            minmax(calc(var(--space-12) * 1.4), .8fr)
+            minmax(calc(var(--space-12) * 1.4), auto);
+    }
+
     .exp-head > :nth-child(4),
     .exp-head > :nth-child(5),
-    .exp-row > :nth-child(4),
-    .exp-row > :nth-child(5) {
+    .exp-row-detail > :nth-child(3),
+    .exp-row-detail > :nth-child(4) {
         display: none;
     }
 }
@@ -184,13 +214,17 @@
     }
 
     .exp-row {
-        grid-template-columns: var(--space-7) var(--space-10) minmax(0, 1fr) auto;
+        grid-template-columns: var(--space-7) minmax(0, 1fr);
         gap: var(--space-3);
     }
 
-    .exp-row > :nth-child(4),
-    .exp-row > :nth-child(5),
-    .exp-row > :nth-child(6) {
+    .exp-row-detail {
+        grid-template-columns: var(--space-10) minmax(0, 1fr) auto;
+    }
+
+    .exp-row-detail > :nth-child(3),
+    .exp-row-detail > :nth-child(4),
+    .exp-row-detail > :nth-child(5) {
         display: none;
     }
 }

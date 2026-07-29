@@ -16,10 +16,12 @@
  * full-page path: that preserves the ADR-0038 5s 撤销 banner (which the fetch
  * path would silently drop) and avoids forking confirm-modal's dialog.
  *
- * 218-D S4 (移植自产品矿, 适配 main): 收件行格换成整行锚点 (a.exp-row), 抽屉
- * 绑定从 .exp-row-detail 回到 .exp-row[data-fragment-url]; 补齐矿的模态语义
- * (aria-hidden 开关 + 焦点圈禁 + 背景 inert 锁)。main 的批选模式守卫保留:
- * 非空选择时 bulk-bar.js 给行挂 aria-disabled, 点击与程序化 open 都要让路。
+ * 218-D S4 (移植自产品矿, 适配 main): 补齐矿的模态语义 (aria-hidden 开关 +
+ * 焦点圈禁 + 背景 inert 锁)。main 的批选模式守卫保留: 非空选择时 bulk-bar.js
+ * 给行挂 aria-disabled, 点击与程序化 open 都要让路。
+ * S4-R1: 勾选控件移出行链接 (HTML 禁嵌交互控件), 行结构回到 #218 同构 —
+ * 容器 .exp-row 内 选择槽 + a.exp-row-detail 兄弟节点; 抽屉操作的是行链接,
+ * 移除/找下一行落到外层容器, 高亮经 is-current 类落在容器 (inbox.css)。
  */
 (function (window, document) {
   "use strict";
@@ -211,34 +213,48 @@
     }
 
     function markSelected(row) {
-      document.querySelectorAll('.exp-row[aria-selected="true"]').forEach(function (r) {
+      document.querySelectorAll('.exp-row-detail[aria-selected="true"]').forEach(function (r) {
         if (r !== row) r.setAttribute("aria-selected", "false");
       });
-      if (row) row.setAttribute("aria-selected", "true");
+      document.querySelectorAll(".exp-row.is-current").forEach(function (r) {
+        r.classList.remove("is-current");
+      });
+      if (row) {
+        row.setAttribute("aria-selected", "true");
+        const container = row.closest(".exp-row");
+        if (container) container.classList.add("is-current");
+      }
     }
 
     // 批10: confirm/忽略 removes the row from the table; decrement the visible
     // pending counts (active filter + 全部) — short-lived drift on the other
     // filters is acceptable and self-heals on the next page load.
-    // S4 行结构: 整行即锚点 (a.exp-row), currentRow 就是要移除/遍历的行本体。
+    // 行结构 (#218/S4-R1): drawer 操作的是行链接 (a.exp-row-detail), 移除/找
+    // 下一行都要落到外层行容器 .exp-row 上, 否则残留孤立的 checkbox 单元格。
     function removeCurrentRow() {
       if (!currentRow) return null;
       const next = nextRow(currentRow);
-      if (currentRow.parentNode) currentRow.parentNode.removeChild(currentRow);
+      const container = currentRow.closest(".exp-row") || currentRow;
+      if (container.parentNode) container.parentNode.removeChild(container);
       decrementCounts();
       currentRow = null;
       return next;
     }
 
+    function rowLink(container) {
+      return container.querySelector(".exp-row-detail[data-fragment-url]");
+    }
+
     function nextRow(row) {
-      let el = row.nextElementSibling;
+      const container = row.closest(".exp-row") || row;
+      let el = container.nextElementSibling;
       while (el && !el.classList.contains("exp-row")) el = el.nextElementSibling;
-      if (el) return el;
+      if (el) return rowLink(el);
       // No following row: fall back to the previous one so the reviewer keeps
       // moving instead of dead-ending.
-      el = row.previousElementSibling;
+      el = container.previousElementSibling;
       while (el && !el.classList.contains("exp-row")) el = el.previousElementSibling;
-      return el;
+      return el ? rowLink(el) : null;
     }
 
     function decrementCounts() {
@@ -350,7 +366,7 @@
       }
     });
 
-    document.querySelectorAll(".exp-row[data-fragment-url]").forEach(function (row) {
+    document.querySelectorAll(".exp-row-detail[data-fragment-url]").forEach(function (row) {
       row.addEventListener("click", function (e) {
         // 批选模式下 bulk-bar.js 负责拦截行导航;它在同一节点上后注册,
         // 所以这里也要自查 aria-disabled,否则监听器执行顺序会让抽屉先开。

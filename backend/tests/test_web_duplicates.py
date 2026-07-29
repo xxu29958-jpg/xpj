@@ -139,6 +139,38 @@ def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *,
         assert rejected.status == "rejected"
 
 
+def test_web_duplicates_stale_token_renders_error_style(web_client: TestClient, *, identity) -> None:
+    """S4-R1: 判定动作遇 stale OCC token 时, 重定向带 flash_type=error, 页面按
+    错误样式渲染且文案保留 (此前一律绿成功, 「已在其它端被修改」被误读为成功);
+    成功动作仍按成功样式渲染。"""
+    _, second = _seed_duplicate_pair(web_client, identity=identity)
+
+    stale = web_client.post(
+        f"/web/duplicates/{second}/keep",
+        data={"ledger_id": "owner", "expected_row_version": "not-a-token"},
+        follow_redirects=False,
+    )
+    assert stale.status_code == 303
+    location = stale.headers.get("location", "")
+    assert "flash_type=error" in location
+    page = web_client.get(location)
+    assert page.status_code == 200
+    assert "product-feedback--error" in page.text
+    assert "账单已在其它端被修改" in page.text
+
+    token = _token(web_client, second, identity=identity)
+    ok = web_client.post(
+        f"/web/duplicates/{second}/keep",
+        data={"ledger_id": "owner", "expected_row_version": token},
+        follow_redirects=False,
+    )
+    assert ok.status_code == 303
+    ok_location = ok.headers.get("location", "")
+    assert "flash_type=success" in ok_location
+    ok_page = web_client.get(ok_location)
+    assert "product-feedback--success" in ok_page.text
+
+
 def test_web_duplicates_unknown_id_returns_friendly_msg(web_client: TestClient) -> None:
     # ``mark_expense_not_duplicate`` raises AppError(404) — route catches it
     # and surfaces the message via redirect.

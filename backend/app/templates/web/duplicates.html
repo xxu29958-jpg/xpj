@@ -23,7 +23,9 @@
 </header>
 
 {% if flash_message %}
-<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
+{# S4-R1: 失败动作按错误样式渲染, 不再一律绿成功 (flash_type 由路由贯通,
+   与 pending 同族; 空值回落默认 info)。 #}
+<div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}" role="status">{{ flash_message }}</div>
 {% endif %}
 
 <div class="product-commandbar">

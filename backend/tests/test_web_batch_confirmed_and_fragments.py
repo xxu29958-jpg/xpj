@@ -27,15 +27,13 @@ from app.models import Expense
 class _RowLinkNestingProbe(HTMLParser):
     """Flags interactive elements nested inside a row navigation anchor.
 
-    行结构合同: 行链接内不允许出现交互标签 (<a>/<button>/<input>/<select>/
-    <textarea>) — 嵌套交互标签是无效 HTML, 且会回到 C5a 的穿透回归 (点击勾选
-    控件同时触发整行跳转)。
-    - confirmed 页 (#218): checkbox 与整行链接 (a.timeline-row-detail) 是兄弟
-      节点, 链接内只有展示性标记。
-    - pending 页 (218-D S4, 矿行格): 整行即链接 (a.exp-row), 勾选控件是行内
-      data-stop 槽的 div[role=checkbox] — 不是交互标签, 本探针要求行链接内
-      交互标签数为零; 穿透防护由 bulk-bar.js 的 preventDefault+stopPropagation
-      与 drawer.js 的 data-stop 守卫承担。
+    行结构合同 (#218, S4-R1 复核): 两个批量页的选择控件都与整行链接互为
+    兄弟节点 (pending 的 .exp-row-selector / confirmed 的 .timeline-row 选择
+    槽); 行链接 (a.exp-row-detail / a.timeline-row-detail) 内不允许出现任何
+    交互标签 (<a>/<button>/<input>/<select>/<textarea>) — 嵌套交互标签是
+    无效 HTML, 且会回到 C5a 的穿透回归 (点击勾选控件同时触发整行跳转)。
+    pending 的勾选控件是 div[role=checkbox] (product 族), 不在本探针的
+    标签集合内, 但其位置由 test_web_inbox_rebuild 的兄弟位断言钉死。
     """
 
     _INTERACTIVE = {"a", "button", "input", "select", "textarea"}
@@ -69,7 +67,7 @@ class _RowLinkNestingProbe(HTMLParser):
 
 
 def test_web_bulk_rows_do_not_nest_interactive_elements(web_client: TestClient, *, identity) -> None:
-    """行链接嵌套合同: 两个批量页的行导航锚点 (pending 的 a.exp-row,
+    """行链接嵌套合同: 两个批量页的行导航锚点 (pending 的 a.exp-row-detail,
     confirmed 的 a.timeline-row-detail) 内都不允许出现任何交互标签
     (<a>/<button>/<input>/<select>/<textarea>)。"""
     confirmed_id = _seed_pending_with_amount(web_client, "9.00", "Nesting Confirmed", identity=identity)
@@ -78,7 +76,7 @@ def test_web_bulk_rows_do_not_nest_interactive_elements(web_client: TestClient, 
     _seed_pending_with_amount(web_client, "10.00", "Nesting Pending", identity=identity)
 
     pages = (
-        (web_client.get("/web/pending?ledger_id=owner"), "exp-row"),
+        (web_client.get("/web/pending?ledger_id=owner"), "exp-row-detail"),
         (web_client.get("/web/confirmed?ledger_id=owner"), "timeline-row-detail"),
     )
     for resp, row_link_class in pages:

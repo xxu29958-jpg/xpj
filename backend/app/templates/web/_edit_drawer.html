@@ -71,7 +71,7 @@
       </div>
       <div>
         <dt>分类</dt>
-        <dd>{{ e.category or '待分类' }}</dd>
+        <dd>{% if e.needs_category %}待分类{% else %}{{ e.category or '待分类' }}{% endif %}</dd>
       </div>
     </dl>
   </section>
@@ -106,6 +106,14 @@
     {% if not can_write %}
     <div class="product-feedback" role="status">
       只读角色可以核对凭证与账面字段，但不能编辑、确认或忽略。
+    </div>
+    {% endif %}
+
+    {# S4-R1: 缺类信号进抽屉 — 与队列 pill 同族文案的警示条; 单行确认在
+       服务端同步拒绝 (web_confirm), 与队列 ready 门同义, 前后端一致。 #}
+    {% if e.needs_category %}
+    <div class="product-feedback product-feedback--warning" role="status">
+      分类待补：这条账单还没有有效分类，补齐后才能确认入账。
     </div>
     {% endif %}
 

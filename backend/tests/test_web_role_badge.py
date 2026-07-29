@@ -99,9 +99,9 @@ def test_web_pending_viewer_hides_bulk_actions(web_client: TestClient, *, identi
     assert 'id="bulk-form"' not in resp.text
     assert 'name="action" value="confirm_ready"' not in resp.text
     assert "batch-reject" not in resp.text
-    # 218-D S4 行结构: 只读行保留 data-stop 选择槽(空槽)对齐表头,
+    # 行结构 (#218/S4-R1): 只读行保留 exp-row-selector 空槽对齐表头,
     # 槽内不渲染任何勾选控件。
-    assert 'data-stop="true"' in resp.text
+    assert 'class="exp-row-selector" aria-hidden="true"' in resp.text
     assert "row-check" not in resp.text
 
 

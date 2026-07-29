@@ -134,30 +134,29 @@
 </p>
 
 <section class="exp-table" id="exp-table" data-ledger="{{ selected_ledger_id }}" aria-label="待处理账单">
-  <div class="exp-head" aria-hidden="true">
+  {# S4-R1: 表头不做整树 aria-hidden (#check-all 是可聚焦控件, 藏在 aria-hidden
+     里读屏会摸到无公告控件); 只对纯展示列标签隐藏, 控件暴露 role/label/state。 #}
+  <div class="exp-head">
     <div>
       {% if can_write %}
       <div class="checkbox" id="check-all" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择全部账单"></div>
       {% endif %}
     </div>
-    <div>凭证</div>
-    <div>商家与来源</div>
-    <div>分类</div>
-    <div>时间</div>
-    <div>检查结果</div>
-    <div class="text-end">金额</div>
+    <div aria-hidden="true">凭证</div>
+    <div aria-hidden="true">商家与来源</div>
+    <div aria-hidden="true">分类</div>
+    <div aria-hidden="true">时间</div>
+    <div aria-hidden="true">检查结果</div>
+    <div aria-hidden="true" class="text-end">金额</div>
   </div>
   {% for e in expenses %}
-  {# 矿行结构 (S4): 整行即链接 (a.exp-row), 选择控件是行内 data-stop 槽里的
-     div[role=checkbox] — bulk-bar.js 对它 preventDefault+stopPropagation,
-     drawer.js 对 data-stop 目标不开抽屉, 不会穿透触发整行跳转 (C5a 教训)。
+  {# S4-R1 行结构: 勾选控件移出行链接 (HTML 禁止链接内嵌交互控件, JS 未载时
+     嵌套点击会穿透跳转) — 选择槽与整行链接是 .exp-row 容器内的兄弟节点
+     (#218 同构, 控件换成 product 族的 div[role=checkbox]); 行链接子树内
+     零交互控件, 视觉布局由 inbox.css 的 .exp-row/.exp-row-detail 双 grid 保持。
      data-row-version 是 main 的批量 OCC token, 服务端 fail-closed。 #}
-  <a class="exp-row"
-     data-expense-id="{{ e.id }}"
-     href="/web/expenses/{{ e.id }}/edit{{ _q }}"
-     data-fragment-url="/web/expenses/{{ e.id }}/edit{{ _q }}&fragment=1"
-     aria-selected="false">
-    <div data-stop="true">
+  <div class="exp-row" data-expense-id="{{ e.id }}">
+    <div class="exp-row-selector"{% if not can_write %} aria-hidden="true"{% endif %}>
       {% if can_write %}
       <div class="checkbox row-check"
            data-id="{{ e.id }}"
@@ -168,57 +167,62 @@
            aria-label="选择账单 #{{ e.id }}"></div>
       {% endif %}
     </div>
-    <div>
-      {% if e.image_state == 'available' %}
-      <div class="exp-thumb exp-thumb-receipt" data-receipt-thumb>
-        <img src="/web/expenses/{{ e.id }}/thumbnail{{ _q }}" alt="" loading="lazy" decoding="async">
-        <span class="exp-thumb-label" data-receipt-thumb-label>加载中</span>
-      </div>
-      {% elif e.image_state == 'cleaned' %}
-      <div class="exp-thumb exp-thumb-state is-cleaned" aria-label="凭证图片已清理">
-        <span class="exp-thumb-label">已清理</span>
-      </div>
-      {% else %}
-      <div class="exp-thumb exp-thumb-state is-empty" aria-label="没有凭证图片">
-        <span class="exp-thumb-label">无图</span>
-      </div>
-      {% endif %}
-    </div>
-    <div>
-      <div class="exp-merch">{{ e.merchant or '待识别商家' }}</div>
-      <div class="exp-meta">#{{ e.id }} · {{ e.source_label }}</div>
-    </div>
-    <div>
-      {% if not e.needs_category %}
-      <span class="exp-cat">{{ e.category }}</span>
-      {% else %}
-      <span class="exp-cat exp-cat-missing">待分类</span>
-      {% endif %}
-    </div>
-    <div>
-      <div class="exp-time">{{ e.expense_time or '时间待核对' }}</div>
-      <div class="exp-time-meta">上传 {{ e.created_at }}</div>
-    </div>
-    <div>
-      <div class="pill-row">
-        {% if e.needs_amount %}<span class="product-status product-status--danger">缺金额</span>{% endif %}
-        {% if e.needs_merchant %}<span class="product-status product-status--warning">缺商家</span>{% endif %}
-        {% if e.is_duplicate %}<span class="product-status product-status--danger">疑似重复</span>{% endif %}
-        {% if e.fx_pending %}<span class="product-status product-status--warning">待汇率</span>{% endif %}
-        {% if not e.needs_amount and not e.needs_merchant and not e.needs_category and not e.is_duplicate and not e.fx_pending %}
-        <span class="product-status product-status--success">可确认</span>
+    <a class="exp-row-detail"
+       href="/web/expenses/{{ e.id }}/edit{{ _q }}"
+       data-fragment-url="/web/expenses/{{ e.id }}/edit{{ _q }}&fragment=1"
+       aria-selected="false">
+      <div>
+        {% if e.image_state == 'available' %}
+        <div class="exp-thumb exp-thumb-receipt" data-receipt-thumb>
+          <img src="/web/expenses/{{ e.id }}/thumbnail{{ _q }}" alt="" loading="lazy" decoding="async">
+          <span class="exp-thumb-label" data-receipt-thumb-label>加载中</span>
+        </div>
+        {% elif e.image_state == 'cleaned' %}
+        <div class="exp-thumb exp-thumb-state is-cleaned" aria-label="凭证图片已清理">
+          <span class="exp-thumb-label">已清理</span>
+        </div>
+        {% else %}
+        <div class="exp-thumb exp-thumb-state is-empty" aria-label="没有凭证图片">
+          <span class="exp-thumb-label">无图</span>
+        </div>
         {% endif %}
       </div>
-    </div>
-    <div class="text-end">
-      {% if e.amount_label %}
-      <span class="exp-amt">{{ e.amount_label }}</span>
-      {% if e.fx_meta %}<div class="exp-meta">{{ e.fx_meta }}</div>{% endif %}
-      {% else %}
-      <span class="exp-amt-missing">未识别</span>
-      {% endif %}
-    </div>
-  </a>
+      <div>
+        <div class="exp-merch">{{ e.merchant or '待识别商家' }}</div>
+        <div class="exp-meta">#{{ e.id }} · {{ e.source_label }}</div>
+      </div>
+      <div>
+        {% if not e.needs_category %}
+        <span class="exp-cat">{{ e.category }}</span>
+        {% else %}
+        <span class="exp-cat exp-cat-missing">待分类</span>
+        {% endif %}
+      </div>
+      <div>
+        <div class="exp-time">{{ e.expense_time or '时间待核对' }}</div>
+        <div class="exp-time-meta">上传 {{ e.created_at }}</div>
+      </div>
+      <div>
+        <div class="pill-row">
+          {% if e.needs_amount %}<span class="product-status product-status--danger">缺金额</span>{% endif %}
+          {% if e.needs_merchant %}<span class="product-status product-status--warning">缺商家</span>{% endif %}
+          {% if e.is_duplicate %}<span class="product-status product-status--danger">疑似重复</span>{% endif %}
+          {% if e.fx_pending %}<span class="product-status product-status--warning">待汇率</span>{% endif %}
+          {% if not e.needs_amount and not e.needs_merchant and not e.needs_category and not e.is_duplicate and not e.fx_pending %}
+          <span class="product-status product-status--success">可确认</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="text-end">
+        {% if e.amount_label %}
+        <span class="exp-amt">{{ e.amount_label }}</span>
+        {% if e.fx_meta %}<div class="exp-meta">{{ e.fx_meta }}</div>{% endif %}
+        {% else %}
+        <span class="exp-amt-missing">未识别</span>
+        {% endif %}
+      </div>
+    </a>
+  </div>
   {% else %}
   <div class="product-state">
     {% if filter == 'all' %}

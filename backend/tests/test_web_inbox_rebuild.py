@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 
 import pytest
+from _web_bulk_test_support import row_version as _row_version
+from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -132,41 +134,67 @@ def test_inbox_empty_state_matches_real_ingestion_routing(
     assert "从 CSV 导入" in body
 
 
-def test_inbox_pending_rows_use_whole_row_anchor_structure(
+def test_inbox_pending_rows_keep_checkbox_outside_row_link(
     web_client: TestClient, *, identity
 ) -> None:
-    """S4 行格钉: 整行即链接 (a.exp-row + data-fragment-url + aria-selected),
-    勾选控件是行内 data-stop 槽的 div[role=checkbox] (键盘可达, aria-checked),
-    且带 main 的批量 OCC token (data-row-version)。旧嵌套标记
-    (input[type=checkbox] / a.exp-row-detail) 不得回流。"""
+    """S4-R1 行格钉: 勾选控件是 .exp-row 容器内的兄弟节点 (选择槽), 行链接
+    a.exp-row-detail 子树内零交互控件 (HTML 禁嵌, JS 未载时嵌套点击会穿透
+    　跳转); 控件保留 role/aria-checked/tabindex/aria-label 与 main 的批量
+    OCC token (data-row-version)。表头不做整树 aria-hidden (#check-all 可
+    聚焦, 其 role/label/state 必须可达), 只对纯展示列标签隐藏。"""
     expense_id = _create_pending(web_client, identity=identity)
     response = web_client.get("/web/pending?ledger_id=owner")
 
     assert response.status_code == 200
     body = response.text
     row = re.search(
-        rf'<a class="exp-row"[^>]+data-expense-id="{expense_id}".*?</a>', body, re.S
+        rf'<div class="exp-row" data-expense-id="{expense_id}">.*?</a>\s*</div>',
+        body,
+        re.S,
     )
     assert row is not None
     row_html = row.group(0)
-    assert f'href="/web/expenses/{expense_id}/edit?ledger_id=owner"' in row_html
-    assert "data-fragment-url=" in row_html
-    assert 'aria-selected="false"' in row_html
+    link = re.search(r'<a class="exp-row-detail".*?</a>', row_html, re.S)
+    assert link is not None
+    link_html = link.group(0)
+    assert f'href="/web/expenses/{expense_id}/edit?ledger_id=owner"' in link_html
+    assert "data-fragment-url=" in link_html
+    assert 'aria-selected="false"' in link_html
+    # 行链接子树内零交互控件 (R1-5 结构钉): 剥掉起始标签后无 role=checkbox /
+    # input / button / 嵌套 a。
+    link_inner = re.sub(r"^<a [^>]*>", "", link_html)
+    assert 'role="checkbox"' not in link_inner
+    assert "<input" not in link_inner
+    assert "<button" not in link_inner
+    assert "<a " not in link_inner
+    # 勾选控件在容器内、链接外 (兄弟位), 保留 aria 接线与 OCC token。
     check = re.search(
         r'<div class="checkbox row-check"[^>]+role="checkbox"[^>]*>', row_html
     )
     assert check is not None
+    assert row_html.index('class="checkbox row-check"') < row_html.index('class="exp-row-detail"')
     assert 'aria-checked="false"' in check.group(0)
     assert 'tabindex="0"' in check.group(0)
     assert 'data-row-version="' in check.group(0)
     assert f'aria-label="选择账单 #{expense_id}"' in check.group(0)
-    assert "exp-row-detail" not in body
     assert 'type="checkbox"' not in body
-    # 表头全选同为 ARIA checkbox。
-    assert re.search(
-        r'<div class="checkbox" id="check-all" role="checkbox" aria-checked="false" tabindex="0"',
-        body,
+
+    # R1-3: 表头无整树 aria-hidden; 全选控件暴露 role/label/state; 列标签单独隐藏。
+    head = re.search(r'<div class="exp-head".*?</div>\s*<div class="exp-row"', body, re.S)
+    assert head is not None
+    head_html = head.group(0)
+    assert '<div class="exp-head" aria-hidden="true">' not in head_html
+    assert '<div class="exp-head">' in head_html
+    select_all = re.search(
+        r'<div class="checkbox" id="check-all"[^>]*>', head_html
     )
+    assert select_all is not None
+    assert 'role="checkbox"' in select_all.group(0)
+    assert 'aria-checked="false"' in select_all.group(0)
+    assert 'aria-label="选择全部账单"' in select_all.group(0)
+    assert 'tabindex="0"' in select_all.group(0)
+    assert head_html.count('aria-hidden="true"') == 6  # 六个纯展示列标签
+
     # 批量条在(data-bulk), 且保留 main 的 OCC 隐藏字段装配与取消选择按钮。
     assert 'id="bulk-form"' in body
     assert "data-bulk-clear" in body
@@ -230,3 +258,91 @@ def test_inbox_duplicates_pair_renders_side_by_side_product_markup(
         assert form_html is not None, action
         assert 'name="csrf_token"' in form_html.group(0)
         assert 'name="expected_row_version"' in form_html.group(0)
+
+
+def test_inbox_thumbnail_materialization_does_not_bump_occ_token(
+    web_client: TestClient, *, identity
+) -> None:
+    """S4-R1: 派生缩略图物化不进 OCC 版本语义 — 有原图无缩略图的行, GET
+    thumbnail 物化后 row_version 不变; 页面渲染时嵌入的批量 token 在物化
+    后依然可用 (物化路径曾 bump_row_version, 任何批量动作 409)。"""
+    expense_id = _create_pending(web_client, identity=identity)
+    saved = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
+        data={"amount_yuan": "9.00", "merchant": "盒马", "category": "餐饮",
+              "note": "", "ledger_id": "owner"},
+    )
+    assert saved.status_code in {303, 307}, saved.text
+    # 模拟迁移行: 有原图、无缩略图产物。
+    with SessionLocal() as db:
+        row = db.get(Expense, expense_id)
+        assert row is not None
+        row.thumbnail_path = None
+        db.commit()
+    before = _row_version(web_client, expense_id, identity=identity)
+
+    page = web_client.get("/web/pending?ledger_id=owner")
+    assert page.status_code == 200
+    thumb = web_client.get(f"/web/expenses/{expense_id}/thumbnail?ledger_id=owner")
+    assert thumb.status_code == 200
+    assert _row_version(web_client, expense_id, identity=identity) == before
+
+    # 用页面渲染时嵌入的 token 批量确认 → 不得 409。
+    check = re.search(
+        rf'<div class="checkbox row-check"[^>]+data-id="{expense_id}"[^>]*>', page.text
+    )
+    assert check is not None
+    token = re.search(r'data-row-version="([^"]+)"', check.group(0))
+    assert token is not None
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={
+            "action": "confirm_ready",
+            "ledger_id": "owner",
+            "expense_ids": [str(expense_id)],
+            "expected_row_version": [token.group(1)],
+            "filter": "all",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}, resp.text
+    payload = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+    assert payload["status"] == "confirmed"
+
+
+def test_inbox_drawer_surfaces_missing_category_and_blocks_confirm(
+    web_client: TestClient, *, identity
+) -> None:
+    """S4-R1: 缺类信号进抽屉 — 脏分类行 (none/未分类 族) 在抽屉里只有警示条、
+    无绿徽, facts 格显示「待分类」而非脏 token; 单行确认与队列 ready 门同义,
+    服务端 422 拒绝, 抽屉不再能绕过「可确认」语义。"""
+    with SessionLocal() as db:
+        dirty = Expense(
+            tenant_id="owner", amount_cents=500, merchant="星巴克", category="none",
+            source="pytest", status="pending", duplicate_status="none",
+        )
+        db.add(dirty)
+        db.commit()
+        expense_id = dirty.id
+
+    drawer = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1")
+    assert drawer.status_code == 200
+    body = drawer.text
+    assert "product-feedback--warning" in body
+    assert "分类待补" in body
+    assert "product-status--success" not in body
+    assert "<dd>none</dd>" not in body
+    assert "<dd>待分类</dd>" in body
+
+    token = _row_version(web_client, expense_id, identity=identity)
+    resp = web_client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={"ledger_id": "owner", "expected_row_version": str(token), "fragment": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 422, resp.text
+    assert "请先填写分类" in resp.text
+    payload = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+    assert payload["status"] == "pending"

@@ -144,15 +144,15 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     resp = web_client.get("/web/pending?ledger_id=owner")
     assert resp.status_code == 200
     assert f'data-expense-id="{eid}"' in resp.text
-    # 218-D S4 行结构 (矿行格): 整行即链接 (a.exp-row), 勾选控件是行内 data-stop
-    # 槽的 div[role=checkbox]; input[type=checkbox] 与 a.exp-row-detail 随旧栈退役。
+    # 218-D S4-R1 行结构 (#218 同构): 勾选控件是容器内兄弟槽的 div[role=checkbox],
+    # 行链接 a.exp-row-detail 子树零交互控件; input[type=checkbox] 随旧栈退役。
     assert 'aria-selected="false"' in resp.text
     assert ('<button class="product-button" type="button" data-bulk-clear>取消选择</button>') in resp.text
     assert f'aria-label="选择账单 #{eid}"' in resp.text
     assert 'role="checkbox"' in resp.text
     assert 'type="checkbox"' not in resp.text
     assert 'data-row-version="' in resp.text
-    assert "exp-row-detail" not in resp.text
+    assert "exp-row-detail" in resp.text
     assert 'class="exp-row"' in resp.text
     assert 'name="category"' in resp.text
     assert 'name="merchant"' in resp.text
@@ -168,11 +168,10 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert '".row-check:checked, .row-check.checked"' in js
     assert "isNativeBox" in js
     assert 'classList.toggle("checked", on);' in js
-    assert 'row.setAttribute("aria-selected", checked ? "true" : "false");' in js
     assert 'row.setAttribute("aria-disabled", "true");' in js
     assert 'row.setAttribute("tabindex", "-1");' in js
     assert "setBatchNavigationMode(entries.length > 0);" in js
-    # div[role=checkbox] 在整行锚点内部: 吞事件兜底, 勾选不穿透开抽屉 (C5a)。
+    # div[role=checkbox]: 吞事件兜底, 勾选不穿透触发整行跳转/开抽屉 (C5a)。
     assert "e.stopPropagation();" in js
     assert "e.preventDefault();" in js
 
