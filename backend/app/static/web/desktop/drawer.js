@@ -15,6 +15,11 @@
  * 删除草稿 keeps its data-confirm dialog and is intentionally left on the native
  * full-page path: that preserves the ADR-0038 5s 撤销 banner (which the fetch
  * path would silently drop) and avoids forking confirm-modal's dialog.
+ *
+ * 218-D S4 (移植自产品矿, 适配 main): 收件行格换成整行锚点 (a.exp-row), 抽屉
+ * 绑定从 .exp-row-detail 回到 .exp-row[data-fragment-url]; 补齐矿的模态语义
+ * (aria-hidden 开关 + 焦点圈禁 + 背景 inert 锁)。main 的批选模式守卫保留:
+ * 非空选择时 bulk-bar.js 给行挂 aria-disabled, 点击与程序化 open 都要让路。
  */
 (function (window, document) {
   "use strict";
@@ -35,19 +40,35 @@
     const scrim = document.getElementById("drawer-scrim");
     if (!drawer || !scrim) return;
 
+    const focusableSelector = [
+      'a[href]:not([tabindex="-1"]):not([hidden])',
+      'button:not([disabled]):not([tabindex="-1"]):not([hidden])',
+      'input:not([type="hidden"]):not([disabled]):not([tabindex="-1"]):not([hidden])',
+      'select:not([disabled]):not([tabindex="-1"]):not([hidden])',
+      'textarea:not([disabled]):not([tabindex="-1"]):not([hidden])',
+      '[contenteditable="true"]:not([tabindex="-1"]):not([hidden])',
+      '[tabindex]:not([tabindex="-1"]):not([hidden])'
+    ].join(", ");
     let currentRow = null;
     let restoreFocusTo = null;
+    let backgroundState = [];
 
     function close() {
       drawer.classList.remove("on");
       scrim.classList.remove("on");
+      drawer.setAttribute("aria-hidden", "true");
+      markSelected(null);
       drawer.innerHTML = "";
       currentRow = null;
+      unlockBackground();
       restoreFocus();
     }
 
     function rememberFocus(row) {
-      if (drawer.classList.contains("on")) return;
+      if (drawer.classList.contains("on")) {
+        if (!restoreFocusTo || !document.contains(restoreFocusTo)) restoreFocusTo = row;
+        return;
+      }
       const active = document.activeElement;
       restoreFocusTo =
         active && active !== document.body && document.contains(active)
@@ -63,14 +84,82 @@
       }
     }
 
+    function focusableElements() {
+      return Array.from(drawer.querySelectorAll(focusableSelector)).filter(function (element) {
+        return (
+          element.getClientRects().length > 0 &&
+          !element.closest('[aria-hidden="true"], [inert]')
+        );
+      });
+    }
+
     function focusDrawer() {
-      const target = drawer.querySelector(
-        "[data-drawer-close], input:not([type=hidden]):not([disabled]), " +
-        "textarea:not([disabled]), select:not([disabled]), button:not([disabled]), a[href]"
-      ) || drawer;
+      const elements = focusableElements();
+      const target = elements[0] || drawer;
       if (target && typeof target.focus === "function") {
         target.focus({ preventScroll: true });
       }
+    }
+
+    function trapFocus(event) {
+      const elements = focusableElements();
+      if (elements.length === 0) {
+        event.preventDefault();
+        drawer.focus({ preventScroll: true });
+        return;
+      }
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !drawer.contains(active))) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+      } else if (!event.shiftKey && (active === last || !drawer.contains(active))) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
+    }
+
+    function hasExternalModal() {
+      return Array.from(document.querySelectorAll("dialog[open]")).some(function (dialog) {
+        return !drawer.contains(dialog);
+      });
+    }
+
+    function lockBackground() {
+      if (backgroundState.length > 0) return;
+      const host = drawer.closest(".drawer-host");
+      if (!host) return;
+      let branch = host;
+      while (branch && branch !== document.body) {
+        const parent = branch.parentElement;
+        if (!parent) break;
+        Array.from(parent.children).forEach(function (element) {
+          // Native dialogs may be opened from a drawer action. Keep them out of
+          // the background set so their own modal focus handling remains usable.
+          if (element === branch || element.tagName === "DIALOG") return;
+          backgroundState.push({
+            element: element,
+            hadInert: element.hasAttribute("inert"),
+            ariaHidden: element.getAttribute("aria-hidden")
+          });
+          element.setAttribute("inert", "");
+          element.setAttribute("aria-hidden", "true");
+        });
+        branch = parent;
+      }
+    }
+
+    function unlockBackground() {
+      backgroundState.forEach(function (state) {
+        if (!state.hadInert) state.element.removeAttribute("inert");
+        if (state.ariaHidden === null) {
+          state.element.removeAttribute("aria-hidden");
+        } else {
+          state.element.setAttribute("aria-hidden", state.ariaHidden);
+        }
+      });
+      backgroundState = [];
     }
 
     function bindFragment() {
@@ -99,6 +188,8 @@
           drawer.innerHTML = html;
           drawer.classList.add("on");
           scrim.classList.add("on");
+          drawer.setAttribute("aria-hidden", "false");
+          lockBackground();
           markSelected(row);
           bindFragment();
           focusDrawer();
@@ -120,7 +211,7 @@
     }
 
     function markSelected(row) {
-      document.querySelectorAll('.exp-row-detail[aria-selected="true"]').forEach(function (r) {
+      document.querySelectorAll('.exp-row[aria-selected="true"]').forEach(function (r) {
         if (r !== row) r.setAttribute("aria-selected", "false");
       });
       if (row) row.setAttribute("aria-selected", "true");
@@ -129,32 +220,25 @@
     // 批10: confirm/忽略 removes the row from the table; decrement the visible
     // pending counts (active filter + 全部) — short-lived drift on the other
     // filters is acceptable and self-heals on the next page load.
-    // #218 行结构:drawer 操作的是行链接(a.exp-row-detail),移除/找下一行都要
-    // 落到外层行容器 .exp-row 上,否则残留孤立的 checkbox 单元格。
+    // S4 行结构: 整行即锚点 (a.exp-row), currentRow 就是要移除/遍历的行本体。
     function removeCurrentRow() {
       if (!currentRow) return null;
       const next = nextRow(currentRow);
-      const container = currentRow.closest(".exp-row") || currentRow;
-      if (container.parentNode) container.parentNode.removeChild(container);
+      if (currentRow.parentNode) currentRow.parentNode.removeChild(currentRow);
       decrementCounts();
       currentRow = null;
       return next;
     }
 
-    function rowLink(container) {
-      return container.querySelector(".exp-row-detail[data-fragment-url]");
-    }
-
     function nextRow(row) {
-      const container = row.closest(".exp-row") || row;
-      let el = container.nextElementSibling;
+      let el = row.nextElementSibling;
       while (el && !el.classList.contains("exp-row")) el = el.nextElementSibling;
-      if (el) return rowLink(el);
+      if (el) return el;
       // No following row: fall back to the previous one so the reviewer keeps
       // moving instead of dead-ending.
-      el = container.previousElementSibling;
+      el = row.previousElementSibling;
       while (el && !el.classList.contains("exp-row")) el = el.previousElementSibling;
-      return el ? rowLink(el) : null;
+      return el;
     }
 
     function decrementCounts() {
@@ -257,10 +341,16 @@
 
     scrim.addEventListener("click", close);
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && drawer.classList.contains("on")) close();
+      if (!drawer.classList.contains("on") || hasExternalModal()) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      } else if (e.key === "Tab") {
+        trapFocus(e);
+      }
     });
 
-    document.querySelectorAll(".exp-row-detail[data-fragment-url]").forEach(function (row) {
+    document.querySelectorAll(".exp-row[data-fragment-url]").forEach(function (row) {
       row.addEventListener("click", function (e) {
         // 批选模式下 bulk-bar.js 负责拦截行导航;它在同一节点上后注册,
         // 所以这里也要自查 aria-disabled,否则监听器执行顺序会让抽屉先开。

@@ -45,17 +45,28 @@ def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00"
     return expense_id
 
 
-def test_web_root_renders_dashboard(web_client: TestClient) -> None:
+def test_web_root_redirects_to_inbox_pending(web_client: TestClient) -> None:
+    """218-D S4 (已裁决, 矿 IA 收件首域): /web 不再渲染仪表盘, 303 进收件域首页;
+    账本解析语义不变 (默认 owner), ledger_id 随跳转透传; 落点是 pending 渲染态。"""
     resp = web_client.get("/web", follow_redirects=False)
-    assert resp.status_code == 200
-    assert "仪表盘" in resp.text
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/web/pending?ledger_id=owner"
+
+    landing = web_client.get("/web")
+    assert landing.status_code == 200
+    assert "把新账单整理清楚" in landing.text
+    assert 'data-domain="inbox"' in landing.text
 
 
-def test_web_root_slash_redirects_to_root_with_ledger(web_client: TestClient) -> None:
+def test_web_root_slash_redirects_to_inbox_with_ledger(web_client: TestClient) -> None:
     resp = web_client.get("/web/?ledger_id=owner", follow_redirects=False)
     assert resp.status_code in {303, 307}
     loc = resp.headers.get("location", "")
-    assert loc.startswith("/web?") and "ledger_id=owner" in loc
+    assert loc.startswith("/web/pending?") and "ledger_id=owner" in loc
+
+    bare = web_client.get("/web/", follow_redirects=False)
+    assert bare.status_code in {303, 307}
+    assert bare.headers.get("location", "").startswith("/web/pending")
 
 
 def test_web_no_secret_leaks(web_client: TestClient, *, identity) -> None:
@@ -193,8 +204,9 @@ def test_dashboard_data_payload_includes_budget_and_goals_top(
 def test_dashboard_renders_budget_and_goals_progress_bars(
     web_client: TestClient, *, identity
 ) -> None:
-    """A6: the server-rendered fallback (no-JS path) draws the same cat-bar
-    progress bars in the budget and goals cards."""
+    """A6: the server-rendered fallback (no-JS path) draws the same budget and
+    goals progress rows. 218-D S4: /web 根改向收件域后, 服务端渲染的预算/目标
+    进度行由 /web/overview (S2 泳道卡, 同一 _dashboard_data_payload 口径) 承接。"""
     _seed_confirmed_expense(
         web_client, identity=identity, amount_cents=6000, merchant="餐厅", category="餐饮"
     )
@@ -205,13 +217,11 @@ def test_dashboard_renders_budget_and_goals_progress_bars(
         web_client, identity=identity, name="控制餐饮", target_amount_cents=10000, category="餐饮"
     )
 
-    body = web_client.get("/web?ledger_id=owner").text
-    # The bar list section renders server-side. (``cat-bar-fill`` alone would
-    # be hollow — the pre-existing category-share card already emits it; the
-    # load-bearing new-progress markers are ``cat-list--gap`` + the names.)
-    assert "cat-list--gap" in body
-    # Budget category name + goal name surface in the bar rows.
+    body = web_client.get("/web/overview?ledger_id=owner").text
+    # Budget + goal rows render server-side with their names.
+    assert "insight-progress-list" in body
     assert "控制餐饮" in body
+    assert "餐饮" in body
 
 
 def test_dashboard_budget_overspent_row_marks_over_state(
@@ -233,5 +243,5 @@ def test_dashboard_budget_overspent_row_marks_over_state(
     assert over["overspent_yuan"] == "30.00"  # 13000 - 10000 = 3000 cents
     assert over["percent"] == 100  # capped at 100 even though 130%
 
-    body = web_client.get("/web?ledger_id=owner").text
+    body = web_client.get("/web/overview?ledger_id=owner").text
     assert "超 " in body  # overspend label「超 ¥30.00」renders in the fallback

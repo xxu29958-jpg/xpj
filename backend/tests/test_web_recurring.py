@@ -153,12 +153,14 @@ def test_web_recurring_confirm_pause_resume_archive(web_client: TestClient) -> N
 
 def test_web_recurring_distinguishes_formal_recurring_from_candidates(web_client: TestClient) -> None:
     # UI/UX 批 14: /web/stats 页删除,固定支出表是 /web/recurring 的严格子集,未迁移;
-    # 「正式 vs 候选」区分改在 /web/recurring 页守护(dashboard 摘要不变)。
+    # 「正式 vs 候选」区分改在 /web/recurring 页守护。218-D S4: /web 根改向收件域
+    # 后, 固定支出摘要卡的 HTML 承接面是 /web/overview (同一 _dashboard_data_payload
+    # 口径; 文案为 S2 泳道卡措辞「正式计划 / N 个候选待确认」)。
     _seed_candidate()
-    before = web_client.get("/web")
+    before = web_client.get("/web/overview?ledger_id=owner")
     assert before.status_code == 200
-    assert "正式固定支出" in before.text
-    assert "1 个候选未确认" in before.text
+    assert "正式计划" in before.text
+    assert "1 个候选待确认" in before.text
 
     _confirm_candidate(web_client)
 

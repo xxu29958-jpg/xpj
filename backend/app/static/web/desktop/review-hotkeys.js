@@ -23,8 +23,9 @@
       // Only rows still in the table and visible (filter tabs are server-side
       // here, but a removed row is gone from the DOM, so offsetParent guards
       // the rare hidden case). 批选模式挂起的行(aria-disabled)不参与 J/K 导航。
+      // S4: 收件行格换成整行锚点 (a.exp-row); 旧 .exp-row-detail 选择器保留兜底。
       return Array.prototype.filter.call(
-        table.querySelectorAll(".exp-row-detail[data-fragment-url]"),
+        table.querySelectorAll(".exp-row[data-fragment-url], .exp-row-detail[data-fragment-url]"),
         function (r) { return r.offsetParent !== null && r.getAttribute("aria-disabled") !== "true"; }
       );
     }

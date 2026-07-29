@@ -12,10 +12,31 @@
     const checks = Array.from(document.querySelectorAll(".row-check"));
     const clearButton = form.querySelector("[data-bulk-clear]");
     const navigationRows = Array.from(
-      document.querySelectorAll(".exp-row-detail[href], .timeline-row-detail[href]")
+      document.querySelectorAll(".exp-row[href], .exp-row-detail[href], .timeline-row-detail[href]")
     );
     let batchModeActive = false;
     let navigationState = [];
+
+    // 218-D S4: 双模式 checkbox。收件新页 (a.exp-row 整行锚点) 的勾选控件是
+    // div.checkbox[role=checkbox] + .checked class/aria-checked (矿行结构;
+    // product/components.css 的 .checkbox 族只认 .checked); confirmed 等旧页
+    // 仍是 input[type=checkbox]。两栈共用本文件, 读写统一走这两个助手。
+    function isNativeBox(el) {
+      return el.tagName === "INPUT";
+    }
+
+    function isChecked(el) {
+      return isNativeBox(el) ? el.checked : el.classList.contains("checked");
+    }
+
+    function setChecked(el, on) {
+      if (isNativeBox(el)) {
+        el.checked = on;
+      } else {
+        el.classList.toggle("checked", on);
+        el.setAttribute("aria-checked", on ? "true" : "false");
+      }
+    }
 
     function attributeState(element, name) {
       return {
@@ -90,7 +111,7 @@
 
     function selectedEntries() {
       const entries = [];
-      document.querySelectorAll(".row-check:checked").forEach(function (el) {
+      document.querySelectorAll(".row-check:checked, .row-check.checked").forEach(function (el) {
         if (!isVisible(el)) return;
         entries.push({
           id: el.getAttribute("data-id"),
@@ -105,10 +126,15 @@
       counter.textContent = String(entries.length);
       form.classList.toggle("on", entries.length > 0);
       checks.forEach(function (cb) {
-        const checked = cb.checked;
+        const checked = isChecked(cb);
         const row = cb.closest(".exp-row, .timeline-row");
         if (row) {
           row.classList.toggle("selected", checked);
+          // 新页行本体就是导航锚点 (a.exp-row[href]): 与 drawer 共用
+          // aria-selected 高亮通道 (矿同)。旧页行容器不是锚点, 不吃该属性。
+          if (row.hasAttribute("href")) {
+            row.setAttribute("aria-selected", checked ? "true" : "false");
+          }
         }
       });
       setBatchNavigationMode(entries.length > 0);
@@ -131,8 +157,16 @@
       if (all) {
         const visibleCount = checks.filter(isVisible).length;
         const allChecked = visibleCount > 0 && entries.length === visibleCount;
-        all.checked = allChecked;
-        all.indeterminate = !allChecked && entries.length > 0;
+        if (isNativeBox(all)) {
+          all.checked = allChecked;
+          all.indeterminate = !allChecked && entries.length > 0;
+        } else {
+          all.classList.toggle("checked", allChecked);
+          all.setAttribute(
+            "aria-checked",
+            allChecked ? "true" : entries.length > 0 ? "mixed" : "false"
+          );
+        }
       }
     }
 
@@ -142,31 +176,67 @@
     // 批10: shift-click 范围连选。记最近点击的行 index;按住 shift 点另一行时,把
     // 区间内的可见行全部设成被点行的新状态(剔除隐藏行,与 isVisible 一致)。
     let lastIndex = -1;
-    checks.forEach(function (cb, index) {
-      cb.addEventListener("click", function (e) {
-        e.stopPropagation();
-        const turnOn = cb.checked;
-        if (e && e.shiftKey && lastIndex !== -1 && lastIndex !== index) {
-          const lo = Math.min(lastIndex, index);
-          const hi = Math.max(lastIndex, index);
-          for (let i = lo; i <= hi; i++) {
-            if (!isVisible(checks[i])) continue; // 只作用可见行
-            checks[i].checked = turnOn;
-          }
+
+    function applyRowToggle(cb, index, e, turnOn) {
+      setChecked(cb, turnOn);
+      if (e && e.shiftKey && lastIndex !== -1 && lastIndex !== index) {
+        const lo = Math.min(lastIndex, index);
+        const hi = Math.max(lastIndex, index);
+        for (let i = lo; i <= hi; i++) {
+          if (!isVisible(checks[i])) continue; // 只作用可见行
+          setChecked(checks[i], turnOn);
         }
-        lastIndex = index;
-        refresh();
-      });
+      }
+      lastIndex = index;
+      refresh();
+    }
+
+    checks.forEach(function (cb, index) {
+      if (isNativeBox(cb)) {
+        cb.addEventListener("click", function (e) {
+          e.stopPropagation();
+          applyRowToggle(cb, index, e, isChecked(cb));
+        });
+      } else {
+        // div[role=checkbox] 在整行锚点内部: 点击与 Space/Enter 都要吃掉事件
+        // (preventDefault 取消锚点跳转, stopPropagation 拦住 drawer.js 的行
+        // 点击), 否则勾选穿透触发整行打开抽屉 (C5a 教训, 矿同款 bindCheckbox)。
+        const handler = function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          applyRowToggle(cb, index, e, !isChecked(cb));
+        };
+        cb.addEventListener("click", handler);
+        cb.addEventListener("keydown", function (e) {
+          if (e.key !== " " && e.key !== "Enter") return;
+          handler(e);
+        });
+      }
     });
     if (all) {
-      all.addEventListener("click", function () {
-        const turnOn = all.checked;
+      const toggleAll = function (turnOn) {
         checks.forEach(function (cb) {
           if (turnOn && !isVisible(cb)) return; // 全选只勾可见行
-          cb.checked = turnOn;
+          setChecked(cb, turnOn);
         });
         refresh();
-      });
+      };
+      if (isNativeBox(all)) {
+        all.addEventListener("click", function () {
+          toggleAll(isChecked(all));
+        });
+      } else {
+        const allHandler = function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleAll(!isChecked(all));
+        };
+        all.addEventListener("click", allHandler);
+        all.addEventListener("keydown", function (e) {
+          if (e.key !== " " && e.key !== "Enter") return;
+          allHandler(e);
+        });
+      }
     }
 
     // issue #64 W3: progressive-enhancement fetch+partial for the two removal
@@ -197,14 +267,15 @@
       if (!banner) {
         banner = document.createElement("div");
         banner.id = "bulk-flash";
-        // Match the no-JS flash position: pending.html renders its .dt-alert
-        // right after .page-header, so place ours there too (nextSibling null →
-        // appended). Falls back to the top if the header isn't present.
-        const header = content.querySelector(".page-header");
+        // Match the no-JS flash position: 新栈 pending.html 的 feedback 在
+        // .product-page-header 之后, 旧页在 .page-header 之后 (nextSibling
+        // null → appended). Falls back to the top if the header isn't present.
+        const header = content.querySelector(".product-page-header, .page-header");
         content.insertBefore(banner, header ? header.nextSibling : content.firstElementChild);
       }
-      // Reuse the server flash classes (alert.css) so the look matches the no-JS
-      // redirect banner — no new CSS, no hardcoded values.
+      // Reuse the server flash classes (alert.css; product/components.css 给
+      // 新栈页备了同名别名) so the look matches the no-JS redirect banner —
+      // no new CSS, no hardcoded values.
       banner.className = "dt-alert" +
         (type === "success" ? " success" : type === "error" ? " danger" : "") +
         (undoItems && undoItems.length ? " undo-banner" : "");
@@ -273,8 +344,8 @@
     }
 
     function clearSelection(focusTarget) {
-      document.querySelectorAll(".row-check:checked").forEach(function (cb) {
-        cb.checked = false;
+      document.querySelectorAll(".row-check:checked, .row-check.checked").forEach(function (cb) {
+        setChecked(cb, false);
       });
       refresh(); // 0 selected → hides the bar + rebuilds the hidden id fields
       if (
@@ -289,8 +360,8 @@
     if (clearButton) {
       clearButton.addEventListener("click", function () {
         const focusTarget =
-          checks.find(function (cb) { return cb.checked && isVisible(cb); }) ||
-          checks.find(function (cb) { return cb.checked; });
+          checks.find(function (cb) { return isChecked(cb) && isVisible(cb); }) ||
+          checks.find(function (cb) { return isChecked(cb); });
         clearSelection(focusTarget);
       });
     }

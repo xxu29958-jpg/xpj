@@ -77,11 +77,12 @@
 ) %}
 
 {# 218-D S3-R1 正文新旧分流 (裁决: 按页面正文标记而非页级一刀切):
-   - 正文仍是旧标记的页 (当前除 overview 外全部, 含四个旧 primary 与全部旧
+   - 正文仍是旧标记的页 (confirmed/debts/budgets 三个旧 primary 与全部旧
      二三级页) 保持 main 原装配: 旧全局栈+页级 CSS 全量, 不挂对应 domain CSS——
      矿域模块与旧页共享类名谱系 (.exp-row/.timeline-row 等), 双挂则旧规则被盖、
      新 grid 不认嵌套标记, 行格双失 (S3 #256 P1: 收件行整列塌缩)。
-   - 正文已是新标记的页 (当前仅 overview, S2 新页) 断旧栈、挂域模块。
+   - 正文已是新标记的页 (overview S2; pending/tasks/duplicates S4 收件域) 断旧栈、
+     挂域模块。
    域模块挂载点=下表逐域显式开关: 随 S4(inbox)/S-TX(transactions)/
    S5(obligations/plans)/S6(insights) 各域正文迁移逐域开启, 勿留隐式魔法。
    旧文件的物理删除是独立后续片, 本片不动。
@@ -90,6 +91,9 @@
    data-body-stack="product" (product drawer 族规则的作用域锚)。 #}
 {% set _product_body_domains = {
   '/web/overview': 'insights',
+  '/web/pending': 'inbox',
+  '/web/tasks': 'inbox',
+  '/web/duplicates': 'inbox',
 } %}
 {% set _product_body_domain = _product_body_domains.get(_path) %}
 

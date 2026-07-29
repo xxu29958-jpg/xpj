@@ -1,11 +1,13 @@
 """issue #64 W1: ECharts vendor + report scripts load per-page, not globally.
 
 Before W1, ``base.html`` pulled the ~1.1MB ``echarts.min.js`` (plus the chart /
-report modules) on EVERY /web page. Now only the two chart-bearing pages —
-the dashboard (JS-rendered ``#chart-category`` donut) and reports (``#chart-trend``
-+ ``#reports-*`` charts) — fill ``{% block page_scripts %}`` with them; the rest of
-the console skips that payload. These tests pin both directions so a future edit
-can't silently re-globalize ECharts or drop it from a page that renders charts.
+report modules) on EVERY /web page. Now only the chart-bearing pages —
+overview (S2 起承接分类环图 ``#chart-category``; 218-D S4 后 /web 根改向
+收件域, 旧 dashboard 页不再直接服务) and reports (``#chart-trend``
++ ``#reports-*`` charts) — fill ``{% block page_scripts %}`` with them; the
+rest of the console skips that payload. These tests pin both directions so a
+future edit can't silently re-globalize ECharts or drop it from a page that
+renders charts.
 """
 
 from __future__ import annotations
@@ -32,18 +34,6 @@ def test_non_chart_pages_do_not_load_echarts(web_client: TestClient) -> None:
         assert _REPORTS_JS not in resp.text, f"{path} unexpectedly loads reports.js"
         assert _CATEGORY_DONUT not in resp.text, f"{path} unexpectedly loads category-donut.js"
         assert _TREND_CHART not in resp.text, f"{path} unexpectedly loads trend-chart.js"
-
-
-def test_dashboard_loads_echarts_and_category_donut_only(web_client: TestClient) -> None:
-    resp = web_client.get("/web")
-    assert resp.status_code == 200
-    assert _ECHARTS in resp.text
-    assert _CATEGORY_DONUT in resp.text
-    assert _DASHBOARD_JS in resp.text
-    # The reports trend / report charts are reports-only, not on the dashboard.
-    assert _REPORTS_JS not in resp.text
-    assert _TREND_CHART not in resp.text
-    _assert_chart_script_order(resp.text, [_ECHARTS, _CATEGORY_DONUT, _DASHBOARD_JS])
 
 
 def test_reports_loads_echarts_trend_and_reports_scripts_only(web_client: TestClient) -> None:
