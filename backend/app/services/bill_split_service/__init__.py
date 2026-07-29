@@ -47,6 +47,7 @@ from app.services.bill_split_service._query import (
     list_inbox,
     list_sent,
     list_sent_for_expense,
+    parent_expense_home_currency_code,
 )
 from app.services.bill_split_service._serializers import (
     to_inbox_response_dict,
@@ -74,6 +75,7 @@ __all__ = [
     "list_inbox",
     "list_sent",
     "list_sent_for_expense",
+    "parent_expense_home_currency_code",
     "reconcile_bill_split_debts_if_enabled",
     "reject_invitation",
     "to_inbox_response_dict",

@@ -102,6 +102,13 @@ def assert_currency_binding_consistent(db: Session, home: str) -> None:
     _claim_binding_marker(db, home)
 
 
+def assert_rule_amount_write_binding(db: Session, home: str, carries_amount: bool) -> None:
+    """P1-1：分类规则金额阈值的窄域写门 —— 阈值携币种语义但无币种列（引擎按绑定币种
+    解释）；carries_amount（带金额条件的创建/改写）时同主门裁决，纯关键词规则不过门。"""
+    if carries_amount:
+        assert_currency_binding_consistent(db, home)
+
+
 def _claim_binding_marker(db: Session, home: str) -> None:
     """同事务写入绑定标记（不 commit —— 与调用方的首笔事实写同生共死）。
 

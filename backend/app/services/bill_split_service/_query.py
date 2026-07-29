@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import BillSplitInvitation
+from app.models import BillSplitInvitation, Expense
 
 _INVITATION_STATUSES = frozenset({"invited", "accepted", "rejected", "cancelled", "expired"})
 
@@ -71,3 +71,15 @@ def get_invitation(db: Session, public_id: str) -> BillSplitInvitation:
     if inv is None:
         raise AppError("invitation_not_found", status_code=404)
     return inv
+
+
+def parent_expense_home_currency_code(db: Session, *, expense_id: int, ledger_id: str) -> str | None:
+    """父账单的冻结 home 币种码（遗留 P1-2：/web 拆账解析/渲染口径的 record 权威来源；
+    路由不直连模型）。父行缺失/跨账本 → None（调用方落 env 兜底，随后 create 自带
+    not-found 错误路径）。"""
+    return db.scalar(
+        select(Expense.home_currency_code).where(
+            Expense.id == expense_id,
+            Expense.tenant_id == ledger_id,
+        )
+    )

@@ -23,12 +23,10 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import Expense
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -146,7 +144,28 @@ def build_split_invite_context(
     invitations = bsplit.list_sent_for_expense(
         db, sender_account_id=sender_account_id, expense_id=expense["id"]
     )
-    sent_rows = [
+
+    active_total_cents = sum(
+        inv.amount_cents
+        for inv in invitations
+        if inv.status in _INVITE_ACTIVE_STATUSES
+    )
+    parent_cents = expense.get("amount_cents") or 0
+    remaining_cents = max(parent_cents - active_total_cents, 0)
+    # 遗留 P1-2：发起卡剩余/预填按父账单冻结币种（record 权威），env 漂移不吃 live env。
+    parent_home_code = expense.get("home_currency_code") or home_currency_code()
+
+    return {
+        "members": members,
+        "sent_rows": _sent_row_dicts(invitations),
+        "remaining_yuan": _cents_to_yuan(remaining_cents, parent_home_code),
+        "has_capacity": remaining_cents > 0,
+    }
+
+
+def _sent_row_dicts(invitations) -> list[dict]:
+    """发起卡已发行渲染行：金额按各邀请的冻结币种（record 权威，遗留 P1-2）。"""
+    return [
         {
             "public_id": inv.public_id,
             "status": inv.status,
@@ -157,24 +176,6 @@ def build_split_invite_context(
         }
         for inv in invitations
     ]
-
-    active_total_cents = sum(
-        inv.amount_cents
-        for inv in invitations
-        if inv.status in _INVITE_ACTIVE_STATUSES
-    )
-    parent_cents = expense.get("amount_cents") or 0
-    remaining_cents = max(parent_cents - active_total_cents, 0)
-    # 遗留 P1-2：发起卡剩余/预填按父账单冻结币种（record 权威，与邀请冻结码同源），
-    # env 漂移时不吃 live env 口径（R13-3 残留）。
-    parent_home_code = expense.get("home_currency_code") or home_currency_code()
-
-    return {
-        "members": members,
-        "sent_rows": sent_rows,
-        "remaining_yuan": _cents_to_yuan(remaining_cents, parent_home_code),
-        "has_capacity": remaining_cents > 0,
-    }
 
 
 # -------------------------------------------------------------------------
@@ -312,13 +313,10 @@ def web_split_invite(
     # flash back onto the page instead of escaping to the global AppError
     # handler, which renders a bare-JSON page in the browser.
     try:
-        # 遗留 P1-2：金额解析按父账单冻结币种（record 权威；父行缺失时落 env ——
-        # 随后 create_invitation 自带 not-found 错误路径，解析口径无实际影响）。
-        parent_home_code = db.scalar(
-            select(Expense.home_currency_code).where(
-                Expense.id == expense_id,
-                Expense.tenant_id == selected_id,
-            )
+        # 遗留 P1-2：金额解析按父账单冻结币种（record 权威，经服务层查询；父行缺失时
+        # 落 env —— 随后 create_invitation 自带 not-found 错误路径，解析口径无实际影响）。
+        parent_home_code = bsplit.parent_expense_home_currency_code(
+            db, expense_id=expense_id, ledger_id=selected_id
         ) or home_currency_code()
         amount_cents = _yuan_to_cents(amount_yuan, parent_home_code)
         if amount_cents is None or amount_cents <= 0:
