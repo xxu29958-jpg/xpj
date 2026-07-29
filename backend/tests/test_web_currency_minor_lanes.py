@@ -226,3 +226,42 @@ def test_rules_form_controls_stay_cny_default(web_client: TestClient, *, identit
     assert 'step="0.01"' in page.text
     assert "如：12.34" in page.text
     assert "（元，可选）" in page.text
+
+
+def test_read_path_symbol_follows_binding_marker_over_env(web_client: TestClient, monkeypatch, *, identity) -> None:
+    # #258-R2 项3：标记=USD + env=CNY 时 income 合计与 advise breakdown 符号随标记（$ 不冠 ¥）。
+    from app.database import SessionLocal
+    from app.models import AppMeta, MonthlyIncomePlan
+    from app.services.currency_binding_service import INSTALLATION_HOME_CURRENCY_KEY
+    from app.services.time_service import now_utc
+
+    with SessionLocal() as db:
+        db.add(AppMeta(key=INSTALLATION_HOME_CURRENCY_KEY, value="USD", updated_at=now_utc()))
+        db.add(
+            MonthlyIncomePlan(
+                tenant_id="owner",
+                label="工资",
+                source_type="salary",
+                amount_cents=123456,
+                pay_day=10,
+                status="active",
+            )
+        )
+        db.commit()
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
+    get_settings.cache_clear()
+    try:
+        page = web_client.get("/web/income-plans?ledger_id=owner")
+        assert page.status_code == 200, page.text
+        assert "$1234.56" in page.text
+        assert "¥1234.56" not in page.text
+
+        advise = web_client.get(
+            "/web/budget-advise?ledger_id=owner&month=2026-05&savings_target_yuan=1234.56",
+        )
+        assert advise.status_code == 200, advise.text
+        assert "$1234.56 储蓄目标" in advise.text
+        assert "¥1234.56 储蓄目标" not in advise.text
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()

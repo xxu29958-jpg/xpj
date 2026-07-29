@@ -30,6 +30,7 @@ from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
+    _currency_symbol,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
@@ -159,17 +160,19 @@ def build_split_invite_context(
         "members": members,
         "sent_rows": _sent_row_dicts(invitations),
         "remaining_yuan": _cents_to_yuan(remaining_cents, parent_home_code),
+        "currency_symbol": _currency_symbol(parent_home_code),
         "has_capacity": remaining_cents > 0,
     }
 
 
 def _sent_row_dicts(invitations) -> list[dict]:
-    """发起卡已发行渲染行：金额按各邀请的冻结币种（record 权威，遗留 P1-2）。"""
+    """发起卡已发行渲染行：金额与符号按各邀请的冻结币种（record 权威，遗留 P1-2 / R2-2）。"""
     return [
         {
             "public_id": inv.public_id,
             "status": inv.status,
             "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
+            "amount_symbol": _currency_symbol(inv.home_currency_code),
             "receiver_display_name": inv.receiver_display_name_snapshot or "",
             "expires_at": _fmt_local(inv.expires_at),
             "is_cancellable": inv.status == "invited",
@@ -222,6 +225,7 @@ def web_bill_split_inbox(
             "public_id": inv.public_id,
             "status": inv.status,
             "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
+            "amount_symbol": _currency_symbol(inv.home_currency_code),
             "sender_display_name": inv.sender_display_name,
             "merchant": inv.merchant_snapshot or "",
             "category": inv.category_suggestion or "",
@@ -264,6 +268,7 @@ def web_bill_split_sent(
             "public_id": inv.public_id,
             "status": inv.status,
             "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
+            "amount_symbol": _currency_symbol(inv.home_currency_code),
             "receiver_display_name": inv.receiver_display_name_snapshot or "",
             "merchant": inv.merchant_snapshot or "",
             "expense_time": _fmt_local(inv.expense_time_snapshot),

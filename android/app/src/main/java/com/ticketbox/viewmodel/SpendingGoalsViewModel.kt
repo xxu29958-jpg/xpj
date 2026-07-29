@@ -57,9 +57,12 @@ class SpendingGoalsViewModel(
             )
         }
         loadJob = viewModelScope.launch {
-            // 遗留 U3：随每次 refresh 重解析账本币种（R14-6 共享 record×capability 同源
-            // 裁决）—— 卡面金额按账本口径显示（JPY 目标 1200 亮 ¥1,200 不 ¥12.00）。
-            _state.update { it.copy(ledgerCurrency = resolveLedgerCurrency(debts.listDebts().getOrNull())) }
+            // 遗留 U3 + #258-R2 项4：随每次 refresh 重解析账本币种（R14-6 共享裁决）——
+            // 仅成功响应才覆写；失败保留上次已确认值（瞬时债务端错误不再让 JPY 卡面
+            // 落回 CNY 兜底显示；首次失败=null 维持禁写语义）。
+            debts.listDebts().onSuccess { page ->
+                _state.update { it.copy(ledgerCurrency = resolveLedgerCurrency(page)) }
+            }
             val result = reports.goals(month = requestedMonth, includeArchived = false)
             if (generation != loadGeneration || _state.value.month != requestedMonth) return@launch
             result.fold(

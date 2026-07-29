@@ -435,3 +435,30 @@ def test_split_sent_render_uses_invitation_frozen_currency(web_client: TestClien
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
+
+
+def test_split_sent_row_symbol_follows_frozen_currency(web_client: TestClient, monkeypatch) -> None:
+    # #258-R2 项2：USD 冻结邀请在 CNY env 下 sent 列表数值与符号同 USD（$1234.56 不冠 ¥）。
+    from app.config import get_settings
+
+    receiver_id, _ = _seed_receiver(ledger_id="receiver_r22")
+    expense_id = _make_expense_with_home(123456, "USD")
+    with SessionLocal() as db:
+        bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_id,
+            amount_cents=123456,
+        )
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
+    get_settings.cache_clear()
+    try:
+        page = web_client.get("/web/bill-splits/sent?ledger_id=owner")
+        assert page.status_code == 200
+        assert "$1234.56" in page.text
+        assert "¥1234.56" not in page.text
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()

@@ -38,6 +38,7 @@ from app.models import (
     RepaymentDraft,
 )
 from app.services.app_meta_service import get_value
+from app.services.currency_common import home_currency_code
 from app.services.time_service import now_utc
 
 # ADR-0075 的最小绑定标记（0061 C02 持久绑定的最小前驱：write-once 单行键，无
@@ -102,11 +103,26 @@ def assert_currency_binding_consistent(db: Session, home: str) -> None:
     _claim_binding_marker(db, home)
 
 
-def assert_rule_amount_write_binding(db: Session, home: str, carries_amount: bool) -> None:
-    """P1-1：分类规则金额阈值的窄域写门 —— 阈值携币种语义但无币种列（引擎按绑定币种
-    解释）；carries_amount（带金额条件的创建/改写）时同主门裁决，纯关键词规则不过门。"""
+def assert_rule_amount_write_binding(db: Session, carries_amount: bool) -> None:
+    """分类规则金额阈值的窄域写门（P1-1；#258-R2 项5/6 精化）—— 阈值携币种语义但无
+    币种列（引擎按绑定币种解释）。carries_amount = 至少一界被置为**非 null**（创建/改写/
+    墓碑恢复视同携币种语义写）；清除全 null 与纯关键词规则不过门。env 仅在 carries_amount
+    时惰性读 —— 无金额规则在 env 配错下也不吃 currency_not_supported。"""
     if carries_amount:
-        assert_currency_binding_consistent(db, home)
+        assert_currency_binding_consistent(db, home_currency_code())
+
+
+def assert_rule_restore_binding(db: Session, carries_amount: bool) -> None:
+    """带金额规则的墓碑恢复视同携币种语义写（P1-1 + #258-R2 项7）—— 墓碑按遗留无绑定
+    行计：首写时软删对门不可见（deleted_at 过滤）不得成为绕过通道；无币种列无法区分
+    CNY/JPY 时代墓碑，env≠CNY 一律拒（JPY 时代墓碑恢复被拒为保守代价），env=CNY 走主门
+    （drift 照拒）。纯关键词规则墓碑豁免。"""
+    if not carries_amount:
+        return
+    home = home_currency_code()
+    if home != DEFAULT_HOME_CURRENCY_CODE:
+        raise AppError("currency_binding_unresolved", status_code=409)
+    assert_currency_binding_consistent(db, home)
 
 
 def _claim_binding_marker(db: Session, home: str) -> None:

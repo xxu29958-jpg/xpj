@@ -16,6 +16,7 @@ from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
     _bound_home_currency_code,
+    _currency_symbol,
     _list_ledger_options,
     _resolve_selected_ledger_id,
     _selected_option,
@@ -150,8 +151,8 @@ def _render_budget_advise(
         month=month_label,
         provider_name=provider_name,
         provider_enabled=provider_name != "empty",
-        # R15a-3：breakdown/建议表回显按 env home minor 语义（JPY 零小数不 ÷100；
-        # 解析侧 R13-3 已同源），输入 step 走币种元数据（不再硬编 0.01）。
+        # R15a-3：回显按 env home minor 语义，输入 step 走币种元数据；R2-3：符号同绑定口径（marker≠env 不冠 ¥）。
+        home_currency_symbol=_currency_symbol(home),
         income_yuan=minor_amount_value(breakdown.monthly_income_cents, home),
         fixed_yuan=minor_amount_value(breakdown.fixed_expenses_cents, home),
         spent_yuan=minor_amount_value(breakdown.spent_amount_cents, home),

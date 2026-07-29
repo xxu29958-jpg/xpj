@@ -146,16 +146,19 @@ private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
 
 class IncomePlanViewModel(
     private val repository: IncomePlanActions,
-    private val debts: DebtActions,
+    internal val debts: DebtActions,
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(IncomePlanUiState(canModify = false))
+    // #258-R2 项1：_state/解析代际 internal 化供文件级扩展 refreshLedgerCurrency（detekt
+    // 类函数门）读写；代际每实例一份 —— 账本切换时旧 listDebts 结果不得后于新结果落定。
+    internal val _state = MutableStateFlow(IncomePlanUiState(canModify = false))
     val state: StateFlow<IncomePlanUiState> = _state.asStateFlow()
     private var bindingGeneration = 0
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
     private var activeCanModify = false
+    internal var currencyResolutionGeneration = 0L
 
     init {
         viewModelScope.launch {
@@ -171,15 +174,7 @@ class IncomePlanViewModel(
                     // R12-D + R14-6：每次账本生效/切换都重解析账本币种（共享同源裁决：
                     // record 集合 × 信封 capability，未知/冲突 → 草稿 homeCurrency=null 禁写，
                     // 不落 CNY 兜底）。遗留 U3：同值供卡面金额显示（JPY 计划 1200 亮 ¥1,200）。
-                    viewModelScope.launch {
-                        val resolved = resolveLedgerCurrency(debts.listDebts().getOrNull())
-                        _state.update {
-                            it.copy(
-                                ledgerCurrency = resolved,
-                                addDraft = it.addDraft.copy(homeCurrency = resolved),
-                            )
-                        }
-                    }
+                    viewModelScope.launch { refreshLedgerCurrency() }
                     if (access != null) refresh()
                 }
         }
@@ -280,15 +275,7 @@ class IncomePlanViewModel(
     fun resetDraft() {
         _state.update { it.copy(addDraft = IncomePlanDraftUi(), isSubmitting = false, addSucceeded = false) }
         // 草稿重建后重新注入账本币种（R12-D + R14-6 共享同源裁决；不清 homeCurrency 则新草稿永远 null 禁写）。
-        viewModelScope.launch {
-            val resolved = resolveLedgerCurrency(debts.listDebts().getOrNull())
-            _state.update {
-                it.copy(
-                    ledgerCurrency = resolved,
-                    addDraft = it.addDraft.copy(homeCurrency = resolved),
-                )
-            }
-        }
+        viewModelScope.launch { refreshLedgerCurrency() }
     }
 
     fun submitDraft() {
@@ -392,6 +379,23 @@ class IncomePlanViewModel(
             onFailure = { err ->
                 _state.update { it.copy(error = err.toUiText(R.string.error_generic)) }
             },
+        )
+    }
+}
+
+/**
+ * （重新）解析账本币种（#258-R2 项1，镜像 BudgetViewModel；文件级扩展 ——
+ * 类体贴 detekt 函数门）：代际守卫 last-writer-wins —— 账本切换时旧 listDebts
+ * 结果不得后于新账本落定覆写。
+ */
+private suspend fun IncomePlanViewModel.refreshLedgerCurrency() {
+    val generation = ++currencyResolutionGeneration
+    val resolved = resolveLedgerCurrency(debts.listDebts().getOrNull())
+    _state.update {
+        if (generation != currencyResolutionGeneration) return@update it
+        it.copy(
+            ledgerCurrency = resolved,
+            addDraft = it.addDraft.copy(homeCurrency = resolved),
         )
     }
 }

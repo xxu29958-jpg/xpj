@@ -10,8 +10,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CategoryRule, Expense
 from app.services.category_service import normalize_category
-from app.services.currency_binding_service import assert_rule_amount_write_binding
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import assert_rule_amount_write_binding, assert_rule_restore_binding
 from app.services.merchant_alias_service import (
     canonical_merchant_for,
     enabled_merchant_alias_map,
@@ -188,7 +187,7 @@ def create_rule(
     amount_min_cents, amount_max_cents = _clean_amount_range(amount_min_cents, amount_max_cents)
     if not keyword or not category:
         raise AppError("invalid_request", status_code=422)
-    assert_rule_amount_write_binding(db, home_currency_code(), amount_min_cents is not None or amount_max_cents is not None)  # P1-1
+    assert_rule_amount_write_binding(db, amount_min_cents is not None or amount_max_cents is not None)  # P1-1
     now = now_utc()
     rule = CategoryRule(
         tenant_id=tenant_id,
@@ -230,7 +229,7 @@ def update_rule(
     commit: bool = True,
 ) -> CategoryRule:
     """Update a rule through the DB row-version predicate."""
-    assert_rule_amount_write_binding(db, home_currency_code(), amount_min_cents is not _UNSET or amount_max_cents is not _UNSET)  # P1-1
+    assert_rule_amount_write_binding(db, (amount_min_cents is not _UNSET and amount_min_cents is not None) or (amount_max_cents is not _UNSET and amount_max_cents is not None))  # P1-1+R2-5：仅置非 null 才过门（双界清 null 放行修复）
     rule_id, rule_tenant_id, existing_min, existing_max = _snapshot_rule_update_context(
         rule
     )
@@ -415,6 +414,7 @@ def undo_delete_rule(
         # Outside the selected restore window: normal undo stays short-lived,
         # while recycle-bin restore opts into the longer window.
         raise AppError("rule_not_found", status_code=404)
+    assert_rule_restore_binding(db, rule.amount_min_cents is not None or rule.amount_max_cents is not None)  # P1-1+R2-7：带金额规则墓碑恢复视同携币种语义写（纯关键词墓碑豁免）
     # ADR-0038 PR-B: atomic restore (UPDATE WHERE deleted_at IS NOT NULL) so two
     # concurrent undos can't both clear it + double-write the audit log; rowcount
     # ==0 means a peer undo / cleanup purge already won -> 404. Was SELECT-then-write.

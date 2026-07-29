@@ -113,12 +113,12 @@
         </select>
       </label>
       <label class="bsplit-invite-field bsplit-invite-field--amount">
-        <span class="bsplit-invite-label">分摊金额（{{ home_currency_symbol }}）</span>
+        <span class="bsplit-invite-label">分摊金额（{{ split_invite.currency_symbol }}）</span>
         <input type="text" name="amount_yuan" value="{{ split_invite.remaining_yuan }}" inputmode="decimal" placeholder="例如 12.34" required>
       </label>
       <button type="submit" class="dt-btn primary">发起拆账</button>
     </div>
-    <div class="meta">本张账单还可分摊 {{ home_currency_symbol }}{{ split_invite.remaining_yuan }}。</div>
+    <div class="meta">本张账单还可分摊 {{ split_invite.currency_symbol }}{{ split_invite.remaining_yuan }}。</div>
   </form>
   {% endif %}
 
@@ -137,7 +137,7 @@
     {% for row in split_invite.sent_rows %}
       <tr>
         <td>{{ row.receiver_display_name or '—' }}</td>
-        <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+        <td class="amount">{{ row.amount_symbol }}{{ row.amount_yuan }}</td>
         <td>
           {% if row.status == 'invited' %}<span class="dt-pill">待处理</span>
           {% elif row.status == 'accepted' %}<span class="dt-pill ok">已接受</span>
