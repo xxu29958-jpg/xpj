@@ -60,6 +60,17 @@ def test_web_dashboard_cards_remote_returns_403(client: TestClient) -> None:
     assert client.post("/web/dashboard/cards/reset").status_code == 403
 
 
+def test_web_dashboard_cards_back_link_targets_overview(web_client: TestClient) -> None:
+    """S4-R2: /web 根 303→pending 后, 模块设置的返回链指向卡片归属页
+    /web/overview, 文案「返回总览」, 不再把用户带进收件域。"""
+    page = web_client.get("/web/dashboard/cards?ledger_id=owner")
+    assert page.status_code == 200
+    assert 'href="/web/overview?ledger_id=owner"' in page.text
+    assert "返回总览" in page.text
+    assert "返回仪表盘" not in page.text
+    assert 'href="/web?ledger_id=owner"' not in page.text
+
+
 def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) -> None:
     settings = web_client.get("/web/dashboard/cards?ledger_id=owner")
     assert settings.status_code == 200

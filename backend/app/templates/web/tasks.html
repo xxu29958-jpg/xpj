@@ -70,7 +70,9 @@
             {% elif row.status == 'cancelled' %}
             <span class="product-status">已取消</span>
             {% elif row.status == 'failed' %}
-            <span class="product-status product-status--danger">需要重试</span>
+            {# S4-R2: 任务服务与路由无重试操作, failed (含重启孤儿任务) 用
+               失败标签, 不指引不可能执行的动作。 #}
+            <span class="product-status product-status--danger">已失败</span>
             {% else %}
             <span class="product-status">状态待核对</span>
             {% endif %}

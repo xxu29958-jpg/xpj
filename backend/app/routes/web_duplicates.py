@@ -75,13 +75,17 @@ def _duplicate_expense_view(expense) -> dict:
 
 
 def _duplicate_reason_label(reason: str) -> str:
-    if "感知" in reason and "hash" in reason:
+    cleaned = (reason or "").strip()
+    # S4-R2: 空/未识别 reason 诚实兜底 — 不捏造「多项字段相似」的证据。
+    if not cleaned:
+        return "系统未提供判定原因"
+    if "感知" in cleaned and "hash" in cleaned:
         return "两张图片内容高度相似"
-    if "hash" in reason or "完全一致" in reason:
+    if "hash" in cleaned or "完全一致" in cleaned:
         return "两张图片完全一致"
-    if "金额" in reason and "时间" in reason:
+    if "金额" in cleaned and "时间" in cleaned:
         return "金额、商家和消费时间接近"
-    return "多项账单信息相似"
+    return "系统未提供判定原因"
 
 
 def _load_pair(db: Session, *, tenant_id: str, expense_id: int) -> tuple[Expense, Expense | None]:

@@ -28,10 +28,8 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import ExpenseUpdateRequest
-from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.expense_service import (
     confirm_expense,
-    get_expense,
     reject_expense,
     undo_reject_expense,
     update_expense,
@@ -233,12 +231,8 @@ def web_confirm(
             "页面已过期，请刷新后重新确认。", fragment,
         )
     try:
-        # S4-R1: 单行确认与队列 ready 门同义 — 缺类行 (空/脏 token 分类, 与
-        # is_ready_to_confirm_row 同口径) 在此拒绝, 抽屉不再能绕过队列的
-        # 「可确认」语义。金额校验沿用 confirm_expense 既有检查。
-        expense = get_expense(db, expense_id, selected_id)
-        if is_uncategorized_expense_category(expense.category):
-            raise AppError("invalid_request", "请先填写分类。", status_code=422)
+        # 缺类门在服务层 confirm_expense 守门 (218-D S4-R2 下沉,
+        # 与 API/bulk 入口同一不变量), 路由只传参。
         confirm_expense(db, expense_id, selected_id, expected_row_version=parsed)
     except AppError as exc:
         # ADR-0038 PR-2b: 409 state_conflict surfaces a clearer message

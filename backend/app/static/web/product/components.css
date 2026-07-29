@@ -372,6 +372,36 @@ button[disabled] {
     flex: 0 0 auto;
 }
 
+/* ADR-0038 undo banner: 5s auto-dismiss。product 新栈页不载旧 alert.css
+   (断旧栈), 契约动画移植至此 (与旧规则同名同帧内容, 双栈同效);
+   行在服务端 5 分钟保留窗内仍可恢复, 横幅只是 UI 提示。 */
+.undo-banner {
+    overflow: hidden;
+    animation: undo-banner-dismiss 5s forwards;
+}
+
+@keyframes undo-banner-dismiss {
+    0%,
+    88% {
+        opacity: 1;
+    }
+
+    99% {
+        opacity: 0;
+        max-height: 120px;
+    }
+
+    100% {
+        opacity: 0;
+        visibility: hidden;
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        margin-bottom: 0;
+        border-width: 0;
+    }
+}
+
 .product-state,
 .empty-cell,
 .dt-card--empty,

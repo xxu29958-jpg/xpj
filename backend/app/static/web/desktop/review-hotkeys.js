@@ -37,8 +37,12 @@
     }
 
     function select(row, list) {
+      // S4-R2: J/K 当前行同步容器 is-current 高亮 (与 drawer.js 同族机制),
+      // 键盘流能看到 Enter 将开哪一行; aria-selected 保留语义。
       list.forEach(function (r) {
         r.setAttribute("aria-selected", r === row ? "true" : "false");
+        const container = r.closest(".exp-row");
+        if (container) container.classList.toggle("is-current", r === row);
       });
       if (row && row.scrollIntoView) {
         row.scrollIntoView({ block: "nearest" });

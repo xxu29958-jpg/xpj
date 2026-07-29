@@ -9,6 +9,7 @@ base.html 的 _product_body_domains 开关断旧栈、挂 domains/inbox.css; /we
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 import pytest
 from _web_bulk_test_support import row_version as _row_version
@@ -17,7 +18,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense
+from app.models import Account, BackgroundTask, Expense
+from app.services.time_service import now_utc
 from app.version import STATIC_ASSET_VERSION
 from tests._infra.assets import PNG_BYTES
 
@@ -315,9 +317,9 @@ def test_inbox_thumbnail_materialization_does_not_bump_occ_token(
 def test_inbox_drawer_surfaces_missing_category_and_blocks_confirm(
     web_client: TestClient, *, identity
 ) -> None:
-    """S4-R1: 缺类信号进抽屉 — 脏分类行 (none/未分类 族) 在抽屉里只有警示条、
-    无绿徽, facts 格显示「待分类」而非脏 token; 单行确认与队列 ready 门同义,
-    服务端 422 拒绝, 抽屉不再能绕过「可确认」语义。"""
+    """S4-R1/R2: 缺类信号进抽屉 — 脏分类行 (none/未分类 族) 在抽屉里只有警示条、
+    无绿徽, facts 格显示「待分类」而非脏 token; 单行确认与队列 ready 门同义。
+    R2: 缺类门下沉 confirm_expense 服务层, API 直调同 422, 不随传输层漂移。"""
     with SessionLocal() as db:
         dirty = Expense(
             tenant_id="owner", amount_cents=500, merchant="星巴克", category="none",
@@ -344,5 +346,47 @@ def test_inbox_drawer_surfaces_missing_category_and_blocks_confirm(
     )
     assert resp.status_code == 422, resp.text
     assert "请先填写分类" in resp.text
+
+    # S4-R2: 同一不变量服务层守门 — API 直调 confirm 缺类行同 422。
+    api = web_client.post(
+        f"/api/expenses/{expense_id}/confirm",
+        headers={
+            **identity.app_headers,
+            "Idempotency-Key": str(uuid4()),
+        },
+        json={"expected_row_version": _row_version(web_client, expense_id, identity=identity)},
+    )
+    assert api.status_code == 422, api.text
+    assert "请先填写分类" in api.text
+
     payload = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     assert payload["status"] == "pending"
+
+
+def test_inbox_tasks_failed_row_uses_failure_label(web_client: TestClient) -> None:
+    """S4-R2: 任务服务与路由无重试操作, failed 任务用失败标签「已失败」,
+    不指引不可能执行的「需要重试」。"""
+    with SessionLocal() as db:
+        account = db.query(Account).order_by(Account.id.asc()).first()
+        assert account is not None
+        now = now_utc()
+        db.add(
+            BackgroundTask(
+                tenant_id="owner",
+                task_type="csv_import",
+                initiated_by_account_id=account.id,
+                status="failed",
+                progress_current=12,
+                progress_total=57,
+                error_message="第 13 行日期无法解析，已中止。",
+                created_at=now,
+                started_at=now,
+                completed_at=now,
+            )
+        )
+        db.commit()
+
+    resp = web_client.get("/web/tasks?ledger_id=owner")
+    assert resp.status_code == 200
+    assert "已失败" in resp.text
+    assert "需要重试" not in resp.text

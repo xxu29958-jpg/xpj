@@ -30,6 +30,7 @@ from app.services.expense_service._helpers import (
     _clean_optional_text,
     _clean_text,
     _ensure_expense_can_confirm,
+    _ensure_expense_confirmable_category,
     _expense_has_pending_fx,
 )
 from app.services.expense_service._query import get_expense, resolve_expense
@@ -306,6 +307,7 @@ def confirm_expense(
     if _expense_has_pending_fx(expense):
         refresh_currency_snapshot(db, tenant_id=tenant_id, expense=expense)
     _ensure_expense_can_confirm(expense)
+    _ensure_expense_confirmable_category(expense)
     db.flush()
 
     now = now_utc()

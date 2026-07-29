@@ -171,6 +171,24 @@ def test_web_duplicates_stale_token_renders_error_style(web_client: TestClient, 
     assert "product-feedback--success" in ok_page.text
 
 
+def test_web_duplicates_missing_reason_shows_honest_fallback(
+    web_client: TestClient, *, identity
+) -> None:
+    """S4-R2: legacy 空 reason 不捏造「多项字段相似」证据 — 空/未识别 reason
+    诚实兜底「系统未提供判定原因」。"""
+    _, second = _seed_duplicate_pair(web_client, identity=identity)
+    with SessionLocal() as db:
+        row = db.scalar(select(Expense).where(Expense.id == second))
+        assert row is not None
+        row.duplicate_reason = None
+        db.commit()
+
+    resp = web_client.get("/web/duplicates?ledger_id=owner")
+    assert resp.status_code == 200
+    assert "系统未提供判定原因" in resp.text
+    assert "多项账单信息相似" not in resp.text
+
+
 def test_web_duplicates_unknown_id_returns_friendly_msg(web_client: TestClient) -> None:
     # ``mark_expense_not_duplicate`` raises AppError(404) — route catches it
     # and surfaces the message via redirect.

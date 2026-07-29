@@ -153,7 +153,6 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert 'type="checkbox"' not in resp.text
     assert 'data-row-version="' in resp.text
     assert "exp-row-detail" in resp.text
-    assert 'class="exp-row"' in resp.text
     assert 'name="category"' in resp.text
     assert 'name="merchant"' in resp.text
 
@@ -171,8 +170,7 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert 'row.setAttribute("aria-disabled", "true");' in js
     assert 'row.setAttribute("tabindex", "-1");' in js
     assert "setBatchNavigationMode(entries.length > 0);" in js
-    # div[role=checkbox]: 吞事件兜底, 勾选不穿透触发整行跳转/开抽屉 (C5a)。
-    assert "e.stopPropagation();" in js
+    assert "e.stopPropagation();" in js  # 吞事件兜底, 勾选不穿透开抽屉 (C5a)
     assert "e.preventDefault();" in js
 
     drawer_js = js_path.with_name("drawer.js").read_text(encoding="utf-8")
@@ -180,6 +178,10 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     # 批选模式(非空选择)挂起行导航:drawer 点击 + 程序化 open 都要尊重 aria-disabled。
     assert 'row.getAttribute("aria-disabled") === "true"' in drawer_js
     assert 'getAttribute("aria-disabled") !== "true"' in hotkeys_js
+    # S4-R2: J/K 当前行同步容器 is-current 高亮 (与 drawer 同族), 键盘流不盲。
+    assert 'classList.toggle("is-current", r === row);' in hotkeys_js
+    inbox_css = js_path.parents[1] / "product" / "domains" / "inbox.css"
+    assert inbox_css.read_text(encoding="utf-8").count(".exp-row.is-current") >= 1
 
 
 def test_web_bulk_set_category_updates_pending(web_client: TestClient, *, identity) -> None:

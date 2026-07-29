@@ -229,6 +229,16 @@ def _ensure_expense_can_confirm(expense: Expense) -> None:
         raise AppError("amount_required", status_code=400)
 
 
+def _ensure_expense_confirmable_category(expense: Expense) -> None:
+    """218-D S4-R2: 缺类门 — 与队列 ready 口径 (is_ready_to_confirm_row) 同义的
+    分类不变量, 由 confirm_expense 在各入口 (API/web/bulk) 统一调用, 不随传输层
+    漂移 (S4-R1 曾暂置 web 路由)。与 _ensure_expense_can_confirm 分家: 后者还被
+    确认行编辑复用, 而 未分类 的已入账行合法存在。「其他」是合法分类, 不算缺。
+    """
+    if is_uncategorized_expense_category(expense.category):
+        raise AppError("invalid_request", "请先填写分类。", status_code=422)
+
+
 def _replace_ocr_draft_items_from_text(
     db: Session,
     expense: Expense,

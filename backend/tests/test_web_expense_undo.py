@@ -89,6 +89,11 @@ def test_web_pending_renders_undo_banner_in_green_when_success_flash(
     # review P2 #1: the success flash renders green, not red.
     assert "product-feedback--success" in body
     assert "product-feedback--error" not in body
+    # S4-R2: 5s auto-dismiss 契约随 product 栈在场 (新栈不载旧 alert.css)。
+    css = web_client.get("/static/web/product/components.css")
+    assert css.status_code == 200
+    assert "@keyframes undo-banner-dismiss" in css.text
+    assert "animation: undo-banner-dismiss 5s forwards" in css.text
 
 
 def test_web_pending_undo_form_carries_csrf_token(

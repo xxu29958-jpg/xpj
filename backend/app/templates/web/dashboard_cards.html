@@ -4,9 +4,11 @@
 <div class="page-header-row">
   <div>
     <h1 class="page-title page-title--compact">仪表盘卡片</h1>
-    <p class="page-hint">调整当前账本在 /web 首页的卡片顺序和可见状态。拖动卡片可以排序，保存后生效。</p>
+    {# 218-D S4-R2: /web 根已 303→/web/pending, 卡片归属页是 /web/overview;
+       返回链与说明文案同步, 不再把用户送进收件域。 #}
+    <p class="page-hint">调整当前账本在总览页的卡片顺序和可见状态。拖动卡片可以排序，保存后生效。</p>
   </div>
-  <a class="dt-btn" href="/web{{ q }}">返回仪表盘</a>
+  <a class="dt-btn" href="/web/overview{{ q }}">返回总览</a>
 </div>
 
 {% if message %}
