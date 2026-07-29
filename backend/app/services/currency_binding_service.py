@@ -125,16 +125,27 @@ def assert_rule_amount_write_binding(db: Session, carries_amount: bool) -> None:
 
 
 def assert_rule_restore_binding(db: Session, carries_amount: bool) -> None:
-    """带金额规则的墓碑恢复视同携币种语义写（P1-1 + #258-R2 项7 + #258-R3 项4 收窄）——
-    先读绑定标记：标记==env（安装绑定稳定，墓碑系标记后创建、币种无歧义）→ 走主门裁决；
-    标记缺失或≠env → 墓碑时代不可判（无币种列、首写时软删对门不可见不得成为绕过通道）
-    → 保守拒（unresolved）。纯关键词规则墓碑豁免。"""
+    """带金额规则的墓碑恢复视同携币种语义写（P1-1 + #258-R2 项7 + #258-R3 项4 收窄 +
+    #258-R5 项2 错误码二分）—— 纯关键词墓碑豁免。标记==env（安装绑定稳定，墓碑系标记
+    后创建、币种无歧义）→ 走主门裁决；标记**缺失**（墓碑时代不可判）→ unresolved；
+    标记存在但≠env（明确的标记↔env 不一致）→ drift（与全门其他分支同码，不再错配
+    unresolved 的"遗留人民币口径"指引）。"""
     if not carries_amount:
         return
     home = home_currency_code()
-    if get_value(db, INSTALLATION_HOME_CURRENCY_KEY) != home:
+    marker = get_value(db, INSTALLATION_HOME_CURRENCY_KEY)
+    if marker is None:
         raise AppError("currency_binding_unresolved", status_code=409)
+    if marker != home:
+        raise AppError("currency_binding_drift", status_code=409)
     assert_currency_binding_consistent(db, home)
+
+
+def claim_binding_marker_if_absent(db: Session, home: str) -> None:
+    """行级幂等标记 claim（#258-R5 项1）：缺失才写（PK 撞容忍同 R15b-5）——
+    标记=首笔**成功**事实的伴生证据：前序行失败回滚不带走标记。"""
+    if get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None:
+        _claim_binding_marker(db, home)
 
 
 def resolve_read_home_currency_code(db: Session) -> str | None:

@@ -38,6 +38,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow, Expense
 from app.schemas import CsvImportApplyResponse, CsvImportBatchResponse
+from app.services import currency_binding_service
 from app.services.csv_import_batch_service._apply_lease import (
     _claim_apply_lease,
     _finalize_csv_import_apply_success,
@@ -58,7 +59,6 @@ from app.services.csv_import_batch_service._row_claim import (
     _remaining_importable_rows,
     _reset_claimed_csv_import_rows,
 )
-from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.desktop_switch_service import revalidate_desktop_session_under_lock
 from app.services.exchange_rate_service import apply_currency_payload, home_currency_code
 from app.services.import_service import DEFAULT_SOURCE
@@ -274,6 +274,8 @@ def _apply_one_claimed_csv_import_row(
         db.add(expense)
         db.flush()
         sync_expense_tags(db, expense)
+        # #258-R5 项1：标记与首笔成功事实同事务（前序行失败回滚不带走；幂等 claim）。
+        currency_binding_service.claim_binding_marker_if_absent(db, home_currency_code())
         row.status = "applied"
         row.apply_token = None
         row.expense_id = expense.id
@@ -382,10 +384,9 @@ def _attempt_csv_import_apply(
     batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
     if not claimed_row_ids and _applying_row_count(db, batch, tenant_id) > 0:
         raise AppError("invalid_request", "导入批次正在应用中，请稍后重试。", status_code=409)
-    # R10①：批量边界一次 binding 校验（行内经 binding_checked 跳过）。
-    # 遗留 U8：过门在行认领后、首行提交前（标记随首笔事实同生共死；空批不过门不留标记）。
+    # R10① + 遗留 U8/#258-R5 项1：批量边界校验在行认领后、首行提交前（空批不过门；标记随首笔成功事实 claim）。
     if claimed_row_ids:
-        assert_currency_binding_consistent(db, home_currency_code())
+        currency_binding_service.assert_currency_binding_consistent(db, home_currency_code())
     now = now_utc()
     inserted = 0
     for row_id in claimed_row_ids:

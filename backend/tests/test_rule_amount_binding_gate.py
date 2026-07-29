@@ -12,7 +12,7 @@ import pytest
 from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import CategoryRule
+from app.models import AppMeta, CategoryRule
 from app.services.app_meta_service import get_value
 from app.services.currency_binding_service import (
     INSTALLATION_HOME_CURRENCY_KEY,
@@ -263,6 +263,43 @@ def test_tombstone_restore_passes_when_marker_matches_env(monkeypatch) -> None:
         with SessionLocal() as db:
             restored = undo_delete_rule(db, tenant_id="owner", rule_id=rule.id)
             assert restored.deleted_at is None
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_tombstone_restore_error_code_splits_by_marker_state(monkeypatch) -> None:
+    # #258-R5 项2：恢复门错误码二分 —— 标记缺失（时代不可判）→ unresolved；
+    # 标记存在且≠env（明确不一致）→ drift（不再错配 unresolved 的指引）；
+    # 标记==env → 放行（已由 R4-③ 覆盖）。
+    with SessionLocal() as db:
+        rule = CategoryRule(
+            tenant_id="owner",
+            keyword="交通",
+            category="交通",
+            enabled=True,
+            priority=100,
+            amount_min_cents=1200,
+            deleted_at=now_utc(),
+        )
+        db.add(rule)
+        db.flush()
+        rule_id = rule.id
+        db.commit()
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            # 标记缺失 → unresolved。
+            with pytest.raises(AppError) as missing_exc:
+                undo_delete_rule(db, tenant_id="owner", rule_id=rule_id)
+            assert missing_exc.value.error == "currency_binding_unresolved"
+            # 标记=CNY（≠env JPY）→ drift。
+            db.add(AppMeta(key=INSTALLATION_HOME_CURRENCY_KEY, value="CNY", updated_at=now_utc()))
+            db.flush()
+            with pytest.raises(AppError) as mismatch_exc:
+                undo_delete_rule(db, tenant_id="owner", rule_id=rule_id)
+            assert mismatch_exc.value.error == "currency_binding_drift"
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
