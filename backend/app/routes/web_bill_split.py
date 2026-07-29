@@ -30,6 +30,7 @@ from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
+    _currency_symbol,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
@@ -144,17 +145,6 @@ def build_split_invite_context(
     invitations = bsplit.list_sent_for_expense(
         db, sender_account_id=sender_account_id, expense_id=expense["id"]
     )
-    sent_rows = [
-        {
-            "public_id": inv.public_id,
-            "status": inv.status,
-            "amount_yuan": _cents_to_yuan(inv.amount_cents),
-            "receiver_display_name": inv.receiver_display_name_snapshot or "",
-            "expires_at": _fmt_local(inv.expires_at),
-            "is_cancellable": inv.status == "invited",
-        }
-        for inv in invitations
-    ]
 
     active_total_cents = sum(
         inv.amount_cents
@@ -163,13 +153,32 @@ def build_split_invite_context(
     )
     parent_cents = expense.get("amount_cents") or 0
     remaining_cents = max(parent_cents - active_total_cents, 0)
+    # 遗留 P1-2：发起卡剩余/预填按父账单冻结币种（record 权威），env 漂移不吃 live env。
+    parent_home_code = expense.get("home_currency_code") or home_currency_code()
 
     return {
         "members": members,
-        "sent_rows": sent_rows,
-        "remaining_yuan": _cents_to_yuan(remaining_cents),
+        "sent_rows": _sent_row_dicts(invitations),
+        "remaining_yuan": _cents_to_yuan(remaining_cents, parent_home_code),
+        "currency_symbol": _currency_symbol(parent_home_code),
         "has_capacity": remaining_cents > 0,
     }
+
+
+def _sent_row_dicts(invitations) -> list[dict]:
+    """发起卡已发行渲染行：金额与符号按各邀请的冻结币种（record 权威，遗留 P1-2 / R2-2）。"""
+    return [
+        {
+            "public_id": inv.public_id,
+            "status": inv.status,
+            "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
+            "amount_symbol": _currency_symbol(inv.home_currency_code),
+            "receiver_display_name": inv.receiver_display_name_snapshot or "",
+            "expires_at": _fmt_local(inv.expires_at),
+            "is_cancellable": inv.status == "invited",
+        }
+        for inv in invitations
+    ]
 
 
 # -------------------------------------------------------------------------
@@ -215,7 +224,8 @@ def web_bill_split_inbox(
         rows.append({
             "public_id": inv.public_id,
             "status": inv.status,
-            "amount_yuan": _cents_to_yuan(inv.amount_cents),
+            "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
+            "amount_symbol": _currency_symbol(inv.home_currency_code),
             "sender_display_name": inv.sender_display_name,
             "merchant": inv.merchant_snapshot or "",
             "category": inv.category_suggestion or "",
@@ -257,7 +267,8 @@ def web_bill_split_sent(
         {
             "public_id": inv.public_id,
             "status": inv.status,
-            "amount_yuan": _cents_to_yuan(inv.amount_cents),
+            "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
+            "amount_symbol": _currency_symbol(inv.home_currency_code),
             "receiver_display_name": inv.receiver_display_name_snapshot or "",
             "merchant": inv.merchant_snapshot or "",
             "expense_time": _fmt_local(inv.expense_time_snapshot),
@@ -307,7 +318,12 @@ def web_split_invite(
     # flash back onto the page instead of escaping to the global AppError
     # handler, which renders a bare-JSON page in the browser.
     try:
-        amount_cents = _yuan_to_cents(amount_yuan)
+        # 遗留 P1-2：金额解析按父账单冻结币种（record 权威，经服务层查询；父行缺失时
+        # 落 env —— 随后 create_invitation 自带 not-found 错误路径，解析口径无实际影响）。
+        parent_home_code = bsplit.parent_expense_home_currency_code(
+            db, expense_id=expense_id, ledger_id=selected_id
+        ) or home_currency_code()
+        amount_cents = _yuan_to_cents(amount_yuan, parent_home_code)
         if amount_cents is None or amount_cents <= 0:
             raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
         bsplit.create_invitation(
@@ -411,19 +427,20 @@ def web_split_cancel(
 # Money helpers (kept local to avoid expense-module coupling)
 
 
-def _cents_to_yuan(cents: int | None) -> str:
-    # R13-3：按 env home 的 minor 语义渲染（JPY 零小数整数直显，不 ÷100）。
+def _cents_to_yuan(cents: int | None, currency_code: str) -> str:
+    # 遗留 P1-2：按父账单冻结币种渲染（record 权威；R13-3 的 live env 口径在
+    # env 漂移时 ¥1,200↔¥12.00 错位）—— 调用方从父 expense / 邀请冻结码取口径。
     if cents is None:
         cents = 0
-    return minor_amount_value(cents, home_currency_code())
+    return minor_amount_value(cents, currency_code)
 
 
-def _yuan_to_cents(value: str) -> int | None:
-    # R13-3：按 env home 的 minor 语义解析（JPY 零小数：整数直存、拒小数）。
+def _yuan_to_cents(value: str, currency_code: str) -> int | None:
+    # 遗留 P1-2：按父账单冻结币种解析（同上；零小数整数直存、拒小数）。
     cleaned = (value or "").strip()
     if not cleaned:
         return None
     try:
-        return major_amount_to_minor(Decimal(cleaned), home_currency_code())
+        return major_amount_to_minor(Decimal(cleaned), currency_code)
     except (InvalidOperation, ValueError, AppError):
         return None

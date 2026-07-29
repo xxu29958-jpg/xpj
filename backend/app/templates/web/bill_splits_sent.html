@@ -51,7 +51,7 @@
         {% endif %}
       </td>
       <td class="party">{{ row.receiver_display_name }}</td>
-      <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+      <td class="amount">{{ row.amount_symbol }}{{ row.amount_yuan }}</td>
       <td>{{ row.merchant or '—' }}</td>
       <td class="num">{{ row.expense_time or '—' }}</td>
       <td class="num">{{ row.expires_at or '—' }}</td>

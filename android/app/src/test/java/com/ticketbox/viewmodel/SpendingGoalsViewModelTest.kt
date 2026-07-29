@@ -1,5 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.domain.model.CurrencyCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -7,7 +10,9 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import java.lang.reflect.Proxy
 import kotlin.test.AfterTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,7 +45,7 @@ class SpendingGoalsViewModelTest {
                 ),
             ),
         )
-        val viewModel = SpendingGoalsViewModel(actions, initialMonth = "2026-07")
+        val viewModel = SpendingGoalsViewModel(actions, CapabilityDebtActions(), initialMonth = "2026-07")
         advanceUntilIdle()
 
         assertEquals(SpendingGoalListCall("2026-07", false), actions.goalsCalls.single())
@@ -52,7 +57,7 @@ class SpendingGoalsViewModelTest {
     @Test
     fun monthNavigationReloadsTheSelectedMonth() = runTest(dispatcher) {
         val actions = RecordingSpendingGoalActions()
-        val viewModel = SpendingGoalsViewModel(actions, initialMonth = "2026-07")
+        val viewModel = SpendingGoalsViewModel(actions, CapabilityDebtActions(), initialMonth = "2026-07")
         advanceUntilIdle()
 
         viewModel.nextMonth()
@@ -67,7 +72,7 @@ class SpendingGoalsViewModelTest {
         val actions = RecordingSpendingGoalActions(
             goalsResult = Result.failure(IllegalStateException("offline")),
         )
-        val viewModel = SpendingGoalsViewModel(actions, initialMonth = "2026-07")
+        val viewModel = SpendingGoalsViewModel(actions, CapabilityDebtActions(), initialMonth = "2026-07")
         advanceUntilIdle()
         assertNotNull(viewModel.state.value.loadError)
 
@@ -78,4 +83,99 @@ class SpendingGoalsViewModelTest {
         assertEquals(listOf("goal-1"), viewModel.state.value.goals.map { it.publicId })
         assertEquals(null, viewModel.state.value.loadError)
     }
+
+    @Test
+    fun ledgerCurrencyResolvesFromSharedRecordCapabilityVerdict() = runTest(dispatcher) {
+        // 遗留 U3：列表 VM 解析账本币种供卡面显示（R14-6 共享裁决）—— JPY 信封 →
+        // state.ledgerCurrency=JPY（卡面 ¥1,200 不 ¥12.00 的口径源）；未知码 → null 兜底展示。
+        val jpy = SpendingGoalsViewModel(
+            RecordingSpendingGoalActions(),
+            CapabilityDebtActions(page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY")),
+            initialMonth = "2026-07",
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, jpy.state.value.ledgerCurrency)
+
+        val unknown = SpendingGoalsViewModel(
+            RecordingSpendingGoalActions(),
+            CapabilityDebtActions(page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "VND")),
+            initialMonth = "2026-07",
+        )
+        advanceUntilIdle()
+        assertEquals(null, unknown.state.value.ledgerCurrency)
+    }
+
+    @Test
+    fun failedResolutionKeepsPreviouslyResolvedCurrency() = runTest(dispatcher) {
+        // #258-R2 项4：解析失败不覆写上次已确认值 —— JPY 解析成功后债务端瞬时错误，
+        // ledgerCurrency 保持 JPY（卡面不落回 CNY 兜底显示 ¥12.00）。
+        val debts = FlakyDebtActions()
+        val viewModel = SpendingGoalsViewModel(
+            RecordingSpendingGoalActions(),
+            debts,
+            initialMonth = "2026-07",
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+
+        debts.online = false
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+    }
+
+    @Test
+    fun goalListRendersWhileCurrencyResolutionIsPending() = runTest(dispatcher) {
+        // #258-R3 项3：债务端挂起不阻塞目标列表（币种解析与列表并行）—— 列表渲染完成后
+        // 币种后落定（JPY）。
+        val gate = CompletableDeferred<Result<DebtListPage>>()
+        val debts = HangingGoalDebtActions(gate)
+        val viewModel = SpendingGoalsViewModel(
+            RecordingSpendingGoalActions(goalsResult = Result.success(listOf(spendingGoal()))),
+            debts,
+            initialMonth = "2026-07",
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("goal-1"), viewModel.state.value.goals.map { it.publicId })
+        assertFalse(viewModel.state.value.isLoading)
+        assertEquals(null, viewModel.state.value.ledgerCurrency)
+
+        gate.complete(
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY")),
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+    }
 }
+
+/** 可断网的账本币种 fake（项4 钉）：offline 时 listDebts 失败。 */
+private class FlakyDebtActions(
+    var online: Boolean = true,
+    var page: DebtListPage = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
+) : DebtActions by unsupportedGoalDebtActions() {
+    override fun canModifyLedger(): Boolean = true
+
+    override suspend fun listDebts(): Result<DebtListPage> =
+        if (online) Result.success(page) else Result.failure(IllegalStateException("offline"))
+}
+
+/** 挂起闸门的账本币种 fake（项3 钉）：listDebts 等待外部放行。 */
+private class HangingGoalDebtActions(
+    private val gate: CompletableDeferred<Result<DebtListPage>>,
+) : DebtActions by unsupportedGoalDebtActions() {
+    override fun canModifyLedger(): Boolean = true
+
+    override suspend fun listDebts(): Result<DebtListPage> = gate.await()
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun unsupportedGoalDebtActions(): DebtActions = Proxy.newProxyInstance(
+    DebtActions::class.java.classLoader,
+    arrayOf(DebtActions::class.java),
+) { _, method, _ ->
+    when (method.name) {
+        "toString" -> "UnsupportedGoalDebtActions"
+        else -> throw UnsupportedOperationException(method.name)
+    }
+} as DebtActions

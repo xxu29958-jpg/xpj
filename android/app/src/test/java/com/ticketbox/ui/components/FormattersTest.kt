@@ -62,8 +62,20 @@ class FormattersTest {
     fun sanitizesAmountInputPerCurrencyMinorUnit() {
         assertEquals("123.45", sanitizeMinorAmountInput(" ¥123.45abc ", CurrencyCode.CNY))
         assertEquals("12.34", sanitizeMinorAmountInput("12..34", CurrencyCode.USD))
-        assertEquals("123", sanitizeMinorAmountInput("123.45", CurrencyCode.JPY))
         assertEquals("123456", sanitizeMinorAmountInput("123456789", CurrencyCode.CNY, maxLength = 6))
+    }
+
+    @Test
+    fun sanitizeKeepsFractionTextForZeroDecimalCurrenciesSoParseCanRejectVisibly() {
+        // PR#255 遗留 P1-3：零小数币种不再静默截断小数（"123.45" → "123" 无反馈是撒谎）——
+        // sanitize 保留文本，parseMinorAmount 拒绝（= 输入框 isError/即时错误的可见拒绝燃料）；
+        // 整数照常、CNY 两位照常。
+        assertEquals("123.45", sanitizeMinorAmountInput("123.45", CurrencyCode.JPY))
+        assertNull(parseMinorAmount("123.45", CurrencyCode.JPY))
+        assertEquals("123", sanitizeMinorAmountInput("123", CurrencyCode.JPY))
+        assertEquals(123L, parseMinorAmount("123", CurrencyCode.JPY))
+        assertEquals("12.34", sanitizeMinorAmountInput("12.34", CurrencyCode.CNY))
+        assertEquals(1_234L, parseMinorAmount("12.34", CurrencyCode.CNY))
     }
 
     @Test
@@ -249,6 +261,26 @@ class FormattersTest {
         ).copy(homeCurrencyCode = "CNY", originalCurrencyCodeRaw = "VND")
 
         assertEquals("1200 VND", formatExpensePrimaryAmount(expense))
+    }
+
+    @Test
+    fun exchangeMetaUsesRawCodesForUnknownCurrencies() {
+        // 遗留 U19：未知原码（VND）FX meta 不冒回落枚举的 CNY 符号 —— "汇率 1 VND = … JPY"
+        // 原样亮码，home 额按 record 口径（¥12,345 JPY）；旧码整条隐藏（枚举相等误判本币）。
+        val expense = formatterExpense(
+            FormatterExpenseFixture(
+                amountCents = 12_345,
+                homeCurrency = CurrencyCode.JPY,
+                originalAmountMinor = 1_200,
+                exchangeRateToCny = "10.28781250",
+                exchangeRateDate = "2026-05-04",
+            ),
+        ).copy(homeCurrencyCode = "JPY", originalCurrencyCodeRaw = "VND")
+
+        assertEquals(
+            "≈ ¥12,345 · 汇率 1 VND = 10.28781250 JPY · 2026-05-04",
+            formatExpenseExchangeMeta(expense),
+        )
     }
 
     @Test

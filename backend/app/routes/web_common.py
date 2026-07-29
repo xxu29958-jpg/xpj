@@ -27,6 +27,7 @@ from app.network_boundary import require_owner_console_local
 from app.services import backup_status_service, bill_split_service, web_stats_service
 from app.services import owner_console_service as owner_svc
 from app.services.budget_service import get_monthly_budget
+from app.services.currency_binding_service import resolve_read_home_currency_code
 from app.services.currency_common import (
     currency_input_metadata,
     minor_amount_label,
@@ -54,6 +55,13 @@ from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[csrf_context])
+
+
+def _bound_home_currency_code(db: Session) -> str | None:
+    """读路径金额口径（遗留 U10+U20 + #258-R3 项2 事实臂）：委托
+    [resolve_read_home_currency_code] —— 事实→标记→env；多码混存（drift 异常态）→
+    None，调用方拒绝显示金额（fail closed，与主门同信号）。"""
+    return resolve_read_home_currency_code(db)
 # ADR-0038 PR-2e: register ``to_iso`` so /web templates can render
 # ORM ``updated_at`` values (datetime) into the canonical ISO-Z form
 # the hidden ``expected_row_version`` form fields use. Without this

@@ -78,12 +78,10 @@ fun formatMinorAmountInput(amountMinor: Long?, currency: CurrencyCode): String {
 
 fun sanitizeMinorAmountInput(input: String, currency: CurrencyCode, maxLength: Int = 12): String {
     val trimmed = input.trim()
-    if (currency.noFractionDigits) {
-        return trimmed
-            .takeWhile { it != '.' }
-            .filter(Char::isDigit)
-            .take(maxLength)
-    }
+    // P1-3：零小数币种不再 takeWhile 静默截断小数部分（"123.45" → "123" 无任何反馈是
+    // 显示撒谎）—— 与两位小数币种同一过滤（数字 + 单个小数点），小数文本保留交由
+    // [parseMinorAmount] 拒绝，经输入框 isError / 保存校验同族架构明示（MissingAmountSheet
+    // 的 invalid 即时错误、编辑表单/目标/收入的 parseFailed 文案）。
     val builder = StringBuilder()
     var hasDecimal = false
     for (char in trimmed) {
@@ -108,8 +106,8 @@ fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
             // 零小数币种（JPY/KRW）：任何小数部分都拒绝，不再 HALF_UP 静默进位。
             // 注意这**严于后端 422**：后端按 Decimal 值比较，接受 "1200.0"/"0.00"
             // 这类等值尾零小数，客户端连它们也拒 —— 方向安全（拒而不腐：绝不把
-            // 用户没输的尾零静默舍掉）。输入框已由 sanitizeMinorAmountInput 兜底
-            // （根本输不进 '.'），本守卫仅直调路径可达。
+            // 用户没输的尾零静默舍掉）。P1-3 起输入框不再拦 '.'（sanitize 保留文本），
+            // 本守卫是拒绝的唯一落点，拒绝经各输入框既有错误架构明示。
             if (decimal.scale() > 0) return null
             decimal
         } else {
@@ -139,8 +137,15 @@ fun formatExpensePrimaryAmount(
 }
 
 fun formatExpenseExchangeMeta(expense: Expense): String? {
-    val currency = expense.originalCurrencyCode
-    if (currency == expense.homeCurrency) return null
+    // 遗留 U19：原码感知 —— 未知码（枚举已回落 CNY）不冒 CNY 符号与缩放；meta 的
+    // "≈ home 额" 走 record 口径（R14-3），"1 原码 = rate home码" 用原码字面。
+    val homeDisplay = expense.recordCurrencyDisplay()
+    val originalDisplay = CurrencyDisplay.forRecord(
+        expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey,
+    )
+    if (originalDisplay == homeDisplay) return null
+    val originalCodeLabel = originalDisplay.unknownCode ?: originalDisplay.homeCurrency.storageKey
+    val homeCodeLabel = homeDisplay.unknownCode ?: homeDisplay.homeCurrency.storageKey
     val date = (expense.fxRateDate ?: expense.exchangeRateDate)?.takeIf { it.isNotBlank() }
     if (expense.fxStatus == FxContract.StatusPending || expense.fxRate.isNullOrBlank() || expense.homeAmountCents == null) {
         return buildString {
@@ -149,11 +154,11 @@ fun formatExpenseExchangeMeta(expense: Expense): String? {
         }
     }
     val rate = expense.fxRate.trim()
-    val cny = formatAmount(expense.homeAmountCents, expense.homeCurrency)
+    val homeAmount = formatDisplayAmount(expense.homeAmountCents, homeDisplay)
     return buildString {
-        append("≈ ").append(cny)
-        append(" · 汇率 1 ").append(currency.storageKey).append(" = ").append(rate).append(" ")
-        append(expense.homeCurrency.storageKey)
+        append("≈ ").append(homeAmount)
+        append(" · 汇率 1 ").append(originalCodeLabel).append(" = ").append(rate).append(" ")
+        append(homeCodeLabel)
         if (date != null) append(" · ").append(date)
     }
 }

@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.data.repository.IncomePlanActions
@@ -21,8 +22,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import java.lang.reflect.Proxy
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -567,3 +570,119 @@ private fun incomePlanAccess(
     binding = incomePlanBinding(ledgerId, ownerKey),
     canModify = canModify,
 )
+
+/**
+ * #258-R2 项1：IncomePlanViewModel 币种解析代际守卫钉（同文件新类，镜像
+ * LedgerViewModelCurrencyRelatchTest 范式 —— 主类已贴 detekt 门类门）。
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class IncomePlanViewModelCurrencyRelatchTest {
+    private val dispatcher = StandardTestDispatcher()
+
+    @BeforeTest
+    fun setUp() {
+        Dispatchers.setMain(dispatcher)
+    }
+
+    @AfterTest
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun staleCurrencyResolutionDoesNotOverwriteNewerResult() = runTest(dispatcher) {
+        // R2-1：init 解析挂起中 resetDraft 触发第二次解析 —— 新结果（JPY）先落定后，
+        // 旧结果（CNY）不得覆写（last-writer-wins）。
+        val debts = DeferredIncomeDebtActions()
+        val viewModel = IncomePlanViewModel(RelatchIncomeActions(), debts)
+        advanceUntilIdle()
+
+        viewModel.resetDraft()
+        runCurrent()
+        assertEquals(2, debts.calls.size)
+
+        debts.calls[1].complete(
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY")),
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+
+        debts.calls[0].complete(
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY")),
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+    }
+
+    @Test
+    fun failedResolutionKeepsPreviouslyResolvedCurrency() = runTest(dispatcher) {
+        // #258-R3 项1：解析失败不覆写上次已确认值 —— JPY 解析成功后 resetDraft 触发
+        // 的重解析失败，ledgerCurrency 保持 JPY（卡面不打回 ¥12.00）。
+        val debts = DeferredIncomeDebtActions()
+        val viewModel = IncomePlanViewModel(RelatchIncomeActions(), debts)
+        advanceUntilIdle()
+
+        debts.calls[0].complete(
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY")),
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+
+        viewModel.resetDraft()
+        runCurrent()
+        debts.calls[1].complete(Result.failure(IllegalStateException("offline")))
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+    }
+}
+
+/** 项1 钉的最小 IncomePlanActions（嵌套 FakeRepository 为类内私有不可复用）。 */
+private class RelatchIncomeActions : IncomePlanActions by unsupportedIncomeActions() {
+    override fun canModifyLedger(): Boolean = true
+
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
+        MutableStateFlow(incomePlanAccess())
+
+    override suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing> =
+        Result.success(IncomePlanListing(emptyList(), 0L))
+
+    override suspend fun listIncluding(
+        expectedBinding: LogicalSessionBinding,
+        status: IncomePlanStatus,
+    ): Result<List<IncomePlan>> = Result.success(emptyList())
+}
+
+/** 逐调用挂起闸门的账本币种 fake（项1 代际乱序钉）。 */
+private class DeferredIncomeDebtActions : DebtActions by unsupportedIncomeDebtActions() {
+    val calls = mutableListOf<CompletableDeferred<Result<DebtListPage>>>()
+
+    override fun canModifyLedger(): Boolean = true
+
+    override suspend fun listDebts(): Result<DebtListPage> {
+        val gate = CompletableDeferred<Result<DebtListPage>>()
+        calls += gate
+        return gate.await()
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun unsupportedIncomeActions(): IncomePlanActions = Proxy.newProxyInstance(
+    IncomePlanActions::class.java.classLoader,
+    arrayOf(IncomePlanActions::class.java),
+) { _, method, _ ->
+    when (method.name) {
+        "toString" -> "UnsupportedIncomeActions"
+        else -> throw UnsupportedOperationException(method.name)
+    }
+} as IncomePlanActions
+
+@Suppress("UNCHECKED_CAST")
+private fun unsupportedIncomeDebtActions(): DebtActions = Proxy.newProxyInstance(
+    DebtActions::class.java.classLoader,
+    arrayOf(DebtActions::class.java),
+) { _, method, _ ->
+    when (method.name) {
+        "toString" -> "UnsupportedIncomeDebtActions"
+        else -> throw UnsupportedOperationException(method.name)
+    }
+} as DebtActions

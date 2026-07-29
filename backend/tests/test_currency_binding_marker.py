@@ -303,3 +303,129 @@ def test_goal_create_passes_with_marker_already_matching_env() -> None:
             ),
         )
         assert response.name == "本月外卖"
+
+
+
+
+def test_csv_apply_all_invalid_batch_leaves_no_marker(monkeypatch, *, identity) -> None:
+    # 遗留 U8：JPY 新装 + 全废批（行全部 validate-invalid，零可应用行）→ 不过门、
+    # 不留无事实独存标记（旧时序：门挂 lease commit，批全废标记仍独存）。
+    from io import BytesIO
+
+    from app.services.csv_import_batch_service import apply_csv_import_batch, create_csv_import_batch
+
+    del identity
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            batch = create_csv_import_batch(
+                db,
+                tenant_id="owner",
+                file_name="all-invalid.csv",
+                file_obj=BytesIO("amount_yuan,merchant,category,note\nabc,坏行,餐饮,x\n".encode()),
+            )
+            public_id = batch.public_id
+        with SessionLocal() as db:
+            apply_csv_import_batch(db, tenant_id="owner", public_id=public_id, batch_size=10)
+        with SessionLocal() as db:
+            assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_read_home_resolution_prefers_facts_over_env(monkeypatch) -> None:
+    # #258-R3 项2 事实臂：legacy 无标记 + CNY 事实 + env=JPY → 读路径按事实 CNY
+    # （旧实现 marker→env 会按 JPY 撒谎）。
+    from app.services.currency_binding_service import resolve_read_home_currency_code
+
+    _seed_cny_expense_fact_row()
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            assert resolve_read_home_currency_code(db) == "CNY"
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_read_home_resolution_marker_beats_env_when_no_facts() -> None:
+    # #258-R3 项2 标记臂：无事实 + 标记=JPY + env=CNY → 按标记 JPY。
+    from app.services.currency_binding_service import resolve_read_home_currency_code
+
+    with SessionLocal() as db:
+        db.add(AppMeta(key=INSTALLATION_HOME_CURRENCY_KEY, value="JPY", updated_at=now_utc()))
+        db.commit()
+        assert resolve_read_home_currency_code(db) == "JPY"
+
+
+def test_read_home_resolution_env_fallback_and_none_on_mixed(monkeypatch) -> None:
+    # #258-R3 项2：无任何证据 → env；多码混存（drift 异常态）→ None（fail closed）。
+    from app.models import Debt
+    from app.services.currency_binding_service import resolve_read_home_currency_code
+
+    with SessionLocal() as db:
+        assert resolve_read_home_currency_code(db) == "CNY"
+        db.add(Expense(tenant_id="owner", home_currency_code="CNY"))
+        db.add(
+            Debt(
+                tenant_id="owner",
+                owner_account_id=1,
+                created_by_account_id=1,
+                direction="i_owe",
+                counterparty_type="external",
+                counterparty_account_id=None,
+                principal_amount_cents=100,
+                home_currency_code="JPY",
+                status="open",
+                source_type="manual",
+                source_id=None,
+            )
+        )
+        db.commit()
+        assert resolve_read_home_currency_code(db) is None
+
+
+def test_csv_apply_marker_survives_first_row_failure(monkeypatch, *, identity) -> None:
+    # #258-R5 项1：JPY 新装 + 首行插入失败 + 次行成功 → 标记随次行事实存在且==env
+    # （U8 修的首行事务 claim 会随行回滚丢失；行级幂等 claim 补上）。
+    from io import BytesIO
+
+    from sqlalchemy.exc import IntegrityError
+
+    import app.services.csv_import_batch_service._apply as apply_mod
+    from app.services.csv_import_batch_service import apply_csv_import_batch, create_csv_import_batch
+
+    del identity
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            batch = create_csv_import_batch(
+                db,
+                tenant_id="owner",
+                file_name="first-fail.csv",
+                file_obj=BytesIO(
+                    "amount_yuan,merchant,category,note\n1200,Merchant 1,餐饮,n1\n800,Merchant 2,餐饮,n2\n".encode()
+                ),
+            )
+            public_id = batch.public_id
+
+        real_sync = apply_mod.sync_expense_tags
+
+        def fail_first_row(db, expense):
+            if expense.merchant == "Merchant 1":
+                raise IntegrityError("insert expense tag", {}, ValueError("tag conflict"))
+            return real_sync(db, expense)
+
+        monkeypatch.setattr(apply_mod, "sync_expense_tags", fail_first_row)
+        with SessionLocal() as db:
+            applied = apply_csv_import_batch(db, tenant_id="owner", public_id=public_id, batch_size=10)
+            assert applied.inserted_count == 1
+        with SessionLocal() as db:
+            assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) == "JPY"
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()

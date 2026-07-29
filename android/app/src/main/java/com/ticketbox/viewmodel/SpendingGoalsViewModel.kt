@@ -3,7 +3,9 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
@@ -20,10 +22,13 @@ data class SpendingGoalsUiState(
     val goals: List<Goal> = emptyList(),
     val isLoading: Boolean = true,
     val loadError: UiText? = null,
+    /** 账本币种（遗留 U3，R14-6 共享同源裁决）：卡面金额显示口径；null=未确认落兜底展示。 */
+    val ledgerCurrency: CurrencyCode? = null,
 )
 
 class SpendingGoalsViewModel(
     private val reports: ReportsActions,
+    private val debts: DebtActions,
     initialMonth: String = YearMonth.now().toString(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(
@@ -52,6 +57,13 @@ class SpendingGoalsViewModel(
             )
         }
         loadJob = viewModelScope.launch {
+            // 遗留 U3 + #258-R2 项4 + #258-R3 项3：币种解析与目标列表**并行**——列表不被
+            // 债务端超时/挂起阻塞（R2-4 的仅成功覆写语义不变；子协程随 loadJob 取消）。
+            launch {
+                debts.listDebts().onSuccess { page ->
+                    _state.update { it.copy(ledgerCurrency = resolveLedgerCurrency(page)) }
+                }
+            }
             val result = reports.goals(month = requestedMonth, includeArchived = false)
             if (generation != loadGeneration || _state.value.month != requestedMonth) return@launch
             result.fold(

@@ -15,6 +15,8 @@ from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
+    _bound_home_currency_code,
+    _currency_symbol,
     _list_ledger_options,
     _resolve_selected_ledger_id,
     _selected_option,
@@ -29,7 +31,6 @@ from app.services.budget_baseline_service import (
 )
 from app.services.currency_common import (
     currency_input_metadata,
-    home_currency_code,
     major_amount_to_minor,
     minor_amount_value,
 )
@@ -110,14 +111,11 @@ def _render_budget_advise(
         month=month_label,
     )
     fixed = total_active_recurring_monthly_cents(db, tenant_id=selected)
-    spent = total_confirmed_spent_cents(
-        db,
-        tenant_id=selected,
-        month=month_label,
-        timezone_name="Asia/Shanghai",
-    )
-    # R13-3：按 env home 的 minor 语义换算（JPY 零小数不 ×100；不再硬编 *100 round）。
-    home = home_currency_code()
+    spent = total_confirmed_spent_cents(db, tenant_id=selected, month=month_label, timezone_name="Asia/Shanghai")
+    # R13-3 + 遗留 U20/#258-R3 项2：渲染/解读口径事实→标记→env（多码混存 fail closed）。
+    home = _bound_home_currency_code(db)
+    if home is None:
+        raise AppError("currency_binding_drift", status_code=409)
     savings_cents = major_amount_to_minor(Decimal(str(savings_target_yuan)), home)
     reserved_cents = major_amount_to_minor(Decimal(str(reserved_buffer_yuan)), home)
     breakdown = compute_monthly_discretionary(
@@ -149,8 +147,8 @@ def _render_budget_advise(
         month=month_label,
         provider_name=provider_name,
         provider_enabled=provider_name != "empty",
-        # R15a-3：breakdown/建议表回显按 env home minor 语义（JPY 零小数不 ÷100；
-        # 解析侧 R13-3 已同源），输入 step 走币种元数据（不再硬编 0.01）。
+        # R15a-3：回显按 env home minor 语义，输入 step 走币种元数据；R2-3：符号同绑定口径（marker≠env 不冠 ¥）。
+        home_currency_symbol=_currency_symbol(home),
         income_yuan=minor_amount_value(breakdown.monthly_income_cents, home),
         fixed_yuan=minor_amount_value(breakdown.fixed_expenses_cents, home),
         spent_yuan=minor_amount_value(breakdown.spent_amount_cents, home),

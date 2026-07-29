@@ -145,6 +145,7 @@ private fun SpendingGoalDetailBody(
             goal = state.goal,
             canModify = state.canModify,
             onArchive = viewModel::requestArchive,
+            ledgerCurrency = state.ledgerCurrency,
         )
     }
 }

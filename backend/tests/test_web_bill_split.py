@@ -336,3 +336,129 @@ def test_web_bill_split_tables_use_bsplit_rowcraft_classes(web_client: TestClien
     assert inbox.status_code == 200
     assert 'class="dt-table bsplit-table"' in inbox.text
     assert '<td class="amount">' in inbox.text
+
+
+# --- 遗留 P1-2：解析/渲染按父账单冻结币种（record 权威，不吃 env 漂移） ---
+
+
+def _make_expense_with_home(amount_cents: int, home_code: str) -> int:
+    with SessionLocal() as db:
+        e = Expense(
+            tenant_id="owner",
+            amount_cents=amount_cents,
+            home_currency_code=home_code,
+            original_currency_code=home_code,
+            original_amount_minor=amount_cents,
+            merchant="Soba",
+            category="餐饮",
+            source="iPhone截图",
+            status="confirmed",
+            expense_time=now_utc(),
+            confirmed_at=now_utc(),
+        )
+        db.add(e)
+        db.commit()
+        return e.id
+
+
+def test_split_invite_parses_by_parent_frozen_currency_not_env(web_client: TestClient, monkeypatch) -> None:
+    # P1-2：CNY 父账单 + env=JPY —— "12.00" 按父冻结 CNY 解析成 1200（JPY 口径会拒
+    # 小数）；邀请冻结码=CNY。反向：JPY 父账单 + env=CNY —— "1200" 按 JPY 存 1200
+    # （CNY 口径会放大成 120000）。
+    from app.config import get_settings
+    from app.models import BillSplitInvitation
+
+    receiver_id, _ = _seed_receiver(ledger_id="receiver_p12a")
+    expense_id = _make_expense_with_home(3000, "CNY")
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        resp = web_client.post(
+            f"/web/expenses/{expense_id}/split-invite",
+            data={
+                "ledger_id": "owner",
+                "receiver_account_id": str(receiver_id),
+                "amount_yuan": "12.00",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303, resp.text
+        with SessionLocal() as db:
+            inv = db.query(BillSplitInvitation).order_by(BillSplitInvitation.id.desc()).first()
+            assert inv.amount_cents == 1200
+            assert inv.home_currency_code == "CNY"
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+    receiver_id_b, _ = _seed_receiver(ledger_id="receiver_p12b", display="C-web")
+    expense_id_b = _make_expense_with_home(1200, "JPY")
+    resp_b = web_client.post(
+        f"/web/expenses/{expense_id_b}/split-invite",
+        data={
+            "ledger_id": "owner",
+            "receiver_account_id": str(receiver_id_b),
+            "amount_yuan": "1200",
+        },
+        follow_redirects=False,
+    )
+    assert resp_b.status_code == 303, resp_b.text
+    with SessionLocal() as db:
+        inv_b = db.query(BillSplitInvitation).order_by(BillSplitInvitation.id.desc()).first()
+        assert inv_b.amount_cents == 1200
+        assert inv_b.home_currency_code == "JPY"
+
+
+def test_split_sent_render_uses_invitation_frozen_currency(web_client: TestClient, monkeypatch) -> None:
+    # P1-2 渲染腿：JPY 邀请（冻结 JPY 1200）在 env=CNY 下 sent 列表亮 "1200"（不 ÷100、
+    # 不补两位小数）。
+    from app.config import get_settings
+
+    receiver_id, _ = _seed_receiver(ledger_id="receiver_p12c")
+    expense_id = _make_expense_with_home(1200, "JPY")
+    with SessionLocal() as db:
+        bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_id,
+            amount_cents=1200,
+        )
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
+    get_settings.cache_clear()
+    try:
+        page = web_client.get("/web/bill-splits/sent?ledger_id=owner")
+        assert page.status_code == 200
+        assert "1200" in page.text
+        assert "12.00" not in page.text
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_split_sent_row_symbol_follows_frozen_currency(web_client: TestClient, monkeypatch) -> None:
+    # #258-R2 项2：USD 冻结邀请在 CNY env 下 sent 列表数值与符号同 USD（$1234.56 不冠 ¥）。
+    from app.config import get_settings
+
+    receiver_id, _ = _seed_receiver(ledger_id="receiver_r22")
+    expense_id = _make_expense_with_home(123456, "USD")
+    with SessionLocal() as db:
+        bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_id,
+            amount_cents=123456,
+        )
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
+    get_settings.cache_clear()
+    try:
+        page = web_client.get("/web/bill-splits/sent?ledger_id=owner")
+        assert page.status_code == 200
+        assert "$1234.56" in page.text
+        assert "¥1234.56" not in page.text
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()

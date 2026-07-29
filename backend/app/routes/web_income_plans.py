@@ -13,7 +13,9 @@ from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
+    _bound_home_currency_code,
     _currency_input_view,
+    _currency_symbol,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
@@ -143,8 +145,13 @@ def page_income_plans(
         selected_ledger_id=selected,
         page_title="收入记录",
     )
-    # R13-3：金额渲染/输入步进随 env home（JPY 零小数无小数位、不 ÷100）。
-    home = home_currency_code()
+    # R13-3：金额渲染/输入步进随 env home（JPY 零小数无小数位、不 ÷100）；
+    # 遗留 U10 + #258-R3 项2：读路径口径事实→标记→env（多码混存 fail closed）。
+    home = _bound_home_currency_code(db)
+    if home is None:
+        raise AppError("currency_binding_drift", status_code=409)
+    # #258-R2 项3：页面符号同绑定口径（marker≠env 时 USD 数值不冠 ¥）。
+    ctx["home_currency_symbol"] = _currency_symbol(home)
     ctx.update(
         plans_active=plans_active,
         plans_archived=plans_archived,

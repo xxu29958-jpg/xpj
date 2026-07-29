@@ -100,6 +100,18 @@ class ExpenseSearchTest {
         assertTrue(expenseMatchesSearchAmount(usdOriginalRow, "12.50 USD"))
         assertFalse(expenseMatchesSearchAmount(cnyRow, "12.50 USD"))
     }
+
+    @Test
+    fun symbolBearingQueryDisablesUnknownRawProxy() {
+        // 遗留 U11：符号即声明腿 —— "¥1200" 只按 CNY/JPY 声明腿匹配：JPY 行命中，
+        // VND 未知码行不得靠 raw 代理巧合命中（无符号的 "1200" 仍按原值代理可达，R10⑥ 不回归）。
+        val vndRow = searchExpense(amountCents = 1_200L, homeCurrencyCode = "VND")
+        val jpyRow = searchExpense(amountCents = 1_200L, homeCurrencyCode = "JPY", homeCurrency = CurrencyCode.JPY)
+
+        assertFalse(expenseMatchesSearchAmount(vndRow, "¥1200"))
+        assertTrue(expenseMatchesSearchAmount(jpyRow, "¥1200"))
+        assertTrue(expenseMatchesSearchAmount(vndRow, "1200"))
+    }
 }
 
 private fun searchExpense(

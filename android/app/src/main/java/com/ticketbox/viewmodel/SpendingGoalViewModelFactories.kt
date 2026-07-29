@@ -7,10 +7,11 @@ import com.ticketbox.data.repository.ReportsActions
 
 fun spendingGoalsViewModelFactory(
     reports: ReportsActions,
+    debts: DebtActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        SpendingGoalsViewModel(reports) as T
+        SpendingGoalsViewModel(reports, debts) as T
 }
 
 fun spendingGoalDetailViewModelFactory(
