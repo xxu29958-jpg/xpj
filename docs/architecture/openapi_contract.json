@@ -33504,6 +33504,16 @@
               "title": "Msg",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
+              "type": "string"
+            }
           }
         ],
         "responses": {
