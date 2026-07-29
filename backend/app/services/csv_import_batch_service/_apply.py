@@ -382,6 +382,13 @@ def _attempt_csv_import_apply(
     batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
     if not claimed_row_ids and _applying_row_count(db, batch, tenant_id) > 0:
         raise AppError("invalid_request", "导入批次正在应用中，请稍后重试。", status_code=409)
+    # R10①：批量边界一次 binding 校验（行内经 binding_checked 跳过）。
+    # 遗留 U8：过门移到 lease+行认领之后、首行提交之前 —— 门的首写标记 claim 随首笔
+    # 事实提交同生共死（此前挂在 lease commit 上，全废批/崩溃留下无事实独存标记）；
+    # 空批（全废，无可应用行）无事实写不过门，标记不留。拒绝走外层 AppError 清理
+    # （claimed 行复位 + lease 释放）。
+    if claimed_row_ids:
+        assert_currency_binding_consistent(db, home_currency_code())
     now = now_utc()
     inserted = 0
     for row_id in claimed_row_ids:
@@ -434,8 +441,6 @@ def apply_csv_import_batch(
     it is revalidated under the identity advisory lock before every row, so a
     mid-batch revocation/demotion cannot ride the per-row commits.
     """
-    # R10①：批量边界一次 binding 校验（行内经 binding_checked 跳过）。
-    assert_currency_binding_consistent(db, home_currency_code())
     apply_token = str(uuid4())
     batch = _claim_apply_lease(
         db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token

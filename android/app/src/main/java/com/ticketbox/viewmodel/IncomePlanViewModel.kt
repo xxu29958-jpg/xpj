@@ -49,6 +49,8 @@ data class IncomePlanUiState(
      * 关闭、无视 create() 结果，后端失败时静默丢失）。
      */
     val addSucceeded: Boolean = false,
+    /** 账本币种（遗留 U3，R14-6 共享同源裁决）：卡面金额显示口径；null=未确认落兜底展示。 */
+    val ledgerCurrency: CurrencyCode? = null,
 )
 
 enum class IncomePlanLoadState {
@@ -168,11 +170,14 @@ class IncomePlanViewModel(
                     )
                     // R12-D + R14-6：每次账本生效/切换都重解析账本币种（共享同源裁决：
                     // record 集合 × 信封 capability，未知/冲突 → 草稿 homeCurrency=null 禁写，
-                    // 不落 CNY 兜底）。
+                    // 不落 CNY 兜底）。遗留 U3：同值供卡面金额显示（JPY 计划 1200 亮 ¥1,200）。
                     viewModelScope.launch {
-                        val page = debts.listDebts().getOrNull()
+                        val resolved = resolveLedgerCurrency(debts.listDebts().getOrNull())
                         _state.update {
-                            it.copy(addDraft = it.addDraft.copy(homeCurrency = resolveLedgerCurrency(page)))
+                            it.copy(
+                                ledgerCurrency = resolved,
+                                addDraft = it.addDraft.copy(homeCurrency = resolved),
+                            )
                         }
                     }
                     if (access != null) refresh()
@@ -276,9 +281,12 @@ class IncomePlanViewModel(
         _state.update { it.copy(addDraft = IncomePlanDraftUi(), isSubmitting = false, addSucceeded = false) }
         // 草稿重建后重新注入账本币种（R12-D + R14-6 共享同源裁决；不清 homeCurrency 则新草稿永远 null 禁写）。
         viewModelScope.launch {
-            val page = debts.listDebts().getOrNull()
+            val resolved = resolveLedgerCurrency(debts.listDebts().getOrNull())
             _state.update {
-                it.copy(addDraft = it.addDraft.copy(homeCurrency = resolveLedgerCurrency(page)))
+                it.copy(
+                    ledgerCurrency = resolved,
+                    addDraft = it.addDraft.copy(homeCurrency = resolved),
+                )
             }
         }
     }

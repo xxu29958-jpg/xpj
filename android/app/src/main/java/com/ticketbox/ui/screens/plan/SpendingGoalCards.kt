@@ -14,6 +14,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.ui.components.AppContentCard
@@ -31,8 +33,12 @@ import com.ticketbox.ui.design.tabularNum
 @Composable
 internal fun SpendingGoalListCard(
     goals: List<Goal>,
+    ledgerCurrency: CurrencyCode?,
     onOpenGoal: (String) -> Unit,
 ) {
+    // 遗留 U3：卡面金额按 VM 已解析账本币种（JPY 目标 1200 亮 ¥1,200 不 ¥12.00）；
+    // 未确认落 display-home 兜底仅作展示（同 R14-2 标签口径）。
+    val currency = ledgerCurrency?.let { CurrencyDisplay(homeCurrency = it) } ?: LocalCurrencyDisplay.current
     AppContentCard {
         goals.forEachIndexed { index, goal ->
             if (index > 0) {
@@ -42,6 +48,7 @@ internal fun SpendingGoalListCard(
             }
             SpendingGoalRow(
                 goal = goal,
+                currency = currency,
                 onClick = { onOpenGoal(goal.publicId) },
             )
         }
@@ -51,6 +58,7 @@ internal fun SpendingGoalListCard(
 @Composable
 private fun SpendingGoalRow(
     goal: Goal,
+    currency: CurrencyDisplay,
     onClick: () -> Unit,
 ) {
     com.ticketbox.ui.components.AppListRow(
@@ -83,7 +91,7 @@ private fun SpendingGoalRow(
                     goal.progressPercent,
                 ),
             )
-            SpendingGoalAmountSummary(goal)
+            SpendingGoalAmountSummary(goal, currency)
         }
     }
 }
@@ -112,8 +120,7 @@ private fun SpendingGoalRowHeader(goal: Goal) {
 }
 
 @Composable
-private fun SpendingGoalAmountSummary(goal: Goal) {
-    val currency = LocalCurrencyDisplay.current
+private fun SpendingGoalAmountSummary(goal: Goal, currency: CurrencyDisplay) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),

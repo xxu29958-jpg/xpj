@@ -13,6 +13,7 @@ from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
+    _bound_home_currency_code,
     _currency_input_view,
     _list_ledger_options,
     _require_selected_ledger_write,
@@ -143,8 +144,9 @@ def page_income_plans(
         selected_ledger_id=selected,
         page_title="收入记录",
     )
-    # R13-3：金额渲染/输入步进随 env home（JPY 零小数无小数位、不 ÷100）。
-    home = home_currency_code()
+    # R13-3：金额渲染/输入步进随 env home（JPY 零小数无小数位、不 ÷100）；
+    # 遗留 U10：读路径口径改取绑定标记优先（漂移窗口按标记显示，不跟 live env 撒谎）。
+    home = _bound_home_currency_code(db)
     ctx.update(
         plans_active=plans_active,
         plans_archived=plans_archived,

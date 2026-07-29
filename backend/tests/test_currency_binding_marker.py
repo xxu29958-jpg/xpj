@@ -303,3 +303,110 @@ def test_goal_create_passes_with_marker_already_matching_env() -> None:
             ),
         )
         assert response.name == "本月外卖"
+
+
+def test_amount_rule_blocks_first_binding_under_jpy(monkeypatch) -> None:
+    # P1-1：仅有金额规则的安装（无绑定事实/无标记/无其他无绑定行）env=JPY →
+    # 首笔绑定写拒 unresolved（规则金额是 CNY 时代遗留整数，单位不可判定）。
+    from app.models import CategoryRule as _CategoryRule
+
+    with SessionLocal() as db:
+        db.add(
+            _CategoryRule(
+                tenant_id="owner",
+                keyword="交通",
+                category="交通",
+                enabled=True,
+                priority=100,
+                amount_min_cents=1200,
+            )
+        )
+        db.commit()
+        monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+        get_settings.cache_clear()
+        try:
+            with pytest.raises(AppError) as excinfo:
+                assert_currency_binding_consistent(db, "JPY")
+            assert excinfo.value.error == "currency_binding_unresolved"
+        finally:
+            monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+            get_settings.cache_clear()
+
+
+def test_rule_write_gated_under_drift(monkeypatch) -> None:
+    # P1-1：CNY 事实 + env=JPY → 带金额条件的规则写 409 drift（纯关键词规则窄豁免放行）。
+    from app.services.rule_service import create_rule
+
+    _seed_cny_expense_fact_row()
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            with pytest.raises(AppError) as excinfo:
+                create_rule(
+                    db,
+                    tenant_id="owner",
+                    keyword="交通",
+                    category="交通",
+                    enabled=True,
+                    priority=100,
+                    amount_min_cents=1200,
+                )
+            assert excinfo.value.error == "currency_binding_drift"
+            # 窄豁免：无金额条件的纯关键词规则不携币种语义，不过门。
+            create_rule(db, tenant_id="owner", keyword="咖啡", category="餐饮", enabled=True, priority=100)
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_rule_write_passes_on_jpy_fresh_install(monkeypatch) -> None:
+    # P1-1：JPY 新装（空库无标记）→ 带金额规则写放行 + 同事务 claim 标记=JPY。
+    from app.services.rule_service import create_rule
+
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            rule = create_rule(
+                db,
+                tenant_id="owner",
+                keyword="交通",
+                category="交通",
+                enabled=True,
+                priority=100,
+                amount_min_cents=1200,
+            )
+            assert rule.amount_min_cents == 1200
+            assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) == "JPY"
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_csv_apply_all_invalid_batch_leaves_no_marker(monkeypatch, *, identity) -> None:
+    # 遗留 U8：JPY 新装 + 全废批（行全部 validate-invalid，零可应用行）→ 不过门、
+    # 不留无事实独存标记（旧时序：门挂 lease commit，批全废标记仍独存）。
+    from io import BytesIO
+
+    from app.services.csv_import_batch_service import apply_csv_import_batch, create_csv_import_batch
+
+    del identity
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            batch = create_csv_import_batch(
+                db,
+                tenant_id="owner",
+                file_name="all-invalid.csv",
+                file_obj=BytesIO("amount_yuan,merchant,category,note\nabc,坏行,餐饮,x\n".encode()),
+            )
+            public_id = batch.public_id
+        with SessionLocal() as db:
+            apply_csv_import_batch(db, tenant_id="owner", public_id=public_id, batch_size=10)
+        with SessionLocal() as db:
+            assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()

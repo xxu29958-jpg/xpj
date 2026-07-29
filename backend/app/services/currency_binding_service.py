@@ -28,6 +28,7 @@ from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.models import (
     AppMeta,
     Budget,
+    CategoryRule,
     Debt,
     Expense,
     Goal,
@@ -79,6 +80,19 @@ def assert_currency_binding_consistent(db: Session, home: str) -> None:
         or db.scalar(select(Goal.id).limit(1)) is not None
         or db.scalar(select(MonthlyIncomePlan.id).limit(1)) is not None
         or db.scalar(select(RecurringItem.id).limit(1)) is not None
+        # P1-1：带金额条件的分类规则同携币种语义（amount_*_cents 无币种列，
+        # 引擎按绑定币种解释）—— 计入无绑定证据集；纯关键词/分类规则与已删
+        # 墓碑窄豁免（不携币种语义，不拖死首写）。
+        or db.scalar(
+            select(CategoryRule.id)
+            .where(CategoryRule.deleted_at.is_(None))
+            .where(
+                (CategoryRule.amount_min_cents.isnot(None))
+                | (CategoryRule.amount_max_cents.isnot(None))
+            )
+            .limit(1)
+        )
+        is not None
     )
     if not has_unbound:
         _claim_binding_marker(db, home)

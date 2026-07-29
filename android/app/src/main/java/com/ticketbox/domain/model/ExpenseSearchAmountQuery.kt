@@ -19,10 +19,23 @@ data class ParsedSearchAmounts(
     val amountsByCurrency: Map<CurrencyCode, Long>,
     val explicitCode: String? = null,
     val explicitMinor: Long? = null,
+    /**
+     * 查询带币种符号（¥/$/€/£/₩ 及全角别名）= 用户已声明腿（遗留 U11）：未知码行的
+     * raw 代理（JPY 整数口径）在该态禁用 —— "¥1200" 只按 CNY/JPY 声明腿解析匹配，
+     * 不得巧合命中 VND 1200。
+     */
+    val hasDeclaredSymbol: Boolean = false,
 )
 
 /** 尾部显式三字母币种码：金额部分与码之间至少一个空白（"1200 VND"、"12.50 usd"）。 */
 private val EXPLICIT_SEARCH_CODE_REGEX = Regex("^(.*\\S)\\s+([A-Za-z]{3})$")
+
+/** 支持集内全部币种符号字符（含全角别名），符号即声明腿的判定集（U11）。 */
+private val DECLARED_SYMBOL_CHARS: Set<Char> = buildSet {
+    CurrencyCode.entries.forEach { code -> code.symbol.forEach(::add) }
+    add('￥')
+    add('＄')
+}
 
 /**
  * 把 [query] 解析成金额匹配燃料（PR#255 P2-2 / R14-4b）。非数字 query（"coffee"）短路
@@ -50,16 +63,22 @@ fun parseSearchAmountsByCurrency(query: String): ParsedSearchAmounts {
         amountsByCurrency = CurrencyCode.entries.mapNotNull { currency ->
             parseSearchAmountCents(trimmed, currency)?.let { currency to it }
         }.toMap(),
+        // U11：符号即声明腿 —— 带币种符号的查询禁用未知码 raw 代理。
+        hasDeclaredSymbol = trimmed.any(DECLARED_SYMBOL_CHARS::contains),
     )
 }
 
 /**
  * 显式码感知的逐行匹配（R14-4）：显式码查询走严格单码（只比 raw 码等于查询码的腿 ——
  * home 双腿 + original 腿，未知码行亦按原码原 minor 命中，"1200 VND" 粘贴直查可达）；
- * 否则委托每币种缓存表的双腿匹配。
+ * 否则委托每币种缓存表的双腿匹配（U11：带符号查询禁用未知码 raw 代理）。
  */
 fun expenseMatchesSearchAmount(expense: Expense, parsed: ParsedSearchAmounts): Boolean {
-    val explicitCode = parsed.explicitCode ?: return expenseMatchesSearchAmount(expense, parsed.amountsByCurrency)
+    val explicitCode = parsed.explicitCode ?: return expenseMatchesSearchAmount(
+        expense,
+        parsed.amountsByCurrency,
+        rawProxyEnabled = !parsed.hasDeclaredSymbol,
+    )
     val minor = parsed.explicitMinor ?: return false
     if (expenseHomeCodeKey(expense) == explicitCode &&
         (expense.amountCents == minor || expense.homeAmountCents == minor)
@@ -86,17 +105,22 @@ fun expenseMatchesSearchAmount(expense: Expense, parsed: ParsedSearchAmounts): B
  * amount, and a CNY-home user searching "1200" hits a JPY-original row
  * (1200 ≠ 120000 cents). Returns false when the query parsed on neither leg.
  */
-fun expenseMatchesSearchAmount(expense: Expense, amountsByCurrency: Map<CurrencyCode, Long>): Boolean {
+fun expenseMatchesSearchAmount(
+    expense: Expense,
+    amountsByCurrency: Map<CurrencyCode, Long>,
+    rawProxyEnabled: Boolean = true,
+): Boolean {
     if (amountsByCurrency.isEmpty()) return false
     // PR#255 R10⑥：home 码**非空但**在支持集外（新版服务端币种）时，金额匹配按原 minor
     // 整数值（与 R8-4 显示口径 "1200 VND" 一致，显示多少搜得到多少）——零小数解析恰好
     // 是未缩放整数（"1200"→1200；小数查询天然不命中，minor 必为整数），用它作原值代理。
     // raw 为空/缺省（旧 record / 手工构造）不落此分支，维持枚举口径（行为不回归）。
+    // 遗留 U11：查询带币种符号时调用方关代理（符号即声明腿，"¥1200" 不命中 VND 1200）。
     val rawHomeCode = expense.homeCurrencyCode
     val homeUnknown = !rawHomeCode.isNullOrBlank() && CurrencyCode.fromStorageKeyOrNull(rawHomeCode) == null
-    if (homeUnknown && matchUnknownHomeRawLeg(expense, amountsByCurrency)) return true
+    if (homeUnknown && rawProxyEnabled && matchUnknownHomeRawLeg(expense, amountsByCurrency)) return true
     if (!homeUnknown && matchesKnownHomeLegs(expense, amountsByCurrency)) return true
-    return matchesForeignOriginalLeg(expense, amountsByCurrency)
+    return matchesForeignOriginalLeg(expense, amountsByCurrency, rawProxyEnabled)
 }
 
 /** 已知 home 行的双腿匹配：home 解析命中 home 双腿；本币行（无外币腿）original 腿同参续配。 */
@@ -127,13 +151,17 @@ private fun isForeignOriginal(expense: Expense): Boolean {
 }
 
 /** 外币 original 腿匹配：未知原码按原 minor 整数值比（JPY 代理，同 R10⑥ home 侧口径，
- *  不按回落枚举的声明码续配）；已知码按声明币种续配。 */
-private fun matchesForeignOriginalLeg(expense: Expense, amountsByCurrency: Map<CurrencyCode, Long>): Boolean {
+ *  不按回落枚举的声明码续配；U11：带符号查询该代理同样禁用）；已知码按声明币种续配。 */
+private fun matchesForeignOriginalLeg(
+    expense: Expense,
+    amountsByCurrency: Map<CurrencyCode, Long>,
+    rawProxyEnabled: Boolean,
+): Boolean {
     if (!isForeignOriginal(expense)) return false
     val originalAmount = expense.originalAmountMinor ?: return false
     val originalCodeKey = expenseOriginalRawCodeKeyOrNull(expense)
     if (originalCodeKey != null && CurrencyCode.fromStorageKeyOrNull(originalCodeKey) == null) {
-        return amountsByCurrency[CurrencyCode.JPY] == originalAmount
+        return rawProxyEnabled && amountsByCurrency[CurrencyCode.JPY] == originalAmount
     }
     val declared = CurrencyCode.fromStorageKeyOrNull(originalCodeKey) ?: expense.originalCurrencyCode
     return amountsByCurrency[declared] == originalAmount

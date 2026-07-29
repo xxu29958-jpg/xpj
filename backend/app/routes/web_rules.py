@@ -41,6 +41,7 @@ from app.services.classify_service import (
     validate_rule_application_preview,
 )
 from app.services.currency_common import (
+    currency_input_metadata,
     home_currency_code,
     major_amount_to_minor,
     minor_amount_value,
@@ -126,6 +127,8 @@ def web_rules(
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     # R15a-3：规则金额条件回显按 env home minor 语义（JPY 零小数不 ÷100；R13-3 未竟面）。
     ctx["minor_amount_label"] = lambda cents: minor_amount_value(cents, home_currency_code())
+    # 遗留 U17：金额条件输入控件同 env home minor 语义（JPY step=1、整数占位、符号标签）。
+    ctx["currency_input"] = currency_input_metadata(home_currency_code())
     ctx["rules"] = rules
     ctx["rule_applications"] = rule_applications
     ctx["preview"] = preview

@@ -10,6 +10,8 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CategoryRule, Expense
 from app.services.category_service import normalize_category
+from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_common import home_currency_code
 from app.services.merchant_alias_service import (
     canonical_merchant_for,
     enabled_merchant_alias_map,
@@ -186,6 +188,10 @@ def create_rule(
     amount_min_cents, amount_max_cents = _clean_amount_range(amount_min_cents, amount_max_cents)
     if not keyword or not category:
         raise AppError("invalid_request", status_code=422)
+    # P1-1：金额阈值携带币种语义（无币种列，引擎按绑定币种解释）—— 写前过
+    # ADR-0075 写门（R13-2 同模式）；纯关键词/分类规则不携币种语义，窄豁免不过门。
+    if amount_min_cents is not None or amount_max_cents is not None:
+        assert_currency_binding_consistent(db, home_currency_code())
     now = now_utc()
     rule = CategoryRule(
         tenant_id=tenant_id,
@@ -227,6 +233,10 @@ def update_rule(
     commit: bool = True,
 ) -> CategoryRule:
     """Update a rule through the DB row-version predicate."""
+    # P1-1：金额字段被改写（含改值/清空）同携币种语义 —— 写前过 ADR-0075 写门
+    # （同 create_rule；纯关键词/分类/启停/来源/标签改写窄豁免不过门）。
+    if amount_min_cents is not _UNSET or amount_max_cents is not _UNSET:
+        assert_currency_binding_consistent(db, home_currency_code())
     rule_id, rule_tenant_id, existing_min, existing_max = _snapshot_rule_update_context(
         rule
     )

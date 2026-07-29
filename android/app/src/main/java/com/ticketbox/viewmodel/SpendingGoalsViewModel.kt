@@ -3,7 +3,9 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
@@ -20,10 +22,13 @@ data class SpendingGoalsUiState(
     val goals: List<Goal> = emptyList(),
     val isLoading: Boolean = true,
     val loadError: UiText? = null,
+    /** 账本币种（遗留 U3，R14-6 共享同源裁决）：卡面金额显示口径；null=未确认落兜底展示。 */
+    val ledgerCurrency: CurrencyCode? = null,
 )
 
 class SpendingGoalsViewModel(
     private val reports: ReportsActions,
+    private val debts: DebtActions,
     initialMonth: String = YearMonth.now().toString(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(
@@ -52,6 +57,9 @@ class SpendingGoalsViewModel(
             )
         }
         loadJob = viewModelScope.launch {
+            // 遗留 U3：随每次 refresh 重解析账本币种（R14-6 共享 record×capability 同源
+            // 裁决）—— 卡面金额按账本口径显示（JPY 目标 1200 亮 ¥1,200 不 ¥12.00）。
+            _state.update { it.copy(ledgerCurrency = resolveLedgerCurrency(debts.listDebts().getOrNull())) }
             val result = reports.goals(month = requestedMonth, includeArchived = false)
             if (generation != loadGeneration || _state.value.month != requestedMonth) return@launch
             result.fold(

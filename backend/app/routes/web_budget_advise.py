@@ -15,6 +15,7 @@ from app.errors import AppError
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
+    _bound_home_currency_code,
     _list_ledger_options,
     _resolve_selected_ledger_id,
     _selected_option,
@@ -29,7 +30,6 @@ from app.services.budget_baseline_service import (
 )
 from app.services.currency_common import (
     currency_input_metadata,
-    home_currency_code,
     major_amount_to_minor,
     minor_amount_value,
 )
@@ -116,8 +116,9 @@ def _render_budget_advise(
         month=month_label,
         timezone_name="Asia/Shanghai",
     )
-    # R13-3：按 env home 的 minor 语义换算（JPY 零小数不 ×100；不再硬编 *100 round）。
-    home = home_currency_code()
+    # R13-3：按 env home 的 minor 语义换算（JPY 零小数不 ×100；不再硬编 *100 round）；
+    # 遗留 U20：渲染/解读口径改取绑定标记优先（漂移窗口按标记，不跟 live env 撒谎）。
+    home = _bound_home_currency_code(db)
     savings_cents = major_amount_to_minor(Decimal(str(savings_target_yuan)), home)
     reserved_cents = major_amount_to_minor(Decimal(str(reserved_buffer_yuan)), home)
     breakdown = compute_monthly_discretionary(

@@ -117,6 +117,9 @@ fun IncomePlanScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // 遗留 U3：卡面金额按 VM 已解析账本币种（JPY 计划 1200 亮 ¥1,200 不 ¥12.00）；
+    // 未确认落路由 display 兜底仅作展示（同 R14-2 标签口径）。
+    val displayCurrency = state.ledgerCurrency?.let { CurrencyDisplay(homeCurrency = it) } ?: currency
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val bodyState = incomePlanBodyState(
@@ -186,7 +189,7 @@ fun IncomePlanScreen(
                 IncomeTotalSummary(
                     totalCents = state.totalActiveAmountCents,
                     activeCount = state.activePlans.size,
-                    currency = currency,
+                    currency = displayCurrency,
                 )
             }
         }
@@ -200,7 +203,7 @@ fun IncomePlanScreen(
                 )
             }
             IncomePlanBodyState.Empty,
-            IncomePlanBodyState.Content -> incomePlanSections(state = state, currency = currency, viewModel = viewModel)
+            IncomePlanBodyState.Content -> incomePlanSections(state = state, currency = displayCurrency, viewModel = viewModel)
         }
     }
 
@@ -214,7 +217,7 @@ fun IncomePlanScreen(
         ) {
             AddIncomePlanSheet(
                 state = state,
-                currency = currency,
+                currency = displayCurrency,
                 actions = AddIncomePlanSheetActions(
                     onLabel = viewModel::updateDraftLabel,
                     onSourceType = viewModel::updateDraftSource,

@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
@@ -41,13 +43,17 @@ internal fun SpendingGoalViewContent(
     goal: Goal,
     canModify: Boolean,
     onArchive: () -> Unit,
+    ledgerCurrency: CurrencyCode? = null,
 ) {
+    // 遗留 U3：卡面金额按 VM 已解析账本币种（JPY 目标 1200 亮 ¥1,200 不 ¥12.00）；
+    // 未确认落 display-home 兜底仅作展示（同 R14-2 标签口径）。
+    val currency = ledgerCurrency?.let { CurrencyDisplay(homeCurrency = it) } ?: LocalCurrencyDisplay.current
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
-        SpendingGoalSummaryCard(goal)
-        SpendingGoalFactsCard(goal)
+        SpendingGoalSummaryCard(goal, currency)
+        SpendingGoalFactsCard(goal, currency)
         if (canModify && !goal.isArchived) {
             SpendingGoalArchiveCard(onArchive)
         }
@@ -55,8 +61,7 @@ internal fun SpendingGoalViewContent(
 }
 
 @Composable
-private fun SpendingGoalSummaryCard(goal: Goal) {
-    val currency = LocalCurrencyDisplay.current
+private fun SpendingGoalSummaryCard(goal: Goal, currency: CurrencyDisplay) {
     AppContentCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -135,8 +140,7 @@ private fun SpendingGoalMetric(
 }
 
 @Composable
-private fun SpendingGoalFactsCard(goal: Goal) {
-    val currency = LocalCurrencyDisplay.current
+private fun SpendingGoalFactsCard(goal: Goal, currency: CurrencyDisplay) {
     AppContentCard {
         Text(
             text = stringResource(R.string.spending_goal_details_section),

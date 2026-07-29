@@ -163,6 +163,7 @@ private fun SpendingGoalsBody(
         )
         else -> SpendingGoalListCard(
             goals = state.goals,
+            ledgerCurrency = state.ledgerCurrency,
             onOpenGoal = onOpenGoal,
         )
     }

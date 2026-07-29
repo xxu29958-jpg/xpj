@@ -26,7 +26,9 @@ from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
 from app.services import backup_status_service, bill_split_service, web_stats_service
 from app.services import owner_console_service as owner_svc
+from app.services.app_meta_service import get_value
 from app.services.budget_service import get_monthly_budget
+from app.services.currency_binding_service import INSTALLATION_HOME_CURRENCY_KEY
 from app.services.currency_common import (
     currency_input_metadata,
     minor_amount_label,
@@ -54,6 +56,13 @@ from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[csrf_context])
+
+
+def _bound_home_currency_code(db: Session) -> str:
+    """读路径金额口径（遗留 U10+U20）：AppMeta 绑定标记优先 —— 有标记≠env（漂移窗口，
+    写面 ADR-0075 门已拒新写）时按标记显示，不跟 live env 撒谎；无标记回落 env
+    （legacy CNY 安装本就 env=CNY，语义一致；JPY 新装首写前的展示同 R13-3 口径）。"""
+    return get_value(db, INSTALLATION_HOME_CURRENCY_KEY) or home_currency_code()
 # ADR-0038 PR-2e: register ``to_iso`` so /web templates can render
 # ORM ``updated_at`` values (datetime) into the canonical ISO-Z form
 # the hidden ``expected_row_version`` form fields use. Without this

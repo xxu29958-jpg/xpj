@@ -44,7 +44,7 @@ internal fun SpendingGoalsRoute(
         models = SpendingGoalRouteModels(
             list = viewModel(
                 key = SpendingGoalsViewModelKey,
-                factory = spendingGoalsViewModelFactory(screenFactory.reportsRepository),
+                factory = spendingGoalsViewModelFactory(screenFactory.reportsRepository, screenFactory.debtRepository),
             ),
             detail = viewModel(
                 key = SpendingGoalDetailViewModelKey,
