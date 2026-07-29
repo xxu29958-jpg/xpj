@@ -613,6 +613,27 @@ class IncomePlanViewModelCurrencyRelatchTest {
         advanceUntilIdle()
         assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
     }
+
+    @Test
+    fun failedResolutionKeepsPreviouslyResolvedCurrency() = runTest(dispatcher) {
+        // #258-R3 项1：解析失败不覆写上次已确认值 —— JPY 解析成功后 resetDraft 触发
+        // 的重解析失败，ledgerCurrency 保持 JPY（卡面不打回 ¥12.00）。
+        val debts = DeferredIncomeDebtActions()
+        val viewModel = IncomePlanViewModel(RelatchIncomeActions(), debts)
+        advanceUntilIdle()
+
+        debts.calls[0].complete(
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY")),
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+
+        viewModel.resetDraft()
+        runCurrent()
+        debts.calls[1].complete(Result.failure(IllegalStateException("offline")))
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+    }
 }
 
 /** 项1 钉的最小 IncomePlanActions（嵌套 FakeRepository 为类内私有不可复用）。 */

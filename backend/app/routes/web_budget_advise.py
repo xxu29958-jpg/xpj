@@ -111,15 +111,11 @@ def _render_budget_advise(
         month=month_label,
     )
     fixed = total_active_recurring_monthly_cents(db, tenant_id=selected)
-    spent = total_confirmed_spent_cents(
-        db,
-        tenant_id=selected,
-        month=month_label,
-        timezone_name="Asia/Shanghai",
-    )
-    # R13-3：按 env home 的 minor 语义换算（JPY 零小数不 ×100；不再硬编 *100 round）；
-    # 遗留 U20：渲染/解读口径改取绑定标记优先（漂移窗口按标记，不跟 live env 撒谎）。
+    spent = total_confirmed_spent_cents(db, tenant_id=selected, month=month_label, timezone_name="Asia/Shanghai")
+    # R13-3 + 遗留 U20/#258-R3 项2：渲染/解读口径事实→标记→env（多码混存 fail closed）。
     home = _bound_home_currency_code(db)
+    if home is None:
+        raise AppError("currency_binding_drift", status_code=409)
     savings_cents = major_amount_to_minor(Decimal(str(savings_target_yuan)), home)
     reserved_cents = major_amount_to_minor(Decimal(str(reserved_buffer_yuan)), home)
     breakdown = compute_monthly_discretionary(

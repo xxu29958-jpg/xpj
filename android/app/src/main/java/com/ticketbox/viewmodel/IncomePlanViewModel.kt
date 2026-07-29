@@ -386,16 +386,19 @@ class IncomePlanViewModel(
 /**
  * （重新）解析账本币种（#258-R2 项1，镜像 BudgetViewModel；文件级扩展 ——
  * 类体贴 detekt 函数门）：代际守卫 last-writer-wins —— 账本切换时旧 listDebts
- * 结果不得后于新账本落定覆写。
+ * 结果不得后于新账本落定覆写。#258-R3 项1：仅成功响应才更新 —— 瞬时请求失败
+ * 保留上次已确认值（首次失败=null 维持禁写语义）。
  */
 private suspend fun IncomePlanViewModel.refreshLedgerCurrency() {
     val generation = ++currencyResolutionGeneration
-    val resolved = resolveLedgerCurrency(debts.listDebts().getOrNull())
-    _state.update {
-        if (generation != currencyResolutionGeneration) return@update it
-        it.copy(
-            ledgerCurrency = resolved,
-            addDraft = it.addDraft.copy(homeCurrency = resolved),
-        )
+    debts.listDebts().onSuccess { page ->
+        val resolved = resolveLedgerCurrency(page)
+        _state.update {
+            if (generation != currencyResolutionGeneration) return@update it
+            it.copy(
+                ledgerCurrency = resolved,
+                addDraft = it.addDraft.copy(homeCurrency = resolved),
+            )
+        }
     }
 }

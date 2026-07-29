@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import java.lang.reflect.Proxy
 import kotlin.test.AfterTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -122,6 +123,30 @@ class SpendingGoalsViewModelTest {
         advanceUntilIdle()
         assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
     }
+
+    @Test
+    fun goalListRendersWhileCurrencyResolutionIsPending() = runTest(dispatcher) {
+        // #258-R3 项3：债务端挂起不阻塞目标列表（币种解析与列表并行）—— 列表渲染完成后
+        // 币种后落定（JPY）。
+        val gate = CompletableDeferred<Result<DebtListPage>>()
+        val debts = HangingGoalDebtActions(gate)
+        val viewModel = SpendingGoalsViewModel(
+            RecordingSpendingGoalActions(goalsResult = Result.success(listOf(spendingGoal()))),
+            debts,
+            initialMonth = "2026-07",
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("goal-1"), viewModel.state.value.goals.map { it.publicId })
+        assertFalse(viewModel.state.value.isLoading)
+        assertEquals(null, viewModel.state.value.ledgerCurrency)
+
+        gate.complete(
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY")),
+        )
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, viewModel.state.value.ledgerCurrency)
+    }
 }
 
 /** 可断网的账本币种 fake（项4 钉）：offline 时 listDebts 失败。 */
@@ -133,6 +158,15 @@ private class FlakyDebtActions(
 
     override suspend fun listDebts(): Result<DebtListPage> =
         if (online) Result.success(page) else Result.failure(IllegalStateException("offline"))
+}
+
+/** 挂起闸门的账本币种 fake（项3 钉）：listDebts 等待外部放行。 */
+private class HangingGoalDebtActions(
+    private val gate: CompletableDeferred<Result<DebtListPage>>,
+) : DebtActions by unsupportedGoalDebtActions() {
+    override fun canModifyLedger(): Boolean = true
+
+    override suspend fun listDebts(): Result<DebtListPage> = gate.await()
 }
 
 @Suppress("UNCHECKED_CAST")

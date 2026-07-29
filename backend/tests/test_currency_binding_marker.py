@@ -333,3 +333,56 @@ def test_csv_apply_all_invalid_batch_leaves_no_marker(monkeypatch, *, identity) 
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
+
+
+def test_read_home_resolution_prefers_facts_over_env(monkeypatch) -> None:
+    # #258-R3 项2 事实臂：legacy 无标记 + CNY 事实 + env=JPY → 读路径按事实 CNY
+    # （旧实现 marker→env 会按 JPY 撒谎）。
+    from app.services.currency_binding_service import resolve_read_home_currency_code
+
+    _seed_cny_expense_fact_row()
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            assert resolve_read_home_currency_code(db) == "CNY"
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_read_home_resolution_marker_beats_env_when_no_facts() -> None:
+    # #258-R3 项2 标记臂：无事实 + 标记=JPY + env=CNY → 按标记 JPY。
+    from app.services.currency_binding_service import resolve_read_home_currency_code
+
+    with SessionLocal() as db:
+        db.add(AppMeta(key=INSTALLATION_HOME_CURRENCY_KEY, value="JPY", updated_at=now_utc()))
+        db.commit()
+        assert resolve_read_home_currency_code(db) == "JPY"
+
+
+def test_read_home_resolution_env_fallback_and_none_on_mixed(monkeypatch) -> None:
+    # #258-R3 项2：无任何证据 → env；多码混存（drift 异常态）→ None（fail closed）。
+    from app.models import Debt
+    from app.services.currency_binding_service import resolve_read_home_currency_code
+
+    with SessionLocal() as db:
+        assert resolve_read_home_currency_code(db) == "CNY"
+        db.add(Expense(tenant_id="owner", home_currency_code="CNY"))
+        db.add(
+            Debt(
+                tenant_id="owner",
+                owner_account_id=1,
+                created_by_account_id=1,
+                direction="i_owe",
+                counterparty_type="external",
+                counterparty_account_id=None,
+                principal_amount_cents=100,
+                home_currency_code="JPY",
+                status="open",
+                source_type="manual",
+                source_id=None,
+            )
+        )
+        db.commit()
+        assert resolve_read_home_currency_code(db) is None

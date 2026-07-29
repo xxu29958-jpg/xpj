@@ -146,8 +146,10 @@ def page_income_plans(
         page_title="收入记录",
     )
     # R13-3：金额渲染/输入步进随 env home（JPY 零小数无小数位、不 ÷100）；
-    # 遗留 U10：读路径口径改取绑定标记优先（漂移窗口按标记显示，不跟 live env 撒谎）。
+    # 遗留 U10 + #258-R3 项2：读路径口径事实→标记→env（多码混存 fail closed）。
     home = _bound_home_currency_code(db)
+    if home is None:
+        raise AppError("currency_binding_drift", status_code=409)
     # #258-R2 项3：页面符号同绑定口径（marker≠env 时 USD 数值不冠 ¥）。
     ctx["home_currency_symbol"] = _currency_symbol(home)
     ctx.update(

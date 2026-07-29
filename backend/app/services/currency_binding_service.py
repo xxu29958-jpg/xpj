@@ -38,7 +38,7 @@ from app.models import (
     RepaymentDraft,
 )
 from app.services.app_meta_service import get_value
-from app.services.currency_common import home_currency_code
+from app.services.currency_common import home_currency_code, home_currency_code_or_none
 from app.services.time_service import now_utc
 
 # ADR-0075 的最小绑定标记（0061 C02 持久绑定的最小前驱：write-once 单行键，无
@@ -113,16 +113,37 @@ def assert_rule_amount_write_binding(db: Session, carries_amount: bool) -> None:
 
 
 def assert_rule_restore_binding(db: Session, carries_amount: bool) -> None:
-    """带金额规则的墓碑恢复视同携币种语义写（P1-1 + #258-R2 项7）—— 墓碑按遗留无绑定
-    行计：首写时软删对门不可见（deleted_at 过滤）不得成为绕过通道；无币种列无法区分
-    CNY/JPY 时代墓碑，env≠CNY 一律拒（JPY 时代墓碑恢复被拒为保守代价），env=CNY 走主门
-    （drift 照拒）。纯关键词规则墓碑豁免。"""
+    """带金额规则的墓碑恢复视同携币种语义写（P1-1 + #258-R2 项7 + #258-R3 项4 收窄）——
+    先读绑定标记：标记==env（安装绑定稳定，墓碑系标记后创建、币种无歧义）→ 走主门裁决；
+    标记缺失或≠env → 墓碑时代不可判（无币种列、首写时软删对门不可见不得成为绕过通道）
+    → 保守拒（unresolved）。纯关键词规则墓碑豁免。"""
     if not carries_amount:
         return
     home = home_currency_code()
-    if home != DEFAULT_HOME_CURRENCY_CODE:
+    if get_value(db, INSTALLATION_HOME_CURRENCY_KEY) != home:
         raise AppError("currency_binding_unresolved", status_code=409)
     assert_currency_binding_consistent(db, home)
+
+
+def resolve_read_home_currency_code(db: Session) -> str | None:
+    """读路径金额口径（#258-R3 项2，与写时主门同源的裁决序）：绑定事实（Debt/Expense/
+    Proposal/RepaymentDraft 四表 distinct 恰一码 —— legacy 无标记安装的 record 权威臂，
+    标记只在新受门写时补盖）→ 绑定标记 → env；多码混存（drift 异常态）→ None
+    （调用方 fail closed，拒绝显示金额）。展开式四表 distinct（N+1 审计规避；
+    渲染路径每请求至多一次）；事实臂只读不补盖（标记 claim 是写路径职责）。"""
+    codes: set[str] = set()
+    codes.update(db.scalars(select(Debt.home_currency_code).distinct()))
+    codes.update(db.scalars(select(Expense.home_currency_code).distinct()))
+    codes.update(db.scalars(select(MemberRepaymentProposal.home_currency_code).distinct()))
+    codes.update(db.scalars(select(RepaymentDraft.home_currency_code).distinct()))
+    if len(codes) > 1:
+        return None
+    if codes:
+        return codes.pop()
+    marker = get_value(db, INSTALLATION_HOME_CURRENCY_KEY)
+    if marker is not None:
+        return marker
+    return home_currency_code_or_none()
 
 
 def _claim_binding_marker(db: Session, home: str) -> None:
