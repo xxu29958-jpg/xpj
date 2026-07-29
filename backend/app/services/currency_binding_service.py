@@ -45,6 +45,11 @@ from app.services.time_service import now_utc
 # revision 握手——首次以 env 盖章的写在同 key 上 claim，其后写只读裁决）。
 INSTALLATION_HOME_CURRENCY_KEY = "installation_home_currency"
 
+# 分类规则的金额条件谓词（P1-1/#258-R4 证据集与写门共用）：任一界非空即携币种语义。
+_RULE_AMOUNT_CONDITION = (CategoryRule.amount_min_cents.isnot(None)) | (
+    CategoryRule.amount_max_cents.isnot(None)
+)
+
 
 # Tables that participate in home-currency semantics. Repayments are covered
 # by their parent Debt's frozen currency, so they are not queried separately.
@@ -81,16 +86,23 @@ def assert_currency_binding_consistent(db: Session, home: str) -> None:
         or db.scalar(select(Goal.id).limit(1)) is not None
         or db.scalar(select(MonthlyIncomePlan.id).limit(1)) is not None
         or db.scalar(select(RecurringItem.id).limit(1)) is not None
-        # P1-1：带金额条件的分类规则同携币种语义（amount_*_cents 无币种列，
+        # P1-1：带金额条件的在册分类规则同携币种语义（amount_*_cents 无币种列，
         # 引擎按绑定币种解释）—— 计入无绑定证据集；纯关键词/分类规则与已删
         # 墓碑窄豁免（不携币种语义，不拖死首写）。
         or db.scalar(
             select(CategoryRule.id)
             .where(CategoryRule.deleted_at.is_(None))
-            .where(
-                (CategoryRule.amount_min_cents.isnot(None))
-                | (CategoryRule.amount_max_cents.isnot(None))
-            )
+            .where(_RULE_AMOUNT_CONDITION)
+            .limit(1)
+        )
+        is not None
+        # #258-R4：带金额条件的**墓碑**规则同计 —— 墓碑在首写门视野外会开「软删后认领
+        # 新绑定、再按 R3-4（标记==env）恢复 legacy 阈值进新引擎」的反向洞（规则行无
+        # provenance，标记前/后时代不可判）；纯关键词墓碑继续豁免。
+        or db.scalar(
+            select(CategoryRule.id)
+            .where(CategoryRule.deleted_at.is_not(None))
+            .where(_RULE_AMOUNT_CONDITION)
             .limit(1)
         )
         is not None

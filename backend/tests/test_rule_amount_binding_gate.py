@@ -154,10 +154,9 @@ def test_keyword_rule_write_skips_env_read_when_env_misconfigured(monkeypatch) -
         get_settings.cache_clear()
 
 
-def test_amount_rule_tombstone_restore_follows_marker_env_parity(monkeypatch) -> None:
-    # #258-R2 项7 + #258-R3 项4：标记==env（JPY 标记安装，墓碑系标记后创建、币种无歧义）
-    # → 金额墓碑恢复放行（过主门）；标记缺失 + env=JPY → 保守拒（unresolved）；
-    # 纯关键词墓碑豁免。
+def test_amount_rule_tombstone_restore_rejected_without_marker(monkeypatch) -> None:
+    # #258-R2 项7 + #258-R3/R4：无标记 + env=JPY → 金额墓碑恢复拒（unresolved）；
+    # 纯关键词墓碑豁免不依赖标记，恢复放行。（标记==env 的放行回归见 ③。）
     with SessionLocal() as db:
         amount_rule = CategoryRule(
             tenant_id="owner",
@@ -184,16 +183,86 @@ def test_amount_rule_tombstone_restore_follows_marker_env_parity(monkeypatch) ->
     get_settings.cache_clear()
     try:
         with SessionLocal() as db:
-            # 标记缺失：时代不可判 → 拒（墓碑仍在）。
             with pytest.raises(AppError) as excinfo:
                 undo_delete_rule(db, tenant_id="owner", rule_id=amount_rule_id)
             assert excinfo.value.error == "currency_binding_unresolved"
-            # 首写认领标记=JPY（墓碑不可见期）→ 标记==env → 恢复放行。
-            assert_currency_binding_consistent(db, "JPY")
-            restored = undo_delete_rule(db, tenant_id="owner", rule_id=amount_rule_id)
-            assert restored.deleted_at is None
             restored_keyword = undo_delete_rule(db, tenant_id="owner", rule_id=keyword_rule_id)
             assert restored_keyword.deleted_at is None
+    finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_amount_tombstone_blocks_first_jpy_binding(monkeypatch) -> None:
+    # #258-R4 ①：legacy 安装仅含已软删金额规则（墓碑）→ env=JPY 首写拒 unresolved
+    # （墓碑计入 unresolved 证据集 —— 标记永不覆盖 legacy 墓碑认领）。
+    with SessionLocal() as db:
+        db.add(
+            CategoryRule(
+                tenant_id="owner",
+                keyword="交通",
+                category="交通",
+                enabled=True,
+                priority=100,
+                amount_min_cents=1200,
+                deleted_at=now_utc(),
+            )
+        )
+        db.commit()
+        monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+        get_settings.cache_clear()
+        try:
+            with pytest.raises(AppError) as excinfo:
+                assert_currency_binding_consistent(db, "JPY")
+            assert excinfo.value.error == "currency_binding_unresolved"
+            assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
+        finally:
+            monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+            get_settings.cache_clear()
+
+
+def test_amount_tombstone_self_heals_marker_on_cny() -> None:
+    # #258-R4 ②：同情形 env=CNY → 放行 + 自愈补标=CNY（legacy CNY 时代整数定义上即 CNY）。
+    with SessionLocal() as db:
+        db.add(
+            CategoryRule(
+                tenant_id="owner",
+                keyword="交通",
+                category="交通",
+                enabled=True,
+                priority=100,
+                amount_min_cents=1200,
+                deleted_at=now_utc(),
+            )
+        )
+        db.commit()
+        assert_currency_binding_consistent(db, "CNY")
+        assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) == "CNY"
+
+
+def test_tombstone_restore_passes_when_marker_matches_env(monkeypatch) -> None:
+    # #258-R4 ③（R3-4 回归）：JPY 标记安装创建金额规则 → 删除 → undo 恢复放行
+    # （标记==env → 走主门，墓碑系标记后创建、币种无歧义）。
+    from app.services.rule_service import delete_rule
+
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        with SessionLocal() as db:
+            rule = create_rule(
+                db,
+                tenant_id="owner",
+                keyword="交通",
+                category="交通",
+                enabled=True,
+                priority=100,
+                amount_min_cents=1200,
+            )
+            assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) == "JPY"
+            delete_rule(db, rule, expected_row_version=rule.row_version)
+        with SessionLocal() as db:
+            restored = undo_delete_rule(db, tenant_id="owner", rule_id=rule.id)
+            assert restored.deleted_at is None
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()

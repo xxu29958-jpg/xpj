@@ -104,10 +104,12 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
         occurrences=1,
         reason=(
             "Same installation-global drift gate (P1-1: amount-carrying category "
-            "rules join the unbound evidence set — their amount_*_cents thresholds "
-            "have no currency column and the rule engine reads them in the bound "
-            "currency, so the check must see them across ALL ledgers; only "
-            "non-tombstoned rules with an amount condition count)."
+            "rules join the unbound evidence set; #258-R4: amount-carrying "
+            "tombstones join too, closing the delete-then-rebind-then-restore "
+            "hole — amount_*_cents thresholds have no currency column and the "
+            "rule engine reads them in the bound currency, so the check must see "
+            "them across ALL ledgers; live rows and tombstones alike, "
+            "amount-carrying only, keyword-only rules exempt)."
         ),
     ),
     ScopeExemption(
