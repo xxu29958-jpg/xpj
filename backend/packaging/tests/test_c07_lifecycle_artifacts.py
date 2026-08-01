@@ -532,6 +532,13 @@ function New-TestC07StageEvidence {{
         -ProducerEvidence $producer
 }}
 {identity_setup}
+$script:testLifecycleLockPath = Get-TicketboxLifecycleLockPath
+function Get-TicketboxLifecycleLockPath {{
+    # The isolated harness root was already created and ACL-validated above.
+    # Keep its exact path stable for this process instead of repeating that
+    # unrelated installation-safety ceremony for every C07 artifact lookup.
+    return $script:testLifecycleLockPath
+}}
 """
     return prefix, data_root, install_dir, manifest
 

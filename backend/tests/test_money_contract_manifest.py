@@ -22,6 +22,8 @@ from app.money_contract import (
     MoneySign,
     ensure_money_minor,
     fold_sum_to_int,
+    is_canonical_money_minor_text,
+    parse_canonical_money_minor,
     projection_sum_to_int,
     projection_values_average_to_int,
     round_minor_ratio_half_up,
@@ -70,6 +72,31 @@ from tests._infra.c07_money_contract_manifest import (
 def test_public_money_contract_reexports_focused_contract_modules() -> None:
     assert money_contract_manifest.MONEY_COLUMNS_V1 is MONEY_COLUMNS_V1
     assert money_contract_types.MoneySign is MoneySign
+
+
+def test_canonical_money_minor_text_is_linear_and_keeps_syntax_separate_from_bounds() -> None:
+    for value in ("0", "1", "10", str(MONEY_MINOR_MAX), str(-MONEY_MINOR_MAX)):
+        assert is_canonical_money_minor_text(value)
+
+    for value in (None, 0, "", "-", "+1", "-0", "00", "01", "-01", " 1", "1 ", "1.0", "1e3", "９"):
+        assert not is_canonical_money_minor_text(value)
+
+    assert not is_canonical_money_minor_text("9" * 1_000_000)
+    assert (
+        parse_canonical_money_minor(
+            str(-MONEY_MINOR_MAX),
+            sign=MoneySign.SIGNED,
+            label="amount",
+        )
+        == -MONEY_MINOR_MAX
+    )
+    assert is_canonical_money_minor_text(str(MONEY_MINOR_MAX + 1))
+    with pytest.raises(AppError):
+        parse_canonical_money_minor(
+            str(MONEY_MINOR_MAX + 1),
+            sign=MoneySign.SIGNED,
+            label="amount",
+        )
 
 
 def test_v1_manifest_is_frozen() -> None:

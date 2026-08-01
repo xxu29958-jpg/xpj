@@ -431,7 +431,10 @@ def test_c07_heartbeat_helper_uses_minimal_real_ps51_environment(
         pytest.skip("Windows C07 heartbeat helper environment contract")
 
     installation_safety = PACKAGING / "windows_installation_safety.ps1"
+    lifecycle_lock = PACKAGING / "windows_lifecycle_lock.ps1"
+    c07_lifecycle = PACKAGING / "windows_c07_lifecycle.ps1"
     database_safety = PACKAGING / "windows_database_safety.ps1"
+    heartbeat_helper = PACKAGING / "windows_c07_heartbeat_helper.ps1"
     probe = tmp_path / "heartbeat-helper-environment-probe.ps1"
     probe.write_text(
         """
@@ -482,6 +485,80 @@ $missingModulePaths = @(
         "PSModulePath": "C:\\synthetic-ambient-module-path",
     }
     for index, coordinator_engine in enumerate(powershell_contract_engines()):
+        no_mode = subprocess.run(  # noqa: S603
+            [
+                coordinator_engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(heartbeat_helper),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=10,
+        )
+        assert no_mode.returncode != 0
+        assert "-TicketboxC07HeartbeatHelper" in no_mode.stderr
+        profile_probe = tmp_path / f"heartbeat-dependency-profile-{index}.ps1"
+        profile_probe.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(installation_safety)}'
+. '{_ps_literal(lifecycle_lock)}'
+. '{_ps_literal(c07_lifecycle)}'
+$fullFailure = ''
+try {{ Assert-TicketboxC07Dependencies }}
+catch {{ $fullFailure = $_.Exception.Message }}
+if ($fullFailure -notlike '*full*Assert-TicketboxC07LiveHostConnection*') {{
+    throw "full dependency profile did not fail closed: $fullFailure"
+}}
+. '{_ps_literal(c07_lifecycle)}' `
+    -TicketboxC07DependencyProfile 'durable_heartbeat'
+Assert-TicketboxC07Dependencies
+Remove-Item `
+    -LiteralPath Function:\\Read-TicketboxInstalledBuildManifest `
+    -Force
+$durableFailure = ''
+try {{ Assert-TicketboxC07Dependencies }}
+catch {{ $durableFailure = $_.Exception.Message }}
+if (
+    $durableFailure -notlike
+        '*durable_heartbeat*Read-TicketboxInstalledBuildManifest*'
+) {{
+    throw "durable dependency profile did not fail closed: $durableFailure"
+}}
+"dependency_profiles_fail_closed"
+""",
+            encoding="utf-8-sig",
+        )
+        profile_result = subprocess.run(  # noqa: S603
+            [
+                coordinator_engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(profile_probe),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=15,
+        )
+        assert profile_result.returncode == 0, (
+            profile_result.stdout + profile_result.stderr
+        )
+        assert "dependency_profiles_fail_closed" in profile_result.stdout
         harness = tmp_path / f"heartbeat-helper-environment-{index}.ps1"
         ambient_assignment = "\n".join(
             "[Environment]::SetEnvironmentVariable("
@@ -597,6 +674,7 @@ def test_production_c07_heartbeat_operation_is_bounded_and_fully_reaped(
         pytest.skip("Windows C07 durable heartbeat contract")
 
     database_safety = PACKAGING / "windows_database_safety.ps1"
+    heartbeat_helper = PACKAGING / "windows_c07_heartbeat_helper.ps1"
     recovery_generation = PACKAGING / "windows_c07_recovery_generation.ps1"
     tree_script = tmp_path / "production-heartbeat-tree.py"
     tree_script.write_text(
@@ -722,7 +800,7 @@ try {{
     $productionHeartbeat =
         Get-TicketboxC07RecoveryHeartbeatOperation $context
     function Get-TicketboxC07HeartbeatHelperScriptPath {{
-        return '{_ps_literal(recovery_generation)}'
+        return '{_ps_literal(heartbeat_helper)}'
     }}
     $before = [int64](
         Read-TicketboxC07Heartbeat $authority
@@ -984,7 +1062,7 @@ try {{
 
     # The helper is an increment-only lease renewer: it cannot recreate a
     # deleted heartbeat artifact or establish a parallel authority.
-    $script:testHeartbeatHelperPath = '{_ps_literal(recovery_generation)}'
+    $script:testHeartbeatHelperPath = '{_ps_literal(heartbeat_helper)}'
     $heartbeatPath = Get-TicketboxC07HeartbeatPath (
         [string]$authority.Receipt.operation_id
     )
@@ -1272,6 +1350,8 @@ Write-TicketboxLifecycleCoordinationArtifact `
 
 def test_bounded_native_process_uses_suspended_job_assignment_before_resume() -> None:
     database_safety = _read("windows_database_safety.ps1")
+    heartbeat_helper = _read("windows_c07_heartbeat_helper.ps1")
+    c07_lifecycle = _read("windows_c07_lifecycle.ps1")
     recovery_generation = _read("windows_c07_recovery_generation.ps1")
     native_start = database_safety[
         database_safety.index("public static TicketboxBoundedNativeProcess Start(") :
@@ -1322,7 +1402,41 @@ def test_bounded_native_process_uses_suspended_job_assignment_before_resume() ->
     assert "[Environment]::FailFast(" not in database_safety
     assert "DatabaseAuthorityCredential" not in database_safety
     assert "database_authority_credential" not in recovery_generation
-    assert "Write-TicketboxC07DurableHeartbeat" in recovery_generation
+    assert "database_authority_credential" not in heartbeat_helper
+    assert "DATABASE_URL" not in heartbeat_helper
+    assert "windows_c07_recovery_generation.ps1" not in heartbeat_helper
+    assert "windows_database_safety.ps1" not in heartbeat_helper
+    assert "windows_service_contract.ps1" not in heartbeat_helper
+    assert "windows_service_lifecycle.ps1" not in heartbeat_helper
+    assert "windows_bundled_database.ps1" not in heartbeat_helper
+    assert "windows_c07_database.ps1" not in heartbeat_helper
+    assert "windows_installation_safety.ps1" in heartbeat_helper
+    assert "windows_lifecycle_lock.ps1" in heartbeat_helper
+    assert "windows_c07_lifecycle.ps1" in heartbeat_helper
+    assert '-TicketboxC07DependencyProfile "durable_heartbeat"' in heartbeat_helper
+    assert '[ValidateSet("full", "durable_heartbeat")]' in c07_lifecycle
+    assert '$TicketboxC07DependencyProfile = "full"' in c07_lifecycle
+    assert "function Assert-TicketboxC07FullDependencies" in c07_lifecycle
+    assert (
+        "function Assert-TicketboxC07DurableHeartbeatDependencies"
+        in c07_lifecycle
+    )
+    for forbidden_definition in (
+        "Assert-TicketboxC07LiveHostConnection",
+        "Get-TicketboxC07DatabaseIdentity",
+        "Get-TicketboxExpectedRuntimeProcessIds",
+        "Get-TicketboxListeningProcessIds",
+        "Get-TicketboxServiceProcessId",
+        "Get-TicketboxServiceStartPolicy",
+        "Get-TicketboxServiceState",
+        "Invoke-TicketboxC07Sql",
+        "Resolve-TicketboxC07DatabaseHostAuthority",
+        "Disable-TicketboxOwnedServiceIfExists",
+    ):
+        assert f"function {forbidden_definition}" not in heartbeat_helper
+    assert "Write-TicketboxC07DurableHeartbeat" in heartbeat_helper
+    assert "function Write-TicketboxC07DurableHeartbeat" not in heartbeat_helper
+    assert "TicketboxC07HeartbeatHelper" not in recovery_generation
     assert "Process.Start()" not in database_safety
     assert ".Kill()" not in database_safety
     assert "$process.WaitForExit()" not in database_safety

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
@@ -12,6 +10,7 @@ from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
+from app.money_carrier import MAX_MAJOR_DECIMAL_TEXT_LENGTH
 from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_write import (
     PROPOSAL_CONFIRM_AMOUNT_FIELD,
@@ -45,8 +44,6 @@ from app.services.debt_proposal_command_service import (
 from app.services.debt_service import get_participant_debt_response
 
 router = APIRouter(prefix="/web/debts", tags=["web"])
-
-_LEGACY_ALIAS_DECIMAL = re.compile(r"(?P<sign>-?)(?P<whole>[0-9]+)(?P<fraction>\.[0-9]+)?\Z")
 
 _PROPOSAL_ERROR_MESSAGES = {
     "debt_already_voided": "这件事已经不用记啦。",
@@ -202,11 +199,34 @@ def _canonical_alias_comparison_text(raw: str) -> str:
     single-field submission, whitespace, or exponent notation.
     """
 
-    match = _LEGACY_ALIAS_DECIMAL.fullmatch(raw)
-    if match is None:
+    # Keep work bounded by the canonical wire limit before scanning an
+    # attacker-controlled form value. Returning the original text makes the
+    # shared parser reject an overlong carrier with its existing 422 contract.
+    if not raw or len(raw) > MAX_MAJOR_DECIMAL_TEXT_LENGTH:
         return raw
-    whole = match.group("whole").lstrip("0") or "0"
-    return f"{match.group('sign')}{whole}{match.group('fraction') or ''}"
+
+    sign_end = 1 if raw[0] == "-" else 0
+    index = sign_end
+    while index < len(raw) and "0" <= raw[index] <= "9":
+        index += 1
+    whole_end = index
+    if whole_end == sign_end:
+        return raw
+
+    if index < len(raw):
+        if raw[index] != "." or index + 1 == len(raw):
+            return raw
+        index += 1
+        while index < len(raw) and "0" <= raw[index] <= "9":
+            index += 1
+        if index != len(raw):
+            return raw
+
+    first_significant = sign_end
+    while first_significant < whole_end and raw[first_significant] == "0":
+        first_significant += 1
+    whole = raw[first_significant:whole_end] or "0"
+    return f"{raw[:sign_end]}{whole}{raw[whole_end:]}"
 
 
 def _confirm_amount_raw(confirmed_amount_major: str, legacy_amount_major: str, *, currency_code: str) -> str:

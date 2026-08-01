@@ -1058,7 +1058,41 @@ function Test-TicketboxC07SuperuserRecoverySecurityEquals {
         [Parameter(Mandatory = $true)][byte[]]$Right
     )
 
-    return Test-TicketboxByteArrayEquals -Left $Left -Right $Right
+    if (Test-TicketboxByteArrayEquals -Left $Left -Right $Right) {
+        return $true
+    }
+
+    try {
+        # Windows may recompute the four DEFAULTED provenance bits when the
+        # captured owner/group/DACL/SACL are applied to a new file.  Normalize
+        # only those non-authoritative bits; every ACL byte and other control
+        # flag remains part of the equality contract.
+        $ignoredFlags =
+            [Security.AccessControl.ControlFlags]::OwnerDefaulted -bor
+            [Security.AccessControl.ControlFlags]::GroupDefaulted -bor
+            [Security.AccessControl.ControlFlags]::DiscretionaryAclDefaulted -bor
+            [Security.AccessControl.ControlFlags]::SystemAclDefaulted
+        $ignoredMask = [int]$ignoredFlags
+        $comparable = @()
+        foreach ($bytes in @($Left, $Right)) {
+            $descriptor = New-Object `
+                Security.AccessControl.RawSecurityDescriptor($bytes, 0)
+            $descriptor.SetFlags(
+                [Security.AccessControl.ControlFlags](
+                    [int]$descriptor.ControlFlags -band (-bnot $ignoredMask)
+                )
+            )
+            $normalized = New-Object byte[] $descriptor.BinaryLength
+            $descriptor.GetBinaryForm($normalized, 0)
+            $comparable += ,$normalized
+        }
+        return Test-TicketboxByteArrayEquals `
+            -Left $comparable[0] `
+            -Right $comparable[1]
+    }
+    catch {
+        return $false
+    }
 }
 
 function Get-TicketboxC07SuperuserRecoveryCreationSecuritySddl {

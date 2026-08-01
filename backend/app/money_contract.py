@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Iterable
 from decimal import Decimal
 
@@ -44,18 +43,18 @@ from app.money_contract_types import (
 
 logger = logging.getLogger(__name__)
 
-_CANONICAL_BASE10_INTEGER = re.compile(r"(?:0|-?[1-9][0-9]*)\Z")
 _MAX_C07_INTEGER_TEXT_LENGTH = len(str(-MONEY_MINOR_MAX))
 
 
 def is_canonical_money_minor_text(value: object) -> bool:
     """Return whether ``value`` is the exact base-10 integer wire form."""
 
-    return (
-        type(value) is str
-        and len(value) <= _MAX_C07_INTEGER_TEXT_LENGTH
-        and _CANONICAL_BASE10_INTEGER.fullmatch(value) is not None
-    )
+    if type(value) is not str or not value or len(value) > _MAX_C07_INTEGER_TEXT_LENGTH:
+        return False
+    if value == "0":
+        return True
+    digits = value[1:] if value[0] == "-" else value
+    return bool(digits) and digits[0] in "123456789" and digits.isascii() and digits.isdecimal()
 
 
 def c07_entry_bounds(sign: MoneySign) -> tuple[int, int]:

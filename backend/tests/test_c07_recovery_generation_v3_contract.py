@@ -379,6 +379,57 @@ def test_v5_context_rejects_nonproducer_field_order() -> None:
 
 
 @pytest.mark.parametrize(
+    "host_root",
+    [
+        r"C:\Program Files\Ticketbox\c07-lifecycle",
+        r"\\server\share\Ticketbox\c07-lifecycle",
+    ],
+)
+def test_v5_context_parses_absolute_windows_artifact_paths(
+    host_root: str,
+) -> None:
+    payload = _context_payload("a" * 64)
+    recovery_root = (
+        f"{host_root}\\recovery-generations\\"
+        f"operation-{_CURRENT_OPERATION_ID}.ready"
+    )
+    payload["writer_freeze_proof_path"] = (
+        f"{host_root}\\operation-{_CURRENT_OPERATION_ID}-freeze-proof-binding-1.json"
+    )
+    payload["recovery_manifest_path"] = f"{recovery_root}\\manifest.json"
+    payload["isolated_restore_evidence_path"] = (
+        f"{recovery_root}\\isolated-restore-evidence.json"
+    )
+
+    context = c07_production_context.parse_production_migration_context(payload)
+
+    assert context.writer_freeze_proof_path.is_absolute()
+    assert c07_production_authority._validate_artifact_paths(context) == 1
+
+
+@pytest.mark.parametrize(
+    "invalid_path",
+    [
+        "/var/lib/ticketbox/c07-lifecycle/freeze.json",
+        r"C:ticketbox\c07-lifecycle\freeze.json",
+        r"\ticketbox\c07-lifecycle\freeze.json",
+        r"C:\ticketbox\c07-lifecycle\..\freeze.json",
+    ],
+)
+def test_v5_context_rejects_nonabsolute_or_traversing_artifact_paths(
+    invalid_path: str,
+) -> None:
+    payload = _context_payload("a" * 64)
+    payload["writer_freeze_proof_path"] = invalid_path
+
+    with pytest.raises(
+        c07_contract_types.C07ProductionMigrationError,
+        match="absolute Windows path|parent traversal",
+    ):
+        c07_production_context.parse_production_migration_context(payload)
+
+
+@pytest.mark.parametrize(
     ("successor_mode", "field", "value"),
     [
         ("", "successor_intent_sha256", "4" * 64),

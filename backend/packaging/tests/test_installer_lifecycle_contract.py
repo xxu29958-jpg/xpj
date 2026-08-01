@@ -172,6 +172,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_c07_database.ps1",
         "windows_c07_superuser_recovery.ps1",
         "windows_c07_lifecycle.ps1",
+        "windows_c07_heartbeat_helper.ps1",
         "windows_c07_failure_summary.ps1",
         "windows_c07_recovery_generation.ps1",
         "windows_c07_packaged_migration.ps1",
@@ -204,6 +205,10 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "$C07PackagedMigrationScript",
     ):
         assert f". {variable}" in install
+    assert "$C07HeartbeatHelperScript = Join-Path `" in install
+    assert '"windows_c07_heartbeat_helper.ps1"' in install
+    assert "Test-Path -LiteralPath $C07HeartbeatHelperScript -PathType Leaf" in install
+    assert ". $C07HeartbeatHelperScript" not in install
     assert '$C07MigrationHelper = Join-Path $ProgramDir "ticketbox-c07-migrator.exe"' in install
     assert "function Invoke-TicketboxC07InstalledMigrationAction" in install
     assert "function Invoke-TicketboxC07InstalledFreshSourceBootstrapAction" in install
@@ -1504,6 +1509,11 @@ def test_delete_data_requires_completed_receipt_or_bound_retry_intent(tmp_path: 
     uninstall = _read("uninstall_bundled_services.ps1")
     lifecycle_receipt = _read("windows_lifecycle_receipt.ps1")
     installation_safety = _read("windows_installation_safety.ps1")
+    win32_path_init = installation_safety[
+        installation_safety.index("function Initialize-TicketboxWin32FilePathMethods") : installation_safety.index(
+            "function Initialize-TicketboxDirectoryGuardNativeMethods"
+        )
+    ]
     exact_entry_init = installation_safety[
         installation_safety.index("function Initialize-TicketboxExactTreeDeleteNativeMethods") : installation_safety.index(
             "function Remove-TicketboxTreeExact"
@@ -1613,6 +1623,7 @@ function ConvertTo-TicketboxCanonicalPath {{
     param([string]$Path)
     return [System.IO.Path]::GetFullPath($Path)
 }}
+{win32_path_init}
 function Get-TicketboxInstallerRuntimeStateDirectory {{ return $runtimeStateDirectory }}
 function Get-TicketboxInstallerRuntimeRecoveryGuardPath {{ return Join-Path $runtimeStateDirectory 'installer-runtime-recovery-pending' }}
 function Test-TicketboxPathWithin {{ param($Path, $Parent); return $false }}
@@ -4462,10 +4473,18 @@ def test_installer_input_gate_requires_lifecycle_scripts() -> None:
     assert '$ServiceContractScript = Join-Path $ScriptDir "windows_service_contract.ps1"' in build
     assert '$LifecycleScript = Join-Path $ScriptDir "windows_service_lifecycle.ps1"' in build
     assert '$DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"' in build
+    assert (
+        '$C07HeartbeatHelperScript = Join-Path $ScriptDir '
+        '"windows_c07_heartbeat_helper.ps1"'
+    ) in build
     assert '$BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"' in build
     assert '$ReleaseConfigScript = Join-Path $ScriptDir "windows_release_config.ps1"' in build
     assert 'Assert-File $DataRootGuardScript "Windows DataRoot guard holder 脚本"' in build
     assert 'Assert-File $PrepareScript "升级前预检脚本"' in build
     assert 'Assert-File $ServiceContractScript "Windows 服务命令契约脚本"' in build
     assert 'Assert-File $LifecycleScript "Windows 服务生命周期脚本"' in build
+    assert (
+        'Assert-File $C07HeartbeatHelperScript '
+        '"Windows C07 durable heartbeat helper"'
+    ) in build
     assert 'Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"' in build

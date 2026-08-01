@@ -19,7 +19,231 @@ $script:TicketboxPersistentInstallationIdentityAclAccounts = @("SYSTEM", "BUILTI
 $script:TicketboxPersistentInstallationIdentityOwnerAccount = "SYSTEM"
 $script:TicketboxC07MigrationHelperRelativePath = "ticketbox-c07-migrator.exe"
 
+function Initialize-TicketboxWin32FilePathMethods {
+    if ("TicketboxWin32FilePath" -as [type]) {
+        return
+    }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+public static class TicketboxWin32FilePath
+{
+    private const string ExtendedPrefix = @"\\?\";
+    private const string ExtendedUncPrefix = @"\\?\UNC\";
+    private const string UncPrefix = @"\\";
+
+    private static readonly HashSet<string> ReservedDeviceNames =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "CON", "PRN", "AUX", "NUL", "CLOCK$",
+            "COM1", "COM2", "COM3", "COM4", "COM5",
+            "COM6", "COM7", "COM8", "COM9",
+            "COM¹", "COM²", "COM³",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5",
+            "LPT6", "LPT7", "LPT8", "LPT9",
+            "LPT¹", "LPT²", "LPT³"
+        };
+
+    public static string NormalizeCanonical(string path)
+    {
+        if (path == null)
+        {
+            throw new ArgumentNullException("path");
+        }
+        if (path.Length == 0 ||
+            !String.Equals(path, path.Trim(), StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "A Win32 file path must be non-empty and have no surrounding whitespace.",
+                "path");
+        }
+        if (path.IndexOf('\0') >= 0)
+        {
+            throw new ArgumentException("A Win32 file path contains NUL.", "path");
+        }
+
+        string ordinaryPath;
+        if (path.StartsWith(ExtendedUncPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            AssertExtendedSyntax(path);
+            ordinaryPath = UncPrefix + path.Substring(ExtendedUncPrefix.Length);
+        }
+        else if (path.StartsWith(ExtendedPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            AssertExtendedSyntax(path);
+            ordinaryPath = path.Substring(ExtendedPrefix.Length);
+            if (!IsDriveAbsolute(ordinaryPath))
+            {
+                throw new ArgumentException(
+                    "Only drive and UNC Win32 file namespaces are accepted.",
+                    "path");
+            }
+        }
+        else
+        {
+            if (path.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith(@"\??\", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith(@"\\??\", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    "Win32 device and NT object-manager paths are not file paths.",
+                    "path");
+            }
+            ordinaryPath = path.Replace('/', '\\');
+        }
+
+        ValidateFullyQualifiedPath(ordinaryPath);
+        return ordinaryPath;
+    }
+
+    public static string NormalizeExtended(string path)
+    {
+        string canonical = NormalizeCanonical(path);
+        string extended = canonical.StartsWith(UncPrefix, StringComparison.Ordinal)
+            ? ExtendedUncPrefix + canonical.Substring(UncPrefix.Length)
+            : ExtendedPrefix + canonical;
+        if (extended.Length >= 32767)
+        {
+            throw new PathTooLongException(
+                "The extended-length Win32 path exceeds the Unicode API limit.");
+        }
+        return extended;
+    }
+
+    private static void AssertExtendedSyntax(string path)
+    {
+        if (path.IndexOf('/') >= 0)
+        {
+            throw new ArgumentException(
+                "Extended-length Win32 paths require backslash separators.",
+                "path");
+        }
+    }
+
+    private static bool IsDriveAbsolute(string path)
+    {
+        return path.Length >= 3 &&
+            ((path[0] >= 'A' && path[0] <= 'Z') ||
+             (path[0] >= 'a' && path[0] <= 'z')) &&
+            path[1] == ':' &&
+            path[2] == '\\';
+    }
+
+    private static void ValidateFullyQualifiedPath(string path)
+    {
+        int componentStart;
+        if (IsDriveAbsolute(path))
+        {
+            componentStart = 3;
+        }
+        else if (path.StartsWith(UncPrefix, StringComparison.Ordinal))
+        {
+            int serverEnd = path.IndexOf('\\', UncPrefix.Length);
+            if (serverEnd <= UncPrefix.Length)
+            {
+                throw new ArgumentException(
+                    "A UNC path requires a non-empty server and share.",
+                    "path");
+            }
+            int shareEnd = path.IndexOf('\\', serverEnd + 1);
+            string server = path.Substring(UncPrefix.Length, serverEnd - UncPrefix.Length);
+            string share = shareEnd < 0
+                ? path.Substring(serverEnd + 1)
+                : path.Substring(serverEnd + 1, shareEnd - serverEnd - 1);
+            ValidateComponent(server, "UNC server", false);
+            ValidateComponent(share, "UNC share", false);
+            componentStart = shareEnd < 0 ? path.Length : shareEnd + 1;
+        }
+        else
+        {
+            throw new ArgumentException(
+                "A Win32 file path must be a fully-qualified drive or UNC path.",
+                "path");
+        }
+
+        if (componentStart >= path.Length)
+        {
+            return;
+        }
+        string[] components = path.Substring(componentStart).Split('\\');
+        for (int index = 0; index < components.Length; index++)
+        {
+            string component = components[index];
+            if (component.Length == 0 && index == components.Length - 1)
+            {
+                continue;
+            }
+            ValidateComponent(component, "path component", true);
+        }
+    }
+
+    private static void ValidateComponent(
+        string component,
+        string label,
+        bool rejectReservedDeviceName)
+    {
+        if (String.IsNullOrEmpty(component) ||
+            component == "." ||
+            component == "..")
+        {
+            throw new ArgumentException(label + " is empty or relative.", "path");
+        }
+        if (component.Length > 255)
+        {
+            throw new PathTooLongException(label + " exceeds 255 UTF-16 code units.");
+        }
+        if (component[component.Length - 1] == ' ' ||
+            component[component.Length - 1] == '.')
+        {
+            throw new ArgumentException(
+                label + " ends in a Win32-ambiguous space or period.",
+                "path");
+        }
+        for (int index = 0; index < component.Length; index++)
+        {
+            char value = component[index];
+            if (value < 32 || value == '<' || value == '>' || value == ':' ||
+                value == '"' || value == '|' || value == '?' || value == '*')
+            {
+                throw new ArgumentException(
+                    label + " contains a reserved Win32 character.",
+                    "path");
+            }
+        }
+        if (rejectReservedDeviceName)
+        {
+            int extension = component.IndexOf('.');
+            string stem = extension < 0 ? component : component.Substring(0, extension);
+            if (ReservedDeviceNames.Contains(stem))
+            {
+                throw new ArgumentException(
+                    label + " is a reserved Win32 device name.",
+                    "path");
+            }
+        }
+    }
+}
+'@
+}
+
+function ConvertTo-TicketboxWin32ExtendedPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    Initialize-TicketboxWin32FilePathMethods
+    return [TicketboxWin32FilePath]::NormalizeExtended($Path)
+}
+
+function ConvertTo-TicketboxWin32CanonicalPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    Initialize-TicketboxWin32FilePathMethods
+    return [TicketboxWin32FilePath]::NormalizeCanonical($Path)
+}
+
 function Initialize-TicketboxDirectoryGuardNativeMethods {
+    Initialize-TicketboxWin32FilePathMethods
     if ("TicketboxDirectoryGuardNativeMethods" -as [type]) {
         return
     }
@@ -31,8 +255,13 @@ using Microsoft.Win32.SafeHandles;
 
 public static class TicketboxDirectoryGuardNativeMethods
 {
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern SafeFileHandle CreateFile(
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "CreateFileW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(
         string fileName,
         uint desiredAccess,
         uint shareMode,
@@ -41,12 +270,45 @@ public static class TicketboxDirectoryGuardNativeMethods
         uint flagsAndAttributes,
         IntPtr templateFile);
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "GetVolumeNameForVolumeMountPointW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetVolumeNameForVolumeMountPoint(
+    private static extern bool GetVolumeNameForVolumeMountPointW(
         string volumeMountPoint,
         StringBuilder volumeName,
         uint bufferLength);
+
+    public static SafeFileHandle OpenDirectory(
+        string fileName,
+        uint desiredAccess,
+        uint shareMode,
+        uint creationDisposition,
+        uint flagsAndAttributes)
+    {
+        return CreateFileW(
+            fileName,
+            desiredAccess,
+            shareMode,
+            IntPtr.Zero,
+            creationDisposition,
+            flagsAndAttributes,
+            IntPtr.Zero);
+    }
+
+    public static bool TryGetVolumeNameForVolumeMountPoint(
+        string volumeMountPoint,
+        StringBuilder volumeName,
+        uint bufferLength)
+    {
+        return GetVolumeNameForVolumeMountPointW(
+            volumeMountPoint,
+            volumeName,
+            bufferLength);
+    }
 }
 '@
 }
@@ -61,7 +323,7 @@ function Enter-TicketboxDirectoryMutationGuard {
     )
 
     Initialize-TicketboxDirectoryGuardNativeMethods
-    $canonicalPath = ConvertTo-TicketboxCanonicalPath $Path
+    $canonicalPath = ConvertTo-TicketboxWin32CanonicalPath $Path
     $genericRead = [Convert]::ToUInt32("80000000", 16)
     $pathStack = New-Object "System.Collections.Generic.Stack[string]"
     $cursor = $canonicalPath
@@ -96,14 +358,12 @@ function Enter-TicketboxDirectoryMutationGuard {
             if (-not (Test-Path -LiteralPath $guardedPath -PathType Container)) {
                 throw "ACL 目标目录链节点不是目录：$guardedPath"
             }
-            $handle = [TicketboxDirectoryGuardNativeMethods]::CreateFile(
-                $guardedPath,
+            $handle = [TicketboxDirectoryGuardNativeMethods]::OpenDirectory(
+                (ConvertTo-TicketboxWin32ExtendedPath $guardedPath),
                 $genericRead,
                 0x3,
-                [IntPtr]::Zero,
                 3,
-                0x02200000,
-                [IntPtr]::Zero
+                0x02200000
             )
             if ($handle.IsInvalid) {
                 $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
@@ -132,6 +392,7 @@ function Enter-TicketboxDirectoryMutationGuard {
 }
 
 function Initialize-TicketboxDurableFileNativeMethods {
+    Initialize-TicketboxWin32FilePathMethods
     if ("TicketboxDurableFileNativeMethods" -as [type]) { return }
     Add-Type -TypeDefinition @'
 using System;
@@ -140,9 +401,14 @@ using System.Runtime.InteropServices;
 
 public static class TicketboxDurableFileNativeMethods
 {
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "MoveFileExW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool MoveFileEx(string existingName, string newName, uint flags);
+    private static extern bool MoveFileExW(string existingName, string newName, uint flags);
 
     [DllImport(
         "kernel32.dll",
@@ -168,7 +434,7 @@ public static class TicketboxDurableFileNativeMethods
         {
             flags |= MoveFileReplaceExisting;
         }
-        if (!MoveFileEx(existingName, newName, flags))
+        if (!MoveFileExW(existingName, newName, flags))
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
@@ -201,6 +467,7 @@ public static class TicketboxDurableFileNativeMethods
 }
 
 function Sync-TicketboxFileDurable([string]$Path) {
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
     $stream = New-Object System.IO.FileStream(
         $Path,
         [System.IO.FileMode]::Open,
@@ -216,8 +483,8 @@ function Move-TicketboxFileDurable([string]$Source, [string]$Destination, [switc
     Initialize-TicketboxDurableFileNativeMethods
     try {
         [TicketboxDurableFileNativeMethods]::MoveFileDurable(
-            $Source,
-            $Destination,
+            (ConvertTo-TicketboxWin32ExtendedPath $Source),
+            (ConvertTo-TicketboxWin32ExtendedPath $Destination),
             [bool]$ReplaceExisting
         )
     }
@@ -237,9 +504,9 @@ function Replace-TicketboxFileDurablePreservingMetadata {
     try {
         $nativeError =
             [TicketboxDurableFileNativeMethods]::ReplaceFileDurablePreservingMetadata(
-            $Destination,
-            $Replacement,
-            $Backup
+            (ConvertTo-TicketboxWin32ExtendedPath $Destination),
+            (ConvertTo-TicketboxWin32ExtendedPath $Replacement),
+            (ConvertTo-TicketboxWin32ExtendedPath $Backup)
         )
         return [pscustomobject][ordered]@{
             Succeeded = ([int]$nativeError -eq 0)
@@ -261,7 +528,7 @@ function Write-TicketboxUtf8FileDurable {
         [scriptblock]$ProtectTemporaryFile,
         [switch]$ReplaceExisting
     )
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullPath = ConvertTo-TicketboxWin32CanonicalPath $Path
     $parent = Split-Path -Parent $fullPath
     $temporaryPath = Join-Path $parent (".ticketbox-durable-{0}.tmp" -f [Guid]::NewGuid().ToString("N"))
     $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($Text)
@@ -414,7 +681,7 @@ function Initialize-TicketboxProtectedDirectoryAtomically {
         [string]$OwnerAccount = "SYSTEM"
     )
 
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullPath = ConvertTo-TicketboxWin32CanonicalPath $Path
     $parent = Split-Path -Parent $fullPath
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
         throw "受保护目录父路径不存在：$parent"
@@ -464,6 +731,7 @@ function New-TicketboxProtectedFileStream {
         [Parameter(Mandatory = $true)][System.Security.AccessControl.FileSecurity]$Security
     )
 
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
     if ($PSVersionTable.PSEdition -eq "Core") {
         return [System.IO.FileSystemAclExtensions]::Create(
             (New-Object System.IO.FileInfo($Path)),
@@ -496,7 +764,7 @@ function Write-TicketboxProtectedUtf8FileDurable {
         [switch]$ReplaceExisting
     )
 
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullPath = ConvertTo-TicketboxWin32CanonicalPath $Path
     $parent = Split-Path -Parent $fullPath
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
         throw "受保护文件父目录不存在：$parent"
@@ -549,7 +817,7 @@ function Initialize-TicketboxInstallerStateDirectory {
         [string]$OwnerAccount = "SYSTEM"
     )
 
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullPath = ConvertTo-TicketboxWin32CanonicalPath $Path
     $parent = Split-Path -Parent $fullPath
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
         throw "installer-state 父目录不存在：$parent"
@@ -577,6 +845,7 @@ function Remove-TicketboxProtectedStagingArtifacts {
         [string]$OwnerAccount = "SYSTEM"
     )
 
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
     Assert-TicketboxProtectedDirectoryAcl `
         -Path $Path `
         -FullControlAccounts $FullControlAccounts `
@@ -624,12 +893,13 @@ function Read-TicketboxProtectedUtf8Artifact {
         [ValidateRange(1, 1048576)][int]$MaximumBytes = 65536
     )
 
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullPath = ConvertTo-TicketboxWin32CanonicalPath $Path
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $fullPath
     Assert-NoTicketboxAncestorReparsePoints $fullPath
-    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $extendedPath -PathType Leaf)) {
         throw "installer-state artifact 不存在或不是普通文件：$fullPath"
     }
-    $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    $item = Get-Item -LiteralPath $extendedPath -Force -ErrorAction Stop
     if (
         ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
         $item.Length -le 0 -or
@@ -642,7 +912,7 @@ function Read-TicketboxProtectedUtf8Artifact {
         -Accounts $FullControlAccounts `
         -ReadExecuteAccounts $ReadExecuteAccounts `
         -OwnerAccount $OwnerAccount
-    $bytes = [System.IO.File]::ReadAllBytes($fullPath)
+    $bytes = [System.IO.File]::ReadAllBytes($extendedPath)
     $encoding = New-Object System.Text.UTF8Encoding($false, $true)
     try { $text = $encoding.GetString($bytes) }
     catch { throw "installer-state artifact 不是严格 UTF-8：$fullPath" }
@@ -664,14 +934,15 @@ function Remove-TicketboxProtectedUtf8Artifact {
         [string]$OwnerAccount = "SYSTEM"
     )
 
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullPath = ConvertTo-TicketboxWin32CanonicalPath $Path
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $fullPath
     Read-TicketboxProtectedUtf8Artifact `
         -Path $fullPath `
         -FullControlAccounts $FullControlAccounts `
         -ReadExecuteAccounts $ReadExecuteAccounts `
         -OwnerAccount $OwnerAccount | Out-Null
-    Remove-Item -LiteralPath $fullPath -Force -ErrorAction Stop
-    if (Test-Path -LiteralPath $fullPath) {
+    Remove-Item -LiteralPath $extendedPath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $extendedPath) {
         throw "无法清理受保护的 installer-state artifact：$fullPath"
     }
 }
@@ -685,8 +956,8 @@ function Move-TicketboxLegacyInstallerStateArtifact {
         [switch]$RetainLegacySource
     )
 
-    $legacyFullPath = [System.IO.Path]::GetFullPath($LegacyPath)
-    $currentFullPath = [System.IO.Path]::GetFullPath($CurrentPath)
+    $legacyFullPath = ConvertTo-TicketboxWin32CanonicalPath $LegacyPath
+    $currentFullPath = ConvertTo-TicketboxWin32CanonicalPath $CurrentPath
     if (Test-TicketboxPathEquals $legacyFullPath $currentFullPath) {
         throw "legacy 与 current installer-state artifact 不能是同一路径：$currentFullPath"
     }
@@ -762,6 +1033,7 @@ function Assert-TicketboxProtectedDirectoryAcl {
         [string[]]$InheritableReadExecuteAccounts = @(),
         [string]$OwnerAccount = "SYSTEM"
     )
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
         throw "受保护目录不存在：$Path"
     }
@@ -910,14 +1182,14 @@ function Get-TicketboxVolumeIdentityForPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     Initialize-TicketboxDirectoryGuardNativeMethods
-    $canonicalPath = ConvertTo-TicketboxCanonicalPath $Path
+    $canonicalPath = ConvertTo-TicketboxWin32CanonicalPath $Path
     $volumeRoot = [System.IO.Path]::GetPathRoot($canonicalPath)
     if ([string]::IsNullOrWhiteSpace($volumeRoot)) {
         throw "DataRoot 没有可解析的本机卷根：$canonicalPath"
     }
     $volumeName = New-Object System.Text.StringBuilder 1024
-    if (-not [TicketboxDirectoryGuardNativeMethods]::GetVolumeNameForVolumeMountPoint(
-        $volumeRoot,
+    if (-not [TicketboxDirectoryGuardNativeMethods]::TryGetVolumeNameForVolumeMountPoint(
+        (ConvertTo-TicketboxWin32CanonicalPath $volumeRoot),
         $volumeName,
         [uint32]$volumeName.Capacity
     )) {
@@ -950,7 +1222,7 @@ function Get-TicketboxRuntimeDataBindingDirectory([string]$CommonApplicationData
         throw "Windows 未提供 Common Application Data，无法建立 runtime DataRoot binding。"
     }
     return Join-Path `
-        ([System.IO.Path]::GetFullPath($CommonApplicationData)) `
+        (ConvertTo-TicketboxWin32CanonicalPath $CommonApplicationData) `
         $script:TicketboxRuntimeDataBindingDirectoryName
 }
 
@@ -965,7 +1237,7 @@ function Get-TicketboxRuntimeBootstrapRecoveryGuardPath([string]$RuntimeDataRoot
         $RuntimeDataRoot = Get-TicketboxRuntimeDataRootPath
     }
     return Join-Path `
-        ([System.IO.Path]::GetFullPath($RuntimeDataRoot)) `
+        (ConvertTo-TicketboxWin32CanonicalPath $RuntimeDataRoot) `
         $script:TicketboxBootstrapRecoveryGuardName
 }
 
@@ -1017,6 +1289,9 @@ function Read-TicketboxRuntimeDataBinding {
         [string]$OwnerAccount = "SYSTEM"
     )
 
+    $DataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $InstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
+    Get-TicketboxRuntimeDataBindingDirectory $CommonApplicationData | Out-Null
     $marker = Read-TicketboxProtectedDataRootMarker `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
@@ -1075,6 +1350,9 @@ function Initialize-TicketboxRuntimeDataBinding {
         [string]$OwnerAccount = "SYSTEM"
     )
 
+    $DataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $InstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
+    Get-TicketboxRuntimeDataBindingDirectory $CommonApplicationData | Out-Null
     $marker = Read-TicketboxProtectedDataRootMarker `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
@@ -1143,6 +1421,8 @@ function Remove-TicketboxRuntimeDataBinding {
         [string]$OwnerAccount = "SYSTEM"
     )
 
+    $DataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $InstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
     $bindingDirectory = Get-TicketboxRuntimeDataBindingDirectory $CommonApplicationData
     if ((Get-TicketboxPathEntryKindNoFollow $bindingDirectory) -ceq "Missing") {
         return
@@ -1194,21 +1474,23 @@ function Get-TicketboxDataRootProvisioningIntentText {
         [string]$DataVolumeIdentity = ""
     )
 
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $canonicalInstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
     $encoding = New-Object System.Text.UTF8Encoding($false, $true)
     $canonicalVolumeIdentity = if ([string]::IsNullOrWhiteSpace($DataVolumeIdentity)) {
-        Get-TicketboxVolumeIdentityForPath $DataRoot
+        Get-TicketboxVolumeIdentityForPath $canonicalDataRoot
     }
     else {
         ConvertTo-TicketboxCanonicalVolumeIdentity $DataVolumeIdentity
     }
     $dataRootBase64 = [Convert]::ToBase64String(
-        $encoding.GetBytes((ConvertTo-TicketboxCanonicalPath $DataRoot))
+        $encoding.GetBytes($canonicalDataRoot)
     )
     $dataVolumeBase64 = [Convert]::ToBase64String(
         $encoding.GetBytes($canonicalVolumeIdentity)
     )
     $installDirBase64 = [Convert]::ToBase64String(
-        $encoding.GetBytes((ConvertTo-TicketboxCanonicalPath $InstallDir))
+        $encoding.GetBytes($canonicalInstallDir)
     )
     return (
         "SCHEMA=$script:TicketboxDataRootProvisioningIntentSchema$([Environment]::NewLine)" +
@@ -1289,17 +1571,21 @@ function Remove-TicketboxDirectoryGuardCoordinationArtifacts {
         [string]$OwnerAccount = "SYSTEM"
     )
 
-    $parentFullPath = [System.IO.Path]::GetFullPath($ParentPath)
+    $parentFullPath = ConvertTo-TicketboxWin32CanonicalPath $ParentPath
+    $fullPaths = @($Paths | ForEach-Object {
+        ConvertTo-TicketboxWin32CanonicalPath $_
+    })
+    foreach ($fullPath in $fullPaths) {
+        if (-not (Test-TicketboxPathEquals (Split-Path -Parent $fullPath) $parentFullPath)) {
+            throw "DataRoot guard cleanup artifact 越出受保护 IPC 目录。"
+        }
+    }
     Assert-NoTicketboxAncestorReparsePoints $parentFullPath
     Assert-TicketboxProtectedDirectoryAcl `
         -Path $parentFullPath `
         -FullControlAccounts $FullControlAccounts `
         -OwnerAccount $OwnerAccount
-    foreach ($path in $Paths) {
-        $fullPath = [System.IO.Path]::GetFullPath($path)
-        if (-not (Test-TicketboxPathEquals (Split-Path -Parent $fullPath) $parentFullPath)) {
-            throw "DataRoot guard cleanup artifact 越出受保护 IPC 目录。"
-        }
+    foreach ($fullPath in $fullPaths) {
         if (-not (Test-Path -LiteralPath $fullPath)) {
             continue
         }
@@ -1331,8 +1617,18 @@ function Wait-TicketboxDirectoryMutationGuardLease {
         [string]$OwnerAccount = "SYSTEM"
     )
 
-    $readyFullPath = [System.IO.Path]::GetFullPath($ReadyPath)
-    $releaseFullPath = [System.IO.Path]::GetFullPath($ReleasePath)
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $Path
+    $canonicalInstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
+    $readyFullPath = ConvertTo-TicketboxWin32CanonicalPath $ReadyPath
+    $releaseFullPath = ConvertTo-TicketboxWin32CanonicalPath $ReleasePath
+    $retainWhileLockFullPath = if (
+        [string]::IsNullOrWhiteSpace($RetainWhileLockPath)
+    ) {
+        ""
+    }
+    else {
+        ConvertTo-TicketboxWin32CanonicalPath $RetainWhileLockPath
+    }
     $readyParent = Split-Path -Parent $readyFullPath
     $releaseParent = Split-Path -Parent $releaseFullPath
     if (-not (Test-TicketboxPathEquals $readyParent $releaseParent)) {
@@ -1350,8 +1646,6 @@ function Wait-TicketboxDirectoryMutationGuardLease {
         throw "DataRoot guard artifact 已存在，拒绝复用可能过期的 lease。"
     }
 
-    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $Path
-    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
     $provisioningIntentPath = Join-Path `
         $readyParent `
         $script:TicketboxDataRootProvisioningIntentName
@@ -1554,8 +1848,8 @@ function Wait-TicketboxDirectoryMutationGuardLease {
             $ownerExited = Test-TicketboxProcessIdentityHandleExited $ownerHandleLease
             if ($releaseAccepted -or $ownerExited) {
                 $activityLockHeld =
-                    -not [string]::IsNullOrWhiteSpace($RetainWhileLockPath) -and
-                    (Test-TicketboxExclusiveFileLockHeld -Path $RetainWhileLockPath)
+                    -not [string]::IsNullOrWhiteSpace($retainWhileLockFullPath) -and
+                    (Test-TicketboxExclusiveFileLockHeld -Path $retainWhileLockFullPath)
                 if (-not $activityLockHeld) {
                     if ($releaseAccepted) { return "control" }
                     return "owner_exit"
@@ -1585,7 +1879,7 @@ function Test-TicketboxExclusiveFileLockHeld {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     try {
-        $fullPath = [System.IO.Path]::GetFullPath($Path)
+        $fullPath = ConvertTo-TicketboxWin32CanonicalPath $Path
         $entryKind = Get-TicketboxPathEntryKindNoFollow $fullPath
     }
     catch {
@@ -1625,6 +1919,7 @@ function Test-TicketboxExclusiveFileLockHeld {
 }
 
 function Initialize-TicketboxExactTreeDeleteNativeMethods {
+    Initialize-TicketboxWin32FilePathMethods
     if ("TicketboxExactTreeDeleteNativeMethods" -as [type]) {
         return
     }
@@ -1632,6 +1927,7 @@ function Initialize-TicketboxExactTreeDeleteNativeMethods {
 using System;
 using System.ComponentModel;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
@@ -1652,6 +1948,8 @@ public static class TicketboxExactTreeDeleteNativeMethods
     private const int FileDispositionInfo = 4;
     private const int FileAttributeTagInfo = 9;
     private const int FileIdInfo = 18;
+    private static readonly MethodInfo PublicPathNormalizer =
+        ResolvePublicPathNormalizer();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct FILE_ATTRIBUTE_TAG_INFO
@@ -1681,8 +1979,13 @@ public static class TicketboxExactTreeDeleteNativeMethods
         public FILE_ID_128 FileId;
     }
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern SafeFileHandle CreateFile(
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "CreateFileW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(
         string fileName,
         uint desiredAccess,
         uint shareMode,
@@ -1745,7 +2048,7 @@ public static class TicketboxExactTreeDeleteNativeMethods
         string deferredRootLeafName,
         Action rootHandleAcquired)
     {
-        string fullPath = NormalizePath(path);
+        string fullPath = NormalizePublicPath(path);
         if (!String.IsNullOrEmpty(deferredRootLeafName) &&
             !String.Equals(
                 Path.GetFileName(deferredRootLeafName),
@@ -1769,8 +2072,8 @@ public static class TicketboxExactTreeDeleteNativeMethods
 
     public static int InspectEntry(string path)
     {
-        string fullPath = NormalizePath(path);
-        using (SafeFileHandle handle = CreateFile(
+        string fullPath = NormalizePublicPath(path);
+        using (SafeFileHandle handle = CreateFileW(
             fullPath,
             FileReadAttributes,
             FileShareRead | FileShareWrite | FileShareDelete,
@@ -1799,8 +2102,8 @@ public static class TicketboxExactTreeDeleteNativeMethods
 
     public static string[] GetDirectoryIdentity(string path)
     {
-        string fullPath = NormalizePath(path);
-        using (SafeFileHandle handle = CreateFile(
+        string fullPath = NormalizePublicPath(path);
+        using (SafeFileHandle handle = CreateFileW(
             fullPath,
             FileReadAttributes,
             FileShareRead | FileShareWrite | FileShareDelete,
@@ -1848,8 +2151,8 @@ public static class TicketboxExactTreeDeleteNativeMethods
         {
             throw new ArgumentOutOfRangeException("maximumBytes");
         }
-        string fullPath = NormalizePath(path);
-        using (SafeFileHandle handle = CreateFile(
+        string fullPath = NormalizePublicPath(path);
+        using (SafeFileHandle handle = CreateFileW(
             fullPath,
             FileReadData | FileReadAttributes,
             FileShareRead,
@@ -1978,8 +2281,9 @@ public static class TicketboxExactTreeDeleteNativeMethods
 
     private static SafeFileHandle OpenExact(string path)
     {
-        SafeFileHandle handle = CreateFile(
-            path,
+        string extendedPath = NormalizeLosslessExtendedPath(path);
+        SafeFileHandle handle = CreateFileW(
+            extendedPath,
             DeleteAccess | FileReadAttributes,
             FileShareRead,
             IntPtr.Zero,
@@ -1990,7 +2294,9 @@ public static class TicketboxExactTreeDeleteNativeMethods
         {
             int error = Marshal.GetLastWin32Error();
             handle.Dispose();
-            throw new Win32Exception(error, "Unable to open the exact deletion target: " + path);
+            throw new Win32Exception(
+                error,
+                "Unable to open the exact deletion target: " + extendedPath);
         }
         return handle;
     }
@@ -2026,10 +2332,12 @@ public static class TicketboxExactTreeDeleteNativeMethods
                 ThrowLastWin32("Unable to resolve the exact opened path", expectedPath);
             }
         }
-        string actualPath = NormalizeFinalPath(buffer.ToString());
+        string actualPath = NormalizeLosslessExtendedPath(buffer.ToString());
+        string normalizedExpectedPath =
+            NormalizeLosslessExtendedPath(expectedPath);
         if (!String.Equals(
             actualPath,
-            NormalizePath(expectedPath),
+            normalizedExpectedPath,
             StringComparison.OrdinalIgnoreCase))
         {
             throw new IOException(
@@ -2038,28 +2346,111 @@ public static class TicketboxExactTreeDeleteNativeMethods
         }
     }
 
-    private static string NormalizeFinalPath(string path)
+    private static string NormalizePublicPath(string path)
     {
-        if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            path = @"\\" + path.Substring(8);
+            return (string)PublicPathNormalizer.Invoke(
+                null,
+                new object[] { path });
         }
-        else if (path.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
+        catch (TargetInvocationException error)
         {
-            path = path.Substring(4);
+            if (error.InnerException != null)
+            {
+                throw error.InnerException;
+            }
+            throw;
         }
-        return NormalizePath(path);
     }
 
-    private static string NormalizePath(string path)
+    private static MethodInfo ResolvePublicPathNormalizer()
     {
-        string fullPath = Path.GetFullPath(path);
-        string root = Path.GetPathRoot(fullPath);
-        if (String.Equals(fullPath, root, StringComparison.OrdinalIgnoreCase))
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
-            return fullPath;
+            Type pathType = assembly.GetType(
+                "TicketboxWin32FilePath",
+                false,
+                false);
+            if (pathType == null)
+            {
+                continue;
+            }
+            MethodInfo method = pathType.GetMethod(
+                "NormalizeExtended",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                new Type[] { typeof(string) },
+                null);
+            if (method != null && method.ReturnType == typeof(string))
+            {
+                return method;
+            }
         }
-        return fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        throw new TypeLoadException(
+            "The shared Ticketbox Win32 path normalizer is not loaded.");
+    }
+
+    private static string NormalizeLosslessExtendedPath(string path)
+    {
+        if (path == null)
+        {
+            throw new ArgumentNullException("path");
+        }
+        if (path.Length == 0 || path.IndexOf('\0') >= 0)
+        {
+            throw new ArgumentException(
+                "An exact-tree extended path is required.",
+                "path");
+        }
+        if (path.IndexOf('/') >= 0)
+        {
+            throw new ArgumentException(
+                "An exact-tree extended path must use backslash separators.",
+                "path");
+        }
+        if (path.Length >= 32767)
+        {
+            throw new PathTooLongException(
+                "The exact-tree extended path exceeds the Unicode API limit.");
+        }
+
+        if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+        {
+            const int serverStart = 8;
+            int serverEnd = path.IndexOf('\\', serverStart);
+            int shareEnd = serverEnd < 0
+                ? -1
+                : path.IndexOf('\\', serverEnd + 1);
+            int shareLength = shareEnd < 0
+                ? path.Length - serverEnd - 1
+                : shareEnd - serverEnd - 1;
+            if (serverEnd <= serverStart || shareLength <= 0)
+            {
+                throw new ArgumentException(
+                    "An exact-tree UNC path requires a server and share.",
+                    "path");
+            }
+            return @"\\?\UNC\" + path.Substring(serverStart);
+        }
+        if (path.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
+        {
+            const int driveStart = 4;
+            if (path.Length < driveStart + 3 ||
+                !((path[driveStart] >= 'A' && path[driveStart] <= 'Z') ||
+                  (path[driveStart] >= 'a' && path[driveStart] <= 'z')) ||
+                path[driveStart + 1] != ':' ||
+                path[driveStart + 2] != '\\')
+            {
+                throw new ArgumentException(
+                    "Only drive and UNC extended file paths are exact-tree paths.",
+                    "path");
+            }
+            return @"\\?\" + path.Substring(driveStart);
+        }
+        throw new ArgumentException(
+            "An exact-tree path must already use the extended drive or UNC namespace.",
+            "path");
     }
 
     private static void ThrowLastWin32(string operation, string path)
@@ -2078,11 +2469,12 @@ function Remove-TicketboxTreeExact {
         [scriptblock]$OnRootHandleAcquired
     )
 
-    $canonicalPath = ConvertTo-TicketboxCanonicalPath $Path
-    if (-not (Test-Path -LiteralPath $canonicalPath)) {
+    $canonicalPath = ConvertTo-TicketboxWin32CanonicalPath $Path
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $canonicalPath
+    if (-not (Test-Path -LiteralPath $extendedPath)) {
         return
     }
-    if (-not (Test-Path -LiteralPath $canonicalPath -PathType Container)) {
+    if (-not (Test-Path -LiteralPath $extendedPath -PathType Container)) {
         throw "精确删除目标不是目录：$canonicalPath"
     }
     Initialize-TicketboxExactTreeDeleteNativeMethods
@@ -2096,7 +2488,7 @@ function Remove-TicketboxTreeExact {
         $DeferredRootLeafName,
         $callback
     )
-    if (Test-Path -LiteralPath $canonicalPath) {
+    if (Test-Path -LiteralPath $extendedPath) {
         throw "精确删除完成后目标目录仍存在：$canonicalPath"
     }
 }
@@ -2115,7 +2507,7 @@ function Remove-TicketboxDataRootExact {
 }
 
 function ConvertTo-TicketboxCanonicalPath([string]$Path) {
-    $full = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($Path).Trim())
+    $full = ConvertTo-TicketboxWin32CanonicalPath $Path
     $root = [System.IO.Path]::GetPathRoot($full)
     if ([string]::Equals($full, $root, [System.StringComparison]::OrdinalIgnoreCase)) {
         return $full
@@ -2142,7 +2534,7 @@ function Test-TicketboxPathWithin([string]$Path, [string]$Parent) {
 
 function Get-TicketboxPathEntryKindNoFollow([string]$Path) {
     Initialize-TicketboxExactTreeDeleteNativeMethods
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullPath = ConvertTo-TicketboxWin32CanonicalPath $Path
     $kind = [TicketboxExactTreeDeleteNativeMethods]::InspectEntry($fullPath)
     if ($kind -eq 0) {
         # CreateFile(FILE_FLAG_OPEN_REPARSE_POINT) can still report PATH_NOT_FOUND
@@ -2150,9 +2542,18 @@ function Get-TicketboxPathEntryKindNoFollow([string]$Path) {
         # directory entry itself without traversing the target.
         $parentPath = [System.IO.Path]::GetDirectoryName($fullPath)
         $leafName = [System.IO.Path]::GetFileName($fullPath)
-        if (-not [string]::IsNullOrWhiteSpace($parentPath) -and (Test-Path -LiteralPath $parentPath -PathType Container)) {
+        $extendedParentPath = if ([string]::IsNullOrWhiteSpace($parentPath)) {
+            ""
+        }
+        else {
+            ConvertTo-TicketboxWin32ExtendedPath $parentPath
+        }
+        if (
+            -not [string]::IsNullOrWhiteSpace($extendedParentPath) -and
+            (Test-Path -LiteralPath $extendedParentPath -PathType Container)
+        ) {
             $matchingEntries = @(
-                Get-ChildItem -LiteralPath $parentPath -Force -ErrorAction Stop |
+                Get-ChildItem -LiteralPath $extendedParentPath -Force -ErrorAction Stop |
                     Where-Object {
                         [string]::Equals(
                             $_.Name,
@@ -2203,11 +2604,12 @@ function Assert-NoTicketboxAncestorReparsePoints([string]$Path) {
 
 function Invoke-TicketboxIcaclsChecked([string]$Path, [string[]]$Arguments) {
     $icacls = Join-Path $env:SystemRoot "System32\icacls.exe"
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $Path
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
         $effectiveArguments = @($Arguments + "/L")
-        $output = & $icacls $Path @effectiveArguments 2>&1
+        $output = & $icacls $extendedPath @effectiveArguments 2>&1
         $rc = $LASTEXITCODE
     }
     finally {
@@ -2233,7 +2635,8 @@ function ConvertTo-TicketboxAccountSid([string]$Account) {
 }
 
 function Get-TicketboxPathAcl([string]$Path) {
-    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $Path
+    $item = Get-Item -LiteralPath $extendedPath -Force -ErrorAction Stop
     if ($PSVersionTable.PSEdition -eq "Core") {
         $descriptor = [System.IO.FileSystemAclExtensions]::GetAccessControl($item)
     }
@@ -2280,6 +2683,7 @@ function Set-TicketboxExactDirectoryAcl(
     [string]$OwnerAccount = "SYSTEM",
     [switch]$Recurse
 ) {
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
         throw "ACL 目标目录不存在：$Path"
     }
@@ -2307,6 +2711,7 @@ function Set-TicketboxExactDirectoryAclCore(
     [string]$OwnerAccount = "SYSTEM",
     [switch]$Recurse
 ) {
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
         throw "ACL 目标目录不存在：$Path"
     }
@@ -2473,7 +2878,8 @@ function Set-TicketboxExactFileAcl(
     [string[]]$ReadExecuteAccounts = @(),
     [string]$OwnerAccount = "SYSTEM"
 ) {
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $Path
+    if (-not (Test-Path -LiteralPath $extendedPath -PathType Leaf)) {
         throw "ACL 目标文件不存在：$Path"
     }
     $targetSids = @($Accounts | ForEach-Object { ConvertTo-TicketboxAccountSid $_ } | Sort-Object -Unique)
@@ -2517,7 +2923,8 @@ function Assert-TicketboxExactFileAcl(
     [string[]]$ReadExecuteAccounts = @(),
     [string]$OwnerAccount = "SYSTEM"
 ) {
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $Path
+    if (-not (Test-Path -LiteralPath $extendedPath -PathType Leaf)) {
         throw "ACL 目标文件不存在：$Path"
     }
     $targetSids = @($Accounts | ForEach-Object { ConvertTo-TicketboxAccountSid $_ } | Sort-Object -Unique)
@@ -2623,6 +3030,7 @@ function Compare-TicketboxNumericVersion([string]$Left, [string]$Right) {
 }
 
 function Get-TicketboxPortableFileSha256([string]$Path) {
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
     $stream = [System.IO.File]::Open(
         $Path,
         [System.IO.FileMode]::Open,
@@ -2754,7 +3162,7 @@ function Open-TicketboxC07VerifiedMigrationHelperLease {
     ) {
         throw "C07 migration helper lease 的 release evidence 无效。"
     }
-    $helperPath = [System.IO.Path]::GetFullPath($Path)
+    $helperPath = ConvertTo-TicketboxWin32CanonicalPath $Path
     if ((Get-TicketboxPathEntryKindNoFollow $helperPath) -cne "File") {
         throw "C07 migration helper 不是 regular file。"
     }
@@ -2999,6 +3407,7 @@ function Read-TicketboxInstalledBuildManifest {
         [ValidateRange(0, 99)][int]$ExpectedPgMajor = 0
     )
 
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "缺少已安装 BUILD_PROVENANCE.json：$Path"
     }
@@ -3043,7 +3452,7 @@ function Read-TicketboxInstalledBuildManifest {
             $manifest.backend.c07_migration_helper
         )
     return [pscustomobject]@{
-        Path = [System.IO.Path]::GetFullPath($Path)
+        Path = $Path
         Manifest = $manifest
         BackendVersion = $backendVersion
         PgMajor = $pgMajor
@@ -3493,11 +3902,12 @@ function Assert-TicketboxRegisteredDataRootBinding {
                 -ErrorAction Stop).DataRoot
         }
     )
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
     try { $registeredDataRoot = [string](& $RegistryReader) }
     catch { throw "无法读取受保护的机器级安装身份，拒绝收编既有数据目录。" }
     if (
         [string]::IsNullOrWhiteSpace($registeredDataRoot) -or
-        -not (Test-TicketboxPathEquals $registeredDataRoot $DataRoot)
+        -not (Test-TicketboxPathEquals $registeredDataRoot $canonicalDataRoot)
     ) {
         throw "既有数据目录与 HKLM 安装身份不匹配，拒绝收编。"
     }
@@ -3606,7 +4016,9 @@ function Read-TicketboxDataRootMarker {
         [switch]$AllowLegacyV1
     )
 
-    $markerPath = Get-TicketboxDataRootMarkerPath $DataRoot
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $canonicalInstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
+    $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
     if ((Get-TicketboxPathEntryKindNoFollow $markerPath) -cne "File") {
         throw "拒绝信任缺失或非普通文件的数据目录标记：$markerPath"
     }
@@ -3629,8 +4041,8 @@ function Read-TicketboxDataRootMarker {
     }
     return ConvertFrom-TicketboxDataRootMarkerText `
         -Text $text `
-        -DataRoot $DataRoot `
-        -InstallDir $InstallDir `
+        -DataRoot $canonicalDataRoot `
+        -InstallDir $canonicalInstallDir `
         -AllowLegacyV1:$AllowLegacyV1
 }
 
@@ -3644,7 +4056,8 @@ function Write-TicketboxDataRootMarker {
         [switch]$ReplaceExisting
     )
 
-    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $canonicalInstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
     $canonicalVolumeIdentity = if ([string]::IsNullOrWhiteSpace($DataVolumeIdentity)) {
         Get-TicketboxVolumeIdentityForPath $canonicalDataRoot
     }
@@ -3656,7 +4069,7 @@ function Write-TicketboxDataRootMarker {
         -ExpectedVolumeIdentity $canonicalVolumeIdentity
     $payload = Get-TicketboxDataRootMarkerText `
         -DataRoot $canonicalDataRoot `
-        -InstallDir $InstallDir `
+        -InstallDir $canonicalInstallDir `
         -DataVolumeIdentity $canonicalVolumeIdentity
     Write-TicketboxProtectedUtf8FileDurable `
         -Path (Get-TicketboxDataRootMarkerPath $canonicalDataRoot) `
@@ -3673,13 +4086,14 @@ function Assert-TicketboxDataRootMarkerInitialization {
         [switch]$AllowLegacyV1Migration
     )
 
-    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $canonicalInstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
     $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
     $markerKind = Get-TicketboxPathEntryKindNoFollow $markerPath
     if ($markerKind -ceq "File") {
         Assert-TicketboxDataRootMarker `
             -DataRoot $canonicalDataRoot `
-            -InstallDir $InstallDir `
+            -InstallDir $canonicalInstallDir `
             -AllowLegacyV1:$AllowLegacyV1Migration
         return
     }
@@ -3694,6 +4108,7 @@ function Assert-TicketboxDataRootMarkerInitialization {
 }
 
 function Assert-TicketboxLegacyProtectedFileAcl([string]$Path) {
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "legacy 受保护文件不存在：$Path"
     }
@@ -3747,6 +4162,8 @@ function Assert-TicketboxLegacyPreservedDataLayout {
         [Parameter(Mandatory = $true)][string]$PgData,
         [Parameter(Mandatory = $true)][int]$ExpectedPgMajor
     )
+    $canonicalEnvPath = ConvertTo-TicketboxWin32CanonicalPath $EnvPath
+    $canonicalPgData = ConvertTo-TicketboxWin32CanonicalPath $PgData
     $canonicalDataRoot = Assert-TicketboxDataRootDomain `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir
@@ -3756,8 +4173,8 @@ function Assert-TicketboxLegacyPreservedDataLayout {
         -DataRoot $canonicalDataRoot `
         -InstallDir $InstallDir `
         -AllowLegacyV1Migration
-    Assert-TicketboxLegacyProtectedFileAcl $EnvPath
-    $pgVersionPath = Join-Path $PgData "PG_VERSION"
+    Assert-TicketboxLegacyProtectedFileAcl $canonicalEnvPath
+    $pgVersionPath = Join-Path $canonicalPgData "PG_VERSION"
     if (-not (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)) {
         throw "legacy 保留数据缺少 PG_VERSION。"
     }
@@ -3887,17 +4304,19 @@ function Read-TicketboxProtectedDataRootMarker {
         [string]$OwnerAccount = "SYSTEM"
     )
 
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $canonicalInstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
     $artifact = Read-TicketboxProtectedUtf8Artifact `
-        -Path (Get-TicketboxDataRootMarkerPath $DataRoot) `
+        -Path (Get-TicketboxDataRootMarkerPath $canonicalDataRoot) `
         -FullControlAccounts $FullControlAccounts `
         -OwnerAccount $OwnerAccount `
         -MaximumBytes 16384
     $marker = ConvertFrom-TicketboxDataRootMarkerText `
         -Text $artifact.Text `
-        -DataRoot $DataRoot `
-        -InstallDir $InstallDir
+        -DataRoot $canonicalDataRoot `
+        -InstallDir $canonicalInstallDir
     Assert-TicketboxVolumeIdentityForPath `
-        -Path $DataRoot `
+        -Path $canonicalDataRoot `
         -ExpectedVolumeIdentity $marker.DataVolumeIdentity
     return $marker
 }
@@ -3918,6 +4337,7 @@ function Assert-TicketboxProtectedDataRootMarker {
 }
 
 function Assert-NoTicketboxReparsePoints([string]$DataRoot) {
+    $DataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
     $root = Get-Item -LiteralPath $DataRoot -Force -ErrorAction Stop
     $pending = New-Object "System.Collections.Generic.Stack[System.IO.DirectoryInfo]"
     if (($root.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
@@ -3967,7 +4387,8 @@ function Assert-TicketboxDataRootDomain {
         [Parameter(Mandatory = $true)][string]$InstallDir
     )
 
-    $full = ConvertTo-TicketboxCanonicalPath $DataRoot
+    $full = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $canonicalInstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
     $root = [System.IO.Path]::GetPathRoot($full)
     if ($full.StartsWith("\\")) {
         throw "数据目录不能使用 UNC 路径：$full"
@@ -3987,7 +4408,7 @@ function Assert-TicketboxDataRootDomain {
         [Environment]::GetFolderPath("ProgramFiles"),
         [Environment]::GetFolderPath("ProgramFilesX86"),
         (Get-TicketboxProtectedProfileRoots),
-        $InstallDir
+        $canonicalInstallDir
     ) | ForEach-Object { $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     foreach ($protected in $protectedRoots) {
         if ((Test-TicketboxPathWithin $full $protected) -or (Test-TicketboxPathWithin $protected $full)) {
@@ -4055,12 +4476,20 @@ function Assert-TicketboxDataRootDeletionSafety {
         [switch]$AllowMarkerlessEmptyRoot
     )
 
+    $canonicalRegisteredDataRoot = if (
+        [string]::IsNullOrWhiteSpace($RegisteredDataRoot)
+    ) {
+        ""
+    }
+    else {
+        ConvertTo-TicketboxWin32CanonicalPath $RegisteredDataRoot
+    }
     $full = Assert-TicketboxDataRootDomain -DataRoot $DataRoot -InstallDir $InstallDir
     $registrationMissing = [string]::IsNullOrWhiteSpace($RegisteredDataRoot)
     if ($registrationMissing -and -not $AllowProtectedMarkerWithoutRegistration) {
         throw "安装器注册表缺少 DataRoot，拒绝删除任何数据目录。"
     }
-    if (-not $registrationMissing -and -not (Test-TicketboxPathEquals $full $RegisteredDataRoot)) {
+    if (-not $registrationMissing -and -not (Test-TicketboxPathEquals $full $canonicalRegisteredDataRoot)) {
         throw "数据目录与安装器登记值不一致，拒绝删除：$full"
     }
     Assert-NoTicketboxAncestorReparsePoints $full

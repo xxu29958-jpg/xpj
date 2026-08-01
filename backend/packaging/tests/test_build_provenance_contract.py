@@ -182,6 +182,7 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_c07_database.ps1",
     "packaging/windows_c07_superuser_recovery.ps1",
     "packaging/windows_c07_lifecycle.ps1",
+    "packaging/windows_c07_heartbeat_helper.ps1",
     "packaging/windows_c07_failure_summary.ps1",
     "packaging/windows_c07_recovery_generation.ps1",
     "packaging/windows_c07_packaged_migration.ps1",

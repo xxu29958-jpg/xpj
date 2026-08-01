@@ -206,6 +206,48 @@ def test_replacefile_preserves_real_descriptor_while_movefile_mutation_does_not(
     script = f"""
 $ErrorActionPreference = 'Stop'
 . {_ps_literal(SAFETY)}
+. {_ps_literal(SCRIPT)}
+$identitySid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$allSections = [Security.AccessControl.AccessControlSections]::All
+$semanticSecurity = New-Object Security.AccessControl.FileSecurity
+$semanticSecurity.SetSecurityDescriptorSddlForm(
+    ("O:{{0}}G:{{0}}D:P(A;;FA;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
+    $allSections
+)
+$semanticSecurityBytes = $semanticSecurity.GetSecurityDescriptorBinaryForm()
+$defaultedSecurity = New-Object `
+    Security.AccessControl.RawSecurityDescriptor($semanticSecurityBytes,0)
+$defaultedSecurity.SetFlags(
+    $defaultedSecurity.ControlFlags -bor
+        [Security.AccessControl.ControlFlags]::OwnerDefaulted -bor
+        [Security.AccessControl.ControlFlags]::GroupDefaulted -bor
+        [Security.AccessControl.ControlFlags]::DiscretionaryAclDefaulted -bor
+        [Security.AccessControl.ControlFlags]::SystemAclDefaulted
+)
+$defaultedSecurityBytes = New-Object byte[] $defaultedSecurity.BinaryLength
+$defaultedSecurity.GetBinaryForm($defaultedSecurityBytes,0)
+if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+    -Left $semanticSecurityBytes `
+    -Right $defaultedSecurityBytes)) {{
+    throw 'descriptor default-source flags changed security authority'
+}}
+$mutatedSecuritySddls = @(
+    ("O:S-1-5-32-544G:{{0}}D:P(A;;FA;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
+    ("O:{{0}}G:{{0}}D:P(A;;FR;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
+    ("O:{{0}}G:{{0}}D:P(A;;FA;;;{{0}})S:P(AU;FA;WD;;;{{0}})" -f $identitySid)
+)
+foreach ($mutatedSecuritySddl in $mutatedSecuritySddls) {{
+    $mutatedSecurity = New-Object Security.AccessControl.FileSecurity
+    $mutatedSecurity.SetSecurityDescriptorSddlForm(
+        $mutatedSecuritySddl,
+        $allSections
+    )
+    if (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+        -Left $semanticSecurityBytes `
+        -Right $mutatedSecurity.GetSecurityDescriptorBinaryForm()) {{
+        throw 'descriptor comparison ignored an owner/DACL/SACL mutation'
+    }}
+}}
 $target = {_ps_literal(target)}
 $replacement = {_ps_literal(replacement)}
 $backup = {_ps_literal(backup)}

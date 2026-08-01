@@ -12,7 +12,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import PureWindowsPath
 from uuid import UUID
 
 PRODUCTION_MIGRATION_CONTEXT_SCHEMA = "ticketbox-c07-production-migration-context-v5"
@@ -243,11 +243,11 @@ class ProductionMigrationContext:
     maintenance_deadline_utc: datetime
     maintenance_remaining_ceiling_ms: int
     maintenance_authority_sha256: str
-    writer_freeze_proof_path: Path
+    writer_freeze_proof_path: PureWindowsPath
     writer_freeze_proof_sha256: str
-    recovery_manifest_path: Path
+    recovery_manifest_path: PureWindowsPath
     recovery_manifest_sha256: str
-    isolated_restore_evidence_path: Path
+    isolated_restore_evidence_path: PureWindowsPath
     isolated_restore_evidence_sha256: str
     lifecycle_root_authority_chain_sha256: str
 
@@ -406,11 +406,13 @@ def _require_utc(value: object, *, label: str) -> datetime:
     return parsed
 
 
-def _require_absolute_path(value: object, *, label: str) -> Path:
+def _require_absolute_path(value: object, *, label: str) -> PureWindowsPath:
     text_value = _require_string(value, label=label)
     if "\x00" in text_value:
         raise C07ProductionMigrationError(f"{label} contains NUL")
-    path = Path(text_value)
+    path = PureWindowsPath(text_value)
     if not path.is_absolute():
-        raise C07ProductionMigrationError(f"{label} must be absolute")
+        raise C07ProductionMigrationError(f"{label} must be an absolute Windows path")
+    if ".." in path.parts:
+        raise C07ProductionMigrationError(f"{label} contains parent traversal")
     return path

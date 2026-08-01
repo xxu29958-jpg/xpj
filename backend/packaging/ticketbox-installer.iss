@@ -149,6 +149,7 @@ Source: "windows_bundled_database.ps1"; DestDir: "{app}\installer"; Flags: ignor
 Source: "windows_c07_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_superuser_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_lifecycle.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_c07_heartbeat_helper.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_failure_summary.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_recovery_generation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_packaged_migration.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion

@@ -161,17 +161,17 @@ def _hold_and_validate_artifacts(
 ) -> ValidatedProductionArtifacts:
     freeze_path = stack.enter_context(
         hold_system_authority_file_for_read(
-            migration_context.writer_freeze_proof_path
+            Path(str(migration_context.writer_freeze_proof_path))
         )
     )
     manifest_path = stack.enter_context(
         hold_system_authority_file_for_read(
-            migration_context.recovery_manifest_path
+            Path(str(migration_context.recovery_manifest_path))
         )
     )
     restore_path = stack.enter_context(
         hold_system_authority_file_for_read(
-            migration_context.isolated_restore_evidence_path
+            Path(str(migration_context.isolated_restore_evidence_path))
         )
     )
     return validate_production_migration_artifact_bytes(

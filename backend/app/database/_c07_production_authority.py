@@ -5,9 +5,8 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
-import os
 import re
-from pathlib import Path
+from pathlib import PureWindowsPath
 
 from app.database._c07_production_contract import (
     _FREEZE_FIELDS,
@@ -183,8 +182,8 @@ def _validate_artifact_paths(
     return binding_sequence
 
 
-def _same_path(left: Path, right: Path) -> bool:
-    return os.path.normcase(os.path.abspath(left)) == os.path.normcase(os.path.abspath(right))
+def _same_path(left: PureWindowsPath, right: PureWindowsPath) -> bool:
+    return left == right
 
 
 def _validate_freeze_payload(

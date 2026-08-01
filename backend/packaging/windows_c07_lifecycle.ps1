@@ -14,6 +14,13 @@
   and is never persisted in lifecycle artifacts.
 #>
 
+param(
+    [ValidateSet("full", "durable_heartbeat")]
+    [string]$TicketboxC07DependencyProfile = "full"
+)
+
+$script:TicketboxC07DependencyProfile = $TicketboxC07DependencyProfile
+
 $script:TicketboxC07EnvelopeSchema = "ticketbox-c07-host-envelope-v2"
 $script:TicketboxC07DescriptorSchema = "ticketbox-c07-operation-descriptor-v5"
 $script:TicketboxC07HeartbeatSchema = "ticketbox-c07-heartbeat-v4"
@@ -120,49 +127,80 @@ $script:TicketboxC07StageEvidenceContracts = @{
     }
 }
 
-function Assert-TicketboxC07Dependencies {
-    foreach ($commandName in @(
+function Assert-TicketboxC07DependencyCommands {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$CommandNames,
+        [Parameter(Mandatory = $true)][string]$ProfileName
+    )
+
+    foreach ($commandName in $CommandNames) {
+        if ($null -eq (Get-Command $commandName -ErrorAction SilentlyContinue)) {
+            throw (
+                "C07 $ProfileName dependency profile 缺少真实依赖函数：" +
+                $commandName
+            )
+        }
+    }
+}
+
+function Assert-TicketboxC07DurableHeartbeatDependencies {
+    Assert-TicketboxC07DependencyCommands `
+        -ProfileName "durable_heartbeat" `
+        -CommandNames @(
         "Assert-NoTicketboxAncestorReparsePoints",
         "Assert-TicketboxExactFileAcl",
         "Assert-TicketboxLifecycleLockIsHeld",
         "Assert-TicketboxProtectedDirectoryAcl",
-        "Assert-TicketboxC07LiveHostConnection",
         "Close-TicketboxC07MigrationHelperLease",
         "Close-TicketboxProcessIdentityHandle",
         "Compare-TicketboxNumericVersion",
         "ConvertTo-TicketboxCanonicalPath",
         "Enter-TicketboxDirectoryMutationGuard",
-        "Get-TicketboxC07DatabaseIdentity",
-        "Get-TicketboxExpectedRuntimeProcessIds",
         "Get-TicketboxLifecycleLockPath",
         "Get-TicketboxLifecycleOperationLockPath",
-        "Get-TicketboxListeningProcessIds",
         "Get-TicketboxPendingInstallationIdentityPath",
         "Get-TicketboxPortableFileSha256",
         "Get-TicketboxProcessIdentity",
-        "Get-TicketboxServiceProcessId",
-        "Get-TicketboxServiceStartPolicy",
-        "Get-TicketboxServiceState",
         "Initialize-TicketboxProtectedDirectoryAtomically",
-        "Invoke-TicketboxC07Sql",
         "New-TicketboxProcessIdentityFromFileTimeParts",
         "Open-TicketboxVerifiedProcessIdentityHandle",
         "Open-TicketboxC07VerifiedMigrationHelperLease",
         "Read-TicketboxInstalledBuildManifest",
         "Read-TicketboxPersistentInstallationIdentity",
         "Read-TicketboxProtectedUtf8Artifact",
-        "Resolve-TicketboxC07DatabaseHostAuthority",
         "Resolve-TicketboxInstalledC07MigrationHelperPath",
         "Test-TicketboxPathEquals",
         "Test-TicketboxPathWithin",
         "Test-TicketboxProcessIdentityEquals",
         "Test-TicketboxProcessIdentityHandleExited",
-        "Disable-TicketboxOwnedServiceIfExists",
         "Write-TicketboxProtectedUtf8FileDurable"
-    )) {
-        if ($null -eq (Get-Command $commandName -ErrorAction SilentlyContinue)) {
-            throw "C07 生命周期工件层缺少依赖函数：$commandName"
-        }
+    )
+}
+
+function Assert-TicketboxC07FullDependencies {
+    Assert-TicketboxC07DurableHeartbeatDependencies
+    Assert-TicketboxC07DependencyCommands `
+        -ProfileName "full" `
+        -CommandNames @(
+        "Assert-TicketboxC07LiveHostConnection",
+        "Get-TicketboxC07DatabaseIdentity",
+        "Get-TicketboxExpectedRuntimeProcessIds",
+        "Get-TicketboxListeningProcessIds",
+        "Get-TicketboxServiceProcessId",
+        "Get-TicketboxServiceStartPolicy",
+        "Get-TicketboxServiceState",
+        "Invoke-TicketboxC07Sql",
+        "Resolve-TicketboxC07DatabaseHostAuthority",
+        "Disable-TicketboxOwnedServiceIfExists"
+    )
+}
+
+function Assert-TicketboxC07Dependencies {
+    if ($script:TicketboxC07DependencyProfile -ceq "durable_heartbeat") {
+        Assert-TicketboxC07DurableHeartbeatDependencies
+    }
+    else {
+        Assert-TicketboxC07FullDependencies
     }
 }
 
@@ -246,6 +284,27 @@ function ConvertTo-TicketboxC07CanonicalOperationId([string]$OperationId) {
         throw "C07 operation identity 不是规范小写 UUID。"
     }
     return $canonical
+}
+
+function ConvertTo-TicketboxC07CanonicalUtcTimestamp {
+    param(
+        [Parameter(Mandatory = $true)][string]$Value,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    $parsed = [DateTimeOffset]::MinValue
+    if (
+        -not [DateTimeOffset]::TryParseExact(
+            $Value,
+            "o",
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$parsed
+        ) -or
+        $parsed.Offset -ne [TimeSpan]::Zero
+    ) {
+        throw "$Label 不是 canonical UTC。"
+    }
+    return $parsed.UtcDateTime.ToString("o")
 }
 
 function Get-TicketboxC07BootIdentity {

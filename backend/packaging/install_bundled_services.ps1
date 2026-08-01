@@ -252,6 +252,12 @@ if (-not (Test-Path -LiteralPath $C07LifecycleScript -PathType Leaf)) {
     throw "缺少 Windows C07 生命周期脚本：$C07LifecycleScript"
 }
 . $C07LifecycleScript
+$C07HeartbeatHelperScript = Join-Path `
+    $ScriptDir `
+    "windows_c07_heartbeat_helper.ps1"
+if (-not (Test-Path -LiteralPath $C07HeartbeatHelperScript -PathType Leaf)) {
+    throw "缺少 Windows C07 durable heartbeat helper：$C07HeartbeatHelperScript"
+}
 $C07FailureSummaryScript = Join-Path `
     $ScriptDir `
     "windows_c07_failure_summary.ps1"

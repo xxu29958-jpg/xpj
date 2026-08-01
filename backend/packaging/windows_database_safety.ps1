@@ -1363,7 +1363,7 @@ function Assert-TicketboxC07DurableHeartbeatOperation {
 
 function Get-TicketboxC07HeartbeatHelperScriptPath {
     $path = [IO.Path]::GetFullPath(
-        (Join-Path $PSScriptRoot "windows_c07_recovery_generation.ps1")
+        (Join-Path $PSScriptRoot "windows_c07_heartbeat_helper.ps1")
     )
     Assert-NoTicketboxAncestorReparsePoints $path
     if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "File") {

@@ -23,6 +23,7 @@ from sqlalchemy import select
 import app.routes.web_debt_proposal_actions as proposal_routes
 from app.database import SessionLocal
 from app.models import Debt, MemberRepaymentProposal, Repayment
+from app.money_carrier import MAX_MAJOR_DECIMAL_TEXT_LENGTH
 from app.routes._web_debt_write import (
     PROPOSAL_CONFIRM_AMOUNT_FIELD,
     PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY,
@@ -85,7 +86,7 @@ def test_web_confirm_invalid_amount_rerenders_422_anchored_and_writes_nothing(
     before_version = row_version_of(debt_id)
     confirm_url = f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm"
 
-    for invalid in ("abc", "-5", "0", "10.005"):
+    for invalid in ("abc", "-5", "0", "10.005", "050", " 50", "5e1"):
         response = post_confirm(
             web_client,
             public_id,
@@ -356,7 +357,16 @@ def test_web_confirm_one_invalid_one_valid_alias_yields_invalid_amount_422(
     public_id, debt_id, _owner_id, _member_id, proposal_public_id = seed_creditor_view()
     before_version = row_version_of(debt_id)
 
-    for new_value, legacy_value in (("abc", "50.00"), ("50.00", "abc")):
+    overlong_zeros = "0" * MAX_MAJOR_DECIMAL_TEXT_LENGTH + "50"
+    for new_value, legacy_value, expected_error in (
+        ("abc", "50.00", "请填写正确的 CNY 金额"),
+        ("50.00", "abc", "请填写正确的 CNY 金额"),
+        (" 050", "50.00", "请填写正确的 CNY 金额"),
+        ("5e1", "50.00", "请填写正确的 CNY 金额"),
+        ("-050", "50.00", "金额必须大于 0"),
+        ("050.", "50.00", "请填写正确的 CNY 金额"),
+        (overlong_zeros, "50.00", "请填写正确的 CNY 金额"),
+    ):
         response = post_confirm(
             web_client,
             public_id,
@@ -368,7 +378,7 @@ def test_web_confirm_one_invalid_one_valid_alias_yields_invalid_amount_422(
             },
         )
         assert response.status_code == 422
-        assert "请填写正确的 CNY 金额" in response.text  # 非法金额族文案
+        assert expected_error in response.text  # 保留格式错误与负数的可操作文案分型
         assert "两个不一样的金额" not in response.text  # 不是冲突文案
         assert 'id="proposal-confirm-amount-error"' in response.text
 
