@@ -1,4 +1,6 @@
 {
+  "currency_code": "CNY",
+  "minor_unit_exponent": 2,
   "amount_cents": 1851,
   "merchant": "中国建设银行",
   "expense_time": "2026-05-04T16:23:25+08:00",

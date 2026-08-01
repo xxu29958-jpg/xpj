@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.schemas._money import NonNegativeMoneyAggregate
+
 __all__ = [
     "CategoriesResponse",
     "CategoryStatsResponse",
@@ -16,13 +18,13 @@ __all__ = [
 
 class CategoryStatsResponse(BaseModel):
     category: str
-    amount_cents: int
+    amount_cents: NonNegativeMoneyAggregate
     count: int
 
 
 class TagStatsResponse(BaseModel):
     tag: str
-    amount_cents: int
+    amount_cents: NonNegativeMoneyAggregate
     count: int
 
 
@@ -40,7 +42,7 @@ class MonthsResponse(BaseModel):
 
 class MonthlyStatsResponse(BaseModel):
     month: str
-    total_amount_cents: int
+    total_amount_cents: NonNegativeMoneyAggregate
     count: int
     by_category: list[CategoryStatsResponse]
     by_tag: list[TagStatsResponse] = Field(default_factory=list)

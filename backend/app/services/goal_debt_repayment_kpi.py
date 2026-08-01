@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Debt
+from app.money_contract import projection_values_sum_to_int
 from app.services.debt_service import (
     compute_remaining,
     compute_remaining_as_of,
@@ -159,9 +160,16 @@ def compute_external_kpi(
     earliest_created = min(ensure_utc(debt.created_at) for debt in debts)
     observation_start = max(window_start, earliest_created)
     tracking_days = (now - observation_start).days
-    remaining_now = sum(compute_remaining(db, debt) for debt in debts)
-    remaining_then = sum(
-        compute_remaining_as_of(db, debt, observation_start) for debt in debts
+    remaining_now = projection_values_sum_to_int(
+        (compute_remaining(db, debt) for debt in debts),
+        label="debt_goal.remaining_now",
+    )
+    remaining_then = projection_values_sum_to_int(
+        (
+            compute_remaining_as_of(db, debt, observation_start)
+            for debt in debts
+        ),
+        label="debt_goal.remaining_then",
     )
     days_left = project_payoff_days(remaining_now, remaining_then - remaining_now, tracking_days)
     if days_left is None:

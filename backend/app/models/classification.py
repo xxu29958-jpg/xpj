@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -16,12 +17,14 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
 
 
 class CategoryRule(Base):
     __tablename__ = "category_rules"
+    __table_args__ = money_check_constraints_for_table("category_rules")
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[str] = mapped_column(
@@ -35,8 +38,8 @@ class CategoryRule(Base):
     category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False, index=True)
-    amount_min_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    amount_max_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount_min_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    amount_max_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     source_contains: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tag_contains: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

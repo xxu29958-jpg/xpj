@@ -64,6 +64,12 @@ $LockHolderScript = Join-Path $ScriptDir "hold_installer_lifecycle_lock.ps1"
 $DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
 $PgRecoveryToolsScript = Join-Path $ScriptDir "windows_pg_recovery_tools.ps1"
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
+$C07DatabaseScript = Join-Path $ScriptDir "windows_c07_database.ps1"
+$C07SuperuserRecoveryScript = Join-Path $ScriptDir "windows_c07_superuser_recovery.ps1"
+$C07LifecycleScript = Join-Path $ScriptDir "windows_c07_lifecycle.ps1"
+$C07FailureSummaryScript = Join-Path $ScriptDir "windows_c07_failure_summary.ps1"
+$C07RecoveryGenerationScript = Join-Path $ScriptDir "windows_c07_recovery_generation.ps1"
+$C07PackagedMigrationScript = Join-Path $ScriptDir "windows_c07_packaged_migration.ps1"
 $BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
 $BootstrapExposureRecoveryScript = Join-Path $ScriptDir "windows_bootstrap_exposure_recovery.ps1"
 $InstallScript = Join-Path $ScriptDir "install_bundled_services.ps1"
@@ -271,6 +277,10 @@ function Get-InstallerBuildInputEvidence(
             payload_algorithm = $BackendManifest.payload.algorithm
             payload_fingerprint = $BackendManifest.payload.fingerprint
             executable = $BackendManifest.payload.executable
+            c07_migration_helper =
+                $BackendManifest.payload.c07_migration_helper
+            c07_migration_helper_smoke =
+                $BackendManifest.payload.c07_migration_helper_smoke
             toolchain = $BackendManifest.toolchain
             manifest = Get-TicketboxFileEvidence $BackendRoot $BackendBuildManifest
         }
@@ -811,6 +821,12 @@ Assert-File $DataRootGuardScript "Windows DataRoot guard holder 脚本"
 Assert-File $DatabaseSafetyScript "Windows 数据库安全脚本"
 Assert-File $PgRecoveryToolsScript "Windows PostgreSQL 恢复工具脚本"
 Assert-File $DatabaseScript "Windows bundled database 脚本"
+Assert-File $C07DatabaseScript "Windows C07 数据库权威脚本"
+Assert-File $C07SuperuserRecoveryScript "Windows C07 superuser recovery 脚本"
+Assert-File $C07LifecycleScript "Windows C07 生命周期脚本"
+Assert-File $C07FailureSummaryScript "Windows C07 installer failure summary 脚本"
+Assert-File $C07RecoveryGenerationScript "Windows C07 恢复代际脚本"
+Assert-File $C07PackagedMigrationScript "Windows C07 frozen migration bridge"
 Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"
 Assert-File $BootstrapExposureRecoveryScript "Windows bootstrap 暴露恢复脚本"
 Assert-File $InstallScript "install_bundled_services.ps1"
@@ -843,6 +859,7 @@ Write-Ok "Git provenance：$($gitProvenance.commit) dirty=$($gitProvenance.dirty
 Assert-Dir $BackendDist "冻结后端 onedir"
 Assert-TicketboxNoReparsePath -Path $BackendDist -AllowedRoot $BackendRoot -InspectTree | Out-Null
 Assert-File (Join-Path $BackendDist "ticketbox-backend.exe") "ticketbox-backend.exe"
+Assert-File (Join-Path $BackendDist "ticketbox-c07-migrator.exe") "ticketbox-c07-migrator.exe"
 $backendManifest = Assert-TicketboxBackendBuildManifest $BackendRoot $BackendDist
 Write-Ok "冻结后端 manifest 已绑定当前源码、版本和 EXE/payload hash。"
 Assert-Dir $ManagerDist "冻结 Desktop Manager onedir"

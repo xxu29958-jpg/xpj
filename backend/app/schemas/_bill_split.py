@@ -21,8 +21,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic_core import PydanticCustomError
 
+from app.schemas._money import PositiveMoneyMinor
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -49,7 +51,17 @@ class BillSplitInviteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     receiver_account_id: int
-    amount_cents: int
+    amount_cents: PositiveMoneyMinor
+
+    @field_validator("amount_cents", mode="before")
+    @classmethod
+    def _preserve_split_amount_error(cls, value: object) -> object:
+        if type(value) is int and value <= 0:
+            raise PydanticCustomError(
+                "split_amount_invalid",
+                "split amount must be greater than zero",
+            )
+        return value
 
 
 class BillSplitAcceptRequest(BaseModel):
@@ -70,10 +82,10 @@ class _BillSplitCommon(BaseModel):
 
     public_id: str
     status: BillSplitStatus
-    amount_cents: int
+    amount_cents: PositiveMoneyMinor
     home_currency_code: str
     original_currency_code: str
-    original_amount_minor: int | None = None
+    original_amount_minor: PositiveMoneyMinor | None = None
     exchange_rate_to_cny: Decimal | None = None
     exchange_rate_date: datetime | None = None
     exchange_rate_source: str | None = None

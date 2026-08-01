@@ -85,15 +85,16 @@ class DebtListViewModelCurrencyTest {
         val viewModel = DebtListViewModel(repo)
         runCurrent()
 
-        // 加载未回时用户已按兜底口径输入（"12.00" 在 CNY 是 1200 分，在 JPY 非法）。
+        // 加载未回时用户已按兜底口径输入（"12.01" 在 CNY 是 1201 分，在 JPY
+        // 无法精确落到整数 minor）。等值尾零如 "12.00" 应被接受为 JPY 12。
         viewModel.updateDraftCounterparty("小王")
-        viewModel.updateDraftAmount("12.00")
+        viewModel.updateDraftAmount("12.01")
         gate.complete(Unit)
         advanceUntilIdle()
 
         val draft = viewModel.state.value.addDraft
         assertEquals(CurrencyCode.JPY, draft.homeCurrency)
-        assertEquals("12.00", draft.amountYuanInput)
+        assertEquals("12.01", draft.amountYuanInput)
         assertTrue(draft.userTouched)
         assertTrue(draft.validationError != null)
         // 提前重校验后：金额在新币种下不合法，提交仍被拦，createDebt 不可达。

@@ -20,7 +20,7 @@ from app.services.ocr_service import OcrApplyContractError, OcrResult, apply_ocr
 from tests._infra.assets import PNG_BYTES
 
 
-def _make_expense(tenant_id: str) -> int:
+def _make_expense(tenant_id: str, *, currency_code: str = "CNY") -> int:
     """Seed a minimal pending expense so the FK on ``ocr_facts.expense_id``
     is satisfiable. Tests that need the OCR-facts table need *an*
     expense to attach to; they don't care about its content."""
@@ -31,6 +31,8 @@ def _make_expense(tenant_id: str) -> int:
             source="pytest",
             raw_text="",
             status="pending",
+            home_currency_code=currency_code,
+            original_currency_code=currency_code,
         )
         db.add(expense)
         db.commit()
@@ -199,6 +201,46 @@ def test_apply_with_fact_updates_mirror_and_appends_snapshot(*, identity) -> Non
         assert len(rows) == 1
         assert rows[0].raw_text == expense.raw_text
         assert rows[0].ocr_provider == "manual_text"
+
+
+@pytest.mark.parametrize(
+    ("currency_code", "raw_text", "expected_minor"),
+    [
+        ("CNY", "示例超市\n交易金额：12.34", 1234),
+        ("JPY", "示例超市\n交易金额：1200", 1200),
+        ("KRW", "示例超市\n交易金额：1200", 1200),
+    ],
+)
+def test_apply_with_fact_persists_frozen_currency_minor_units(
+    currency_code: str,
+    raw_text: str,
+    expected_minor: int,
+    *,
+    identity,
+) -> None:
+    expense_id = _make_expense("owner", currency_code=currency_code)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+
+        apply_ocr_result_and_append_fact(
+            db,
+            expense=expense,
+            result=OcrResult(raw_text=raw_text, confidence=0.8),
+            provider_name="manual_text",
+        )
+        db.commit()
+
+        db.refresh(expense)
+        rows = ocr_facts_for_expense(
+            db,
+            tenant_id="owner",
+            expense_id=expense_id,
+        )
+        assert expense.amount_cents == expected_minor
+        assert expense.original_amount_minor == expected_minor
+        assert len(rows) == 1
+        assert rows[0].parsed_amount_cents == expected_minor
 
 
 def test_facts_table_is_append_only_no_unique_per_expense(*, identity) -> None:

@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseItem
+from app.money_contract import (
+    MoneySign,
+    ensure_optional_money_minor,
+    projection_sum_to_int,
+    projection_values_sum_to_int,
+)
 from app.schemas import (
     ExpenseItemReplaceRequest,
     ExpenseItemRequest,
@@ -20,6 +28,48 @@ from app.services.time_service import now_utc
 # tolerance for rounding / floating drift between expense.amount_cents and
 # sum(items.amount_cents); 0 = strict integer equality (cents).
 _ITEMS_SUM_TOLERANCE_CENTS = 0
+_EXPENSE_ITEM_KINDS = frozenset(
+    {"product", "discount", "tax", "service_fee"}
+)
+
+
+def validate_expense_item_money_command(
+    items: Sequence[object],
+) -> None:
+    """Validate item money before any expense lookup or mutation."""
+
+    for item in items:
+        _validate_item_amounts(
+            kind=getattr(item, "kind", None),
+            unit_price_cents=getattr(item, "unit_price_cents", None),
+            amount_cents=getattr(item, "amount_cents", None),
+        )
+
+
+def _validate_item_amounts(
+    *,
+    kind: object,
+    unit_price_cents: object | None,
+    amount_cents: object | None,
+) -> tuple[int | None, int | None]:
+    unit_price = ensure_optional_money_minor(
+        unit_price_cents,
+        sign=MoneySign.NONNEGATIVE,
+        label="expense_item.unit_price_cents",
+    )
+    amount = ensure_optional_money_minor(
+        amount_cents,
+        sign=MoneySign.SIGNED,
+        label="expense_item.amount_cents",
+    )
+    if type(kind) is not str or kind not in _EXPENSE_ITEM_KINDS:
+        raise AppError("invalid_request", status_code=422)
+    if amount is not None and (
+        (kind == "discount" and amount > 0)
+        or (kind != "discount" and amount < 0)
+    ):
+        raise AppError("amount_invalid", status_code=422)
+    return unit_price, amount
 
 
 def list_expense_items(db: Session, expense_id: int, tenant_id: str) -> ExpenseItemsResponse:
@@ -35,6 +85,7 @@ def replace_expense_items(
     *,
     commit: bool = True,
 ) -> ExpenseItemsResponse:
+    validate_expense_item_money_command(payload.items)
     now = now_utc()
     rowcount = claim_row_with_token(
         db,
@@ -86,6 +137,7 @@ def replace_ocr_draft_items(
     if expense.status != "pending":
         return
 
+    validate_expense_item_money_command(parsed_items)
     existing = list(
         db.scalars(
             ledger_scoped_select(ExpenseItem, expense.tenant_id).where(
@@ -180,7 +232,12 @@ def recompute_items_sum_status(db: Session, expense: Expense) -> None:
         expense.items_sum_status = "matched"
         return
 
-    delta = abs(expense.amount_cents - items_sum)
+    delta = abs(
+        projection_sum_to_int(
+            expense.amount_cents - items_sum,
+            label="expense_items.mismatch",
+        )
+    )
     if delta <= _ITEMS_SUM_TOLERANCE_CENTS:
         expense.items_sum_status = "matched"
         return
@@ -204,7 +261,10 @@ def _compute_items_sum_cents(db: Session, expense: Expense) -> int | None:
     amounts = [item.amount_cents for item in items if item.amount_cents is not None]
     if not amounts:
         return None
-    return sum(amounts)
+    return projection_values_sum_to_int(
+        amounts,
+        label="expense_items.total",
+    )
 
 
 def _new_item(
@@ -214,6 +274,11 @@ def _new_item(
     *,
     now,
 ) -> ExpenseItem:
+    unit_price_cents, amount_cents = _validate_item_amounts(
+        kind=request_item.kind,
+        unit_price_cents=request_item.unit_price_cents,
+        amount_cents=request_item.amount_cents,
+    )
     return ExpenseItem(
         tenant_id=expense.tenant_id,
         expense_id=expense.id,
@@ -221,8 +286,8 @@ def _new_item(
         kind=request_item.kind,
         name=_clean_required_text(request_item.name),
         quantity_text=_clean_optional_text(request_item.quantity_text),
-        unit_price_cents=request_item.unit_price_cents,
-        amount_cents=request_item.amount_cents,
+        unit_price_cents=unit_price_cents,
+        amount_cents=amount_cents,
         category=normalize_category(request_item.category),
         raw_text=_clean_optional_text(request_item.raw_text),
         confidence=request_item.confidence,
@@ -241,6 +306,11 @@ def _new_ocr_draft_item(
 ) -> ExpenseItem:
     # ParsedReceiptItem.kind 是 PR-2 范围；目前 OCR 草稿默认 product。
     kind = getattr(parsed_item, "kind", "product")
+    unit_price_cents, amount_cents = _validate_item_amounts(
+        kind=kind,
+        unit_price_cents=parsed_item.unit_price_cents,
+        amount_cents=parsed_item.amount_cents,
+    )
     return ExpenseItem(
         tenant_id=expense.tenant_id,
         expense_id=expense.id,
@@ -248,8 +318,8 @@ def _new_ocr_draft_item(
         kind=kind,
         name=_clean_required_text(parsed_item.name),
         quantity_text=_clean_optional_text(parsed_item.quantity_text),
-        unit_price_cents=parsed_item.unit_price_cents,
-        amount_cents=parsed_item.amount_cents,
+        unit_price_cents=unit_price_cents,
+        amount_cents=amount_cents,
         category=normalize_category(parsed_item.category),
         raw_text=_clean_optional_text(parsed_item.raw_text),
         confidence=parsed_item.confidence,
@@ -282,9 +352,19 @@ def _build_response(db: Session, expense: Expense) -> ExpenseItemsResponse:
         )
     )
     amounts = [item.amount_cents for item in items if item.amount_cents is not None]
-    items_total = sum(amounts) if amounts else None
+    items_total = (
+        projection_values_sum_to_int(
+            amounts,
+            label="expense_items.response_total",
+        )
+        if amounts
+        else None
+    )
     mismatch = (
-        expense.amount_cents - items_total
+        projection_sum_to_int(
+            expense.amount_cents - items_total,
+            label="expense_items.response_mismatch",
+        )
         if expense.amount_cents is not None and items_total is not None
         else None
     )

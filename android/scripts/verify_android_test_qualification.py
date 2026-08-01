@@ -24,6 +24,8 @@ EXPECTED_EXIT_STATUSES = {
     15: frozenset({0}),  # REASON_PACKAGE_STATE_CHANGE
     16: frozenset({0}),  # REASON_PACKAGE_UPDATED
 }
+REASON_OTHER = 13
+NORMAL_EXIT_STATUS = 0
 
 
 class EvidenceError(RuntimeError):
@@ -603,6 +605,8 @@ def new_unhealthy_exits(
     before: ExitSnapshot,
     after: ExitSnapshot,
     expected: set[str],
+    *,
+    instrumentation_cleanup_processes: set[str] | frozenset[str] = frozenset(),
 ) -> list[ExitRecord]:
     new_records = new_exit_records(before, after)
     return sorted(
@@ -610,6 +614,17 @@ def new_unhealthy_exits(
             record
             for record in new_records
             if record.process in expected
+            # API 36 can report the Android Gradle Plugin's post-test removal of
+            # the instrumentation APK as REASON_OTHER/status=0. Scope that
+            # normal cleanup exception to processes derived from the test APK;
+            # the product APK still fails closed on REASON_OTHER. Android's
+            # human-readable description is deliberately not parsed because
+            # the platform contract does not guarantee its format.
+            and not (
+                record.process in instrumentation_cleanup_processes
+                and record.reason == REASON_OTHER
+                and record.status == NORMAL_EXIT_STATUS
+            )
             and record.status
             not in EXPECTED_EXIT_STATUSES.get(record.reason, frozenset())
         ),
@@ -660,7 +675,8 @@ def verify_process_health(
     before_path: Path,
     after_path: Path,
     apkanalyzer: Path,
-    apk_output_dirs: Iterable[Path],
+    target_apk_output_dir: Path,
+    instrumentation_apk_output_dir: Path,
 ) -> int:
     try:
         before_text = before_path.read_text(encoding="utf-8")
@@ -669,12 +685,22 @@ def verify_process_health(
         raise EvidenceError(f"Connected-test exit evidence is unreadable: {exc}") from exc
     before = parse_exit_snapshot(before_text)
     after = parse_exit_snapshot(after_text)
-    expected = expected_processes(apkanalyzer, apk_output_dirs)
+    target_processes = expected_processes(apkanalyzer, (target_apk_output_dir,))
+    instrumentation_processes = expected_processes(
+        apkanalyzer,
+        (instrumentation_apk_output_dir,),
+    )
+    expected = target_processes | instrumentation_processes
     expected_record_count = require_expected_process_exit(
         new_exit_records(before, after),
         expected,
     )
-    failures = new_unhealthy_exits(before, after, expected)
+    failures = new_unhealthy_exits(
+        before,
+        after,
+        expected,
+        instrumentation_cleanup_processes=instrumentation_processes,
+    )
     if failures:
         details = "\n".join(
             "  "
@@ -709,9 +735,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     connected.add_argument("--before", required=True, type=Path)
     connected.add_argument("--after", required=True, type=Path)
     connected.add_argument("--apkanalyzer", required=True, type=Path)
+    connected.add_argument("--target-apk-output-dir", required=True, type=Path)
     connected.add_argument(
-        "--apk-output-dir",
-        action="append",
+        "--instrumentation-apk-output-dir",
         required=True,
         type=Path,
     )
@@ -759,7 +785,8 @@ def main(argv: list[str] | None = None) -> int:
             before_path=args.before,
             after_path=args.after,
             apkanalyzer=args.apkanalyzer,
-            apk_output_dirs=args.apk_output_dir,
+            target_apk_output_dir=args.target_apk_output_dir,
+            instrumentation_apk_output_dir=args.instrumentation_apk_output_dir,
         )
     except EvidenceError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

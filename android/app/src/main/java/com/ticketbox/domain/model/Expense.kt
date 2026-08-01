@@ -332,7 +332,7 @@ data class MonthComparison(
     val currentAmountCents: Long,
     val previousAmountCents: Long,
     val deltaAmountCents: Long,
-    val percentChange: Int?,
+    val percentChange: Long?,
 )
 
 data class BudgetProgress(
@@ -341,7 +341,7 @@ data class BudgetProgress(
     val spentCents: Long,
     val remainingCents: Long,
     val progress: Float,
-    val percent: Int,
+    val percent: Long,
     val overBudget: Boolean,
 )
 

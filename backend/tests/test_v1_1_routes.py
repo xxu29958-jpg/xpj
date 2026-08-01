@@ -363,11 +363,27 @@ def test_discretionary_requires_auth(client: TestClient, *, identity) -> None:  
     assert resp.status_code == 401
 
 
-def test_discretionary_rejects_negative_query_params(
+def test_discretionary_enforces_canonical_money_query_contract(
     client: TestClient, *, identity
 ) -> None:
-    resp = client.get(
-        "/api/budget/discretionary?savings_target_cents=-1",
+    maximum = client.get(
+        "/api/budget/discretionary?savings_target_cents=9000000000000",
         headers=identity.app_headers,
     )
-    assert resp.status_code == 422
+    assert maximum.status_code == 200
+    assert maximum.json()["savings_target_cents"] == 9_000_000_000_000
+
+    invalid_values = {
+        "-1": "invalid_request",
+        "%2B1": "invalid_request",
+        "01": "invalid_request",
+        "%20": "invalid_request",
+        "9000000000001": "amount_invalid",
+    }
+    for value, error_code in invalid_values.items():
+        response = client.get(
+            f"/api/budget/discretionary?savings_target_cents={value}",
+            headers=identity.app_headers,
+        )
+        assert response.status_code == 422, value
+        assert response.json()["error"] == error_code, value

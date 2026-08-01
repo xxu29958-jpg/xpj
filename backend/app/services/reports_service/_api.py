@@ -11,8 +11,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.money_contract import projection_sum_to_int
 from app.services.category_service import normalize_category
 from app.services.csv_security import safe_csv_cell
+from app.services.currency_common import (
+    home_currency_code,
+    minor_amount_major_number,
+    minor_amount_value,
+)
 from app.services.reports_service._aggregation import (
     _range_amount_count,
     _range_amount_counts,
@@ -37,6 +43,25 @@ from app.services.reports_service._time import (
 logger = logging.getLogger(__name__)
 
 
+def _overview_range_totals(
+    db: Session,
+    *,
+    tenant_id: str,
+    current: tuple[Any, Any],
+    previous: tuple[Any, Any],
+    year_over_year: tuple[Any, Any],
+) -> dict[str, tuple[int, int]]:
+    return _range_amount_counts(
+        db,
+        tenant_id=tenant_id,
+        ranges={
+            "current": current,
+            "previous": previous,
+            "year_over_year": year_over_year,
+        },
+    )
+
+
 def reports_overview(
     db: Session,
     *,
@@ -58,14 +83,12 @@ def reports_overview(
     previous_start_utc, previous_end_utc = _month_bounds(previous_month, timezone_key)
     year_over_year_month = _shift_month(month, -12)
     yoy_start_utc, yoy_end_utc = _month_bounds(year_over_year_month, timezone_key)
-    range_totals = _range_amount_counts(
+    range_totals = _overview_range_totals(
         db,
         tenant_id=tenant_id,
-        ranges={
-            "current": (current_start_utc, current_end_utc),
-            "previous": (previous_start_utc, previous_end_utc),
-            "year_over_year": (yoy_start_utc, yoy_end_utc),
-        },
+        current=(current_start_utc, current_end_utc),
+        previous=(previous_start_utc, previous_end_utc),
+        year_over_year=(yoy_start_utc, yoy_end_utc),
     )
     total_amount, count = range_totals["current"]
     previous_total, previous_count = range_totals["previous"]
@@ -82,7 +105,12 @@ def reports_overview(
         "year_over_year_month": year_over_year_month,
         "year_over_year_total_amount_cents": yoy_total,
         "year_over_year_count": yoy_count,
-        "year_over_year_delta_amount_cents": total_amount - yoy_total,
+        "year_over_year_delta_amount_cents": (
+            projection_sum_to_int(
+                total_amount - yoy_total,
+                label="reports.overview_yoy_delta",
+            )
+        ),
         "year_over_year_delta_count": count - yoy_count,
         "merchant_category": normalized_merchant_category,
         "ranking_metric": ranking_metric,
@@ -122,6 +150,7 @@ def six_month_summary(
     anchor_month: str,
     tenant_id: str,
     timezone_name: str | None = None,
+    currency_code: str | None = None,
 ) -> list[dict]:
     """6 个月（含锚定月）的逐月已确认支出 + 预算汇总。
 
@@ -132,6 +161,7 @@ def six_month_summary(
     # 避免循环导入：budget_service 没有反向依赖 reports_service。
     from app.services.budget_service import get_monthly_budget
 
+    home = currency_code or home_currency_code()
     results: list[dict] = []
     for month_label in _month_labels_ending_at(anchor_month, 6):
         start_utc, end_utc = _month_bounds(month_label, timezone_key)
@@ -145,12 +175,29 @@ def six_month_summary(
             budget = get_monthly_budget(
                 db, tenant_id=tenant_id, month=month_label, timezone_name=timezone_key
             )
-            budget_cents = (
-                int(budget.total_amount_cents) + int(budget.rollover_amount_cents)
-                if budget.configured
-                else 0
+            budget_cents = 0
+            if budget.configured:
+                budget_cents = projection_sum_to_int(
+                    projection_sum_to_int(
+                        budget.total_amount_cents,
+                        label="reports.budget_total",
+                    )
+                    + projection_sum_to_int(
+                        budget.rollover_amount_cents,
+                        label="reports.budget_rollover",
+                    ),
+                    label="reports.budget_available",
+                )
+        except AppError as exc:
+            if exc.error == "money_projection_out_of_range":
+                raise
+            logger.exception(
+                "reports trend6: get_monthly_budget failed for ledger=%s month=%s",
+                tenant_id,
+                month_label,
             )
-        except (AppError, SQLAlchemyError):
+            budget_cents = 0
+        except SQLAlchemyError:
             logger.exception(
                 "reports trend6: get_monthly_budget failed for ledger=%s month=%s",
                 tenant_id,
@@ -160,11 +207,13 @@ def six_month_summary(
         results.append(
             {
                 "month": month_label,
-                "amount_cents": int(amount),
-                "amount_yuan": int(amount) / 100.0,
+                "amount_cents": amount,
+                "amount_yuan": minor_amount_major_number(amount, home),
+                "amount_major_text": minor_amount_value(amount, home),
                 "count": int(count),
                 "budget_cents": budget_cents,
-                "budget_yuan": budget_cents / 100.0,
+                "budget_yuan": minor_amount_major_number(budget_cents, home),
+                "budget_major_text": minor_amount_value(budget_cents, home),
             }
         )
     return results

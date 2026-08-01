@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.errors import AppError
+from app.money_contract import MoneySign, ensure_money_minor
 from app.services.category_common import DEFAULT_CATEGORIES, normalize_category
 from app.services.ocr_service._models import OcrResult
 from app.services.receipt_parse_service import parse_receipt_text
@@ -33,9 +35,17 @@ def _best_confidence(*values: float | None) -> float | None:
 
 
 def _positive_amount_cents(value: int | None) -> int | None:
-    if value is None or value <= 0:
+    if value is None:
         return None
-    return value
+    if type(value) is not int:
+        raise AppError("amount_invalid", status_code=422)
+    if value <= 0:
+        return None
+    return ensure_money_minor(
+        value,
+        sign=MoneySign.POSITIVE,
+        label="ocr.amount_cents",
+    )
 
 
 def _safe_category(value: str | None) -> str | None:

@@ -10,7 +10,7 @@ Fixture layout (anything under ``--fixture-dir`` matching this shape):
     fixtures/
       receipt_01/
         image.png          # the raw receipt screenshot
-        ground_truth.json  # {amount_cents, merchant, expense_time, category}
+        ground_truth.json  # {currency_code, minor_unit_exponent, amount_cents, ...}
       receipt_02/
         image.jpg
         ground_truth.json
@@ -80,6 +80,8 @@ def _configure_output_encoding() -> None:
 
 @dataclass
 class GroundTruth:
+    currency_code: str | None = None
+    minor_unit_exponent: int | None = None
     amount_cents: int | None = None
     merchant: str | None = None
     expense_time: str | None = None  # ISO 8601
@@ -90,6 +92,8 @@ class GroundTruth:
     def from_json(cls, path: Path) -> GroundTruth:
         data = json.loads(path.read_text(encoding="utf-8"))
         return cls(
+            currency_code=data.get("currency_code"),
+            minor_unit_exponent=data.get("minor_unit_exponent"),
             amount_cents=data.get("amount_cents"),
             merchant=data.get("merchant"),
             expense_time=data.get("expense_time"),
@@ -241,7 +245,12 @@ def _run_mock(image: Path | None, gt: GroundTruth, timezone_name: str) -> OcrRes
     raw_text = gt.raw_text or (
         "中国建设银行\n交易提醒\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"
     )
-    parsed = parse_receipt_text(raw_text, timezone_name=timezone_name)
+    parsed = parse_receipt_text(
+        raw_text,
+        timezone_name=timezone_name,
+        currency_code=gt.currency_code,
+        minor_unit_exponent=gt.minor_unit_exponent,
+    )
     return OcrResult(
         raw_text=raw_text,
         confidence=parsed.confidence,
@@ -264,7 +273,12 @@ def _run_rapidocr(image: Path | None, gt: GroundTruth, timezone_name: str) -> Oc
     raw_text = "\n".join(texts)
     scores = [float(s) for s in (result.scores or ()) if s is not None]
     confidence = (sum(scores) / len(scores)) if scores else None
-    parsed = parse_receipt_text(raw_text, timezone_name=timezone_name)
+    parsed = parse_receipt_text(
+        raw_text,
+        timezone_name=timezone_name,
+        currency_code=gt.currency_code,
+        minor_unit_exponent=gt.minor_unit_exponent,
+    )
     return OcrResult(
         raw_text=raw_text,
         confidence=confidence if confidence is not None else parsed.confidence,

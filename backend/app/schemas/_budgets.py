@@ -6,6 +6,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._money import (
+    NonNegativeMoneyAggregate,
+    NonNegativeMoneyMinor,
+    SignedMoneyAggregate,
+    SignedMoneyMinor,
+)
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -24,15 +30,15 @@ class BudgetCategoryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     category: str = Field(min_length=1, max_length=64)
-    amount_cents: int = Field(ge=0)
+    amount_cents: NonNegativeMoneyMinor
 
 
 class BudgetMonthlyUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    total_amount_cents: int = Field(ge=0)
-    non_monthly_amount_cents: int = Field(default=0, ge=0)
-    rollover_amount_cents: int = 0
+    total_amount_cents: NonNegativeMoneyMinor
+    non_monthly_amount_cents: NonNegativeMoneyMinor = 0
+    rollover_amount_cents: SignedMoneyMinor = 0
     excluded_categories: list[str] = Field(default_factory=list)
     category_budgets: list[BudgetCategoryRequest] = Field(default_factory=list)
 
@@ -49,15 +55,15 @@ class BudgetMonthlyArchiveResponse(BaseModel):
 
 class BudgetCategoryResponse(BaseModel):
     category: str
-    amount_cents: int
-    spent_amount_cents: int
-    remaining_amount_cents: int
-    overspent_amount_cents: int
+    amount_cents: NonNegativeMoneyMinor
+    spent_amount_cents: NonNegativeMoneyAggregate
+    remaining_amount_cents: SignedMoneyAggregate
+    overspent_amount_cents: NonNegativeMoneyAggregate
 
 
 class BudgetExcludedCategoryResponse(BaseModel):
     category: str
-    amount_cents: int
+    amount_cents: NonNegativeMoneyAggregate
     count: int
 
 
@@ -66,15 +72,15 @@ class BudgetMonthlyResponse(BaseModel):
     month: str
     configured: bool
     row_version: int | None = None
-    total_amount_cents: int
-    rollover_amount_cents: int
-    fixed_amount_cents: int
-    non_monthly_amount_cents: int
-    flex_budget_cents: int
-    spent_amount_cents: int
-    excluded_amount_cents: int
-    remaining_amount_cents: int
-    overspent_amount_cents: int
+    total_amount_cents: NonNegativeMoneyMinor
+    rollover_amount_cents: SignedMoneyMinor
+    fixed_amount_cents: NonNegativeMoneyAggregate
+    non_monthly_amount_cents: NonNegativeMoneyMinor
+    flex_budget_cents: NonNegativeMoneyAggregate
+    spent_amount_cents: NonNegativeMoneyAggregate
+    excluded_amount_cents: NonNegativeMoneyAggregate
+    remaining_amount_cents: SignedMoneyAggregate
+    overspent_amount_cents: NonNegativeMoneyAggregate
     excluded_categories: list[str]
     excluded_breakdown: list[BudgetExcludedCategoryResponse]
     category_budgets: list[BudgetCategoryResponse]

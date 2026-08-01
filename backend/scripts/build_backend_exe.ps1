@@ -31,6 +31,7 @@ $InputSnapshotRoot = Join-Path $BuildRoot (".ticketbox-backend-inputs-{0}" -f $B
 $LockSnapshotPath = Join-Path $InputSnapshotRoot "requirements-build.lock"
 $InputLocks = $null
 $ToolchainLocks = $null
+$C07SmokePayloadLocks = $null
 $ToolchainSnapshot = $null
 $ToolchainPaths = @()
 $BuildLock = $null
@@ -190,6 +191,10 @@ try {
     if (-not (Test-Path -LiteralPath $stagedExe -PathType Leaf)) {
         throw "PyInstaller completed without the staged backend executable."
     }
+    $stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"
+    if (-not (Test-Path -LiteralPath $stagedC07Helper -PathType Leaf)) {
+        throw "PyInstaller completed without the staged C07 migration helper."
+    }
     $archiveListing = @(& $PyBuild -I -B -m PyInstaller.utils.cliutils.archive_viewer -r $stagedExe 2>&1)
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller archive inspection failed (exit=$LASTEXITCODE)."
@@ -201,6 +206,14 @@ try {
                 ForEach-Object { $_.ToString() } |
                 Where-Object { $_.Trim().Length -gt 0 }
         )
+    $c07SmokePayloadSnapshot = Get-TicketboxBackendPayloadSnapshot $StagingDir
+    $C07SmokePayloadLocks = @(Enter-TicketboxFileSetReadLocks `
+        -Root $StagingDir `
+        -Snapshot $c07SmokePayloadSnapshot)
+    $c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke `
+        -DistDir $StagingDir `
+        -HelperPath $stagedC07Helper `
+        -PayloadSnapshot $c07SmokePayloadSnapshot
     Assert-TicketboxFileSetSnapshot "Frozen backend source during build" $sourceBeforeFreeze (Get-TicketboxBackendSourceSnapshot $BackendRoot)
     $currentPythonVersion = Invoke-TicketboxVersionProbe $PyBuild @("-c", "import platform; print(platform.python_version())") '^(\d+\.\d+\.\d+)$' "Python"
     $currentUvVersion = Invoke-TicketboxVersionProbe $UvPath @("--version") '^uv\s+(\d+\.\d+\.\d+)\b' "uv"
@@ -217,8 +230,11 @@ try {
         -BackendRoot $InputSnapshotRoot `
         -DistDir $StagingDir `
         -ToolchainProvenance $currentToolchainProvenance `
-        -SourceSnapshot $sourceBeforeFreeze
+        -SourceSnapshot $sourceBeforeFreeze `
+        -C07MigrationHelperSmokeEvidence $c07MigrationHelperSmoke
     Assert-TicketboxBackendBuildManifest $BackendRoot $StagingDir | Out-Null
+    Exit-TicketboxFileSetReadLocks $C07SmokePayloadLocks
+    $C07SmokePayloadLocks = $null
     $validateBackendPublish = {
         param([string]$PublishedDirectory)
         Assert-TicketboxBackendBuildManifest $BackendRoot $PublishedDirectory | Out-Null
@@ -240,6 +256,7 @@ catch {
 finally {
     try {
         foreach ($cleanup in @(
+            [pscustomobject]@{ Label = "C07 smoke payload read locks"; Action = { Exit-TicketboxFileSetReadLocks $C07SmokePayloadLocks } },
             [pscustomobject]@{ Label = "input read locks"; Action = { Exit-TicketboxFileSetReadLocks $InputLocks } },
             [pscustomobject]@{ Label = "toolchain read locks"; Action = { Exit-TicketboxFileSetReadLocks $ToolchainLocks } },
             [pscustomobject]@{ Label = "UV_PYTHON_DOWNLOADS"; Action = {

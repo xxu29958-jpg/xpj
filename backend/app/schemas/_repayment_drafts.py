@@ -17,6 +17,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._money import PositiveMoneyMinor
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -46,7 +47,7 @@ class RepaymentDraftCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: str = Field(min_length=1, max_length=32)
-    amount_cents: int = Field(gt=0)
+    amount_cents: PositiveMoneyMinor
     merchant_label: str | None = Field(default=None, max_length=255)
     captured_at: datetime | None = None
     notification_key: str | None = Field(default=None, max_length=512)
@@ -81,7 +82,7 @@ class RepaymentDraftDismissRequest(BaseModel):
 class RepaymentDraftResponse(BaseModel):
     public_id: str
     source: str
-    amount_cents: int
+    amount_cents: PositiveMoneyMinor
     home_currency_code: str
     merchant_label: str | None = None
     captured_at: datetime

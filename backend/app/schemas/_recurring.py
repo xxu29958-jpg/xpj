@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -33,7 +34,7 @@ class RecurringItemTokenRequest(BaseModel):
 # v0.4-alpha3 — Recurring candidates (read-only insights)
 class RecurringCandidateItem(BaseModel):
     merchant: str
-    amount_cents: int
+    amount_cents: PositiveMoneyMinor
     occurrence_count: int
     last_seen_at: datetime | None
     confidence: str
@@ -53,7 +54,7 @@ class RecurringCandidateConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     merchant: str = Field(min_length=1, max_length=255)
-    amount_cents: int = Field(ge=1)
+    amount_cents: PositiveMoneyMinor
     occurrence_count: int = Field(default=0, ge=0)
     last_seen_at: datetime | None = None
     confidence: str | None = Field(default=None, max_length=32)
@@ -67,8 +68,8 @@ class RecurringItemResponse(BaseModel):
     merchant: str
     merchant_key: str
     frequency: str
-    baseline_amount_cents: int
-    last_amount_cents: int
+    baseline_amount_cents: PositiveMoneyMinor
+    last_amount_cents: PositiveMoneyMinor
     occurrence_count: int
     last_seen_at: datetime | None = None
     next_expected_date: date | None = None
@@ -76,8 +77,8 @@ class RecurringItemResponse(BaseModel):
     confidence: str | None = None
     source: str
     anomaly_status: str = "none"
-    current_month_amount_cents: int | None = None
-    historical_average_amount_cents: int | None = None
+    current_month_amount_cents: NonNegativeMoneyMinor | None = None
+    historical_average_amount_cents: NonNegativeMoneyMinor | None = None
     amount_delta_percent: int | None = None
     created_at: datetime
     updated_at: datetime

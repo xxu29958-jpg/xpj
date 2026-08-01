@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Account, Expense, UploadLink
+from app.services.currency_common import minor_amount_value
 from app.services.ledger_service import list_managed_ledgers_for_account
 from app.services.time_service import now_utc
 
@@ -21,8 +22,10 @@ logger = logging.getLogger(__name__)
 OWNER_CONSOLE_TIMEZONE = "Asia/Shanghai"
 
 
-def _amount_yuan(amount_cents: int) -> str:
-    return f"{int(amount_cents) / 100:.2f}"
+def _amount_yuan(amount_cents: int, currency_code: str) -> str:
+    """Format owner-console money against an explicit persisted authority."""
+
+    return minor_amount_value(amount_cents, currency_code)
 
 
 def get_owner_account_id(db: Session) -> int | None:

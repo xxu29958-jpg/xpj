@@ -21,6 +21,7 @@ from app.services.budget_advisor_service._models import BudgetAdvice, BudgetInpu
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
 from app.services.budget_advisor_service._provider_names import canonical_provider_name
 from app.services.budget_advisor_service._providers import get_budget_advisor
+from app.services.currency_common import home_currency_code
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class AdvisorRunResult:
     provider_name: str
+    home_currency_code: str
     advice: BudgetAdvice | None
     reason_code: str | None = None
 
@@ -49,10 +51,12 @@ def run_budget_advisor(
     if provider_is_live:
         _assert_live_advisor_allowed(actor_role=actor_role)
 
+    home = home_currency_code()
     inputs = build_budget_inputs(
         db,
         tenant_id=tenant_id,
         month=month,
+        home_currency=home,
         timezone_name=timezone_name,
     )
     advisor = get_budget_advisor()
@@ -68,6 +72,7 @@ def run_budget_advisor(
             logger.exception("budget advisor outbound payload rejected before live call")
             return AdvisorRunResult(
                 provider_name=provider_name,
+                home_currency_code=home,
                 advice=None,
                 reason_code="ai_advisor_payload_invalid",
             )
@@ -85,6 +90,7 @@ def run_budget_advisor(
         advisor,
         inputs,
         provider_name=provider_name,
+        home_currency_code=home,
         provider_is_live=provider_is_live,
         audit_log_id=audit_log_id,
     )
@@ -96,6 +102,7 @@ def _invoke_and_record(
     inputs: BudgetInputs,
     *,
     provider_name: str,
+    home_currency_code: str,
     provider_is_live: bool,
     audit_log_id: int | None,
 ) -> AdvisorRunResult:
@@ -134,6 +141,7 @@ def _invoke_and_record(
             )
     return AdvisorRunResult(
         provider_name=provider_name,
+        home_currency_code=home_currency_code,
         advice=advice,
         reason_code=reason_code,
     )

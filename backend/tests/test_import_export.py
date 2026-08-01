@@ -10,7 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
@@ -90,22 +89,6 @@ def test_parse_csv_preview_rejects_ambiguous_foreign_amount(csv: str) -> None:
     assert row.amount_cents is None
     assert row.original_amount_minor is None
     assert "original_amount_minor" in (row.error or "")
-
-
-def test_parse_csv_preview_binds_blank_currency_to_runtime_home(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    get_settings.cache_clear()
-    try:
-        preview = parse_csv_preview("amount_yuan,merchant\n12.34,Tokyo\n")
-        assert preview.valid_count == 1
-        row = preview.rows[0]
-        assert row.original_currency_code == "JPY"
-        assert row.amount_cents == 1234
-        assert row.original_amount_minor == 1234
-    finally:
-        get_settings.cache_clear()
 
 
 def test_parse_csv_preview_treats_naive_time_as_configured_local_time() -> None:
@@ -339,6 +322,7 @@ def test_import_rows_persists_foreign_currency_metadata() -> None:
             currency_code="JPY",
             rate_date=preview.rows[0].exchange_rate_date,
             rate_to_home=Decimal("0.048"),
+            home_currency_code="CNY",
         )
         db.commit()
         inserted = import_rows(db, tenant_id="owner", rows=preview.rows)

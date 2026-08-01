@@ -17,6 +17,7 @@ import contextlib
 import ipaddress
 import logging
 import os
+import re
 import subprocess
 import time
 from collections.abc import Iterator
@@ -30,6 +31,7 @@ from sqlalchemy.exc import ArgumentError
 
 from app.config import DATA_ROOT, get_settings
 from app.errors import AppError
+from app.services.backup_job_lease import BackupJobLease, acquire_backup_job_lease
 from app.services.postgres_backup_validation_service import find_pg_binary, is_postgres_backup_valid
 from app.services.secure_file import (
     hold_protected_file_for_read,
@@ -45,6 +47,12 @@ _PREFIX = "ticketbox-"
 _SUFFIX = ".dump"
 _PG_DUMP_TIMEOUT_SECONDS = 5 * 60
 _PG_DUMP_LOCK_WAIT_MILLISECONDS = 30_000
+# PostgreSQL 17's ExportSnapshot() returns the basename generated as
+# ``%08X-%08X-%d``.  Keep this closed to the server-produced shape instead of
+# accepting arbitrary path-like text as a pg_dump option value.
+_PG_EXPORTED_SNAPSHOT = re.compile(
+    r"[0-9A-F]{8}-[0-9A-F]{8}-[1-9][0-9]{0,9}\Z"
+)
 _PG_TOOL_QUERY_KEYS = frozenset(
     {"connect_timeout", "hostaddr", "options", "require_auth", "sslmode"}
 )
@@ -101,7 +109,7 @@ def backup_directory_label() -> str:
 def _classify(name: str) -> str:
     if name.startswith("ticketbox-before-restore-"):
         return "pre-restore"
-    if name.startswith("ticketbox-pre-upgrade-"):
+    if name.startswith(("ticketbox-pre-upgrade-", "ticketbox-c07-pre-upgrade-")):
         return "pre-upgrade"
     if name.startswith("ticketbox-pre-v0.3"):
         return "pre-v0.3"
@@ -204,6 +212,27 @@ def create_pre_upgrade_backup() -> BackupEntry:
     return _run_pg_dump(prefix="ticketbox-pre-upgrade", kind="pre-upgrade")
 
 
+def create_c07_pre_upgrade_backup(
+    *,
+    database_url: str,
+    exported_snapshot: str,
+) -> BackupEntry:
+    """Dump the frozen C07 source view from the coordinator's snapshot.
+
+    The exporting transaction remains open while pg_dump imports this snapshot,
+    so the archive and all preflight checks observe one database state.
+    """
+
+    if _PG_EXPORTED_SNAPSHOT.fullmatch(exported_snapshot) is None:
+        raise AppError("server_error", "数据库快照标识无效。", status_code=500)
+    return _run_pg_dump(
+        prefix="ticketbox-c07-pre-upgrade",
+        kind="pre-upgrade",
+        database_url=database_url,
+        exported_snapshot=exported_snapshot,
+    )
+
+
 # ── Concurrency guard (BUG-2) ────────────────────────────────────────────────
 # The Owner Console (``create_manual_backup``) and the scheduled Windows task
 # (``backend/scripts/backup_database.ps1``) both write into the same ``backups/``
@@ -242,31 +271,27 @@ def _backup_lock() -> Iterator[None]:
     ``_LOCK_STALE_SECONDS`` is treated as a crashed job and reclaimed; the
     ``O_EXCL`` create on the next loop arbitrates the reclaim race.
     """
-    path = _lock_path()
-    payload = f"{os.getpid()}\n{now_utc().isoformat()}\n".encode()
-    while True:
-        try:
-            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError:
-            if _lock_is_stale(path):
-                with contextlib.suppress(FileNotFoundError):
-                    os.unlink(str(path))
-                continue
-            raise AppError("backup_in_progress", status_code=409) from None
-        try:
-            os.write(fd, payload)
-        finally:
-            os.close(fd)
-        break
+    lease = acquire_backup_job_lock()
     try:
         yield
     finally:
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(str(path))
+        lease.release()
 
 
-def _run_pg_dump(*, prefix: str, kind: str) -> BackupEntry:
-    connection = _pg_tool_connection(get_settings().database_url)
+def acquire_backup_job_lock() -> BackupJobLease:
+    """Acquire the shared Python/PowerShell backup lock without blocking."""
+
+    return acquire_backup_job_lease(_lock_path(), stale=_lock_is_stale)
+
+
+def _run_pg_dump(
+    *,
+    prefix: str,
+    kind: str,
+    database_url: str | None = None,
+    exported_snapshot: str | None = None,
+) -> BackupEntry:
+    connection = _pg_tool_connection(database_url or get_settings().database_url)
     directory = _backup_dir()
     stamp = now_utc().astimezone().strftime("%Y%m%d-%H%M%S")
     target = directory / f"{prefix}-{stamp}-{uuid4().hex[:8]}{_SUFFIX}"
@@ -274,17 +299,20 @@ def _run_pg_dump(*, prefix: str, kind: str) -> BackupEntry:
     try:
         try:
             with _pg_tool_environment(connection) as environment:
+                arguments = [
+                    _pg_dump_binary(),
+                    "--no-password",
+                    f"--lock-wait-timeout={_PG_DUMP_LOCK_WAIT_MILLISECONDS}",
+                    "--format=custom",
+                    "--file",
+                    str(temp_target),
+                    "--dbname",
+                    connection.database_url,
+                ]
+                if exported_snapshot is not None:
+                    arguments.insert(3, f"--snapshot={exported_snapshot}")
                 result = subprocess.run(  # noqa: S603 (resolved binary, fixed args)
-                    [
-                        _pg_dump_binary(),
-                        "--no-password",
-                        f"--lock-wait-timeout={_PG_DUMP_LOCK_WAIT_MILLISECONDS}",
-                        "--format=custom",
-                        "--file",
-                        str(temp_target),
-                        "--dbname",
-                        connection.database_url,
-                    ],
+                    arguments,
                     capture_output=True,
                     text=True,
                     check=False,

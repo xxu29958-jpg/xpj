@@ -486,6 +486,22 @@ function Remove-XpjTestPostgresCluster {
     $deletionMarkerPath = [string]$deletion.Path
     $hostMarkerPath = [string]$paths.Host
     $dataMarkerPath = [string]$paths.Data
+    # Revalidate the protected marker ACL and bytes immediately before the
+    # exact root is opened.  The callback itself is invoked from a native
+    # delegate and therefore must use only handle-bound native helpers; calling
+    # script-scope functions there is not reliable under Windows PowerShell 5.1.
+    if ((Read-XpjTestPostgresProtectedMarkerText -Path $deletionMarkerPath) -cne $expectedDeletionText) {
+        throw "Test PostgreSQL deletion authority changed before opening the deletion root: $deletionMarkerPath"
+    }
+    if ((Read-XpjTestPostgresProtectedMarkerText -Path $hostMarkerPath) -cne $expectedMarkerText) {
+        throw "Test PostgreSQL host ownership changed before opening the deletion root: $hostMarkerPath"
+    }
+    if (
+        $dataMarkerKind -eq 'File' -and
+        (Read-XpjTestPostgresProtectedMarkerText -Path $dataMarkerPath) -cne $expectedMarkerText
+    ) {
+        throw "Test PostgreSQL ownership changed before opening the deletion root: $dataMarkerPath"
+    }
     $verifyOpenedRoot = {
         param([string]$OpenedPath)
 
@@ -493,21 +509,35 @@ function Remove-XpjTestPostgresCluster {
         if (-not [string]::Equals($openedRoot, $expectedRoot, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Test PostgreSQL deletion opened another root: $OpenedPath"
         }
-        $null = Assert-XpjTestPostgresDirectoryIdentity `
-            -DataDir $OpenedPath `
-            -VolumeSerialNumber $expectedVolumeSerialNumber `
-            -FileId $expectedFileId
+        $openedIdentity = @(
+            [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity($OpenedPath)
+        )
+        if (
+            $openedIdentity.Count -ne 2 -or
+            [string]$openedIdentity[0] -cne $expectedVolumeSerialNumber -or
+            [string]$openedIdentity[1] -cne $expectedFileId
+        ) {
+            throw "Test PostgreSQL directory entity changed before deletion: $OpenedPath"
+        }
         if ([TicketboxExactTreeDeleteNativeMethods]::InspectEntry($deletionMarkerPath) -ne 1) {
             throw "Test PostgreSQL deletion authority disappeared: $deletionMarkerPath"
         }
-        if ((Read-XpjTestPostgresProtectedMarkerText -Path $deletionMarkerPath) -cne $expectedDeletionText) {
+        if (
+            [TicketboxExactTreeDeleteNativeMethods]::ReadExactUtf8File(
+                $deletionMarkerPath,
+                65536
+            ) -cne $expectedDeletionText
+        ) {
             throw "Test PostgreSQL deletion authority changed: $deletionMarkerPath"
         }
         $hostKind = [TicketboxExactTreeDeleteNativeMethods]::InspectEntry($hostMarkerPath)
         if ($hostKind -ne 1) {
             throw "Test PostgreSQL host ownership changed after opening the deletion root: $hostMarkerPath"
         }
-        $hostText = Read-XpjTestPostgresProtectedMarkerText -Path $hostMarkerPath
+        $hostText = [TicketboxExactTreeDeleteNativeMethods]::ReadExactUtf8File(
+            $hostMarkerPath,
+            65536
+        )
         if ($hostText -cne $expectedMarkerText) {
             throw "Test PostgreSQL host ownership changed after opening the deletion root: $hostMarkerPath"
         }
@@ -518,7 +548,10 @@ function Remove-XpjTestPostgresCluster {
         if ($dataKind -ne 1) {
             throw "Test PostgreSQL data ownership changed after opening the deletion root: $dataMarkerPath"
         }
-        $dataText = Read-XpjTestPostgresProtectedMarkerText -Path $dataMarkerPath
+        $dataText = [TicketboxExactTreeDeleteNativeMethods]::ReadExactUtf8File(
+            $dataMarkerPath,
+            65536
+        )
         if ($dataText -cne $expectedMarkerText) {
             throw "Test PostgreSQL ownership changed after opening the deletion root: $OpenedPath"
         }

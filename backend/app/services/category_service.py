@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import CategoryRule, Expense
+from app.money_contract import projection_sum_to_int
 from app.schemas import ExpenseUpdateRequest
 from app.services.category_common import (
     DEFAULT_CATEGORIES,
@@ -197,7 +198,11 @@ def _confirmed_summaries_by_category(
     for category, count, amount in confirmed_rows:
         key = normalize_category(category)
         confirmed_count = int(count)
-        confirmed_amount = int(amount or 0)
+        confirmed_amount = projection_sum_to_int(
+            amount,
+            label="category.confirmed_amount",
+            empty_is_zero=True,
+        )
         existing = aggregated.get(key)
         if existing is None:
             aggregated[key] = CategorySummary(
@@ -212,7 +217,10 @@ def _confirmed_summaries_by_category(
             category=existing.category,
             confirmed_count=existing.confirmed_count + confirmed_count,
             pending_count=existing.pending_count,
-            confirmed_amount_cents=existing.confirmed_amount_cents + confirmed_amount,
+            confirmed_amount_cents=projection_sum_to_int(
+                existing.confirmed_amount_cents + confirmed_amount,
+                label="category.normalized_confirmed_amount",
+            ),
             is_uncategorized=existing.is_uncategorized,
         )
     return aggregated

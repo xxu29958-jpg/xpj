@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.ledger_scope import add_ledger_scope
 from app.models import RecurringItem
+from app.money_contract import projection_sum_to_int
 
 
 def total_active_recurring_monthly_cents(db: Session, *, tenant_id: str) -> int:
@@ -28,4 +29,8 @@ def total_active_recurring_monthly_cents(db: Session, *, tenant_id: str) -> int:
         .where(RecurringItem.status == "active")
         .where(RecurringItem.frequency == "monthly")
     )
-    return int(total or 0)
+    return projection_sum_to_int(
+        total,
+        label="budget_baseline.fixed_recurring",
+        empty_is_zero=True,
+    )

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Goal
+from app.money_contract import MoneySign, ensure_money_minor
 from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
 from app.services import goal_debt_repayment_service
 from app.services.category_service import normalize_category
@@ -60,11 +61,21 @@ def _clean_category(value: str | None) -> str | None:
     return normalize_category(raw)
 
 
-def _clean_target_amount(value: int) -> int:
-    amount = int(value)
-    if amount <= 0:
-        raise AppError("invalid_request", status_code=422)
-    return amount
+def _clean_target_amount(value: object) -> int:
+    return ensure_money_minor(
+        value,
+        sign=MoneySign.POSITIVE,
+        label="goal.target_amount_cents",
+        error_code="invalid_request",
+    )
+
+
+def validate_goal_update_money_command(payload: GoalUpdateRequest) -> int | None:
+    """Validate an explicitly supplied target before database access."""
+
+    if "target_amount_cents" not in payload.model_fields_set:
+        return None
+    return _clean_target_amount(payload.target_amount_cents)
 
 
 def _goal_by_public_id(db: Session, *, tenant_id: str, public_id: str) -> Goal | None:
@@ -205,6 +216,7 @@ def create_goal(
         )
     if payload.month is None or payload.target_amount_cents is None:
         raise AppError("invalid_request", status_code=422)
+    target_amount_cents = _clean_target_amount(payload.target_amount_cents)
     now = now_utc()
     # R13-2：无币种列的目标写按 env 口径入账 —— 先过绑定门（漂移/未决拒写）。
     assert_currency_binding_consistent(db, home_currency_code())
@@ -227,7 +239,7 @@ def create_goal(
         period=period,
         month=month,
         category=category,
-        target_amount_cents=_clean_target_amount(payload.target_amount_cents),
+        target_amount_cents=target_amount_cents,
         status="active",
         created_at=now,
         updated_at=now,
@@ -274,6 +286,7 @@ def update_goal(
     state. The OCC-conflict path always rolls back its own placeholder
     regardless of ``commit``.
     """
+    validated_target = validate_goal_update_money_command(payload)
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
     if goal.goal_type == "debt_repayment":
         # ADR-0049 §6: a debt goal has no month/category/target to PATCH and its
@@ -302,7 +315,8 @@ def update_goal(
     if "category" in updates:
         new_category = _clean_category(updates["category"])
     if "target_amount_cents" in updates:
-        new_target = _clean_target_amount(updates["target_amount_cents"])
+        assert validated_target is not None
+        new_target = validated_target
     if _active_goal_conflict_exists(
         db,
         tenant_id=tenant_id,

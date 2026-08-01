@@ -1,11 +1,11 @@
 package com.ticketbox.notification
 
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.NotificationDraftSource
 import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentNotificationDraft
-import java.math.BigDecimal
-import java.math.RoundingMode
+import com.ticketbox.domain.model.parseExactMoneyMinor
 import java.time.Instant
 
 data class PaymentNotificationSnapshot(
@@ -183,11 +183,11 @@ object PaymentNotificationParser {
 /** 通知正文字段抽取（金额 / 商家 / 还款标签）——纯文本解析,与分类逻辑拆开,各自函数数都在 detekt 门内。 */
 private object PaymentNotificationFields {
     private val currencyBeforeAmount = Regex(
-        """(?:￥|¥|人民币|RMB|CNY)\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)""",
+        """(?:￥|¥|人民币|RMB|CNY)\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)""",
         RegexOption.IGNORE_CASE,
     )
     private val yuanAfterAmount = Regex(
-        """([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)\s*元""",
+        """([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*元""",
     )
     private val merchantPatterns = listOf(
         Regex("""(?:付款给|支付给|商家|商户|收款方|交易商户|对方户名)[:：\s]*([^，,。；;\n￥¥]{2,40})"""),
@@ -203,13 +203,7 @@ private object PaymentNotificationFields {
         val amount = currencyBeforeAmount.find(text)?.groupValues?.getOrNull(1)
             ?: yuanAfterAmount.find(text)?.groupValues?.getOrNull(1)
             ?: return null
-        val decimal = amount.replace(",", "").toBigDecimalOrNull() ?: return null
-        return runCatching {
-            decimal
-                .multiply(BigDecimal(100))
-                .setScale(0, RoundingMode.HALF_UP)
-                .longValueExact()
-        }.getOrNull()
+        return parseExactMoneyMinor(amount.replace(",", ""), CurrencyCode.CNY)
     }
 
     /**

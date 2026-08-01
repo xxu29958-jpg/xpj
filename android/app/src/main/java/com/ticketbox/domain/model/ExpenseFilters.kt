@@ -147,11 +147,7 @@ fun monthlySpendingComparison(
     }
 
     val delta = currentAmount - previousAmount
-    val percentChange = if (previousAmount > 0L) {
-        ((delta.toDouble() / previousAmount.toDouble()) * 100).roundToInt()
-    } else {
-        null
-    }
+    val percentChange = moneyPercent(delta, previousAmount)
     return MonthComparison(
         currentMonth = currentMonth.toString(),
         previousMonth = previousMonth.toString(),
@@ -246,7 +242,7 @@ fun monthlyBudgetProgress(
         spentCents = spent,
         remainingCents = budget - spent,
         progress = progress.coerceIn(0f, 1f),
-        percent = (progress * 100).roundToInt(),
+        percent = moneyPercent(spent, budget) ?: 0L,
         overBudget = spent > budget,
     )
 }

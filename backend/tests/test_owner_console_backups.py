@@ -231,6 +231,24 @@ def test_stale_backup_lock_is_reclaimed() -> None:
         lock.unlink(missing_ok=True)
 
 
+def test_backup_lease_release_never_removes_a_successor() -> None:
+    """An old coordinator cannot unlink a lock that now belongs to another job."""
+    from app.services import backup_service
+
+    lock = backup_service._lock_path()  # noqa: SLF001
+    lock.unlink(missing_ok=True)
+    lease = backup_service.acquire_backup_job_lock()
+    successor_payload = b"successor-owner\n"
+    try:
+        lock.write_bytes(successor_payload)
+        lease.release()
+        assert lock.read_bytes() == successor_payload
+        lease.release()  # idempotent second release is also harmless
+        assert lock.read_bytes() == successor_payload
+    finally:
+        lock.unlink(missing_ok=True)
+
+
 def test_backup_lock_file_invisible_to_listing() -> None:
     """The sentinel must never be mistaken for a backup (it starts with '.')."""
     from app.services import backup_service

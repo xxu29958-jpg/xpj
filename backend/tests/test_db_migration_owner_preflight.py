@@ -164,24 +164,38 @@ def test_owner_preflight_allows_role_that_owns_the_tables():
         eng.dispose()
 
 
-def test_owner_preflight_is_invoked_before_the_migration_upgrade(monkeypatch):
-    """The owner guard runs before a real managed-schema upgrade."""
+def test_ordinary_startup_refuses_before_owner_preflight_or_upgrade(monkeypatch):
+    """Managed revisions are host-owned and refused before mutation wiring."""
     import app.database as db_pkg
     from app.services import backup_service
 
-    calls: list[bool] = []
+    calls: list[str] = []
     monkeypatch.setattr(
-        db_pkg, "_assert_role_can_alter_existing_schema", lambda conn: calls.append(True)
+        db_pkg,
+        "_assert_existing_schema_owner_ready",
+        lambda: calls.append("owner_preflight"),
     )
     monkeypatch.setattr(
         backup_service,
         "create_pre_upgrade_backup",
-        lambda: type("Backup", (), {"file_name": "owner-preflight.dump"})(),
+        lambda: calls.append("backup"),
+    )
+    monkeypatch.setattr(
+        "alembic.command.upgrade",
+        lambda *args, **kwargs: calls.append("upgrade"),
+    )
+    monkeypatch.setattr(
+        "alembic.command.stamp",
+        lambda *args, **kwargs: calls.append("stamp"),
     )
 
     with db_pkg.engine.begin() as conn:
         conn.execute(text("UPDATE alembic_version SET version_num = '20260630_0002'"))
 
-    db_pkg.init_db()
+    with pytest.raises(
+        db_pkg.DatabaseMigrationPreflightError,
+        match="inspect-only REFUSED",
+    ):
+        db_pkg.init_db()
 
-    assert calls == [True]
+    assert calls == []

@@ -4,6 +4,8 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.FxContract
+import com.ticketbox.domain.model.maxMoneyMajorInputLength
+import com.ticketbox.domain.model.parseExactMoneyMinor
 import com.ticketbox.domain.model.recordCurrencyDisplay
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -76,13 +78,19 @@ fun formatMinorAmountInput(amountMinor: Long?, currency: CurrencyCode): String {
     }
 }
 
-fun sanitizeMinorAmountInput(input: String, currency: CurrencyCode, maxLength: Int = 12): String {
+fun sanitizeMinorAmountInput(
+    input: String,
+    currency: CurrencyCode,
+    maxLength: Int = maxMoneyMajorInputLength(currency),
+): String {
     val trimmed = input.trim()
+    val lengthLimit = maxLength.coerceAtLeast(0)
+    if (lengthLimit == 0) return ""
     if (currency.noFractionDigits) {
         return trimmed
             .takeWhile { it != '.' }
             .filter(Char::isDigit)
-            .take(maxLength)
+            .take(lengthLimit)
     }
     val builder = StringBuilder()
     var hasDecimal = false
@@ -94,31 +102,13 @@ fun sanitizeMinorAmountInput(input: String, currency: CurrencyCode, maxLength: I
                 hasDecimal = true
             }
         }
-        if (builder.length >= maxLength) break
+        if (builder.length >= lengthLimit) break
     }
     return builder.toString()
 }
 
-fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
-    val trimmed = input.trim()
-    if (trimmed.isBlank()) return null
-    return runCatching {
-        val decimal = BigDecimal(trimmed)
-        val scaled = if (currency.noFractionDigits) {
-            // 零小数币种（JPY/KRW）：任何小数部分都拒绝，不再 HALF_UP 静默进位。
-            // 注意这**严于后端 422**：后端按 Decimal 值比较，接受 "1200.0"/"0.00"
-            // 这类等值尾零小数，客户端连它们也拒 —— 方向安全（拒而不腐：绝不把
-            // 用户没输的尾零静默舍掉）。输入框已由 sanitizeMinorAmountInput 兜底
-            // （根本输不进 '.'），本守卫仅直调路径可达。
-            if (decimal.scale() > 0) return null
-            decimal
-        } else {
-            decimal.multiply(BigDecimal(100)).setScale(0, RoundingMode.HALF_UP)
-        }
-        if (scaled < BigDecimal.ZERO) return null
-        scaled.longValueExact()
-    }.getOrNull()
-}
+fun parseMinorAmount(input: String, currency: CurrencyCode): Long? =
+    parseExactMoneyMinor(input, currency)
 
 fun formatExpensePrimaryAmount(
     expense: Expense,
@@ -169,7 +159,7 @@ fun formatAmountInput(amountCents: Long?, currency: CurrencyCode): String =
 
 /**
  * Home 口径输入框解析：主单位文本 → minor。币种感知委托（[parseMinorAmount]）：
- * 2 位小数币种 ×100（HALF_UP），零小数币种不扩位且拒绝小数部分；负数一律 null。
+ * 按币种 exponent 精确移位；无法精确落到整数 minor、越过 C07 上界或负数一律 null。
  * 传参约定同 [formatAmountInput]。
  */
 fun parseAmountCents(input: String, currency: CurrencyCode): Long? =

@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
+from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -73,12 +75,12 @@ Index("ix_csv_import_batches_tenant_status_created_at", CsvImportBatch.tenant_id
 class CsvImportRow(Base):
     __tablename__ = "csv_import_rows"
     __table_args__ = (
+        *money_check_constraints_for_table("csv_import_rows"),
         CheckConstraint("line_number >= 2", name="ck_csv_import_rows_line_number_valid"),
         CheckConstraint(
             "status IN ('valid', 'error', 'applying', 'applied', 'insert_failed')",
             name="ck_csv_import_rows_status_valid",
         ),
-        CheckConstraint("amount_cents IS NULL OR amount_cents >= 0", name="ck_csv_import_rows_amount_non_negative"),
         ForeignKeyConstraint(
             ["batch_id", "tenant_id"],
             ["csv_import_batches.id", "csv_import_batches.tenant_id"],
@@ -100,13 +102,13 @@ class CsvImportRow(Base):
     apply_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     original_currency_code: Mapped[str] = mapped_column(
         String(3),
         default=DEFAULT_HOME_CURRENCY_CODE,
         nullable=False,
     )
-    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     exchange_rate_to_cny: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
     exchange_rate_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)

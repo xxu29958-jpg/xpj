@@ -182,7 +182,10 @@ def test_create_proposal_foreign_amount_rejects_surplus_precision_before_idempot
         json={**body, "original_amount": "10.004"},
     )
     assert replay.status_code == 422, replay.json()
-    assert replay.json()["error"] == "amount_invalid"
+    # Surplus currency precision is still an invalid amount for this product
+    # operation.  Keep the shared parser's generic error translated to the
+    # repayment-proposal domain so clients can anchor recovery to this action.
+    assert replay.json()["error"] == "repayment_proposal_amount_invalid"
 
     proposals = client.get(
         f"/api/debts/{debt['public_id']}/repayment-proposals", headers=identity.app_headers

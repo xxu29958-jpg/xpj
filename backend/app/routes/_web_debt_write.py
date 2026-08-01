@@ -186,10 +186,10 @@ def _debt_create_context(
         {"value": value, "label": label, "hint": hint}
         for value, label, hint in _DEBT_DIRECTION_OPTIONS
     ]
-    ctx["currency_input"] = _currency_input_view(None)
-    from app.services.currency_common import home_currency_code, supported_currency_codes
+    home = ctx["home_currency_code"]
+    ctx["currency_input"] = _currency_input_view(home)
+    from app.services.currency_common import supported_currency_codes
 
-    home = home_currency_code()
     ctx["currency_options"] = [home, *sorted(supported_currency_codes() - {home})]
     ctx["idempotency_key"] = str(uuid4())
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
@@ -225,5 +225,3 @@ def _debt_write_gate(options, selected_id: str) -> bool:
     except AppError:
         return False
     return True
-
-

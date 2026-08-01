@@ -22,6 +22,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -32,6 +33,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -43,6 +45,7 @@ class MonthlyIncomePlan(Base):
 
     __tablename__ = "monthly_income_plans"
     __table_args__ = (
+        *money_check_constraints_for_table("monthly_income_plans"),
         CheckConstraint(
             "status IN ('active', 'archived')",
             name="ck_monthly_income_plans_status_valid",
@@ -50,10 +53,6 @@ class MonthlyIncomePlan(Base):
         CheckConstraint(
             "pay_day >= 1 AND pay_day <= 31",
             name="ck_monthly_income_plans_pay_day_range",
-        ),
-        CheckConstraint(
-            "amount_cents >= 0",
-            name="ck_monthly_income_plans_amount_non_negative",
         ),
         CheckConstraint(
             "frequency IN ('monthly', 'one_time')",
@@ -93,7 +92,7 @@ class MonthlyIncomePlan(Base):
         nullable=False,
     )
     income_month: Mapped[str | None] = mapped_column(String(7), nullable=True)
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     pay_day: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(

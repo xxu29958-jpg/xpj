@@ -23,8 +23,9 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
-from app.database import Base, engine, init_db
+from app.database import engine, init_db
 from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
+from tests._infra.c07_alembic import reset_public_schema
 from tests._infra.env import BACKEND_ROOT, TEST_RUN_ID
 
 _UPLOAD_RUNTIME_ROOT = Path(os.path.abspath(BACKEND_ROOT / "uploads"))
@@ -210,7 +211,7 @@ def _cleanup_test_files() -> None:
 
 def reset_db_state() -> None:
     """Drop & recreate schema, run init_db (migrations + seed)."""
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     _cleanup_test_files()
     init_db()
 

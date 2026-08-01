@@ -31,6 +31,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -45,6 +46,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 
 
@@ -53,6 +55,7 @@ class Debt(Base):
 
     __tablename__ = "debts"
     __table_args__ = (
+        *money_check_constraints_for_table("debts"),
         CheckConstraint(
             "direction IN ('i_owe', 'owed_to_me')",
             name="ck_debts_direction_valid",
@@ -98,7 +101,6 @@ class Debt(Base):
             "OR (installment_count > 0 AND installment_period_months > 0)",
             name="ck_debts_installment_valid",
         ),
-        CheckConstraint("principal_amount_cents > 0", name="ck_debts_principal_positive"),
         CheckConstraint("length(home_currency_code) = 3", name="ck_debts_home_currency_format"),
         # ADR-0049 §2/§5.1 母表 shape invariants the service already maintains
         # (_create._clean_counterparty + _create.create_bill_split_debt), pushed
@@ -153,10 +155,10 @@ class Debt(Base):
     counterparty_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # --- money: frozen home principal + original-currency provenance ---------
-    principal_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    principal_amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     original_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
-    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     exchange_rate_to_cny = mapped_column(Numeric(18, 8), nullable=True)
     exchange_rate_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -201,7 +203,7 @@ class Repayment(Base):
 
     __tablename__ = "repayments"
     __table_args__ = (
-        CheckConstraint("amount_cents > 0", name="ck_repayments_amount_positive"),
+        *money_check_constraints_for_table("repayments"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -211,9 +213,9 @@ class Repayment(Base):
     debt_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("debts.id", name="fk_repayments_debt"), nullable=False, index=True
     )
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     original_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
-    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     exchange_rate_to_cny = mapped_column(Numeric(18, 8), nullable=True)
     exchange_rate_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -244,6 +246,7 @@ class DebtAdjustment(Base):
     """
 
     __tablename__ = "debt_adjustments"
+    __table_args__ = money_check_constraints_for_table("debt_adjustments")
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(
@@ -252,7 +255,7 @@ class DebtAdjustment(Base):
     debt_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("debts.id", name="fk_debt_adjustments_debt"), nullable=False, index=True
     )
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     actor_account_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("accounts.id", name="fk_debt_adjustments_actor_account"), nullable=False
@@ -338,11 +341,7 @@ class DebtForgiveness(Base):
     """
 
     __tablename__ = "debt_forgivenesses"
-    __table_args__ = (
-        CheckConstraint(
-            "amount_cents > 0", name="ck_debt_forgivenesses_amount_positive"
-        ),
-    )
+    __table_args__ = money_check_constraints_for_table("debt_forgivenesses")
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(
@@ -355,7 +354,7 @@ class DebtForgiveness(Base):
         index=True,
     )
     # = the ``remaining_before`` snapshotted under the §2.1 parent-row lock (§3.7).
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     actor_account_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("accounts.id", name="fk_debt_forgivenesses_actor_account"),
@@ -389,10 +388,7 @@ class MemberRepaymentProposal(Base):
 
     __tablename__ = "member_repayment_proposals"
     __table_args__ = (
-        CheckConstraint(
-            "proposed_amount_cents > 0",
-            name="ck_member_repayment_proposals_amount_positive",
-        ),
+        *money_check_constraints_for_table("member_repayment_proposals"),
         CheckConstraint(
             "status IN ('pending', 'confirmed', 'partially_confirmed', "
             "'rejected', 'withdrawn', 'expired', 'superseded')",
@@ -435,10 +431,10 @@ class MemberRepaymentProposal(Base):
     )
 
     # --- money: frozen home amount + original-currency provenance (§2.2) ------
-    proposed_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    proposed_amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     original_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
-    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     exchange_rate_to_cny = mapped_column(Numeric(18, 8), nullable=True)
     exchange_rate_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -450,7 +446,7 @@ class MemberRepaymentProposal(Base):
     status: Mapped[str] = mapped_column(
         String(32), default="pending", server_default="pending", nullable=False
     )
-    confirmed_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    confirmed_amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # FK to the committed Repayment (set only on confirm — see the status CHECKs).
     # use_alter=True breaks the create_all ordering cycle of the nullable circular pair
     # with Repayment.proposal_id (emitted as a post-CREATE ALTER). RESTRICT: append-only.
@@ -533,7 +529,7 @@ class RepaymentDraft(Base):
 
     __tablename__ = "repayment_drafts"
     __table_args__ = (
-        CheckConstraint("amount_cents > 0", name="ck_repayment_drafts_amount_positive"),
+        *money_check_constraints_for_table("repayment_drafts"),
         CheckConstraint(
             "status IN ('pending', 'confirmed', 'dismissed')",
             name="ck_repayment_drafts_status_valid",
@@ -579,7 +575,7 @@ class RepaymentDraft(Base):
 
     # --- captured payment (home-currency; CNY notifications carry no FX) ----------
     source: Mapped[str] = mapped_column(String(32), nullable=False)
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     merchant_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

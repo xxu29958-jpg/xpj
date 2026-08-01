@@ -529,6 +529,9 @@
             "title": "Accepted At"
           },
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -649,6 +652,9 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -715,6 +721,9 @@
         "description": "Body for ``POST /api/expenses/{id}/split-invite``.\n\nNOTE the absence of ``receiver_ledger_id`` — see ADR-0029 Q0. Sender\nmust NOT specify which ledger receiver accepts to; receiver picks\nthat at accept time.",
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -758,6 +767,9 @@
             "title": "Accepted At"
           },
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -878,6 +890,9 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -1193,10 +1208,9 @@
             "title": "Month"
           },
           "reserved_buffer_yuan": {
-            "default": 0.0,
-            "minimum": 0.0,
+            "default": "0",
             "title": "Reserved Buffer Yuan",
-            "type": "number"
+            "type": "string"
           },
           "run_advise": {
             "default": false,
@@ -1204,10 +1218,9 @@
             "type": "boolean"
           },
           "savings_target_yuan": {
-            "default": 0.0,
-            "minimum": 0.0,
+            "default": "0",
             "title": "Savings Target Yuan",
-            "type": "number"
+            "type": "string"
           }
         },
         "title": "Body_page_budget_advise_run_web_budget_advise_post",
@@ -2527,7 +2540,7 @@
         "properties": {
           "amount_cents": {
             "title": "Amount Cents",
-            "type": "integer"
+            "type": "string"
           },
           "confidence": {
             "default": "",
@@ -3411,6 +3424,10 @@
               }
             ]
           },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "provider_name": {
             "title": "Provider Name",
             "type": "string"
@@ -3429,6 +3446,7 @@
         },
         "required": [
           "advice",
+          "home_currency_code",
           "provider_name"
         ],
         "title": "BudgetAdviseResponse",
@@ -3551,6 +3569,8 @@
         "additionalProperties": false,
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
             "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
@@ -3572,6 +3592,9 @@
       "BudgetCategoryResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -3580,14 +3603,23 @@
             "type": "string"
           },
           "overspent_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Overspent Amount Cents",
             "type": "integer"
           },
           "remaining_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
             "title": "Remaining Amount Cents",
             "type": "integer"
           },
           "spent_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Spent Amount Cents",
             "type": "integer"
           }
@@ -3605,6 +3637,9 @@
       "BudgetExcludedCategoryResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -3666,6 +3701,9 @@
             "type": "boolean"
           },
           "excluded_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Excluded Amount Cents",
             "type": "integer"
           },
@@ -3684,10 +3722,16 @@
             "type": "array"
           },
           "fixed_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Fixed Amount Cents",
             "type": "integer"
           },
           "flex_budget_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Flex Budget Cents",
             "type": "integer"
           },
@@ -3700,18 +3744,30 @@
             "type": "string"
           },
           "non_monthly_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
             "title": "Non Monthly Amount Cents",
             "type": "integer"
           },
           "overspent_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Overspent Amount Cents",
             "type": "integer"
           },
           "remaining_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
             "title": "Remaining Amount Cents",
             "type": "integer"
           },
           "rollover_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
             "title": "Rollover Amount Cents",
             "type": "integer"
           },
@@ -3727,10 +3783,16 @@
             "title": "Row Version"
           },
           "spent_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Spent Amount Cents",
             "type": "integer"
           },
           "total_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
             "title": "Total Amount Cents",
             "type": "integer"
           },
@@ -3785,16 +3847,23 @@
           },
           "non_monthly_amount_cents": {
             "default": 0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
             "minimum": 0.0,
             "title": "Non Monthly Amount Cents",
             "type": "integer"
           },
           "rollover_amount_cents": {
             "default": 0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
             "title": "Rollover Amount Cents",
             "type": "integer"
           },
           "total_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
             "minimum": 0.0,
             "title": "Total Amount Cents",
             "type": "integer"
@@ -3824,6 +3893,9 @@
             "type": "string"
           },
           "suggested_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
             "title": "Suggested Amount Cents",
             "type": "integer"
           }
@@ -3956,6 +4028,8 @@
           "amount_max_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -3968,6 +4042,8 @@
           "amount_min_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -4045,6 +4121,9 @@
           "amount_max_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -4056,6 +4135,9 @@
           "amount_min_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -4152,6 +4234,8 @@
           "amount_max_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -4164,6 +4248,8 @@
           "amount_min_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -4253,6 +4339,9 @@
       "CategoryStatsResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -4503,6 +4592,9 @@
           "amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -4622,6 +4714,9 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -4888,6 +4983,12 @@
         "description": "Record one signed principal-like correction (ADR-0049 §3.3).\n\n``amount_cents`` is a signed home-currency delta (may be negative to lower\n``remaining``; never to push it below 0). ``reason`` is required.\n``expected_row_version`` is the §2.1 stale-intent token + §3.6 fingerprint\ncomponent.",
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "not": {
+              "const": 0
+            },
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -4960,6 +5061,9 @@
           "per_period_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -4971,6 +5075,9 @@
           "principal_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -5086,11 +5193,8 @@
           "original_amount": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "maxLength": 64,
+                "pattern": "^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0\\.[0-9]*[1-9][0-9]*)$",
                 "type": "string"
               },
               {
@@ -5115,7 +5219,9 @@
           "principal_amount_cents": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -5198,10 +5304,16 @@
             "type": "string"
           },
           "principal_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Principal Amount Cents",
             "type": "integer"
           },
           "remaining_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Remaining Amount Cents",
             "type": "integer"
           },
@@ -5603,6 +5715,9 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -5623,10 +5738,16 @@
             "title": "Original Currency Code"
           },
           "paid_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Paid Amount Cents",
             "type": "integer"
           },
           "principal_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Principal Amount Cents",
             "type": "integer"
           },
@@ -5635,6 +5756,9 @@
             "type": "string"
           },
           "remaining_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Remaining Amount Cents",
             "type": "integer"
           },
@@ -5820,31 +5944,43 @@
         "description": "Inspectable breakdown of \"本月可自由支配\".\n\nMirrors :class:`DiscretionaryBreakdown` so the UI can render the\nsubtraction step by step.",
         "properties": {
           "discretionary_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
             "minimum": 0.0,
             "title": "Discretionary Cents",
             "type": "integer"
           },
           "fixed_expenses_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
             "minimum": 0.0,
             "title": "Fixed Expenses Cents",
             "type": "integer"
           },
           "monthly_income_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
             "minimum": 0.0,
             "title": "Monthly Income Cents",
             "type": "integer"
           },
           "reserved_buffer_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
             "minimum": 0.0,
             "title": "Reserved Buffer Cents",
             "type": "integer"
           },
           "savings_target_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
             "minimum": 0.0,
             "title": "Savings Target Cents",
             "type": "integer"
           },
           "spent_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
             "minimum": 0.0,
             "title": "Spent Amount Cents",
             "type": "integer"
@@ -6055,17 +6191,10 @@
             "type": "string"
           },
           "rate_to_cny": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "title": "Rate To Cny"
+            "maxLength": 64,
+            "pattern": "^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0\\.[0-9]*[1-9][0-9]*)$",
+            "title": "Rate To Cny",
+            "type": "string"
           },
           "source": {
             "anyOf": [
@@ -6201,10 +6330,61 @@
       },
       "ExpenseItemRequest": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "amount_cents": {
+                  "anyOf": [
+                    {
+                      "format": "int64",
+                      "maximum": 9000000000000.0,
+                      "minimum": 0.0,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "discount"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "amount_cents": {
+                  "anyOf": [
+                    {
+                      "format": "int64",
+                      "maximum": 0.0,
+                      "minimum": -9000000000000.0,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": -9000000000000.0,
                 "type": "integer"
               },
               {
@@ -6282,6 +6462,8 @@
           "unit_price_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -6303,6 +6485,9 @@
           "amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": -9000000000000.0,
                 "type": "integer"
               },
               {
@@ -6388,6 +6573,9 @@
           "unit_price_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -6452,6 +6640,9 @@
           "items_total_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
                 "type": "integer"
               },
               {
@@ -6463,6 +6654,9 @@
           "mismatch_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
                 "type": "integer"
               },
               {
@@ -6474,6 +6668,9 @@
           "parent_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -6505,6 +6702,8 @@
           "amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -6574,11 +6773,8 @@
           "original_amount": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "maxLength": 64,
+                "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
                 "type": "string"
               },
               {
@@ -6590,6 +6786,8 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -6765,6 +6963,9 @@
           "amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -6939,6 +7140,9 @@
           "home_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -7024,6 +7228,9 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -7216,7 +7423,9 @@
         "additionalProperties": false,
         "properties": {
           "amount_cents": {
-            "minimum": 0.0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -7252,6 +7461,9 @@
             "type": "string"
           },
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -7340,6 +7552,9 @@
           "mismatch_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
                 "type": "integer"
               },
               {
@@ -7351,6 +7566,9 @@
           "parent_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -7373,6 +7591,9 @@
           "splits_total_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -7414,6 +7635,8 @@
           "amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -7475,11 +7698,8 @@
           "original_amount": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "maxLength": 64,
+                "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
                 "type": "string"
               },
               {
@@ -7491,6 +7711,8 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -7643,7 +7865,9 @@
           "target_amount_cents": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -7762,6 +7986,8 @@
           "progress_percent": {
             "anyOf": [
               {
+                "maximum": 100.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -7781,6 +8007,9 @@
           "remaining_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
                 "type": "integer"
               },
               {
@@ -7796,6 +8025,9 @@
           "spent_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -7811,6 +8043,9 @@
           "target_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -7910,7 +8145,9 @@
           "target_amount_cents": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -8042,6 +8279,8 @@
         "additionalProperties": false,
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
             "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
@@ -8105,6 +8344,9 @@
             "type": "array"
           },
           "total_active_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Total Active Amount Cents",
             "type": "integer"
           }
@@ -8119,6 +8361,9 @@
       "IncomePlanResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -8242,6 +8487,8 @@
           "amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -9360,6 +9607,9 @@
       "LifestyleFrequentMerchantResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -9383,6 +9633,9 @@
       "LifestyleStatsResponse": {
         "properties": {
           "ai_subscription_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Ai Subscription Amount Cents",
             "type": "integer"
           },
@@ -9394,6 +9647,9 @@
             "type": "array"
           },
           "digital_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Digital Amount Cents",
             "type": "integer"
           },
@@ -9426,6 +9682,9 @@
             "type": "array"
           },
           "recent_7_days_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Recent 7 Days Amount Cents",
             "type": "integer"
           }
@@ -9575,7 +9834,9 @@
           "confirmed_amount_cents": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -9597,7 +9858,7 @@
       },
       "MemberRepaymentProposalCreateRequest": {
         "additionalProperties": false,
-        "description": "Debtor \"I paid\" proposal for a member Debt (ADR-0049 §3.2).\n\nHome-currency proposal submits ``proposed_amount_cents``. A foreign-currency\nproposal submits ``original_currency_code`` + ``original_amount`` (a\nmajor-units Decimal, exactly like ``DebtCreateRequest`` / ``RepaymentCreateRequest``)\n(+ optional ``paid_at``); the backend freezes the home ``proposed_amount_cents``\nfrom the [[0027]] snapshot for ``paid_at`` and rejects when the rate is\npending (§2.2). Creating a proposal does NOT change the fold (it is a pending\nintent, not a fact), so there is no ``expected_row_version`` — the parent CAS\nhappens only on confirm. To replace an existing pending proposal, the client\nmust name the pending proposal it saw via ``supersedes_proposal_public_id``;\notherwise a delayed request could overwrite a newer unseen proposal.",
+        "description": "Debtor \"I paid\" proposal for a member Debt (ADR-0049 §3.2).\n\nHome-currency proposal submits ``proposed_amount_cents``. A foreign-currency\nproposal submits ``original_currency_code`` + ``original_amount`` (a\ncanonical major-unit decimal string, exactly like ``DebtCreateRequest`` /\n``RepaymentCreateRequest``)\n(+ optional ``paid_at``); the backend freezes the home ``proposed_amount_cents``\nfrom the [[0027]] snapshot for ``paid_at`` and rejects when the rate is\npending (§2.2). Creating a proposal does NOT change the fold (it is a pending\nintent, not a fact), so there is no ``expected_row_version`` — the parent CAS\nhappens only on confirm. To replace an existing pending proposal, the client\nmust name the pending proposal it saw via ``supersedes_proposal_public_id``;\notherwise a delayed request could overwrite a newer unseen proposal.",
         "properties": {
           "expires_at": {
             "anyOf": [
@@ -9626,11 +9887,8 @@
           "original_amount": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "maxLength": 64,
+                "pattern": "^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0\\.[0-9]*[1-9][0-9]*)$",
                 "type": "string"
               },
               {
@@ -9667,7 +9925,9 @@
           "proposed_amount_cents": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -9732,6 +9992,9 @@
           "confirmed_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -9784,6 +10047,9 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -9815,6 +10081,9 @@
             "title": "Paid At"
           },
           "proposed_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Proposed Amount Cents",
             "type": "integer"
           },
@@ -10316,6 +10585,9 @@
             "type": "string"
           },
           "total_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Total Amount Cents",
             "type": "integer"
           }
@@ -10428,6 +10700,8 @@
           "amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -10488,11 +10762,8 @@
           "original_amount": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "maxLength": 64,
+                "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
                 "type": "string"
               },
               {
@@ -10504,6 +10775,8 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -10916,6 +11189,8 @@
         "additionalProperties": false,
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
             "minimum": 1.0,
             "title": "Amount Cents",
             "type": "integer"
@@ -10985,6 +11260,9 @@
       "RecurringCandidateItem": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -11089,6 +11367,9 @@
             "title": "Archived At"
           },
           "baseline_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Baseline Amount Cents",
             "type": "integer"
           },
@@ -11117,6 +11398,9 @@
           "current_month_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -11132,6 +11416,9 @@
           "historical_average_amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -11141,6 +11428,9 @@
             "title": "Historical Average Amount Cents"
           },
           "last_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Last Amount Cents",
             "type": "integer"
           },
@@ -11466,7 +11756,9 @@
           "amount_cents": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -11482,11 +11774,8 @@
           "original_amount": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "maxLength": 64,
+                "pattern": "^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0\\.[0-9]*[1-9][0-9]*)$",
                 "type": "string"
               },
               {
@@ -11684,6 +11973,9 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -11704,10 +11996,16 @@
             "title": "Original Currency Code"
           },
           "paid_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Paid Amount Cents",
             "type": "integer"
           },
           "principal_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Principal Amount Cents",
             "type": "integer"
           },
@@ -11716,6 +12014,9 @@
             "type": "string"
           },
           "remaining_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Remaining Amount Cents",
             "type": "integer"
           },
@@ -11814,7 +12115,9 @@
         "description": "Post one NLS-captured repayment as a pending review draft (ADR-0049 §杠杆③).\n\n``source`` is the capturing channel (alipay / jd / meituan / wechat / bank_sms /\nbank_app / other — validated server-side). ``amount_cents`` is home-currency minor\nunits — the capture is home-currency ONLY (CNY notifications carry no FX), so the\ndraft's home currency is set SERVER-SIDE from the configured home currency, NOT taken\nas a client input (a field whose only legal value is the constant home currency would\nfake multi-currency support it doesn't have; a real foreign-currency capture would add\n``original_currency`` + ``original_amount`` — the record_repayment shape — instead).\n``notification_key`` is the per-post identity hash\n(SHA-256(``sbn.key`` | ``postTime``), 64 hex chars; absent → content+window dedup\nonly) — the PRIMARY dedup axis so a re-posted notification does not twin the draft.",
         "properties": {
           "amount_cents": {
-            "exclusiveMinimum": 0.0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -11894,6 +12197,9 @@
       "RepaymentDraftResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -12049,6 +12355,9 @@
         "description": "One committed repayment plus its optional append-only void fact.\n\n``status`` is a read projection derived only from whether a\n``RepaymentVoid`` row exists. The original repayment remains in ``items``\nafter it is voided so a restarting client can recover both the historical\npayment and the correction without guessing from the parent Debt balance.\nInternal actor ids and idempotency keys are intentionally not exposed.",
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -12100,6 +12409,9 @@
           "original_amount_minor": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -12219,6 +12531,9 @@
       "ReportCategoryComparisonResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -12231,6 +12546,9 @@
             "type": "integer"
           },
           "delta_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
             "title": "Delta Amount Cents",
             "type": "integer"
           },
@@ -12239,6 +12557,9 @@
             "type": "integer"
           },
           "previous_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Previous Amount Cents",
             "type": "integer"
           },
@@ -12247,6 +12568,9 @@
             "type": "integer"
           },
           "year_over_year_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Year Over Year Amount Cents",
             "type": "integer"
           },
@@ -12255,6 +12579,9 @@
             "type": "integer"
           },
           "year_over_year_delta_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
             "title": "Year Over Year Delta Amount Cents",
             "type": "integer"
           },
@@ -12282,6 +12609,9 @@
       "ReportMerchantRankingResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -12305,6 +12635,9 @@
       "ReportTrendPointResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -12378,6 +12711,9 @@
             "type": "string"
           },
           "previous_total_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Previous Total Amount Cents",
             "type": "integer"
           },
@@ -12390,6 +12726,9 @@
             "type": "string"
           },
           "total_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Total Amount Cents",
             "type": "integer"
           },
@@ -12405,6 +12744,9 @@
             "type": "integer"
           },
           "year_over_year_delta_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
             "title": "Year Over Year Delta Amount Cents",
             "type": "integer"
           },
@@ -12417,6 +12759,9 @@
             "type": "string"
           },
           "year_over_year_total_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Year Over Year Total Amount Cents",
             "type": "integer"
           }
@@ -12811,6 +13156,9 @@
           "amount_cents": {
             "anyOf": [
               {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -13202,6 +13550,9 @@
       "TagStatsResponse": {
         "properties": {
           "amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -15098,10 +15449,11 @@
             "name": "savings_target_cents",
             "required": false,
             "schema": {
-              "default": 0,
-              "minimum": 0,
+              "default": "0",
+              "maxLength": 13,
+              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
               "title": "Savings Target Cents",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -15109,10 +15461,11 @@
             "name": "reserved_buffer_cents",
             "required": false,
             "schema": {
-              "default": 0,
-              "minimum": 0,
+              "default": "0",
+              "maxLength": 13,
+              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
               "title": "Reserved Buffer Cents",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -31595,10 +31948,9 @@
             "name": "savings_target_yuan",
             "required": false,
             "schema": {
-              "default": 0.0,
-              "minimum": 0,
+              "default": "0",
               "title": "Savings Target Yuan",
-              "type": "number"
+              "type": "string"
             }
           },
           {
@@ -31606,10 +31958,9 @@
             "name": "reserved_buffer_yuan",
             "required": false,
             "schema": {
-              "default": 0.0,
-              "minimum": 0,
+              "default": "0",
               "title": "Reserved Buffer Yuan",
-              "type": "number"
+              "type": "string"
             }
           },
           {

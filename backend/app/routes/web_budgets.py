@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.money_contract import projection_sum_to_int, round_minor_ratio_half_up
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
@@ -22,7 +21,7 @@ from app.routes.web_common import (
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
 from app.services.budget_service import get_monthly_budget, upsert_monthly_budget
-from app.services.currency_common import home_currency_code, major_amount_to_minor, minor_unit_digits
+from app.services.currency_common import home_currency_code, major_amount_to_minor
 from app.services.spending_contract_service import (
     current_accounting_month,
     default_accounting_timezone_name,
@@ -32,29 +31,41 @@ from app.services.time_service import local_month_bounds_utc
 router = APIRouter(prefix="/web/budgets", tags=["web"])
 
 
-def _parse_amount_yuan(raw: str, *, label: str, allow_negative: bool = False, required: bool = False) -> int:
+def _parse_amount_yuan(
+    raw: str,
+    *,
+    currency_code: str,
+    label: str,
+    allow_negative: bool = False,
+    required: bool = False,
+) -> int:
     text = (raw or "").strip()
     if not text:
         if required:
             raise AppError("invalid_request", f"请填写{label}。", status_code=422)
         return 0
     try:
-        amount = Decimal(text)
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
-    if not amount.is_finite() or (amount < 0 and not allow_negative):
-        raise AppError("invalid_request", f"{label}不能为负数。", status_code=422)
-    home = home_currency_code()
-    digits = minor_unit_digits(home)
-    try:
-        exact = amount.quantize(Decimal(1).scaleb(-digits))
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
-    if exact != amount:
-        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
-        raise AppError("invalid_request", f"{label}按 {home} {detail}。", status_code=422)
-    result = major_amount_to_minor(amount, home, allow_negative=allow_negative)
+        result = major_amount_to_minor(
+            text,
+            currency_code,
+            # Parse the canonical signed value first so the form can preserve
+            # its specific nonnegative-field error instead of collapsing a
+            # valid negative amount into the generic malformed/overflow copy.
+            allow_negative=True,
+        )
+    except AppError as exc:
+        raise AppError(
+            "invalid_request",
+            f"{label}不是合法金额或超出当前版本可支持范围。",
+            status_code=422,
+        ) from exc
     assert result is not None
+    if result < 0 and not allow_negative:
+        raise AppError(
+            "invalid_request",
+            f"{label}不能为负数。",
+            status_code=422,
+        )
     return result
 
 
@@ -74,7 +85,12 @@ def _safe_month(value: str, timezone_name: str | None = None) -> str:
     return month
 
 
-def _parse_category_budgets(categories: list[str], amounts: list[str]) -> list[BudgetCategoryRequest]:
+def _parse_category_budgets(
+    categories: list[str],
+    amounts: list[str],
+    *,
+    currency_code: str,
+) -> list[BudgetCategoryRequest]:
     max_len = max(len(categories), len(amounts))
     rows: list[BudgetCategoryRequest] = []
     for index in range(max_len):
@@ -87,20 +103,29 @@ def _parse_category_budgets(categories: list[str], amounts: list[str]) -> list[B
         rows.append(
             BudgetCategoryRequest(
                 category=category,
-                amount_cents=_parse_amount_yuan(amount_text, label="分类预算金额"),
+                amount_cents=_parse_amount_yuan(
+                    amount_text,
+                    currency_code=currency_code,
+                    label="分类预算金额",
+                ),
             )
         )
     return rows
 
 
-def _category_form_rows(budget: BudgetMonthlyResponse) -> list[dict[str, str]]:
+def _category_form_rows(
+    budget: BudgetMonthlyResponse,
+    *,
+    currency_code: str,
+) -> list[dict[str, str]]:
     rows = [
         {
             "category": item.category,
-            "amount_yuan": _amount_yuan(item.amount_cents),
-            "spent_yuan": _amount_yuan(item.spent_amount_cents),
-            "remaining_yuan": _amount_yuan(item.remaining_amount_cents),
-            "overspent_yuan": _amount_yuan(item.overspent_amount_cents),
+            "amount_yuan": _amount_yuan(item.amount_cents, currency_code),
+            "spent_yuan": _amount_yuan(item.spent_amount_cents, currency_code),
+            "remaining_yuan": _amount_yuan(item.remaining_amount_cents, currency_code),
+            "overspent_yuan": _amount_yuan(item.overspent_amount_cents, currency_code),
+            "has_overspend": item.overspent_amount_cents > 0,
             "is_blank": False,
         }
         for item in budget.category_budgets
@@ -113,6 +138,7 @@ def _category_form_rows(budget: BudgetMonthlyResponse) -> list[dict[str, str]]:
             "spent_yuan": "",
             "remaining_yuan": "",
             "overspent_yuan": "",
+            "has_overspend": False,
             "is_blank": True,
         }
         for _ in range(blank_count)
@@ -120,33 +146,59 @@ def _category_form_rows(budget: BudgetMonthlyResponse) -> list[dict[str, str]]:
     return rows
 
 
-def _budget_view(budget: BudgetMonthlyResponse) -> dict:
-    total = max(int(budget.total_amount_cents), 0)
-    spent = max(int(budget.spent_amount_cents), 0)
-    percent = min(100, int(round(spent * 100 / total))) if total else 0
+def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
+    total = max(
+        projection_sum_to_int(
+            budget.total_amount_cents,
+            label="web_budget.total",
+        ),
+        0,
+    )
+    spent = max(
+        projection_sum_to_int(
+            budget.spent_amount_cents,
+            label="web_budget.spent",
+        ),
+        0,
+    )
+    percent = (
+        min(
+            100,
+            round_minor_ratio_half_up(
+                spent * 100,
+                total,
+                label="web_budget.percent",
+            ),
+        )
+        if total
+        else 0
+    )
     return {
         "ledger_id": budget.ledger_id,
         "month": budget.month,
         "configured": budget.configured,
-        "total_yuan": _amount_yuan(budget.total_amount_cents),
-        "rollover_yuan": _amount_yuan(budget.rollover_amount_cents),
-        "fixed_yuan": _amount_yuan(budget.fixed_amount_cents),
-        "non_monthly_yuan": _amount_yuan(budget.non_monthly_amount_cents),
-        "flex_yuan": _amount_yuan(budget.flex_budget_cents),
-        "spent_yuan": _amount_yuan(budget.spent_amount_cents),
-        "excluded_yuan": _amount_yuan(budget.excluded_amount_cents),
-        "remaining_yuan": _amount_yuan(budget.remaining_amount_cents),
-        "overspent_yuan": _amount_yuan(budget.overspent_amount_cents),
+        "total_yuan": _amount_yuan(budget.total_amount_cents, currency_code),
+        "rollover_yuan": _amount_yuan(budget.rollover_amount_cents, currency_code),
+        "fixed_yuan": _amount_yuan(budget.fixed_amount_cents, currency_code),
+        "non_monthly_yuan": _amount_yuan(budget.non_monthly_amount_cents, currency_code),
+        "flex_yuan": _amount_yuan(budget.flex_budget_cents, currency_code),
+        "spent_yuan": _amount_yuan(budget.spent_amount_cents, currency_code),
+        "excluded_yuan": _amount_yuan(budget.excluded_amount_cents, currency_code),
+        "remaining_yuan": _amount_yuan(budget.remaining_amount_cents, currency_code),
+        "overspent_yuan": _amount_yuan(budget.overspent_amount_cents, currency_code),
         "excluded_categories_text": ", ".join(budget.excluded_categories),
         "excluded_breakdown": [
             {
                 "category": item.category,
-                "amount_yuan": _amount_yuan(item.amount_cents),
+                "amount_yuan": _amount_yuan(item.amount_cents, currency_code),
                 "count": item.count,
             }
             for item in budget.excluded_breakdown
         ],
-        "category_rows": _category_form_rows(budget),
+        "category_rows": _category_form_rows(
+            budget,
+            currency_code=currency_code,
+        ),
         "spent_percent": percent,
         "is_over_budget": budget.remaining_amount_cents < 0,
     }
@@ -177,7 +229,10 @@ def _render_budgets(
         selected_month=month,
     )
     ctx["month"] = month
-    ctx["budget"] = _budget_view(budget)
+    ctx["budget"] = _budget_view(
+        budget,
+        currency_code=ctx["home_currency_code"],
+    )
     ctx["message"] = message
     ctx["error"] = error
     return templates.TemplateResponse(request=request, name="budgets.html", context=ctx)
@@ -225,14 +280,30 @@ def web_budgets_save(
     timezone_name = _budget_timezone_name()
     target_month = (month or "").strip() or current_accounting_month(timezone_name)
     try:
+        presentation_currency = home_currency_code()
         payload = BudgetMonthlyUpdateRequest(
-            total_amount_cents=_parse_amount_yuan(total_amount_yuan, label="月度总预算", required=True),
-            rollover_amount_cents=_parse_amount_yuan(rollover_amount_yuan, label="结转金额", allow_negative=True),
-            non_monthly_amount_cents=_parse_amount_yuan(non_monthly_amount_yuan, label="非月度预留"),
+            total_amount_cents=_parse_amount_yuan(
+                total_amount_yuan,
+                currency_code=presentation_currency,
+                label="月度总预算",
+                required=True,
+            ),
+            rollover_amount_cents=_parse_amount_yuan(
+                rollover_amount_yuan,
+                currency_code=presentation_currency,
+                label="结转金额",
+                allow_negative=True,
+            ),
+            non_monthly_amount_cents=_parse_amount_yuan(
+                non_monthly_amount_yuan,
+                currency_code=presentation_currency,
+                label="非月度预留",
+            ),
             excluded_categories=_split_categories(excluded_categories),
             category_budgets=_parse_category_budgets(
                 category_budget_category,
                 category_budget_amount_yuan,
+                currency_code=presentation_currency,
             ),
         )
         upsert_monthly_budget(

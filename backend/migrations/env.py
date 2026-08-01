@@ -33,6 +33,30 @@ from app.config import get_settings  # noqa: E402
 from app.database._core import Base  # noqa: E402
 
 config = context.config
+_C07_JSON_PROTOCOL_ATTRIBUTE = "ticketbox_c07_json_protocol_v1"
+
+
+def _configure_c07_json_protocol_logging() -> None:
+    """Keep Alembic diagnostics outside the helper's stdout/stderr protocol."""
+
+    alembic_logger = logging.getLogger("alembic")
+    if not any(
+        isinstance(handler, logging.NullHandler)
+        for handler in alembic_logger.handlers
+    ):
+        alembic_logger.addHandler(logging.NullHandler())
+    alembic_logger.propagate = False
+
+
+# ``alembic.ini`` intentionally routes the standalone CLI's progress messages
+# to stderr.  The dedicated C07 helper instead owns a strict JSON stdout
+# protocol whose Windows host rejects any stderr bytes.  Its Config opts into a
+# versioned attribute, so this environment skips fileConfig and installs the
+# standard no-op handler recommended for a logging namespace that must not fall
+# through to Python's stderr ``lastResort`` handler.  Exceptions still escape
+# normally and produce a non-zero helper exit.
+if config.attributes.get(_C07_JSON_PROTOCOL_ATTRIBUTE) is True:
+    _configure_c07_json_protocol_logging()
 # Only let Alembic configure logging when it owns the process — i.e. the
 # standalone ``alembic`` CLI, where nothing has set up logging yet. When
 # migrations run programmatically (``command.upgrade`` from ``init_db`` at app
@@ -43,7 +67,7 @@ config = context.config
 # the service loses every log line after its first startup migration. Skipping
 # fileConfig when handlers already exist preserves the source/CLI behavior
 # (root has no handlers there) while keeping the frozen service's file logging.
-if config.config_file_name is not None and not logging.getLogger().handlers:
+elif config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata

@@ -8,6 +8,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.fx_constants import FX_SOURCE_MANUAL
+from app.schemas._money import PositiveCanonicalDecimalInput
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -22,7 +23,7 @@ class ExchangeRateRequest(BaseModel):
 
     currency_code: str = Field(min_length=3, max_length=3)
     rate_date: date
-    rate_to_cny: Decimal = Field(gt=0)
+    rate_to_cny: PositiveCanonicalDecimalInput
     source: str | None = Field(default=FX_SOURCE_MANUAL, max_length=32)
 
 

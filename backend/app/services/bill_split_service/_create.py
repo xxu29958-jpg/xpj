@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Account, BillSplitInvitation, Expense
+from app.money_contract import MoneySign, ensure_money_minor, fold_sum_to_int
 from app.services.bill_split_service._common import (
     INVITATION_TTL,
     SPLIT_RECEIVED_SOURCE,
@@ -21,17 +22,18 @@ from app.services.currency_common import normalize_currency_code
 from app.services.time_service import now_utc
 
 _PENDING_DUPLICATE_INDEX = "uq_bill_split_invitations_pending_receiver"
-_PENDING_DUPLICATE_COLUMNS = (
-    "bill_split_invitations.sender_expense_id",
-    "bill_split_invitations.receiver_account_id",
-)
+_UNIQUE_VIOLATION_SQLSTATE = "23505"
 
 
 def _is_pending_duplicate_error(exc: IntegrityError) -> bool:
-    message = str(exc.orig if exc.orig is not None else exc)
+    """Match only the PostgreSQL partial-UNIQUE guard for pending invites."""
+
+    orig = exc.orig
+    diagnostic = getattr(orig, "diag", None)
     return (
-        _PENDING_DUPLICATE_INDEX in message
-        or all(column in message for column in _PENDING_DUPLICATE_COLUMNS)
+        getattr(orig, "sqlstate", None) == _UNIQUE_VIOLATION_SQLSTATE
+        and getattr(diagnostic, "constraint_name", None)
+        == _PENDING_DUPLICATE_INDEX
     )
 
 
@@ -98,8 +100,13 @@ def create_invitation(
 def _validate_invitation_request(
     *, sender_account_id: int, receiver_account_id: int, amount_cents: int
 ) -> None:
-    if amount_cents <= 0:
-        raise AppError("split_amount_invalid", "请填写大于 0 的拆账金额。", status_code=422)
+    ensure_money_minor(
+        amount_cents,
+        sign=MoneySign.POSITIVE,
+        label="bill_split.amount_cents",
+        error_code="split_amount_invalid",
+        error_message="请填写有效范围内的拆账金额。",
+    )
     if receiver_account_id == sender_account_id:
         raise AppError("split_receiver_invalid", status_code=422)
 
@@ -160,15 +167,19 @@ def _ensure_invitation_capacity(
     amount_cents: int,
 ) -> None:
     assert expense.amount_cents is not None
-    active_split_total = int(
+    active_split_total = fold_sum_to_int(
         db.scalar(
             select(func.coalesce(func.sum(BillSplitInvitation.amount_cents), 0))
             .where(BillSplitInvitation.sender_expense_id == expense.id)
             .where(BillSplitInvitation.status.in_(("invited", "accepted")))
-        )
-        or 0
+        ),
+        label="bill_split.active_split_total",
     )
-    if active_split_total + amount_cents > expense.amount_cents:
+    requested_total = fold_sum_to_int(
+        active_split_total + amount_cents,
+        label="bill_split.requested_total",
+    )
+    if requested_total > expense.amount_cents:
         raise AppError(
             "split_total_exceeds_parent",
             "拆账邀请总额不能超过原账单金额。",

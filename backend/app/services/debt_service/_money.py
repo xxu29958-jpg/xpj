@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.fx_constants import FX_STATUS_PENDING
+from app.money_contract import MoneySign, ensure_money_minor
 from app.services.currency_common import home_currency_code, normalize_currency_code
 from app.services.exchange_rate_service import (
     amount_major_to_minor,
@@ -29,6 +30,40 @@ from app.services.exchange_rate_service import (
     default_rate_date,
     resolve_payload_rate,
 )
+
+
+def validate_home_amount_command(
+    *,
+    amount_cents: object | None,
+    original_currency: str | None,
+    original_amount: Decimal | None,
+    amount_error: str = "debt_amount_invalid",
+) -> None:
+    """Validate the command carrier and range before any database access."""
+
+    has_original = original_currency is not None or original_amount is not None
+    if not has_original:
+        _clean_home_amount(amount_cents, amount_error)
+        return
+    if original_currency is None or original_amount is None:
+        raise AppError(amount_error, status_code=422)
+    if amount_cents is not None:
+        raise AppError("invalid_request", status_code=422)
+    code = normalize_currency_code(original_currency)
+    try:
+        original_amount_minor = amount_major_to_minor(original_amount, code)
+    except AppError as exc:
+        if exc.error != "amount_invalid":
+            raise
+        raise AppError(amount_error, status_code=422) from None
+    except (TypeError, ValueError) as exc:
+        raise AppError(amount_error, status_code=422) from exc
+    ensure_money_minor(
+        original_amount_minor,
+        sign=MoneySign.POSITIVE,
+        label="debt.original_amount_minor",
+        error_code=amount_error,
+    )
 
 
 def freeze_home_amount(
@@ -57,6 +92,12 @@ def freeze_home_amount(
     / ``exchange_rate_source``. ``home_currency_code`` is included too (the Debt
     principal stores it; the repayment caller drops it).
     """
+    validate_home_amount_command(
+        amount_cents=amount_cents,
+        original_currency=original_currency,
+        original_amount=original_amount,
+        amount_error=amount_error,
+    )
     home = home_currency_code()
     has_original = original_currency is not None or original_amount is not None
 
@@ -101,9 +142,20 @@ def _freeze_foreign_amount(
 ) -> dict:
     """Convert a foreign ``original_amount`` to home minor units via [[0027]]."""
     code = normalize_currency_code(original_currency)
-    original_amount_minor = amount_major_to_minor(original_amount, code)
-    if original_amount_minor is None or original_amount_minor <= 0:
-        raise AppError(amount_error, status_code=422)
+    try:
+        original_amount_minor = amount_major_to_minor(original_amount, code)
+    except AppError as exc:
+        if exc.error != "amount_invalid":
+            raise
+        raise AppError(amount_error, status_code=422) from None
+    except (TypeError, ValueError) as exc:
+        raise AppError(amount_error, status_code=422) from exc
+    original_amount_minor = ensure_money_minor(
+        original_amount_minor,
+        sign=MoneySign.POSITIVE,
+        label="debt.original_amount_minor",
+        error_code=amount_error,
+    )
     rate_date = default_rate_date(event_time)
 
     if code == home:
@@ -130,8 +182,12 @@ def _freeze_foreign_amount(
         original_amount_minor=original_amount_minor,
         exchange_rate_to_cny=rate,
     )
-    if cents is None or cents <= 0:
-        raise AppError(amount_error, status_code=422)
+    cents = ensure_money_minor(
+        cents,
+        sign=MoneySign.POSITIVE,
+        label="debt.amount_cents",
+        error_code=amount_error,
+    )
     return {
         "amount_cents": cents,
         "home_currency_code": home,
@@ -143,10 +199,10 @@ def _freeze_foreign_amount(
     }
 
 
-def _clean_home_amount(value: int | None, amount_error: str) -> int:
-    if value is None:
-        raise AppError(amount_error, status_code=422)
-    amount = int(value)
-    if amount <= 0:
-        raise AppError(amount_error, status_code=422)
-    return amount
+def _clean_home_amount(value: object | None, amount_error: str) -> int:
+    return ensure_money_minor(
+        value,
+        sign=MoneySign.POSITIVE,
+        label="debt.amount_cents",
+        error_code=amount_error,
+    )

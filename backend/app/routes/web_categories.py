@@ -61,6 +61,8 @@ def web_categories(
         )
     except ValueError as exc:
         raise AppError("invalid_request", "请使用 YYYY-MM 格式的月份。", status_code=400) from exc
+    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    home = ctx["home_currency_code"]
     rows = []
     for s in dashboard.summaries:
         rows.append(
@@ -68,11 +70,10 @@ def web_categories(
                 "category": s.category,
                 "confirmed_count": s.confirmed_count,
                 "pending_count": s.pending_count,
-                "amount_yuan": _amount_yuan(s.confirmed_amount_cents),
+                "amount_yuan": _amount_yuan(s.confirmed_amount_cents, home),
                 "is_uncategorized": s.is_uncategorized,
             }
         )
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["categories_rows"] = rows
     ctx["target_month"] = target_month
     ctx["rule_count"] = dashboard.rule_count
@@ -94,6 +95,8 @@ def web_uncategorized(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    home = ctx["home_currency_code"]
     rows = list_uncategorized_pending(db, tenant_id=selected_id)
     items = []
     for r in rows:
@@ -101,14 +104,13 @@ def web_uncategorized(
             {
                 "id": r.id,
                 "merchant": (r.merchant or "").strip(),
-                "amount_yuan": _amount_yuan(r.amount_cents),
+                "amount_yuan": _amount_yuan(r.amount_cents, home),
                 "category": r.category or "",
                 "note": (r.note or "").strip(),
                 "created_at": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
             }
         )
     available = merge_categories([r.category for r in rows if r.category])
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["uncategorized_items"] = items
     ctx["available_categories"] = available
     ctx["default_categories"] = DEFAULT_CATEGORIES

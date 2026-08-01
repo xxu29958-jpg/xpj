@@ -361,6 +361,7 @@ class BudgetRepositoryAdviceBindingTest {
         val api = BudgetApiHandler().apply {
             adviceResponse = BudgetAdviseResponseDto(
                 advice = null,
+                homeCurrencyCode = "KRW",
                 providerName = "empty",
                 reasonCode = "ai_advisor_provider_empty",
             )
@@ -371,6 +372,7 @@ class BudgetRepositoryAdviceBindingTest {
         val result = repository.requestBudgetAdvice("2026-05").getOrThrow()
 
         assertNull(result.advice)
+        assertEquals("KRW", result.homeCurrencyCode)
         assertNull(repository.cachedBudgetAdvice("2026-05"))
     }
 
@@ -415,6 +417,7 @@ class BudgetRepositoryAdviceBindingTest {
                     suggestions = emptyList(),
                     confidence = 0.5,
                 ),
+                homeCurrencyCode = "CNY",
                 providerName = "mock",
                 reasonCode = "advisor_ready",
             )
@@ -424,6 +427,7 @@ class BudgetRepositoryAdviceBindingTest {
                     suggestions = emptyList(),
                     confidence = 0.6,
                 ),
+                homeCurrencyCode = "CNY",
                 providerName = "mock",
                 reasonCode = "advisor_ready",
             )
@@ -623,6 +627,7 @@ private class BudgetApiHandler : InvocationHandler {
                         ),
                         confidence = 0.8,
                     ),
+                    homeCurrencyCode = "CNY",
                     providerName = "mock",
                     reasonCode = "advisor_ready",
                 )

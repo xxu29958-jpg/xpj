@@ -37,6 +37,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Expense
+from app.money_contract import (
+    projection_sum_to_int,
+    round_minor_ratio_half_up,
+)
 from app.services.learning_service._algorithm_registry import (
     BUDGET_SUGGESTION,
 )
@@ -65,24 +69,55 @@ class BudgetQuantileSuggestion:
     algorithm_version: str = ALGORITHM_VERSION
 
 
-def _quantile(sorted_values: list[int], q: float) -> int:
+def _quantile(sorted_values: list[int], numerator: int, denominator: int) -> int:
     """Linear-interpolated quantile, integer cents output.
 
     Equivalent to numpy's ``percentile(values, q*100, method='linear')``
-    but without the dependency.
+    for the supported exact rational quantiles, without binary floats.
     """
 
     if not sorted_values:
         return 0
     if len(sorted_values) == 1:
-        return int(sorted_values[0])
-    pos = q * (len(sorted_values) - 1)
-    lower_idx = int(pos)
+        return projection_sum_to_int(
+            sorted_values[0],
+            label="budget_quantile.single",
+        )
+    if (
+        type(numerator) is not int
+        or type(denominator) is not int
+        or denominator <= 0
+        or not 0 <= numerator <= denominator
+    ):
+        raise ValueError("quantile must be an exact ratio in [0, 1]")
+    scaled_position = numerator * (len(sorted_values) - 1)
+    lower_idx, remainder = divmod(scaled_position, denominator)
     upper_idx = min(lower_idx + 1, len(sorted_values) - 1)
-    weight = pos - lower_idx
-    lower = sorted_values[lower_idx]
-    upper = sorted_values[upper_idx]
-    return int(round(lower + (upper - lower) * weight))
+    lower = projection_sum_to_int(
+        sorted_values[lower_idx],
+        label="budget_quantile.lower",
+    )
+    upper = projection_sum_to_int(
+        sorted_values[upper_idx],
+        label="budget_quantile.upper",
+    )
+    interpolated_numerator = lower * denominator + (upper - lower) * remainder
+    return round_minor_ratio_half_up(
+        interpolated_numerator,
+        denominator,
+        label="budget_quantile.interpolated",
+    )
+
+
+def _checked_month_total(current: int, amount_minor: int | None) -> int:
+    amount = projection_sum_to_int(
+        amount_minor,
+        label="budget_quantile.expense",
+    )
+    return projection_sum_to_int(
+        current + amount,
+        label="budget_quantile.month_total",
+    )
 
 
 def _lookback_months(
@@ -152,7 +187,7 @@ def compute_budget_quantile_suggestion(
         key = stat_month_label(expense, timezone_key)
         if key not in months:
             continue
-        monthly_totals[key] += int(expense.amount_cents or 0)
+        monthly_totals[key] = _checked_month_total(monthly_totals[key], expense.amount_cents)
 
     if include_zero_months:
         # Pad missing months with zero so the user's cadence is
@@ -162,12 +197,14 @@ def compute_budget_quantile_suggestion(
         for month in months:
             monthly_totals.setdefault(month, 0)
 
-    values = sorted(int(v) for v in monthly_totals.values())
+    values = sorted(
+        projection_sum_to_int(value, label="budget_quantile.month_projection") for value in monthly_totals.values()
+    )
     if len(values) < max(min_months, 1):
         return None
 
-    p50 = _quantile(values, 0.5)
-    p75 = _quantile(values, 0.75)
+    p50 = _quantile(values, 1, 2)
+    p75 = _quantile(values, 3, 4)
     return BudgetQuantileSuggestion(
         category=category,
         p50_cents=p50,

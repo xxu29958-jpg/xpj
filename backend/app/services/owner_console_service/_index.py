@@ -18,8 +18,10 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Account
+from app.money_contract import projection_sum_to_int, round_minor_ratio_half_up
 from app.services.admin_service import list_devices
 from app.services.budget_service import get_monthly_budget
+from app.services.currency_common import home_currency_code
 from app.services.data_quality_service import DataQualitySummary, data_quality_summary
 from app.services.ledger_service import LedgerSummary
 from app.services.owner_console_service._common import (
@@ -155,15 +157,39 @@ def _budget_status_for_primary_ledger(
         month=month,
         timezone_name=OWNER_CONSOLE_TIMEZONE,
     )
-    available_amount_cents = int(budget.total_amount_cents) + int(budget.rollover_amount_cents)
-    spent_amount_cents = int(budget.spent_amount_cents)
+    available_amount_cents = projection_sum_to_int(
+        projection_sum_to_int(
+            budget.total_amount_cents,
+            label="owner_console.budget_total",
+        )
+        + projection_sum_to_int(
+            budget.rollover_amount_cents,
+            label="owner_console.budget_rollover",
+        ),
+        label="owner_console.budget_available",
+    )
+    spent_amount_cents = projection_sum_to_int(
+        budget.spent_amount_cents,
+        label="owner_console.budget_spent",
+    )
     spent_percent = (
-        round(spent_amount_cents / available_amount_cents * 100)
+        round_minor_ratio_half_up(
+            spent_amount_cents * 100,
+            available_amount_cents,
+            label="owner_console.budget_percent",
+        )
         if available_amount_cents > 0
         else 0
     )
-    remaining_amount_cents = int(budget.remaining_amount_cents)
-    overspent_amount_cents = int(budget.overspent_amount_cents)
+    remaining_amount_cents = projection_sum_to_int(
+        budget.remaining_amount_cents,
+        label="owner_console.budget_remaining",
+    )
+    overspent_amount_cents = projection_sum_to_int(
+        budget.overspent_amount_cents,
+        label="owner_console.budget_overspent",
+    )
+    presentation_currency = home_currency_code()
     return BudgetStatusVM(
         ledger_id=primary_ledger.ledger_id,
         ledger_name=primary_ledger.name,
@@ -176,8 +202,20 @@ def _budget_status_for_primary_ledger(
         spent_percent=spent_percent,
         is_over_budget=overspent_amount_cents > 0 or remaining_amount_cents < 0,
         category_over_count=sum(1 for item in budget.category_budgets if item.overspent_amount_cents > 0),
-        total_amount_yuan=_amount_yuan(available_amount_cents),
-        spent_amount_yuan=_amount_yuan(spent_amount_cents),
-        remaining_amount_yuan=_amount_yuan(remaining_amount_cents),
-        overspent_amount_yuan=_amount_yuan(overspent_amount_cents),
+        total_amount_yuan=_amount_yuan(
+            available_amount_cents,
+            presentation_currency,
+        ),
+        spent_amount_yuan=_amount_yuan(
+            spent_amount_cents,
+            presentation_currency,
+        ),
+        remaining_amount_yuan=_amount_yuan(
+            remaining_amount_cents,
+            presentation_currency,
+        ),
+        overspent_amount_yuan=_amount_yuan(
+            overspent_amount_cents,
+            presentation_currency,
+        ),
     )

@@ -198,9 +198,8 @@ class DebtDetailViewModelTest {
     }
 
     @Test
-    fun submitRepaymentParsesAmountWithBigDecimalPrecision() = runTest(dispatcher) {
-        // §3：元→分走共享 BigDecimal 解析器。"1.005" HALF_UP → 101 分；旧 Double Math.round 给 100
-        // （1.005*100 的 double 是 100.4999… → 100），故此断言会在退回 Double 时变红。
+    fun submitRepaymentAcceptsExactTrailingZeroAmount() = runTest(dispatcher) {
+        // C07：1.230 精确等于 123 minor；超精度拒绝由共享 formatter 契约测试钉住。
         val repo = FakeDebtDetailActions(
             getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L)),
             writeResult = Result.success(sampleDebt("d1", rowVersion = 2L, remaining = 49_899L)),
@@ -210,11 +209,11 @@ class DebtDetailViewModelTest {
         advanceUntilIdle()
 
         viewModel.openAction(DebtAction.Repayment)
-        viewModel.updateAmount("1.005")
+        viewModel.updateAmount("1.230")
         viewModel.submit()
         advanceUntilIdle()
 
-        assertEquals(101L, repo.repaymentCalls.single().amountCents)
+        assertEquals(123L, repo.repaymentCalls.single().amountCents)
     }
 
     @Test

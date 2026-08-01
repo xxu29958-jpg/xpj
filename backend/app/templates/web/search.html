@@ -45,7 +45,7 @@
             <span class="search-subtitle">{{ result.subtitle }}</span>
           </span>
           {% if result.amount_cents is not none %}
-          <span class="search-amount">{{ home_currency_symbol }}{{ '%.2f' % (result.amount_cents / 100) }}</span>
+          <span class="search-amount">{{ home_currency_symbol }}{{ home_amount_value(result.amount_cents) }}</span>
           {% endif %}
         </a>
         {% endfor %}

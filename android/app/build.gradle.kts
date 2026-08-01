@@ -811,9 +811,9 @@ tasks.matching { it.name.matches(Regex("connected.*AndroidTest")) }.configureEac
                     afterExitInfo.absolutePath,
                     "--apkanalyzer",
                     apkanalyzer.absolutePath,
-                    "--apk-output-dir",
+                    "--target-apk-output-dir",
                     grayDebugApkOutputDirectory.get().asFile.absolutePath,
-                    "--apk-output-dir",
+                    "--instrumentation-apk-output-dir",
                     grayDebugAndroidTestApkOutputDirectory.get().asFile.absolutePath,
                 ),
             )

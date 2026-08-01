@@ -21,15 +21,23 @@ its handlers at ``sys.stdout`` — see :func:`_build_log_config`.
 
 from __future__ import annotations
 
+import importlib
+import importlib.machinery
+import importlib.util
 import json
 import ntpath
 import os
 import re
 import stat
 import sys
+from argparse import ArgumentParser, Namespace
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from json import dumps
 from pathlib import Path
+from types import ModuleType
+from typing import BinaryIO, TextIO
 
 _VOLUME_IDENTITY_PATTERN = re.compile(
     r"^\\\\\?\\Volume\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
@@ -50,6 +58,82 @@ _FROZEN_HOST_AUTHORITY_KEYS = (
 )
 _OWNER_RECOVERY_CHANNELS = frozenset({"development", "managed_host", "operator"})
 _BOOTSTRAP_RECOVERY_GUARD_NAME = "bootstrap-exposure-recovery-pending"
+_C07_PRODUCTION_MIGRATION_SWITCH = "--c07-production-migrate"
+_C07_FRESH_SOURCE_BOOTSTRAP_SWITCH = "--c07-fresh-source-bootstrap"
+_C07_MAINTENANCE_PLAN_SWITCH = "--c07-installed-upgrade-plan"
+_C07_MAINTENANCE_UPGRADE_SWITCH = "--c07-maintenance-upgrade"
+_C07_MONEY_FACTS_SWITCH = "--c07-money-facts-digest"
+_C07_TARGET_SEMANTIC_SWITCH = "--c07-target-semantic-digest"
+_C07_MIGRATION_HELPER_NAME = "ticketbox-c07-migrator.exe"
+_C07_PRODUCTION_MODULE_NAME = "_ticketbox_c07_production_migration"
+_C07_FRESH_SOURCE_MODULE_NAME = "_ticketbox_c07_fresh_source_bootstrap"
+_C07_MAINTENANCE_MODULE_NAME = "_ticketbox_c07_maintenance_upgrade"
+_C07_MIGRATION_RESULT_FIELDS = (
+    "schema",
+    "operation_id",
+    "source_revision",
+    "target_revision",
+    "result",
+    "alembic_revision",
+    "money_facts_sha256",
+    "statistics_table_count",
+    "statistics_table_set_sha256",
+)
+_C07_FRESH_SOURCE_RESULT_FIELDS = (
+    "schema",
+    "source_revision",
+    "target_revision",
+    "result",
+    "alembic_revision",
+)
+_C07_MAINTENANCE_PLAN_FIELDS = (
+    "schema",
+    "operation_kind",
+    "source_revision",
+    "target_revision",
+    "upgrade_required",
+    "revision_manifest",
+    "revision_manifest_sha256",
+)
+_C07_MAINTENANCE_RESULT_FIELDS = (
+    "schema",
+    "mode",
+    "operation_id",
+    "source_revision",
+    "target_revision",
+    "revision_manifest_sha256",
+    "maintenance_authority_sha256",
+    "maintenance_remaining_ceiling_ms",
+    "resource_shape_sha256",
+    "result",
+    "alembic_revision",
+    "target_shape_sha256",
+    "money_facts_sha256",
+)
+_C07_MONEY_FACTS_RESULT_FIELDS = (
+    "schema",
+    "operation_id",
+    "database",
+    "snapshot_id",
+    "maintenance_authority_sha256",
+    "maintenance_remaining_ceiling_ms",
+    "alembic_revision",
+    "money_facts_sha256",
+)
+_C07_TARGET_SEMANTIC_RESULT_FIELDS = (
+    "schema",
+    "operation_id",
+    "database",
+    "snapshot_id",
+    "source_revision",
+    "target_revision",
+    "revision_manifest_sha256",
+    "maintenance_authority_sha256",
+    "maintenance_remaining_ceiling_ms",
+    "alembic_revision",
+    "resource_shape_sha256",
+    "money_facts_sha256",
+)
 
 
 def _bundle_dir() -> Path:
@@ -63,6 +147,556 @@ def _bundle_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[1]
+
+
+def _is_c07_migration_helper() -> bool:
+    return (
+        getattr(sys, "frozen", False)
+        and Path(sys.executable).name.lower() == _C07_MIGRATION_HELPER_NAME
+    )
+
+
+def _parse_c07_production_migration_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-c07-migrator",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _C07_PRODUCTION_MIGRATION_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--operation-id", required=True)
+    parser.add_argument("--source-revision", required=True)
+    parser.add_argument("--target-revision", required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_c07_fresh_source_bootstrap_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-c07-migrator",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _C07_FRESH_SOURCE_BOOTSTRAP_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--source-revision", required=True)
+    parser.add_argument("--target-revision", required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_c07_maintenance_plan_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-c07-migrator",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _C07_MAINTENANCE_PLAN_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--source-revision", required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_c07_maintenance_upgrade_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-c07-migrator",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _C07_MAINTENANCE_UPGRADE_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("isolated_replay",),
+        required=True,
+    )
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--operation-id", required=True)
+    parser.add_argument("--source-revision", required=True)
+    parser.add_argument("--target-revision", required=True)
+    parser.add_argument(
+        "--expected-revision-manifest-sha256",
+        required=True,
+    )
+    parser.add_argument("--maintenance-deadline-utc", required=True)
+    parser.add_argument(
+        "--maintenance-remaining-ceiling-ms",
+        type=int,
+        required=True,
+    )
+    parser.add_argument("--maintenance-authority-sha256", required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_c07_money_facts_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-c07-migrator",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _C07_MONEY_FACTS_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--operation-id", required=True)
+    parser.add_argument("--database", required=True)
+    parser.add_argument("--snapshot-id", default="")
+    parser.add_argument("--maintenance-deadline-utc", required=True)
+    parser.add_argument(
+        "--maintenance-remaining-ceiling-ms",
+        type=int,
+        required=True,
+    )
+    parser.add_argument("--maintenance-authority-sha256", required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_c07_target_semantic_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-c07-migrator",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _C07_TARGET_SEMANTIC_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--operation-id", required=True)
+    parser.add_argument("--database", required=True)
+    parser.add_argument("--snapshot-id", default="")
+    parser.add_argument("--source-revision", required=True)
+    parser.add_argument("--target-revision", required=True)
+    parser.add_argument(
+        "--expected-revision-manifest-sha256",
+        required=True,
+    )
+    parser.add_argument("--maintenance-deadline-utc", required=True)
+    parser.add_argument(
+        "--maintenance-remaining-ceiling-ms",
+        type=int,
+        required=True,
+    )
+    parser.add_argument("--maintenance-authority-sha256", required=True)
+    return parser.parse_args(argv)
+
+
+def _c07_standalone_source_path(filename: str) -> Path:
+    if getattr(sys, "frozen", False):
+        bundle_root = getattr(sys, "_MEIPASS", None)
+        if not isinstance(bundle_root, str) or not bundle_root:
+            raise RuntimeError("frozen C07 migration source root is unavailable")
+        backend_root = Path(bundle_root)
+    else:
+        backend_root = Path(__file__).resolve().parents[1]
+    return backend_root / "app" / "database" / filename
+
+
+@contextmanager
+def _temporary_c07_database_package(source_path: Path) -> Iterator[None]:
+    """Expose one physical helper package without importing the runtime facade."""
+
+    database_module_name = "app.database"
+    if database_module_name in sys.modules:
+        raise RuntimeError(
+            "C07 standalone maintenance process already loaded app.database"
+        )
+    app_package = importlib.import_module("app")
+    if hasattr(app_package, "database"):
+        raise RuntimeError(
+            "C07 standalone maintenance process has an unexpected database facade"
+        )
+
+    package = ModuleType(database_module_name)
+    package.__package__ = database_module_name
+    package.__path__ = [str(source_path.parent)]
+    package.__spec__ = importlib.machinery.ModuleSpec(
+        database_module_name,
+        loader=None,
+        is_package=True,
+    )
+    sys.modules[database_module_name] = package
+    app_package.database = package
+    try:
+        yield
+        if sys.modules.get(database_module_name) is not package:
+            raise RuntimeError(
+                "C07 standalone maintenance package identity changed"
+            )
+    finally:
+        for name in tuple(sys.modules):
+            if name == database_module_name or name.startswith(
+                f"{database_module_name}."
+            ):
+                sys.modules.pop(name, None)
+        if hasattr(app_package, "database"):
+            delattr(app_package, "database")
+
+
+def _load_c07_standalone_module(
+    *,
+    module_name: str,
+    filename: str,
+    database_package_seam: bool = False,
+) -> ModuleType:
+    """Load one maintenance action without executing ``app.database.__init__``.
+
+    The package facade creates the ordinary runtime engine from global settings.
+    That is forbidden in this maintenance process, so the attested source file
+    is shipped as a PyInstaller data file and loaded under a standalone name.
+    """
+
+    source_path = _c07_standalone_source_path(filename).resolve()
+    if not source_path.is_file():
+        raise RuntimeError("C07 standalone maintenance source is unavailable")
+    backend_root = source_path.parents[2]
+    backend_root_text = str(backend_root)
+    if backend_root_text not in sys.path:
+        # A source invocation starts with backend/packaging on sys.path, while a
+        # frozen invocation starts from the bootloader's extraction directory.
+        # Add only the root that physically contains the attested action so its
+        # narrow app.money_contract / secure_file imports resolve.
+        sys.path.insert(0, backend_root_text)
+    existing = sys.modules.get(module_name)
+    if isinstance(existing, ModuleType):
+        if Path(str(existing.__file__)).resolve() != source_path.resolve():
+            raise RuntimeError("C07 standalone maintenance module identity changed")
+        return existing
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        source_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("C07 standalone maintenance module is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        if database_package_seam:
+            with _temporary_c07_database_package(source_path):
+                spec.loader.exec_module(module)
+        else:
+            spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
+    return module
+
+
+def _load_c07_production_migration_module() -> ModuleType:
+    return _load_c07_standalone_module(
+        module_name=_C07_PRODUCTION_MODULE_NAME,
+        filename="_c07_production_migration.py",
+        database_package_seam=True,
+    )
+
+
+def _load_c07_fresh_source_bootstrap_module() -> ModuleType:
+    return _load_c07_standalone_module(
+        module_name=_C07_FRESH_SOURCE_MODULE_NAME,
+        filename="_c07_fresh_source_bootstrap.py",
+    )
+
+
+def _load_c07_maintenance_upgrade_module() -> ModuleType:
+    return _load_c07_standalone_module(
+        module_name=_C07_MAINTENANCE_MODULE_NAME,
+        filename="_c07_maintenance_upgrade.py",
+        database_package_seam=True,
+    )
+
+
+def _assert_c07_libpq_environment(pgpassfile: Path) -> None:
+    """Fail closed unless libpq sees only the attested one-shot passfile."""
+
+    pg_entries = [
+        (name, value)
+        for name, value in os.environ.items()
+        if name.upper().startswith("PG")
+    ]
+    if len(pg_entries) != 1 or pg_entries[0][0].upper() != "PGPASSFILE":
+        raise RuntimeError("C07 helper libpq environment is not sealed")
+    try:
+        expected = os.path.normcase(os.path.abspath(os.fspath(pgpassfile)))
+        actual = os.path.normcase(os.path.abspath(pg_entries[0][1]))
+    except (OSError, TypeError, ValueError) as exc:
+        raise RuntimeError("C07 helper libpq environment is not sealed") from exc
+    if actual != expected:
+        raise RuntimeError("C07 helper libpq environment is not sealed")
+
+
+def _run_c07_production_migration(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    """Run only the host-authorized C07 DDL action.
+
+    The Windows lifecycle coordinator owns every host/database stage and passes
+    its exact 15-field context on stdin.  Connection arguments are deliberately
+    passwordless; the secret remains in the protected one-shot pgpass file.
+    """
+
+    args = _parse_c07_production_migration_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("C07 migration helper requires redirected stdin/stdout")
+
+    _assert_c07_libpq_environment(args.pgpassfile)
+    production = _load_c07_production_migration_module()
+    context = production.read_production_migration_context(input_stream)
+    result = production.run_production_migration_action(
+        database_url=args.database_url,
+        pgpassfile=args.pgpassfile,
+        operation_id=args.operation_id,
+        source_revision=args.source_revision,
+        target_revision=args.target_revision,
+        migration_context=context,
+    )
+    if tuple(result) != _C07_MIGRATION_RESULT_FIELDS:
+        raise RuntimeError("C07 migration helper returned an unsupported result shape")
+    output_stream.write(
+        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
+    )
+    output_stream.flush()
+    return 0
+
+
+def _run_c07_fresh_source_bootstrap(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    """Bring a new empty database to the exact source revision, and no further."""
+
+    args = _parse_c07_fresh_source_bootstrap_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("C07 fresh-source helper requires redirected stdin/stdout")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("C07 fresh-source helper requires empty stdin")
+
+    _assert_c07_libpq_environment(args.pgpassfile)
+    bootstrap = _load_c07_fresh_source_bootstrap_module()
+    result = bootstrap.run_fresh_source_bootstrap_action(
+        database_url=args.database_url,
+        pgpassfile=args.pgpassfile,
+        source_revision=args.source_revision,
+        target_revision=args.target_revision,
+    )
+    if tuple(result) != _C07_FRESH_SOURCE_RESULT_FIELDS:
+        raise RuntimeError("C07 fresh-source helper returned an unsupported result shape")
+    output_stream.write(
+        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
+    )
+    output_stream.flush()
+    return 0
+
+
+def _run_c07_maintenance_plan(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    """Inspect the frozen graph without opening PostgreSQL."""
+
+    args = _parse_c07_maintenance_plan_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("C07 maintenance plan requires redirected stdin/stdout")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("C07 maintenance plan requires empty stdin")
+    maintenance = _load_c07_maintenance_upgrade_module()
+    result = maintenance.get_installed_maintenance_plan(
+        source_revision=args.source_revision,
+    )
+    if tuple(result) != _C07_MAINTENANCE_PLAN_FIELDS:
+        raise RuntimeError("C07 maintenance plan returned an unsupported shape")
+    output_stream.write(
+        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
+    )
+    output_stream.flush()
+    return 0
+
+
+def _run_c07_maintenance_upgrade(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    """Replay the exact C07 edge in the isolated restored database."""
+
+    args = _parse_c07_maintenance_upgrade_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError(
+            "C07 maintenance upgrade requires redirected stdin/stdout"
+        )
+    if input_stream.read(1) != b"":
+        raise RuntimeError("C07 maintenance upgrade requires empty stdin")
+    _assert_c07_libpq_environment(args.pgpassfile)
+    maintenance = _load_c07_maintenance_upgrade_module()
+    result = maintenance.run_maintenance_upgrade_action(
+        mode=args.mode,
+        database_url=args.database_url,
+        pgpassfile=args.pgpassfile,
+        operation_id=args.operation_id,
+        source_revision=args.source_revision,
+        target_revision=args.target_revision,
+        expected_revision_manifest_sha256=(
+            args.expected_revision_manifest_sha256
+        ),
+        maintenance_deadline_utc=args.maintenance_deadline_utc,
+        maintenance_remaining_ceiling_ms=(
+            args.maintenance_remaining_ceiling_ms
+        ),
+        maintenance_authority_sha256=(
+            args.maintenance_authority_sha256
+        ),
+    )
+    if tuple(result) != _C07_MAINTENANCE_RESULT_FIELDS:
+        raise RuntimeError(
+            "C07 maintenance upgrade returned an unsupported result shape"
+        )
+    output_stream.write(
+        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
+    )
+    output_stream.flush()
+    return 0
+
+
+def _run_c07_money_facts(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    """Read one canonical C07 money-facts digest."""
+
+    args = _parse_c07_money_facts_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError(
+            "C07 money-facts read requires redirected stdin/stdout"
+        )
+    if input_stream.read(1) != b"":
+        raise RuntimeError("C07 money-facts read requires empty stdin")
+    _assert_c07_libpq_environment(args.pgpassfile)
+    maintenance = _load_c07_maintenance_upgrade_module()
+    result = maintenance.run_money_facts_digest_action(
+        database_url=args.database_url,
+        pgpassfile=args.pgpassfile,
+        operation_id=args.operation_id,
+        database=args.database,
+        snapshot_id=args.snapshot_id,
+        maintenance_deadline_utc=args.maintenance_deadline_utc,
+        maintenance_remaining_ceiling_ms=(
+            args.maintenance_remaining_ceiling_ms
+        ),
+        maintenance_authority_sha256=(
+            args.maintenance_authority_sha256
+        ),
+    )
+    if tuple(result) != _C07_MONEY_FACTS_RESULT_FIELDS:
+        raise RuntimeError(
+            "C07 money-facts helper returned an unsupported result shape"
+        )
+    output_stream.write(
+        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
+    )
+    output_stream.flush()
+    return 0
+
+
+def _run_c07_target_semantic(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    """Read the exact post-DDL C07 money shape and facts without replay."""
+
+    args = _parse_c07_target_semantic_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError(
+            "C07 target-semantic read requires redirected stdin/stdout"
+        )
+    if input_stream.read(1) != b"":
+        raise RuntimeError(
+            "C07 target-semantic read requires empty stdin"
+        )
+    _assert_c07_libpq_environment(args.pgpassfile)
+    maintenance = _load_c07_maintenance_upgrade_module()
+    result = maintenance.run_target_semantic_digest_action(
+        database_url=args.database_url,
+        pgpassfile=args.pgpassfile,
+        operation_id=args.operation_id,
+        database=args.database,
+        snapshot_id=args.snapshot_id,
+        source_revision=args.source_revision,
+        target_revision=args.target_revision,
+        expected_revision_manifest_sha256=(
+            args.expected_revision_manifest_sha256
+        ),
+        maintenance_deadline_utc=args.maintenance_deadline_utc,
+        maintenance_remaining_ceiling_ms=(
+            args.maintenance_remaining_ceiling_ms
+        ),
+        maintenance_authority_sha256=(
+            args.maintenance_authority_sha256
+        ),
+    )
+    if tuple(result) != _C07_TARGET_SEMANTIC_RESULT_FIELDS:
+        raise RuntimeError(
+            "C07 target-semantic helper returned an unsupported result shape"
+        )
+    output_stream.write(
+        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
+    )
+    output_stream.flush()
+    return 0
 
 
 def _resolve_writable_data_dir() -> Path:
@@ -644,7 +1278,43 @@ def _build_log_config(log_dir: Path, *, console: bool | None = None) -> dict:
     }
 
 
-def main() -> None:
+def main() -> int | None:
+    arguments = sys.argv[1:]
+    maintenance_switches = [
+        switch
+        for switch in (
+            _C07_PRODUCTION_MIGRATION_SWITCH,
+            _C07_FRESH_SOURCE_BOOTSTRAP_SWITCH,
+            _C07_MAINTENANCE_PLAN_SWITCH,
+            _C07_MAINTENANCE_UPGRADE_SWITCH,
+            _C07_MONEY_FACTS_SWITCH,
+            _C07_TARGET_SEMANTIC_SWITCH,
+        )
+        if switch in arguments
+    ]
+    if len(maintenance_switches) > 1:
+        raise RuntimeError("C07 helper accepts exactly one maintenance mode")
+    if maintenance_switches:
+        if getattr(sys, "frozen", False) and not _is_c07_migration_helper():
+            raise RuntimeError(
+                "C07 maintenance requires the dedicated frozen helper"
+            )
+        if maintenance_switches[0] == _C07_PRODUCTION_MIGRATION_SWITCH:
+            return _run_c07_production_migration(arguments)
+        if maintenance_switches[0] == _C07_FRESH_SOURCE_BOOTSTRAP_SWITCH:
+            return _run_c07_fresh_source_bootstrap(arguments)
+        if maintenance_switches[0] == _C07_MAINTENANCE_PLAN_SWITCH:
+            return _run_c07_maintenance_plan(arguments)
+        if maintenance_switches[0] == _C07_MAINTENANCE_UPGRADE_SWITCH:
+            return _run_c07_maintenance_upgrade(arguments)
+        if maintenance_switches[0] == _C07_MONEY_FACTS_SWITCH:
+            return _run_c07_money_facts(arguments)
+        return _run_c07_target_semantic(arguments)
+    if _is_c07_migration_helper():
+        raise RuntimeError(
+            "the dedicated C07 migration helper requires its explicit maintenance mode"
+        )
+
     import logging.config
 
     data_dir = configure_environment()
@@ -707,4 +1377,6 @@ if __name__ == "__main__":
     # re-execute the bootloader and recursively launch the app. No-op today
     # (workers=1, app object passed directly), required before any spawn lands.
     multiprocessing.freeze_support()
-    main()
+    exit_code = main()
+    if exit_code is not None:
+        raise SystemExit(exit_code)

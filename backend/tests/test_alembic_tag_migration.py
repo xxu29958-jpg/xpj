@@ -4,8 +4,9 @@
 the migration's ``upgrade`` / ``downgrade`` bodies never execute on the normal
 path. This drives them directly on PostgreSQL (the prod dialect): stamp →
 downgrade past 0043 (drops the management columns + snapshot tables) → seed
-legacy ``tags`` rows → upgrade to head, forcing the add-nullable → backfill-uuid
-→ NOT NULL + unique-index ALTER three-step that the production DB actually runs.
+legacy ``tags`` rows → upgrade to the last pre-C07 head, forcing the
+add-nullable → backfill-uuid → NOT NULL + unique-index ALTER three-step that
+the production DB actually runs.
 
 Ported (PG-only) from the retired ``test_database_migration_tags.py``; the
 legacy-SQLite-migrator half of that file went with ``migrate_sqlite_schema``.
@@ -22,8 +23,11 @@ import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine, seed_identity_data
+from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
+
+_PRE_C07_HEAD = "20260722_0001"
 
 
 def _table_names() -> set[str]:
@@ -39,7 +43,7 @@ def _indexes(table_name: str) -> set[str]:
 
 
 def _reset_empty_database() -> None:
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
 
 
 def _drop_alembic_version() -> None:
@@ -59,10 +63,7 @@ def _alembic_cfg():
 def _run_alembic(action, *args) -> None:
     # Drive Alembic through the test engine's connection, one command per
     # transaction (mirrors init_db's _stamp_alembic_baseline_if_needed).
-    cfg = _alembic_cfg()
-    with engine.begin() as connection:
-        cfg.attributes["connection"] = connection
-        action(cfg, *args)
+    run_alembic_for_test(engine, _alembic_cfg(), action, *args)
 
 
 def test_alembic_tag_migration_round_trips_on_postgres() -> None:
@@ -89,8 +90,9 @@ def test_alembic_tag_migration_round_trips_on_postgres() -> None:
                 )
             )
 
-        # Upgrade back to head → the ALTER three-step + snapshot create_table run.
-        _run_alembic(command.upgrade, "head")
+        # Stop at the last pre-C07 revision. This synthetic rewind retains
+        # current-ORM int8 carriers, so it is not a legal C07 source database.
+        _run_alembic(command.upgrade, _PRE_C07_HEAD)
 
         assert {"public_id", "row_version", "deleted_at"}.issubset(_table_columns("tags"))
         assert "ix_tags_public_id" in _indexes("tags")

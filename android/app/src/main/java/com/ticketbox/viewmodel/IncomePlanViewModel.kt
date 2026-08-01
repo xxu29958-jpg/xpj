@@ -104,9 +104,8 @@ data class IncomePlanDraftUi(
             parsedPayDay() != null &&
             (frequency == IncomeFrequency.MONTHLY || parsedIncomeMonth() != null)
 
-    // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额），按账本币种扩位（R12-D：
-    // 零小数 home 不 ×100；未确认 → null 禁写）。允许 0、拒负：极小负额（如 -0.004）
-    // 在分空间 HALF_UP 会舍入到 0，故先按元符号拒负，保持旧「负数无效」语义。
+    // 元→分走共享精确 BigDecimal 解析器（§3 禁 Double 存金额），按账本币种扩位（R12-D：
+    // 零小数 home 不 ×100；未确认 → null 禁写）。允许 0、拒负，不做 HALF_UP 改写。
     fun parsedAmountCents(): Long? {
         if (amountYuanInput.trim().startsWith('-')) return null
         val currency = homeCurrency ?: return null

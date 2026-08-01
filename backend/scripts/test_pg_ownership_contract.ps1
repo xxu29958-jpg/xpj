@@ -707,28 +707,95 @@ function Remove-XpjTestPostgresProvisioningGeneration {
         $birthPath = Assert-XpjTestPostgresProvisioningBirthMarker `
             -Provisioning $provisioning `
             -AllowMissingWhenEmpty
+        $expectedRoot = [IO.Path]::GetFullPath(
+            [string]$provisioning.GenerationRoot
+        ).TrimEnd('\', '/')
+        Initialize-TicketboxExactTreeDeleteNativeMethods
+        $expectedRootIdentity = @(
+            [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity(
+                $expectedRoot
+            )
+        )
+        if ($expectedRootIdentity.Count -ne 2) {
+            throw "Test PostgreSQL generation identity is invalid: $expectedRoot"
+        }
         if ($null -eq $birthPath) {
-            Remove-TicketboxTreeExact -Path $provisioning.GenerationRoot
+            $verifyOpenedEmptyRoot = {
+                param([string]$OpenedPath)
+
+                $openedRoot = [IO.Path]::GetFullPath($OpenedPath).TrimEnd('\', '/')
+                if (-not [string]::Equals(
+                    $openedRoot,
+                    $expectedRoot,
+                    [StringComparison]::OrdinalIgnoreCase
+                )) {
+                    throw "Test PostgreSQL cleanup opened another generation root: $OpenedPath"
+                }
+                $openedIdentity = @(
+                    [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity(
+                        $openedRoot
+                    )
+                )
+                if (
+                    $openedIdentity.Count -ne 2 -or
+                    [string]$openedIdentity[0] -cne [string]$expectedRootIdentity[0] -or
+                    [string]$openedIdentity[1] -cne [string]$expectedRootIdentity[1]
+                ) {
+                    throw "Test PostgreSQL generation identity changed before cleanup: $OpenedPath"
+                }
+                if ([IO.Directory]::GetFileSystemEntries($openedRoot).Length -ne 0) {
+                    throw "Test PostgreSQL markerless generation is no longer empty: $OpenedPath"
+                }
+            }.GetNewClosure()
+            Remove-TicketboxTreeExact `
+                -Path $provisioning.GenerationRoot `
+                -OnRootHandleAcquired $verifyOpenedEmptyRoot
             Remove-XpjTestPostgresProvisioningMarker `
                 -DataDir $DataDir `
                 -Port $Port `
                 -InstanceId $InstanceId
             return
         }
-        $expectedRoot = [string]$provisioning.GenerationRoot
         $expectedText = [string]$provisioning.Text
         $externalPath = [string]$provisioning.Path
+        foreach ($markerPath in @($externalPath, $birthPath)) {
+            if ((Read-XpjTestPostgresProtectedMarkerText -Path $markerPath) -cne $expectedText) {
+                throw "Test PostgreSQL provisioning evidence changed before cleanup: $markerPath"
+            }
+        }
         $verifyOpenedRoot = {
             param([string]$OpenedPath)
 
-            if (-not [string]::Equals($OpenedPath, $expectedRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            $openedRoot = [IO.Path]::GetFullPath($OpenedPath).TrimEnd('\', '/')
+            if (-not [string]::Equals(
+                $openedRoot,
+                $expectedRoot,
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
                 throw "Test PostgreSQL cleanup opened another generation root: $OpenedPath"
             }
+            $openedIdentity = @(
+                [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity(
+                    $openedRoot
+                )
+            )
+            if (
+                $openedIdentity.Count -ne 2 -or
+                [string]$openedIdentity[0] -cne [string]$expectedRootIdentity[0] -or
+                [string]$openedIdentity[1] -cne [string]$expectedRootIdentity[1]
+            ) {
+                throw "Test PostgreSQL generation identity changed before cleanup: $OpenedPath"
+            }
             foreach ($markerPath in @($externalPath, $birthPath)) {
-                if ((Get-TicketboxPathEntryKindNoFollow -Path $markerPath) -cne 'File') {
+                if ([TicketboxExactTreeDeleteNativeMethods]::InspectEntry($markerPath) -ne 1) {
                     throw "Test PostgreSQL provisioning evidence changed before cleanup: $markerPath"
                 }
-                if ((Read-XpjTestPostgresProtectedMarkerText -Path $markerPath) -cne $expectedText) {
+                if (
+                    [TicketboxExactTreeDeleteNativeMethods]::ReadExactUtf8File(
+                        $markerPath,
+                        65536
+                    ) -cne $expectedText
+                ) {
                     throw "Test PostgreSQL provisioning evidence changed before cleanup: $markerPath"
                 }
             }

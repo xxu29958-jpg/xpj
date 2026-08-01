@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import NoReturn
@@ -11,6 +12,12 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Account, Expense, ExpenseSplit, LedgerAuditLog, LedgerMember
+from app.money_contract import (
+    MoneySign,
+    ensure_money_minor,
+    projection_sum_to_int,
+    projection_values_sum_to_int,
+)
 from app.schemas import (
     ExpenseSplitReplaceRequest,
     ExpenseSplitResponse,
@@ -30,6 +37,22 @@ class _SplitMember:
     account_name: str
     role: str
     disabled_at: datetime | None
+
+
+def validate_expense_split_money_command(
+    splits: Sequence[object],
+) -> tuple[int, ...]:
+    """Validate split amounts before member, expense, OCC, or idempotency reads."""
+
+    return tuple(
+        ensure_money_minor(
+            getattr(item, "amount_cents", None),
+            sign=MoneySign.POSITIVE,
+            label="expense_split.amount_cents",
+            error_code="split_amount_invalid",
+        )
+        for item in splits
+    )
 
 
 def list_expense_splits(db: Session, expense_id: int, tenant_id: str) -> ExpenseSplitsResponse:
@@ -69,6 +92,7 @@ def replace_expense_splits(
     actor_account_id: int | None,
     commit: bool = True,
 ) -> ExpenseSplitsResponse:
+    validated_amounts = validate_expense_split_money_command(payload.splits)
     members = _active_members_for_split_payload(db, tenant_id=tenant_id, payload=payload)
     now = now_utc()
     expense = _claim_expense_for_split_replace(
@@ -81,7 +105,14 @@ def replace_expense_splits(
     existing = _expense_splits(db, tenant_id=tenant_id, expense_id=expense.id)
     existing_members = _members_for_existing_splits(db, tenant_id=tenant_id, splits=existing)
     before_snapshot = _audit_snapshot(existing, existing_members)
-    new_splits = _replace_split_rows(db, expense=expense, payload=payload, existing=existing, now=now)
+    new_splits = _replace_split_rows(
+        db,
+        expense=expense,
+        payload=payload,
+        validated_amounts=validated_amounts,
+        existing=existing,
+        now=now,
+    )
     _add_split_audit(
         db,
         expense=expense,
@@ -163,6 +194,7 @@ def _replace_split_rows(
     *,
     expense: Expense,
     payload: ExpenseSplitReplaceRequest,
+    validated_amounts: tuple[int, ...],
     existing: list[ExpenseSplit],
     now: datetime,
 ) -> list[ExpenseSplit]:
@@ -171,13 +203,15 @@ def _replace_split_rows(
     db.flush()
 
     new_splits: list[ExpenseSplit] = []
-    for position, request_split in enumerate(payload.splits):
+    for position, (request_split, amount_cents) in enumerate(
+        zip(payload.splits, validated_amounts, strict=True)
+    ):
         split = ExpenseSplit(
             tenant_id=expense.tenant_id,
             expense_id=expense.id,
             member_id=request_split.member_id,
             position=position,
-            amount_cents=request_split.amount_cents,
+            amount_cents=amount_cents,
             note=_clean_note(request_split.note),
             created_at=now,
             updated_at=now,
@@ -255,9 +289,19 @@ def _build_response(db: Session, expense: Expense) -> ExpenseSplitsResponse:
         )
     )
     members = _members_for_existing_splits(db, tenant_id=expense.tenant_id, splits=splits)
-    total = sum(split.amount_cents for split in splits) if splits else None
+    total = (
+        projection_values_sum_to_int(
+            (split.amount_cents for split in splits),
+            label="expense_splits.total",
+        )
+        if splits
+        else None
+    )
     mismatch = (
-        expense.amount_cents - total
+        projection_sum_to_int(
+            expense.amount_cents - total,
+            label="expense_splits.mismatch",
+        )
         if expense.amount_cents is not None and total is not None
         else None
     )

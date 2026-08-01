@@ -210,6 +210,7 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
             currency_code="JPY",
             rate_date=date(2026, 5, 4),
             rate_to_home=Decimal("0.048"),
+            home_currency_code="CNY",
         )
         db.commit()
 
@@ -371,6 +372,7 @@ def test_ecb_daily_xml_cross_rate_can_be_stored_as_home_rate(client: TestClient,
             currency_code="USD",
             rate_date=daily.rate_date,
             rate_to_home=expected,
+            home_currency_code="CNY",
             provider_rate=daily.rates_per_eur["USD"],
         )
         db.commit()

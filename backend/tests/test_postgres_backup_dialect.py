@@ -180,6 +180,61 @@ def test_pg_dump_uses_noninteractive_ephemeral_passfile(tmp_path, monkeypatch) -
     assert all(os.environ[key] == value for key, value in poisoned.items())
 
 
+def test_c07_pg_dump_is_bound_to_the_exported_snapshot(tmp_path, monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_run(arguments, **_kwargs):
+        observed["arguments"] = arguments
+        Path(arguments[arguments.index("--file") + 1]).write_bytes(b"c07-probe")
+        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
+
+    _configure_pg_dump(tmp_path, monkeypatch, fake_run)
+    snapshot = "00000003-0000001B-1"
+    entry = backup_service.create_c07_pre_upgrade_backup(
+        database_url=_DATABASE_URL,
+        exported_snapshot=snapshot,
+    )
+
+    arguments = observed["arguments"]
+    assert isinstance(arguments, list)
+    assert f"--snapshot={snapshot}" in arguments
+    assert arguments[arguments.index("--dbname") + 1].startswith(
+        "postgresql://ticketbox@localhost:5432/ticketbox"
+    )
+    assert _DECODED_PASSWORD not in " ".join(arguments)
+    assert entry.kind == "pre-upgrade"
+    assert backup_service._classify(entry.file_name) == "pre-upgrade"  # noqa: SLF001
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        "",
+        "../snapshot",
+        "00000003-0000001b-1",
+        "00000003-0000001B-0",
+        "00000003-0000001B-12345678901",
+        "snapshot;--file=elsewhere",
+        "00000003-0000001B-1\n--file=elsewhere",
+        "x" * 129,
+    ],
+)
+def test_c07_pg_dump_rejects_a_non_postgresql_17_snapshot_id(
+    snapshot,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        backup_service.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("pg_dump must not run"),
+    )
+    with pytest.raises(AppError, match="快照标识无效"):
+        backup_service.create_c07_pre_upgrade_backup(
+            database_url=_DATABASE_URL,
+            exported_snapshot=snapshot,
+        )
+
+
 def test_passwordless_pg_tools_require_a_valid_inherited_passfile(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("PGPASSWORD", "parent-password")
     passwordless = backup_service._pg_tool_connection(  # noqa: SLF001

@@ -3,9 +3,18 @@ from __future__ import annotations
 import re
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from app.errors import AppError
+from app.money_contract import (
+    MoneySign,
+    ensure_money_minor,
+    projection_values_sum_to_int,
+)
 from app.services.receipt_parse_amount import (
     _amount_candidates,
     _calibrate_amount_candidates,
+    _money_to_cents,
+    _text_currency_matches_context,
+    _validated_money_context,
 )
 from app.services.receipt_parse_category import (
     _calibrate_category_candidates,
@@ -160,22 +169,50 @@ def _context_quality_bonus(
 
 
 def _parse_receipt_items(
-    context: _ReceiptContext, parent_amount_cents: int | None
+    context: _ReceiptContext,
+    parent_amount_cents: int | None,
+    *,
+    currency_code: str | None,
+    minor_unit_exponent: int | None,
 ) -> tuple[ParsedReceiptItem, ...]:
-    if context.profile == "bank_reminder":
+    money_context = _validated_money_context(
+        currency_code,
+        minor_unit_exponent,
+    )
+    if (
+        context.profile == "bank_reminder"
+        or money_context is None
+        or not _text_currency_matches_context(context.text, money_context[0])
+    ):
         return ()
+    code, exponent = money_context
 
     items: list[ParsedReceiptItem] = []
     for line in context.lines:
-        item = _parse_receipt_item_line(line)
+        item = _parse_receipt_item_line(
+            line,
+            currency_code=code,
+            minor_unit_exponent=exponent,
+        )
         if item is not None:
             items.append(item)
 
     if len(items) < 2:
         return ()
 
-    item_total = sum(item.amount_cents or 0 for item in items)
-    if parent_amount_cents is not None and item_total > max(parent_amount_cents * 3, parent_amount_cents + 50_000):
+    item_total = projection_values_sum_to_int(
+        (
+            item.amount_cents
+            for item in items
+            if item.amount_cents is not None
+        ),
+        label="receipt_parse.item_total",
+    )
+    item_total_tolerance = 500 * (10**exponent)
+    if parent_amount_cents is not None and item_total > max(
+        parent_amount_cents * 3,
+        parent_amount_cents + item_total_tolerance,
+    ):
         return ()
     return tuple(items[:200])
 
@@ -201,7 +238,12 @@ def _classify_item_kind(line: str) -> str:
     return "product"
 
 
-def _parse_receipt_item_line(line: str) -> ParsedReceiptItem | None:
+def _parse_receipt_item_line(
+    line: str,
+    *,
+    currency_code: str | None,
+    minor_unit_exponent: int | None,
+) -> ParsedReceiptItem | None:
     cleaned = " ".join(line.strip().split())
     if not cleaned or any(keyword in cleaned for keyword in ITEM_NOISE_KEYWORDS):
         return None
@@ -209,7 +251,11 @@ def _parse_receipt_item_line(line: str) -> ParsedReceiptItem | None:
     if not match:
         return None
 
-    amount_cents = _item_money_to_cents(match.group("amount"))
+    amount_cents = _item_money_to_cents(
+        match.group("amount"),
+        currency_code=currency_code,
+        minor_unit_exponent=minor_unit_exponent,
+    )
     if amount_cents is None:
         return None
 
@@ -285,7 +331,20 @@ def _item_unit_price_cents(amount_cents: int, quantity_text: str | None) -> int 
     quantity = _item_quantity_decimal(quantity_text)
     if quantity is None:
         return None
-    return int((Decimal(amount_cents) / quantity).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    rounded = int(
+        (Decimal(amount_cents) / quantity).quantize(
+            Decimal("1"),
+            rounding=ROUND_HALF_UP,
+        )
+    )
+    try:
+        return ensure_money_minor(
+            rounded,
+            sign=MoneySign.NONNEGATIVE,
+            label="receipt_parse.unit_price_cents",
+        )
+    except AppError:
+        return None
 
 
 def _category_for_item_name(name: str) -> str | None:
@@ -296,17 +355,25 @@ def _category_for_item_name(name: str) -> str | None:
     return None
 
 
-def _item_money_to_cents(value: str) -> int | None:
-    try:
-        amount = Decimal(value.replace(",", "").strip())
-    except (InvalidOperation, ValueError):
-        return None
-    cents = (amount * Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    return int(cents)
+def _item_money_to_cents(
+    value: str,
+    *,
+    currency_code: str | None,
+    minor_unit_exponent: int | None,
+) -> int | None:
+    return _money_to_cents(
+        value,
+        currency_code=currency_code,
+        minor_unit_exponent=minor_unit_exponent,
+    )
 
 
 def parse_receipt_text(
-    raw_text: str, timezone_name: str | None = None
+    raw_text: str,
+    timezone_name: str | None = None,
+    *,
+    currency_code: str | None = None,
+    minor_unit_exponent: int | None = None,
 ) -> ParsedReceipt:
     text = _normalize_text(raw_text)
     if not text:
@@ -314,7 +381,14 @@ def parse_receipt_text(
 
     context = _build_receipt_context(text)
     amount_candidate = _best_candidate(
-        _calibrate_amount_candidates(_amount_candidates(text), context)
+        _calibrate_amount_candidates(
+            _amount_candidates(
+                text,
+                currency_code=currency_code,
+                minor_unit_exponent=minor_unit_exponent,
+            ),
+            context,
+        )
     )
     merchant_candidate = _best_candidate(
         _calibrate_merchant_candidates(_merchant_candidates(text), context)
@@ -339,7 +413,12 @@ def parse_receipt_text(
         category_candidate=category_candidate,
         raw_text=text,
     )
-    items = _parse_receipt_items(context, amount_cents)
+    items = _parse_receipt_items(
+        context,
+        amount_cents,
+        currency_code=currency_code,
+        minor_unit_exponent=minor_unit_exponent,
+    )
 
     return ParsedReceipt(
         amount_cents=amount_cents,

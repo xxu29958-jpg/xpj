@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -25,7 +23,6 @@ from app.services.currency_common import (
     home_currency_code,
     major_amount_to_minor,
     minor_amount_value,
-    minor_unit_digits,
 )
 from app.services.income_plan_service import (
     archive_income_plan,
@@ -39,27 +36,18 @@ from app.services.spending_contract_service import current_accounting_month
 router = APIRouter(prefix="/web/income-plans", tags=["web"])
 
 
-def _parse_yuan(raw: str, *, label: str) -> int:
-    text = (raw or "").strip()
+def _parse_yuan(raw: str, *, currency_code: str, label: str) -> int:
+    text = raw or ""
     if not text:
         raise AppError("invalid_request", f"请填写{label}。", status_code=422)
     try:
-        amount = Decimal(text)
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
-    if amount < 0:
-        raise AppError("invalid_request", f"{label}不能为负数。", status_code=422)
-    # R13-3：按 env home 的 minor 语义解析（JPY 零小数：整数直存、拒小数；不再硬编 ×100）。
-    home = home_currency_code()
-    digits = minor_unit_digits(home)
-    try:
-        exact = amount.quantize(Decimal(1).scaleb(-digits))
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", f"{label}不是合法金额。", status_code=422) from exc
-    if exact != amount:
-        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
-        raise AppError("invalid_request", f"{label}按 {home} {detail}。", status_code=422)
-    result = major_amount_to_minor(amount, home)
+        result = major_amount_to_minor(text, currency_code)
+    except AppError as exc:
+        raise AppError(
+            "invalid_request",
+            f"{label}不是合法金额或超出当前版本可支持范围。",
+            status_code=422,
+        ) from exc
     assert result is not None
     return result
 
@@ -143,8 +131,8 @@ def page_income_plans(
         selected_ledger_id=selected,
         page_title="收入记录",
     )
-    # R13-3：金额渲染/输入步进随 env home（JPY 零小数无小数位、不 ÷100）。
-    home = home_currency_code()
+    # Keep one configured currency explicit across every amount in this view.
+    home = ctx["home_currency_code"]
     ctx.update(
         plans_active=plans_active,
         plans_archived=plans_archived,
@@ -180,7 +168,12 @@ def post_create(
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     _require_selected_ledger_write(options, selected)
-    amount_cents = _parse_yuan(amount_yuan, label="收入金额")
+    presentation_currency = home_currency_code()
+    amount_cents = _parse_yuan(
+        amount_yuan,
+        currency_code=presentation_currency,
+        label="收入金额",
+    )
     day = _parse_pay_day(pay_day)
     create_income_plan(
         db,

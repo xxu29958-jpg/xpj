@@ -1,7 +1,15 @@
 ﻿#Requires -Version 5.1
 
 $script:TicketboxBackendBuildManifestName = "BUILD_PROVENANCE.json"
-$script:TicketboxBackendBuildManifestSchema = 3
+$script:TicketboxBackendBuildManifestSchema = 4
+$script:TicketboxC07MigrationHelperRelativePath = "ticketbox-c07-migrator.exe"
+$script:TicketboxC07MigrationHelperSmokeSchema = "ticketbox-c07-migration-helper-smoke-v1"
+$script:TicketboxC07SourceRevision = "20260722_0001"
+$script:TicketboxC07TargetRevision = "20260729_0001"
+$script:TicketboxC07TargetMigrationRelativePath = (
+    "_internal\migrations\versions\" +
+    "20260729_0001_money_minor_bigint_expand.py"
+)
 $script:TicketboxBuildToolchainConfigRelativePath = "packaging\windows-build-toolchain.json"
 $script:TicketboxBuildLockInputHeaderPattern = '(?m)^# ticketbox-lock-input-sha256: ([0-9a-f]{64})\r?$'
 $script:TicketboxForbiddenDatabasePayloadSegments = @(
@@ -1034,11 +1042,479 @@ function Get-TicketboxBackendPayloadSnapshot([string]$DistDir) {
     return Get-TicketboxFileSetSnapshot $DistDir $paths
 }
 
+function Get-TicketboxC07MigrationHelperEvidenceFromPayload([object]$Payload) {
+    if ($null -eq $Payload) {
+        throw "Frozen backend payload lacks C07 migration helper evidence."
+    }
+    $candidates = @(
+        @($Payload.files) | Where-Object {
+            $relativePath = [string]$_.path
+            if ([string]::IsNullOrWhiteSpace($relativePath)) {
+                return $false
+            }
+            $leaf = [System.IO.Path]::GetFileName(
+                $relativePath.Replace("/", "\")
+            )
+            return $leaf -ieq (
+                [System.IO.Path]::GetFileName(
+                    $script:TicketboxC07MigrationHelperRelativePath
+                )
+            )
+        }
+    )
+    if ($candidates.Count -ne 1) {
+        throw (
+            "Frozen backend payload must contain exactly one C07 migration " +
+            "helper evidence record; found $($candidates.Count)."
+        )
+    }
+    $candidate = $candidates[0]
+    $propertyNames = if ($candidate -is [System.Collections.IDictionary]) {
+        @($candidate.Keys | ForEach-Object { [string]$_ })
+    }
+    else {
+        @($candidate.PSObject.Properties.Name)
+    }
+    if (
+        $propertyNames.Count -ne 3 -or
+        "path" -notin $propertyNames -or
+        "size" -notin $propertyNames -or
+        "sha256" -notin $propertyNames
+    ) {
+        throw "Frozen backend C07 migration helper evidence shape is invalid."
+    }
+    if (
+        [string]$candidate.path -cne
+            $script:TicketboxC07MigrationHelperRelativePath
+    ) {
+        throw (
+            "Frozen backend C07 migration helper path is not the canonical " +
+            "root-relative payload path."
+        )
+    }
+    $size = [int64]0
+    if (
+        -not [int64]::TryParse([string]$candidate.size, [ref]$size) -or
+        $size -lt 1 -or
+        [string]$candidate.sha256 -cnotmatch "^[0-9a-f]{64}$"
+    ) {
+        throw "Frozen backend C07 migration helper size/SHA-256 is invalid."
+    }
+    return [ordered]@{
+        path = [string]$candidate.path
+        size = $size
+        sha256 = [string]$candidate.sha256
+    }
+}
+
+function Get-TicketboxEvidencePropertyNames([object]$Value) {
+    if ($null -eq $Value) { return @() }
+    if ($Value -is [System.Collections.IDictionary]) {
+        return @($Value.Keys | ForEach-Object { [string]$_ })
+    }
+    return @($Value.PSObject.Properties.Name | ForEach-Object { [string]$_ })
+}
+
+function Assert-TicketboxExactEvidencePropertyNames(
+    [object]$Value,
+    [string[]]$Expected,
+    [string]$Label
+) {
+    $actual = @(Get-TicketboxEvidencePropertyNames $Value)
+    if (
+        $actual.Count -ne $Expected.Count -or
+        ($actual -join "`0") -cne ($Expected -join "`0")
+    ) {
+        throw "$Label property shape/order is invalid."
+    }
+}
+
+function Assert-TicketboxC07MigrationHelperSmokeResult(
+    [object]$Result,
+    [string]$DistDir
+) {
+    Assert-TicketboxExactEvidencePropertyNames `
+        $Result `
+        @(
+            "schema",
+            "operation_kind",
+            "source_revision",
+            "target_revision",
+            "upgrade_required",
+            "revision_manifest",
+            "revision_manifest_sha256"
+        ) `
+        "Frozen C07 helper smoke result"
+    if (
+        [string]$Result.schema -cne "ticketbox-c07-maintenance-plan-v2" -or
+        [string]$Result.operation_kind -cne "c07_money_minor_bigint_v1" -or
+        [string]$Result.source_revision -cne $script:TicketboxC07SourceRevision -or
+        [string]$Result.target_revision -cne $script:TicketboxC07TargetRevision -or
+        $Result.upgrade_required -isnot [bool] -or
+        -not [bool]$Result.upgrade_required
+    ) {
+        throw "Frozen C07 helper smoke result release edge is invalid."
+    }
+
+    $manifest = $Result.revision_manifest
+    Assert-TicketboxExactEvidencePropertyNames `
+        $manifest `
+        @(
+            "schema",
+            "operation_kind",
+            "source_revision",
+            "target_revision",
+            "revisions"
+        ) `
+        "Frozen C07 helper smoke revision manifest"
+    $revisions = @($manifest.revisions)
+    if (
+        [string]$manifest.schema -cne "ticketbox-c07-revision-manifest-v1" -or
+        [string]$manifest.operation_kind -cne "c07_money_minor_bigint_v1" -or
+        [string]$manifest.source_revision -cne $script:TicketboxC07SourceRevision -or
+        [string]$manifest.target_revision -cne $script:TicketboxC07TargetRevision -or
+        $revisions.Count -ne 1
+    ) {
+        throw "Frozen C07 helper smoke revision manifest is invalid."
+    }
+
+    $revision = $revisions[0]
+    Assert-TicketboxExactEvidencePropertyNames `
+        $revision `
+        @(
+            "revision",
+            "down_revision",
+            "module_sha256",
+            "transactionality",
+            "reversibility",
+            "downgrade_guard",
+            "resources",
+            "asset_recovery"
+        ) `
+        "Frozen C07 helper smoke revision"
+    $resources = @($revision.resources)
+    $resourceSet = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal
+    )
+    foreach ($resource in $resources) {
+        if (
+            [string]::IsNullOrWhiteSpace([string]$resource) -or
+            -not $resourceSet.Add([string]$resource)
+        ) {
+            throw "Frozen C07 helper smoke revision resources are invalid."
+        }
+    }
+    if (
+        [string]$revision.revision -cne $script:TicketboxC07TargetRevision -or
+        [string]$revision.down_revision -cne $script:TicketboxC07SourceRevision -or
+        [string]$revision.module_sha256 -cnotmatch "^[0-9a-f]{64}$" -or
+        [string]$revision.transactionality -cne "postgresql_single_transaction" -or
+        [string]$revision.reversibility -cne "forward_only" -or
+        [string]$revision.downgrade_guard -cne "raises_runtime_error_before_ddl" -or
+        $resources.Count -lt 1 -or
+        [string]$revision.asset_recovery -cne "same_generation_database_and_assets"
+    ) {
+        throw "Frozen C07 helper smoke revision contract is invalid."
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($DistDir)) {
+        $targetMigration = Join-Path `
+            $DistDir `
+            $script:TicketboxC07TargetMigrationRelativePath
+        if (-not (Test-Path -LiteralPath $targetMigration -PathType Leaf)) {
+            throw "Frozen C07 helper smoke target migration is missing."
+        }
+        if (
+            [string]$revision.module_sha256 -cne
+                (Get-TicketboxFileSha256 $targetMigration)
+        ) {
+            throw "Frozen C07 helper smoke manifest does not bind the packaged target migration."
+        }
+    }
+
+    $manifestJson = $manifest | ConvertTo-Json -Depth 32 -Compress
+    if (
+        [string]$Result.revision_manifest_sha256 -cnotmatch "^[0-9a-f]{64}$" -or
+        [string]$Result.revision_manifest_sha256 -cne
+            (Get-TicketboxSha256HexFromText $manifestJson)
+    ) {
+        throw "Frozen C07 helper smoke revision manifest digest is invalid."
+    }
+}
+
+function Assert-TicketboxC07MigrationHelperSmokeEvidence(
+    [object]$Recorded,
+    [object]$ExpectedHelper,
+    [object]$ExpectedPayload,
+    [string]$DistDir = ""
+) {
+    Assert-TicketboxExactEvidencePropertyNames `
+        $Recorded `
+        @(
+            "schema",
+            "helper",
+            "payload_algorithm",
+            "payload_fingerprint",
+            "payload_file_count",
+            "argv",
+            "stdin",
+            "environment",
+            "exit_code",
+            "stderr",
+            "stdout_json_sha256",
+            "result"
+        ) `
+        "Frozen C07 migration helper smoke evidence"
+    if (
+        [string]$Recorded.schema -cne
+            $script:TicketboxC07MigrationHelperSmokeSchema -or
+        [string]$Recorded.payload_algorithm -cne "SHA-256" -or
+        [string]$Recorded.payload_fingerprint -cnotmatch "^[0-9a-f]{64}$" -or
+        ($Recorded.payload_file_count -isnot [int] -and
+            $Recorded.payload_file_count -isnot [long]) -or
+        [int64]$Recorded.payload_file_count -lt 1 -or
+        [string]$Recorded.stdin -cne "closed_empty_eof" -or
+        [string]$Recorded.environment -cne
+            "system-runtime-allowlist-without-pg-or-database-url-v1" -or
+        ($Recorded.exit_code -isnot [int] -and
+            $Recorded.exit_code -isnot [long]) -or
+        [int64]$Recorded.exit_code -ne 0 -or
+        [string]$Recorded.stderr -cne "empty"
+    ) {
+        throw "Frozen C07 migration helper smoke process evidence is invalid."
+    }
+    $expectedArgv = @(
+        "--c07-installed-upgrade-plan",
+        "--source-revision",
+        $script:TicketboxC07SourceRevision
+    )
+    $actualArgv = @($Recorded.argv | ForEach-Object { [string]$_ })
+    if (
+        $actualArgv.Count -ne $expectedArgv.Count -or
+        ($actualArgv -join "`0") -cne ($expectedArgv -join "`0")
+    ) {
+        throw "Frozen C07 migration helper smoke argv is invalid."
+    }
+    Assert-TicketboxStructuredEvidence `
+        "Frozen C07 migration helper smoke executable" `
+        $Recorded.helper `
+        $ExpectedHelper
+    if (
+        $null -eq $ExpectedPayload -or
+        [string]$Recorded.payload_algorithm -cne
+            [string]$ExpectedPayload.algorithm -or
+        [string]$Recorded.payload_fingerprint -cne
+            [string]$ExpectedPayload.fingerprint -or
+        [int64]$Recorded.payload_file_count -ne
+            @($ExpectedPayload.files).Count
+    ) {
+        throw "Frozen C07 migration helper smoke payload identity is invalid."
+    }
+    Assert-TicketboxC07MigrationHelperSmokeResult $Recorded.result $DistDir
+    $resultJson = $Recorded.result | ConvertTo-Json -Depth 32 -Compress
+    if (
+        [string]$Recorded.stdout_json_sha256 -cnotmatch "^[0-9a-f]{64}$" -or
+        [string]$Recorded.stdout_json_sha256 -cne
+            (Get-TicketboxSha256HexFromText $resultJson)
+    ) {
+        throw "Frozen C07 migration helper smoke stdout digest is invalid."
+    }
+}
+
+function Invoke-TicketboxC07MigrationHelperSmoke(
+    [string]$DistDir,
+    [string]$HelperPath,
+    [object]$PayloadSnapshot,
+    [ValidateRange(1, 300)][int]$TimeoutSeconds = 60
+) {
+    if ($null -eq $PayloadSnapshot) {
+        throw "Frozen C07 helper smoke requires the locked payload snapshot."
+    }
+    Assert-TicketboxFileSetSnapshot `
+        "Frozen C07 migration helper payload before smoke" `
+        $PayloadSnapshot `
+        (Get-TicketboxBackendPayloadSnapshot $DistDir)
+    $helperEvidence = Get-TicketboxFileEvidence $DistDir $HelperPath
+    if (
+        [string]$helperEvidence.path -cne
+            $script:TicketboxC07MigrationHelperRelativePath
+    ) {
+        throw "Frozen C07 helper smoke requires the canonical staged helper path."
+    }
+
+    $helperLease = $null
+    $process = $null
+    $processStarted = $false
+    try {
+        $helperLease = [System.IO.File]::Open(
+            $HelperPath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::Read
+        )
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $HelperPath
+        $startInfo.Arguments = (
+            "--c07-installed-upgrade-plan --source-revision " +
+            $script:TicketboxC07SourceRevision
+        )
+        $startInfo.WorkingDirectory = $DistDir
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardInput = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+        $startInfo.EnvironmentVariables.Clear()
+        foreach ($name in @(
+            "SystemRoot",
+            "WINDIR",
+            "ComSpec",
+            "TEMP",
+            "TMP",
+            "PATH",
+            "PATHEXT"
+        )) {
+            $value = [Environment]::GetEnvironmentVariable($name, "Process")
+            if ($null -ne $value) {
+                $startInfo.EnvironmentVariables.Add($name, $value)
+            }
+        }
+        foreach ($name in @($startInfo.EnvironmentVariables.Keys)) {
+            if (
+                [string]$name -imatch "^PG" -or
+                [string]$name -imatch "DATABASE_URL$"
+            ) {
+                throw "Frozen C07 helper smoke child environment is not sealed."
+            }
+        }
+
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $startInfo
+        # Windows PowerShell 5.1 runs on .NET Framework, whose ProcessStartInfo
+        # has no StandardInputEncoding property. Its redirected StreamWriter
+        # otherwise inherits Console.InputEncoding and writes that encoding's
+        # UTF-8 BOM even when the parent sends no text. Select a no-BOM encoding
+        # only while Process.Start constructs the writer, then restore the
+        # process-global console contract before reading any child output.
+        $previousConsoleInputEncoding = [Console]::InputEncoding
+        try {
+            [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+            $processStarted = $process.Start()
+            if (-not $processStarted) {
+                throw "Frozen C07 migration helper smoke process did not start."
+            }
+        }
+        finally {
+            [Console]::InputEncoding = $previousConsoleInputEncoding
+        }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.StandardInput.Close()
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $process.Kill()
+            $process.WaitForExit()
+            throw "Frozen C07 migration helper smoke timed out."
+        }
+        $process.WaitForExit()
+        $stdout = [string]$stdoutTask.GetAwaiter().GetResult()
+        $stderr = [string]$stderrTask.GetAwaiter().GetResult()
+        $exitCode = [int]$process.ExitCode
+        if ($exitCode -ne 0) {
+            $stderrSummary = $stderr.Trim()
+            if ($stderrSummary.Length -gt 4096) {
+                $stderrSummary = $stderrSummary.Substring(0, 4096)
+            }
+            throw (
+                "Frozen C07 migration helper smoke failed " +
+                "(exit=$exitCode): $stderrSummary"
+            )
+        }
+        if ($stderr.Length -ne 0) {
+            throw "Frozen C07 migration helper smoke wrote unexpected stderr."
+        }
+
+        if ($stdout.EndsWith("`r`n", [System.StringComparison]::Ordinal)) {
+            $jsonLine = $stdout.Substring(0, $stdout.Length - 2)
+        }
+        elseif ($stdout.EndsWith("`n", [System.StringComparison]::Ordinal)) {
+            $jsonLine = $stdout.Substring(0, $stdout.Length - 1)
+        }
+        else {
+            throw "Frozen C07 migration helper smoke stdout is not newline terminated."
+        }
+        if (
+            [string]::IsNullOrWhiteSpace($jsonLine) -or
+            $jsonLine.Contains("`r") -or
+            $jsonLine.Contains("`n")
+        ) {
+            throw "Frozen C07 migration helper smoke stdout is not one JSON line."
+        }
+        try { $result = $jsonLine | ConvertFrom-Json }
+        catch {
+            throw "Frozen C07 migration helper smoke stdout is not valid JSON."
+        }
+        Assert-TicketboxC07MigrationHelperSmokeResult $result $DistDir
+        $canonicalResult = $result | ConvertTo-Json -Depth 32 -Compress
+        if ($jsonLine -cne $canonicalResult) {
+            throw "Frozen C07 migration helper smoke stdout is not canonical JSON."
+        }
+
+        $helperAfter = Get-TicketboxFileEvidence $DistDir $HelperPath
+        Assert-TicketboxStructuredEvidence `
+            "Frozen C07 migration helper bytes during smoke" `
+            $helperEvidence `
+            $helperAfter
+        Assert-TicketboxFileSetSnapshot `
+            "Frozen C07 migration helper payload during smoke" `
+            $PayloadSnapshot `
+            (Get-TicketboxBackendPayloadSnapshot $DistDir)
+        $evidence = [ordered]@{
+            schema = $script:TicketboxC07MigrationHelperSmokeSchema
+            helper = $helperEvidence
+            payload_algorithm = [string]$PayloadSnapshot.algorithm
+            payload_fingerprint = [string]$PayloadSnapshot.fingerprint
+            payload_file_count = @($PayloadSnapshot.files).Count
+            argv = @(
+                "--c07-installed-upgrade-plan",
+                "--source-revision",
+                $script:TicketboxC07SourceRevision
+            )
+            stdin = "closed_empty_eof"
+            environment = "system-runtime-allowlist-without-pg-or-database-url-v1"
+            exit_code = $exitCode
+            stderr = "empty"
+            stdout_json_sha256 = Get-TicketboxSha256HexFromText $canonicalResult
+            result = $result
+        }
+        Assert-TicketboxC07MigrationHelperSmokeEvidence `
+            $evidence `
+            $helperEvidence `
+            $PayloadSnapshot `
+            $DistDir
+        return $evidence
+    }
+    finally {
+        if ($null -ne $process) {
+            try {
+                if ($processStarted -and -not $process.HasExited) {
+                    $process.Kill()
+                    $process.WaitForExit()
+                }
+            }
+            finally { $process.Dispose() }
+        }
+        if ($null -ne $helperLease) { $helperLease.Dispose() }
+    }
+}
+
 function Write-TicketboxBackendBuildManifest(
     [string]$BackendRoot,
     [string]$DistDir,
     [object]$ToolchainProvenance,
-    [object]$SourceSnapshot
+    [object]$SourceSnapshot,
+    [object]$C07MigrationHelperSmokeEvidence
 ) {
     if ($null -eq $ToolchainProvenance) {
         throw "Frozen backend manifest requires actual build toolchain provenance."
@@ -1047,6 +1523,13 @@ function Write-TicketboxBackendBuildManifest(
         throw "Frozen backend manifest requires the exact pre-freeze source snapshot."
     }
     $payload = Get-TicketboxBackendPayloadSnapshot $DistDir
+    $c07MigrationHelper =
+        Get-TicketboxC07MigrationHelperEvidenceFromPayload $payload
+    Assert-TicketboxC07MigrationHelperSmokeEvidence `
+        $C07MigrationHelperSmokeEvidence `
+        $c07MigrationHelper `
+        $payload `
+        $DistDir
     $manifest = [ordered]@{
         schema_version = $script:TicketboxBackendBuildManifestSchema
         artifact_type = "ticketbox-frozen-backend"
@@ -1059,6 +1542,8 @@ function Write-TicketboxBackendBuildManifest(
             fingerprint = $payload.fingerprint
             files = @($payload.files)
             executable = Get-TicketboxFileEvidence $DistDir (Join-Path $DistDir "ticketbox-backend.exe")
+            c07_migration_helper = $c07MigrationHelper
+            c07_migration_helper_smoke = $C07MigrationHelperSmokeEvidence
         }
     }
     $manifestPath = Join-Path $DistDir $script:TicketboxBackendBuildManifestName
@@ -1094,12 +1579,30 @@ function Assert-TicketboxBackendBuildManifest([string]$BackendRoot, [string]$Dis
         throw "Frozen backend source evidence is stale; rebuild before packaging. $($_.Exception.Message)"
     }
     try {
-        Assert-TicketboxFileSetSnapshot "Frozen backend payload" $manifest.payload (Get-TicketboxBackendPayloadSnapshot $DistDir)
+        $actualPayload = Get-TicketboxBackendPayloadSnapshot $DistDir
+        Assert-TicketboxFileSetSnapshot "Frozen backend payload" $manifest.payload $actualPayload
     }
     catch {
         throw "Frozen backend payload evidence is stale or modified. $($_.Exception.Message)"
     }
     $exe = Get-TicketboxFileEvidence $DistDir (Join-Path $DistDir "ticketbox-backend.exe")
     Assert-TicketboxStructuredEvidence "Frozen backend executable" $manifest.payload.executable $exe
+    $recordedC07Helper =
+        Get-TicketboxC07MigrationHelperEvidenceFromPayload $manifest.payload
+    $actualC07Helper =
+        Get-TicketboxC07MigrationHelperEvidenceFromPayload $actualPayload
+    Assert-TicketboxStructuredEvidence `
+        "Frozen backend C07 migration helper" `
+        $manifest.payload.c07_migration_helper `
+        $recordedC07Helper
+    Assert-TicketboxStructuredEvidence `
+        "Frozen backend C07 migration helper payload" `
+        $recordedC07Helper `
+        $actualC07Helper
+    Assert-TicketboxC07MigrationHelperSmokeEvidence `
+        $manifest.payload.c07_migration_helper_smoke `
+        $actualC07Helper `
+        $actualPayload `
+        $DistDir
     return $manifest
 }

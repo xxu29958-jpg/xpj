@@ -17,6 +17,10 @@ from app.fx_constants import (
 )
 from app.ledger_scope import ledger_scoped_select
 from app.models import ExchangeRate, Expense
+from app.money_contract import (
+    MoneySign,
+    ensure_optional_money_minor,
+)
 from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import (
     RATE_QUANT,
@@ -58,6 +62,34 @@ class CurrencyPayload(Protocol):
     exchange_rate_source: str | None
 
 
+def validate_currency_payload_money_command(
+    payload: CurrencyPayload,
+    *,
+    amount_was_explicit: bool,
+) -> None:
+    """Validate direct carriers before a currency write can touch the DB."""
+
+    amount_cents = _payload_attr(payload, "amount_cents")
+    if amount_was_explicit or amount_cents is not None:
+        ensure_optional_money_minor(
+            amount_cents,
+            sign=MoneySign.NONNEGATIVE,
+            label="expense.amount_cents",
+        )
+    ensure_optional_money_minor(
+        _payload_attr(payload, "original_amount_minor"),
+        sign=MoneySign.NONNEGATIVE,
+        label="expense.original_amount_minor",
+    )
+    original_amount = _payload_attr(payload, "original_amount")
+    explicit_code = _payload_attr(
+        payload,
+        "original_currency",
+    ) or _payload_attr(payload, "original_currency_code")
+    if original_amount is not None and explicit_code is not None:
+        amount_major_to_minor(original_amount, explicit_code)
+
+
 def minor_units_for_currency(currency_code: str) -> int:
     return minor_unit_digits(normalize_currency_code(currency_code))
 
@@ -81,17 +113,32 @@ def calculate_cny_cents(
     """
     if original_amount_minor is None:
         return None
-    if original_amount_minor < 0:
-        raise AppError("amount_invalid", status_code=422)
+    original_minor = ensure_optional_money_minor(
+        original_amount_minor,
+        sign=MoneySign.NONNEGATIVE,
+        label="expense.original_amount_minor",
+    )
+    assert original_minor is not None
     currency_code = normalize_currency_code(original_currency_code)
-    rate = Decimal("1") if currency_code == home_currency_code() else format_decimal_rate(exchange_rate_to_cny)
+    home = home_currency_code()
+    rate = Decimal("1") if currency_code == home else format_decimal_rate(exchange_rate_to_cny)
     if rate is None:
         return None
     divisor = Decimal(10) ** minor_units_for_currency(currency_code)
-    amount_major = Decimal(original_amount_minor) / divisor
-    home_units = minor_units_for_currency(home_currency_code())
+    amount_major = Decimal(original_minor) / divisor
+    home_units = minor_units_for_currency(home)
     home_multiplier = Decimal(10) ** home_units
-    return int((amount_major * rate * home_multiplier).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    home_minor = int(
+        (amount_major * rate * home_multiplier).quantize(
+            Decimal("1"),
+            rounding=ROUND_HALF_UP,
+        )
+    )
+    return ensure_optional_money_minor(
+        home_minor,
+        sign=MoneySign.NONNEGATIVE,
+        label="expense.amount_cents.fx_result",
+    )
 
 
 def default_rate_date(expense_time: datetime | None = None) -> date:
@@ -110,8 +157,25 @@ def get_exchange_rate(
     currency_code: str,
     rate_date: date,
 ) -> ExchangeRate | None:
+    return _get_exchange_rate_for_home(
+        db,
+        tenant_id=tenant_id,
+        currency_code=currency_code,
+        rate_date=rate_date,
+        home=home_currency_code(),
+    )
+
+
+def _get_exchange_rate_for_home(
+    db: Session,
+    *,
+    tenant_id: str,
+    currency_code: str,
+    rate_date: date,
+    home: str,
+) -> ExchangeRate | None:
     code = normalize_currency_code(currency_code)
-    if code == home_currency_code():
+    if code == home:
         return None
     return db.scalar(
         ledger_scoped_select(ExchangeRate, tenant_id)
@@ -147,12 +211,19 @@ def upsert_exchange_rate(
     source: str | None = None,
 ) -> ExchangeRate:
     code = normalize_currency_code(currency_code)
-    if code == home_currency_code():
+    home = home_currency_code()
+    if code == home:
         raise AppError("exchange_rate_base_currency", status_code=422)
     rate = format_decimal_rate(rate_to_cny)
     assert rate is not None
     clean_source = (source or FX_SOURCE_MANUAL).strip()[:32] or FX_SOURCE_MANUAL
-    existing = get_exchange_rate(db, tenant_id=tenant_id, currency_code=code, rate_date=rate_date)
+    existing = _get_exchange_rate_for_home(
+        db,
+        tenant_id=tenant_id,
+        currency_code=code,
+        rate_date=rate_date,
+        home=home,
+    )
     now = now_utc()
     if existing is None:
         existing = ExchangeRate(
@@ -194,7 +265,13 @@ def resolve_payload_rate(
     home = home_currency_code()
     if code == home:
         return Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY, rate_date
-    stored = get_exchange_rate(db, tenant_id=tenant_id, currency_code=code, rate_date=rate_date)
+    stored = _get_exchange_rate_for_home(
+        db,
+        tenant_id=tenant_id,
+        currency_code=code,
+        rate_date=rate_date,
+        home=home,
+    )
     if stored is not None:
         return Decimal(stored.rate_to_cny), stored.source, FX_STATUS_READY, stored.rate_date
     # A tenant manual rate is an exact-date override; the auto-fetched global set
@@ -235,23 +312,23 @@ def _payload_original_amount_minor(
         return original_amount
     original_amount_minor = _payload_attr(payload, "original_amount_minor")
     if original_amount_minor is not None:
-        return int(original_amount_minor)
+        return ensure_optional_money_minor(
+            original_amount_minor,
+            sign=MoneySign.NONNEGATIVE,
+            label="expense.original_amount_minor",
+        )
     amount_cents = _payload_attr(payload, "amount_cents")
     if amount_was_explicit and amount_cents is not None and currency_code == home_currency_code():
-        return int(amount_cents)
+        return ensure_optional_money_minor(
+            amount_cents,
+            sign=MoneySign.NONNEGATIVE,
+            label="expense.amount_cents",
+        )
     return None
 
 
-def apply_currency_payload(
-    db: Session,
-    *,
-    tenant_id: str,
-    expense: Expense,
-    payload: CurrencyPayload,
-    amount_was_explicit: bool,
-    binding_checked: bool = False,
-) -> None:
-    has_original_fields = any(
+def _currency_payload_has_original_fields(payload: CurrencyPayload) -> bool:
+    return any(
         value is not None
         for value in (
             _payload_attr(payload, "original_currency"),
@@ -264,6 +341,39 @@ def apply_currency_payload(
             _payload_attr(payload, "exchange_rate_date"),
         )
     )
+
+
+def _apply_legacy_home_amount(
+    expense: Expense,
+    payload: CurrencyPayload,
+    *,
+    home: str,
+) -> None:
+    amount_cents = _payload_attr(payload, "amount_cents")
+    expense.amount_cents = amount_cents
+    expense.home_currency_code = home
+    expense.original_currency_code = home
+    expense.original_amount_minor = amount_cents
+    expense.exchange_rate_to_cny = Decimal("1") if amount_cents is not None else None
+    expense.exchange_rate_date = default_rate_date(expense.expense_time) if amount_cents is not None else None
+    expense.exchange_rate_source = FX_SOURCE_BASE if amount_cents is not None else None
+    expense.fx_status = FX_STATUS_READY
+
+
+def apply_currency_payload(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense: Expense,
+    payload: CurrencyPayload,
+    amount_was_explicit: bool,
+    binding_checked: bool = False,
+) -> None:
+    validate_currency_payload_money_command(
+        payload,
+        amount_was_explicit=amount_was_explicit,
+    )
+    has_original_fields = _currency_payload_has_original_fields(payload)
     if not has_original_fields and not amount_was_explicit:
         # R10②：纯元数据维护不读 env、不过门（不碰币种快照，漂移/配错 env 不拖死它）。
         return
@@ -272,15 +382,7 @@ def apply_currency_payload(
     if not binding_checked:
         assert_currency_binding_consistent(db, home)
     if not has_original_fields:
-        amount_cents = _payload_attr(payload, "amount_cents")
-        expense.amount_cents = amount_cents
-        expense.home_currency_code = home
-        expense.original_currency_code = home
-        expense.original_amount_minor = amount_cents
-        expense.exchange_rate_to_cny = Decimal("1") if amount_cents is not None else None
-        expense.exchange_rate_date = default_rate_date(expense.expense_time) if amount_cents is not None else None
-        expense.exchange_rate_source = FX_SOURCE_BASE if amount_cents is not None else None
-        expense.fx_status = FX_STATUS_READY
+        _apply_legacy_home_amount(expense, payload, home=home)
         return
 
     code = _payload_original_currency(payload, expense)

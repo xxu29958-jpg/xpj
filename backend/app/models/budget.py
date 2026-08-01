@@ -4,6 +4,7 @@ from datetime import date, datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -19,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -26,8 +28,7 @@ from app.tenants import DEFAULT_TENANT_ID
 class Budget(Base):
     __tablename__ = "budgets"
     __table_args__ = (
-        CheckConstraint("total_amount_cents >= 0", name="ck_budgets_total_non_negative"),
-        CheckConstraint("non_monthly_amount_cents >= 0", name="ck_budgets_non_monthly_non_negative"),
+        *money_check_constraints_for_table("budgets"),
         CheckConstraint("length(month) = 7", name="ck_budgets_month_format"),
         UniqueConstraint("tenant_id", "month", name="uq_budgets_tenant_month"),
     )
@@ -44,9 +45,9 @@ class Budget(Base):
         index=True,
     )
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
-    total_amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    non_monthly_amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    rollover_amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_amount_cents: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    non_monthly_amount_cents: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    rollover_amount_cents: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     excluded_categories: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
@@ -59,7 +60,7 @@ class Budget(Base):
 class BudgetCategory(Base):
     __tablename__ = "budget_categories"
     __table_args__ = (
-        CheckConstraint("amount_cents >= 0", name="ck_budget_categories_amount_non_negative"),
+        *money_check_constraints_for_table("budget_categories"),
         CheckConstraint("length(month) = 7", name="ck_budget_categories_month_format"),
         UniqueConstraint("tenant_id", "month", "category", name="uq_budget_categories_tenant_month_category"),
         ForeignKeyConstraint(
@@ -76,7 +77,7 @@ class BudgetCategory(Base):
     tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
     category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
@@ -98,20 +99,14 @@ class Goal(Base):
     # tenant/month/scope" rule does NOT wrongly cap a tenant at one active
     # debt_repayment goal — those are allowed to coexist (and have NULL month).
     __table_args__ = (
+        *money_check_constraints_for_table("goals"),
         CheckConstraint(
             "goal_type IN ('spending_limit', 'debt_repayment')", name="ck_goals_type_valid"
         ),
         CheckConstraint("period IN ('monthly')", name="ck_goals_period_valid"),
         CheckConstraint("status IN ('active', 'archived')", name="ck_goals_status_valid"),
-        # month / target only constrain spending_limit goals; a debt_repayment
-        # goal stores NULL for both.
-        CheckConstraint(
-            "goal_type <> 'spending_limit' OR length(month) = 7", name="ck_goals_month_format"
-        ),
-        CheckConstraint(
-            "goal_type <> 'spending_limit' OR target_amount_cents > 0",
-            name="ck_goals_target_positive",
-        ),
+        # C07's shared goal-money shape also enforces the per-type month shape:
+        # spending goals require a seven-character month; debt goals require NULL.
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -132,7 +127,7 @@ class Goal(Base):
     month: Mapped[str | None] = mapped_column(String(7), nullable=True, index=True)
     category: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     # NULL for debt_repayment goals; > 0 for spending_limit (CHECK above).
-    target_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

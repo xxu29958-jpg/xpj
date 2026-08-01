@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -44,8 +43,8 @@ def page_budget_advise(
     request: Request,
     ledger_id: str | None = Query(default=None),
     month: str | None = Query(default=None),
-    savings_target_yuan: float = Query(default=0.0, ge=0),
-    reserved_buffer_yuan: float = Query(default=0.0, ge=0),
+    savings_target_yuan: str = Query(default="0"),
+    reserved_buffer_yuan: str = Query(default="0"),
     run_advise: bool = Query(default=False),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
@@ -69,8 +68,8 @@ def page_budget_advise_run(
     request: Request,
     ledger_id: str | None = Form(default=None),
     month: str | None = Form(default=None),
-    savings_target_yuan: float = Form(default=0.0, ge=0),
-    reserved_buffer_yuan: float = Form(default=0.0, ge=0),
+    savings_target_yuan: str = Form(default="0"),
+    reserved_buffer_yuan: str = Form(default="0"),
     run_advise: bool = Form(default=False),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
@@ -93,8 +92,8 @@ def _render_budget_advise(
     db: Session,
     ledger_id: str | None,
     month: str | None,
-    savings_target_yuan: float,
-    reserved_buffer_yuan: float,
+    savings_target_yuan: str,
+    reserved_buffer_yuan: str,
     run_advise: bool,
     allow_outbound: bool,
 ) -> HTMLResponse:
@@ -116,10 +115,10 @@ def _render_budget_advise(
         month=month_label,
         timezone_name="Asia/Shanghai",
     )
-    # R13-3：按 env home 的 minor 语义换算（JPY 零小数不 ×100；不再硬编 *100 round）。
+    # Local inputs and aggregate output share one explicit configured currency.
     home = home_currency_code()
-    savings_cents = major_amount_to_minor(Decimal(str(savings_target_yuan)), home)
-    reserved_cents = major_amount_to_minor(Decimal(str(reserved_buffer_yuan)), home)
+    savings_cents = major_amount_to_minor(savings_target_yuan, home)
+    reserved_cents = major_amount_to_minor(reserved_buffer_yuan, home)
     breakdown = compute_monthly_discretionary(
         monthly_income_cents=income,
         fixed_expenses_cents=fixed,
@@ -149,8 +148,7 @@ def _render_budget_advise(
         month=month_label,
         provider_name=provider_name,
         provider_enabled=provider_name != "empty",
-        # R15a-3：breakdown/建议表回显按 env home minor 语义（JPY 零小数不 ÷100；
-        # 解析侧 R13-3 已同源），输入 step 走币种元数据（不再硬编 0.01）。
+        # Parsing and presentation use one explicit currency authority.
         income_yuan=minor_amount_value(breakdown.monthly_income_cents, home),
         fixed_yuan=minor_amount_value(breakdown.fixed_expenses_cents, home),
         spent_yuan=minor_amount_value(breakdown.spent_amount_cents, home),

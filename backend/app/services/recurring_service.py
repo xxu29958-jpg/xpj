@@ -9,6 +9,11 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RecurringItem
+from app.money_contract import (
+    projection_sum_to_int,
+    projection_values_average_to_int,
+    round_minor_ratio_half_up,
+)
 from app.schemas import RecurringItemResponse
 from app.services.insights_service import normalize_merchant
 from app.services.recurring_candidate_confirmation_service import (
@@ -48,8 +53,14 @@ def recurring_item_response(
         merchant=item.merchant_name,
         merchant_key=item.merchant_key,
         frequency=item.frequency,
-        baseline_amount_cents=item.baseline_amount_cents,
-        last_amount_cents=item.last_amount_cents,
+        baseline_amount_cents=projection_sum_to_int(
+            item.baseline_amount_cents,
+            label="recurring.response_baseline",
+        ),
+        last_amount_cents=projection_sum_to_int(
+            item.last_amount_cents,
+            label="recurring.response_last",
+        ),
         occurrence_count=item.occurrence_count,
         last_seen_at=item.last_seen_at,
         next_expected_date=item.next_expected_date,
@@ -65,6 +76,18 @@ def recurring_item_response(
         row_version=item.row_version,
         paused_at=item.paused_at,
         archived_at=item.archived_at,
+    )
+
+
+def _historical_average_amount(item: RecurringItem, history: list[int]) -> int:
+    if not history:
+        return projection_sum_to_int(
+            item.baseline_amount_cents,
+            label="recurring.baseline",
+        )
+    return projection_values_average_to_int(
+        history,
+        label="recurring.history_average",
     )
 
 
@@ -111,7 +134,10 @@ def recurring_amount_anomalies(
         when = stat_time(expense)
         if when is None:
             continue
-        amount = int(expense.amount_cents or 0)
+        amount = projection_sum_to_int(
+            expense.amount_cents,
+            label="recurring.expense",
+        )
         if amount <= 0:
             continue
         item = active_by_key.get(key)
@@ -129,10 +155,14 @@ def recurring_amount_anomalies(
             continue
         latest_amount = sorted(current, key=lambda pair: pair[0])[-1][1]
         history = history_amounts.get(item.merchant_key) or []
-        average_amount = int(round(sum(history) / len(history))) if history else int(item.baseline_amount_cents)
+        average_amount = _historical_average_amount(item, history)
         if average_amount <= 0:
             continue
-        delta_percent = int(round((latest_amount - average_amount) * 100 / average_amount))
+        delta_percent = round_minor_ratio_half_up(
+            (latest_amount - average_amount) * 100,
+            average_amount,
+            label="recurring.delta_percent",
+        )
         status = "higher_than_average" if delta_percent >= threshold_percent else "none"
         anomalies[item.public_id] = RecurringAmountAnomaly(
             anomaly_status=status,
@@ -144,11 +174,19 @@ def recurring_amount_anomalies(
 
 
 def _is_recurring_like_amount(item: RecurringItem, amount_cents: int) -> bool:
-    reference = max(int(item.last_amount_cents or 0), int(item.baseline_amount_cents or 0))
+    reference = max(
+        projection_sum_to_int(
+            item.last_amount_cents,
+            label="recurring.last_amount",
+        ),
+        projection_sum_to_int(
+            item.baseline_amount_cents,
+            label="recurring.baseline_amount",
+        ),
+    )
     if reference <= 0:
         return False
-    delta_percent = abs(amount_cents - reference) * 100 / reference
-    return delta_percent <= RECURRING_AMOUNT_MATCH_MAX_DELTA_PERCENT
+    return abs(amount_cents - reference) * 100 <= reference * RECURRING_AMOUNT_MATCH_MAX_DELTA_PERCENT
 
 
 def list_recurring_items(
@@ -173,18 +211,14 @@ def list_recurring_items(
 
 def get_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
     item = db.scalar(
-        ledger_scoped_select(RecurringItem, tenant_id)
-        .where(RecurringItem.public_id == public_id)
-        .limit(1)
+        ledger_scoped_select(RecurringItem, tenant_id).where(RecurringItem.public_id == public_id).limit(1)
     )
     if item is None:
         raise AppError("recurring_item_not_found", status_code=404)
     return item
 
 
-def pause_recurring_item(
-    db: Session, *, tenant_id: str, public_id: str, expected_row_version: int
-) -> RecurringItem:
+def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int) -> RecurringItem:
     """ADR-0038 PR-A: pause with optimistic concurrency.
 
     pause and resume are a state-machine toggle pair — stale pause arriving
@@ -217,9 +251,7 @@ def pause_recurring_item(
     raise AppError("state_conflict", status_code=409)
 
 
-def resume_recurring_item(
-    db: Session, *, tenant_id: str, public_id: str, expected_row_version: int
-) -> RecurringItem:
+def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int) -> RecurringItem:
     """ADR-0038 PR-A: resume with optimistic concurrency. Same rationale
     as :func:`pause_recurring_item`."""
     now = now_utc()
@@ -247,9 +279,7 @@ def resume_recurring_item(
     raise AppError("state_conflict", status_code=409)
 
 
-def restore_recurring_item(
-    db: Session, *, tenant_id: str, public_id: str, expected_row_version: int
-) -> RecurringItem:
+def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int) -> RecurringItem:
     """ADR-0051 recycle-bin restore: reactivate an archived recurring item.
 
     Inverse of :func:`archive_recurring_item` but OCC-gated like the

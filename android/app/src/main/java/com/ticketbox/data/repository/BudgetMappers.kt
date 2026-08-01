@@ -84,6 +84,7 @@ fun BudgetAdviseResponseDto.toDomain(): BudgetAdviceResult = BudgetAdviceResult(
             confidence = response.confidence,
         )
     },
+    homeCurrencyCode = homeCurrencyCode,
     providerName = providerName,
     reasonCode = reasonCode,
 )

@@ -47,6 +47,7 @@ from app.errors import AppError
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, RepaymentDraft
+from app.money_contract import MoneySign, ensure_money_minor
 from app.schemas import (
     RepaymentDraftCreateRequest,
     RepaymentDraftListResponse,
@@ -190,6 +191,11 @@ def create_repayment_draft(
     the first-check and the race re-check filter ``created_by_account_id`` so a
     co-member's same-key capture is neither returned (leak) nor collided with.
     """
+    amount_cents = ensure_money_minor(
+        payload.amount_cents,
+        sign=MoneySign.POSITIVE,
+        label="repayment_draft.amount_cents",
+    )
     now = now_utc()
     source = _clean_repayment_source(payload.source)
     # §杠杆③ capture is home-currency ONLY (CNY notifications carry no FX, and confirm
@@ -207,7 +213,7 @@ def create_repayment_draft(
     idempotency_key = _repayment_draft_key(
         source=source,
         merchant=payload.merchant_label,
-        amount_cents=payload.amount_cents,
+        amount_cents=amount_cents,
         home_currency=home_currency,
         captured_at=captured_at,
         notification_key=payload.notification_key,
@@ -224,7 +230,7 @@ def create_repayment_draft(
         tenant_id=tenant_id,
         created_by_account_id=actor_account_id,
         source=source,
-        amount_cents=payload.amount_cents,
+        amount_cents=amount_cents,
         home_currency_code=home_currency,
         merchant_label=_clean_optional_text(payload.merchant_label),
         captured_at=captured_at,

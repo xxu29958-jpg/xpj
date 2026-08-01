@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Goal
+from app.money_contract import projection_sum_to_int
 from app.schemas import GoalResponse
 from app.services.category_service import normalize_category
 from app.services.spending_contract_service import confirmed_amount_query
@@ -47,10 +48,20 @@ def month_spend_totals(
     total_amount_cents = 0
     by_category: dict[str, int] = {}
     for category_raw, amount_value in rows:
-        amount = int(amount_value or 0)
-        total_amount_cents += amount
+        amount = projection_sum_to_int(
+            amount_value,
+            label="goal_spending.category",
+            empty_is_zero=True,
+        )
+        total_amount_cents = projection_sum_to_int(
+            total_amount_cents + amount,
+            label="goal_spending.total",
+        )
         category = normalize_category(category_raw)
-        by_category[category] = by_category.get(category, 0) + amount
+        by_category[category] = projection_sum_to_int(
+            by_category.get(category, 0) + amount,
+            label="goal_spending.normalized_category",
+        )
     return GoalSpendTotals(total_amount_cents, by_category)
 
 
@@ -68,7 +79,14 @@ def _progress_state(goal: Goal, spent_amount_cents: int) -> str:
 
 def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
     spent = totals.by_category.get(goal.category, 0) if goal.category else totals.total_amount_cents
-    target = int(goal.target_amount_cents)
+    target = projection_sum_to_int(
+        goal.target_amount_cents,
+        label="goal_spending.target",
+    )
+    remaining = projection_sum_to_int(
+        target - spent,
+        label="goal_spending.remaining",
+    )
     return GoalResponse(
         public_id=goal.public_id,
         ledger_id=goal.tenant_id,
@@ -79,8 +97,12 @@ def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
         category=goal.category,
         target_amount_cents=target,
         spent_amount_cents=spent,
-        remaining_amount_cents=target - spent,
-        progress_percent=(spent * 100) // target,
+        remaining_amount_cents=remaining,
+        # Display progress is a bounded range value. Exact overage remains in
+        # spent/target/remaining and ``progress_state=over_limit``; emitting an
+        # unbounded percentage would be both inaccessible as a progressbar and
+        # unsafe for ECMAScript consumers after C07 aggregate widening.
+        progress_percent=min(100, (spent * 100) // target),
         progress_state=_progress_state(goal, spent),
         status=goal.status,
         created_at=goal.created_at,

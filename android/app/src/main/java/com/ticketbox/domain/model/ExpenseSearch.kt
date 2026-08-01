@@ -1,6 +1,5 @@
 package com.ticketbox.domain.model
 
-import java.math.BigDecimal
 import java.text.DecimalFormatSymbols
 import java.time.ZoneId
 import java.util.Locale
@@ -90,25 +89,16 @@ private fun normalizeSearchAmountDigits(query: String, currency: CurrencyCode): 
  * Other currencies' symbols are deliberately NOT stripped, so a formatted value
  * can only parse on its own currency's leg ("HK$1,234.50" never hits a USD leg).
  *
- * A query qualifies only when the normalized residue is a non-negative decimal
- * with **at most [CurrencyCode.minorUnitDigits]** fractional digits ("12", "12.5",
- * "¥12.50", "128" for a 2-digit currency; integers only for JPY/KRW). More
- * fraction digits ("12.345", or any fraction under a zero-decimal currency) or
- * any non-numeric residue yields null so the term falls back to pure text
- * matching rather than silently rounding to a minor value the user never typed.
+ * A query qualifies only when the normalized residue maps exactly into the
+ * currency's minor units and C07 bound. Extra non-zero precision is rejected;
+ * exact trailing zeroes ("1.230" under CNY) are accepted without rounding.
  */
 fun parseSearchAmountCents(
     query: String,
     currency: CurrencyCode = FxContract.HomeCurrency,
 ): Long? {
     val normalized = normalizeSearchAmountDigits(query, currency) ?: return null
-    val fractionDigits = normalized.substringAfter('.', "").length
-    if (fractionDigits > currency.minorUnitDigits) return null
-    return runCatching {
-        val decimal = BigDecimal(normalized)
-        if (decimal.signum() < 0) return null
-        decimal.movePointRight(currency.minorUnitDigits).longValueExact()
-    }.getOrNull()
+    return parseExactMoneyMinor(normalized, currency)
 }
 
 /**

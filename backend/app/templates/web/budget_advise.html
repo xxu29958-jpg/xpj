@@ -30,12 +30,12 @@
     <input class="dt-input" type="month" name="month" value="{{ month }}">
   </div>
   <div class="dt-form-row">
-    <label>储蓄目标（元）</label>
-    <input class="dt-input" type="number" name="savings_target_yuan" min="0" step="{{ currency_input.amount_step }}" value="{{ savings_target_yuan }}">
+    <label>储蓄目标（{{ currency_input.currency_code }}）</label>
+    <input class="dt-input" type="number" name="savings_target_yuan" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ savings_target_yuan }}">
   </div>
   <div class="dt-form-row">
-    <label>备用金（元）</label>
-    <input class="dt-input" type="number" name="reserved_buffer_yuan" min="0" step="{{ currency_input.amount_step }}" value="{{ reserved_buffer_yuan }}">
+    <label>备用金（{{ currency_input.currency_code }}）</label>
+    <input class="dt-input" type="number" name="reserved_buffer_yuan" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ reserved_buffer_yuan }}">
   </div>
   <div class="dt-actions">
     <button class="dt-btn" type="submit">重新计算</button>

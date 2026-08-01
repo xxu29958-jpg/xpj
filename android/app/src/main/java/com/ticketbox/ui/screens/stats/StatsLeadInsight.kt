@@ -18,6 +18,7 @@ import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.domain.model.moneyPercent
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -262,7 +263,8 @@ private fun categoryDeltaCaption(category: ReportCategoryComparison): String = w
 private fun monthDeltaPercent(
     deltaAmountCents: Long,
     previousAmountCents: Long,
-): Int {
-    if (previousAmountCents <= 0L) return 0
-    return ((abs(deltaAmountCents) * 100L) / previousAmountCents).toInt()
-}
+): Long = moneyPercent(
+    numeratorAmountMinor = deltaAmountCents,
+    denominatorAmountMinor = previousAmountCents,
+    absoluteNumerator = true,
+) ?: 0L

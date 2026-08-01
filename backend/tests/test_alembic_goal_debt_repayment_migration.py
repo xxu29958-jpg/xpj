@@ -3,10 +3,11 @@
 ``init_db`` on a fresh DB runs ``create_all`` (the current ORM models — already
 the slice-6 shape) then ``alembic stamp head``, so the migration's ``upgrade`` /
 ``downgrade`` bodies never execute on the normal path. This drives them directly
-on PostgreSQL (the prod dialect): create_all → stamp head → downgrade past
+on PostgreSQL (the prod dialect): create_all → stamp 20260615_0001 → downgrade past
 20260615_0001 (restores the spending_limit-only ``goals`` shape + drops
-``debt_goal_links``) → upgrade to head (re-widens). Pins that the migration is a
-faithful, round-tripping transform of the legacy shape into the slice-6 shape.
+``debt_goal_links``) → upgrade to the last pre-C07 head (re-widens). Pins that
+the migration is a faithful, round-tripping transform of the legacy shape into
+the slice-6 shape.
 
 Marked ``real_db`` below because it issues DDL via its
 own ``engine.begin()`` connections outside the per-test transaction.
@@ -20,6 +21,7 @@ import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
 
@@ -29,6 +31,7 @@ _NEW_GOAL_COLUMNS = (
     "achieved_version",
     "integrity_reviewed_version",
 )
+_PRE_C07_HEAD = "20260722_0001"
 
 
 def _goals_columns() -> dict[str, dict]:
@@ -105,7 +108,7 @@ def _assert_legacy_shape() -> None:
 
 
 def _reset_empty_database() -> None:
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
 
 
 def _drop_alembic_version() -> None:
@@ -123,10 +126,7 @@ def _alembic_cfg():
 
 
 def _run_alembic(action, *args) -> None:
-    cfg = _alembic_cfg()
-    with engine.begin() as connection:
-        cfg.attributes["connection"] = connection
-        action(cfg, *args)
+    run_alembic_for_test(engine, _alembic_cfg(), action, *args)
 
 
 def test_widen_goals_for_debt_repayment_round_trips_on_postgres() -> None:
@@ -146,8 +146,10 @@ def test_widen_goals_for_debt_repayment_round_trips_on_postgres() -> None:
         _run_alembic(command.downgrade, "20260614_0003")
         _assert_legacy_shape()
 
-        # Upgrade back to head → re-widens via the guarded ALTER path.
-        _run_alembic(command.upgrade, "head")
+        # Stop at the last pre-C07 revision. The current ORM built int8 money
+        # carriers before this test rewound only the historical goal shape;
+        # crossing C07 from that synthetic combination must remain refused.
+        _run_alembic(command.upgrade, _PRE_C07_HEAD)
         _assert_widened_shape()
         # Seam closer: the migration unconditionally DROP+CREATEs the scope indexes,
         # so its predicate is what actually lands at runtime and the model's

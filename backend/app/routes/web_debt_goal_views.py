@@ -9,6 +9,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from app.money_contract import projection_values_sum_to_int
 from app.routes.web_common import (
     _base_ctx,
     _home_amount_label,
@@ -277,8 +278,14 @@ def _debt_goal_view(goal: GoalResponse) -> dict:
     view["fraction_percent"] = int(round(cleared * 100 / total))
     currency = _shared_currency(counted)
     if currency is not None:
-        principal_sum = sum(link.principal_amount_cents for link in counted)
-        remaining_sum = sum(link.remaining_amount_cents for link in counted)
+        principal_sum = projection_values_sum_to_int(
+            (link.principal_amount_cents for link in counted),
+            label="web_debt_goal.principal_total",
+        )
+        remaining_sum = projection_values_sum_to_int(
+            (link.remaining_amount_cents for link in counted),
+            label="web_debt_goal.remaining_total",
+        )
         view["amount_line"] = _plan_amount_line(composition, principal_sum, remaining_sum, remaining, currency)
     if composition == _COMPOSITION_EXTERNAL:
         view["kpi"] = _external_kpi_view(evaluation)

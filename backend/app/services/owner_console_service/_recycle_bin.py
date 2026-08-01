@@ -1,9 +1,7 @@
-"""Unified recycle-bin view-models for Owner Console.
+"""Unified Owner Console recycle-bin view models.
 
-Archived rows stay visible until restored. Soft-deleted rows use ADR-0051's
-explicit recycle-bin retention window, while the original undo endpoints keep
-their short 5-minute banner window. This module aggregates those
-resource-specific lifecycles into one owner-only surface.
+Archived rows remain until restored. ADR-0051 soft deletes retain their longer
+window while the original undo endpoints keep the five-minute banner window.
 """
 
 from __future__ import annotations
@@ -11,13 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import (
-    Budget,
-    BudgetCategory,
     CategoryPreference,
     CategoryRule,
     Goal,
@@ -32,7 +28,7 @@ from app.models import (
 from app.services.budget_service import list_archived_budgets, restore_monthly_budget
 from app.services.category_preference_service import restore_category_preference
 from app.services.classify_service import undo_delete_rule
-from app.services.currency_common import minor_amount_label
+from app.services.currency_common import home_currency_code
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
 from app.services.merchant_alias_service import undo_delete_merchant_alias
@@ -41,6 +37,18 @@ from app.services.owner_console_service._ledger_console import (
     do_unarchive_ledger,
     list_archived_console_ledgers,
     list_manageable_console_ledgers,
+)
+from app.services.owner_console_service._recycle_bin_money import (
+    budget_detail as _budget_detail,
+)
+from app.services.owner_console_service._recycle_bin_money import (
+    goal_detail as _goal_detail,
+)
+from app.services.owner_console_service._recycle_bin_money import (
+    income_detail as _income_detail,
+)
+from app.services.owner_console_service._recycle_bin_money import (
+    money as _money,
 )
 from app.services.recurring_service import restore_recurring_item
 from app.services.soft_delete_policy import (
@@ -73,14 +81,15 @@ class RecycleBinVM:
 
 def get_recycle_bin_vm(db: Session) -> RecycleBinVM:
     ledger_names = _active_ledger_names(db)
+    presentation_currency = home_currency_code()
     rows: list[RecycleBinItemVM] = []
     rows.extend(_archived_ledger_rows(db))
     if ledger_names:
-        rows.extend(_archived_budget_rows(db, ledger_names))
+        rows.extend(_archived_budget_rows(db, ledger_names, currency_code=presentation_currency))
         rows.extend(_soft_deleted_category_rows(db, ledger_names))
-        rows.extend(_archived_income_rows(db, ledger_names))
-        rows.extend(_archived_recurring_rows(db, ledger_names))
-        rows.extend(_archived_goal_rows(db, ledger_names))
+        rows.extend(_archived_income_rows(db, ledger_names, currency_code=presentation_currency))
+        rows.extend(_archived_recurring_rows(db, ledger_names, currency_code=presentation_currency))
+        rows.extend(_archived_goal_rows(db, ledger_names, currency_code=presentation_currency))
         rows.extend(_soft_deleted_rule_rows(db, ledger_names))
         rows.extend(_soft_deleted_alias_rows(db, ledger_names))
         rows.extend(_tag_undo_rows(db, ledger_names))
@@ -133,7 +142,9 @@ def restore_recycle_bin_item(
         return "月度预算已恢复。"
     if clean_kind == "category_preference":
         restore_category_preference(
-            db, tenant_id=clean_ledger_id, public_id=clean_resource_id,
+            db,
+            tenant_id=clean_ledger_id,
+            public_id=clean_resource_id,
             expected_row_version=_require_token(expected_row_version),
         )
         return "分类已恢复。"
@@ -243,7 +254,10 @@ def _archived_ledger_times(db: Session) -> dict[str, datetime | None]:
 
 
 def _archived_income_rows(
-    db: Session, ledger_names: dict[str, str]
+    db: Session,
+    ledger_names: dict[str, str],
+    *,
+    currency_code: str,
 ) -> list[RecycleBinItemVM]:
     rows = db.scalars(
         select(MonthlyIncomePlan)
@@ -259,7 +273,7 @@ def _archived_income_rows(
             ledger_name=ledger_names[item.tenant_id],
             resource_id=item.public_id,
             title=item.label,
-            detail=_income_detail(item),
+            detail=_income_detail(item, currency_code=currency_code),
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
@@ -269,7 +283,10 @@ def _archived_income_rows(
 
 
 def _archived_budget_rows(
-    db: Session, ledger_names: dict[str, str]
+    db: Session,
+    ledger_names: dict[str, str],
+    *,
+    currency_code: str,
 ) -> list[RecycleBinItemVM]:
     rows: list[RecycleBinItemVM] = []
     for ledger_id, ledger_name in ledger_names.items():
@@ -282,7 +299,11 @@ def _archived_budget_rows(
                     ledger_name=ledger_name,
                     resource_id=item.month,
                     title=f"{item.month} 月度预算",
-                    detail=_budget_detail(db, item),
+                    detail=_budget_detail(
+                        db,
+                        item,
+                        currency_code=currency_code,
+                    ),
                     removed_at=item.archived_at,
                     retention_label="长期保留",
                     expected_row_version=item.row_version,
@@ -300,11 +321,14 @@ def _soft_deleted_category_rows(db: Session, ledger_names: dict[str, str]) -> li
     )
     return [
         RecycleBinItemVM(
-            kind="category_preference", kind_label="分类",
-            ledger_id=item.tenant_id, ledger_name=ledger_names[item.tenant_id],
+            kind="category_preference",
+            kind_label="分类",
+            ledger_id=item.tenant_id,
+            ledger_name=ledger_names[item.tenant_id],
             resource_id=item.public_id,
             title=item.name,
-            detail="自定义分类选项", removed_at=item.deleted_at,
+            detail="自定义分类选项",
+            removed_at=item.deleted_at,
             retention_label=recycle_bin_retention_label(),
             expected_row_version=item.row_version,
         )
@@ -314,7 +338,10 @@ def _soft_deleted_category_rows(db: Session, ledger_names: dict[str, str]) -> li
 
 
 def _archived_recurring_rows(
-    db: Session, ledger_names: dict[str, str]
+    db: Session,
+    ledger_names: dict[str, str],
+    *,
+    currency_code: str,
 ) -> list[RecycleBinItemVM]:
     rows = db.scalars(
         select(RecurringItem)
@@ -330,7 +357,7 @@ def _archived_recurring_rows(
             ledger_name=ledger_names[item.tenant_id],
             resource_id=item.public_id,
             title=item.merchant_name,
-            detail=f"每月 {_money(item.baseline_amount_cents)} · 已出现 {item.occurrence_count} 次",
+            detail=(f"每月 {_money(item.baseline_amount_cents, currency_code)} · 已出现 {item.occurrence_count} 次"),
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
@@ -340,7 +367,10 @@ def _archived_recurring_rows(
 
 
 def _archived_goal_rows(
-    db: Session, ledger_names: dict[str, str]
+    db: Session,
+    ledger_names: dict[str, str],
+    *,
+    currency_code: str,
 ) -> list[RecycleBinItemVM]:
     rows = db.scalars(
         select(Goal)
@@ -356,7 +386,7 @@ def _archived_goal_rows(
             ledger_name=ledger_names[item.tenant_id],
             resource_id=item.public_id,
             title=item.name,
-            detail=_goal_detail(item),
+            detail=_goal_detail(item, currency_code=currency_code),
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
@@ -365,9 +395,7 @@ def _archived_goal_rows(
     ]
 
 
-def _soft_deleted_rule_rows(
-    db: Session, ledger_names: dict[str, str]
-) -> list[RecycleBinItemVM]:
+def _soft_deleted_rule_rows(db: Session, ledger_names: dict[str, str]) -> list[RecycleBinItemVM]:
     rows = [
         item
         for item in db.scalars(
@@ -395,9 +423,7 @@ def _soft_deleted_rule_rows(
     ]
 
 
-def _soft_deleted_alias_rows(
-    db: Session, ledger_names: dict[str, str]
-) -> list[RecycleBinItemVM]:
+def _soft_deleted_alias_rows(db: Session, ledger_names: dict[str, str]) -> list[RecycleBinItemVM]:
     rows = [
         item
         for item in db.scalars(
@@ -425,9 +451,7 @@ def _soft_deleted_alias_rows(
     ]
 
 
-def _tag_undo_rows(
-    db: Session, ledger_names: dict[str, str]
-) -> list[RecycleBinItemVM]:
+def _tag_undo_rows(db: Session, ledger_names: dict[str, str]) -> list[RecycleBinItemVM]:
     rows = []
     query_rows = db.execute(
         select(TagMutationUndoGroup, Tag)
@@ -462,34 +486,6 @@ def _tag_undo_rows(
             )
         )
     return rows
-
-
-def _income_detail(item: MonthlyIncomePlan) -> str:
-    frequency = "每月固定" if item.frequency == "monthly" else f"{item.income_month} 到账"
-    return f"{frequency} · {_money(item.amount_cents)} · {item.pay_day} 号"
-
-
-def _goal_detail(item: Goal) -> str:
-    if item.goal_type == "debt_repayment":
-        return "还债目标"
-    scope = item.category or "总支出"
-    return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents or 0)}"
-
-
-def _budget_detail(db: Session, item: Budget) -> str:
-    category_count = db.scalar(
-        select(func.count(BudgetCategory.id))
-        .where(BudgetCategory.tenant_id == item.tenant_id)
-        .where(BudgetCategory.month == item.month)
-    )
-    return (
-        f"总预算 {_money(item.total_amount_cents)} · "
-        f"分类预算 {int(category_count or 0)} 项"
-    )
-
-
-def _money(amount_cents: int) -> str:
-    return minor_amount_label(int(amount_cents or 0), None)
 
 
 __all__ = [

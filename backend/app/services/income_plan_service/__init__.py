@@ -23,8 +23,13 @@ from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import add_ledger_scope, ledger_filter, ledger_scoped_select
 from app.models import MonthlyIncomePlan
+from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import home_currency_code
+from app.services.income_plan_service._money import (
+    updated_income_amount_cents as _updated_income_amount_cents,
+)
+from app.services.income_plan_service._money import validate_income_plan_amount
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
@@ -95,6 +100,7 @@ def create_income_plan(
 ) -> MonthlyIncomePlan:
     """Insert a new active income row."""
 
+    clean_amount_cents = validate_income_plan_amount(amount_cents)
     clean_label = _clean_label(label)
     clean_source = _clean_source_type(source_type)
     clean_frequency = _clean_frequency(frequency)
@@ -102,8 +108,6 @@ def create_income_plan(
         frequency=clean_frequency,
         income_month=income_month,
     )
-    if amount_cents < 0:
-        raise AppError("invalid_request", "金额不能为负数。", status_code=422)
     _validate_pay_day(pay_day)
     # R13-2：无币种列的收入计划写按 env 口径入账 —— 先过绑定门（漂移/未决拒写）。
     assert_currency_binding_consistent(db, home_currency_code())
@@ -115,7 +119,7 @@ def create_income_plan(
         source_type=clean_source,
         frequency=clean_frequency,
         income_month=clean_income_month,
-        amount_cents=amount_cents,
+        amount_cents=clean_amount_cents,
         pay_day=pay_day,
         status="active",
         created_at=when,
@@ -145,6 +149,8 @@ def update_income_plan(
 ) -> MonthlyIncomePlan:
     """Partial update. Archived plans cannot be edited directly."""
 
+    if amount_cents is not None:
+        validate_income_plan_amount(amount_cents)
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     _require_active_income_plan(plan)
     # R13-2：同 create —— 编辑写先过绑定门（漂移/未决拒写）。
@@ -291,7 +297,10 @@ def total_monthly_income_cents(
     ).where(MonthlyIncomePlan.status == "active")
     statement = statement.where(_applicable_income_clause(clean_month, as_of_date=as_of_date))
     total = db.scalar(statement)
-    return int(total or 0)
+    return projection_sum_to_int(
+        total,
+        label="income_plan.total",
+    )
 
 
 def _require_active_income_plan(plan: MonthlyIncomePlan) -> None:
@@ -313,14 +322,6 @@ def _updated_income_source_type(plan: MonthlyIncomePlan, source_type: str | None
     if source_type is None:
         return plan.source_type
     return _clean_source_type(source_type)
-
-
-def _updated_income_amount_cents(plan: MonthlyIncomePlan, amount_cents: int | None) -> int:
-    if amount_cents is None:
-        return plan.amount_cents
-    if amount_cents < 0:
-        raise AppError("invalid_request", "金额不能为负数。", status_code=422)
-    return amount_cents
 
 
 def _updated_income_pay_day(plan: MonthlyIncomePlan, pay_day: int | None) -> int:

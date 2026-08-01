@@ -401,16 +401,20 @@ class ExpenseMappersTest {
     }
 
     @Test
-    fun splitDraftRejectsInvalidMemberAndNegativeAmount() {
+    fun splitDraftRejectsInvalidMemberAndNonPositiveAmount() {
         val missingMember = assertFailsWith<RepositoryException> {
             ExpenseSplitDraft(memberId = 0, amountCents = 6000, note = null).toRequest()
         }
         val negativeAmount = assertFailsWith<RepositoryException> {
             ExpenseSplitDraft(memberId = 12, amountCents = -1, note = null).toRequest()
         }
+        val zeroAmount = assertFailsWith<RepositoryException> {
+            ExpenseSplitDraft(memberId = 12, amountCents = 0, note = null).toRequest()
+        }
 
         assertEquals("请选择拆账成员。", missingMember.message)
-        assertEquals("拆账金额不能为负数。", negativeAmount.message)
+        assertEquals("拆账金额必须大于 0。", negativeAmount.message)
+        assertEquals("拆账金额必须大于 0。", zeroAmount.message)
     }
 
     private data class ExpenseDtoFixture(

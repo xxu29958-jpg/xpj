@@ -29,7 +29,10 @@ from app.models import Debt, Repayment
 from app.schemas import RepaymentCreateRequest
 from app.services.currency_common import home_currency_code
 from app.services.debt_service._guards import guard_direct_fact_writable
-from app.services.debt_service._money import freeze_home_amount
+from app.services.debt_service._money import (
+    freeze_home_amount,
+    validate_home_amount_command,
+)
 from app.services.debt_service._serialize import lock_and_fold
 from app.services.time_service import now_utc
 
@@ -61,6 +64,26 @@ def get_repayment_public_id_for_idempotency(
     return repayment_public_id
 
 
+def _guard_repayment_currency_binding(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    payload: RepaymentCreateRequest,
+) -> None:
+    """Reject FX materialization when the parent and runtime home bindings drift."""
+
+    if payload.original_currency is None and payload.original_amount is None:
+        return
+    parent_home = db.scalar(
+        ledger_scoped_select(Debt, tenant_id)
+        .where(Debt.public_id == public_id)
+        .with_only_columns(Debt.home_currency_code)
+    )
+    if parent_home is not None and parent_home != home_currency_code():
+        raise AppError("currency_binding_drift", status_code=409)
+
+
 def record_repayment(
     db: Session,
     *,
@@ -76,6 +99,11 @@ def record_repayment(
     ``commit=False`` lets the route commit the Repayment insert + parent bump +
     [[0042]] idempotency-success record in one transaction.
     """
+    validate_home_amount_command(
+        amount_cents=payload.amount_cents,
+        original_currency=payload.original_currency,
+        original_amount=payload.original_amount,
+    )
     paid_at = payload.paid_at or now_utc()
     # PR#255 R12-C：外币还款的换算按 env home 进行（freeze_home_amount），随后整数按
     # parent debt 的冻结币种折叠 —— payload 带 original 币种字段且 debt.home_currency_code
@@ -83,14 +111,12 @@ def record_repayment(
     # currency_binding_drift 拒（与库级 drift 门同码同 409：都是「配置与已冻结事实不一致」
     # 的写拒绝；无 original 字段=整数透传，record 冻结语义豁免不动）。轻查 parent 冻结
     # 币种于 freeze 之前；debt 不存在时不拦（lock_and_fold 的 404 自会处理）。
-    if payload.original_currency is not None or payload.original_amount is not None:
-        parent_home = db.scalar(
-            ledger_scoped_select(Debt, tenant_id)
-            .where(Debt.public_id == public_id)
-            .with_only_columns(Debt.home_currency_code)
-        )
-        if parent_home is not None and parent_home != home_currency_code():
-            raise AppError("currency_binding_drift", status_code=409)
+    _guard_repayment_currency_binding(
+        db,
+        tenant_id=tenant_id,
+        public_id=public_id,
+        payload=payload,
+    )
     money = freeze_home_amount(
         db,
         tenant_id=tenant_id,

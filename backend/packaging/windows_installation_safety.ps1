@@ -9,9 +9,15 @@ $script:TicketboxRuntimeDataBindingDirectoryName = "TicketboxRuntimeBinding"
 $script:TicketboxRuntimeDataBindingJunctionName = "data-root"
 $script:TicketboxBootstrapRecoveryGuardName = "bootstrap-exposure-recovery-pending"
 $script:TicketboxPersistentInstallationIdentityName = ".ticketbox-installation-identity"
-$script:TicketboxPersistentInstallationIdentitySchema = "ticketbox-installation-identity-v1"
+$script:TicketboxPendingInstallationIdentityName =
+    ".ticketbox-installation-identity.pending"
+$script:TicketboxLegacyPersistentInstallationIdentitySchema =
+    "ticketbox-installation-identity-v1"
+$script:TicketboxPersistentInstallationIdentitySchema =
+    "ticketbox-installation-identity-v2"
 $script:TicketboxPersistentInstallationIdentityAclAccounts = @("SYSTEM", "BUILTIN\Administrators")
 $script:TicketboxPersistentInstallationIdentityOwnerAccount = "SYSTEM"
+$script:TicketboxC07MigrationHelperRelativePath = "ticketbox-c07-migrator.exe"
 
 function Initialize-TicketboxDirectoryGuardNativeMethods {
     if ("TicketboxDirectoryGuardNativeMethods" -as [type]) {
@@ -138,6 +144,21 @@ public static class TicketboxDurableFileNativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool MoveFileEx(string existingName, string newName, uint flags);
 
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "ReplaceFileW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReplaceFileW(
+        string replacedFileName,
+        string replacementFileName,
+        string backupFileName,
+        uint replaceFlags,
+        IntPtr exclude,
+        IntPtr reserved);
+
     public static void MoveFileDurable(string existingName, string newName, bool replaceExisting)
     {
         const uint MoveFileReplaceExisting = 0x1;
@@ -151,6 +172,29 @@ public static class TicketboxDurableFileNativeMethods
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
+    }
+
+    public static int ReplaceFileDurablePreservingMetadata(
+        string replacedFileName,
+        string replacementFileName,
+        string backupFileName)
+    {
+        // ReplaceFileW currently documents only the two IGNORE_* flags.
+        // Zero is intentional: 0x1 is reserved, not a write-through flag.
+        if (ReplaceFileW(
+            replacedFileName,
+            replacementFileName,
+            backupFileName,
+            0,
+            IntPtr.Zero,
+            IntPtr.Zero))
+        {
+            return 0;
+        }
+        // A FALSE result is not side-effect-free for errors 1175/1176/1177.
+        // Return the native error without throwing so the caller can reconcile
+        // replaced/replacement/backup names before deciding what is durable.
+        return Marshal.GetLastWin32Error();
     }
 }
 '@
@@ -179,6 +223,34 @@ function Move-TicketboxFileDurable([string]$Source, [string]$Destination, [switc
     }
     catch {
         throw "无法持久化提交文件：$Destination。$($_.Exception.GetBaseException().Message)"
+    }
+}
+
+function Replace-TicketboxFileDurablePreservingMetadata {
+    param(
+        [Parameter(Mandatory = $true)][string]$Replacement,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$Backup
+    )
+
+    Initialize-TicketboxDurableFileNativeMethods
+    try {
+        $nativeError =
+            [TicketboxDurableFileNativeMethods]::ReplaceFileDurablePreservingMetadata(
+            $Destination,
+            $Replacement,
+            $Backup
+        )
+        return [pscustomobject][ordered]@{
+            Succeeded = ([int]$nativeError -eq 0)
+            NativeErrorCode = [int]$nativeError
+        }
+    }
+    catch {
+        throw (
+            "无法持久化替换并保全现有文件 metadata：$Destination。" +
+            $_.Exception.GetBaseException().Message
+        )
     }
 }
 
@@ -1567,6 +1639,7 @@ using Microsoft.Win32.SafeHandles;
 public static class TicketboxExactTreeDeleteNativeMethods
 {
     private const uint DeleteAccess = 0x00010000;
+    private const uint FileReadData = 0x00000001;
     private const uint FileReadAttributes = 0x00000080;
     private const uint FileShareRead = 0x00000001;
     private const uint FileShareWrite = 0x00000002;
@@ -1651,6 +1724,21 @@ public static class TicketboxExactTreeDeleteNativeMethods
         StringBuilder path,
         uint pathLength,
         uint flags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileSizeEx(
+        SafeFileHandle file,
+        out long fileSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReadFile(
+        SafeFileHandle file,
+        byte[] buffer,
+        uint bytesToRead,
+        out uint bytesRead,
+        IntPtr overlapped);
 
     public static void DeleteTree(
         string path,
@@ -1751,6 +1839,80 @@ public static class TicketboxExactTreeDeleteNativeMethods
                 identity.FileId.HighPart.ToString("X16") +
                     identity.FileId.LowPart.ToString("X16")
             };
+        }
+    }
+
+    public static string ReadExactUtf8File(string path, int maximumBytes)
+    {
+        if (maximumBytes < 1)
+        {
+            throw new ArgumentOutOfRangeException("maximumBytes");
+        }
+        string fullPath = NormalizePath(path);
+        using (SafeFileHandle handle = CreateFile(
+            fullPath,
+            FileReadData | FileReadAttributes,
+            FileShareRead,
+            IntPtr.Zero,
+            OpenExisting,
+            FileFlagOpenReparsePoint,
+            IntPtr.Zero))
+        {
+            if (handle.IsInvalid)
+            {
+                int error = Marshal.GetLastWin32Error();
+                throw new Win32Exception(
+                    error,
+                    "Unable to open the exact UTF-8 file: " + fullPath);
+            }
+            VerifyExactPath(handle, fullPath);
+            FILE_ATTRIBUTE_TAG_INFO attributes = ReadAttributes(handle, fullPath);
+            if ((attributes.FileAttributes & FileAttributeReparsePoint) != 0 ||
+                (attributes.FileAttributes & FileAttributeDirectory) != 0)
+            {
+                throw new IOException(
+                    "Exact UTF-8 target is not a plain file: " + fullPath);
+            }
+            long fileSize;
+            if (!GetFileSizeEx(handle, out fileSize))
+            {
+                ThrowLastWin32("Unable to read the exact UTF-8 file size", fullPath);
+            }
+            if (fileSize < 1 || fileSize > maximumBytes)
+            {
+                throw new IOException(
+                    "Exact UTF-8 file size is outside the allowed range: " + fullPath);
+            }
+            byte[] bytes = new byte[(int)fileSize];
+            int offset = 0;
+            while (offset < bytes.Length)
+            {
+                byte[] remaining = offset == 0
+                    ? bytes
+                    : new byte[bytes.Length - offset];
+                uint bytesRead;
+                if (!ReadFile(
+                    handle,
+                    remaining,
+                    (uint)remaining.Length,
+                    out bytesRead,
+                    IntPtr.Zero))
+                {
+                    ThrowLastWin32("Unable to read the exact UTF-8 file", fullPath);
+                }
+                if (bytesRead == 0)
+                {
+                    throw new EndOfStreamException(
+                        "Exact UTF-8 file ended before its reported size: " + fullPath);
+                }
+                if (offset != 0)
+                {
+                    Buffer.BlockCopy(remaining, 0, bytes, offset, (int)bytesRead);
+                }
+                offset += checked((int)bytesRead);
+            }
+            UTF8Encoding encoding = new UTF8Encoding(false, true);
+            return encoding.GetString(bytes);
         }
     }
 
@@ -2432,6 +2594,12 @@ function Get-TicketboxPersistentInstallationIdentityPath([string]$DataRoot) {
         $script:TicketboxPersistentInstallationIdentityName
 }
 
+function Get-TicketboxPendingInstallationIdentityPath([string]$DataRoot) {
+    return Join-Path `
+        (ConvertTo-TicketboxCanonicalPath $DataRoot) `
+        $script:TicketboxPendingInstallationIdentityName
+}
+
 function ConvertTo-TicketboxNumericVersion([string]$Value) {
     if ($Value -notmatch '^[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}(\.[0-9]{1,5})?$') {
         throw "安装身份中的 backend version 不符合三段或四段纯数字契约：$Value"
@@ -2471,18 +2639,233 @@ function Get-TicketboxPortableFileSha256([string]$Path) {
     }
 }
 
-function Read-TicketboxPersistentInstallationIdentity([string]$DataRoot) {
-    $path = Get-TicketboxPersistentInstallationIdentityPath $DataRoot
+function ConvertTo-TicketboxInstalledC07MigrationHelperEvidence(
+    [object]$Evidence
+) {
+    if ($null -eq $Evidence) {
+        throw "已安装 BUILD_PROVENANCE.json 缺少 C07 migration helper 证据。"
+    }
+    $propertyNames = @($Evidence.PSObject.Properties.Name)
+    if (
+        $propertyNames.Count -ne 3 -or
+        "path" -notin $propertyNames -or
+        "size" -notin $propertyNames -or
+        "sha256" -notin $propertyNames
+    ) {
+        throw "已安装 C07 migration helper 证据 shape 无效。"
+    }
+    $relativePath = [string]$Evidence.path
+    if (
+        $relativePath -cne $script:TicketboxC07MigrationHelperRelativePath -or
+        [System.IO.Path]::IsPathRooted($relativePath) -or
+        $relativePath.Contains("\") -or
+        $relativePath.Contains("/") -or
+        $relativePath.Contains(":")
+    ) {
+        throw "已安装 C07 migration helper 证据路径不是 canonical payload-relative path。"
+    }
+    $size = [int64]0
+    if (
+        -not [int64]::TryParse([string]$Evidence.size, [ref]$size) -or
+        $size -lt 1 -or
+        [string]$Evidence.sha256 -cnotmatch "^[0-9a-f]{64}$"
+    ) {
+        throw "已安装 C07 migration helper 证据 size/SHA-256 无效。"
+    }
+    return [pscustomobject][ordered]@{
+        RelativePath = $relativePath
+        Size = $size
+        Sha256 = ([string]$Evidence.sha256).ToUpperInvariant()
+    }
+}
+
+function Resolve-TicketboxInstalledC07MigrationHelperPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][object]$Evidence
+    )
+    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
+    $payloadRoot = ConvertTo-TicketboxCanonicalPath (
+        Join-Path $canonicalInstallDir "program\ticketbox-backend"
+    )
+    if (
+        -not (Test-TicketboxPathWithin $payloadRoot $canonicalInstallDir) -or
+        (Test-TicketboxPathEquals $payloadRoot $canonicalInstallDir)
+    ) {
+        throw "C07 frozen backend payload root 越出安装目录。"
+    }
+    $evidenceProperties = @($Evidence.PSObject.Properties.Name)
+    if (
+        $evidenceProperties.Count -ne 3 -or
+        "RelativePath" -notin $evidenceProperties -or
+        "Size" -notin $evidenceProperties -or
+        "Sha256" -notin $evidenceProperties -or
+        [string]$Evidence.RelativePath -cne
+            $script:TicketboxC07MigrationHelperRelativePath -or
+        [System.IO.Path]::IsPathRooted([string]$Evidence.RelativePath) -or
+        ([string]$Evidence.RelativePath).Contains("\") -or
+        ([string]$Evidence.RelativePath).Contains("/") -or
+        ([string]$Evidence.RelativePath).Contains(":") -or
+        [int64]$Evidence.Size -lt 1 -or
+        [string]$Evidence.Sha256 -cnotmatch "^[0-9A-F]{64}$"
+    ) {
+        throw "C07 migration helper canonical release evidence 无效。"
+    }
+    $helperPath = ConvertTo-TicketboxCanonicalPath (
+        Join-Path $payloadRoot ([string]$Evidence.RelativePath)
+    )
+    if (
+        -not (Test-TicketboxPathWithin $helperPath $payloadRoot) -or
+        (Test-TicketboxPathEquals $helperPath $payloadRoot)
+    ) {
+        throw "C07 migration helper 证据路径逃逸 frozen backend payload root。"
+    }
+    return $helperPath
+}
+
+function Get-TicketboxC07OpenStreamSha256(
+    [Parameter(Mandatory = $true)][System.IO.FileStream]$Stream
+) {
+    $Stream.Position = 0
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return (
+            [BitConverter]::ToString($sha256.ComputeHash($Stream))
+        ).Replace("-", "")
+    }
+    finally {
+        $sha256.Dispose()
+        $Stream.Position = 0
+    }
+}
+
+function Open-TicketboxC07VerifiedMigrationHelperLease {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$ExpectedRelativePath,
+        [Parameter(Mandatory = $true)][int64]$ExpectedSize,
+        [Parameter(Mandatory = $true)][string]$ExpectedSha256
+    )
+    if (
+        $ExpectedRelativePath -cne
+            $script:TicketboxC07MigrationHelperRelativePath -or
+        $ExpectedSize -lt 1 -or
+        $ExpectedSha256 -cnotmatch "^[0-9A-F]{64}$"
+    ) {
+        throw "C07 migration helper lease 的 release evidence 无效。"
+    }
+    $helperPath = [System.IO.Path]::GetFullPath($Path)
+    if ((Get-TicketboxPathEntryKindNoFollow $helperPath) -cne "File") {
+        throw "C07 migration helper 不是 regular file。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $helperPath
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::Open(
+            $helperPath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::Read
+        )
+        if (
+            (Get-TicketboxPathEntryKindNoFollow $helperPath) -cne "File"
+        ) {
+            throw "C07 migration helper 在 lease 获取时发生身份变化。"
+        }
+        Assert-NoTicketboxAncestorReparsePoints $helperPath
+        $sha256 = Get-TicketboxC07OpenStreamSha256 $stream
+        if (
+            [int64]$stream.Length -ne $ExpectedSize -or
+            $sha256 -cne $ExpectedSha256
+        ) {
+            throw "C07 migration helper 与 release size/SHA-256 不一致。"
+        }
+        return [pscustomobject][ordered]@{
+            Path = $helperPath
+            RelativePath = $ExpectedRelativePath
+            Size = [int64]$stream.Length
+            Sha256 = $sha256
+            Stream = $stream
+        }
+    }
+    catch {
+        if ($null -ne $stream) {
+            $stream.Dispose()
+        }
+        throw
+    }
+}
+
+function Assert-TicketboxC07MigrationHelperLeaseUnchanged(
+    [Parameter(Mandatory = $true)][object]$Lease
+) {
+    if (
+        $null -eq $Lease.Stream -or
+        $Lease.Stream.SafeFileHandle.IsClosed -or
+        (Get-TicketboxPathEntryKindNoFollow ([string]$Lease.Path)) -cne "File"
+    ) {
+        throw "C07 migration helper lease 已关闭或路径身份已变化。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints ([string]$Lease.Path)
+    $sha256 = Get-TicketboxC07OpenStreamSha256 $Lease.Stream
+    if (
+        [int64]$Lease.Stream.Length -ne [int64]$Lease.Size -or
+        $sha256 -cne [string]$Lease.Sha256
+    ) {
+        throw "C07 migration helper 在执行窗口内发生字节身份变化。"
+    }
+}
+
+function Close-TicketboxC07MigrationHelperLease(
+    [AllowNull()][object]$Lease
+) {
+    if (
+        $null -ne $Lease -and
+        $null -ne $Lease.Stream -and
+        -not $Lease.Stream.SafeFileHandle.IsClosed
+    ) {
+        $Lease.Stream.Dispose()
+    }
+}
+
+function Read-TicketboxPersistentInstallationIdentity {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [switch]$Pending
+    )
+    $path = if ($Pending) {
+        Get-TicketboxPendingInstallationIdentityPath $DataRoot
+    }
+    else {
+        Get-TicketboxPersistentInstallationIdentityPath $DataRoot
+    }
     Assert-NoTicketboxAncestorReparsePoints $path
     Assert-TicketboxExactFileAcl `
         -Path $path `
         -Accounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
         -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
-    $expectedNames = @(
+    $legacyNames = @(
         "SCHEMA",
         "BACKEND_VERSION_FLOOR",
         "INSTALLATION_ID",
         "BUILD_MANIFEST_SHA256",
+        "DATA_ROOT",
+        "INSTALL_DIR",
+        "PG_SERVICE_NAME",
+        "BACKEND_SERVICE_NAME",
+        "PG_PORT",
+        "BACKEND_PORT"
+    )
+    $currentNames = @(
+        "SCHEMA",
+        "STATE",
+        "OPERATION_ID",
+        "BACKEND_VERSION_FLOOR",
+        "INSTALLATION_ID",
+        "BUILD_MANIFEST_SHA256",
+        "MIGRATION_HELPER_RELATIVE_PATH",
+        "MIGRATION_HELPER_SIZE",
+        "MIGRATION_HELPER_SHA256",
         "DATA_ROOT",
         "INSTALL_DIR",
         "PG_SERVICE_NAME",
@@ -2497,21 +2880,36 @@ function Read-TicketboxPersistentInstallationIdentity([string]$DataRoot) {
         }
         $parts = $rawLine.Split(@("="), 2, [System.StringSplitOptions]::None)
         $name = $parts[0]
-        if ($name -notin $expectedNames -or $values.ContainsKey($name)) {
+        if ($values.ContainsKey($name)) {
             throw "持久安装身份含有未知或重复字段：$name"
         }
         $values[$name] = $parts[1]
     }
-    if ($values.Count -ne $expectedNames.Count) {
-        throw "持久安装身份字段不完整。"
+    if (-not $values.ContainsKey("SCHEMA")) {
+        throw "持久安装身份缺少 SCHEMA。"
+    }
+    $legacyCompleted = (
+        [string]$values.SCHEMA -ceq
+            $script:TicketboxLegacyPersistentInstallationIdentitySchema
+    )
+    $expectedNames = if ($legacyCompleted) { $legacyNames } else { $currentNames }
+    if (
+        -not $legacyCompleted -and
+        [string]$values.SCHEMA -cne
+            $script:TicketboxPersistentInstallationIdentitySchema
+    ) {
+        throw "持久安装身份 schema 不受支持。"
+    }
+    if (
+        $values.Count -ne $expectedNames.Count -or
+        @($values.Keys | Where-Object { $_ -notin $expectedNames }).Count -gt 0
+    ) {
+        throw "持久安装身份字段不完整或含有未知字段。"
     }
     foreach ($name in $expectedNames) {
         if (-not $values.ContainsKey($name) -or [string]::IsNullOrWhiteSpace($values[$name])) {
             throw "持久安装身份缺少字段：$name"
         }
-    }
-    if ($values.SCHEMA -cne $script:TicketboxPersistentInstallationIdentitySchema) {
-        throw "持久安装身份 schema 不受支持。"
     }
     ConvertTo-TicketboxNumericVersion $values.BACKEND_VERSION_FLOOR | Out-Null
     $installationId = [guid]::Empty
@@ -2520,6 +2918,47 @@ function Read-TicketboxPersistentInstallationIdentity([string]$DataRoot) {
     }
     if ($values.BUILD_MANIFEST_SHA256 -cnotmatch '^[0-9A-F]{64}$') {
         throw "持久安装身份 build manifest SHA-256 无效。"
+    }
+    $state = "READY"
+    $operationId = ""
+    $helperRelativePath = ""
+    $helperSize = [int64]0
+    $helperSha256 = ""
+    if (-not $legacyCompleted) {
+        $state = [string]$values.STATE
+        if ($state -cnotin @("PENDING", "READY")) {
+            throw "持久安装身份 state 无效。"
+        }
+        $parsedOperationId = [guid]::Empty
+        if (
+            -not [guid]::TryParseExact(
+                [string]$values.OPERATION_ID,
+                "D",
+                [ref]$parsedOperationId
+            )
+        ) {
+            throw "持久安装身份 operation id 无效。"
+        }
+        $operationId = $parsedOperationId.ToString("D")
+        $helperEvidence =
+            ConvertTo-TicketboxInstalledC07MigrationHelperEvidence (
+                [pscustomobject][ordered]@{
+                    path = [string]$values.MIGRATION_HELPER_RELATIVE_PATH
+                    size = [string]$values.MIGRATION_HELPER_SIZE
+                    sha256 = (
+                        [string]$values.MIGRATION_HELPER_SHA256
+                    ).ToLowerInvariant()
+                }
+            )
+        if (
+            [string]$values.MIGRATION_HELPER_SHA256 -cnotmatch
+                "^[0-9A-F]{64}$"
+        ) {
+            throw "持久安装身份 helper SHA-256 不是 canonical uppercase。"
+        }
+        $helperRelativePath = $helperEvidence.RelativePath
+        $helperSize = [int64]$helperEvidence.Size
+        $helperSha256 = [string]$helperEvidence.Sha256
     }
     $pgPort = 0
     $backendPort = 0
@@ -2534,6 +2973,11 @@ function Read-TicketboxPersistentInstallationIdentity([string]$DataRoot) {
     }
     return [pscustomobject]@{
         Path = $path
+        IsPendingArtifact = [bool]$Pending
+        Schema = [string]$values.SCHEMA
+        State = $state
+        OperationId = $operationId
+        LegacyCompleted = $legacyCompleted
         BackendVersionFloor = [string]$values.BACKEND_VERSION_FLOOR
         InstallationId = $installationId.ToString("D")
         BuildManifestSha256 = [string]$values.BUILD_MANIFEST_SHA256
@@ -2543,6 +2987,9 @@ function Read-TicketboxPersistentInstallationIdentity([string]$DataRoot) {
         BackendServiceName = [string]$values.BACKEND_SERVICE_NAME
         PgPort = $pgPort
         BackendPort = $backendPort
+        MigrationHelperRelativePath = $helperRelativePath
+        MigrationHelperSize = $helperSize
+        MigrationHelperSha256 = $helperSha256
     }
 }
 
@@ -2591,12 +3038,415 @@ function Read-TicketboxInstalledBuildManifest {
     if ($targetMajorDefines.Count -ne 1 -or [string]$targetMajorDefines[0] -cne $expectedDefine) {
         throw "已安装 BUILD_PROVENANCE.json 未绑定唯一且一致的 TargetPgMajor。"
     }
+    $c07MigrationHelper =
+        ConvertTo-TicketboxInstalledC07MigrationHelperEvidence (
+            $manifest.backend.c07_migration_helper
+        )
     return [pscustomobject]@{
         Path = [System.IO.Path]::GetFullPath($Path)
         Manifest = $manifest
         BackendVersion = $backendVersion
         PgMajor = $pgMajor
+        C07MigrationHelper = $c07MigrationHelper
     }
+}
+
+function Get-TicketboxInstallationReleaseCandidate {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
+        [Parameter(Mandatory = $true)][string]$PgServiceName,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName,
+        [Parameter(Mandatory = $true)][string]$BuildManifestPath
+    )
+    if ($PgPort -eq $BackendPort) { throw "持久安装身份端口不能相同。" }
+    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
+    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
+    $expectedManifestPath = ConvertTo-TicketboxCanonicalPath (
+        Join-Path $canonicalInstallDir "installer\BUILD_PROVENANCE.json"
+    )
+    if (
+        -not (
+            Test-TicketboxPathEquals `
+                $BuildManifestPath `
+                $expectedManifestPath
+        )
+    ) {
+        throw "持久安装身份只接受 installed installer BUILD_PROVENANCE.json。"
+    }
+    $buildManifest = Read-TicketboxInstalledBuildManifest $expectedManifestPath
+    $helperEvidence = $buildManifest.C07MigrationHelper
+    $helperPath = Resolve-TicketboxInstalledC07MigrationHelperPath `
+        -InstallDir $canonicalInstallDir `
+        -Evidence $helperEvidence
+    $helperLease = $null
+    try {
+        $helperLease = Open-TicketboxC07VerifiedMigrationHelperLease `
+            -Path $helperPath `
+            -ExpectedRelativePath $helperEvidence.RelativePath `
+            -ExpectedSize $helperEvidence.Size `
+            -ExpectedSha256 $helperEvidence.Sha256
+        $verifiedHelperSize = [int64]$helperLease.Size
+        $verifiedHelperSha256 = [string]$helperLease.Sha256
+    }
+    finally {
+        Close-TicketboxC07MigrationHelperLease $helperLease
+    }
+    return [pscustomobject][ordered]@{
+        BackendVersionFloor = [string]$buildManifest.BackendVersion
+        BuildManifestSha256 =
+            Get-TicketboxPortableFileSha256 $expectedManifestPath
+        DataRoot = $canonicalDataRoot
+        InstallDir = $canonicalInstallDir
+        PgServiceName = $PgServiceName
+        BackendServiceName = $BackendServiceName
+        PgPort = $PgPort
+        BackendPort = $BackendPort
+        MigrationHelperPath = $helperPath
+        MigrationHelperRelativePath = [string]$helperEvidence.RelativePath
+        MigrationHelperSize = $verifiedHelperSize
+        MigrationHelperSha256 = $verifiedHelperSha256
+    }
+}
+
+function Assert-TicketboxInstallationIdentityBaseMatches {
+    param(
+        [Parameter(Mandatory = $true)][object]$Identity,
+        [Parameter(Mandatory = $true)][object]$Candidate
+    )
+    if (
+        -not (Test-TicketboxPathEquals $Identity.DataRoot $Candidate.DataRoot) -or
+        -not (Test-TicketboxPathEquals $Identity.InstallDir $Candidate.InstallDir) -or
+        $Identity.PgServiceName -cne $Candidate.PgServiceName -or
+        $Identity.BackendServiceName -cne $Candidate.BackendServiceName -or
+        $Identity.PgPort -ne $Candidate.PgPort -or
+        $Identity.BackendPort -ne $Candidate.BackendPort
+    ) {
+        throw "持久安装身份与当前 protected install/DataRoot authority 不一致。"
+    }
+    if (
+        (Compare-TicketboxNumericVersion `
+            $Candidate.BackendVersionFloor `
+            $Identity.BackendVersionFloor) -lt 0
+    ) {
+        throw (
+            "拒绝把持久 backend version floor 从 " +
+            "$($Identity.BackendVersionFloor) 降到 " +
+            "$($Candidate.BackendVersionFloor)。"
+        )
+    }
+}
+
+function Test-TicketboxInstallationIdentityReleaseMatches {
+    param(
+        [Parameter(Mandatory = $true)][object]$Identity,
+        [Parameter(Mandatory = $true)][object]$Candidate
+    )
+    if (
+        $Identity.BuildManifestSha256 -cne
+            $Candidate.BuildManifestSha256 -or
+        $Identity.BackendVersionFloor -cne
+            $Candidate.BackendVersionFloor
+    ) {
+        return $false
+    }
+    if ([bool]$Identity.LegacyCompleted) {
+        return $true
+    }
+    return (
+        $Identity.MigrationHelperRelativePath -ceq
+            $Candidate.MigrationHelperRelativePath -and
+        [int64]$Identity.MigrationHelperSize -eq
+            [int64]$Candidate.MigrationHelperSize -and
+        $Identity.MigrationHelperSha256 -ceq
+            $Candidate.MigrationHelperSha256
+    )
+}
+
+function Get-TicketboxPersistentInstallationIdentityText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("PENDING", "READY")][string]$State,
+        [Parameter(Mandatory = $true)][string]$OperationId,
+        [Parameter(Mandatory = $true)][string]$InstallationId,
+        [Parameter(Mandatory = $true)][object]$Candidate
+    )
+    $canonicalOperationId = ([guid]$OperationId).ToString("D")
+    $canonicalInstallationId = ([guid]$InstallationId).ToString("D")
+    return (@(
+        "SCHEMA=$script:TicketboxPersistentInstallationIdentitySchema",
+        "STATE=$State",
+        "OPERATION_ID=$canonicalOperationId",
+        "BACKEND_VERSION_FLOOR=$($Candidate.BackendVersionFloor)",
+        "INSTALLATION_ID=$canonicalInstallationId",
+        "BUILD_MANIFEST_SHA256=$($Candidate.BuildManifestSha256)",
+        "MIGRATION_HELPER_RELATIVE_PATH=$($Candidate.MigrationHelperRelativePath)",
+        "MIGRATION_HELPER_SIZE=$([int64]$Candidate.MigrationHelperSize)",
+        "MIGRATION_HELPER_SHA256=$($Candidate.MigrationHelperSha256)",
+        "DATA_ROOT=$($Candidate.DataRoot)",
+        "INSTALL_DIR=$($Candidate.InstallDir)",
+        "PG_SERVICE_NAME=$($Candidate.PgServiceName)",
+        "BACKEND_SERVICE_NAME=$($Candidate.BackendServiceName)",
+        "PG_PORT=$($Candidate.PgPort)",
+        "BACKEND_PORT=$($Candidate.BackendPort)"
+    ) -join "`r`n") + "`r`n"
+}
+
+function Write-TicketboxInstallationIdentityState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("PENDING", "READY")][string]$State,
+        [Parameter(Mandatory = $true)][string]$OperationId,
+        [Parameter(Mandatory = $true)][string]$InstallationId,
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [switch]$ReplaceExisting
+    )
+    $path = if ($State -ceq "PENDING") {
+        Get-TicketboxPendingInstallationIdentityPath (
+            [string]$Candidate.DataRoot
+        )
+    }
+    else {
+        Get-TicketboxPersistentInstallationIdentityPath (
+            [string]$Candidate.DataRoot
+        )
+    }
+    $text = Get-TicketboxPersistentInstallationIdentityText `
+        -State $State `
+        -OperationId $OperationId `
+        -InstallationId $InstallationId `
+        -Candidate $Candidate
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $path `
+        -Text $text `
+        -FullControlAccounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
+        -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount `
+        -ReplaceExisting:$ReplaceExisting
+    $persisted = Read-TicketboxPersistentInstallationIdentity `
+        -DataRoot ([string]$Candidate.DataRoot) `
+        -Pending:($State -ceq "PENDING")
+    if (
+        $persisted.State -cne $State -or
+        $persisted.OperationId -cne ([guid]$OperationId).ToString("D") -or
+        $persisted.InstallationId -cne
+            ([guid]$InstallationId).ToString("D") -or
+        -not (
+            Test-TicketboxInstallationIdentityReleaseMatches `
+                $persisted `
+                $Candidate
+        )
+    ) {
+        throw "持久安装身份原子写入后的复读不一致。"
+    }
+    return $persisted
+}
+
+function Initialize-TicketboxPendingInstallationIdentity {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
+        [Parameter(Mandatory = $true)][string]$PgServiceName,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName,
+        [Parameter(Mandatory = $true)][string]$BuildManifestPath,
+        [string]$ExpectedOperationId = ""
+    )
+    $candidate = Get-TicketboxInstallationReleaseCandidate `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -PgServiceName $PgServiceName `
+        -BackendServiceName $BackendServiceName `
+        -BuildManifestPath $BuildManifestPath
+    $readyPath =
+        Get-TicketboxPersistentInstallationIdentityPath $candidate.DataRoot
+    $pendingPath =
+        Get-TicketboxPendingInstallationIdentityPath $candidate.DataRoot
+    $ready = $null
+    $pending = $null
+    if (Test-Path -LiteralPath $readyPath) {
+        $ready = Read-TicketboxPersistentInstallationIdentity `
+            -DataRoot $candidate.DataRoot
+        if ($ready.State -cne "READY") {
+            throw "committed installation identity artifact 只能承载 READY 状态。"
+        }
+        Assert-TicketboxInstallationIdentityBaseMatches $ready $candidate
+    }
+    if (Test-Path -LiteralPath $pendingPath) {
+        $pending = Read-TicketboxPersistentInstallationIdentity `
+            -DataRoot $candidate.DataRoot `
+            -Pending
+        if (
+            $pending.State -cne "PENDING" -or
+            [bool]$pending.LegacyCompleted
+        ) {
+            throw "pending installation identity artifact 状态无效。"
+        }
+        Assert-TicketboxInstallationIdentityBaseMatches $pending $candidate
+    }
+    if (
+        $null -ne $ready -and
+        $null -ne $pending -and
+        $ready.InstallationId -cne $pending.InstallationId
+    ) {
+        throw "READY/PENDING installation identity 属于不同 installation。"
+    }
+    $operationId = if ([string]::IsNullOrEmpty($ExpectedOperationId)) {
+        if ($null -ne $pending) {
+            [string]$pending.OperationId
+        }
+        else {
+            [guid]::NewGuid().ToString("D")
+        }
+    }
+    else {
+        ([guid]$ExpectedOperationId).ToString("D")
+    }
+    if ($null -ne $pending) {
+        if (
+            $pending.OperationId -cne $operationId -or
+            -not (
+                Test-TicketboxInstallationIdentityReleaseMatches `
+                    $pending `
+                    $candidate
+            )
+        ) {
+            throw "foreign/mismatched PENDING installation identity 拒绝恢复。"
+        }
+        return $pending
+    }
+    if (
+        $null -ne $ready -and
+        (Test-TicketboxInstallationIdentityReleaseMatches $ready $candidate)
+    ) {
+        return $ready
+    }
+    $installationId = if ($null -eq $ready) {
+        [guid]::NewGuid().ToString("D")
+    }
+    else {
+        [string]$ready.InstallationId
+    }
+    return Write-TicketboxInstallationIdentityState `
+        -State "PENDING" `
+        -OperationId $operationId `
+        -InstallationId $installationId `
+        -Candidate $candidate
+}
+
+function Promote-TicketboxPendingInstallationIdentity {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
+        [Parameter(Mandatory = $true)][string]$PgServiceName,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName,
+        [Parameter(Mandatory = $true)][string]$BuildManifestPath,
+        [string]$ExpectedOperationId = ""
+    )
+    $candidate = Get-TicketboxInstallationReleaseCandidate `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -PgServiceName $PgServiceName `
+        -BackendServiceName $BackendServiceName `
+        -BuildManifestPath $BuildManifestPath
+    $readyPath =
+        Get-TicketboxPersistentInstallationIdentityPath $candidate.DataRoot
+    $pendingPath =
+        Get-TicketboxPendingInstallationIdentityPath $candidate.DataRoot
+    $ready = $null
+    $pending = $null
+    if (Test-Path -LiteralPath $readyPath) {
+        $ready = Read-TicketboxPersistentInstallationIdentity `
+            -DataRoot $candidate.DataRoot
+        if ($ready.State -cne "READY") {
+            throw "committed installation identity artifact 只能承载 READY 状态。"
+        }
+        Assert-TicketboxInstallationIdentityBaseMatches $ready $candidate
+    }
+    if (Test-Path -LiteralPath $pendingPath) {
+        $pending = Read-TicketboxPersistentInstallationIdentity `
+            -DataRoot $candidate.DataRoot `
+            -Pending
+        if (
+            $pending.State -cne "PENDING" -or
+            [bool]$pending.LegacyCompleted
+        ) {
+            throw "CommitCompletedInstall 缺少有效 PENDING identity。"
+        }
+        Assert-TicketboxInstallationIdentityBaseMatches $pending $candidate
+    }
+    if ($null -eq $pending) {
+        if (
+            $null -eq $ready -or
+            -not (
+                Test-TicketboxInstallationIdentityReleaseMatches `
+                    $ready `
+                    $candidate
+            )
+        ) {
+            throw "CommitCompletedInstall 缺少可验证的 PENDING/READY identity。"
+        }
+        if (
+            -not [string]::IsNullOrEmpty($ExpectedOperationId) -and
+            -not [bool]$ready.LegacyCompleted -and
+            $ready.OperationId -cne
+                ([guid]$ExpectedOperationId).ToString("D")
+        ) {
+            throw "CommitCompletedInstall READY operation identity 不一致。"
+        }
+        return $ready
+    }
+    if ([string]::IsNullOrEmpty($ExpectedOperationId)) {
+        throw "CommitCompletedInstall 缺少安装事务绑定的 operation id。"
+    }
+    $canonicalExpectedOperationId =
+        ([guid]$ExpectedOperationId).ToString("D")
+    if (
+        $pending.OperationId -cne $canonicalExpectedOperationId -or
+        -not (
+            Test-TicketboxInstallationIdentityReleaseMatches `
+                $pending `
+                $candidate
+        )
+    ) {
+        throw "CommitCompletedInstall PENDING operation/release identity 不一致。"
+    }
+    if (
+        $null -ne $ready -and
+        $ready.InstallationId -cne $pending.InstallationId
+    ) {
+        throw "CommitCompletedInstall READY/PENDING installation id 冲突。"
+    }
+    $committed = Write-TicketboxInstallationIdentityState `
+        -State "READY" `
+        -OperationId $pending.OperationId `
+        -InstallationId $pending.InstallationId `
+        -Candidate $candidate `
+        -ReplaceExisting:($null -ne $ready)
+    if (
+        $committed.InstallationId -cne $pending.InstallationId -or
+        $committed.OperationId -cne $pending.OperationId -or
+        -not (
+            Test-TicketboxInstallationIdentityReleaseMatches `
+                $committed `
+                $candidate
+        )
+    ) {
+        throw "CommitCompletedInstall READY ACK 复读未收敛到 exact PENDING。"
+    }
+    Remove-TicketboxProtectedUtf8Artifact `
+        -Path $pendingPath `
+        -FullControlAccounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
+        -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
+    return $committed
 }
 
 function Write-TicketboxPersistentInstallationIdentity {
@@ -2609,50 +3459,26 @@ function Write-TicketboxPersistentInstallationIdentity {
         [Parameter(Mandatory = $true)][string]$BackendServiceName,
         [Parameter(Mandatory = $true)][string]$BuildManifestPath
     )
-    if ($PgPort -eq $BackendPort) { throw "持久安装身份端口不能相同。" }
-    $buildManifest = Read-TicketboxInstalledBuildManifest $BuildManifestPath
-    $backendVersion = $buildManifest.BackendVersion
-    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
-    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
-    $path = Get-TicketboxPersistentInstallationIdentityPath $canonicalDataRoot
-    $installationId = [guid]::NewGuid().ToString("D")
-    if (Test-Path -LiteralPath $path -PathType Leaf) {
-        $existing = Read-TicketboxPersistentInstallationIdentity $canonicalDataRoot
-        if (
-            -not (Test-TicketboxPathEquals $existing.DataRoot $canonicalDataRoot) -or
-            -not (Test-TicketboxPathEquals $existing.InstallDir $canonicalInstallDir) -or
-            $existing.PgServiceName -cne $PgServiceName -or
-            $existing.BackendServiceName -cne $BackendServiceName -or
-            $existing.PgPort -ne $PgPort -or
-            $existing.BackendPort -ne $BackendPort
-        ) {
-            throw "持久安装身份与当前 DataRoot 或发布身份不一致。"
-        }
-        if ((Compare-TicketboxNumericVersion $backendVersion $existing.BackendVersionFloor) -lt 0) {
-            throw "拒绝把持久 backend version floor 从 $($existing.BackendVersionFloor) 降到 $backendVersion。"
-        }
-        $installationId = $existing.InstallationId
+    $pending = Initialize-TicketboxPendingInstallationIdentity `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -PgServiceName $PgServiceName `
+        -BackendServiceName $BackendServiceName `
+        -BuildManifestPath $BuildManifestPath
+    if ($pending.State -ceq "READY") {
+        return $pending
     }
-    $manifestSha256 = Get-TicketboxPortableFileSha256 $BuildManifestPath
-    $text = @(
-        "SCHEMA=$script:TicketboxPersistentInstallationIdentitySchema",
-        "BACKEND_VERSION_FLOOR=$backendVersion",
-        "INSTALLATION_ID=$installationId",
-        "BUILD_MANIFEST_SHA256=$manifestSha256",
-        "DATA_ROOT=$canonicalDataRoot",
-        "INSTALL_DIR=$canonicalInstallDir",
-        "PG_SERVICE_NAME=$PgServiceName",
-        "BACKEND_SERVICE_NAME=$BackendServiceName",
-        "PG_PORT=$PgPort",
-        "BACKEND_PORT=$BackendPort"
-    ) -join "`r`n"
-    Write-TicketboxProtectedUtf8FileDurable `
-        -Path $path `
-        -Text ($text + "`r`n") `
-        -FullControlAccounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
-        -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount `
-        -ReplaceExisting:(Test-Path -LiteralPath $path)
-    return Read-TicketboxPersistentInstallationIdentity $canonicalDataRoot
+    return Promote-TicketboxPendingInstallationIdentity `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -PgServiceName $PgServiceName `
+        -BackendServiceName $BackendServiceName `
+        -BuildManifestPath $BuildManifestPath `
+        -ExpectedOperationId $pending.OperationId
 }
 
 function Assert-TicketboxRegisteredDataRootBinding {

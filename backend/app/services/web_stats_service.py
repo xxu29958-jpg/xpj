@@ -18,6 +18,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuthToken, Device, Expense, LedgerMember
+from app.money_contract import projection_sum_to_int
+from app.services.currency_common import (
+    home_currency_code,
+    minor_amount_major_number,
+    minor_amount_value,
+)
 from app.services.data_quality_service import is_usable_pending_merchant
 from app.services.expense_service import NOTIFICATION_DRAFT_SOURCE_PREFIX
 from app.services.spending_contract_service import (
@@ -78,7 +84,12 @@ def sidebar_counts(db: Session, ledger_id: str) -> tuple[int, int]:
     return pending_count, suspected_count
 
 
-def trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
+def trend14_amounts(
+    db: Session,
+    ledger_id: str,
+    *,
+    currency_code: str | None = None,
+) -> list[dict]:
     """近 14 个日历日（含今天）的每日确认金额，按 expense_time/confirmed_at 聚合。"""
     zone = _web_stats_zone()
     today = now_utc().astimezone(zone).date()
@@ -100,20 +111,36 @@ def trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
         when = stat_time(expense)
         if when is None or expense.amount_cents is None:
             continue
-        by_day[when.astimezone(zone).strftime("%m-%d")] += int(expense.amount_cents)
+        key = when.astimezone(zone).strftime("%m-%d")
+        by_day[key] = projection_sum_to_int(
+            by_day[key]
+            + projection_sum_to_int(
+                expense.amount_cents,
+                label="web_stats.trend_expense",
+            ),
+            label="web_stats.trend_day",
+        )
+    home = currency_code or home_currency_code()
     result: list[dict] = []
     for i in range(14):
         d = start + timedelta(days=i)
         label = d.strftime("%m-%d")
         result.append({
             "d": label,
-            "amount_yuan": by_day.get(label, 0) / 100.0,
+            "amount_yuan": minor_amount_major_number(by_day.get(label, 0), home),
             "amount_cents": by_day.get(label, 0),
+            "amount_major_text": minor_amount_value(by_day.get(label, 0), home),
         })
     return result
 
 
-def confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
+def confirmed_by_day(
+    db: Session,
+    ledger_id: str,
+    month: str,
+    *,
+    currency_code: str | None = None,
+) -> list[dict]:
     """已确认账单在指定月内的每日金额，用于日历热力图。"""
     month = _clean_month_filter(month)
     zone = _web_stats_zone()
@@ -133,13 +160,24 @@ def confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
         if when is None or expense.amount_cents is None:
             continue
         key = when.astimezone(zone).date().isoformat()
-        by_day[key]["amount_cents"] += int(expense.amount_cents)
+        by_day[key]["amount_cents"] = projection_sum_to_int(
+            by_day[key]["amount_cents"]
+            + projection_sum_to_int(
+                expense.amount_cents,
+                label="web_stats.calendar_expense",
+            ),
+            label="web_stats.calendar_day",
+        )
         by_day[key]["count"] += 1
+    home = currency_code or home_currency_code()
     return [
         {
             "date": day,
             "amount_cents": values["amount_cents"],
-            "amount_yuan": values["amount_cents"] / 100.0,
+            "amount_yuan": minor_amount_major_number(
+                values["amount_cents"],
+                home,
+            ),
             "count": values["count"],
         }
         for day, values in sorted(by_day.items())
@@ -173,7 +211,7 @@ def source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dic
         {
             "label": label,
             "count": count,
-            "percent": int(round(count / total * 100)),
+            "percent": (count * 100 + total // 2) // total,
         }
         for label, count in sorted(by_label.items(), key=lambda kv: -kv[1])
     ]

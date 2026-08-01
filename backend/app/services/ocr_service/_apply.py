@@ -11,11 +11,15 @@ from app.config import get_settings
 from app.errors import AppError
 from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import Expense
+from app.money_contract import (
+    MoneySign,
+    ensure_optional_money_minor,
+)
 from app.services.category_service import normalize_category
-from app.services.currency_common import home_currency_code, minor_unit_digits
+from app.services.currency_common import minor_unit_digits
 from app.services.exchange_rate_service import default_rate_date
 from app.services.ocr_service._draft_fields import _write_ocr_draft_fields, ocr_draft_fields
-from app.services.ocr_service._merge import _best_confidence, _merge_result_with_text_parse
+from app.services.ocr_service._merge import _best_confidence, _safe_category
 from app.services.ocr_service._models import (
     OcrExtraction,
     OcrFactSnapshot,
@@ -23,6 +27,7 @@ from app.services.ocr_service._models import (
     OcrResult,
 )
 from app.services.ocr_service._providers import get_ocr_provider
+from app.services.receipt_parse_common import ParsedReceipt
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.time_service import ensure_utc
 
@@ -33,6 +38,106 @@ _AUTO_OCR_FAILURES = (AppError, ImportError, OSError, RuntimeError, ValueError, 
 
 class OcrApplyContractError(RuntimeError):
     """OCR draft application would break the required fact-and-mirror pairing."""
+
+
+def _explicit_money_context(
+    currency_code: str | None,
+) -> tuple[str, int] | None:
+    code = (currency_code or "").strip().upper()
+    if not code:
+        return None
+    try:
+        return code, minor_unit_digits(code)
+    except AppError:
+        return None
+
+
+def _expense_ocr_source_money_context(
+    expense: Expense,
+) -> tuple[str, int] | None:
+    """Return the frozen original-currency context for receipt text."""
+
+    return _explicit_money_context(expense.original_currency_code)
+
+
+def _expense_ocr_materialization_money_context(
+    expense: Expense,
+) -> tuple[str, int] | None:
+    """Return the context that may directly update home minor units.
+
+    OCR supplies no authoritative FX rate. A parsed original-currency amount
+    is therefore materializable only when the frozen original and home
+    currencies are both explicit, supported, and identical.
+    """
+
+    source_context = _expense_ocr_source_money_context(expense)
+    home_context = _explicit_money_context(expense.home_currency_code)
+    if source_context is None or home_context is None:
+        return None
+    return home_context if source_context == home_context else None
+
+
+def _validated_ocr_amount(value: object | None, *, label: str) -> int | None:
+    try:
+        return ensure_optional_money_minor(
+            value,
+            sign=MoneySign.POSITIVE,
+            label=label,
+        )
+    except (AppError, TypeError, ValueError):
+        return None
+
+
+def _merge_result_with_explicit_parse(
+    result: OcrResult,
+    parsed: ParsedReceipt,
+) -> OcrResult:
+    """Merge only money corroborated under one explicit currency exponent."""
+
+    provider_amount = _validated_ocr_amount(
+        result.amount_cents,
+        label="ocr.provider_amount_cents",
+    )
+    parsed_amount = _validated_ocr_amount(
+        parsed.amount_cents,
+        label="ocr.parsed_amount_cents",
+    )
+    if provider_amount is None:
+        merged_amount = parsed_amount
+    elif parsed_amount is not None and provider_amount == parsed_amount:
+        merged_amount = provider_amount
+    else:
+        merged_amount = None
+    return OcrResult(
+        raw_text=result.raw_text,
+        confidence=_best_confidence(result.confidence, parsed.confidence),
+        amount_cents=merged_amount,
+        merchant=result.merchant or parsed.merchant,
+        expense_time=result.expense_time or parsed.expense_time,
+        category=_safe_category(result.category) or _safe_category(parsed.category),
+    )
+
+
+def _parse_and_merge_for_expense(
+    expense: Expense,
+    result: OcrResult,
+    *,
+    timezone_name: str | None,
+) -> tuple[ParsedReceipt, OcrResult, tuple[str, int] | None]:
+    source_context = _expense_ocr_source_money_context(expense)
+    currency_code = source_context[0] if source_context is not None else None
+    minor_unit_exponent = source_context[1] if source_context is not None else None
+    parsed = parse_receipt_text(
+        result.raw_text,
+        timezone_name=timezone_name,
+        currency_code=currency_code,
+        minor_unit_exponent=minor_unit_exponent,
+    )
+    return (
+        parsed,
+        _merge_result_with_explicit_parse(result, parsed),
+        _expense_ocr_materialization_money_context(expense),
+    )
 
 
 def extract_ocr_result(
@@ -75,6 +180,9 @@ def collect_auto_ocr_extractions(
 
         draft = Expense(
             amount_cents=expense.amount_cents,
+            home_currency_code=expense.home_currency_code,
+            original_currency_code=expense.original_currency_code,
+            original_amount_minor=expense.original_amount_minor,
             merchant=expense.merchant,
             category=expense.category,
             raw_text=expense.raw_text,
@@ -95,6 +203,7 @@ def collect_auto_ocr_extractions(
             if _fallback_confidence_is_not_worse(
                 primary_result,
                 fallback_result,
+                expense=expense,
                 timezone_name=timezone_name,
             ):
                 results.append(
@@ -145,6 +254,59 @@ def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | N
     )
 
 
+def _apply_ocr_candidate_fields(
+    expense: Expense,
+    merged: OcrResult,
+    *,
+    merged_amount: int | None,
+    materialization_context: tuple[str, int] | None,
+    draft_fields: set[str],
+) -> set[str]:
+    applied_fields: set[str] = set()
+    if (
+        materialization_context is not None
+        and _can_apply_ocr_field(
+            "amount_cents",
+            draft_fields,
+            expense.amount_cents is None,
+        )
+        and merged_amount is not None
+    ):
+        expense.amount_cents = merged_amount
+        applied_fields.add("amount_cents")
+    if _can_apply_ocr_field("merchant", draft_fields, not (expense.merchant or "").strip()) and merged.merchant:
+        expense.merchant = merged.merchant
+        applied_fields.add("merchant")
+    if (
+        _can_apply_ocr_field("expense_time", draft_fields, expense.expense_time is None)
+        and merged.expense_time is not None
+    ):
+        expense.expense_time = ensure_utc(merged.expense_time)
+        applied_fields.add("expense_time")
+    if (
+        _can_apply_ocr_field("category", draft_fields, normalize_category(expense.category) == "其他")
+        and merged.category
+    ):
+        expense.category = normalize_category(merged.category)
+        applied_fields.add("category")
+    return applied_fields
+
+
+def _apply_ocr_home_snapshot(
+    expense: Expense,
+    materialization_context: tuple[str, int] | None,
+) -> None:
+    frozen_home = materialization_context[0] if materialization_context is not None else None
+    if expense.amount_cents is None or frozen_home is None:
+        return
+    expense.original_amount_minor = expense.amount_cents
+    expense.exchange_rate_to_cny = Decimal("1")
+    expense.exchange_rate_date = default_rate_date(expense.expense_time)
+    expense.exchange_rate_source = FX_SOURCE_BASE
+    expense.home_currency_code = frozen_home
+    expense.fx_status = FX_STATUS_READY
+
+
 def _apply_ocr_result_to_expense(
     expense: Expense,
     result: OcrResult,
@@ -157,10 +319,16 @@ def _apply_ocr_result_to_expense(
     if not allow_session_bound:
         _ensure_ocr_apply_is_not_session_bound(expense)
 
-    parsed = parse_receipt_text(result.raw_text, timezone_name=timezone_name)
-    merged = _merge_result_with_text_parse(result, parsed_confidence=parsed.confidence, timezone_name=timezone_name)
+    parsed, merged, materialization_context = _parse_and_merge_for_expense(
+        expense,
+        result,
+        timezone_name=timezone_name,
+    )
+    merged_amount = _validated_ocr_amount(
+        merged.amount_cents,
+        label="ocr.merged_amount_cents",
+    )
     draft_fields = ocr_draft_fields(expense)
-    applied_fields: set[str] = set()
 
     # v1.2 OCR single-source migration: ``ocr_facts`` is the source
     # of truth for OCR text. The API response assembler now reads
@@ -179,37 +347,14 @@ def _apply_ocr_result_to_expense(
     if merged.raw_text:
         expense.raw_text = merged.raw_text
     expense.confidence = _best_confidence(merged.confidence, parsed.confidence, expense.confidence)
-    if (
-        _can_apply_ocr_field("amount_cents", draft_fields, expense.amount_cents is None)
-        and merged.amount_cents is not None
-        and merged.amount_cents > 0
-    ):
-        expense.amount_cents = merged.amount_cents
-        applied_fields.add("amount_cents")
-    if _can_apply_ocr_field("merchant", draft_fields, not (expense.merchant or "").strip()) and merged.merchant:
-        expense.merchant = merged.merchant
-        applied_fields.add("merchant")
-    if (
-        _can_apply_ocr_field("expense_time", draft_fields, expense.expense_time is None)
-        and merged.expense_time is not None
-    ):
-        expense.expense_time = ensure_utc(merged.expense_time)
-        applied_fields.add("expense_time")
-    if (
-        _can_apply_ocr_field("category", draft_fields, normalize_category(expense.category) == "其他")
-        and merged.category
-    ):
-        expense.category = normalize_category(merged.category)
-        applied_fields.add("category")
-    frozen_home = (expense.home_currency_code or home_currency_code()).strip().upper()
-    minor_unit_digits(frozen_home)
-    if expense.amount_cents is not None and expense.original_currency_code == frozen_home:
-        expense.original_amount_minor = expense.amount_cents
-        expense.exchange_rate_to_cny = Decimal("1")
-        expense.exchange_rate_date = default_rate_date(expense.expense_time)
-        expense.exchange_rate_source = FX_SOURCE_BASE
-        expense.home_currency_code = frozen_home
-        expense.fx_status = FX_STATUS_READY
+    applied_fields = _apply_ocr_candidate_fields(
+        expense,
+        merged,
+        merged_amount=merged_amount,
+        materialization_context=materialization_context,
+        draft_fields=draft_fields,
+    )
+    _apply_ocr_home_snapshot(expense, materialization_context)
     if applied_fields:
         _write_ocr_draft_fields(expense, draft_fields.union(applied_fields))
 
@@ -241,39 +386,67 @@ def _needs_fallback(expense: Expense) -> bool:
 def _fallback_confidence_is_not_worse(
     primary_result: OcrResult,
     fallback_result: OcrResult,
+    *,
+    expense: Expense,
     timezone_name: str | None = None,
 ) -> bool:
     return (
-        _effective_ocr_confidence(fallback_result, timezone_name=timezone_name)
-        >= _effective_ocr_confidence(primary_result, timezone_name=timezone_name)
+        _effective_ocr_confidence(
+            fallback_result,
+            expense=expense,
+            timezone_name=timezone_name,
+        )
+        >= _effective_ocr_confidence(
+            primary_result,
+            expense=expense,
+            timezone_name=timezone_name,
+        )
     )
 
 
-def _effective_ocr_confidence(result: OcrResult, timezone_name: str | None = None) -> float:
-    parsed = parse_receipt_text(result.raw_text, timezone_name=timezone_name)
-    merged = _merge_result_with_text_parse(
-        result, parsed_confidence=parsed.confidence, timezone_name=timezone_name
+def _effective_ocr_confidence(
+    result: OcrResult,
+    *,
+    expense: Expense,
+    timezone_name: str | None = None,
+) -> float:
+    parsed, merged, _materialization_context = _parse_and_merge_for_expense(
+        expense,
+        result,
+        timezone_name=timezone_name,
     )
     return _best_confidence(merged.confidence, parsed.confidence, result.confidence) or 0.0
 
 
 def ocr_fact_snapshot(
-    result: OcrResult, timezone_name: str | None = None
+    result: OcrResult,
+    *,
+    expense: Expense,
+    timezone_name: str | None = None,
 ) -> OcrFactSnapshot:
     """Build the append-only fact snapshot from the extraction itself.
 
-    This intentionally does not inspect the mutable ``Expense`` row:
-    OCR facts describe what the OCR/text pipeline produced, even if a
-    field is not allowed to overwrite a user-edited draft value.
+    The Expense contributes only its frozen money context. OCR facts still
+    describe what the extraction produced, even if a field is not allowed to
+    overwrite a user-edited draft value.
     """
 
-    parsed = parse_receipt_text(result.raw_text, timezone_name=timezone_name)
-    merged = _merge_result_with_text_parse(
-        result, parsed_confidence=parsed.confidence, timezone_name=timezone_name
+    parsed, merged, materialization_context = _parse_and_merge_for_expense(
+        expense,
+        result,
+        timezone_name=timezone_name,
+    )
+    parsed_amount = (
+        _validated_ocr_amount(
+            merged.amount_cents,
+            label="ocr_fact.parsed_amount_cents",
+        )
+        if materialization_context is not None
+        else None
     )
     return OcrFactSnapshot(
         raw_text=merged.raw_text,
-        parsed_amount_cents=merged.amount_cents,
+        parsed_amount_cents=parsed_amount,
         parsed_merchant=merged.merchant,
         parsed_category=normalize_category(merged.category) if merged.category else None,
         parsed_expense_time=ensure_utc(merged.expense_time),

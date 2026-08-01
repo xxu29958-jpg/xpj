@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._money import NonNegativeMoneyMinor
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -47,9 +48,9 @@ class CsvImportRowResponse(BaseModel):
     status: str
     error_code: str | None
     error_message: str | None
-    amount_cents: int | None
+    amount_cents: NonNegativeMoneyMinor | None
     original_currency_code: str | None
-    original_amount_minor: int | None
+    original_amount_minor: NonNegativeMoneyMinor | None
     exchange_rate_to_cny: Decimal | None
     exchange_rate_date: date | None
     exchange_rate_source: str | None

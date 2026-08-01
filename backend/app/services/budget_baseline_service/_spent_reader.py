@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.money_contract import projection_sum_to_int
 from app.services.spending_contract_service import confirmed_amount_query
 
 
@@ -29,4 +30,8 @@ def total_confirmed_spent_cents(
     total = db.scalar(
         select(func.coalesce(func.sum(filtered.c.amount_cents), 0)).select_from(filtered)
     )
-    return int(total or 0)
+    return projection_sum_to_int(
+        total,
+        label="budget_baseline.confirmed_spent",
+        empty_is_zero=True,
+    )

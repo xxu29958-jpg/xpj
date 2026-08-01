@@ -66,7 +66,19 @@ class StatsScreenRecentEvidenceTest {
         assertEquals("2026-06", comparison.previousMonth)
         assertEquals(8_000L, comparison.previousAmountCents)
         assertEquals(4_000L, comparison.deltaAmountCents)
-        assertEquals(50, comparison.percentChange)
+        assertEquals(50L, comparison.percentChange)
+
+        val aggregateBoundary = overviewMonthComparison(
+            state.copy(
+                reportsOverview = reportsOverview(
+                    totalAmountCents = 9_007_199_254_740_991L,
+                    previousTotalAmountCents = 1L,
+                    previousCount = 1,
+                ),
+            ),
+        )
+        requireNotNull(aggregateBoundary)
+        assertEquals(900_719_925_474_099_000L, aggregateBoundary.percentChange)
     }
 
     @Test

@@ -21,6 +21,8 @@ from app.routes.web_common import (
     parse_form_row_version_token,
 )
 from app.schemas import ExpenseItemReplaceRequest
+from app.services.currency_common import home_currency_code
+from app.services.expense_service import get_expense
 from app.services.receipt_item_service import (
     acknowledge_items_sum_mismatch,
     replace_expense_items,
@@ -54,7 +56,13 @@ def web_items_save(
         error = "页面已过期，请刷新后重新保存明细。"
     try:
         if error is None:
+            expense = get_expense(db, expense_id, selected_id)
+            record_currency = (
+                expense.home_currency_code
+                or home_currency_code()
+            )
             payload = item_replace_payload(
+                currency_code=record_currency,
                 expected_row_version=parsed_row_version,
                 item_name=item_name,
                 item_kind=item_kind,

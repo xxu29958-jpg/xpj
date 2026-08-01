@@ -38,7 +38,14 @@ class BudgetProgressStatusTest {
         )
 
         assertEquals(BudgetProgressStatus.Progress, budget.toBudgetProgressStatus())
-        assertNotNull(budget.toBudgetProgress())
+        assertEquals(25L, assertNotNull(budget.toBudgetProgress()).percent)
+        val aggregateBoundary = budgetMonthly(
+            configured = true,
+            totalAmountCents = 1L,
+            spentAmountCents = 9_007_199_254_740_991L,
+        )
+        assertEquals(900_719_925_474_099_100L, aggregateBoundary.spentPercent)
+        assertEquals(aggregateBoundary.spentPercent, assertNotNull(aggregateBoundary.toBudgetProgress()).percent)
     }
 }
 

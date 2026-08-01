@@ -28,6 +28,24 @@ class PaymentNotificationParserTest {
         assertEquals(2580L, draft.amountCents)
         assertEquals("星巴克", draft.merchant)
         assertEquals("2026-05-13T08:00:00Z", draft.expenseTime)
+
+        val exactTrailingZero = expenseOf(
+            snapshot(
+                packageName = "com.tencent.mm",
+                title = "微信支付",
+                text = "你已成功付款给 星巴克 ¥1.230",
+            ),
+        )
+        assertEquals(123L, exactTrailingZero?.amountCents)
+        assertNull(
+            PaymentNotificationParser.parse(
+                snapshot(
+                    packageName = "com.tencent.mm",
+                    title = "微信支付",
+                    text = "你已成功付款给 星巴克 ¥10.004",
+                ),
+            ),
+        )
     }
 
     @Test

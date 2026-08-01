@@ -25,6 +25,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     Float,
@@ -38,6 +39,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 
 OCR_PROVIDER_VALUES = (
@@ -62,6 +64,7 @@ class OcrFact(Base):
 
     __tablename__ = "ocr_facts"
     __table_args__ = (
+        *money_check_constraints_for_table("ocr_facts"),
         CheckConstraint(
             "ocr_provider IN ("
             "'empty', 'mock', 'rapidocr', 'local_llm', "
@@ -112,7 +115,7 @@ class OcrFact(Base):
     ocr_provider: Mapped[str] = mapped_column(String(64), nullable=False)
     ocr_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    parsed_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parsed_amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     parsed_merchant: Mapped[str | None] = mapped_column(String(255), nullable=True)
     parsed_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
     parsed_expense_time: Mapped[datetime | None] = mapped_column(

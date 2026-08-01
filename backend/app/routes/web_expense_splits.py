@@ -18,6 +18,8 @@ from app.routes.web_common import (
     parse_form_row_version_token,
 )
 from app.schemas import ExpenseSplitReplaceRequest
+from app.services.currency_common import home_currency_code
+from app.services.expense_service import get_expense
 from app.services.expense_split_service import replace_expense_splits
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -45,7 +47,13 @@ def web_splits_save(
         error = "页面已过期，请刷新后重新保存拆账。"
     try:
         if error is None:
+            expense = get_expense(db, expense_id, selected_id)
+            record_currency = (
+                expense.home_currency_code
+                or home_currency_code()
+            )
             payload = split_replace_payload(
+                currency_code=record_currency,
                 expected_row_version=parsed_row_version,
                 split_member_id=split_member_id,
                 split_amount_yuan=split_amount_yuan,

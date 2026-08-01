@@ -50,6 +50,8 @@ ERROR_MESSAGES = {
     "expense_not_found": "没有找到这笔账单。",
     "amount_required": "请先填写金额。",
     "amount_invalid": "金额格式不正确。",
+    "money_projection_out_of_range": "金额计算结果超出支持范围，请检查相关记录后再试。",
+    "money_fold_conflict": "当前金额无法安全汇总，请刷新数据后再试。",
     "currency_not_supported": "暂不支持这个币种。",
     "currency_binding_drift": "服务端币种配置与账本已有记录的币种不一致，已停止写入；请检查服务端币种配置后再试。",
     "currency_binding_unresolved": "账本里还有早期人民币口径的计划/预算/周期数据，当前币种配置无法判定它们的单位，已停止写入；请先把服务端币种配置改回人民币，或联系维护者迁移后再切换。",
@@ -57,6 +59,7 @@ ERROR_MESSAGES = {
     "notification_draft_currency_unsupported": "通知捕获目前只支持人民币账本：通知金额按人民币分解析，暂不能入账到其它币种的账本。",
     "exchange_rate_required": "请先填写这一天的汇率。",
     "exchange_rate_invalid": "汇率格式不正确。",
+    "exchange_rate_out_of_range": "汇率超出支持范围，请调整后再试。",
     "exchange_rate_base_currency": "人民币是基准币种，不需要维护汇率。",
     "image_not_found": "图片不存在或已被清理。",
     "ocr_not_configured": "图片识别功能还没开启，请联系服务拥有者在电脑端开启后再试。",
@@ -352,12 +355,22 @@ async def app_error_handler(request: Request, exc: AppError) -> Response:
     )
 
 
-async def validation_error_handler(request: Request, __: RequestValidationError) -> Response:
+def _validation_error_code(exc: RequestValidationError) -> str:
+    errors = exc.errors()
+    if errors and all(
+        error.get("type") == "split_amount_invalid" for error in errors
+    ):
+        return "split_amount_invalid"
+    return "invalid_request"
+
+
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> Response:
     if _wants_html_error_page(request):
         return html_error_response(request, 422)
+    error_code = _validation_error_code(exc)
     return error_response(
-        "invalid_request",
-        ERROR_MESSAGES["invalid_request"],
+        error_code,
+        ERROR_MESSAGES[error_code],
         422,
         request_id=_request_id(request),
     )

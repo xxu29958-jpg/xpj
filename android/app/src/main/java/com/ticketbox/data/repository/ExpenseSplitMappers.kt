@@ -33,8 +33,8 @@ fun ExpenseSplitDraft.toRequest(): ExpenseSplitRequestDto {
     if (memberId <= 0L) {
         throw RepositoryException("请选择拆账成员。")
     }
-    if (amountCents < 0L) {
-        throw RepositoryException("拆账金额不能为负数。")
+    if (amountCents <= 0L) {
+        throw RepositoryException("拆账金额必须大于 0。")
     }
     return ExpenseSplitRequestDto(
         memberId = memberId,

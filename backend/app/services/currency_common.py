@@ -24,10 +24,18 @@ from app.fx_constants import (
     CURRENCY_SYMBOLS,
     DEFAULT_SUPPORTED_CURRENCY_CODES,
 )
+from app.money_carrier import parse_canonical_major_decimal
+from app.money_contract import (
+    MoneySign,
+    ensure_money_minor,
+    projection_sum_to_int,
+    round_minor_ratio_half_up,
+)
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "MAX_STORED_EXCHANGE_RATE",
     "RATE_QUANT",
     "average_minor_amount",
     "currency_input_metadata",
@@ -45,18 +53,24 @@ __all__ = [
 ]
 
 RATE_QUANT = Decimal("0.00000001")
+MAX_STORED_EXCHANGE_RATE = Decimal("9999999999.99999999")
 
 
 def average_minor_amount(total_minor: int, count: int) -> int:
     """Return a financial half-up average at the integer-minor boundary."""
 
+    if type(count) is not int:
+        raise TypeError("count must be an exact int")
     if count <= 0:
         return 0
-    return int(
-        (Decimal(int(total_minor)) / Decimal(int(count))).quantize(
-            Decimal("1"),
-            rounding=ROUND_HALF_UP,
-        )
+    total = projection_sum_to_int(
+        total_minor,
+        label="currency.average_total",
+    )
+    return round_minor_ratio_half_up(
+        total,
+        count,
+        label="currency.average",
     )
 
 
@@ -156,10 +170,14 @@ def minor_amount_value(amount_minor: int | None, currency_code: str | None) -> s
 
     if amount_minor is None:
         return ""
+    amount = projection_sum_to_int(
+        amount_minor,
+        label="currency.minor_amount_value",
+    )
     digits = minor_unit_digits(currency_code)
     scale = 10**digits
-    sign = "-" if int(amount_minor) < 0 else ""
-    whole, fraction = divmod(abs(int(amount_minor)), scale)
+    sign = "-" if amount < 0 else ""
+    whole, fraction = divmod(abs(amount), scale)
     if digits == 0:
         return f"{sign}{whole}"
     return f"{sign}{whole}.{fraction:0{digits}d}"
@@ -170,10 +188,14 @@ def minor_amount_label(amount_minor: int | None, currency_code: str | None) -> s
 
     if amount_minor is None:
         return ""
+    amount = projection_sum_to_int(
+        amount_minor,
+        label="currency.minor_amount_label",
+    )
     digits = minor_unit_digits(currency_code)
     scale = 10**digits
-    sign = "-" if int(amount_minor) < 0 else ""
-    whole, fraction = divmod(abs(int(amount_minor)), scale)
+    sign = "-" if amount < 0 else ""
+    whole, fraction = divmod(abs(amount), scale)
     suffix = "" if digits == 0 else f".{fraction:0{digits}d}"
     return f"{sign}{currency_symbol(currency_code)}{whole:,}{suffix}"
 
@@ -190,14 +212,19 @@ def minor_amount_major_number(
 
     if amount_minor is None:
         return None
+    amount = projection_sum_to_int(
+        amount_minor,
+        label="currency.minor_amount_major_geometry",
+    )
     digits = minor_unit_digits(currency_code)
     if digits == 0:
-        return int(amount_minor)
-    return int(amount_minor) / (10**digits)
+        return amount
+    # Geometry-only scalar. User-visible text must use minor_amount_value/label.
+    return float(Decimal(amount) / (Decimal(10) ** digits))
 
 
 def major_amount_to_minor(
-    value: Decimal | str | int | float | None,
+    value: Decimal | str | int | None,
     currency_code: str | None,
     *,
     allow_negative: bool = False,
@@ -207,11 +234,12 @@ def major_amount_to_minor(
     if value is None:
         return None
     try:
-        amount = Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError) as exc:
+        amount = parse_canonical_major_decimal(
+            value,
+            allow_negative=allow_negative,
+        )
+    except ValueError as exc:
         raise AppError("amount_invalid", status_code=422) from exc
-    if not amount.is_finite() or (amount < 0 and not allow_negative):
-        raise AppError("amount_invalid", status_code=422)
     digits = minor_unit_digits(currency_code)
     quant = Decimal(1).scaleb(-digits)
     try:
@@ -221,7 +249,11 @@ def major_amount_to_minor(
     if exact != amount:
         raise AppError("amount_invalid", status_code=422)
     scale = Decimal(10) ** digits
-    return int(exact * scale)
+    return ensure_money_minor(
+        int(exact * scale),
+        sign=MoneySign.SIGNED if allow_negative else MoneySign.NONNEGATIVE,
+        label="currency_common.major_amount_to_minor",
+    )
 
 
 def supported_currency_codes() -> set[str]:
@@ -247,13 +279,22 @@ def normalize_currency_code(value: str | None) -> str:
     return code
 
 
-def format_decimal_rate(value: Decimal | None) -> Decimal | None:
+def format_decimal_rate(
+    value: Decimal | str | int | None,
+) -> Decimal | None:
+    """Validate an exact rate carrier and quantize it for NUMERIC(18, 8)."""
+
     if value is None:
         return None
     try:
-        rate = Decimal(str(value)).quantize(RATE_QUANT, rounding=ROUND_HALF_UP)
+        exact = parse_canonical_major_decimal(value)
+        rate = exact.quantize(RATE_QUANT, rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError) as exc:
         raise AppError("exchange_rate_invalid", status_code=422) from exc
     if rate <= 0:
         raise AppError("exchange_rate_invalid", status_code=422)
+    if rate != exact:
+        raise AppError("exchange_rate_invalid", status_code=422)
+    if rate > MAX_STORED_EXCHANGE_RATE:
+        raise AppError("exchange_rate_out_of_range", status_code=422)
     return rate

@@ -7,6 +7,7 @@ from api_contract_helpers import web_confirm_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
 from app.models import Expense, LedgerMember
@@ -29,12 +30,19 @@ def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_web_require_local, None)
 
 
-def _seed_pending_expense(*, amount_cents: int = 1234) -> int:
+def _seed_pending_expense(
+    *,
+    amount_cents: int = 1234,
+    currency_code: str = "CNY",
+) -> int:
     with SessionLocal() as db:
         now = now_utc()
         expense = Expense(
             tenant_id="owner",
             amount_cents=amount_cents,
+            home_currency_code=currency_code,
+            original_currency_code=currency_code,
+            original_amount_minor=amount_cents,
             merchant="家庭超市",
             category="生活",
             note="周末采购",
@@ -192,6 +200,79 @@ def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestCl
     api_splits = web_client.get(f"/api/expenses/{expense_id}/splits", headers=identity.app_headers)
     assert api_splits.status_code == 200, api_splits.json()
     assert api_splits.json()["splits_total_amount_cents"] == 1234
+
+
+def test_web_detail_money_posts_use_record_currency_after_env_drift(
+    web_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    expense_id = _seed_pending_expense(currency_code="CNY")
+    member_id = _owner_member_id()
+
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        item_snapshot = web_client.get(
+            f"/api/expenses/{expense_id}", headers=identity.app_headers
+        )
+        assert item_snapshot.status_code == 200, item_snapshot.json()
+        items = web_client.post(
+            f"/web/expenses/{expense_id}/items/save",
+            data={
+                "ledger_id": "owner",
+                "expected_row_version": item_snapshot.json()["row_version"],
+                "item_name": ["牛奶"],
+                "item_quantity": ["1盒"],
+                "item_unit_price_yuan": ["12.34"],
+                "item_amount_yuan": ["12.34"],
+                "item_category": ["生活"],
+            },
+            follow_redirects=False,
+        )
+        assert items.status_code in {303, 307}, items.text
+        api_items = web_client.get(
+            f"/api/expenses/{expense_id}/items", headers=identity.app_headers
+        )
+        assert api_items.status_code == 200, api_items.json()
+        assert api_items.json()["items"][0]["amount_cents"] == 1234
+
+        split_snapshot = web_client.get(
+            f"/api/expenses/{expense_id}", headers=identity.app_headers
+        )
+        assert split_snapshot.status_code == 200, split_snapshot.json()
+        splits = web_client.post(
+            f"/web/expenses/{expense_id}/splits/save",
+            data={
+                "ledger_id": "owner",
+                "expected_row_version": split_snapshot.json()["row_version"],
+                "split_member_id": [str(member_id)],
+                "split_amount_yuan": ["12.34"],
+                "split_note": ["整单"],
+            },
+            follow_redirects=False,
+        )
+        assert splits.status_code in {303, 307}, splits.text
+        api_splits = web_client.get(
+            f"/api/expenses/{expense_id}/splits", headers=identity.app_headers
+        )
+        assert api_splits.status_code == 200, api_splits.json()
+        assert api_splits.json()["splits"][0]["amount_cents"] == 1234
+    finally:
+        get_settings.cache_clear()
+
+
+def test_jpy_exact_split_does_not_render_a_false_zero_mismatch(
+    web_client: TestClient,
+) -> None:
+    expense_id = _seed_pending_expense(amount_cents=1234, currency_code="JPY")
+    _seed_detail_rows(expense_id)
+
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert detail.status_code == 200, detail.text
+    assert "账单 ¥1234 · 已拆 ¥1234" in detail.text
+    assert "· 差额" not in detail.text
 
 
 def test_web_detail_rows_do_not_change_confirm_stats_or_export(web_client: TestClient, *, identity) -> None:

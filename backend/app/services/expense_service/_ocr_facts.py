@@ -46,7 +46,11 @@ def append_ocr_fact(
     ocr_model: str | None = None,
     timezone_name: str | None = None,
 ) -> None:
-    snapshot = ocr_fact_snapshot(result, timezone_name=timezone_name)
+    snapshot = ocr_fact_snapshot(
+        result,
+        expense=expense,
+        timezone_name=timezone_name,
+    )
     record_ocr_fact(
         db,
         OcrFactDraft(

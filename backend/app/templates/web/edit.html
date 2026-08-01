@@ -32,7 +32,7 @@
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       <div class="dt-form-row">
         <label for="{{ form_prefix }}-amount-yuan">金额 ({{ expense.original_currency_code }})</label>
-        <input id="{{ form_prefix }}-amount-yuan" type="text" name="amount_yuan" value="{{ expense.original_amount_value }}" placeholder="例如 12.34" inputmode="decimal" {% if not can_write %}disabled{% endif %}>
+        <input id="{{ form_prefix }}-amount-yuan" type="number" name="amount_yuan" value="{{ expense.original_amount_value }}" min="0" step="{{ expense_currency_input.amount_step }}" placeholder="例如 {{ expense_currency_input.amount_example }}" inputmode="{{ expense_currency_input.inputmode }}" {% if not can_write %}disabled{% endif %}>
         {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
       </div>
       <div class="dt-form-row">
@@ -114,7 +114,7 @@
       </label>
       <label class="bsplit-invite-field bsplit-invite-field--amount">
         <span class="bsplit-invite-label">分摊金额（{{ home_currency_symbol }}）</span>
-        <input type="text" name="amount_yuan" value="{{ split_invite.remaining_yuan }}" inputmode="decimal" placeholder="例如 12.34" required>
+        <input type="number" name="amount_yuan" value="{{ split_invite.remaining_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="例如 {{ currency_input.amount_example }}" required>
       </label>
       <button type="submit" class="dt-btn primary">发起拆账</button>
     </div>
@@ -223,8 +223,8 @@
               {% if item.is_ocr_draft %}<div class="meta">识别草稿</div>{% endif %}
             </td>
             <td><input type="text" name="item_quantity" value="{{ item.quantity_text }}" maxlength="64" placeholder="1份" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="text" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" inputmode="decimal" placeholder="0.00" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="text" name="item_amount_yuan" value="{{ item.amount_yuan }}" inputmode="decimal" placeholder="0.00" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="number" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="number" name="item_amount_yuan" value="{{ item.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if not can_write %}disabled{% endif %}></td>
             <td><input type="text" name="item_category" value="{{ item.category }}" maxlength="64" placeholder="其他" {% if not can_write %}disabled{% endif %}></td>
           </tr>
         {% endfor %}
@@ -252,8 +252,8 @@
     {% endif %}
     {% if split_rows.total_yuan %}
     <div class="reconcile-line">
-      账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan or '0.00' }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
-      {% if split_rows.mismatch_yuan and split_rows.mismatch_yuan != '0.00' %}
+      账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
+      {% if split_rows.has_mismatch %}
       · 差额 {{ home_currency_symbol }}{{ split_rows.mismatch_yuan }}
       {% endif %}
     </div>
@@ -285,7 +285,7 @@
                 {% endfor %}
               </select>
             </td>
-            <td><input type="text" name="split_amount_yuan" value="{{ split.amount_yuan }}" inputmode="decimal" placeholder="0.00" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="number" name="split_amount_yuan" value="{{ split.amount_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if not can_write %}disabled{% endif %}></td>
             <td><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" {% if not can_write %}disabled{% endif %}></td>
           </tr>
         {% endfor %}

@@ -23,6 +23,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._money import (
+    NonNegativeMoneyAggregate,
+    NonZeroSignedMoneyMinor,
+    PositiveCanonicalDecimalInput,
+    PositiveMoneyMinor,
+)
 from app.services.time_service import to_iso
 
 # ADR-0049 §7.0 / 8e-6e: an external debt's repayment-rhythm classification, gating the
@@ -67,9 +73,9 @@ class DebtCreateRequest(BaseModel):
     counterparty_type: str
     counterparty_account_id: int | None = None
     counterparty_label: str | None = Field(default=None, max_length=255)
-    principal_amount_cents: int | None = Field(default=None, gt=0)
+    principal_amount_cents: PositiveMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
-    original_amount: Decimal | None = Field(default=None, gt=0)
+    original_amount: PositiveCanonicalDecimalInput | None = None
     event_time: datetime | None = None
     source_type: str = "manual"
     # 8e-6e: optional repayment-rhythm classification (external debt). Defaulted (not
@@ -100,9 +106,11 @@ class DebtResponse(BaseModel):
     counterparty_type: str
     counterparty_account_id: int | None = None
     counterparty_label: str | None = None
-    principal_amount_cents: int
-    remaining_amount_cents: int
-    paid_amount_cents: int
+    principal_amount_cents: PositiveMoneyMinor
+    # A fold can sum multiple individually bounded facts, so read projections
+    # use the exact-JSON aggregate envelope rather than the command envelope.
+    remaining_amount_cents: NonNegativeMoneyAggregate
+    paid_amount_cents: NonNegativeMoneyAggregate
     status: str
     source_type: str
     source_id: str | None = None
@@ -123,7 +131,7 @@ class DebtResponse(BaseModel):
     installment_paid_count: int | None = None
     home_currency_code: str
     original_currency_code: str | None = None
-    original_amount_minor: int | None = None
+    original_amount_minor: PositiveMoneyMinor | None = None
     exchange_rate_to_cny: Decimal | None = None
     exchange_rate_date: datetime | None = None
     exchange_rate_source: str | None = None
@@ -180,10 +188,10 @@ class DebtBillParseResponse(BaseModel):
     """
 
     merchant: str | None = None
-    principal_amount_cents: int | None = None
+    principal_amount_cents: PositiveMoneyMinor | None = None
     installment_count: int | None = None
     installment_period_months: int | None = None
-    per_period_amount_cents: int | None = None
+    per_period_amount_cents: PositiveMoneyMinor | None = None
     repayment_day: int | None = None
     source_text: str = ""
     confidence: float | None = None
@@ -209,9 +217,9 @@ class RepaymentCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    amount_cents: int | None = Field(default=None, gt=0)
+    amount_cents: PositiveMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
-    original_amount: Decimal | None = Field(default=None, gt=0)
+    original_amount: PositiveCanonicalDecimalInput | None = None
     paid_at: datetime | None = None
     expected_row_version: int
 
@@ -227,7 +235,7 @@ class DebtAdjustmentCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    amount_cents: int
+    amount_cents: NonZeroSignedMoneyMinor
     reason: str = Field(min_length=1, max_length=500)
     expected_row_version: int
 
@@ -291,7 +299,8 @@ class MemberRepaymentProposalCreateRequest(BaseModel):
 
     Home-currency proposal submits ``proposed_amount_cents``. A foreign-currency
     proposal submits ``original_currency_code`` + ``original_amount`` (a
-    major-units Decimal, exactly like ``DebtCreateRequest`` / ``RepaymentCreateRequest``)
+    canonical major-unit decimal string, exactly like ``DebtCreateRequest`` /
+    ``RepaymentCreateRequest``)
     (+ optional ``paid_at``); the backend freezes the home ``proposed_amount_cents``
     from the [[0027]] snapshot for ``paid_at`` and rejects when the rate is
     pending (§2.2). Creating a proposal does NOT change the fold (it is a pending
@@ -303,9 +312,9 @@ class MemberRepaymentProposalCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    proposed_amount_cents: int | None = Field(default=None, gt=0)
+    proposed_amount_cents: PositiveMoneyMinor | None = None
     original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
-    original_amount: Decimal | None = Field(default=None, gt=0)
+    original_amount: PositiveCanonicalDecimalInput | None = None
     paid_at: datetime | None = None
     note: str | None = Field(default=None, max_length=500)
     expires_at: datetime | None = None
@@ -324,7 +333,7 @@ class MemberRepaymentProposalConfirmRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    confirmed_amount_cents: int | None = Field(default=None, gt=0)
+    confirmed_amount_cents: PositiveMoneyMinor | None = None
     expected_row_version: int
 
 
@@ -352,11 +361,11 @@ class MemberRepaymentProposalResponse(BaseModel):
     public_id: str
     debt_public_id: str
     status: str
-    proposed_amount_cents: int
-    confirmed_amount_cents: int | None = None
+    proposed_amount_cents: PositiveMoneyMinor
+    confirmed_amount_cents: PositiveMoneyMinor | None = None
     home_currency_code: str
     original_currency_code: str | None = None
-    original_amount_minor: int | None = None
+    original_amount_minor: PositiveMoneyMinor | None = None
     paid_at: datetime
     note: str | None = None
     expires_at: datetime
@@ -397,9 +406,9 @@ class RepaymentFactResponse(BaseModel):
     """
 
     public_id: str
-    amount_cents: int
+    amount_cents: PositiveMoneyMinor
     original_currency_code: str | None = None
-    original_amount_minor: int | None = None
+    original_amount_minor: PositiveMoneyMinor | None = None
     exchange_rate_to_cny: Decimal | None = None
     exchange_rate_date: datetime | None = None
     exchange_rate_source: str | None = None

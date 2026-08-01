@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
@@ -10,6 +12,7 @@ from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_write import (
     PROPOSAL_CONFIRM_AMOUNT_FIELD,
     PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY,
@@ -25,7 +28,6 @@ from app.routes.web_debt_actions import (
     _STALE_MESSAGE,
     _action_redirect,
     _actor_account_id,
-    _parse_major_minor,
 )
 from app.routes.web_debts import _render_debt_detail
 from app.schemas import (
@@ -43,6 +45,8 @@ from app.services.debt_proposal_command_service import (
 from app.services.debt_service import get_participant_debt_response
 
 router = APIRouter(prefix="/web/debts", tags=["web"])
+
+_LEGACY_ALIAS_DECIMAL = re.compile(r"(?P<sign>-?)(?P<whole>[0-9]+)(?P<fraction>\.[0-9]+)?\Z")
 
 _PROPOSAL_ERROR_MESSAGES = {
     "debt_already_voided": "这件事已经不用记啦。",
@@ -94,7 +98,7 @@ def web_create_repayment_proposal(
             account_id=actor_account_id,
         )
         payload = MemberRepaymentProposalCreateRequest(
-            proposed_amount_cents=_parse_major_minor(
+            proposed_amount_cents=parse_web_debt_major_minor(
                 amount_major,
                 currency_code=debt.home_currency_code,
                 allow_negative=False,
@@ -179,32 +183,51 @@ def _parse_confirmed_amount(raw: str, *, currency_code: str) -> int | None:
     """D3 确认金额解析：空串 = 按对方申报全额确认 (``None``，服务层语义)，这是一个
     **显式分支**而非 Form 默认值巧合；非空走共享的 minor-unit 解析 (两位小数 / JPY/KRW
     零小数 / 必须大于 0)，非法输入抛 422，由路由原地重渲染并锚定到金额输入。"""
-    text = (raw or "").strip()
+    text = raw or ""
     if not text:
         return None
-    return _parse_major_minor(
+    return parse_web_debt_major_minor(
         text,
         currency_code=currency_code,
         allow_negative=False,
     )
 
 
+def _canonical_alias_comparison_text(raw: str) -> str:
+    """Normalize only the released two-alias comparison's leading zero form.
+
+    D3's N-1 contract compared the new and legacy fields by numeric minor-unit
+    value, so ``050`` and ``50`` were equivalent.  Keep that compatibility at
+    the adapter boundary without weakening the canonical parser for a normal
+    single-field submission, whitespace, or exponent notation.
+    """
+
+    match = _LEGACY_ALIAS_DECIMAL.fullmatch(raw)
+    if match is None:
+        return raw
+    whole = match.group("whole").lstrip("0") or "0"
+    return f"{match.group('sign')}{whole}{match.group('fraction') or ''}"
+
+
 def _confirm_amount_raw(confirmed_amount_major: str, legacy_amount_major: str, *, currency_code: str) -> str:
     """N-1 字段优先级：任一别名单独提交均接受；两者皆空返回空串 (显式全额分支在
     ``_parse_confirmed_amount``)。两者均非空时**按债务币种解析后**比较 minor-unit 值
-    (等值格式如 50.0/50.00、JPY 前导零 050/50 视为同一提交,校验沿用 ``_parse_major_minor``
-    同一族,不为比较放宽 JPY/KRW 零小数规则)；任一非法 → 维持非法金额 422 族；
+    (等值格式如 50.0/50.00 视为同一提交；已发布的双字段 JPY ``050``/``50``
+    仅在比较边界归一化，单字段、空白和指数形式仍按共享 canonical parser 拒绝)；任一非法 →
+    维持非法金额 422 族；
     解析后真不同 = 客户端序列化/迁移错误 → 抛冲突 422 (不写成错误的还款金额事实)。"""
-    new_text = (confirmed_amount_major or "").strip()
-    legacy_text = (legacy_amount_major or "").strip()
+    new_text = confirmed_amount_major or ""
+    legacy_text = legacy_amount_major or ""
     if new_text and legacy_text:
-        new_minor = _parse_major_minor(
-            new_text,
+        new_comparison_text = _canonical_alias_comparison_text(new_text)
+        legacy_comparison_text = _canonical_alias_comparison_text(legacy_text)
+        new_minor = parse_web_debt_major_minor(
+            new_comparison_text,
             currency_code=currency_code,
             allow_negative=False,
         )
-        legacy_minor = _parse_major_minor(
-            legacy_text,
+        legacy_minor = parse_web_debt_major_minor(
+            legacy_comparison_text,
             currency_code=currency_code,
             allow_negative=False,
         )
@@ -214,6 +237,7 @@ def _confirm_amount_raw(confirmed_amount_major: str, legacy_amount_major: str, *
                 "这次提交里有两个不一样的金额，请刷新后只保留一个再确认。",
                 status_code=422,
             )
+        return new_comparison_text
     return new_text or legacy_text
 
 

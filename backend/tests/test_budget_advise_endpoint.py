@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
-from app.models import Expense, MonthlyIncomePlan, RecurringItem
+from app.models import Expense, RecurringItem
 from app.services.budget_advisor_service import (
     BudgetInputs,
     MockBudgetAdvisor,
@@ -29,78 +29,13 @@ from app.services.budget_advisor_service._models import ALLOWED_INCOME_SOURCE_TY
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
 from app.services.category_common import DEFAULT_CATEGORIES
 from app.services.income_plan_service import create_income_plan
-from app.services.spending_contract_service import current_accounting_month
 from app.services.time_service import now_utc
-
-
-def _seed_minimal_data() -> None:
-    """One income plan + one confirmed expense + one recurring item for
-    the owner tenant. Just enough to exercise the builder paths."""
-
-    now = now_utc()
-    # 锚定到 accounting timezone 当前月的 15 号(本地 12:00 → UTC 04:00),
-    # 跟 [_current_month] 同一参考系。直接 datetime(now.year, now.month, 15)
-    # 在 UTC 跨月边界几小时里会落到上一 / 下一 accounting 月,被 query
-    # 的 month_bounds_utc 过滤掉。
-    year_str, month_str = _current_month().split("-")
-    month_anchor = datetime(int(year_str), int(month_str), 15, 12, tzinfo=now.tzinfo)
-    with SessionLocal() as db:
-        db.add(
-            MonthlyIncomePlan(
-                tenant_id="owner",
-                label="工资",
-                source_type="salary",
-                amount_cents=1_000_000,
-                pay_day=10,
-                status="active",
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        db.add(
-            Expense(
-                tenant_id="owner",
-                status="confirmed",
-                amount_cents=120_000,
-                home_currency_code="CNY",
-                original_currency_code="CNY",
-                original_amount_minor=120_000,
-                merchant="麦当劳",
-                category="餐饮",
-                expense_time=month_anchor,
-                confirmed_at=month_anchor,
-                created_at=month_anchor,
-                updated_at=month_anchor,
-            )
-        )
-        db.add(
-            RecurringItem(
-                tenant_id="owner",
-                merchant_key="netflix",
-                merchant_name="Netflix",
-                baseline_amount_cents=2_000,
-                last_amount_cents=2_000,
-                frequency="monthly",
-                status="active",
-                source="declared",
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        db.commit()
-
-
-def _current_month() -> str:
-    # 用 accounting timezone (Asia/Shanghai) 的当前月份,跟 confirmed_query
-    # 里 month_bounds_utc(month, accounting_zone) 同一参考系。
-    #
-    # 之前直接拼 now_utc().year/month,在 UTC 跨日 / 跨月边界的几个钟头里会
-    # 跟 query 错配:例如 UTC 2026-05-31 22:38 = Beijing 2026-06-01 06:38,
-    # _current_month() 返 "2026-05" 但 expense_time=now_utc() 落在 query
-    # 的 "2026-06" 月窗 (May 31 16:00 UTC..June 30 16:00 UTC) 里。结果:
-    # category_breakdown 全空,断言 == {"其他"} 挂。
-    return current_accounting_month()
-
+from tests._infra.budget_advise_fixtures import (
+    current_month as _current_month,
+)
+from tests._infra.budget_advise_fixtures import (
+    seed_minimal_data as _seed_minimal_data,
+)
 
 # ---------------------------------------------------------------------------
 # Default empty provider
@@ -196,7 +131,10 @@ def test_builder_anonymises_merchant_canonical(identity) -> None:  # noqa: ARG00
     _seed_minimal_data()
     with SessionLocal() as db:
         inputs = build_budget_inputs(
-            db, tenant_id="owner", month=_current_month()
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
         )
     assert not hasattr(inputs, "merchant_summary")
     assert not hasattr(inputs, "fixed_expenses")
@@ -207,7 +145,10 @@ def test_builder_anonymises_merchant_canonical(identity) -> None:  # noqa: ARG00
 def test_builder_anonymises_member_account_id(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         inputs = build_budget_inputs(
-            db, tenant_id="owner", month=_current_month()
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
         )
     assert not hasattr(inputs, "members")
 
@@ -230,7 +171,12 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
         )
         db.commit()
     with SessionLocal() as db:
-        inputs = build_budget_inputs(db, tenant_id="owner", month=_current_month())
+        inputs = build_budget_inputs(
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
+        )
     plans = {p.amount_cents: p for p in inputs.income_plan}
     assert 1_500_000 in plans, "the created income line must be present"
     mine = plans[1_500_000]
@@ -275,7 +221,12 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity) -> None:
             income_month="2026-07",
         )
     with SessionLocal() as db:
-        inputs = build_budget_inputs(db, tenant_id="owner", month="2026-06")
+        inputs = build_budget_inputs(
+            db,
+            tenant_id="owner",
+            month="2026-06",
+            home_currency="CNY",
+        )
     amounts = {p.amount_cents for p in inputs.income_plan}
     assert 1_000_000 in amounts
     assert 200_000 in amounts
@@ -287,7 +238,10 @@ def test_builder_does_not_send_recurring_merchants(identity) -> None:  # noqa: A
     _seed_minimal_data()
     with SessionLocal() as db:
         inputs = build_budget_inputs(
-            db, tenant_id="owner", month=_current_month()
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
         )
     assert not hasattr(inputs, "fixed_expenses")
 
@@ -329,7 +283,12 @@ def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG0
         )
         db.commit()
     with SessionLocal() as db:
-        inputs = build_budget_inputs(db, tenant_id="owner", month=_current_month())
+        inputs = build_budget_inputs(
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
+        )
     # 2_000 (Netflix) + 1_500 (Spotify); paused 健身房会员 excluded.
     assert inputs.recurring_total_monthly_cents == 3_500
     assert inputs.recurring_active_count == 2
@@ -344,7 +303,10 @@ def test_builder_pulls_current_month_category_breakdown(identity) -> None:  # no
     _seed_minimal_data()
     with SessionLocal() as db:
         inputs = build_budget_inputs(
-            db, tenant_id="owner", month=_current_month()
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
         )
     by_cat = {row.category: row for row in inputs.category_breakdown}
     assert "餐饮" in by_cat
@@ -373,7 +335,12 @@ def test_builder_never_sends_polluted_existing_category(identity) -> None:  # no
             )
         )
         db.commit()
-        inputs = build_budget_inputs(db, tenant_id="owner", month=_current_month())
+        inputs = build_budget_inputs(
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
+        )
 
     outbound = to_outbound_dict(inputs)
     assert poisoned_category not in repr(outbound)
@@ -404,7 +371,10 @@ def test_builder_excludes_previous_month_expenses(identity) -> None:  # noqa: AR
         )
         db.commit()
         inputs = build_budget_inputs(
-            db, tenant_id="owner", month=_current_month()
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
         )
     by_cat = {row.category: row for row in inputs.category_breakdown}
     assert by_cat.get("购物") is None or by_cat["购物"].amount_cents != 999_999
@@ -431,7 +401,10 @@ def test_builder_excludes_pending_and_rejected(identity) -> None:  # noqa: ARG00
         )
         db.commit()
         inputs = build_budget_inputs(
-            db, tenant_id="owner", month=_current_month()
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
         )
     by_cat = {row.category: row for row in inputs.category_breakdown}
     assert by_cat.get("购物") is None or by_cat["购物"].amount_cents != 888_888
@@ -440,7 +413,10 @@ def test_builder_excludes_pending_and_rejected(identity) -> None:  # noqa: ARG00
 def test_builder_returns_valid_budget_inputs_when_empty(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         inputs = build_budget_inputs(
-            db, tenant_id="owner", month=_current_month()
+            db,
+            tenant_id="owner",
+            month=_current_month(),
+            home_currency="CNY",
         )
     assert isinstance(inputs, BudgetInputs)
     assert inputs.month == _current_month()
