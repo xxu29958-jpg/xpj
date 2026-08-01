@@ -605,8 +605,6 @@ private class BudgetApiHandler : InvocationHandler {
             }
             "budgetAdvise" -> {
                 adviceError?.let { throw it }
-                adviceEntered?.countDown()
-                adviceRelease?.await(10, TimeUnit.SECONDS)
                 val request = values[0] as BudgetAdviseRequestDto
                 val queuedResponse = synchronized(adviceResponses) {
                     adviceCalls += AdviceCall(
@@ -615,6 +613,12 @@ private class BudgetApiHandler : InvocationHandler {
                     )
                     adviceResponses.removeFirstOrNull()
                 }
+                // Reserve this invocation's response before announcing that it
+                // entered the barrier. Otherwise two released callers race on
+                // removeFirstOrNull() and the fixture can swap the pre-write
+                // and post-write responses even when the repository is correct.
+                adviceEntered?.countDown()
+                adviceRelease?.await(10, TimeUnit.SECONDS)
                 queuedResponse ?: adviceResponse ?: BudgetAdviseResponseDto(
                     advice = BudgetAdviceDto(
                         summary = "为弹性支出留出余量。",
