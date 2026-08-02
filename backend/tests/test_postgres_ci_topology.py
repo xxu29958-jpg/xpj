@@ -84,12 +84,13 @@ def _assert_postgres_job_contract(
     job: dict[str, object],
     *,
     ordinary: bool,
+    sharded: bool,
 ) -> None:
     assert "env" not in job
     matrix: dict[str, object] = {
         "postgres": "${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}",
     }
-    if ordinary:
+    if sharded:
         matrix["shard"] = [
             {"index": 0, "count": 2, "label": "1/2"},
             {"index": 1, "count": 2, "label": "2/2"},
@@ -109,9 +110,19 @@ def _assert_postgres_job_contract(
     assert (has_supported_client := "Install supported PostgreSQL client" in (steps := _steps(job))) is (not ordinary)
     if has_supported_client:
         client_install = str(steps["Install supported PostgreSQL client"]["run"])
-        assert all(part in client_install for part in ("postgresql-client-${{ matrix.postgres['postgres-major'] }}", "/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin"))
+        assert all(
+            part in client_install
+            for part in (
+                "postgresql-client-${{ matrix.postgres['postgres-major'] }}",
+                "/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin",
+            )
+        )
         assert not any(part in client_install for part in ("postgresql-client-17", "/usr/lib/postgresql/17/bin"))
-        assert (names := list(steps)).index("Load test PostgreSQL contract") < names.index("Install supported PostgreSQL client") < names.index("Install dependencies")
+        assert (
+            (names := list(steps)).index("Load test PostgreSQL contract")
+            < names.index("Install supported PostgreSQL client")
+            < names.index("Install dependencies")
+        )
 
 
 def _assert_checkout_independent_passfile_cleanup(step: dict[str, object]) -> None:
@@ -168,7 +179,7 @@ def _assert_lane(
     assert job["name"] == name
     assert job["needs"] == "scope"
     assert job["if"] == _SCOPE_IF
-    _assert_postgres_job_contract(job, ordinary=shard_index is not None)
+    _assert_postgres_job_contract(job, ordinary=lane == "ordinary", sharded=shard_index is not None)
     assert job["outputs"]["qualification_sha"] == "${{ steps.qualification.outputs.sha }}"
     assert job["outputs"]["qualification_source_sha"] == ("${{ steps.qualification.outputs.source_sha }}")
     _assert_bounded_timeout(job)
@@ -222,20 +233,15 @@ def _assert_lane(
             shard_count=shard_count,
         )
     )
-    _assert_checkout_independent_passfile_cleanup(
-        steps["Remove PostgreSQL passfile"]
-    )
+    _assert_checkout_independent_passfile_cleanup(steps["Remove PostgreSQL passfile"])
 
 
 def _assert_recovery_job(job: object) -> None:
     assert isinstance(job, dict)
-    assert job["name"] == (
-        "Backend PostgreSQL / smoke + recovery "
-        "(PG ${{ matrix.postgres['postgres-major'] }})"
-    )
+    assert job["name"] == ("Backend PostgreSQL / smoke + recovery (PG ${{ matrix.postgres['postgres-major'] }})")
     assert job["needs"] == "scope"
     assert job["if"] == _SCOPE_IF
-    _assert_postgres_job_contract(job, ordinary=False)
+    _assert_postgres_job_contract(job, ordinary=False, sharded=False)
     _assert_bounded_timeout(job)
     _assert_no_continue_on_error(job)
     _assert_managed_python_precedes(job, "Verify qualification SHA", "Load test PostgreSQL contract")
@@ -268,9 +274,7 @@ def _assert_recovery_job(job: object) -> None:
     scripts = "\n".join(str(step.get("run", "")) for step in job["steps"])
     assert _LANE_RUNNER not in scripts
     assert " -m pytest " not in scripts
-    _assert_checkout_independent_passfile_cleanup(
-        steps["Remove PostgreSQL passfile"]
-    )
+    _assert_checkout_independent_passfile_cleanup(steps["Remove PostgreSQL passfile"])
 
 
 def _assert_no_postgres_password_leaks(jobs: dict[str, object]) -> None:
@@ -340,17 +344,11 @@ def _assert_smoke_test_process_boundary() -> None:
         text=True,
     )
     assert direct_entry_import.returncode == 0, direct_entry_import.stderr
-    smoke_parent = (_ROOT / "backend" / "scripts" / "smoke_test.py").read_text(
-        encoding="utf-8"
-    )
-    smoke_child = (_ROOT / "backend" / "scripts" / "smoke_server.py").read_text(
-        encoding="utf-8"
-    )
+    smoke_parent = (_ROOT / "backend" / "scripts" / "smoke_test.py").read_text(encoding="utf-8")
+    smoke_child = (_ROOT / "backend" / "scripts" / "smoke_server.py").read_text(encoding="utf-8")
     assert '"scripts.smoke_server"' in smoke_parent
     assert "dedicated_test_database_lease" not in smoke_parent
-    assert smoke_child.index("with dedicated_test_database_lease(") < smoke_child.index(
-        "uvicorn.run("
-    )
+    assert smoke_child.index("with dedicated_test_database_lease(") < smoke_child.index("uvicorn.run(")
 
 
 def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> None:
@@ -358,9 +356,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     scope = jobs["scope"]
     assert isinstance(scope, dict)
     assert scope["outputs"]["postgres_matrix"] == ("${{ steps.scope.outputs.postgres_matrix }}")
-    assert scope["outputs"]["audit_base_sha"] == (
-        "${{ steps.qualification.outputs.audit_base_sha }}"
-    )
+    assert scope["outputs"]["audit_base_sha"] == ("${{ steps.qualification.outputs.audit_base_sha }}")
     _assert_bounded_timeout(scope)
     _assert_qualification_step(
         scope,
@@ -374,26 +370,17 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
         _assert_qualification_step(job, _steps(job)["Verify qualification SHA"])
     assert jobs["backend_contracts"]["needs"] == "scope"
     audit_environment = _steps(jobs["backend_contracts"])["Audit (release lanes)"]["env"]
-    assert audit_environment["XPJ_AUDIT_BASE_REF"] == (
-        "${{ needs.scope.outputs.audit_base_sha }}"
-    )
+    assert audit_environment["XPJ_AUDIT_BASE_REF"] == ("${{ needs.scope.outputs.audit_base_sha }}")
     _assert_bounded_timeout(jobs["backend_contracts"])
     _assert_bounded_timeout(jobs["backend_frozen"])
     assert jobs["windows_packaging"]["timeout-minutes"] == 20
 
-    assert jobs["backend_postgres_real_db"]["strategy"] == jobs[
-        "backend_postgres_recovery"
-    ]["strategy"]
-    assert jobs["backend_postgres_ordinary"]["strategy"] != jobs[
-        "backend_postgres_real_db"
-    ]["strategy"]
+    assert jobs["backend_postgres_ordinary"]["strategy"] == jobs["backend_postgres_real_db"]["strategy"]
+    assert jobs["backend_postgres_real_db"]["strategy"] != jobs["backend_postgres_recovery"]["strategy"]
 
     _assert_lane(
         jobs["backend_postgres_ordinary"],
-        name=(
-            "Backend PostgreSQL / ordinary ${{ matrix.shard.label }} "
-            "(PG ${{ matrix.postgres['postgres-major'] }})"
-        ),
+        name=("Backend PostgreSQL / ordinary ${{ matrix.shard.label }} (PG ${{ matrix.postgres['postgres-major'] }})"),
         prepare_step="Prepare ordinary lane database",
         prepare_roles=("base",),
         runner_step="PostgreSQL parallel pytest lane",
@@ -404,15 +391,14 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     )
     _assert_lane(
         jobs["backend_postgres_real_db"],
-        name=(
-            "Backend PostgreSQL / real-db "
-            "(PG ${{ matrix.postgres['postgres-major'] }})"
-        ),
+        name=("Backend PostgreSQL / real-db ${{ matrix.shard.label }} (PG ${{ matrix.postgres['postgres-major'] }})"),
         prepare_step="Prepare real-db lane database",
         prepare_roles=("base", "restore"),
-        runner_step="PostgreSQL real-db serial pytest lane",
+        runner_step="PostgreSQL real-db serial pytest shard",
         lane="real-db",
         workers=1,
+        shard_index="${{ matrix.shard.index }}",
+        shard_count="${{ matrix.shard.count }}",
     )
     _assert_recovery_job(jobs["backend_postgres_recovery"])
     _assert_no_postgres_password_leaks(jobs)
@@ -472,8 +458,7 @@ def test_ci_gap_lane_matchers_accept_only_the_repository_runner_contract() -> No
     assert ordinary.matches("python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4")
     assert ordinary.matches("python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 1")
     assert ordinary.matches(
-        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 "
-        "--shard-index 0 --shard-count 2"
+        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --shard-index 0 --shard-count 2"
     )
     assert ordinary.matches(
         "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 "
@@ -481,6 +466,12 @@ def test_ci_gap_lane_matchers_accept_only_the_repository_runner_contract() -> No
         '--shard-count "${{ matrix.shard.count }}"'
     )
     assert real_db.matches("python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1")
+    real_db_matrix = (
+        "python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1 "
+        '--shard-index "${{ matrix.shard.index }}" '
+        '--shard-count "${{ matrix.shard.count }}"'
+    )
+    assert real_db.matches(real_db_matrix)
     for command in (
         "python -m pytest tests -m real_db",
         "python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 4",

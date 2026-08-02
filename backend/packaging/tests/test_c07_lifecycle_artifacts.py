@@ -61,9 +61,11 @@ def _write_manifest(path: Path, version: str = "7.8.9") -> None:
 
 
 def test_c07_writer_fence_commits_all_effective_writer_authorities() -> None:
-    source = (PACKAGING / "windows_c07_lifecycle.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    source = (
+        PACKAGING / "windows_c07_heartbeat_authority.ps1"
+    ).read_text(encoding="utf-8-sig") + (
+        PACKAGING / "windows_c07_lifecycle.ps1"
+    ).read_text(encoding="utf-8-sig")
     database_source = (PACKAGING / "windows_c07_database.ps1").read_text(
         encoding="utf-8-sig"
     )
@@ -91,9 +93,11 @@ def test_c07_writer_fence_commits_all_effective_writer_authorities() -> None:
 
 
 def test_c07_whole_operation_deadline_is_monotonic_and_durable() -> None:
-    source = (PACKAGING / "windows_c07_lifecycle.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    source = (
+        PACKAGING / "windows_c07_heartbeat_authority.ps1"
+    ).read_text(encoding="utf-8-sig") + (
+        PACKAGING / "windows_c07_lifecycle.ps1"
+    ).read_text(encoding="utf-8-sig")
 
     for required in (
         "ticketbox-c07-operation-descriptor-v5",
@@ -886,6 +890,7 @@ def test_c07_maintenance_budget_rejects_ceiling_reboot_and_tick_rollback(
             harness,
             f"""
 $ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
 . '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
 $script:testCeiling = [int64]1200000
 $script:testAttemptId = '123e4567-e89b-42d3-a456-4266141740ab'

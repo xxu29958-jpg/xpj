@@ -1351,6 +1351,7 @@ Write-TicketboxLifecycleCoordinationArtifact `
 def test_bounded_native_process_uses_suspended_job_assignment_before_resume() -> None:
     database_safety = _read("windows_database_safety.ps1")
     heartbeat_helper = _read("windows_c07_heartbeat_helper.ps1")
+    heartbeat_authority = _read("windows_c07_heartbeat_authority.ps1")
     c07_lifecycle = _read("windows_c07_lifecycle.ps1")
     recovery_generation = _read("windows_c07_recovery_generation.ps1")
     native_start = database_safety[
@@ -1412,15 +1413,34 @@ def test_bounded_native_process_uses_suspended_job_assignment_before_resume() ->
     assert "windows_c07_database.ps1" not in heartbeat_helper
     assert "windows_installation_safety.ps1" in heartbeat_helper
     assert "windows_lifecycle_lock.ps1" in heartbeat_helper
-    assert "windows_c07_lifecycle.ps1" in heartbeat_helper
+    assert "windows_c07_heartbeat_authority.ps1" in heartbeat_helper
+    assert "windows_c07_lifecycle.ps1" not in heartbeat_helper
     assert '-TicketboxC07DependencyProfile "durable_heartbeat"' in heartbeat_helper
-    assert '[ValidateSet("full", "durable_heartbeat")]' in c07_lifecycle
-    assert '$TicketboxC07DependencyProfile = "full"' in c07_lifecycle
-    assert "function Assert-TicketboxC07FullDependencies" in c07_lifecycle
+    assert "windows_c07_heartbeat_authority.ps1" in c07_lifecycle
+    shared_authority_load = c07_lifecycle[
+        c07_lifecycle.index("$ticketboxC07HeartbeatAuthorityPath = Join-Path") :
+        c07_lifecycle.index(". $ticketboxC07HeartbeatAuthorityPath")
+    ]
+    assert '"Assert-NoTicketboxAncestorReparsePoints"' in shared_authority_load
+    assert '"Get-TicketboxPathEntryKindNoFollow"' in shared_authority_load
+    assert "Get-Command `" in shared_authority_load
+    assert (
+        "Assert-NoTicketboxAncestorReparsePoints "
+        "$ticketboxC07HeartbeatAuthorityPath"
+    ) in shared_authority_load
+    assert (
+        "Get-TicketboxPathEntryKindNoFollow `\n"
+        "        $ticketboxC07HeartbeatAuthorityPath"
+    ) in shared_authority_load
+    assert '[ValidateSet("full", "durable_heartbeat")]' in heartbeat_authority
+    assert '$TicketboxC07DependencyProfile = "full"' in heartbeat_authority
+    assert "function Assert-TicketboxC07FullDependencies" in heartbeat_authority
     assert (
         "function Assert-TicketboxC07DurableHeartbeatDependencies"
-        in c07_lifecycle
+        in heartbeat_authority
     )
+    assert "function Write-TicketboxC07DurableHeartbeat" in heartbeat_authority
+    assert "function Write-TicketboxC07DurableHeartbeat" not in c07_lifecycle
     for forbidden_definition in (
         "Assert-TicketboxC07LiveHostConnection",
         "Get-TicketboxC07DatabaseIdentity",
@@ -1440,6 +1460,73 @@ def test_bounded_native_process_uses_suspended_job_assignment_before_resume() ->
     assert "Process.Start()" not in database_safety
     assert ".Kill()" not in database_safety
     assert "$process.WaitForExit()" not in database_safety
+
+
+def test_c07_lifecycle_rejects_reparse_shared_authority_bootstrap(
+    tmp_path: Path,
+) -> None:
+    if sys.platform != "win32":
+        pytest.skip("Windows C07 shared authority bootstrap contract")
+
+    real_root = tmp_path / "real-bootstrap"
+    junction_root = tmp_path / "reparse-bootstrap"
+    real_root.mkdir()
+    for name in (
+        "windows_c07_heartbeat_authority.ps1",
+        "windows_c07_lifecycle.ps1",
+    ):
+        (real_root / name).write_bytes((PACKAGING / name).read_bytes())
+    created = subprocess.run(  # noqa: S603
+        [
+            "cmd.exe",
+            "/d",
+            "/c",
+            "mklink",
+            "/J",
+            str(junction_root),
+            str(real_root),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=10,
+    )
+    assert created.returncode == 0, created.stdout + created.stderr
+    try:
+        for engine in powershell_contract_engines():
+            completed = subprocess.run(  # noqa: S603
+                [
+                    engine,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    (
+                        f". '{_ps_literal(PACKAGING / 'windows_installation_safety.ps1')}'; "
+                        "try { "
+                        f". '{_ps_literal(junction_root / 'windows_c07_lifecycle.ps1')}'; "
+                        "throw 'reparse shared authority bootstrap was accepted' "
+                        "} catch { "
+                        "if ($_.Exception.Message -cnotmatch 'reparse') { throw }; "
+                        "'reparse-rejected' "
+                        "}"
+                    ),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                timeout=15,
+            )
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            assert "reparse-rejected" in completed.stdout
+    finally:
+        junction_root.rmdir()
 
 
 def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> None:

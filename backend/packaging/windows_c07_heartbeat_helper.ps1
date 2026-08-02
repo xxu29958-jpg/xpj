@@ -69,7 +69,7 @@ function Get-TicketboxC07HeartbeatHelperDependencyPaths {
     foreach ($leaf in @(
         "windows_installation_safety.ps1",
         "windows_lifecycle_lock.ps1",
-        "windows_c07_lifecycle.ps1"
+        "windows_c07_heartbeat_authority.ps1"
     )) {
         $path = Assert-TicketboxC07HeartbeatHelperBootstrapFile (
             Join-Path $PSScriptRoot $leaf
@@ -489,7 +489,7 @@ if ($TicketboxC07HeartbeatHelper) {
         ) {
             if (
                 (Split-Path -Leaf $heartbeatDependencyPath) -ceq
-                    "windows_c07_lifecycle.ps1"
+                    "windows_c07_heartbeat_authority.ps1"
             ) {
                 . $heartbeatDependencyPath `
                     -TicketboxC07DependencyProfile "durable_heartbeat" |

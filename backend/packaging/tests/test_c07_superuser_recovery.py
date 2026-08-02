@@ -69,6 +69,14 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
         source,
         "Get-TicketboxC07SuperuserRecoveryFileSecurityBytes",
     )
+    security_diagnostic = _function(
+        source,
+        "Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic",
+    )
+    security_writer = _function(
+        source,
+        "Set-TicketboxC07SuperuserRecoveryFileSecurityBytes",
+    )
     auth_writer = _function(
         source,
         "Write-TicketboxC07SuperuserRecoveryAuthFile",
@@ -126,6 +134,18 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     assert "$null = Invoke-TicketboxC07SuperuserRecoveryClearCredential" in main
     assert "SeSecurityPrivilege" in source
     assert "AccessControlSections]::All" in security_reader
+    assert "control_flags_left=0x" in security_diagnostic
+    assert "control_flags_right=0x" in security_diagnostic
+    assert "control_flags_xor=0x" in security_diagnostic
+    assert "dacl_binary_equal=" in security_diagnostic
+    assert "sacl_binary_equal=" in security_diagnostic
+    assert "GetSddlForm" not in security_diagnostic
+    assert ".Owner.Value" not in security_diagnostic
+    assert ".Group.Value" not in security_diagnostic
+    assert (
+        "Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic"
+        in security_writer
+    )
     assert "Replace-TicketboxFileDurablePreservingMetadata" in auth_writer
     assert "-Backup $backupPath" in auth_writer
     assert "PreviousSha256" in auth_writer
@@ -215,6 +235,8 @@ $semanticSecurity.SetSecurityDescriptorSddlForm(
     $allSections
 )
 $semanticSecurityBytes = $semanticSecurity.GetSecurityDescriptorBinaryForm()
+$semanticRawSecurity = New-Object `
+    Security.AccessControl.RawSecurityDescriptor($semanticSecurityBytes,0)
 $resourceManagerDerivedSecurity = New-Object `
     Security.AccessControl.RawSecurityDescriptor($semanticSecurityBytes,0)
 $resourceManagerDerivedSecurity.SetFlags(
@@ -234,6 +256,39 @@ $resourceManagerDerivedSecurity.GetBinaryForm(
     $resourceManagerDerivedSecurityBytes,
     0
 )
+$providerMetadataDiagnostic =
+    Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic `
+        -Left $semanticSecurityBytes `
+        -Right $resourceManagerDerivedSecurityBytes
+$providerMetadataExpectedFields = @(
+    ("control_flags_left=0x{{0:X4}}" -f (
+        [int]$semanticRawSecurity.ControlFlags -band 0xFFFF
+    )),
+    ("control_flags_right=0x{{0:X4}}" -f (
+        [int]$resourceManagerDerivedSecurity.ControlFlags -band 0xFFFF
+    )),
+    ("control_flags_xor=0x{{0:X4}}" -f (
+        ([int]$semanticRawSecurity.ControlFlags -bxor
+            [int]$resourceManagerDerivedSecurity.ControlFlags) -band 0xFFFF
+    )),
+    'owner_equal=true',
+    'group_equal=true',
+    'dacl_component_equal=false',
+    'dacl_binary_equal=true',
+    'sacl_component_equal=false',
+    'sacl_binary_equal=true',
+    'rm_control_equal=true',
+    'revision_equal=true'
+)
+foreach ($expectedField in $providerMetadataExpectedFields) {{
+    if (-not $providerMetadataDiagnostic.Contains($expectedField)) {{
+        throw "security diagnostic missing $expectedField"
+    }}
+}}
+if ($providerMetadataDiagnostic.Contains($identitySid) -or
+    $providerMetadataDiagnostic.Contains('S-1-')) {{
+    throw 'security diagnostic leaked descriptor identity content'
+}}
 if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
     -Left $semanticSecurityBytes `
     -Right $resourceManagerDerivedSecurityBytes)) {{
@@ -265,12 +320,33 @@ $mutatedSecuritySddls = @(
     ("O:{{0}}G:{{0}}D:P(A;;FR;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
     ("O:{{0}}G:{{0}}D:P(A;;FA;;;{{0}})S:P(AU;FA;WD;;;{{0}})" -f $identitySid)
 )
-foreach ($mutatedSecuritySddl in $mutatedSecuritySddls) {{
+$expectedMutationDiagnostics = @(
+    'owner_equal=false',
+    'dacl_binary_equal=false',
+    'sacl_binary_equal=false'
+)
+for ($mutationIndex = 0;
+    $mutationIndex -lt $mutatedSecuritySddls.Count;
+    $mutationIndex++) {{
+    $mutatedSecuritySddl = $mutatedSecuritySddls[$mutationIndex]
     $mutatedSecurity = New-Object Security.AccessControl.FileSecurity
     $mutatedSecurity.SetSecurityDescriptorSddlForm(
         $mutatedSecuritySddl,
         $allSections
     )
+    $mutationDiagnostic =
+        Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic `
+            -Left $semanticSecurityBytes `
+            -Right $mutatedSecurity.GetSecurityDescriptorBinaryForm()
+    if (-not $mutationDiagnostic.Contains(
+        $expectedMutationDiagnostics[$mutationIndex]
+    )) {{
+        throw 'security diagnostic missed an authority component mutation'
+    }}
+    if ($mutationDiagnostic.Contains($identitySid) -or
+        $mutationDiagnostic.Contains('S-1-')) {{
+        throw 'security diagnostic leaked mutated descriptor identity content'
+    }}
     if (Test-TicketboxC07SuperuserRecoverySecurityEquals `
         -Left $semanticSecurityBytes `
         -Right $mutatedSecurity.GetSecurityDescriptorBinaryForm()) {{

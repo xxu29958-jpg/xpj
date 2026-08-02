@@ -33,10 +33,10 @@ class _DeselectRecorder:
 
 
 class _ShardConfig:
-    def __init__(self, shard_index: int) -> None:
+    def __init__(self, lane: str, shard_index: int) -> None:
         self.hook = _DeselectRecorder()
         self._options = {
-            POSTGRES_PYTEST_LANE_DEST: "ordinary",
+            POSTGRES_PYTEST_LANE_DEST: lane,
             POSTGRES_PYTEST_SHARD_INDEX_DEST: shard_index,
             POSTGRES_PYTEST_SHARD_COUNT_DEST: 2,
         }
@@ -65,12 +65,17 @@ def _assert_generated_lane_commands() -> None:
         assert forbidden not in ordinary
 
     ordinary_serial = build_pytest_command(lane="ordinary", workers=1)
-    real_db = build_pytest_command(lane="real-db", workers=1)
+    real_db = build_pytest_command(
+        lane="real-db",
+        workers=1,
+        shard_index=1,
+        shard_count=2,
+    )
     assert "-n" not in ordinary_serial
     assert real_db[real_db.index("-m", 3) + 1] == "real_db"
     assert real_db[real_db.index("--xpj-postgres-lane") + 1] == "real-db"
-    assert real_db[real_db.index("--xpj-postgres-shard-index") + 1] == "0"
-    assert real_db[real_db.index("--xpj-postgres-shard-count") + 1] == "1"
+    assert real_db[real_db.index("--xpj-postgres-shard-index") + 1] == "1"
+    assert real_db[real_db.index("--xpj-postgres-shard-count") + 1] == "2"
     assert "-n" not in real_db
 
 
@@ -95,24 +100,26 @@ def _assert_main_forwards_shard_coordinates(
     with monkeypatch.context() as patch:
         patch.setattr(run_postgres_pytest_lane, "child_environment", lambda source: {})
         patch.setattr(run_postgres_pytest_lane.subprocess, "run", fake_run)
-        for shard_index in (0, 1):
-            assert (
-                run_postgres_pytest_lane.main(
-                    (
-                        "--lane",
-                        "ordinary",
-                        "--workers",
-                        "4",
-                        "--shard-index",
-                        str(shard_index),
-                        "--shard-count",
-                        "2",
+        for lane, workers in (("ordinary", "4"), ("real-db", "1")):
+            for shard_index in (0, 1):
+                assert (
+                    run_postgres_pytest_lane.main(
+                        (
+                            "--lane",
+                            lane,
+                            "--workers",
+                            workers,
+                            "--shard-index",
+                            str(shard_index),
+                            "--shard-count",
+                            "2",
+                        )
                     )
+                    == 0
                 )
-                == 0
-            )
-    assert len(commands) == 2
-    for shard_index, command in enumerate(commands):
+    assert len(commands) == 4
+    for command_index, command in enumerate(commands):
+        shard_index = command_index % 2
         assert command[command.index("--xpj-postgres-shard-index") + 1] == str(
             shard_index
         )
@@ -124,10 +131,9 @@ def _assert_invalid_runner_coordinates_fail_closed() -> None:
         build_pytest_command(lane="real-db", workers=2)
     with pytest.raises(ValueError, match="between 1 and 4"):
         build_pytest_command(lane="ordinary", workers=5)
-    with pytest.raises(ValueError, match="only the ordinary"):
-        build_pytest_command(
-            lane="real-db",
-            workers=1,
+    with pytest.raises(ValueError, match="declared PostgreSQL lane"):
+        validate_shard_coordinates(
+            lane=None,
             shard_index=0,
             shard_count=2,
         )
@@ -156,12 +162,12 @@ def _assert_nodeid_shards_form_an_exact_partition() -> None:
     validate_shard_coordinates(lane=None, shard_index=0, shard_count=1)
 
 
-def _hook_partition(shard_index: int) -> tuple[set[str], set[str]]:
+def _hook_partition(lane: str, shard_index: int) -> tuple[set[str], set[str]]:
     items = [
         SimpleNamespace(nodeid=f"tests/test_example.py::test_case[{index}]")
         for index in range(64)
     ]
-    config = _ShardConfig(shard_index)
+    config = _ShardConfig(lane, shard_index)
     pytest_collection_modifyitems(config, items)
     return (
         {str(item.nodeid) for item in items},
@@ -170,16 +176,17 @@ def _hook_partition(shard_index: int) -> tuple[set[str], set[str]]:
 
 
 def _assert_hook_forms_complementary_shards() -> None:
-    selected_zero, deselected_zero = _hook_partition(0)
-    selected_one, deselected_one = _hook_partition(1)
     expected = {
         f"tests/test_example.py::test_case[{index}]"
         for index in range(64)
     }
-    assert selected_zero.isdisjoint(selected_one)
-    assert selected_zero | selected_one == expected
-    assert deselected_zero == selected_one
-    assert deselected_one == selected_zero
+    for lane in ("ordinary", "real-db"):
+        selected_zero, deselected_zero = _hook_partition(lane, 0)
+        selected_one, deselected_one = _hook_partition(lane, 1)
+        assert selected_zero.isdisjoint(selected_one)
+        assert selected_zero | selected_one == expected
+        assert deselected_zero == selected_one
+        assert deselected_one == selected_zero
 
 
 def _assert_collection_contract_is_fail_closed() -> None:

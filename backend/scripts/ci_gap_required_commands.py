@@ -127,7 +127,15 @@ def _matches_ordinary_pytest(command: str) -> bool:
 
 
 def _matches_real_db_pytest(command: str) -> bool:
-    return _postgres_lane_invocation(command) == ("real-db", 1, 0, 1)
+    invocation = _postgres_lane_invocation(command)
+    return (
+        invocation is not None
+        and invocation[:2] == ("real-db", 1)
+        and (
+            invocation[2:] == (0, 1)
+            or invocation[2:] == _MATRIX_SHARD_COORDINATES
+        )
+    )
 
 
 def _matches_installer_safety_pytest(command: str) -> bool:

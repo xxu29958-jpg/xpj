@@ -81,7 +81,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         type=int,
         default=0,
         dest=POSTGRES_PYTEST_SHARD_INDEX_DEST,
-        help="zero-based ordinary-lane shard index",
+        help="zero-based PostgreSQL lane shard index",
     )
     group.addoption(
         POSTGRES_PYTEST_SHARD_COUNT_OPTION,
@@ -89,7 +89,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         type=int,
         default=1,
         dest=POSTGRES_PYTEST_SHARD_COUNT_DEST,
-        help="ordinary-lane shard count",
+        help="PostgreSQL lane shard count",
     )
 
 

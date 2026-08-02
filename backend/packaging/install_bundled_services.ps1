@@ -247,6 +247,12 @@ if (-not (Test-Path -LiteralPath $C07SuperuserRecoveryScript -PathType Leaf)) {
     throw "缺少 Windows C07 superuser recovery 脚本：$C07SuperuserRecoveryScript"
 }
 . $C07SuperuserRecoveryScript
+$C07HeartbeatAuthorityScript = Join-Path `
+    $ScriptDir `
+    "windows_c07_heartbeat_authority.ps1"
+if (-not (Test-Path -LiteralPath $C07HeartbeatAuthorityScript -PathType Leaf)) {
+    throw "缺少 Windows C07 shared heartbeat authority module：$C07HeartbeatAuthorityScript"
+}
 $C07LifecycleScript = Join-Path $ScriptDir "windows_c07_lifecycle.ps1"
 if (-not (Test-Path -LiteralPath $C07LifecycleScript -PathType Leaf)) {
     throw "缺少 Windows C07 生命周期脚本：$C07LifecycleScript"

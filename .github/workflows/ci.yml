@@ -532,15 +532,22 @@ jobs:
           fi
 
   backend_postgres_real_db:
-    name: "Backend PostgreSQL / real-db (PG ${{ matrix.postgres['postgres-major'] }})"
+    name: "Backend PostgreSQL / real-db ${{ matrix.shard.label }} (PG ${{ matrix.postgres['postgres-major'] }})"
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    strategy: &postgres_test_strategy
+    strategy:
       fail-fast: false
       matrix:
         postgres: ${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}
+        shard:
+          - index: 0
+            count: 2
+            label: 1/2
+          - index: 1
+            count: 2
+            label: 2/2
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
@@ -579,8 +586,10 @@ jobs:
         env: *postgres_prepare_environment
         run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --role restore --expected-major "${{ matrix.postgres['postgres-major'] }}"
 
-      - name: PostgreSQL real-db serial pytest lane
-        run: ./.ci-venv/bin/python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
+      - name: PostgreSQL real-db serial pytest shard
+        # Each matrix row owns a fresh service cluster; within that cluster all
+        # DDL, fixed restore-database and cluster-role tests remain serial.
+        run: ./.ci-venv/bin/python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1 --shard-index "${{ matrix.shard.index }}" --shard-count "${{ matrix.shard.count }}"
 
       - *postgres_remove_passfile
 
@@ -590,7 +599,10 @@ jobs:
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    strategy: *postgres_test_strategy
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}

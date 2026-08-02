@@ -28,6 +28,37 @@ function Test-XpjOpaquePostgresRootIsForeignServiceProcess {
     )
 }
 
+function Get-XpjFinalOwnershipScanProcessHandle {
+    [CmdletBinding()]
+    [OutputType([Diagnostics.Process])]
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    try {
+        $process = Get-Process -Id $ProcessId -ErrorAction Stop
+        return $process
+    }
+    catch {
+        # Win32_Process is a point-in-time snapshot. A process may complete
+        # normally before we open its generation-pinning handle. Only the
+        # cmdlet's exact object-not-found result proves that narrow outcome;
+        # access failures and every other error remain fail-closed.
+        $isMissingProcess = (
+            [string]$_.FullyQualifiedErrorId -ceq
+                'NoProcessFoundForGivenId,Microsoft.PowerShell.Commands.GetProcessCommand' -and
+            $_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::ObjectNotFound -and
+            [string]::Equals(
+                [string]$_.TargetObject,
+                [string]$ProcessId,
+                [StringComparison]::Ordinal
+            )
+        )
+        if ($isMissingProcess) {
+            return
+        }
+        throw
+    }
+}
+
 function Assert-NoXpjLivePostgresDataDirOwner {
     [CmdletBinding()]
     param(
@@ -69,7 +100,8 @@ function Assert-NoXpjLivePostgresDataDirOwner {
             }
             throw "Cannot prove PostgreSQL root PID $rootId is unrelated to ${resolvedDataDir}"
         }
-        $handle = Get-Process -Id $rootId -ErrorAction Stop
+        $handle = Get-XpjFinalOwnershipScanProcessHandle -ProcessId $rootId
+        if ($null -eq $handle) { continue }
         try {
             $null = $handle.Handle
             $fresh = Get-XpjVerifiedProcessSnapshot -Snapshot $root -Handle $handle
