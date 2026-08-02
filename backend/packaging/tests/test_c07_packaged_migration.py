@@ -1,4 +1,4 @@
-"""PowerShell bridge contracts for the exact packaged C07 edge."""
+"""PowerShell bridge contracts for C07 and frozen release-schema actions."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def _ps_literal(path: Path) -> str:
     return str(path.resolve()).replace("'", "''")
 
 
-def test_packaged_bridge_contains_only_exact_c07_authority() -> None:
+def test_packaged_bridge_contains_exact_c07_and_release_schema_authority() -> None:
     source = (PACKAGING / "windows_c07_packaged_migration.ps1").read_text(
         encoding="utf-8-sig"
     )
@@ -29,6 +29,8 @@ def test_packaged_bridge_contains_only_exact_c07_authority() -> None:
         "ticketbox-c07-maintenance-upgrade-result-v3",
         "ticketbox-c07-money-facts-result-v2",
         "ticketbox-c07-target-semantic-result-v1",
+        "ticketbox-managed-schema-plan-v1",
+        "ticketbox-managed-schema-upgrade-result-v1",
         "--expected-revision-manifest-sha256",
         "--maintenance-deadline-utc",
         "--maintenance-remaining-ceiling-ms",
@@ -39,7 +41,7 @@ def test_packaged_bridge_contains_only_exact_c07_authority() -> None:
         "-ChildEnvironment $childEnvironment",
     ):
         assert required in source
-    assert source.count("-PgPassFilePath $passfile.Path") == 5
+    assert source.count("-PgPassFilePath $passfile.Path") == 6
 
     for forbidden in (
         "installed_descendant",
@@ -159,6 +161,14 @@ $plan = [ordered]@{{
     upgrade_required = $true
     revision_manifest = $manifest
     revision_manifest_sha256 = $manifestSha
+}}
+$managedPlan = [ordered]@{{
+    schema = 'ticketbox-managed-schema-plan-v1'
+    source_revision = '20260729_0001'
+    target_revision = '20260802_0001'
+    upgrade_required = $true
+    revision_count = 1
+    revision_manifest_sha256 = ('5' * 64)
 }}
 $parsedPlan = ConvertFrom-TicketboxC07PackagedMaintenancePlan `
     -StandardOutput ((ConvertTo-TicketboxC07CompactJson $plan) + "`n") `
@@ -305,6 +315,32 @@ function Invoke-TicketboxBoundedNativeProcess {{
             StandardError = ''
         }}
     }}
+    if ($Arguments -contains '--managed-schema-plan') {{
+        $script:testPlanChildEnvironment = $ChildEnvironment
+        return [pscustomobject]@{{
+            ExitCode = 0
+            StandardOutput =
+                (ConvertTo-TicketboxC07CompactJson $managedPlan) + "`n"
+            StandardError = ''
+        }}
+    }}
+    if ($Arguments -contains '--managed-schema-upgrade') {{
+        $managedResult = [ordered]@{{
+            schema = 'ticketbox-managed-schema-upgrade-result-v1'
+            source_revision = Get-TestArgumentValue $Arguments '--source-revision'
+            target_revision = Get-TestArgumentValue $Arguments '--target-revision'
+            revision_manifest_sha256 =
+                Get-TestArgumentValue $Arguments '--expected-revision-manifest-sha256'
+            result = 'target_committed'
+            alembic_revision = Get-TestArgumentValue $Arguments '--target-revision'
+        }}
+        return [pscustomobject]@{{
+            ExitCode = 0
+            StandardOutput =
+                (ConvertTo-TicketboxC07CompactJson $managedResult) + "`n"
+            StandardError = ''
+        }}
+    }}
     $remaining = [int](Get-TestArgumentValue $Arguments '--maintenance-remaining-ceiling-ms')
     $result = [ordered]@{{
         schema = 'ticketbox-c07-maintenance-upgrade-result-v3'
@@ -339,6 +375,18 @@ $secure.MakeReadOnly()
 $deadline = [DateTime]::UtcNow.AddMinutes(10).ToString('o')
 $installedPlan = Get-TicketboxC07PackagedInstalledUpgradePlan `
     -SourceRevision '20260722_0001' `
+    -MigrationHelperPath '{_ps_literal(helper)}' `
+    -MigrationHelperEvidence $helperEvidence `
+    -ExpectedMigrationHelperPath '{_ps_literal(helper)}'
+$installedManagedPlan = Get-TicketboxPackagedManagedSchemaPlan `
+    -SourceRevision '20260729_0001' `
+    -MigrationHelperPath '{_ps_literal(helper)}' `
+    -MigrationHelperEvidence $helperEvidence `
+    -ExpectedMigrationHelperPath '{_ps_literal(helper)}'
+$managedActionResult = Invoke-TicketboxPackagedManagedSchemaUpgrade `
+    -HostAuthority ([pscustomobject]@{{ Schema = 'authority' }}) `
+    -MigratorPassword $secure `
+    -Plan $installedManagedPlan `
     -MigrationHelperPath '{_ps_literal(helper)}' `
     -MigrationHelperEvidence $helperEvidence `
     -ExpectedMigrationHelperPath '{_ps_literal(helper)}'
@@ -402,6 +450,8 @@ $planPgEntries = @(
     fake_semantic_rejected = [bool]$fakeSemanticRejected
     action_result = [string]$actionResult.result
     installed_plan_target = [string]$installedPlan.target_revision
+    managed_plan_target = [string]$installedManagedPlan.target_revision
+    managed_action_result = [string]$managedActionResult.result
     cleanup_count = [int]$script:testCleanupCount
     stdin_empty = ([string]$script:testInput).Length -eq 0
     secret_in_argv = (($script:testArguments -join "`n").Contains($script:testSecret))
@@ -459,7 +509,9 @@ $planPgEntries = @(
             "fake_semantic_rejected": True,
             "action_result": "isolated_forward_replay_verified",
             "installed_plan_target": "20260729_0001",
-            "cleanup_count": 1,
+            "managed_plan_target": "20260802_0001",
+            "managed_action_result": "target_committed",
+            "cleanup_count": 2,
             "stdin_empty": True,
             "secret_in_argv": False,
             "secret_in_child_environment": False,

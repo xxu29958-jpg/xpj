@@ -66,6 +66,14 @@ def _configured_home_or_none() -> str | None:
         return None
 
 
+def _initialization_offer(configured: str | None) -> str | None:
+    """Expose only a first-fact transition the current writer can execute."""
+
+    if configured == DEFAULT_HOME_CURRENCY_CODE:
+        return configured
+    return None
+
+
 def _load_binding(db: Session, *, for_update: bool = False) -> InstallationCurrencyBinding | None:
     statement = select(InstallationCurrencyBinding).where(InstallationCurrencyBinding.singleton_id == 1)
     if for_update:
@@ -101,7 +109,7 @@ def get_capability(db: Session) -> CurrencyCapability:
             binding_revision=0,
             minimum_writable_currency_contract=MINIMUM_WRITABLE_CURRENCY_CONTRACT,
             health="empty",
-            initialization_offer=configured,
+            initialization_offer=_initialization_offer(configured),
         )
 
     state = _state(binding.state)
@@ -124,7 +132,11 @@ def get_capability(db: Session) -> CurrencyCapability:
         binding_revision=binding.binding_revision,
         minimum_writable_currency_contract=MINIMUM_WRITABLE_CURRENCY_CONTRACT,
         health=health,
-        initialization_offer=(configured if state == CURRENCY_BINDING_EMPTY else None),
+        initialization_offer=(
+            _initialization_offer(configured)
+            if state == CURRENCY_BINDING_EMPTY
+            else None
+        ),
     )
 
 

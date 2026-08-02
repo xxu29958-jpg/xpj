@@ -442,6 +442,7 @@ def test_installed_c07_external_assets_are_manifest_bound_and_held(
             "_internal/app/database/_c07_fresh_source_bootstrap.py": b"fresh",
             "_internal/app/database/_c07_maintenance_upgrade.py": b"maintenance",
             "_internal/app/database/_c07_production_migration.py": b"production",
+            "_internal/app/database/_managed_schema_upgrade.py": b"managed-schema",
             "_internal/alembic.ini": b"[alembic]",
             "_internal/runtime.dat": b"runtime",
             "_internal/replacement.dat": b"replacement",
@@ -454,6 +455,10 @@ def test_installed_c07_external_assets_are_manifest_bound_and_held(
                 "_internal/migrations/versions/"
                 "20260729_0001_money_minor_bigint_expand.py"
             ): b"# target",
+            (
+                "_internal/migrations/versions/"
+                "20260802_0001_currency_binding_authority.py"
+            ): b"# c02 target",
         }.items():
             target = payload / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -795,8 +800,10 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     for standalone_module in (
         "app.database._c07_fresh_source_bootstrap",
         "app.database._c07_production_migration",
+        "app.database._managed_schema_upgrade",
         "_c07_fresh_source_bootstrap.py",
         "_c07_production_migration.py",
+        "_managed_schema_upgrade.py",
     ):
         assert f'"{standalone_module}"' in backend_spec
     for standalone_dependency in (

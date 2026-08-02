@@ -18,6 +18,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember
 from app.services import debt_service
@@ -457,17 +458,29 @@ def test_dismiss_latches_dismissed(client: TestClient, *, identity) -> None:
     assert response.json()["resolved_at"]
 
 
-def test_dismiss_is_idempotent_when_already_dismissed(client: TestClient, *, identity) -> None:
+def test_dismiss_is_idempotent_when_already_dismissed(
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+) -> None:
     draft = _create_draft(client, identity, amount_cents=4200)
     first = client.post(
         f"/api/repayment-drafts/{draft['public_id']}/dismiss", headers=identity.app_headers, json={}
     )
     assert first.status_code == 201, first.json()
-    again = client.post(
-        f"/api/repayment-drafts/{draft['public_id']}/dismiss", headers=identity.app_headers, json={}
-    )
-    assert again.status_code == 201, again.json()
-    assert again.json()["status"] == "dismissed"
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        again = client.post(
+            f"/api/repayment-drafts/{draft['public_id']}/dismiss",
+            headers=identity.app_headers,
+            json={},
+        )
+        assert again.status_code == 201, again.json()
+        assert again.json()["status"] == "dismissed"
+    finally:
+        get_settings.cache_clear()
 
 
 def test_dismiss_viewer_is_403(client: TestClient, *, identity) -> None:

@@ -28,6 +28,10 @@ $script:TicketboxC07PackagedMoneyFactsResultSchema =
     "ticketbox-c07-money-facts-result-v2"
 $script:TicketboxC07PackagedTargetSemanticResultSchema =
     "ticketbox-c07-target-semantic-result-v1"
+$script:TicketboxManagedSchemaPlanSchema =
+    "ticketbox-managed-schema-plan-v1"
+$script:TicketboxManagedSchemaResultSchema =
+    "ticketbox-managed-schema-upgrade-result-v1"
 $script:TicketboxC07PackagedMigrationTimeoutMs = 1500000
 
 function Get-TicketboxC07PackagedRemainingTimeoutMilliseconds {
@@ -1567,6 +1571,200 @@ function Invoke-TicketboxC07PackagedMigrationAction {
                     -OperationId $capturedOperationId `
                     -SourceRevision $capturedSourceRevision `
                     -TargetRevision $capturedTargetRevision
+            }
+            finally {
+                if ($null -ne $passfile) {
+                    Remove-TicketboxProtectedPgPassArtifact `
+                        -Path $passfile.Path `
+                        -FullControlAccounts $passfile.FullControlAccounts `
+                        -OwnerAccount $passfile.OwnerAccount
+                }
+            }
+        }.GetNewClosure())
+}
+
+function ConvertFrom-TicketboxManagedSchemaPlan {
+    param(
+        [Parameter(Mandatory = $true)][string]$StandardOutput,
+        [Parameter(Mandatory = $true)][string]$SourceRevision
+    )
+
+    $jsonLine = Get-TicketboxC07PackagedJsonLine `
+        -StandardOutput $StandardOutput `
+        -Label "managed schema plan helper"
+    try { $result = $jsonLine | ConvertFrom-Json }
+    catch { throw "managed schema plan helper stdout 不是有效 JSON。" }
+    Assert-TicketboxC07ExactProperties `
+        -Value $result `
+        -ExpectedNames @(
+            "schema",
+            "source_revision",
+            "target_revision",
+            "upgrade_required",
+            "revision_count",
+            "revision_manifest_sha256"
+        ) `
+        -ArtifactName "managed schema plan"
+    Assert-TicketboxC07LowerSha256 `
+        ([string]$result.revision_manifest_sha256) `
+        "managed schema revision manifest"
+    if (
+        $jsonLine -cne (ConvertTo-TicketboxC07CompactJson $result) -or
+        [string]$result.schema -cne $script:TicketboxManagedSchemaPlanSchema -or
+        [string]$result.source_revision -cne $SourceRevision -or
+        [string]::IsNullOrWhiteSpace([string]$result.target_revision) -or
+        [int]$result.revision_count -lt 0 -or
+        [bool]$result.upgrade_required -ne ([int]$result.revision_count -gt 0)
+    ) {
+        throw "managed schema plan 未绑定 frozen release graph。"
+    }
+    return $result
+}
+
+function Get-TicketboxPackagedManagedSchemaPlan {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceRevision,
+        [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
+        [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
+        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath
+    )
+
+    Assert-TicketboxC07PackagedMigrationDependencies
+    $process = Invoke-TicketboxC07BoundMigrationHelper `
+        -MigrationHelperPath $MigrationHelperPath `
+        -MigrationHelperEvidence $MigrationHelperEvidence `
+        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath `
+        -Arguments @(
+            "--managed-schema-plan",
+            "--source-revision",
+            $SourceRevision
+        ) `
+        -StandardInputText "" `
+        -TimeoutMilliseconds $script:TicketboxC07PackagedMigrationTimeoutMs `
+        -Label "managed schema frozen plan"
+    if (
+        [int]$process.ExitCode -ne 0 -or
+        -not [string]::IsNullOrWhiteSpace([string]$process.StandardError)
+    ) {
+        throw (
+            "managed schema frozen plan 被拒绝" +
+            "（exit=$([int]$process.ExitCode)）；原生输出已抑制。"
+        )
+    }
+    return ConvertFrom-TicketboxManagedSchemaPlan `
+        -StandardOutput ([string]$process.StandardOutput) `
+        -SourceRevision $SourceRevision
+}
+
+function ConvertFrom-TicketboxManagedSchemaResult {
+    param(
+        [Parameter(Mandatory = $true)][string]$StandardOutput,
+        [Parameter(Mandatory = $true)][object]$Plan
+    )
+
+    $jsonLine = Get-TicketboxC07PackagedJsonLine `
+        -StandardOutput $StandardOutput `
+        -Label "managed schema migration helper"
+    try { $result = $jsonLine | ConvertFrom-Json }
+    catch { throw "managed schema migration helper stdout 不是有效 JSON。" }
+    Assert-TicketboxC07ExactProperties `
+        -Value $result `
+        -ExpectedNames @(
+            "schema",
+            "source_revision",
+            "target_revision",
+            "revision_manifest_sha256",
+            "result",
+            "alembic_revision"
+        ) `
+        -ArtifactName "managed schema migration result"
+    Assert-TicketboxC07LowerSha256 `
+        ([string]$result.revision_manifest_sha256) `
+        "managed schema migration manifest"
+    if (
+        $jsonLine -cne (ConvertTo-TicketboxC07CompactJson $result) -or
+        [string]$result.schema -cne $script:TicketboxManagedSchemaResultSchema -or
+        [string]$result.source_revision -cne [string]$Plan.source_revision -or
+        [string]$result.target_revision -cne [string]$Plan.target_revision -or
+        [string]$result.alembic_revision -cne [string]$Plan.target_revision -or
+        [string]$result.revision_manifest_sha256 -cne
+            [string]$Plan.revision_manifest_sha256 -or
+        [string]$result.result -cnotin @(
+            "target_committed",
+            "target_observed_after_interruption"
+        )
+    ) {
+        throw "managed schema migration result 未绑定 exact frozen plan。"
+    }
+    return $result
+}
+
+function Invoke-TicketboxPackagedManagedSchemaUpgrade {
+    param(
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][Security.SecureString]$MigratorPassword,
+        [Parameter(Mandatory = $true)][object]$Plan,
+        [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
+        [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
+        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath
+    )
+
+    if (-not [bool]$Plan.upgrade_required -or [int]$Plan.revision_count -lt 1) {
+        throw "managed schema migration 只接受非空 frozen plan。"
+    }
+    $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+        -Authority $HostAuthority `
+        -Database "ticketbox" `
+        -Role "ticketbox_migrator"
+    $capturedPlan = $Plan
+    $capturedHelper = $MigrationHelperPath
+    $capturedEvidence = $MigrationHelperEvidence
+    $capturedExpectedHelper = $ExpectedMigrationHelperPath
+    $capturedUrl = $databaseUrl
+    return Invoke-TicketboxC07WithPlainSecret `
+        -Secret $MigratorPassword `
+        -Action ({
+            param([string]$PlainPassword)
+
+            $passfile = New-TicketboxProtectedPgPassFile `
+                -DatabaseUrl $capturedUrl `
+                -Password $PlainPassword
+            try {
+                $process = Invoke-TicketboxC07BoundMigrationHelper `
+                    -MigrationHelperPath $capturedHelper `
+                    -MigrationHelperEvidence $capturedEvidence `
+                    -ExpectedMigrationHelperPath $capturedExpectedHelper `
+                    -Arguments @(
+                        "--managed-schema-upgrade",
+                        "--database-url",
+                        $passfile.DatabaseUrl,
+                        "--pgpassfile",
+                        $passfile.Path,
+                        "--source-revision",
+                        [string]$capturedPlan.source_revision,
+                        "--target-revision",
+                        [string]$capturedPlan.target_revision,
+                        "--expected-revision-manifest-sha256",
+                        [string]$capturedPlan.revision_manifest_sha256
+                    ) `
+                    -PgPassFilePath $passfile.Path `
+                    -StandardInputText "" `
+                    -TimeoutMilliseconds $script:TicketboxC07PackagedMigrationTimeoutMs `
+                    -Label "managed schema release migration"
+                if (
+                    [int]$process.ExitCode -ne 0 -or
+                    -not [string]::IsNullOrWhiteSpace(
+                        [string]$process.StandardError
+                    )
+                ) {
+                    throw (
+                        "managed schema release migration 被拒绝" +
+                        "（exit=$([int]$process.ExitCode)）；原生输出已抑制。"
+                    )
+                }
+                return ConvertFrom-TicketboxManagedSchemaResult `
+                    -StandardOutput ([string]$process.StandardOutput) `
+                    -Plan $capturedPlan
             }
             finally {
                 if ($null -ne $passfile) {

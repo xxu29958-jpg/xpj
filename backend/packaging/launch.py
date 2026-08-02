@@ -64,10 +64,13 @@ _C07_MAINTENANCE_PLAN_SWITCH = "--c07-installed-upgrade-plan"
 _C07_MAINTENANCE_UPGRADE_SWITCH = "--c07-maintenance-upgrade"
 _C07_MONEY_FACTS_SWITCH = "--c07-money-facts-digest"
 _C07_TARGET_SEMANTIC_SWITCH = "--c07-target-semantic-digest"
+_MANAGED_SCHEMA_PLAN_SWITCH = "--managed-schema-plan"
+_MANAGED_SCHEMA_UPGRADE_SWITCH = "--managed-schema-upgrade"
 _C07_MIGRATION_HELPER_NAME = "ticketbox-c07-migrator.exe"
 _C07_PRODUCTION_MODULE_NAME = "_ticketbox_c07_production_migration"
 _C07_FRESH_SOURCE_MODULE_NAME = "_ticketbox_c07_fresh_source_bootstrap"
 _C07_MAINTENANCE_MODULE_NAME = "_ticketbox_c07_maintenance_upgrade"
+_MANAGED_SCHEMA_MODULE_NAME = "_ticketbox_managed_schema_upgrade"
 _C07_MIGRATION_RESULT_FIELDS = (
     "schema",
     "operation_id",
@@ -133,6 +136,22 @@ _C07_TARGET_SEMANTIC_RESULT_FIELDS = (
     "alembic_revision",
     "resource_shape_sha256",
     "money_facts_sha256",
+)
+_MANAGED_SCHEMA_PLAN_FIELDS = (
+    "schema",
+    "source_revision",
+    "target_revision",
+    "upgrade_required",
+    "revision_count",
+    "revision_manifest_sha256",
+)
+_MANAGED_SCHEMA_RESULT_FIELDS = (
+    "schema",
+    "source_revision",
+    "target_revision",
+    "revision_manifest_sha256",
+    "result",
+    "alembic_revision",
 )
 
 
@@ -205,6 +224,40 @@ def _parse_c07_maintenance_plan_args(argv: list[str]) -> Namespace:
         required=True,
     )
     parser.add_argument("--source-revision", required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_managed_schema_plan_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-c07-migrator",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _MANAGED_SCHEMA_PLAN_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--source-revision", required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_managed_schema_upgrade_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-c07-migrator",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _MANAGED_SCHEMA_UPGRADE_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--source-revision", required=True)
+    parser.add_argument("--target-revision", required=True)
+    parser.add_argument("--expected-revision-manifest-sha256", required=True)
     return parser.parse_args(argv)
 
 
@@ -425,6 +478,14 @@ def _load_c07_maintenance_upgrade_module() -> ModuleType:
     )
 
 
+def _load_managed_schema_upgrade_module() -> ModuleType:
+    return _load_c07_standalone_module(
+        module_name=_MANAGED_SCHEMA_MODULE_NAME,
+        filename="_managed_schema_upgrade.py",
+        database_package_seam=True,
+    )
+
+
 def _assert_c07_libpq_environment(pgpassfile: Path) -> None:
     """Fail closed unless libpq sees only the attested one-shot passfile."""
 
@@ -543,6 +604,73 @@ def _run_c07_maintenance_plan(
     )
     if tuple(result) != _C07_MAINTENANCE_PLAN_FIELDS:
         raise RuntimeError("C07 maintenance plan returned an unsupported shape")
+    output_stream.write(
+        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
+    )
+    output_stream.flush()
+    return 0
+
+
+def _run_managed_schema_plan(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    args = _parse_managed_schema_plan_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("managed schema plan requires redirected stdin/stdout")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("managed schema plan requires empty stdin")
+
+    managed = _load_managed_schema_upgrade_module()
+    result = managed.get_managed_schema_plan(
+        source_revision=args.source_revision,
+    )
+    if tuple(result) != _MANAGED_SCHEMA_PLAN_FIELDS:
+        raise RuntimeError("managed schema plan returned an unsupported result shape")
+    output_stream.write(
+        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
+    )
+    output_stream.flush()
+    return 0
+
+
+def _run_managed_schema_upgrade(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    args = _parse_managed_schema_upgrade_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("managed schema upgrade requires redirected stdin/stdout")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("managed schema upgrade requires empty stdin")
+
+    _assert_c07_libpq_environment(args.pgpassfile)
+    managed = _load_managed_schema_upgrade_module()
+    result = managed.run_managed_schema_upgrade_action(
+        database_url=args.database_url,
+        pgpassfile=args.pgpassfile,
+        source_revision=args.source_revision,
+        target_revision=args.target_revision,
+        expected_revision_manifest_sha256=(
+            args.expected_revision_manifest_sha256
+        ),
+    )
+    if tuple(result) != _MANAGED_SCHEMA_RESULT_FIELDS:
+        raise RuntimeError(
+            "managed schema upgrade returned an unsupported result shape"
+        )
     output_stream.write(
         json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
     )
@@ -1289,6 +1417,8 @@ def main() -> int | None:
             _C07_MAINTENANCE_UPGRADE_SWITCH,
             _C07_MONEY_FACTS_SWITCH,
             _C07_TARGET_SEMANTIC_SWITCH,
+            _MANAGED_SCHEMA_PLAN_SWITCH,
+            _MANAGED_SCHEMA_UPGRADE_SWITCH,
         )
         if switch in arguments
     ]
@@ -1305,6 +1435,10 @@ def main() -> int | None:
             return _run_c07_fresh_source_bootstrap(arguments)
         if maintenance_switches[0] == _C07_MAINTENANCE_PLAN_SWITCH:
             return _run_c07_maintenance_plan(arguments)
+        if maintenance_switches[0] == _MANAGED_SCHEMA_PLAN_SWITCH:
+            return _run_managed_schema_plan(arguments)
+        if maintenance_switches[0] == _MANAGED_SCHEMA_UPGRADE_SWITCH:
+            return _run_managed_schema_upgrade(arguments)
         if maintenance_switches[0] == _C07_MAINTENANCE_UPGRADE_SWITCH:
             return _run_c07_maintenance_upgrade(arguments)
         if maintenance_switches[0] == _C07_MONEY_FACTS_SWITCH:

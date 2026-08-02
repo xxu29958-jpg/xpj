@@ -10,6 +10,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.c07_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.database import SessionLocal, engine
 from app.errors import AppError
 from app.models import (
@@ -173,6 +174,57 @@ def test_existing_money_fact_requires_explicit_adoption() -> None:
     with SessionLocal() as db:
         preview = adoption_preview(db)
     assert preview.allowed_home_currency_codes == ("CNY",)
+
+    # The released legacy rate table used a CNY-specific column name for a
+    # source -> configured-home rate. A JPY installation could therefore hold
+    # USD=150 (USD -> JPY); that row must not be reinterpreted as proof of CNY.
+    reset_schema()
+    run_alembic(command.upgrade, PREVIOUS_REVISION)
+    seed_owner()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO app_meta (key, value, updated_at)
+                VALUES (:key, 'JPY', CURRENT_TIMESTAMP)
+                ON CONFLICT (key) DO UPDATE
+                    SET value = EXCLUDED.value,
+                        updated_at = EXCLUDED.updated_at
+                """
+            ),
+            {"key": INSTALLATION_HOME_CURRENCY_KEY},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO exchange_rates (
+                    public_id, tenant_id, currency_code, rate_date,
+                    rate_to_cny, source, created_at, updated_at
+                ) VALUES (
+                    :public_id, 'owner', 'USD', DATE '2026-08-01',
+                    150, 'manual', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                """
+            ),
+            {"public_id": str(uuid4())},
+        )
+    run_alembic(command.upgrade, "head")
+    with SessionLocal() as db:
+        preview = adoption_preview(db)
+    assert preview.allowed_home_currency_codes == ("JPY",)
+
+    # Without any explicit carrier the same rate only rules out USD as home;
+    # owner adoption remains open to every other supported currency.
+    with engine.begin() as connection:
+        connection.execute(
+            text("DELETE FROM app_meta WHERE key = :key"),
+            {"key": INSTALLATION_HOME_CURRENCY_KEY},
+        )
+    with SessionLocal() as db:
+        preview = adoption_preview(db)
+    assert "CNY" in preview.allowed_home_currency_codes
+    assert "JPY" in preview.allowed_home_currency_codes
+    assert "USD" not in preview.allowed_home_currency_codes
 
 
 def test_writer_fence_requires_active_revision_proof() -> None:

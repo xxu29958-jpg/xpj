@@ -96,15 +96,24 @@ def init_db() -> None:
             )
     elif plan.action is DatabaseLifecycleAction.NOOP:
         _assert_c07_startup_lifecycle_ready(alembic)
+    elif (
+        plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE
+        and _is_installed_host_database()
+    ):
+        raise DatabaseMigrationPreflightError(
+            "拒绝由安装版 runtime 执行 schema DDL:升级必须由安装器在后端停止、"
+            "恢复点已验证且短命 migrator 获得 exact-head 计划后执行；"
+            "数据库未执行 backup/DDL/DML。"
+        )
     elif plan.action is not DatabaseLifecycleAction.MANAGED_UPGRADE:
         raise DatabaseMigrationPreflightError(
             "拒绝由普通后端改变未知数据库状态:"
             f"current={lifecycle.current_revision!r}, head={alembic.head_revision!r}；"
             "数据库未执行 backup/DDL/DML。"
         )
-    # MANAGED_UPGRADE mutation preflights, backup, and Alembic DDL are repeated
-    # under a database-scoped lease below. The first inspection is deliberately
-    # read-only; it must never authorize a later write from stale state.
+    # Development/operator MANAGED_UPGRADE preflights, backup, and Alembic DDL
+    # are repeated under a database-scoped lease below. Installed hosts are
+    # fenced above; their long-lived runtime role intentionally has no DDL.
     try:
         if plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
             _apply_managed_schema_lifecycle(alembic)

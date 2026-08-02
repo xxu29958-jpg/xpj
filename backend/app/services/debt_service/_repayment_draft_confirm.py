@@ -112,13 +112,13 @@ def dismiss_repayment_draft(
     commit: bool = False,
 ) -> RepaymentDraft:
     """Latch a pending draft ``dismissed`` (idempotent if already dismissed)."""
-    resolve_write_capability(db)
     draft = _lock_pending_draft(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     if draft.status == "dismissed":
         return draft  # idempotent: already dismissed
     if draft.status == "confirmed":
         raise AppError("state_conflict", status_code=409)
 
+    resolve_write_capability(db)
     draft.status = "dismissed"
     draft.resolved_at = now_utc()
     draft.resolved_by_account_id = actor_account_id

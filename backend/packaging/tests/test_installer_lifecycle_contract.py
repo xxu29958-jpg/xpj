@@ -220,6 +220,10 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert '$C07MigrationHelper = Join-Path $ProgramDir "ticketbox-c07-migrator.exe"' in install
     assert "function Invoke-TicketboxC07InstalledMigrationAction" in install
     assert "function Invoke-TicketboxC07InstalledFreshSourceBootstrapAction" in install
+    assert "function Invoke-TicketboxInstalledManagedSchemaUpgrade" in install
+    assert "Enable-TicketboxC07MigratorForManagedSchemaUpgrade" in install
+    assert "Invoke-TicketboxC07RecoveredSuperuserAction" in install
+    assert 'Write-Step "收敛 release schema 到 frozen head"' in install
     assert 'Assert-File $C07MigrationHelper "ticketbox-c07-migrator.exe"' in install
     for script in (prepare, install, uninstall):
         assert ". $ReleaseConfigScript" in script

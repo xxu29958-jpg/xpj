@@ -180,6 +180,36 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
         lambda: calls.append("backup") or SimpleNamespace(file_name="pre-c02.dump"),
     )
 
+    monkeypatch.setenv("TICKETBOX_DATA_ROOT_MARKER_PATH", "C:/ProgramData/Ticketbox/data-root.json")
+    with pytest.raises(
+        db_pkg.DatabaseMigrationPreflightError,
+        match="安装器.*短命 migrator",
+    ):
+        db_pkg.init_db()
+    assert calls == []
+    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH")
+
+    # The frozen installer helper executes the same packaged revision through
+    # an externally owned transaction. Exercise that exact path with the test
+    # database principal standing in for the short-lived migrator/owner pair.
+    from app.database import _managed_schema_upgrade as managed_schema
+
+    db_pkg.engine.dispose()
+    with db_pkg.engine.connect() as connection:
+        session_user, database_name = connection.execute(
+            text("SELECT session_user, current_database()")
+        ).one()
+    monkeypatch.setattr(managed_schema, "MIGRATOR_ROLE", str(session_user))
+    monkeypatch.setattr(managed_schema, "SCHEMA_OWNER_ROLE", str(session_user))
+    monkeypatch.setattr(managed_schema, "DATABASE_NAME", str(database_name))
+    managed_plan = managed_schema._load_plan(C07_TARGET_REVISION)
+    with db_pkg.engine.begin() as connection:
+        assert managed_schema._run_plan(connection, managed_plan) == "target_committed"
+    assert _head_revision(db_pkg) == alembic.head_revision
+    command.downgrade(alembic.config, C07_TARGET_REVISION)
+    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+
     with db_pkg.engine.begin() as blocker:
         blocker.execute(
             text(

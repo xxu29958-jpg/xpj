@@ -5461,6 +5461,108 @@ END
 "@
 }
 
+function Enable-TicketboxC07MigratorForManagedSchemaUpgrade {
+    param(
+        [AllowNull()][Security.SecureString]$SuperuserPassword,
+        [Parameter(Mandatory = $true)][Security.SecureString]$RuntimePassword,
+        [Parameter(Mandatory = $true)][Security.SecureString]$MigratorPassword,
+        [Parameter(Mandatory = $true)][DateTime]$MigratorValidUntilUtc,
+        [Parameter(Mandatory = $true)][string]$OperationId,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("fresh_install", "legacy_adoption")]
+        [string]$Mode
+    )
+
+    Assert-TicketboxC07SecureString `
+        $SuperuserPassword `
+        "managed schema superuser authority"
+    Assert-TicketboxC07MigratorCredentialWindow $MigratorValidUntilUtc
+    $authority = Resolve-TicketboxC07DatabaseHostAuthority
+    Assert-TicketboxC07LiveHostConnection $authority $SuperuserPassword
+    Get-TicketboxC07RoleBootstrapIdentity `
+        -Authority $authority `
+        -SuperuserPassword $SuperuserPassword `
+        -OperationId $OperationId `
+        -Mode $Mode | Out-Null
+
+    $migratorVerifier = ConvertTo-TicketboxC07ScramVerifier $MigratorPassword
+    $migratorVerifierSql = Escape-SqlLiteral $migratorVerifier
+    $validUntil = $MigratorValidUntilUtc.ToUniversalTime().ToString(
+        "yyyy-MM-ddTHH:mm:ss.fffZ",
+        [Globalization.CultureInfo]::InvariantCulture
+    )
+    Invoke-TicketboxC07Sql `
+        -Authority $authority `
+        -Database "postgres" `
+        -Role "postgres" `
+        -Password $SuperuserPassword `
+        -Label "managed schema migrator activation" `
+        -Sql @"
+BEGIN;
+DO `$ticketbox`$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_authid
+        WHERE rolname = '$script:TicketboxC07OwnerRole'
+          AND NOT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb
+          AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls
+    ) THEN
+        RAISE EXCEPTION 'schema owner role is not least privilege';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_authid
+        WHERE rolname = '$script:TicketboxC07RuntimeRole'
+          AND rolcanlogin AND rolinherit AND NOT rolsuper AND NOT rolcreatedb
+          AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls
+          AND rolpassword IS NOT NULL
+    ) THEN
+        RAISE EXCEPTION 'runtime role authority drifted';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_authid
+        WHERE rolname = '$script:TicketboxC07MigratorRole'
+          AND NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper
+          AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication
+          AND NOT rolbypassrls AND rolconnlimit = 1 AND rolpassword IS NULL
+    ) THEN
+        RAISE EXCEPTION 'migrator is not fully retired';
+    END IF;
+    IF EXISTS (
+        SELECT 1
+        FROM pg_auth_members AS membership
+        JOIN pg_roles AS granted ON granted.oid = membership.roleid
+        JOIN pg_roles AS member ON member.oid = membership.member
+        WHERE granted.rolname IN (
+                  '$script:TicketboxC07OwnerRole',
+                  '$script:TicketboxC07MigratorRole',
+                  '$script:TicketboxC07RuntimeRole'
+              )
+           OR member.rolname IN (
+                  '$script:TicketboxC07OwnerRole',
+                  '$script:TicketboxC07MigratorRole',
+                  '$script:TicketboxC07RuntimeRole'
+              )
+    ) THEN
+        RAISE EXCEPTION 'retired role membership residue exists';
+    END IF;
+END
+`$ticketbox`$;
+ALTER ROLE "$script:TicketboxC07MigratorRole"
+    LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+    NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1
+    PASSWORD '$migratorVerifierSql' VALID UNTIL '$validUntil';
+GRANT CONNECT ON DATABASE "$script:TicketboxC07DatabaseName"
+    TO "$script:TicketboxC07MigratorRole";
+GRANT "$script:TicketboxC07OwnerRole" TO "$script:TicketboxC07MigratorRole"
+    WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
+COMMIT;
+"@ | Out-Null
+    Assert-TicketboxC07RoleCredentials `
+        -Authority $authority `
+        -RuntimePassword $RuntimePassword `
+        -MigratorPassword $MigratorPassword
+}
+
 function Disable-TicketboxC07MigratorLogin {
     param(
         [AllowNull()][Security.SecureString]$SuperuserPassword,

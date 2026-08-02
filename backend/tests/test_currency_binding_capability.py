@@ -26,7 +26,7 @@ from app.services.currency_binding_service import (
 pytestmark = pytest.mark.currency_binding_unbound
 
 
-def test_currency_capability_requires_session_and_is_private(client, identity) -> None:
+def test_currency_capability_requires_session_and_is_private(client, identity, monkeypatch) -> None:
     assert currency_system.router.prefix == "/api/system"
     assert currency_adoption.router.prefix == "/api/maintenance/currency-binding"
     assert "binding_revision" in CurrencyCapabilityResponse.model_fields
@@ -55,6 +55,19 @@ def test_currency_capability_requires_session_and_is_private(client, identity) -
         "health": "empty",
         "initialization_offer": "CNY",
     }
+
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        unsupported = client.get(
+            "/api/system/currency-capability",
+            headers=identity.app_headers,
+        )
+        assert unsupported.status_code == 200
+        assert unsupported.json()["state"] == "EMPTY"
+        assert unsupported.json()["initialization_offer"] is None
+    finally:
+        get_settings.cache_clear()
 
 
 def test_adoption_boundary_ignores_public_admin_escape_hatch(client, identity, monkeypatch) -> None:
