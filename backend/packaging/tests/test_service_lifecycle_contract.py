@@ -19,6 +19,7 @@ PACKAGING = Path(__file__).resolve().parents[1]
 # probes below, whose 1,000/3,200 ms limits remain unchanged.
 POWERSHELL_51_COLD_START_TIMEOUT_MS = 45_000
 POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS = 90
+POWERSHELL_51_MULTI_SCENARIO_HARNESS_TIMEOUT_SECONDS = 180
 
 
 def _read(name: str) -> str:
@@ -1123,7 +1124,7 @@ finally {{
             encoding="utf-8",
             errors="replace",
             check=False,
-            timeout=POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS,
+            timeout=POWERSHELL_51_MULTI_SCENARIO_HARNESS_TIMEOUT_SECONDS,
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
 
