@@ -37,6 +37,8 @@ from tests.test_debt_binding_drift import (
     _owner_account_id,
 )
 
+pytestmark = pytest.mark.currency_binding_unbound
+
 
 def _seed_cny_expense_fact_row() -> None:
     with SessionLocal() as db:

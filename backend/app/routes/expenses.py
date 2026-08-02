@@ -593,7 +593,7 @@ def post_confirm_expense(
     db.refresh(expense)
     # Post-confirm image GC — the same side-effect commit confirm_expense runs
     # internally when it owns the commit (kept out of the atomic key+confirm one).
-    if cleanup_after_confirm(expense):
+    if cleanup_after_confirm(db, expense):
         db.commit()
         db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)

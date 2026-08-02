@@ -33,6 +33,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_service import (
     confirm_expense,
     mark_expense_not_duplicate,
@@ -302,6 +303,9 @@ def test_two_sessions_seeing_same_updated_at_only_first_confirm_wins(
         # PATCH path.
         from sqlalchemy import update
 
+        # This direct competing writer is test setup, so it explicitly
+        # acquires the same DB-fence proof as a metadata service would.
+        authorize_currency_metadata_write(session_a)
         session_a.execute(
             update(Expense)
             .where(Expense.id == expense_id)
@@ -370,6 +374,7 @@ def test_two_sessions_mark_not_duplicate_race(
     replay on the pre-clear token → 409 from atomic UPDATE WHERE."""
     expense_id = _create_pending(client, identity=identity)
     with SessionLocal() as setup_db:
+        authorize_currency_metadata_write(setup_db)
         row = setup_db.scalar(select(Expense).where(Expense.id == expense_id))
         assert row is not None
         row.duplicate_status = "suspected"

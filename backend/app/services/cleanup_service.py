@@ -148,10 +148,16 @@ def _is_supported_upload_file(path: Path) -> bool:
     return suffix in ALLOWED_EXTENSIONS or suffix == "jpg"
 
 
-def cleanup_after_confirm(expense: Expense) -> bool:
+def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
     settings = get_settings()
     if not settings.delete_image_after_confirm:
         return False
+
+    # Confirmation is committed before file GC so an unknown commit outcome
+    # can never delete the only bytes for an uncommitted fact.  That also means
+    # this marker update runs in a new transaction and must acquire a fresh
+    # currency-writer proof before any irreversible file deletion begins.
+    authorize_currency_metadata_write(db)
 
     now = now_utc()
     changed = False
@@ -172,8 +178,8 @@ def cleanup_after_confirm(expense: Expense) -> bool:
     return changed
 
 
-def delete_after_confirm_files(expense: Expense) -> None:
-    cleanup_after_confirm(expense)
+def delete_after_confirm_files(db: Session, expense: Expense) -> None:
+    cleanup_after_confirm(db, expense)
 
 
 def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:

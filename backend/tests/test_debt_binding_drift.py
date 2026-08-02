@@ -30,6 +30,8 @@ from app.services.debt_service._repayment import record_repayment
 from app.services.exchange_rate_service import apply_currency_payload
 from app.services.time_service import now_utc
 
+pytestmark = pytest.mark.currency_binding_unbound
+
 
 def _idem_headers(app_headers: dict[str, str]) -> dict[str, str]:
     return {**app_headers, "Idempotency-Key": str(uuid4())}

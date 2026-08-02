@@ -45,12 +45,12 @@ def test_list_debts_envelope_carries_installation_home_currency(client: TestClie
     assert listing.json()["items"][0]["home_currency_code"] == "CNY"
 
 
-def test_list_debts_envelope_degrades_to_null_on_misconfigured_env(
+def test_list_debts_envelope_keeps_persisted_authority_on_misconfigured_env(
     client: TestClient, monkeypatch, *, identity
 ) -> None:
-    # PR#255 R8-3：env 配错时读路径 best-effort 降级 —— 列表仍 200、信封
-    # home_currency_code 落 null（客户端对 null capability fail closed），历史 record
-    # 读不受影响；写路径盖章维持 fail-fast（不在本钉范围）。
+    # C02 retires the PR#255 env bridge: runtime configuration drift must not
+    # erase or reinterpret the persisted installation authority on a read.
+    # Writers still fail closed through the capability gate.
     created = client.post(
         "/api/debts",
         headers=_idem_headers(identity.app_headers),
@@ -69,7 +69,7 @@ def test_list_debts_envelope_degrades_to_null_on_misconfigured_env(
     try:
         listing = client.get("/api/debts", headers=identity.app_headers)
         assert listing.status_code == 200, listing.json()
-        assert listing.json()["home_currency_code"] is None
+        assert listing.json()["home_currency_code"] == "CNY"
         assert len(listing.json()["items"]) == 1
         assert listing.json()["items"][0]["home_currency_code"] == "CNY"
     finally:

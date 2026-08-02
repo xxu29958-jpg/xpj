@@ -33,7 +33,7 @@ from tests._infra.c07_money_migration import (
     seed_owner,
 )
 
-pytestmark = pytest.mark.real_db
+pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
 PREVIOUS_REVISION = "20260729_0001"
 TARGET_REVISION = "20260802_0001"

@@ -23,6 +23,7 @@ from app.services.merchant_alias_service import create_merchant_alias, delete_me
 from app.services.owner_console_service import get_owner_account_id, get_recycle_bin_vm
 from app.services.recurring_service import archive_recurring_item
 from app.services.time_service import now_utc
+from tests._infra.currency import activate_test_currency_authority
 
 
 @pytest.fixture()
@@ -106,6 +107,47 @@ def _seed_archived_recurring() -> tuple[str, int]:
             db, tenant_id="owner", public_id=item.public_id
         )
         return archived.public_id, archived.row_version
+
+
+def _seed_archived_jpy_owner_money_facts() -> None:
+    """Seed historical JPY rows without pretending a legacy client can write them."""
+
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        timestamp = now_utc()
+        db.add_all(
+            [
+                MonthlyIncomePlan(
+                    tenant_id="owner",
+                    label="收入回收测试",
+                    source_type="salary",
+                    frequency="one_time",
+                    income_month="2026-06",
+                    amount_cents=123400,
+                    pay_day=28,
+                    status="archived",
+                    archived_at=timestamp,
+                    created_at=timestamp,
+                    updated_at=timestamp,
+                ),
+                RecurringItem(
+                    tenant_id="owner",
+                    merchant_key="recurring-recycle-test",
+                    merchant_name="固定支出回收测试",
+                    frequency="monthly",
+                    baseline_amount_cents=6800,
+                    last_amount_cents=6800,
+                    occurrence_count=3,
+                    status="archived",
+                    confidence="high",
+                    source="candidate",
+                    archived_at=timestamp,
+                    created_at=timestamp,
+                    updated_at=timestamp,
+                ),
+            ]
+        )
+        db.commit()
 
 
 def _seed_archived_goal() -> tuple[str, int]:
@@ -294,6 +336,7 @@ def test_owner_recycle_bin_remote_returns_403(client: TestClient, *, identity) -
     )
 
 
+@pytest.mark.currency_binding_unbound
 def test_owner_recycle_bin_amount_labels_follow_jpy_home(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -304,8 +347,7 @@ def test_owner_recycle_bin_amount_labels_follow_jpy_home(
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
-        _seed_archived_income()
-        _seed_archived_recurring()
+        _seed_archived_jpy_owner_money_facts()
 
         with SessionLocal() as db:
             vm = get_recycle_bin_vm(db)

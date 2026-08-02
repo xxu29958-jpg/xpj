@@ -12,6 +12,7 @@ from _web_overview_test_support import (
 from _web_overview_test_support import (
     seed_confirmed_expense as _seed_confirmed_expense,
 )
+from _web_overview_test_support import seed_confirmed_expense_fact
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -286,6 +287,7 @@ def test_overview_recent_additions_link_targets_confirmed(web_client: TestClient
     assert "/web/pending" not in card.group(0)
 
 
+@pytest.mark.currency_binding_unbound
 def test_overview_amounts_follow_home_currency_exponent(
     web_client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:
@@ -293,8 +295,8 @@ def test_overview_amounts_follow_home_currency_exponent(
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
-        _seed_confirmed_expense(
-            web_client, identity=identity, amount_cents=1234, merchant="すき家", category="餐饮"
+        seed_confirmed_expense_fact(
+            currency_code="JPY", amount_minor=1234, merchant="すき家", category="餐饮"
         )
         resp = web_client.get("/web/overview?ledger_id=owner")
         assert resp.status_code == 200

@@ -12,6 +12,7 @@ import secrets
 from pathlib import Path
 
 from sqlalchemy import inspect, text
+from sqlalchemy.orm import Session
 
 from app.config import BACKEND_ROOT
 from app.database._core import SessionLocal, engine, settings
@@ -61,6 +62,7 @@ def _move_legacy_upload_path(relative_path: str | None, tenant_id: str, tenant_i
 
 
 def migrate_upload_paths_to_tenant_dirs() -> None:
+    from app.services.currency_binding_service import authorize_currency_metadata_write
     from app.services.identity_service import ledger_ids
     from app.tenants import configured_tenants
 
@@ -76,6 +78,13 @@ def migrate_upload_paths_to_tenant_dirs() -> None:
         return
 
     with engine.begin() as connection:
+        # This owner-tool migration writes protected Expense metadata on a raw
+        # connection.  Acquire proof on that exact outer transaction before
+        # moving any file, so the PostgreSQL fence cannot reject the later DB
+        # rewrite after the source bytes have already moved.
+        with Session(bind=connection, join_transaction_mode="create_savepoint") as proof_db:
+            authorize_currency_metadata_write(proof_db)
+            proof_db.commit()
         for tenant_id in tenant_ids:
             rows = connection.execute(
                 text(

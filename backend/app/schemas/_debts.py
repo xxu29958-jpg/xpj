@@ -162,16 +162,11 @@ class DebtResponse(BaseModel):
 class DebtListResponse(BaseModel):
     """Ledger/account-scoped Debt list envelope.
 
-    ``home_currency_code`` repeats the installation-level currency capability at
-    envelope level (ADR-0061 C02/C03; PR#255 R6): it is the SAME server-side binding
-    the write path stamps onto each record (`currency_common.home_currency_code`),
-    surfaced here so a client looking at an EMPTY ledger can still resolve the ledger
-    currency for first-record creation — record-level-only delivery made "wait for
-    the first record" circular. Clients must treat record-level and envelope values
-    as one source: disagreement means binding drift (C02 forbids hot-switching) and
-    writers must fail closed. Read path is best-effort (R8-3): a misconfigured env
-    degrades the field to ``null`` instead of failing the whole list; clients
-    already fail closed on a null capability, so degrading is safe.
+    ``home_currency_code`` repeats the persisted installation currency authority
+    used by writers. Runtime env drift never replaces or nulls an ACTIVE binding;
+    clients can therefore keep interpreting historical records while new writes
+    fail closed. ``None`` means the installation is genuinely unbound, not that a
+    mutable process setting was invalid.
     """
 
     items: list[DebtResponse]

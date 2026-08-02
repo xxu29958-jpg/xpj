@@ -8,6 +8,7 @@ import pytest
 
 from app.database import SessionLocal
 from app.models import Expense, LedgerLearningEvent
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.learning_service import (
     CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE,
@@ -25,6 +26,7 @@ from app.services.learning_service._duplicate_scoring import (
 def _seed_confirmed(category: str, *, merchant: str = "麦当劳") -> int:
     now = datetime.now(UTC)
     with SessionLocal() as db:
+        resolve_write_capability(db)
         expense = Expense(
             tenant_id="owner",
             amount_cents=1000,

@@ -14,6 +14,7 @@ import pytest
 from _web_overview_test_support import (
     create_pending_upload,
     seed_confirmed_expense,
+    seed_confirmed_expense_fact,
     write_fake_dumps,
 )
 from fastapi.testclient import TestClient
@@ -420,6 +421,7 @@ def test_overview_backup_card_renders_all_three_states(
     assert "天前生成最近备份" in _card_body(page.text)
 
 
+@pytest.mark.currency_binding_unbound
 def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_currency(
     web_client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:
@@ -429,8 +431,8 @@ def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_curr
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
-        seed_confirmed_expense(
-            web_client, identity=identity, amount_cents=1234, merchant="すき家", category="餐饮"
+        seed_confirmed_expense_fact(
+            currency_code="JPY", amount_minor=1234, merchant="すき家", category="餐饮"
         )
         # 数据层: amount_label / amount_major 同按 minor digits 投影 (donut 优先消费后者)。
         data = web_client.get("/web/dashboard/data?ledger_id=owner")

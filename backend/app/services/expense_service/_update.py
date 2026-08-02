@@ -348,7 +348,7 @@ def confirm_expense(
     if commit:
         db.commit()
         db.refresh(expense)
-        if cleanup_after_confirm(expense):
+        if cleanup_after_confirm(db, expense):
             db.commit()
             db.refresh(expense)
     else:

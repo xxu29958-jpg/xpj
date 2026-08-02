@@ -19,6 +19,7 @@ from sqlalchemy import select, text
 
 from app.database import SessionLocal, engine
 from app.models import Expense, OcrFact
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.learning_service import (
     OcrFactDraft,
     read_ocr_text,
@@ -43,6 +44,7 @@ def _seed_expense(
     sync."""
 
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = Expense(
             tenant_id=tenant_id,
             source="pytest",

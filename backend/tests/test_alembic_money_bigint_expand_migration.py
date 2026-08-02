@@ -221,7 +221,7 @@ def test_empty_existing_source_schema_cannot_impersonate_fresh_install() -> None
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     with pytest.raises(RuntimeError, match="requires the deployment ceremony"):
-        run_alembic_without_c07_context(command.upgrade, "head")
+        run_alembic_without_c07_context(command.upgrade, HEAD_REVISION)
     assert current_revision() == PREVIOUS_REVISION
     assert column_type("expenses", "amount_cents") in {"integer", "int4"}
 
@@ -230,7 +230,7 @@ def test_upgrade_preserves_legacy_values_and_exposes_c07_release_bounds() -> Non
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     seed_boundary_facts()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
         budget = db.query(Budget).filter_by(month="2026-07").one()
@@ -273,7 +273,7 @@ def test_goal_type_shape_rejects_null_truth_leaks_after_c07() -> None:
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     seed_owner()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
         spending = Goal(
@@ -321,7 +321,7 @@ def test_existing_cross_currency_snapshot_is_not_reinterpreted() -> None:
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     invitation_id = seed_cross_currency_invitation()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
     with SessionLocal() as db:
         invitation = db.get(BillSplitInvitation, invitation_id)
         assert invitation is not None
@@ -336,7 +336,7 @@ def test_legacy_ocr_amount_fact_is_preserved_without_later_schema() -> None:
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     fact_id = seed_legacy_ocr_amount_fact()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
         fact = db.get(OcrFact, fact_id)
@@ -348,7 +348,7 @@ def test_legacy_csv_import_row_is_preserved_without_later_schema() -> None:
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     row_id = seed_legacy_csv_import_error_row()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
         row = db.get(CsvImportRow, row_id)
@@ -368,7 +368,7 @@ def test_released_zero_split_survives_upgrade_without_fact_rewrite() -> None:
     with engine.connect() as connection:
         source_digest = canonical_money_facts_sha256(connection)
 
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
         split = db.get(ExpenseSplit, split_id)
@@ -386,7 +386,7 @@ def test_pending_upload_money_is_not_reinterpreted_without_provenance() -> None:
         source_digest = canonical_money_facts_sha256(
             connection,
         )
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
         pending = db.get(Expense, pending_id)
@@ -431,7 +431,7 @@ def test_semantic_digest_binds_frozen_currency_fx_and_status_context() -> None:
     )
     row_id = seed_legacy_csv_import_error_row()
     invitation_id = seed_cross_currency_invitation()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
 
     with engine.connect() as connection, connection.begin():
         baseline = canonical_money_facts_sha256(connection)

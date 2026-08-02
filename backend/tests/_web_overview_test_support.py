@@ -9,11 +9,16 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.services.time_service import current_month
+from app.database import SessionLocal
+from app.models import Expense
+from app.services.time_service import current_month, now_utc
+from tests._infra.currency import activate_test_currency_authority
 
 TINY_PNG = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -36,6 +41,47 @@ def seed_confirmed_expense(
         },
     )
     assert resp.status_code == 200, resp.text
+
+
+def seed_confirmed_expense_fact(
+    *,
+    currency_code: str,
+    amount_minor: int,
+    merchant: str,
+    category: str,
+) -> None:
+    """Seed a historical fact under an already adopted test installation.
+
+    C02 deliberately rejects legacy, unversioned non-CNY writes until C03 adds
+    the client contract tuple.  Read/presentation tests still need authentic
+    JPY/KRW facts, so they establish persisted authority and insert the frozen
+    historical row directly instead of reviving the retired env-authority path.
+    """
+
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, currency_code)
+        recorded_at = datetime.fromisoformat(
+            f"{current_month('Asia/Shanghai')}-15T04:00:00+00:00"
+        )
+        timestamp = now_utc()
+        db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=amount_minor,
+                home_currency_code=currency_code,
+                original_currency_code=currency_code,
+                original_amount_minor=amount_minor,
+                exchange_rate_to_cny=Decimal("1"),
+                merchant=merchant,
+                category=category,
+                status="confirmed",
+                expense_time=recorded_at,
+                confirmed_at=timestamp,
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+        )
+        db.commit()
 
 
 def create_pending_upload(client: TestClient, *, identity) -> int:

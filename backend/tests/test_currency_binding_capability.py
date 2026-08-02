@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.config import get_settings
 from app.currency_binding_contract import CURRENCY_EVIDENCE_TABLES
 from app.database import SessionLocal
@@ -20,6 +22,8 @@ from app.services.currency_binding_service import (
     get_capability,
     resolve_write_capability,
 )
+
+pytestmark = pytest.mark.currency_binding_unbound
 
 
 def test_currency_capability_requires_session_and_is_private(client, identity) -> None:

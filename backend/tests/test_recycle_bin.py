@@ -31,6 +31,7 @@ from app.services.income_plan_service import archive_income_plan, create_income_
 from app.services.recurring_service import archive_recurring_item
 from app.services.soft_delete_policy import recycle_bin_retention_delta
 from app.services.time_service import now_utc
+from tests._infra.currency import activate_test_currency_authority
 
 
 def _seed_archived_income(
@@ -79,6 +80,38 @@ def _seed_archived_budget() -> tuple[str, int]:
             expected_row_version=budget.row_version or 1,
         )
         return archived.month, archived.row_version
+
+
+def _seed_archived_jpy_money_facts() -> str:
+    """Seed read-only recycle-bin facts after an explicit JPY adoption."""
+
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        timestamp = now_utc()
+        income = MonthlyIncomePlan(
+            tenant_id="owner",
+            label="JPY收入",
+            source_type="salary",
+            frequency="one_time",
+            income_month="2026-06",
+            amount_cents=5000,
+            pay_day=28,
+            status="archived",
+            archived_at=timestamp,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        budget = Budget(
+            tenant_id="owner",
+            month="2026-07",
+            total_amount_cents=66000,
+            archived_at=timestamp,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        db.add_all([income, budget])
+        db.commit()
+        return budget.month
 
 
 def _seed_deleted_category_preference() -> tuple[str, int]:
@@ -395,6 +428,7 @@ def _seed_archived_recurring_for_label() -> None:
         archive_recurring_item(db, tenant_id="owner", public_id=item.public_id)
 
 
+@pytest.mark.currency_binding_unbound
 def test_recycle_bin_amount_labels_follow_jpy_home_zero_fraction(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -406,8 +440,7 @@ def test_recycle_bin_amount_labels_follow_jpy_home_zero_fraction(
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
-        _seed_archived_income(label="JPY收入", amount_cents=5000)
-        month, _row_version = _seed_archived_budget()
+        month = _seed_archived_jpy_money_facts()
 
         response = client.get("/api/recycle-bin", headers=identity.app_headers)
 
@@ -448,38 +481,32 @@ def test_recycle_bin_amount_labels_follow_cny_home_two_fraction(
 
 def test_recycle_bin_hides_rows_beyond_retention_window(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
     *,
     identity,
 ) -> None:
     """C5b-3: 超窗行不进列表；窗内金额行的币种标签不受影响。"""
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    get_settings.cache_clear()
-    try:
-        _seed_archived_income(label="窗内收入", amount_cents=5000)
-        preference_id, _row_version = _seed_deleted_category_preference()
-        with SessionLocal() as db:
-            preference = db.scalar(
-                select(CategoryPreference).where(
-                    CategoryPreference.public_id == preference_id
-                )
+    _seed_archived_income(label="窗内收入", amount_cents=5000)
+    preference_id, _row_version = _seed_deleted_category_preference()
+    with SessionLocal() as db:
+        preference = db.scalar(
+            select(CategoryPreference).where(
+                CategoryPreference.public_id == preference_id
             )
-            assert preference is not None
-            preference.deleted_at = (
-                now_utc() - recycle_bin_retention_delta() - timedelta(days=1)
-            )
-            db.commit()
-
-        response = client.get("/api/recycle-bin", headers=identity.app_headers)
-
-        assert response.status_code == 200
-        items = response.json()["items"]
-        titles = [item["title"] for item in items]
-        assert "窗内收入" in titles
-        assert "回收分类" not in titles
-        income_detail = next(
-            item["detail"] for item in items if item["title"] == "窗内收入"
         )
-        assert "¥5,000" in income_detail
-    finally:
-        get_settings.cache_clear()
+        assert preference is not None
+        preference.deleted_at = (
+            now_utc() - recycle_bin_retention_delta() - timedelta(days=1)
+        )
+        db.commit()
+
+    response = client.get("/api/recycle-bin", headers=identity.app_headers)
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    titles = [item["title"] for item in items]
+    assert "窗内收入" in titles
+    assert "回收分类" not in titles
+    income_detail = next(
+        item["detail"] for item in items if item["title"] == "窗内收入"
+    )
+    assert "¥50.00" in income_detail

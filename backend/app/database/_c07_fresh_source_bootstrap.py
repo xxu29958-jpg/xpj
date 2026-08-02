@@ -67,6 +67,40 @@ def _backend_root() -> Path:
     return root
 
 
+def _assert_linear_descendant_chain(
+    scripts: ScriptDirectory,
+    *,
+    target_revision: str,
+    head_revision: str,
+) -> None:
+    """Accept later linear slices without widening the frozen C07 action."""
+
+    current = scripts.get_revision(target_revision)
+    visited = {target_revision}
+    while current is not None and current.revision != head_revision:
+        next_revisions = tuple(current.nextrev)
+        if len(next_revisions) != 1:
+            raise C07FreshSourceBootstrapError(
+                "C07 fresh-source Alembic graph differs from the frozen release"
+            )
+        successor = scripts.get_revision(next_revisions[0])
+        if (
+            successor is None
+            or successor.revision in visited
+            or successor.down_revision != current.revision
+            or successor.dependencies is not None
+        ):
+            raise C07FreshSourceBootstrapError(
+                "C07 fresh-source Alembic graph differs from the frozen release"
+            )
+        visited.add(successor.revision)
+        current = successor
+    if current is None or current.revision != head_revision:
+        raise C07FreshSourceBootstrapError(
+            "C07 fresh-source Alembic graph differs from the frozen release"
+        )
+
+
 def _load_frozen_alembic_plan() -> FreshSourceAlembicPlan:
     backend_root = _backend_root()
     ini_path = backend_root / "alembic.ini"
@@ -96,7 +130,7 @@ def _load_frozen_alembic_plan() -> FreshSourceAlembicPlan:
 
     if (
         bases != (C07_GRAPH_BASE_REVISION,)
-        or heads != (C07_TARGET_REVISION,)
+        or len(heads) != 1
         or source is None
         or target is None
         or source.revision != C07_SOURCE_REVISION
@@ -119,6 +153,11 @@ def _load_frozen_alembic_plan() -> FreshSourceAlembicPlan:
         raise C07FreshSourceBootstrapError(
             "C07 fresh-source Alembic graph differs from the frozen release"
         )
+    _assert_linear_descendant_chain(
+        scripts,
+        target_revision=C07_TARGET_REVISION,
+        head_revision=heads[0],
+    )
     return FreshSourceAlembicPlan(
         config=config, source_revision=C07_SOURCE_REVISION, target_revision=C07_TARGET_REVISION
     )

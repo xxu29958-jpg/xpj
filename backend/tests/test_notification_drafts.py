@@ -264,11 +264,11 @@ def test_notification_draft_rejected_on_non_cny_without_original_fields(
         get_settings.cache_clear()
 
 
-def test_notification_draft_with_original_fields_allowed_on_non_cny(
+def test_notification_draft_with_original_fields_still_rejects_configuration_drift(
     client: TestClient, monkeypatch, *, identity,
 ) -> None:
-    # R11 同伴钉：带 original 字段的显式 FX 捕获不被条件门误伤 —— original=JPY（== env
-    # home，rate=1 base 通道）按零小数 home 1:1 换算入账。
+    # 显式 original 字段只解决捕获载荷歧义，不能覆盖已经持久化的 CNY 安装权威。
+    # C03 的版本化采用流程完成前，运行环境漂到 JPY 必须拒绝且不落草稿。
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
@@ -281,12 +281,9 @@ def test_notification_draft_with_original_fields_allowed_on_non_cny(
             headers=identity.app_headers,
             json=payload,
         )
-        assert response.status_code == 200, response.json()
-        body = response.json()
-        assert body["home_currency"] == "JPY"
-        assert body["original_currency_code"] == "JPY"
-        assert body["original_amount_minor"] == 1200
-        assert body["amount_cents"] == 1200
+        assert response.status_code == 409, response.json()
+        assert response.json()["error"] == "currency_binding_configuration_drift"
+        assert _draft_count() == 0
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
