@@ -1406,23 +1406,36 @@ function Invoke-TicketboxInstalledManagedSchemaUpgrade {
             -Authority $capturedHostAuthority `
             -SuperuserPassword $RecoveredSuperuserPassword
         if ($liveRevision -ceq [string]$capturedPlan.target_revision) {
-            if ($migratorState.IsActive) {
-                Disable-TicketboxC07MigratorLogin `
-                    -SuperuserPassword $RecoveredSuperuserPassword `
-                    -OperationId $capturedOperationId `
-                    -Mode $capturedMode
-            }
-            elseif (-not $migratorState.IsRetired) {
+            if (-not $migratorState.IsActive -and -not $migratorState.IsRetired) {
                 throw "release schema 已到 target，但 migrator 不是 retired terminal。"
             }
-            return [pscustomobject][ordered]@{
-                schema = $script:TicketboxManagedSchemaResultSchema
-                source_revision = [string]$capturedPlan.source_revision
-                target_revision = [string]$capturedPlan.target_revision
-                revision_manifest_sha256 =
-                    [string]$capturedPlan.revision_manifest_sha256
-                result = "target_observed_after_interruption"
-                alembic_revision = [string]$capturedPlan.target_revision
+            try {
+                Set-TicketboxManagedSchemaRuntimeAcl `
+                    -Authority $capturedHostAuthority `
+                    -SuperuserPassword $RecoveredSuperuserPassword
+                return [pscustomobject][ordered]@{
+                    schema = $script:TicketboxManagedSchemaResultSchema
+                    source_revision = [string]$capturedPlan.source_revision
+                    target_revision = [string]$capturedPlan.target_revision
+                    revision_manifest_sha256 =
+                        [string]$capturedPlan.revision_manifest_sha256
+                    result = "target_observed_after_interruption"
+                    alembic_revision = [string]$capturedPlan.target_revision
+                }
+            }
+            finally {
+                $state = Get-TicketboxC07MigratorRetirementState `
+                    -Authority $capturedHostAuthority `
+                    -SuperuserPassword $RecoveredSuperuserPassword
+                if ($state.IsActive) {
+                    Disable-TicketboxC07MigratorLogin `
+                        -SuperuserPassword $RecoveredSuperuserPassword `
+                        -OperationId $capturedOperationId `
+                        -Mode $capturedMode
+                }
+                elseif (-not $state.IsRetired) {
+                    throw "release schema resume 留下 partial migrator authority。"
+                }
             }
         }
         if ($liveRevision -cne [string]$capturedPlan.source_revision) {
@@ -1440,11 +1453,15 @@ function Invoke-TicketboxInstalledManagedSchemaUpgrade {
                 -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(30)) `
                 -OperationId $capturedOperationId `
                 -Mode $capturedMode
-            return Invoke-TicketboxInstalledManagedSchemaUpgradeAction `
+            $upgradeResult = Invoke-TicketboxInstalledManagedSchemaUpgradeAction `
                 -ReleaseIdentity $capturedReleaseIdentity `
                 -HostAuthority $capturedHostAuthority `
                 -MigratorPassword $capturedMigratorPassword `
                 -Plan $capturedPlan
+            Set-TicketboxManagedSchemaRuntimeAcl `
+                -Authority $capturedHostAuthority `
+                -SuperuserPassword $RecoveredSuperuserPassword
+            return $upgradeResult
         }
         finally {
             $state = Get-TicketboxC07MigratorRetirementState `

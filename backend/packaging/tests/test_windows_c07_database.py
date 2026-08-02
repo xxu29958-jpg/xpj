@@ -57,7 +57,14 @@ def test_c07_database_source_is_narrow_and_secret_safe() -> None:
     assert "ticketbox_migrator" in source
     assert "ticketbox_runtime" in source
     assert "TicketboxC07RuntimeBootstrapAuthorityTables" not in source
-    assert '"installation_currency_bindings"' not in source
+    assert "Set-TicketboxManagedSchemaRuntimeAcl" in source
+    assert "IncludeManagedSchemaCurrencyAuthority" in source
+    for table in (
+        "installation_currency_bindings",
+        "installation_idempotency_keys",
+        "installation_currency_audit_log",
+    ):
+        assert f'"{table}"' in source
     assert '"api_idempotency_contract_fences"' not in source
     assert 'NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE' in source
     assert 'LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE' in source
@@ -99,6 +106,88 @@ def test_c07_database_source_is_narrow_and_secret_safe() -> None:
 
     raw = C07_DATABASE_SCRIPT.read_bytes()
     assert raw.startswith(b"\xef\xbb\xbf")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell managed ACL contract")
+def test_managed_schema_runtime_acl_is_opt_in_applied_and_attested(
+    tmp_path: Path,
+) -> None:
+    script = f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(C07_DATABASE_SCRIPT)}'
+$baseSql = Get-TicketboxC07DatabasePrivilegeSql
+$managedSql = Get-TicketboxC07DatabasePrivilegeSql `
+    -IncludeManagedSchemaCurrencyAuthority
+foreach ($table in @(
+    'installation_currency_bindings',
+    'installation_idempotency_keys',
+    'installation_currency_audit_log'
+)) {{
+    if ($baseSql.Contains($table)) {{
+        throw "managed table leaked into the frozen C07 ACL: $table"
+    }}
+    if (-not $managedSql.Contains($table)) {{
+        throw "managed table missing from the post-upgrade ACL: $table"
+    }}
+}}
+foreach ($required in @(
+    "managed_binding_tables text[] := ARRAY['installation_currency_bindings']::text[];",
+    "managed_authority_tables text[] := ARRAY['installation_idempotency_keys']::text[];",
+    "managed_audit_insert_tables text[] := ARRAY['installation_currency_audit_log']::text[];"
+)) {{
+    if (-not $managedSql.Contains($required)) {{
+        throw "managed ACL privilege class is not exact: $required"
+    }}
+}}
+$password = [Security.SecureString]::new()
+foreach ($character in ('not-a-real-secret-0123456789abcdef').ToCharArray()) {{
+    $password.AppendChar($character)
+}}
+$script:applicationSql = ''
+$script:attestationSql = ''
+$script:attestationCalls = 0
+function Invoke-TicketboxC07Sql {{
+    param(
+        [object]$Authority,
+        [string]$Database,
+        [string]$Role,
+        [Security.SecureString]$Password,
+        [string]$Sql,
+        [string]$Label
+    )
+    if ($Label -ceq 'managed schema exact runtime ACL application') {{
+        $script:applicationSql = $Sql
+        return ''
+    }}
+    if ($Label -ceq 'C07 structured runtime ACL attestation') {{
+        $script:attestationSql = $Sql
+        $script:attestationCalls += 1
+        return "true`ttrue`ttrue`ttrue`ttrue`ttrue`ttrue`ttrue"
+    }}
+    throw "unexpected SQL call: $Label"
+}}
+Set-TicketboxManagedSchemaRuntimeAcl `
+    -Authority ([pscustomobject]@{{ Schema = 'test-authority' }}) `
+    -SuperuserPassword $password
+if ($script:applicationSql -cne $managedSql -or $script:attestationCalls -ne 1) {{
+    throw 'managed ACL was not applied and attested as one exact contract'
+}}
+$probeIndex = $script:attestationSql.IndexOf("'pg_catalog.pg_control_system()'")
+if ($probeIndex -lt 0) {{
+    throw 'runtime startup probe is absent from ACL attestation'
+}}
+$probePrefix = $script:attestationSql.Substring(
+    [Math]::Max(0, $probeIndex - 160),
+    [Math]::Min(160, $probeIndex)
+)
+if (
+    -not $probePrefix.Contains('has_function_privilege(') -or
+    $probePrefix.Contains('NOT has_function_privilege(')
+) {{
+    throw 'runtime startup probe grant and ACL attestation disagree'
+}}
+"""
+    _run_harness(tmp_path, "managed-schema-runtime-acl", script)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell failure contract")

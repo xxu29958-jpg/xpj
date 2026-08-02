@@ -113,6 +113,15 @@ $script:TicketboxC07RuntimeRetentionFactTables = @(
     "ocr_facts"
 )
 $script:TicketboxC07RuntimeReadOnlyTables = @("alembic_version")
+$script:TicketboxManagedSchemaCurrencyBindingTables = @(
+    "installation_currency_bindings"
+)
+$script:TicketboxManagedSchemaAuthorityTables = @(
+    "installation_idempotency_keys"
+)
+$script:TicketboxManagedSchemaAuditInsertTables = @(
+    "installation_currency_audit_log"
+)
 
 function ConvertTo-TicketboxC07SqlLiteral {
     param([AllowEmptyString()][Parameter(Mandatory = $true)][string]$Value)
@@ -1144,7 +1153,10 @@ function Renew-TicketboxC07RoleCredentialWindow {
 }
 
 function Get-TicketboxC07DatabasePrivilegeSql {
-    param([AllowEmptyString()][string]$ReadyMarker = "")
+    param(
+        [AllowEmptyString()][string]$ReadyMarker = "",
+        [switch]$IncludeManagedSchemaCurrencyAuthority
+    )
 
     $businessTables = ConvertTo-TicketboxC07SqlTextArray (
         $script:TicketboxC07RuntimeBusinessTables
@@ -1170,6 +1182,20 @@ function Get-TicketboxC07DatabasePrivilegeSql {
     $readOnlyTables = ConvertTo-TicketboxC07SqlTextArray (
         $script:TicketboxC07RuntimeReadOnlyTables
     )
+    $managedBindingTables = "ARRAY[]::text[]"
+    $managedAuthorityTables = "ARRAY[]::text[]"
+    $managedAuditInsertTables = "ARRAY[]::text[]"
+    if ($IncludeManagedSchemaCurrencyAuthority) {
+        $managedBindingTables = ConvertTo-TicketboxC07SqlTextArray @(
+            $script:TicketboxManagedSchemaCurrencyBindingTables
+        )
+        $managedAuthorityTables = ConvertTo-TicketboxC07SqlTextArray @(
+            $script:TicketboxManagedSchemaAuthorityTables
+        )
+        $managedAuditInsertTables = ConvertTo-TicketboxC07SqlTextArray @(
+            $script:TicketboxManagedSchemaAuditInsertTables
+        )
+    }
     $readyMarkerSql = ""
     if (-not [string]::IsNullOrEmpty($ReadyMarker)) {
         $readyMarkerLiteral = ConvertTo-TicketboxC07SqlLiteral $ReadyMarker
@@ -1204,6 +1230,9 @@ DECLARE
     financial_append_tables text[] := $financialAppendTables;
     retention_fact_tables text[] := $retentionFactTables;
     read_only_tables text[] := $readOnlyTables;
+    managed_binding_tables text[] := $managedBindingTables;
+    managed_authority_tables text[] := $managedAuthorityTables;
+    managed_audit_insert_tables text[] := $managedAuditInsertTables;
     sequence_consumer_tables text[];
 BEGIN
     sequence_consumer_tables :=
@@ -1212,7 +1241,9 @@ BEGIN
         authority_tables ||
         audit_append_tables ||
         audit_mutable_tables ||
-        retention_fact_tables;
+        retention_fact_tables ||
+        managed_authority_tables ||
+        managed_audit_insert_tables;
 
     -- Remove inherited blanket ACLs without granting any discovered object.
     -- Unknown named grantees are rejected below instead of being silently
@@ -1250,7 +1281,10 @@ BEGIN
         audit_append_tables ||
         audit_mutable_tables ||
         retention_fact_tables ||
-        read_only_tables
+        read_only_tables ||
+        managed_binding_tables ||
+        managed_authority_tables ||
+        managed_audit_insert_tables
     ) LOOP
         SELECT pg_get_userbyid(relation.relowner)
         INTO owner_name
@@ -1336,6 +1370,33 @@ BEGIN
         IF to_regclass(format('public.%I', table_name)) IS NOT NULL THEN
             EXECUTE format(
                 'GRANT SELECT ON TABLE public.%I TO %I',
+                table_name,
+                '$script:TicketboxC07RuntimeRole'
+            );
+        END IF;
+    END LOOP;
+    FOREACH table_name IN ARRAY managed_binding_tables LOOP
+        IF to_regclass(format('public.%I', table_name)) IS NOT NULL THEN
+            EXECUTE format(
+                'GRANT SELECT, UPDATE ON TABLE public.%I TO %I',
+                table_name,
+                '$script:TicketboxC07RuntimeRole'
+            );
+        END IF;
+    END LOOP;
+    FOREACH table_name IN ARRAY managed_authority_tables LOOP
+        IF to_regclass(format('public.%I', table_name)) IS NOT NULL THEN
+            EXECUTE format(
+                'GRANT SELECT, INSERT, UPDATE ON TABLE public.%I TO %I',
+                table_name,
+                '$script:TicketboxC07RuntimeRole'
+            );
+        END IF;
+    END LOOP;
+    FOREACH table_name IN ARRAY managed_audit_insert_tables LOOP
+        IF to_regclass(format('public.%I', table_name)) IS NOT NULL THEN
+            EXECUTE format(
+                'GRANT INSERT ON TABLE public.%I TO %I',
                 table_name,
                 '$script:TicketboxC07RuntimeRole'
             );
@@ -1777,7 +1838,8 @@ SELECT
 function Assert-TicketboxC07RuntimeAclContract {
     param(
         [Parameter(Mandatory = $true)][object]$Authority,
-        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword
+        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
+        [switch]$IncludeManagedSchemaCurrencyAuthority
     )
     $specifications = @()
     foreach ($entry in @(
@@ -1821,6 +1883,29 @@ function Assert-TicketboxC07RuntimeAclContract {
             }
         }
     }
+    if ($IncludeManagedSchemaCurrencyAuthority) {
+        foreach ($entry in @(
+            [pscustomobject]@{
+                Tables = $script:TicketboxManagedSchemaCurrencyBindingTables
+                Privileges = @("SELECT", "UPDATE")
+            },
+            [pscustomobject]@{
+                Tables = $script:TicketboxManagedSchemaAuthorityTables
+                Privileges = @("SELECT", "INSERT", "UPDATE")
+            },
+            [pscustomobject]@{
+                Tables = $script:TicketboxManagedSchemaAuditInsertTables
+                Privileges = @("INSERT")
+            }
+        )) {
+            foreach ($table in @($entry.Tables)) {
+                $specifications += [pscustomobject]@{
+                    Table = [string]$table
+                    Privileges = @($entry.Privileges)
+                }
+            }
+        }
+    }
     $duplicates = @(
         $specifications |
             Group-Object -Property Table |
@@ -1845,7 +1930,7 @@ function Assert-TicketboxC07RuntimeAclContract {
                 ")"
         }
     ) -join ",`n        "
-    $sequenceConsumers = ConvertTo-TicketboxC07SqlTextArray @(
+    $sequenceConsumerTables = @(
         $script:TicketboxC07RuntimeBusinessTables +
         $script:TicketboxC07RuntimeFinancialAppendTables +
         $script:TicketboxC07RuntimeAuthorityTables +
@@ -1853,6 +1938,13 @@ function Assert-TicketboxC07RuntimeAclContract {
         $script:TicketboxC07RuntimeAuditMutableTables +
         $script:TicketboxC07RuntimeRetentionFactTables
     )
+    if ($IncludeManagedSchemaCurrencyAuthority) {
+        $sequenceConsumerTables += @(
+            $script:TicketboxManagedSchemaAuthorityTables +
+            $script:TicketboxManagedSchemaAuditInsertTables
+        )
+    }
+    $sequenceConsumers = ConvertTo-TicketboxC07SqlTextArray $sequenceConsumerTables
     $output = Invoke-TicketboxC07Sql `
         -Authority $Authority `
         -Database $script:TicketboxC07DatabaseName `
@@ -1995,7 +2087,7 @@ SELECT
         FROM sequence_contract
     ), true)::text || E'\t' ||
     (
-        NOT has_function_privilege(
+        has_function_privilege(
             '$script:TicketboxC07RuntimeRole',
             'pg_catalog.pg_control_system()',
             'EXECUTE'
@@ -2019,6 +2111,29 @@ SELECT
             -Message "C07 runtime ACL structured attestation 未满足发布合同。" `
             -FailureCode "runtime_acl_invariant_failed")
     }
+}
+
+function Set-TicketboxManagedSchemaRuntimeAcl {
+    param(
+        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword
+    )
+
+    Assert-TicketboxC07SecureString `
+        $SuperuserPassword `
+        "managed schema runtime ACL superuser authority"
+    Invoke-TicketboxC07Sql `
+        -Authority $Authority `
+        -Database $script:TicketboxC07DatabaseName `
+        -Role "postgres" `
+        -Password $SuperuserPassword `
+        -Sql (Get-TicketboxC07DatabasePrivilegeSql `
+            -IncludeManagedSchemaCurrencyAuthority) `
+        -Label "managed schema exact runtime ACL application" | Out-Null
+    Assert-TicketboxC07RuntimeAclContract `
+        -Authority $Authority `
+        -SuperuserPassword $SuperuserPassword `
+        -IncludeManagedSchemaCurrencyAuthority
 }
 
 function Assert-TicketboxC07RoleCredentials {

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from tests.debt_repayment_goal_helpers import (
     _acknowledge_review,
     _adjust_debt,
@@ -96,6 +97,66 @@ def test_one_open_debt_keeps_in_progress(client: TestClient, *, identity) -> Non
     statuses = {link["debt_public_id"]: link["status"] for link in block["linked_debts"]}
     assert statuses[a["public_id"]] == "cleared"
     assert statuses[b["public_id"]] == "open"
+
+
+def test_non_latching_reads_survive_currency_configuration_drift(
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    open_debt = _create_external_debt(
+        client,
+        identity.app_headers,
+        principal_amount_cents=10000,
+    )
+    open_goal = _create_debt_goal(
+        client,
+        identity.app_headers,
+        name="仍在还款",
+        debt_public_ids=[open_debt["public_id"]],
+    ).json()
+    cleared_debt = _create_external_debt(
+        client,
+        identity.app_headers,
+        principal_amount_cents=20000,
+    )
+    cleared_goal = _create_debt_goal(
+        client,
+        identity.app_headers,
+        name="已经还清",
+        debt_public_ids=[cleared_debt["public_id"]],
+    ).json()
+    _clear_debt(client, identity.app_headers, cleared_debt)
+    latched = client.get(
+        f"/api/goals/{cleared_goal['public_id']}",
+        headers=identity.app_headers,
+    )
+    assert latched.status_code == 200
+    assert latched.json()["debt_repayment"]["achieved_version"] == 1
+
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        for public_id in (open_goal["public_id"], cleared_goal["public_id"]):
+            detail = client.get(
+                f"/api/goals/{public_id}",
+                headers=identity.app_headers,
+            )
+            assert detail.status_code == 200, detail.json()
+        listing = client.get(
+            "/api/goals?goal_type=debt_repayment",
+            headers=identity.app_headers,
+        )
+        assert listing.status_code == 200, listing.json()
+        states = {
+            item["public_id"]: item["debt_repayment"]["evaluation_state"]
+            for item in listing.json()["items"]
+        }
+        assert states[open_goal["public_id"]] == "in_progress"
+        assert states[cleared_goal["public_id"]] == "achieved"
+    finally:
+        get_settings.cache_clear()
 
 
 def test_voided_linked_debt_is_not_evaluable_with_review(client: TestClient, *, identity) -> None:

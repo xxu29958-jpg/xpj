@@ -9,6 +9,7 @@ from app.database._currency_writer import (
     lock_currency_evidence_tables,
     set_currency_writer_proof,
 )
+from app.errors import AppError
 from app.main import app
 from app.models import Budget
 from app.models.currency_binding import (
@@ -18,12 +19,26 @@ from app.models.currency_binding import (
 from app.network_boundary import require_maintenance_local
 from app.routes import currency_adoption, currency_system
 from app.schemas._currency import CurrencyCapabilityResponse
+from app.services import currency_binding_service
 from app.services.currency_binding_service import (
     get_capability,
     resolve_write_capability,
 )
 
 pytestmark = pytest.mark.currency_binding_unbound
+
+
+def test_missing_binding_singleton_is_corruption(monkeypatch) -> None:
+    monkeypatch.setattr(
+        currency_binding_service,
+        "_load_binding",
+        lambda *_args, **_kwargs: None,
+    )
+    with SessionLocal() as db, pytest.raises(AppError) as exc_info:
+        get_capability(db)
+
+    assert exc_info.value.error == "currency_binding_corrupt"
+    assert exc_info.value.status_code == 503
 
 
 def test_currency_capability_requires_session_and_is_private(client, identity, monkeypatch) -> None:

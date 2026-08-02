@@ -237,13 +237,17 @@ def build_debt_repayment_goal_response(
     persist_achievement: bool,
 ) -> GoalResponse:
     """Evaluate, optionally persist a fresh latch, and serialize one goal."""
-    if persist_achievement:
-        resolve_write_capability(db)
-    evaluation, latched = _evaluate_and_maybe_latch(
-        db,
-        goal,
-        persist=persist_achievement,
+    evaluation, _ = _evaluate_and_maybe_latch(db, goal, persist=False)
+    latch_required = (
+        persist_achievement
+        and evaluation.evaluation_state == "achieved"
+        and goal.achieved_version != goal.goal_version
     )
+    if latch_required:
+        resolve_write_capability(db)
+        evaluation, latched = _evaluate_and_maybe_latch(db, goal, persist=True)
+    else:
+        latched = False
     if latched:
         db.commit()
     return _debt_goal_response(goal, evaluation)

@@ -100,17 +100,7 @@ def get_capability(db: Session) -> CurrencyCapability:
     binding = _load_binding(db)
     configured = _configured_home_or_none()
     if binding is None:
-        return CurrencyCapability(
-            state=CURRENCY_BINDING_EMPTY,
-            home_currency_code=None,
-            minor_unit_exponent=None,
-            rounding_mode=None,
-            currency_contract_version=CURRENCY_CONTRACT_VERSION,
-            binding_revision=0,
-            minimum_writable_currency_contract=MINIMUM_WRITABLE_CURRENCY_CONTRACT,
-            health="empty",
-            initialization_offer=_initialization_offer(configured),
-        )
+        raise AppError("currency_binding_corrupt", status_code=503)
 
     state = _state(binding.state)
     if state == CURRENCY_BINDING_EMPTY:
