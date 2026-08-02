@@ -18,7 +18,6 @@ from app.models.currency_binding import (
 )
 from app.network_boundary import require_maintenance_local
 from app.routes import currency_adoption, currency_system
-from app.schemas._currency import CurrencyCapabilityResponse
 from app.services import currency_binding_service
 from app.services.currency_binding_service import (
     get_capability,
@@ -41,49 +40,16 @@ def test_missing_binding_singleton_is_corruption(monkeypatch) -> None:
     assert exc_info.value.status_code == 503
 
 
-def test_currency_capability_requires_session_and_is_private(client, identity, monkeypatch) -> None:
+def test_runtime_compatibility_is_the_only_client_currency_capability(client) -> None:
     assert currency_system.router.prefix == "/api/system"
     assert currency_adoption.router.prefix == "/api/maintenance/currency-binding"
-    assert "binding_revision" in CurrencyCapabilityResponse.model_fields
     assert "expenses" in CURRENCY_EVIDENCE_TABLES
     assert callable(lock_currency_evidence_tables)
     assert callable(set_currency_writer_proof)
-    anonymous = client.get("/api/system/currency-capability")
-    assert anonymous.status_code == 401
-
-    response = client.get(
-        "/api/system/currency-capability",
-        headers=identity.app_headers,
-    )
-
-    assert response.status_code == 200
-    assert response.headers["cache-control"] == "private, no-store"
-    assert response.headers["vary"] == "Authorization"
-    assert response.json() == {
-        "state": "EMPTY",
-        "home_currency_code": None,
-        "minor_unit_exponent": None,
-        "rounding_mode": None,
-        "currency_contract_version": 1,
-        "binding_revision": 0,
-        "minimum_writable_currency_contract": 1,
-        "health": "empty",
-        "initialization_offer": "CNY",
-    }
-
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    get_settings.cache_clear()
-    try:
-        unsupported = client.get(
-            "/api/system/currency-capability",
-            headers=identity.app_headers,
-        )
-        assert unsupported.status_code == 200
-        assert unsupported.json()["state"] == "EMPTY"
-        assert unsupported.json()["initialization_offer"] is None
-    finally:
-        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
-        get_settings.cache_clear()
+    assert client.get("/api/system/currency-capability").status_code == 404
+    paths = client.app.openapi()["paths"]
+    assert "/api/system/currency-capability" not in paths
+    assert "/api/system/runtime-compatibility" in paths
 
 
 def test_adoption_boundary_ignores_public_admin_escape_hatch(client, identity, monkeypatch) -> None:

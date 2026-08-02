@@ -16,24 +16,6 @@ RuntimeCompatibilityConclusion = Literal[
 ]
 
 
-class CurrencyCapabilityResponse(BaseModel):
-    state: Literal["EMPTY", "ADOPTION_REQUIRED", "ACTIVE"]
-    home_currency_code: CurrencyCode | None
-    minor_unit_exponent: int | None
-    rounding_mode: Literal["ROUND_HALF_UP"] | None
-    currency_contract_version: int
-    binding_revision: int
-    minimum_writable_currency_contract: int
-    health: Literal[
-        "empty",
-        "adoption_required",
-        "active_match",
-        "configuration_drift",
-        "migration_required",
-    ]
-    initialization_offer: CurrencyCode | None
-
-
 class RuntimeCurrencyCapabilityResponse(BaseModel):
     home_currency_code: CurrencyCode | None
     minor_unit_exponent: int | None
