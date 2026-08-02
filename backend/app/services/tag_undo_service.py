@@ -20,6 +20,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseTag, Tag, TagMutationUndoGroup, TagMutationUndoItem
 from app.services._tag_results import TagUndoResult
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.resource_audit import record_resource_action
 from app.services.soft_delete_policy import (
@@ -46,9 +47,7 @@ def _claim_undo_group(
         .where(TagMutationUndoGroup.consumed_at.is_(None))
         .limit(1)
     )
-    window_check = (
-        is_within_recycle_bin_window if use_recycle_bin_window else is_within_undo_window
-    )
+    window_check = is_within_recycle_bin_window if use_recycle_bin_window else is_within_undo_window
     if group is None or not window_check(group.created_at):
         raise AppError("tag_undo_not_found", status_code=404)
     claimed = db.execute(
@@ -122,11 +121,7 @@ def _replay_undo_items(db: Session, *, tenant_id: str, group_id: int) -> tuple[i
     iff the expense is still at the snapshot's CAS version; a moved / deleted
     expense is skipped (never overwritten). Returns (applied, skipped)."""
     items = list(
-        db.scalars(
-            ledger_scoped_select(TagMutationUndoItem, tenant_id).where(
-                TagMutationUndoItem.group_id == group_id
-            )
-        )
+        db.scalars(ledger_scoped_select(TagMutationUndoItem, tenant_id).where(TagMutationUndoItem.group_id == group_id))
     )
     # Batch-load every snapshotted expense up front (one query, not one per item)
     # so the replay loop holds no per-iteration SELECT.
@@ -178,6 +173,7 @@ def undo_tag_mutation(
     """Undo a delete/merge in one ordered transaction (契约 2). Returns
     applied/skipped so partial undo is visible. A revived tag's delete is no
     longer token-undoable (契约 4) — step ② returns 409 once the token is stale."""
+    authorize_currency_metadata_write(db)
     now = now_utc()
     group = _claim_undo_group(
         db,

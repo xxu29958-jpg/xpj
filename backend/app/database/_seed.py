@@ -162,13 +162,32 @@ def seed_identity_data() -> None:
 def seed_runtime_data() -> None:
     from app.services.category_service import normalize_existing_expense_categories
     from app.services.classify_service import seed_default_rules
+    from app.services.currency_binding_service import (
+        authorize_currency_metadata_write,
+        get_capability,
+    )
     from app.services.identity_service import ledger_ids
     from app.services.tag_service import backfill_expense_tags
 
     with SessionLocal() as db:
+        capability = get_capability(db)
+        if capability.state == "ADOPTION_REQUIRED":
+            return
         for ledger_id in ledger_ids(db):
+            authorize_currency_metadata_write(
+                db,
+                allow_empty_category_rule=True,
+            )
             normalize_existing_expense_categories(db, ledger_id)
+            authorize_currency_metadata_write(
+                db,
+                allow_empty_category_rule=True,
+            )
             backfill_expense_tags(db, ledger_id)
+            authorize_currency_metadata_write(
+                db,
+                allow_empty_category_rule=True,
+            )
             seed_default_rules(db, ledger_id)
 
 
@@ -200,10 +219,16 @@ def reconcile_expense_tag_mirror_once() -> None:
     """
     if _tag_mirror_reconcile_done():
         return
+    from app.services.currency_binding_service import get_capability
     from app.services.identity_service import ledger_ids
     from app.services.tag_service import reconcile_expense_tag_mirror
 
     with SessionLocal() as db:
+        # Historical installations need the loopback adoption endpoint before
+        # any fenced Expense repair can run.  Do not write the once-only marker:
+        # the same repair will be retried after adoption completes.
+        if get_capability(db).state == "ADOPTION_REQUIRED":
+            return
         for ledger_id in ledger_ids(db):
             reconcile_expense_tag_mirror(db, ledger_id)
     record_schema_migration(

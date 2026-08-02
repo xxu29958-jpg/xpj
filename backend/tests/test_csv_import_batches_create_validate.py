@@ -6,15 +6,17 @@ from io import BytesIO
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Expense, LedgerMember
+from app.models import CsvImportBatch, CsvImportRow, Expense, LedgerMember
 from app.services.csv_import_batch_service import (
     apply_csv_import_batch,
     create_csv_import_batch,
     list_csv_import_rows,
 )
+from app.services.currency_binding_service import get_capability
 
 
 def _csv_bytes(row_count: int) -> BytesIO:
@@ -97,6 +99,7 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
         assert inserted == 10_000
 
 
+@pytest.mark.currency_binding_unbound
 def test_csv_import_batch_create_inserts_rows_in_chunks(
     identity,
     monkeypatch: pytest.MonkeyPatch,
@@ -106,15 +109,57 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
 
     monkeypatch.setattr(lifecycle_mod, "CREATE_BATCH_INSERT_CHUNK_SIZE", 2)
     with SessionLocal() as db:
+        empty_batch = create_csv_import_batch(
+            db,
+            tenant_id="owner",
+            file_name="header-only.csv",
+            file_obj=_csv_bytes(0),
+        )
+        assert empty_batch.total_rows == 0
+        assert get_capability(db).state == "EMPTY"
+
+    real_row_from_parsed = lifecycle_mod._row_from_parsed
+    built_rows = 0
+
+    def fail_in_second_chunk(*args, **kwargs):
+        nonlocal built_rows
+        built_rows += 1
+        if built_rows == 3:
+            raise SQLAlchemyError("injected second-chunk failure")
+        return real_row_from_parsed(*args, **kwargs)
+
+    monkeypatch.setattr(lifecycle_mod, "_row_from_parsed", fail_in_second_chunk)
+    with SessionLocal() as db, pytest.raises(SQLAlchemyError):
+        create_csv_import_batch(
+            db,
+            tenant_id="owner",
+            file_name="rolled-back.csv",
+            file_obj=_csv_bytes(5),
+        )
+    with SessionLocal() as db:
+        assert get_capability(db).state == "EMPTY"
+        assert db.scalar(select(func.count()).select_from(CsvImportRow)) == 0
+        assert db.scalar(select(func.count()).select_from(CsvImportBatch)) == 1
+
+    monkeypatch.setattr(lifecycle_mod, "_row_from_parsed", real_row_from_parsed)
+    with SessionLocal() as db:
         real_commit = db.commit
+        real_flush = db.flush
         commit_count = 0
+        flush_count = 0
 
         def counted_commit() -> None:
             nonlocal commit_count
             commit_count += 1
             real_commit()
 
+        def counted_flush(*args, **kwargs) -> None:
+            nonlocal flush_count
+            flush_count += 1
+            real_flush(*args, **kwargs)
+
         monkeypatch.setattr(db, "commit", counted_commit)
+        monkeypatch.setattr(db, "flush", counted_flush)
         batch = create_csv_import_batch(
             db,
             tenant_id="owner",
@@ -123,7 +168,9 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
         )
 
         assert batch.total_rows == 5
-        assert commit_count >= 4
+        assert flush_count >= 4
+        assert commit_count == 1
+        assert get_capability(db).state == "ACTIVE"
 
         rows = list_csv_import_rows(
             db,

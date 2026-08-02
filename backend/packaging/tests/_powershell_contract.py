@@ -13,7 +13,11 @@ _PROBE = """
     minor = [int]$PSVersionTable.PSVersion.Minor
 } | ConvertTo-Json -Compress
 """
-_PROBE_TIMEOUT_SECONDS = 10
+# ``subprocess.run(timeout=...)`` also covers child communication, while
+# process creation itself can exceed the requested interval on Windows. Keep
+# the semantic identity checks exact but leave enough room for a cold hosted
+# runner to start Windows PowerShell under transient CPU pressure.
+_PROBE_TIMEOUT_SECONDS = 30
 
 
 @cache

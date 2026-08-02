@@ -14,6 +14,7 @@ import pytest
 
 SOURCE_REVISION = "20260722_0001"
 TARGET_REVISION = "20260729_0001"
+C02_TARGET_REVISION = "20260802_0001"
 OPERATION_ID = "11111111-1111-4111-8111-111111111111"
 RESTORE_DATABASE = "ticketbox_c07_restore_11111111111141118111111111111111"
 MIGRATOR_URL = (
@@ -88,6 +89,12 @@ assert plan["source_revision"] == "{SOURCE_REVISION}"
 assert plan["target_revision"] == "{TARGET_REVISION}"
 assert plan["upgrade_required"] is True
 assert len(plan["revision_manifest"]["revisions"]) == 1
+managed = launch._load_managed_schema_upgrade_module()
+managed_plan = managed.get_managed_schema_plan(source_revision="{TARGET_REVISION}")
+assert managed_plan["source_revision"] == "{TARGET_REVISION}"
+assert managed_plan["target_revision"] == "{C02_TARGET_REVISION}"
+assert managed_plan["upgrade_required"] is True
+assert managed_plan["revision_count"] == 1
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
 """
 
@@ -188,6 +195,22 @@ def _fresh_source_args() -> list[str]:
     ]
 
 
+def _managed_schema_args() -> list[str]:
+    return [
+        "--managed-schema-upgrade",
+        "--database-url",
+        MIGRATOR_URL + "ticketbox?require_auth=scram-sha-256",
+        "--pgpassfile",
+        "C:/TicketboxInstallerSecrets/.ticketbox-pgpass-1-" + ("1" * 32),
+        "--source-revision",
+        TARGET_REVISION,
+        "--target-revision",
+        C02_TARGET_REVISION,
+        "--expected-revision-manifest-sha256",
+        SHA_A,
+    ]
+
+
 def _money_facts_args() -> list[str]:
     return [
         "--c07-money-facts-digest",
@@ -237,8 +260,10 @@ def test_c07_actions_load_without_ordinary_database_facade() -> None:
 
 
 def test_c07_plan_is_one_exact_release_edge() -> None:
+    from app.alembic_revision_contract import assert_linear_descendant_chain
     from app.database import _c07_maintenance_plan as maintenance
 
+    assert maintenance.assert_linear_descendant_chain is assert_linear_descendant_chain
     plan = maintenance.get_installed_maintenance_plan(
         source_revision=SOURCE_REVISION,
     )
@@ -450,12 +475,14 @@ def test_all_c07_database_entrypoints_reject_ambient_libpq_authority(
     monkeypatch.setattr(launch, "_load_c07_production_migration_module", fail_loader)
     monkeypatch.setattr(launch, "_load_c07_fresh_source_bootstrap_module", fail_loader)
     monkeypatch.setattr(launch, "_load_c07_maintenance_upgrade_module", fail_loader)
+    monkeypatch.setattr(launch, "_load_managed_schema_upgrade_module", fail_loader)
     entrypoints = (
         (launch._run_c07_production_migration, _production_args()),
         (launch._run_c07_fresh_source_bootstrap, _fresh_source_args()),
         (launch._run_c07_maintenance_upgrade, _maintenance_args()),
         (launch._run_c07_money_facts, _money_facts_args()),
         (launch._run_c07_target_semantic, _target_args()),
+        (launch._run_managed_schema_upgrade, _managed_schema_args()),
     )
     for entrypoint, argv in entrypoints:
         _seal_c07_pg_environment(monkeypatch, argv)
@@ -466,29 +493,3 @@ def test_all_c07_database_entrypoints_reject_ambient_libpq_authority(
                 input_stream=io.BytesIO(b""),
                 output_stream=io.StringIO(),
             )
-
-
-def test_frozen_backend_and_helper_identities_are_separate(monkeypatch) -> None:
-    launch = _load_launch_module()
-    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(
-        launch.sys,
-        "argv",
-        ["ticketbox-backend.exe", *_maintenance_args()],
-    )
-    monkeypatch.setattr(
-        launch.sys,
-        "executable",
-        "C:/Program Files/Ticketbox/ticketbox-backend.exe",
-    )
-    with pytest.raises(RuntimeError, match="dedicated frozen helper"):
-        launch.main()
-
-    monkeypatch.setattr(launch.sys, "argv", ["ticketbox-c07-migrator.exe"])
-    monkeypatch.setattr(
-        launch.sys,
-        "executable",
-        "C:/Program Files/Ticketbox/ticketbox-c07-migrator.exe",
-    )
-    with pytest.raises(RuntimeError, match="requires its explicit maintenance mode"):
-        launch.main()

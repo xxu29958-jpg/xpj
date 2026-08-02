@@ -12,6 +12,7 @@ from app.schemas import (
     DebtGoalTargetDateRequest,
     GoalResponse,
 )
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.goal_debt_repayment_commands import (
     acknowledge_integrity_review,
     replace_debt_repayment_goal_links,
@@ -199,6 +200,7 @@ def remove_voided_debt_goal_links_idempotently(
             tenant_id=tenant_id,
             public_id=public_id,
         )
+    resolve_write_capability(db)
     goal = _require_debt_repayment_goal(
         db,
         tenant_id=tenant_id,
@@ -300,6 +302,7 @@ def archive_debt_repayment_goal_idempotently(
             tenant_id=tenant_id,
             public_id=public_id,
         )
+    resolve_write_capability(db)
     goal = _require_debt_repayment_goal(
         db,
         tenant_id=tenant_id,
@@ -361,6 +364,7 @@ def restore_debt_repayment_goal_idempotently(
             tenant_id=tenant_id,
             public_id=public_id,
         )
+    resolve_write_capability(db)
     goal = _require_debt_repayment_goal(
         db,
         tenant_id=tenant_id,

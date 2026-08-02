@@ -15,6 +15,7 @@ from app.money_contract import (
     round_minor_ratio_half_up,
 )
 from app.schemas import RecurringItemResponse
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.insights_service import normalize_merchant
 from app.services.recurring_candidate_confirmation_service import (
     confirm_recurring_candidate as confirm_recurring_candidate,
@@ -226,6 +227,7 @@ def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str, expecte
     (atomic UPDATE WHERE status!='archived' would match either state).
     Token check rejects the stale request.
     """
+    resolve_write_capability(db)
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -254,6 +256,7 @@ def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str, expecte
 def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int) -> RecurringItem:
     """ADR-0038 PR-A: resume with optimistic concurrency. Same rationale
     as :func:`pause_recurring_item`."""
+    resolve_write_capability(db)
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -293,6 +296,7 @@ def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expec
     item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status != "archived":
         return item  # not in the recycle bin — nothing to restore
+    resolve_write_capability(db)
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -319,6 +323,10 @@ def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expec
 
 
 def archive_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
+    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    if item.status == "archived":
+        return item
+    resolve_write_capability(db)
     now = now_utc()
     result = db.execute(
         update(RecurringItem)

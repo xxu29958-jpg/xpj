@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseTag, Tag
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.time_service import now_utc
 
@@ -65,9 +66,7 @@ def _ensure_tag(db: Session, *, tenant_id: str, name: str) -> Tag:
     key = tag_key(name)
     # The (tenant_id, key) unique constraint spans soft-deleted rows, so this
     # returns at most one tag for the key — live OR soft-deleted.
-    existing = db.scalar(
-        ledger_scoped_select(Tag, tenant_id).where(Tag.key == key).limit(1)
-    )
+    existing = db.scalar(ledger_scoped_select(Tag, tenant_id).where(Tag.key == key).limit(1))
     if existing is not None:
         # ADR-0043 契约 4: implicit re-creation colliding with a soft-deleted key
         # REVIVES that tag (so the unique key isn't violated and no duplicate is
@@ -97,17 +96,14 @@ def _ensure_tag(db: Session, *, tenant_id: str, name: str) -> Tag:
 
 
 def set_expense_tags(db: Session, expense: Expense, value: str | None) -> None:
+    authorize_currency_metadata_write(db)
     names = parse_tags(value)
     expense.tags = format_tags(names)
     if expense.id is None:
         db.flush()
 
     existing_links = list(
-        db.scalars(
-            ledger_scoped_select(ExpenseTag, expense.tenant_id).where(
-                ExpenseTag.expense_id == expense.id
-            )
-        )
+        db.scalars(ledger_scoped_select(ExpenseTag, expense.tenant_id).where(ExpenseTag.expense_id == expense.id))
     )
     existing_by_tag_id = {link.tag_id: link for link in existing_links}
     target_tag_ids: set[int] = set()
@@ -134,17 +130,11 @@ def sync_expense_tags(db: Session, expense: Expense) -> None:
 
 
 def backfill_expense_tags(db: Session, tenant_id: str) -> None:
-    has_links = db.scalar(
-        ledger_scoped_select(ExpenseTag, tenant_id).limit(1)
-    )
+    has_links = db.scalar(ledger_scoped_select(ExpenseTag, tenant_id).limit(1))
     if has_links is not None:
         return
 
-    expenses = list(
-        db.scalars(
-            ledger_scoped_select(Expense, tenant_id).where(Expense.tags.is_not(None))
-        )
-    )
+    expenses = list(db.scalars(ledger_scoped_select(Expense, tenant_id).where(Expense.tags.is_not(None))))
     for expense in expenses:
         set_expense_tags(db, expense, expense.tags)
     if expenses:
@@ -162,9 +152,7 @@ def _expense_tag_mirror_drifted(db: Session, expense: Expense) -> bool:
     link_tag_ids = {
         link.tag_id
         for link in db.scalars(
-            ledger_scoped_select(ExpenseTag, expense.tenant_id).where(
-                ExpenseTag.expense_id == expense.id
-            )
+            ledger_scoped_select(ExpenseTag, expense.tenant_id).where(ExpenseTag.expense_id == expense.id)
         )
     }
     if not desired_keys and not link_tag_ids:
@@ -172,17 +160,12 @@ def _expense_tag_mirror_drifted(db: Session, expense: Expense) -> bool:
     current_keys: set[str] = set()
     if link_tag_ids:
         current_keys = {
-            tag.key
-            for tag in db.scalars(
-                ledger_scoped_select(Tag, expense.tenant_id).where(Tag.id.in_(link_tag_ids))
-            )
+            tag.key for tag in db.scalars(ledger_scoped_select(Tag, expense.tenant_id).where(Tag.id.in_(link_tag_ids)))
         }
     return desired_keys != current_keys
 
 
-def _expense_tag_key_sets(
-    db: Session, tenant_id: str, expense_ids: set[int]
-) -> dict[int, set[str]]:
+def _expense_tag_key_sets(db: Session, tenant_id: str, expense_ids: set[int]) -> dict[int, set[str]]:
     if not expense_ids:
         return {}
     rows = db.execute(
@@ -198,27 +181,17 @@ def _expense_tag_key_sets(
     return keys_by_expense_id
 
 
-def _expense_tag_links_by_id(
-    db: Session, tenant_id: str, expense_ids: set[int]
-) -> dict[int, list[ExpenseTag]]:
+def _expense_tag_links_by_id(db: Session, tenant_id: str, expense_ids: set[int]) -> dict[int, list[ExpenseTag]]:
     if not expense_ids:
         return {}
-    links = list(
-        db.scalars(
-            ledger_scoped_select(ExpenseTag, tenant_id).where(
-                ExpenseTag.expense_id.in_(expense_ids)
-            )
-        )
-    )
+    links = list(db.scalars(ledger_scoped_select(ExpenseTag, tenant_id).where(ExpenseTag.expense_id.in_(expense_ids))))
     links_by_expense_id: dict[int, list[ExpenseTag]] = {}
     for link in links:
         links_by_expense_id.setdefault(link.expense_id, []).append(link)
     return links_by_expense_id
 
 
-def _tags_by_key_for_names(
-    db: Session, tenant_id: str, names: list[str]
-) -> dict[str, Tag]:
+def _tags_by_key_for_names(db: Session, tenant_id: str, names: list[str]) -> dict[str, Tag]:
     names_by_key: dict[str, str] = {}
     for name in names:
         key = tag_key(name)
@@ -228,10 +201,7 @@ def _tags_by_key_for_names(
         return {}
 
     tags_by_key = {
-        tag.key: tag
-        for tag in db.scalars(
-            ledger_scoped_select(Tag, tenant_id).where(Tag.key.in_(set(names_by_key)))
-        )
+        tag.key: tag for tag in db.scalars(ledger_scoped_select(Tag, tenant_id).where(Tag.key.in_(set(names_by_key))))
     }
     now = now_utc()
     created = False
@@ -328,10 +298,11 @@ def reconcile_expense_tag_mirror(db: Session, tenant_id: str, *, batch_size: int
             db.expunge_all()
             continue
 
+        # Each page commits independently, so transaction-local writer proof
+        # must be acquired for every page that actually repairs Expense rows.
+        authorize_currency_metadata_write(db)
         drifted_ids = {expense.id for expense in drifted_expenses}
-        desired_names = [
-            name for expense in drifted_expenses for name in desired_names_by_id[expense.id]
-        ]
+        desired_names = [name for expense in drifted_expenses for name in desired_names_by_id[expense.id]]
         tags_by_key = _tags_by_key_for_names(db, tenant_id, desired_names)
         links_by_expense_id = _expense_tag_links_by_id(db, tenant_id, drifted_ids)
 

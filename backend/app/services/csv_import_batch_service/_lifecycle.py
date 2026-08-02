@@ -6,7 +6,7 @@ import csv
 from io import BytesIO, TextIOWrapper
 from typing import BinaryIO
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,7 @@ from app.services.csv_import_batch_service._csv_io import (
     _row_from_parsed,
 )
 from app.services.csv_import_batch_service._queries import get_csv_import_batch
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import home_currency_code
 from app.services.import_service import (
     ParsedRow,
@@ -61,22 +62,6 @@ def _assert_cells_bounded(row: list[str], *, max_cell_bytes: int) -> None:
                 f"CSV 单元格超过 {max_cell_bytes} 字节上限。",
                 status_code=400,
             )
-
-
-def _delete_partial_csv_import_batch(
-    db: Session, *, batch_id: int, tenant_id: str
-) -> None:
-    db.execute(
-        delete(CsvImportRow)
-        .where(CsvImportRow.tenant_id == tenant_id)
-        .where(CsvImportRow.batch_id == batch_id)
-    )
-    db.execute(
-        delete(CsvImportBatch)
-        .where(CsvImportBatch.tenant_id == tenant_id)
-        .where(CsvImportBatch.id == batch_id)
-    )
-    db.commit()
 
 
 def _csv_import_limits() -> tuple[int, int, int, int, str]:
@@ -164,7 +149,7 @@ def _create_csv_import_batch_record(
         updated_at=now,
     )
     db.add(batch)
-    db.commit()
+    db.flush()
     db.refresh(batch)
     return batch
 
@@ -176,11 +161,16 @@ def _insert_csv_import_rows_in_chunks(
     parsed_rows: list[ParsedRow],
     chunk_size: int,
 ) -> None:
+    if not parsed_rows:
+        return
+    # One authority claim and one transaction for the whole staged batch.
+    # Chunked flushes bound ORM work without making a partial batch durable.
+    resolve_write_capability(db)
     for start in range(0, len(parsed_rows), chunk_size):
         chunk = parsed_rows[start : start + chunk_size]
         for parsed in chunk:
             db.add(_row_from_parsed(batch, parsed))
-        db.commit()
+        db.flush()
 
 
 def create_csv_import_batch(
@@ -190,9 +180,7 @@ def create_csv_import_batch(
     file_name: str | None,
     file_obj: BinaryIO,
 ) -> CsvImportBatch:
-    max_bytes, max_cell_bytes, max_data_rows, chunk_size, timezone_name = (
-        _csv_import_limits()
-    )
+    max_bytes, max_cell_bytes, max_data_rows, chunk_size, timezone_name = _csv_import_limits()
     try:
         parsed_home_currency = home_currency_code()
         parsed_rows, total_rows, valid_rows, error_rows = _parse_csv_import_rows(
@@ -211,19 +199,8 @@ def create_csv_import_batch(
             valid_rows=valid_rows,
             error_rows=error_rows,
         )
-        try:
-            _insert_csv_import_rows_in_chunks(
-                db, batch=batch, parsed_rows=parsed_rows, chunk_size=chunk_size
-            )
-        except SQLAlchemyError:
-            db.rollback()
-            _delete_partial_csv_import_batch(
-                db,
-                batch_id=batch.id,
-                tenant_id=tenant_id,
-            )
-            raise
-
+        _insert_csv_import_rows_in_chunks(db, batch=batch, parsed_rows=parsed_rows, chunk_size=chunk_size)
+        db.commit()
         db.refresh(batch)
         return batch
     except UnicodeDecodeError as exc:
@@ -233,6 +210,9 @@ def create_csv_import_batch(
         db.rollback()
         raise AppError("invalid_request", f"CSV 格式无效：{exc}", status_code=400) from exc
     except AppError:
+        db.rollback()
+        raise
+    except SQLAlchemyError:
         db.rollback()
         raise
 
@@ -249,18 +229,12 @@ def list_csv_import_rows(
     batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
     page = max(page, 1)
     page_size = min(max(page_size, 1), 500)
-    query = ledger_scoped_select(CsvImportRow, tenant_id).where(
-        CsvImportRow.batch_id == batch.id
-    )
+    query = ledger_scoped_select(CsvImportRow, tenant_id).where(CsvImportRow.batch_id == batch.id)
     if status:
         query = query.where(CsvImportRow.status == status)
     total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
     rows = list(
-        db.scalars(
-            query.order_by(CsvImportRow.line_number.asc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
+        db.scalars(query.order_by(CsvImportRow.line_number.asc()).offset((page - 1) * page_size).limit(page_size))
     )
     return CsvImportRowsResponse(
         batch=CsvImportBatchResponse.model_validate(batch),

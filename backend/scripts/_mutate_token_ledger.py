@@ -155,6 +155,15 @@ _DEBTS = ("debts",)
 _MEMBER_REPAYMENT_PROPOSAL = ("member_repayment_proposals",)
 _REPAYMENT_DRAFTS = ("repayment_drafts",)
 
+# ADR-0061 C02 has installation-level binding OCC rather than row OCC. Keep
+# this classification separate from ALLOWLIST: the adoption route is not
+# exempt from concurrency control, and pretending its token were an
+# ``expected_row_version`` would make the generic row-OCC audit lie. The
+# dedicated currency-contract audit validates the exact request contract.
+SPECIALIZED_OCC_ROUTES: frozenset[str] = frozenset(
+    {"POST /api/maintenance/currency-binding/adoption"}
+)
+
 
 # Key format: ``"METHOD PATH"`` exactly as FastAPI registers it.
 ALLOWLIST: dict[str, Exempt] = {

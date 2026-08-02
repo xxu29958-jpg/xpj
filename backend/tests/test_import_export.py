@@ -15,6 +15,7 @@ from app.errors import AppError
 from app.main import app
 from app.models import CsvImportBatch, Expense
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.fx_rate_provider import upsert_fx_rate
 from app.services.import_service import (
     MAX_PREVIEW_ROWS,
@@ -183,6 +184,7 @@ def test_web_export_csv_returns_attachment(web_client: TestClient) -> None:
 
 def test_web_export_csv_neutralizes_formula_cells(web_client: TestClient) -> None:
     with SessionLocal() as db:
+        resolve_write_capability(db)
         db.add(
             Expense(
                 tenant_id="owner",

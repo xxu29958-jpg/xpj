@@ -29,7 +29,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.currency_binding_contract import CURRENCY_BINDING_ACTIVE, INITIAL_BINDING_REVISION
+from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.models import BillSplitInvitation, Debt
+from app.services.currency_binding_service import get_capability
 from app.services.debt_service import create_bill_split_debt
 
 _logger = logging.getLogger(__name__)
@@ -105,6 +108,18 @@ def reconcile_bill_split_debts_if_enabled() -> int:
     from app.database import SessionLocal
 
     with SessionLocal() as db:
+        capability = get_capability(db)
+        # Startup must remain reachable while the owner is adopting historical
+        # facts or repairing configuration drift.  This legacy, unversioned
+        # backfill can write only the initial CNY contract; defer every other
+        # state instead of bricking the local maintenance endpoint.
+        if (
+            capability.state != CURRENCY_BINDING_ACTIVE
+            or capability.health != "active_match"
+            or capability.home_currency_code != DEFAULT_HOME_CURRENCY_CODE
+            or capability.binding_revision != INITIAL_BINDING_REVISION
+        ):
+            return 0
         created = backfill_bill_split_debts(db)
     if created:
         _logger.info(

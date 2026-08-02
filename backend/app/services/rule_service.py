@@ -10,6 +10,10 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CategoryRule, Expense
 from app.services.category_service import normalize_category
+from app.services.currency_binding_service import (
+    authorize_currency_metadata_write,
+    resolve_write_capability,
+)
 from app.services.merchant_alias_service import (
     canonical_merchant_for,
     enabled_merchant_alias_map,
@@ -67,9 +71,22 @@ DEFAULT_RULES = [
 _UNSET: Final = object()
 
 
+def _authorize_rule_write(
+    db: Session,
+    *,
+    amount_min_cents: int | None,
+    amount_max_cents: int | None,
+) -> None:
+    if amount_min_cents is not None or amount_max_cents is not None:
+        resolve_write_capability(db)
+        return
+    authorize_currency_metadata_write(db, allow_empty_category_rule=True)
+
+
 def seed_default_rules(db: Session, tenant_id: str) -> None:
     if db.scalar(select(CategoryRule.id).where(CategoryRule.tenant_id == tenant_id).limit(1)) is not None:
         return
+    _authorize_rule_write(db, amount_min_cents=None, amount_max_cents=None)
     now = now_utc()
     for keyword, category, priority in DEFAULT_RULES:
         db.add(
@@ -95,12 +112,8 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
     # an empty haystack means OCR never produced text for this row.
     from app.services.learning_service import read_ocr_text
 
-    ocr_text = read_ocr_text(
-        db, tenant_id=expense.tenant_id, expense=expense
-    ) or ""
-    haystack = _casefold_join(
-        [*_merchant_context(expense, alias_map), ocr_text, expense.note or ""]
-    )
+    ocr_text = read_ocr_text(db, tenant_id=expense.tenant_id, expense=expense) or ""
+    haystack = _casefold_join([*_merchant_context(expense, alias_map), ocr_text, expense.note or ""])
     if not haystack:
         return expense
 
@@ -127,9 +140,7 @@ def list_rules(db: Session, tenant_id: str) -> list[CategoryRule]:
     )
 
 
-def find_rule_for_tenant(
-    db: Session, *, tenant_id: str, rule_id: int
-) -> CategoryRule | None:
+def find_rule_for_tenant(db: Session, *, tenant_id: str, rule_id: int) -> CategoryRule | None:
     """Return a tenant-scoped, *live* (not soft-deleted) ``CategoryRule`` or
     ``None``.
 
@@ -145,9 +156,7 @@ def find_rule_for_tenant(
     )
 
 
-def _find_soft_deleted_rule_for_tenant(
-    db: Session, *, tenant_id: str, rule_id: int
-) -> CategoryRule | None:
+def _find_soft_deleted_rule_for_tenant(db: Session, *, tenant_id: str, rule_id: int) -> CategoryRule | None:
     return db.scalar(
         ledger_scoped_select(CategoryRule, tenant_id)
         .where(CategoryRule.id == rule_id)
@@ -187,6 +196,7 @@ def create_rule(
     amount_min_cents, amount_max_cents = _clean_amount_range(amount_min_cents, amount_max_cents)
     if not keyword or not category:
         raise AppError("invalid_request", status_code=422)
+    _authorize_rule_write(db, amount_min_cents=amount_min_cents, amount_max_cents=amount_max_cents)
     now = now_utc()
     rule = CategoryRule(
         tenant_id=tenant_id,
@@ -228,9 +238,7 @@ def update_rule(
     commit: bool = True,
 ) -> CategoryRule:
     """Update a rule through the DB row-version predicate."""
-    amount_min_cents, amount_max_cents = clean_rule_update_amounts(
-        amount_min_cents, amount_max_cents, unset=_UNSET
-    )
+    amount_min_cents, amount_max_cents = clean_rule_update_amounts(amount_min_cents, amount_max_cents, unset=_UNSET)
     rule_id, rule_tenant_id, existing_min, existing_max = _snapshot_rule_update_context(rule)
     update_values = _build_rule_update_values(
         existing_min=existing_min,
@@ -244,6 +252,9 @@ def update_rule(
         source_contains=source_contains,
         tag_contains=tag_contains,
     )
+    next_min = cast(int | None, update_values.get("amount_min_cents", existing_min))
+    next_max = cast(int | None, update_values.get("amount_max_cents", existing_max))
+    _authorize_rule_write(db, amount_min_cents=next_min, amount_max_cents=next_max)
     rowcount = claim_row_with_token(
         db,
         CategoryRule,
@@ -302,23 +313,11 @@ def _build_rule_update_values(
     if priority is not None:
         values["priority"] = priority
     if amount_min_cents is not _UNSET or amount_max_cents is not _UNSET:
-        min_value = (
-            existing_min
-            if amount_min_cents is _UNSET
-            else cast(int | None, amount_min_cents)
-        )
-        max_value = (
-            existing_max
-            if amount_max_cents is _UNSET
-            else cast(int | None, amount_max_cents)
-        )
-        values["amount_min_cents"], values["amount_max_cents"] = _clean_amount_range(
-            min_value, max_value
-        )
+        min_value = existing_min if amount_min_cents is _UNSET else cast(int | None, amount_min_cents)
+        max_value = existing_max if amount_max_cents is _UNSET else cast(int | None, amount_max_cents)
+        values["amount_min_cents"], values["amount_max_cents"] = _clean_amount_range(min_value, max_value)
     if source_contains is not _UNSET:
-        values["source_contains"] = _clean_optional_text(
-            cast(str | None, source_contains)
-        )
+        values["source_contains"] = _clean_optional_text(cast(str | None, source_contains))
     if tag_contains is not _UNSET:
         values["tag_contains"] = _clean_optional_text(cast(str | None, tag_contains))
     values["updated_at"] = now_utc()
@@ -346,9 +345,7 @@ def _refresh_updated_rule(db: Session, *, tenant_id: str, rule_id: int) -> Categ
     return refreshed
 
 
-def delete_rule(
-    db: Session, rule: CategoryRule, *, expected_row_version: int, commit: bool = True
-) -> None:
+def delete_rule(db: Session, rule: CategoryRule, *, expected_row_version: int, commit: bool = True) -> None:
     """ADR-0038 undo: SOFT delete a category rule with atomic optimistic
     concurrency.
 
@@ -365,9 +362,12 @@ def delete_rule(
     try:
         rule_id = rule.id
         rule_tenant_id = rule.tenant_id
+        amount_min_cents = rule.amount_min_cents
+        amount_max_cents = rule.amount_max_cents
     except ObjectDeletedError as exc:
         raise AppError("rule_not_found", status_code=404) from exc
 
+    _authorize_rule_write(db, amount_min_cents=amount_min_cents, amount_max_cents=amount_max_cents)
     now = now_utc()
     rowcount = claim_row_with_token(
         db,
@@ -406,9 +406,8 @@ def undo_delete_rule(
     rule = _find_soft_deleted_rule_for_tenant(db, tenant_id=tenant_id, rule_id=rule_id)
     if rule is None:
         raise AppError("rule_not_found", status_code=404)
-    window_check = (
-        is_within_recycle_bin_window if use_recycle_bin_window else is_within_undo_window
-    )
+    _authorize_rule_write(db, amount_min_cents=rule.amount_min_cents, amount_max_cents=rule.amount_max_cents)
+    window_check = is_within_recycle_bin_window if use_recycle_bin_window else is_within_undo_window
     if not window_check(rule.deleted_at):
         # Outside the selected restore window: normal undo stays short-lived,
         # while recycle-bin restore opts into the longer window.
@@ -470,14 +469,8 @@ def _clean_amount_range(
     amount_min_cents: int | None,
     amount_max_cents: int | None,
 ) -> tuple[int | None, int | None]:
-    amount_min_cents, amount_max_cents = clean_rule_amount_range(
-        amount_min_cents, amount_max_cents
-    )
-    if (
-        amount_min_cents is not None
-        and amount_max_cents is not None
-        and amount_min_cents > amount_max_cents
-    ):
+    amount_min_cents, amount_max_cents = clean_rule_amount_range(amount_min_cents, amount_max_cents)
+    if amount_min_cents is not None and amount_max_cents is not None and amount_min_cents > amount_max_cents:
         raise AppError("invalid_request", "金额下限不能大于上限。", status_code=422)
     return amount_min_cents, amount_max_cents
 

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Expense
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.duplicate_service import (
     ACTIVE_DUPLICATE_IGNORE_KINDS,
     _remember_duplicate_ignore,
@@ -40,6 +41,7 @@ def mark_expense_not_duplicate(
     Idempotent when already cleared (token still required to prevent
     stale clients from undoing a freshly-reapplied flag).
     """
+    authorize_currency_metadata_write(db)
     # Snapshot duplicate_of_id before clearing — _remember_duplicate_ignore
     # needs it. The atomic UPDATE rejects stale snapshots anyway, so a
     # value read here can't survive into the post-claim phase unless the

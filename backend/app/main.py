@@ -29,6 +29,8 @@ from app.routes import (
     bootstrap,
     budget_advisor,
     budgets,
+    currency_adoption,
+    currency_system,
     dashboard,
     debt_bills,
     debts,
@@ -155,8 +157,7 @@ def _assert_admin_api_gate_safe() -> None:
         missing.append("CLOUDFLARE_ACCESS_AUD")
     if missing:
         raise UnsafeAdminApiConfigurationError(
-            "ALLOW_PUBLIC_ADMIN_API=true requires Cloudflare Access to be "
-            "configured. Missing: " + ", ".join(missing)
+            "ALLOW_PUBLIC_ADMIN_API=true requires Cloudflare Access to be configured. Missing: " + ", ".join(missing)
         )
 
 
@@ -270,18 +271,13 @@ def _custom_openapi() -> dict:
         routes=app.routes,
     )
     components = schema.setdefault("components", {}).setdefault("schemas", {})
-    components["ErrorResponse"] = ErrorResponse.model_json_schema(
-        ref_template="#/components/schemas/{model}"
-    )
+    components["ErrorResponse"] = ErrorResponse.model_json_schema(ref_template="#/components/schemas/{model}")
     for path, path_item in schema.get("paths", {}).items():
         for operation in path_item.values():
             if not isinstance(operation, dict):
                 continue
             for parameter in operation.get("parameters", []):
-                if (
-                    parameter.get("in") == "header"
-                    and parameter.get("name") == "Idempotency-Key"
-                ):
+                if parameter.get("in") == "header" and parameter.get("name") == "Idempotency-Key":
                     parameter["required"] = True
             if _uses_project_error_envelope(path):
                 responses = operation.setdefault("responses", {})
@@ -327,6 +323,7 @@ app.include_router(repayment_drafts.router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)
 app.include_router(settings.router)
+app.include_router(currency_system.router)
 app.include_router(user_preferences.router)
 app.include_router(stats.router)
 app.include_router(tags.router)
@@ -337,6 +334,7 @@ app.include_router(reports.router)
 app.include_router(imports.router)
 app.include_router(insights.router)
 app.include_router(maintenance.router)
+app.include_router(currency_adoption.router)
 app.include_router(merchants.router)
 app.include_router(admin_routes.router)
 app.include_router(owner_console.router)
@@ -428,11 +426,7 @@ def private_status(_auth: AuthContext = Depends(get_current_app_context)) -> Hea
     # 文件名/目录(本端点过公网 tunnel,不得泄露本机路径)。
     try:
         backup = backup_service.backup_health()
-        latest_backup_at = (
-            backup.latest.created_at.astimezone(UTC).isoformat()
-            if backup.latest is not None
-            else None
-        )
+        latest_backup_at = backup.latest.created_at.astimezone(UTC).isoformat() if backup.latest is not None else None
         backup_age_hours = backup.age_hours
         backup_stale = backup.stale
     except (OSError, RuntimeError):

@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_service._query import get_expense
 from app.services.file_service import resolve_protected_image
 from app.services.optimistic_concurrency import bump_row_version
@@ -16,9 +17,7 @@ from app.services.time_service import now_utc
 __all__ = ["ensure_image_file", "ensure_thumbnail_file"]
 
 
-def ensure_thumbnail_file(
-    db: Session, expense_id: int, tenant_id: str
-) -> tuple[Path, str]:
+def ensure_thumbnail_file(db: Session, expense_id: int, tenant_id: str) -> tuple[Path, str]:
     expense = get_expense(db, expense_id, tenant_id)
     if expense.image_deleted_at is not None:
         raise AppError("image_not_found", status_code=404)
@@ -28,6 +27,7 @@ def ensure_thumbnail_file(
     if resolved is not None:
         return resolved
 
+    authorize_currency_metadata_write(db)
     thumbnail_path = generate_thumbnail(expense.image_path, tenant_id=tenant_id)
     if thumbnail_path is not None:
         expense.thumbnail_path = thumbnail_path
@@ -43,9 +43,7 @@ def ensure_thumbnail_file(
     return resolved
 
 
-def ensure_image_file(
-    db: Session, expense_id: int, tenant_id: str
-) -> tuple[Path, str]:
+def ensure_image_file(db: Session, expense_id: int, tenant_id: str) -> tuple[Path, str]:
     expense = get_expense(db, expense_id, tenant_id)
     if expense.image_deleted_at is not None:
         raise AppError("image_not_found", status_code=404)

@@ -5,9 +5,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.pool import NullPool
 
-from app.database._c07_contract import C07_SOURCE_REVISION
+from app.database._c07_contract import (
+    C07_SOURCE_REVISION,
+    C07_TARGET_REVISION,
+    MIGRATION_LEASE_LABEL,
+)
 from app.database._lifecycle import DatabaseLifecycleKind
 
 pytestmark = pytest.mark.real_db
@@ -41,11 +46,7 @@ def _catalog_snapshot(db_pkg) -> tuple[tuple[tuple[str, str], ...], tuple[str, .
         )
         tables = set(inspect(connection).get_table_names())
         revisions = (
-            tuple(
-                connection.scalars(
-                    text("SELECT version_num FROM alembic_version ORDER BY version_num")
-                )
-            )
+            tuple(connection.scalars(text("SELECT version_num FROM alembic_version ORDER BY version_num")))
             if "alembic_version" in tables
             else ()
         )
@@ -58,6 +59,52 @@ def _patch_database_writes(monkeypatch, db_pkg, calls: list[str]) -> None:
     monkeypatch.setattr(db_pkg, "seed_identity_data", lambda: calls.append("seed"))
     monkeypatch.setattr(db_pkg, "seed_runtime_data", lambda: calls.append("seed"))
     monkeypatch.setattr(db_pkg, "reconcile_expense_tag_mirror_once", lambda: calls.append("seed"))
+
+
+def _assert_migration_lease_blocks(db_pkg, calls: list[str]) -> None:
+    contender_engine = create_engine(
+        db_pkg.engine.url,
+        poolclass=NullPool,
+        future=True,
+    )
+    try:
+        with contender_engine.begin() as blocker:
+            blocker.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock("
+                    "hashtext(current_database()), hashtext(:label))"
+                ),
+                {"label": MIGRATION_LEASE_LABEL},
+            )
+            with pytest.raises(
+                db_pkg.DatabaseMigrationPreflightError,
+                match="schema migration lease",
+            ):
+                db_pkg.init_db()
+            assert calls == []
+            assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    finally:
+        contender_engine.dispose()
+
+
+def _assert_old_runtime_blocks(db_pkg, calls: list[str]) -> None:
+    old_runtime_engine = create_engine(
+        db_pkg.engine.url,
+        poolclass=NullPool,
+        future=True,
+    )
+    try:
+        with old_runtime_engine.connect() as old_runtime:
+            old_runtime.execute(text("SELECT 1"))
+            with pytest.raises(
+                db_pkg.DatabaseMigrationPreflightError,
+                match="another client session",
+            ):
+                db_pkg.init_db()
+            assert calls == []
+            assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    finally:
+        old_runtime_engine.dispose()
 
 
 def test_c07_source_revision_refuses_before_backup_or_writes(monkeypatch):
@@ -133,12 +180,8 @@ def test_empty_database_first_start_uses_alembic_only(monkeypatch):
 
     with db_pkg.engine.connect() as connection:
         tables = set(inspect(connection).get_table_names())
-        category_rule_columns = {
-            column["name"] for column in inspect(connection).get_columns("category_rules")
-        }
-        audit_columns = {
-            column["name"] for column in inspect(connection).get_columns("ledger_audit_logs")
-        }
+        category_rule_columns = {column["name"] for column in inspect(connection).get_columns("category_rules")}
+        audit_columns = {column["name"] for column in inspect(connection).get_columns("ledger_audit_logs")}
     assert {"expenses", "app_meta", "alembic_version"}.issubset(tables)
     assert "deleted_at" in category_rule_columns
     assert {"resource_type", "resource_public_id"}.issubset(audit_columns)
@@ -154,7 +197,7 @@ def test_managed_schema_at_head_skips_lifecycle_backup(monkeypatch):
     monkeypatch.setattr(
         backup_service,
         "create_pre_upgrade_backup",
-        lambda: (calls.append("backup") or SimpleNamespace(file_name="at-head.dump")),
+        lambda: calls.append("backup") or SimpleNamespace(file_name="at-head.dump"),
     )
     monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
     _patch_database_writes(monkeypatch, db_pkg, calls)
@@ -163,6 +206,65 @@ def test_managed_schema_at_head_skips_lifecycle_backup(monkeypatch):
     assert "backup" not in calls
     assert "upgrade" not in calls
     assert "seed" in calls
+
+
+def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
+    """Managed startup is lease-fenced, then backs up and reaches head."""
+    from alembic import command
+
+    import app.database as db_pkg
+    from app.database._c07_production_ready import _read_live_alembic_revision
+    from app.services import backup_service
+    from tests._infra.c07_alembic import run_alembic_for_test
+
+    alembic = db_pkg.load_alembic_context()
+    command.downgrade(alembic.config, C07_TARGET_REVISION)
+    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        backup_service,
+        "create_pre_upgrade_backup",
+        lambda: calls.append("backup") or SimpleNamespace(file_name="pre-c02.dump"),
+    )
+
+    monkeypatch.setenv("TICKETBOX_DATA_ROOT_MARKER_PATH", "C:/ProgramData/Ticketbox/data-root.json")
+    with pytest.raises(
+        db_pkg.DatabaseMigrationPreflightError,
+        match="安装器.*短命 migrator",
+    ):
+        db_pkg.init_db()
+    assert calls == []
+    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH")
+
+    # Development/operator Alembic still uses the same external-connection
+    # environment. The dedicated installed-role runtime has its own topology
+    # integration proof.
+    run_alembic_for_test(
+        db_pkg.engine,
+        alembic.config,
+        command.upgrade,
+        "head",
+    )
+    assert _head_revision(db_pkg) == alembic.head_revision
+    command.downgrade(alembic.config, C07_TARGET_REVISION)
+    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+
+    _assert_migration_lease_blocks(db_pkg, calls)
+    _assert_old_runtime_blocks(db_pkg, calls)
+    db_pkg.init_db()
+
+    assert calls == ["backup"]
+    assert _head_revision(db_pkg) == alembic.head_revision
+    with db_pkg.engine.connect() as connection:
+        assert (
+            _read_live_alembic_revision(
+                connection,
+                expected_revision=alembic.head_revision,
+            )
+            == alembic.head_revision
+        )
 
 
 def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):
@@ -174,7 +276,7 @@ def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):
     monkeypatch.setattr(
         backup_service,
         "create_pre_upgrade_backup",
-        lambda: (calls.append("backup") or SimpleNamespace(file_name="legacy.dump")),
+        lambda: calls.append("backup") or SimpleNamespace(file_name="legacy.dump"),
     )
     monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
     monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
@@ -190,15 +292,8 @@ def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):
     assert _catalog_snapshot(db_pkg) == before
 
     with db_pkg.engine.begin() as connection:
-        connection.execute(
-            text(
-                "CREATE TABLE alembic_version "
-                "(version_num VARCHAR(32) PRIMARY KEY)"
-            )
-        )
-        connection.execute(
-            text("INSERT INTO alembic_version (version_num) VALUES ('future_unknown')")
-        )
+        connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY)"))
+        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('future_unknown')"))
     before_unknown = _catalog_snapshot(db_pkg)
     with pytest.raises(db_pkg.DatabaseMigrationPreflightError, match="不属于当前 binary"):
         db_pkg.init_db()

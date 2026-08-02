@@ -220,6 +220,11 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert '$C07MigrationHelper = Join-Path $ProgramDir "ticketbox-c07-migrator.exe"' in install
     assert "function Invoke-TicketboxC07InstalledMigrationAction" in install
     assert "function Invoke-TicketboxC07InstalledFreshSourceBootstrapAction" in install
+    assert "function Invoke-TicketboxInstalledManagedSchemaUpgrade" in install
+    assert "Enable-TicketboxC07MigratorForManagedSchemaUpgrade" in install
+    assert "Set-TicketboxManagedSchemaRuntimeAcl" in install
+    assert "Invoke-TicketboxC07RecoveredSuperuserAction" in install
+    assert 'Write-Step "收敛 release schema 到 frozen head"' in install
     assert 'Assert-File $C07MigrationHelper "ticketbox-c07-migrator.exe"' in install
     for script in (prepare, install, uninstall):
         assert ". $ReleaseConfigScript" in script
@@ -4030,8 +4035,8 @@ $rejected = $false
 try {{ Assert-TicketboxShawlServiceCommand @shawlArgs }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'Shawl option smuggling accepted' }}
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-$protectedLockRoot = Join-Path '{literal(base)}' 'protected-lock-root'
-$malformedLockTarget = Join-Path '{literal(base)}' 'malformed-lock-target'
+$protectedLockRoot = Join-Path '{literal(tmp_path)}' 'protected-lock-root'
+$malformedLockTarget = Join-Path '{literal(tmp_path)}' 'malformed-lock-target'
 $malformedOperationLock = Join-Path $protectedLockRoot 'installer-operation.lock'
 Initialize-TicketboxProtectedDirectoryAtomically `
     -Path $protectedLockRoot `

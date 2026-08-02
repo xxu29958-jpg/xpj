@@ -1,7 +1,7 @@
-"""PR#255 R13 绑定标记与 confirm 双闸的测试族（自 test_debt_binding_drift 拆出守 500 行门）。
+"""Persisted currency authority and confirm double-gate regression tests.
 
-覆盖：AppMeta 最小绑定标记（死锁复现/自愈/漂移）、三无绑定写服务接门、
-RepaymentDraft 事实集（空库跨绑定首写拒）与 confirm 冻结币种比对。
+覆盖：旧 AppMeta 权威退役、持久化绑定漂移、旧写者升级门、
+RepaymentDraft 事实集与 confirm 冻结币种比对。
 """
 
 from __future__ import annotations
@@ -12,100 +12,97 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from app.c07_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import AppMeta, Debt, Expense, MonthlyIncomePlan
+from app.models import Debt, Expense
 from app.schemas import BudgetMonthlyUpdateRequest, GoalCreateRequest, RecurringCandidateConfirmRequest
 from app.services.app_meta_service import get_value
 from app.services.budget_service import upsert_monthly_budget
 from app.services.currency_binding_service import (
-    INSTALLATION_HOME_CURRENCY_KEY,
-    _claim_binding_marker,
     assert_currency_binding_consistent,
+    get_capability,
+    resolve_write_capability,
 )
 from app.services.debt_service._repayment_draft_confirm import confirm_repayment_draft
-from app.services.exchange_rate_service import apply_currency_payload
 from app.services.goal_service import create_goal
 from app.services.income_plan_service import create_income_plan
 from app.services.recurring_candidate_confirmation_service import (
     _create_recurring_item_from_candidate,
     _RecurringCandidateMatch,
 )
-from app.services.time_service import now_utc
 from tests.test_debt_binding_drift import (
     _create_cny_debt,
     _idem_headers,
     _owner_account_id,
 )
 
+pytestmark = pytest.mark.currency_binding_unbound
+
 
 def _seed_cny_expense_fact_row() -> None:
     with SessionLocal() as db:
+        resolve_write_capability(db)
         db.add(Expense(tenant_id="owner", home_currency_code="CNY"))
         db.commit()
 
 
-def test_jpy_fresh_install_unbound_write_then_first_fact_claims_binding(monkeypatch) -> None:
-    # R13-1 死锁复现场景：JPY 新装先写规划行（无绑定事实、无标记、无遗留行）→ 放行并
-    # claim 标记=JPY；随后首笔绑定写（expense 口径）→ 标记==env 放行；绑定从此确立。
+def test_jpy_fresh_install_legacy_writer_requires_upgrade(monkeypatch) -> None:
+    # C02 不伪造 C03 的客户端版本三元组：旧写者对非 CNY 首笔写入
+    # fail closed，且不得恢复 AppMeta 作为绑定权威。
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
         with SessionLocal() as db:
-            create_income_plan(
-                db,
-                tenant_id="owner",
-                label="工资",
-                source_type="salary",
-                amount_cents=1200,
-                pay_day=10,
-            )
-            marker = get_value(db, INSTALLATION_HOME_CURRENCY_KEY)
-            assert marker == "JPY"
-            expense = Expense(tenant_id="owner")
-            apply_currency_payload(
-                db,
-                tenant_id="owner",
-                expense=expense,
-                payload=SimpleNamespace(amount_cents=1200),
-                amount_was_explicit=True,
-            )
-            assert expense.home_currency_code == "JPY"
-            assert_currency_binding_consistent(db, "JPY")
+            with pytest.raises(AppError) as excinfo:
+                create_income_plan(
+                    db,
+                    tenant_id="owner",
+                    label="工资",
+                    source_type="salary",
+                    amount_cents=1200,
+                    pay_day=10,
+                )
+            assert excinfo.value.error == "client_upgrade_required"
+            assert get_capability(db).state == "EMPTY"
+            assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
 
-def test_legacy_unbound_rows_self_heal_marker_on_cny(monkeypatch) -> None:
-    # R13-1：无标记 + 遗留无绑定行 + env==CNY → 放行并自愈补标=CNY（多币种未发布，
-    # 存量无绑定行定义上即 CNY 分）。
+def test_cny_first_fact_claims_persisted_binding_without_legacy_marker() -> None:
+    # 新装首笔 CNY 事实与持久化权威同事务确立；旧 AppMeta 不再自愈。
     with SessionLocal() as db:
-        db.add(
-            MonthlyIncomePlan(
-                tenant_id="owner",
-                label="工资",
-                source_type="salary",
-                amount_cents=1_000_000,
-                pay_day=10,
-                status="active",
-            )
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="工资",
+            source_type="salary",
+            amount_cents=1_000_000,
+            pay_day=10,
         )
-        db.commit()
+        capability = get_capability(db)
+        assert capability.state == "ACTIVE"
+        assert capability.home_currency_code == "CNY"
         assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
-        assert_currency_binding_consistent(db, "CNY")
-        assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) == "CNY"
 
 
-def test_marker_disagreeing_with_env_rejects(monkeypatch) -> None:
-    # R13-1：标记=JPY 而 env=CNY（配置漂移）→ drift 拒（标记优先于「空事实集=空库」）。
+def test_persisted_binding_disagreeing_with_env_rejects(monkeypatch) -> None:
+    # 持久化绑定优先于运行环境；环境漂移必须 fail closed。
     with SessionLocal() as db:
-        db.add(AppMeta(key=INSTALLATION_HOME_CURRENCY_KEY, value="JPY", updated_at=now_utc()))
+        resolve_write_capability(db)
         db.commit()
-        with pytest.raises(AppError) as excinfo:
-            assert_currency_binding_consistent(db, "CNY")
-        assert excinfo.value.error == "currency_binding_drift"
+        monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+        get_settings.cache_clear()
+        try:
+            with pytest.raises(AppError) as excinfo:
+                assert_currency_binding_consistent(db, "JPY")
+            assert excinfo.value.error == "currency_binding_configuration_drift"
+        finally:
+            monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+            get_settings.cache_clear()
 
 
 def test_unbound_write_services_gated_under_drift(client: TestClient, monkeypatch, *, identity) -> None:
@@ -123,7 +120,7 @@ def test_unbound_write_services_gated_under_drift(client: TestClient, monkeypatc
                     month="2026-07",
                     payload=BudgetMonthlyUpdateRequest(total_amount_cents=1200),
                 )
-            assert budget_exc.value.error == "currency_binding_drift"
+            assert budget_exc.value.error == "currency_binding_configuration_drift"
             with pytest.raises(AppError) as goal_exc:
                 create_goal(
                     db,
@@ -134,7 +131,7 @@ def test_unbound_write_services_gated_under_drift(client: TestClient, monkeypatc
                         target_amount_cents=1200,
                     ),
                 )
-            assert goal_exc.value.error == "currency_binding_drift"
+            assert goal_exc.value.error == "currency_binding_configuration_drift"
             with pytest.raises(AppError) as income_exc:
                 create_income_plan(
                     db,
@@ -144,10 +141,116 @@ def test_unbound_write_services_gated_under_drift(client: TestClient, monkeypatc
                     amount_cents=1200,
                     pay_day=10,
                 )
-            assert income_exc.value.error == "currency_binding_drift"
+            assert income_exc.value.error == "currency_binding_configuration_drift"
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
+
+
+def _patch_terminal_retry_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    archived: SimpleNamespace,
+    active: SimpleNamespace,
+) -> None:
+    from app.services import (
+        budget_service,
+        goal_service,
+        income_plan_service,
+        recurring_service,
+    )
+
+    def unexpected_writer_gate(*_args, **_kwargs) -> None:
+        raise AssertionError("terminal no-op must not enter the currency writer gate")
+
+    for module in (
+        budget_service,
+        goal_service,
+        income_plan_service,
+        recurring_service,
+    ):
+        monkeypatch.setattr(module, "resolve_write_capability", unexpected_writer_gate)
+
+    monkeypatch.setattr(
+        budget_service,
+        "_require_budget",
+        lambda _db, *, tenant_id, month: archived if month == "2026-01" else active,
+    )
+    monkeypatch.setattr(
+        income_plan_service,
+        "_require_plan",
+        lambda _db, *, tenant_id, public_id: archived if public_id == "archived" else active,
+    )
+    monkeypatch.setattr(
+        recurring_service,
+        "get_recurring_item",
+        lambda _db, *, tenant_id, public_id: archived if public_id == "archived" else active,
+    )
+    monkeypatch.setattr(
+        goal_service,
+        "get_goal",
+        lambda _db, *, tenant_id, public_id: archived if public_id == "archived" else active,
+    )
+    monkeypatch.setattr(
+        goal_service,
+        "_goal_response_by_type",
+        lambda _db, goal, *, timezone_name: goal,
+    )
+
+
+def test_terminal_archive_restore_retries_do_not_require_a_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import (
+        budget_service,
+        goal_service,
+        income_plan_service,
+        recurring_service,
+    )
+
+    archived = SimpleNamespace(status="archived", archived_at=object())
+    active = SimpleNamespace(status="active", archived_at=None)
+    _patch_terminal_retry_dependencies(
+        monkeypatch,
+        archived=archived,
+        active=active,
+    )
+    cases = (
+        (
+            budget_service.archive_monthly_budget,
+            {"month": "2026-01", "expected_row_version": 1},
+            archived,
+        ),
+        (
+            budget_service.restore_monthly_budget,
+            {"month": "2026-02", "expected_row_version": 1},
+            active,
+        ),
+        (
+            income_plan_service.archive_income_plan,
+            {"public_id": "archived", "expected_row_version": 1},
+            archived,
+        ),
+        (
+            income_plan_service.restore_income_plan,
+            {"public_id": "active", "expected_row_version": 1},
+            active,
+        ),
+        (recurring_service.archive_recurring_item, {"public_id": "archived"}, archived),
+        (
+            recurring_service.restore_recurring_item,
+            {"public_id": "active", "expected_row_version": 1},
+            active,
+        ),
+        (goal_service.archive_goal, {"public_id": "archived"}, archived),
+        (
+            goal_service.restore_goal,
+            {"public_id": "active", "expected_row_version": 1},
+            active,
+        ),
+    )
+    for action, arguments, expected in cases:
+        assert action(object(), tenant_id="owner", **arguments) is expected
 
 
 def test_first_binding_rejected_when_legacy_cny_draft_exists(client: TestClient, monkeypatch, *, identity) -> None:
@@ -173,7 +276,7 @@ def test_first_binding_rejected_when_legacy_cny_draft_exists(client: TestClient,
             },
         )
         assert created.status_code == 409, created.json()
-        assert created.json()["error"] == "currency_binding_drift"
+        assert created.json()["error"] == "currency_binding_configuration_drift"
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
@@ -190,6 +293,7 @@ def test_confirm_rejected_when_draft_currency_mismatches_debt(client: TestClient
     assert response.status_code == 201, response.json()
     draft_public_id = response.json()["public_id"]
     with SessionLocal() as db:
+        resolve_write_capability(db)
         owner_account_id = _owner_account_id()
         jpy_debt = Debt(
             tenant_id="owner",
@@ -252,44 +356,49 @@ def test_recurring_candidate_confirm_gated_under_drift(monkeypatch) -> None:
         with SessionLocal() as db:
             with pytest.raises(AppError) as excinfo:
                 _candidate_confirm_call(db, "JPY")
-            assert excinfo.value.error == "currency_binding_drift"
+            assert excinfo.value.error == "currency_binding_configuration_drift"
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
 
-def test_recurring_candidate_confirm_passes_on_jpy_fresh_install(monkeypatch) -> None:
-    # R15b-4：JPY 新装（空库无标记）→ 门放行 + 同事务 claim 标记=JPY + 创建成功。
+def test_recurring_candidate_confirm_requires_versioned_writer_on_jpy(monkeypatch) -> None:
+    # 非 CNY 新装不允许旧写者绕过 C03 版本合同。
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
         with SessionLocal() as db:
-            item = _candidate_confirm_call(db, "JPY")
-            assert item.baseline_amount_cents == 1200
-            assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) == "JPY"
+            with pytest.raises(AppError) as excinfo:
+                _candidate_confirm_call(db, "JPY")
+            assert excinfo.value.error == "client_upgrade_required"
+            assert get_capability(db).state == "EMPTY"
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
 
-def test_claim_marker_tolerates_concurrent_same_value_claim() -> None:
-    # R15b-5：并发首写同 key PK 撞（同值）→ 第二次 claim 重读标记==env 视为成功；
-    # 不同值 → drift（goal create 的 catch-all 不再把标记竞态误报为目标重名）。
+def test_repeated_same_binding_resolution_is_idempotent(monkeypatch) -> None:
+    # 同一持久化绑定重复解析成功；配置变更后立即拒绝。
     with SessionLocal() as db:
-        _claim_binding_marker(db, "JPY")
-        _claim_binding_marker(db, "JPY")  # 同值撞键容忍，不抛
-        with pytest.raises(AppError) as excinfo:
-            _claim_binding_marker(db, "CNY")
-        assert excinfo.value.error == "currency_binding_drift"
+        resolve_write_capability(db)
+        resolve_write_capability(db)
+        monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+        get_settings.cache_clear()
+        try:
+            with pytest.raises(AppError) as excinfo:
+                resolve_write_capability(db)
+            assert excinfo.value.error == "currency_binding_configuration_drift"
+        finally:
+            monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
+            get_settings.cache_clear()
 
 
-def test_goal_create_passes_with_marker_already_matching_env() -> None:
-    # R15b-5：标记已存在且==env（并发首写已盖章的场景）→ goal create 正常完成
-    # （标记竞态不再经 catch-all 误报为「目标重名」409）。
+def test_goal_create_passes_with_persisted_binding_matching_env() -> None:
+    # 权威绑定已激活且与 env 一致时，目标写入正常完成。
     from app.schemas import GoalCreateRequest
 
     with SessionLocal() as db:
-        db.add(AppMeta(key=INSTALLATION_HOME_CURRENCY_KEY, value="CNY", updated_at=now_utc()))
+        resolve_write_capability(db)
         db.commit()
         response = create_goal(
             db,

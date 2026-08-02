@@ -36,6 +36,7 @@ from app.schemas import (
     MemberRepaymentProposalCreateRequest,
 )
 from app.services import debt_service
+from app.services.currency_binding_service import resolve_write_capability
 
 pytestmark = pytest.mark.real_db
 
@@ -84,6 +85,7 @@ def _seed_member_debt(*, principal_amount_cents: int) -> tuple[str, int, int]:
             source_type="bill_split",
             source_id=str(uuid4()),
         )
+        resolve_write_capability(db)
         db.add(debt)
         db.commit()
         return debt.public_id, debt.row_version, member_id

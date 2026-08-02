@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service._fold import compute_remaining_for_write, derive_status
 from app.services.debt_service._query import participant_can_access
 from app.services.optimistic_concurrency import bump_row_version
@@ -45,9 +46,7 @@ from app.services.time_service import now_utc
 T = TypeVar("T")
 
 
-def _lock_debt(
-    db: Session, *, tenant_id: str, public_id: str, account_id: int | None
-) -> Debt:
+def _lock_debt(db: Session, *, tenant_id: str, public_id: str, account_id: int | None) -> Debt:
     """``SELECT Debt ... FOR UPDATE`` with the right §2.1/§5.2 scope.
 
     ``account_id is None`` (slice-2 external/manual fact writes) keeps the
@@ -59,22 +58,15 @@ def _lock_debt(
     """
     if account_id is None:
         debt = db.scalar(
-            ledger_scoped_select(Debt, tenant_id)
-            .where(Debt.public_id == public_id)
-            .with_for_update()
-            .limit(1)
+            ledger_scoped_select(Debt, tenant_id).where(Debt.public_id == public_id).with_for_update().limit(1)
         )
         if debt is None:
             raise AppError("debt_not_found", status_code=404)
         return debt
-    debt = db.scalar(
-        select(Debt).where(Debt.public_id == public_id).with_for_update().limit(1)
-    )
+    debt = db.scalar(select(Debt).where(Debt.public_id == public_id).with_for_update().limit(1))
     if debt is None:
         raise AppError("debt_not_found", status_code=404)
-    is_ledger_member, is_counterparty = participant_can_access(
-        debt, ledger_id=tenant_id, account_id=account_id
-    )
+    is_ledger_member, is_counterparty = participant_can_access(debt, ledger_id=tenant_id, account_id=account_id)
     if not (is_ledger_member or is_counterparty):
         raise AppError("debt_not_found", status_code=404)
     return debt
@@ -119,6 +111,7 @@ def lock_and_fold(
     child fact + parent bump + [[0042]] idempotency-success record in one
     transaction.
     """
+    resolve_write_capability(db)
     debt = _lock_debt(db, tenant_id=tenant_id, public_id=public_id, account_id=account_id)
     if debt.status == "voided":
         raise AppError("debt_already_voided", status_code=409)
@@ -136,9 +129,7 @@ def lock_and_fold(
     return debt, result
 
 
-def lock_debt_for_intent(
-    db: Session, *, tenant_id: str, public_id: str, account_id: int | None = None
-) -> Debt:
+def lock_debt_for_intent(db: Session, *, tenant_id: str, public_id: str, account_id: int | None = None) -> Debt:
     """FOR UPDATE the parent Debt for a NON-fold-changing write that still must read
     the authoritative fold under the lock (ADR-0049 §3.2 proposal create: refuse a
     pending proposal on a Debt a concurrent confirm/forgive has already settled).

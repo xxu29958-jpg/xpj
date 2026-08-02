@@ -2,8 +2,8 @@
 
 The installer uses this module before it opens PostgreSQL.  It intentionally
 recognizes one transition only: ``20260722_0001`` to ``20260729_0001``.  A
-later packaged head is a different release slice and must not silently widen
-this authority.
+later packaged head must remain a single linear descendant and cannot widen
+the transition or resources attested by this authority.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from alembic.script import ScriptDirectory
 from alembic.script.revision import ResolutionError, RevisionError
 from alembic.util.exc import CommandError
 
+from app.alembic_revision_contract import assert_linear_descendant_chain
 from app.money_contract import (
     MONEY_COLUMNS_V1,
     MONEY_REMOVED_LEGACY_CHECKS_V1,
@@ -170,7 +171,7 @@ def _load_exact_plan() -> MaintenancePlan:
         ) from None
     if (
         bases != (C07_GRAPH_BASE_REVISION,)
-        or heads != (C07_TARGET_REVISION,)
+        or len(heads) != 1
         or source is None
         or target is None
         or source.revision != C07_SOURCE_REVISION
@@ -178,11 +179,15 @@ def _load_exact_plan() -> MaintenancePlan:
         or target.down_revision != C07_SOURCE_REVISION
         or target.dependencies is not None
         or set(source.nextrev) != {C07_TARGET_REVISION}
-        or target.nextrev
     ):
         raise C07MaintenanceUpgradeError(
             "C07 packaged Alembic graph differs from the exact release edge"
         )
+    assert_linear_descendant_chain(
+        scripts, target_revision=C07_TARGET_REVISION, head_revision=heads[0],
+        error_factory=C07MaintenanceUpgradeError,
+        error_message="C07 packaged Alembic graph differs from the exact release edge",
+    )
     path = Path(str(target.path)).resolve()
     expected_parent = (migrations_path / "versions").resolve()
     if path.parent != expected_parent or not path.is_file():

@@ -51,6 +51,11 @@ from app.models.classification import (
     RuleApplicationBatch,
     RuleApplicationChange,
 )
+from app.models.currency_binding import (
+    InstallationCurrencyAuditLog,
+    InstallationCurrencyBinding,
+    InstallationIdempotencyKey,
+)
 from app.models.debt import (
     Debt,
     DebtAdjustment,
@@ -120,6 +125,9 @@ __all__ = [
     "FxRate",
     "Goal",
     "Invitation",
+    "InstallationCurrencyAuditLog",
+    "InstallationCurrencyBinding",
+    "InstallationIdempotencyKey",
     "Ledger",
     "LedgerAuditLog",
     "LedgerLearningEvent",

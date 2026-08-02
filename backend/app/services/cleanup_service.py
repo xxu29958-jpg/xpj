@@ -20,6 +20,9 @@ from app.models import (
     TagMutationUndoGroup,
     TagMutationUndoItem,
 )
+from app.services.currency_binding_service import (
+    authorize_currency_metadata_write,
+)
 from app.services.file_service import (
     ALLOWED_EXTENSIONS,
     resolve_upload_path_for_tenant,
@@ -73,9 +76,7 @@ def _delete_relative_file_for_db_mark(relative_path: str | None, tenant_id: str)
     if candidate is None:
         return False, False
     if not candidate.exists():
-        reference_digest = hashlib.sha256(
-            f"{tenant_id}\0{relative_path}".encode()
-        ).hexdigest()[:16]
+        reference_digest = hashlib.sha256(f"{tenant_id}\0{relative_path}".encode()).hexdigest()[:16]
         logger.error(
             "event=upload_integrity_missing reference_digest=%s "
             "referenced upload is missing; database deletion marker remains unset",
@@ -147,17 +148,21 @@ def _is_supported_upload_file(path: Path) -> bool:
     return suffix in ALLOWED_EXTENSIONS or suffix == "jpg"
 
 
-def cleanup_after_confirm(expense: Expense) -> bool:
+def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
     settings = get_settings()
     if not settings.delete_image_after_confirm:
         return False
 
+    # Confirmation is committed before file GC so an unknown commit outcome
+    # can never delete the only bytes for an uncommitted fact.  That also means
+    # this marker update runs in a new transaction and must acquire a fresh
+    # currency-writer proof before any irreversible file deletion begins.
+    authorize_currency_metadata_write(db)
+
     now = now_utc()
     changed = False
     if expense.image_deleted_at is None:
-        can_mark_image, _deleted_image = _delete_relative_file_for_db_mark(
-            expense.image_path, expense.tenant_id
-        )
+        can_mark_image, _deleted_image = _delete_relative_file_for_db_mark(expense.image_path, expense.tenant_id)
         if can_mark_image:
             expense.image_deleted_at = now
             changed = True
@@ -173,8 +178,8 @@ def cleanup_after_confirm(expense: Expense) -> bool:
     return changed
 
 
-def delete_after_confirm_files(expense: Expense) -> None:
-    cleanup_after_confirm(expense)
+def delete_after_confirm_files(db: Session, expense: Expense) -> None:
+    cleanup_after_confirm(db, expense)
 
 
 def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
@@ -187,6 +192,7 @@ def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
             deleted_images=0,
             deleted_thumbnails=0,
         )
+    authorize_currency_metadata_write(db)
 
     cutoff = now_utc() - timedelta(days=settings.delete_image_after_days)
     expenses = list(
@@ -207,9 +213,7 @@ def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
     for expense in expenses:
         expense_changed = False
         if expense.image_deleted_at is None:
-            can_mark_image, deleted_image = _delete_relative_file_for_db_mark(
-                expense.image_path, expense.tenant_id
-            )
+            can_mark_image, deleted_image = _delete_relative_file_for_db_mark(expense.image_path, expense.tenant_id)
             if can_mark_image:
                 expense.image_deleted_at = now
                 deleted_images += int(deleted_image)
@@ -249,6 +253,7 @@ def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
             deleted_images=0,
             deleted_thumbnails=0,
         )
+    authorize_currency_metadata_write(db)
 
     cutoff = now_utc() - timedelta(days=settings.delete_rejected_after_days)
     expenses = list(
@@ -269,9 +274,7 @@ def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
     for expense in expenses:
         expense_changed = False
         if expense.image_deleted_at is None:
-            can_mark_image, deleted_image = _delete_relative_file_for_db_mark(
-                expense.image_path, expense.tenant_id
-            )
+            can_mark_image, deleted_image = _delete_relative_file_for_db_mark(expense.image_path, expense.tenant_id)
             if can_mark_image:
                 expense.image_deleted_at = now
                 deleted_images += int(deleted_image)
@@ -419,20 +422,17 @@ def purge_expired_soft_deletes(
     soft-deleted, so the sweep cadence only bounds storage lag, never read
     correctness or the short undo window.
     """
+    authorize_currency_metadata_write(db, allow_empty_category_rule=True)
     cutoff = _soft_delete_purge_cutoff(
         now=now,
         retention_days=retention_days,
         retention_minutes=retention_minutes,
     )
     alias_result = db.execute(
-        delete(MerchantAlias)
-        .where(MerchantAlias.deleted_at.is_not(None))
-        .where(MerchantAlias.deleted_at < cutoff)
+        delete(MerchantAlias).where(MerchantAlias.deleted_at.is_not(None)).where(MerchantAlias.deleted_at < cutoff)
     )
     rule_result = db.execute(
-        delete(CategoryRule)
-        .where(CategoryRule.deleted_at.is_not(None))
-        .where(CategoryRule.deleted_at < cutoff)
+        delete(CategoryRule).where(CategoryRule.deleted_at.is_not(None)).where(CategoryRule.deleted_at < cutoff)
     )
     category_result = db.execute(
         delete(CategoryPreference)
@@ -450,18 +450,10 @@ def purge_expired_soft_deletes(
     # have no FK to ``tags`` (source/target stored as public_id), so group/tag
     # purges are independent — a revived tag (live) is left alone, a tag still
     # soft-deleted past window is freed (releasing its reserved unique key).
-    expired_group_ids = (
-        select(TagMutationUndoGroup.id).where(TagMutationUndoGroup.created_at < cutoff)
-    )
-    db.execute(
-        delete(TagMutationUndoItem).where(TagMutationUndoItem.group_id.in_(expired_group_ids))
-    )
-    group_result = db.execute(
-        delete(TagMutationUndoGroup).where(TagMutationUndoGroup.created_at < cutoff)
-    )
-    tag_result = db.execute(
-        delete(Tag).where(Tag.deleted_at.is_not(None)).where(Tag.deleted_at < cutoff)
-    )
+    expired_group_ids = select(TagMutationUndoGroup.id).where(TagMutationUndoGroup.created_at < cutoff)
+    db.execute(delete(TagMutationUndoItem).where(TagMutationUndoItem.group_id.in_(expired_group_ids)))
+    group_result = db.execute(delete(TagMutationUndoGroup).where(TagMutationUndoGroup.created_at < cutoff))
+    tag_result = db.execute(delete(Tag).where(Tag.deleted_at.is_not(None)).where(Tag.deleted_at < cutoff))
     db.commit()
     return (
         int(alias_result.rowcount or 0)
@@ -482,9 +474,5 @@ def _soft_delete_purge_cutoff(
     base = now or now_utc()
     if retention_minutes is not None:
         return base - timedelta(minutes=max(0, int(retention_minutes)))
-    keep_days = (
-        recycle_bin_retention_days()
-        if retention_days is None
-        else max(0, int(retention_days))
-    )
+    keep_days = recycle_bin_retention_days() if retention_days is None else max(0, int(retention_days))
     return base - timedelta(days=keep_days)

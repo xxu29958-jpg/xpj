@@ -155,9 +155,25 @@ def _db_isolation(request: pytest.FixtureRequest):
 
 
 @pytest.fixture()
-def identity(_db_isolation) -> TestIdentity:
+def identity(request: pytest.FixtureRequest, _db_isolation) -> TestIdentity:
     # _db_isolation already set up the per-test transaction (or real_db reset).
-    return seed_identity()
+    test_identity = seed_identity()
+    if "currency_binding_unbound" not in request.keywords:
+        # The ordinary product-test baseline represents an installed CNY
+        # household, not the special fresh-install/adoption state.  Establish
+        # the real persisted authority and transaction-local writer proof so
+        # fixture rows obey the same PostgreSQL fence as production writes.
+        # Dedicated binding-state tests opt out explicitly; this is not a
+        # trigger bypass or a database-role escape hatch.
+        from app.database import SessionLocal
+        from app.services.currency_binding_service import resolve_write_capability
+
+        configured = os.environ.get("FX_HOME_CURRENCY_CODE", "CNY").strip().upper()
+        if configured == "CNY":
+            with SessionLocal() as db:
+                resolve_write_capability(db)
+                db.commit()
+    return test_identity
 
 
 @pytest.fixture()
@@ -198,6 +214,11 @@ def pytest_configure(config: pytest.Config) -> None:
         "isolation and run against a real committed DB (full reset_db_state). For "
         "tests that need real cross-connection commits — concurrency, true "
         "background-thread work.",
+    )
+    config.addinivalue_line(
+        "markers",
+        "currency_binding_unbound: keep the installation binding EMPTY or "
+        "ADOPTION_REQUIRED for focused authority/adoption tests",
     )
     try:
         validate_shard_coordinates(

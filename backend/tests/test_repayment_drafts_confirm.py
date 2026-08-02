@@ -28,6 +28,7 @@ from app.database import SessionLocal, engine
 from app.errors import AppError
 from app.models import Account, Debt, LedgerMember, Repayment, RepaymentDraft
 from app.services import debt_service
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import ensure_utc, now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -302,6 +303,7 @@ def _seed_manual_member_debt(*, principal_amount_cents: int = 10000) -> dict:
             created_at=now,
             updated_at=now,
         )
+        resolve_write_capability(db)
         db.add(debt)
         db.commit()
         return {"public_id": debt.public_id, "row_version": debt.row_version}

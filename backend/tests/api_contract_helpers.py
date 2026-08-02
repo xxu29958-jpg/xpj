@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.currency_binding_service import resolve_write_capability
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_DIR
 from tests._infra.identity import TestIdentity
@@ -443,6 +444,9 @@ def insert_confirmed_expense(
     confirmed_at: datetime,
 ) -> int:
     with SessionLocal() as db:
+        # Shared fixture helper intentionally inserts the fact directly; keep
+        # the production fence intact by obtaining a real per-transaction proof.
+        resolve_write_capability(db)
         expense = Expense(
             tenant_id="owner",
             amount_cents=amount_cents,

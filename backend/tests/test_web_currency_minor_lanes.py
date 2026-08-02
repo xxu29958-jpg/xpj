@@ -7,18 +7,19 @@ R15a-3 起补渲染侧：rules 列表金额条件回显、budget-advise breakdow
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
-from _web_overview_test_support import create_pending_upload
 from fastapi.testclient import TestClient
 
 from app.config import get_settings, reset_settings_cache
+from app.database import SessionLocal
 from app.errors import AppError
+from app.models import CategoryRule, Expense
 from app.routes.web_bill_split import _cents_to_yuan, _yuan_to_cents
 from app.routes.web_income_plans import _parse_yuan
 from app.routes.web_rules import _parse_optional_amount_cents
 from app.services.budget_advisor_service import _providers as providers_module
+from app.services.time_service import now_utc
+from tests._infra.currency import activate_test_currency_authority
 
 
 @pytest.fixture
@@ -114,19 +115,52 @@ def _patch_provider_suggestion(monkeypatch, cents: int) -> None:
     )
 
 
+def _activate_jpy_authority() -> None:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        db.commit()
+
+
+def _seed_jpy_amount_rule() -> None:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        timestamp = now_utc()
+        db.add(
+            CategoryRule(
+                tenant_id="owner",
+                keyword="交通",
+                category="交通",
+                enabled=True,
+                priority=100,
+                amount_min_cents=1200,
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+        )
+        db.commit()
+
+
+def _seed_jpy_pending_expense() -> int:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        timestamp = now_utc()
+        expense = Expense(
+            tenant_id="owner",
+            home_currency_code="JPY",
+            original_currency_code="JPY",
+            status="pending",
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        db.add(expense)
+        db.commit()
+        return expense.id
+
+
+@pytest.mark.currency_binding_unbound
 def test_rules_page_render_follows_zero_decimal_home(jpy_env, web_client: TestClient, *, identity) -> None:
-    # R15a-3：JPY env 下 rules 列表金额条件回显零缩放 —— 1200 minor 亮 "¥1200"，不 ÷100 成 "¥12.00"。
-    resp = web_client.post(
-        "/web/rules/create",
-        data={
-            "keyword": "交通",
-            "category": "交通",
-            "amount_min_yuan": "1200",
-            "ledger_id": "owner",
-        },
-        follow_redirects=False,
-    )
-    assert resp.status_code in (302, 303), resp.text
+    # C02 保留已采用 JPY 的历史事实展示；旧、无版本写者由 C03 接续。
+    _seed_jpy_amount_rule()
 
     page = web_client.get("/web/rules?ledger_id=owner")
     assert page.status_code == 200, page.text
@@ -190,12 +224,14 @@ def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, ident
     assert 'step="0.01"' in advise.text
 
 
+@pytest.mark.currency_binding_unbound
 def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
     jpy_env,
     web_client: TestClient,
     *,
     identity,
 ) -> None:
+    _activate_jpy_authority()
     saved = web_client.post(
         "/web/budgets/save",
         data={
@@ -207,7 +243,8 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
         },
         follow_redirects=False,
     )
-    assert saved.status_code in (302, 303), saved.text
+    assert saved.status_code == 200, saved.text
+    assert "当前客户端版本过旧，无法安全完成此操作，请先升级。" in saved.text
 
     dashboard = web_client.get("/web?ledger_id=owner")
     assert dashboard.status_code == 200, dashboard.text
@@ -217,7 +254,7 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
     budgets = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
     assert budgets.status_code == 200, budgets.text
     assert "月度总预算（JPY · ¥，仅支持整数）" in budgets.text
-    assert 'name="total_amount_yuan" value="1200" min="0" step="1"' in budgets.text
+    assert 'name="total_amount_yuan" value="" min="0" step="1"' in budgets.text
     assert "预算（元）" not in budgets.text
     assert 'class="dt-pill danger">超支 ¥0' not in budgets.text
 
@@ -231,13 +268,14 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
     assert "金额下限（JPY，可选）" in rules.text
 
 
-def test_jpy_drawer_and_debt_adjustment_use_zero_fraction_input_contract(
+@pytest.mark.currency_binding_unbound
+def test_jpy_drawer_uses_zero_fraction_input_contract(
     jpy_env,
     web_client: TestClient,
     *,
     identity,
 ) -> None:
-    expense_id = create_pending_upload(web_client, identity=identity)
+    expense_id = _seed_jpy_pending_expense()
     drawer = web_client.get(
         f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
     )
@@ -245,22 +283,3 @@ def test_jpy_drawer_and_debt_adjustment_use_zero_fraction_input_contract(
     assert 'type="number" name="amount_yuan"' in drawer.text
     assert 'min="0" step="1" inputmode="numeric" placeholder="例如 1200"' in drawer.text
     assert 'placeholder="0.00"' not in drawer.text
-
-    created = web_client.post(
-        "/api/debts",
-        headers={
-            **identity.app_headers,
-            "Idempotency-Key": str(uuid4()),
-        },
-        json={
-            "direction": "i_owe",
-            "counterparty_type": "external",
-            "counterparty_label": "JPY 调整提示回归",
-            "principal_amount_cents": 1234,
-        },
-    )
-    assert created.status_code == 201, created.text
-    detail = web_client.get(f"/web/debts/{created.json()['public_id']}")
-    assert detail.status_code == 200, detail.text
-    assert 'placeholder="如 -1200"' in detail.text
-    assert 'placeholder="如 -10.00"' not in detail.text

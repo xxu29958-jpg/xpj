@@ -10,7 +10,10 @@ from app.money_contract import MoneySign, ensure_money_minor
 from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
 from app.services import goal_debt_repayment_service
 from app.services.category_service import normalize_category
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import (
+    assert_currency_binding_consistent,
+    resolve_write_capability,
+)
 from app.services.currency_common import home_currency_code
 from app.services.goal_spending_response import goal_response, month_spend_totals
 from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
@@ -79,11 +82,7 @@ def validate_goal_update_money_command(payload: GoalUpdateRequest) -> int | None
 
 
 def _goal_by_public_id(db: Session, *, tenant_id: str, public_id: str) -> Goal | None:
-    return db.scalar(
-        ledger_scoped_select(Goal, tenant_id)
-        .where(Goal.public_id == public_id)
-        .limit(1)
-    )
+    return db.scalar(ledger_scoped_select(Goal, tenant_id).where(Goal.public_id == public_id).limit(1))
 
 
 def get_goal(db: Session, *, tenant_id: str, public_id: str) -> Goal:
@@ -141,9 +140,7 @@ def list_goals(
     # ``goal_debt_repayment_service.list_debt_repayment_goals``. The explicit
     # goal_type filter keeps this list (and /web/goals) provably debt-goal-free.
     statement = (
-        ledger_scoped_select(Goal, tenant_id)
-        .where(Goal.month == month)
-        .where(Goal.goal_type == "spending_limit")
+        ledger_scoped_select(Goal, tenant_id).where(Goal.month == month).where(Goal.goal_type == "spending_limit")
     )
     if not include_archived:
         statement = statement.where(Goal.status != "archived")
@@ -202,18 +199,12 @@ def create_goal(
     if goal_type == "debt_repayment":
         # ADR-0049 §6: debt goals link explicit Debt ids — no month/category/target
         # and a versioned link table — so the whole create lives in the debt module.
-        return goal_debt_repayment_service.create_debt_repayment_goal(
-            db, tenant_id=tenant_id, payload=payload
-        )
+        return goal_debt_repayment_service.create_debt_repayment_goal(db, tenant_id=tenant_id, payload=payload)
     # spending_limit: month + target are required; debt-only fields are rejected.
     if payload.debt_public_ids is not None:
-        raise AppError(
-            "invalid_request", "支出上限目标不接受关联欠款。", status_code=422
-        )
+        raise AppError("invalid_request", "支出上限目标不接受关联欠款。", status_code=422)
     if payload.target_date is not None:
-        raise AppError(
-            "invalid_request", "支出上限目标不接受还清日期。", status_code=422
-        )
+        raise AppError("invalid_request", "支出上限目标不接受还清日期。", status_code=422)
     if payload.month is None or payload.target_amount_cents is None:
         raise AppError("invalid_request", status_code=422)
     target_amount_cents = _clean_target_amount(payload.target_amount_cents)
@@ -291,18 +282,14 @@ def update_goal(
     if goal.goal_type == "debt_repayment":
         # ADR-0049 §6: a debt goal has no month/category/target to PATCH and its
         # linked Debt set changes only via the link-replace route (a new version).
-        raise AppError(
-            "invalid_request", "还债目标请通过关联欠款接口修改。", status_code=422
-        )
+        raise AppError("invalid_request", "还债目标请通过关联欠款接口修改。", status_code=422)
     if goal.status == "archived":
         raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
 
     # R13-2：目标编辑若改金额字段则按 env 口径入账 —— 先过绑定门（漂移/未决拒写；
     # 未改金额的纯元数据 PATCH 也过门从简——门的 metadata 豁免只在 apply_currency_payload）。
     assert_currency_binding_consistent(db, home_currency_code())
-    updates = payload.model_dump(
-        exclude_unset=True, exclude={"expected_row_version"}
-    )
+    updates = payload.model_dump(exclude_unset=True, exclude={"expected_row_version"})
     goal_id = goal.id
     new_name = goal.name
     new_month = goal.month
@@ -372,9 +359,7 @@ def update_goal(
     return goal_response(goal, totals)
 
 
-def _goal_response_by_type(
-    db: Session, goal: Goal, *, timezone_name: str | None
-) -> GoalResponse:
+def _goal_response_by_type(db: Session, goal: Goal, *, timezone_name: str | None) -> GoalResponse:
     """Serialize an already-loaded goal, dispatched by ``goal_type``.
 
     A debt_repayment goal has a NULL ``target_amount_cents`` — the spending
@@ -385,9 +370,7 @@ def _goal_response_by_type(
     set, not in how the result serialises).
     """
     if goal.goal_type == "debt_repayment":
-        return goal_debt_repayment_service.build_debt_repayment_goal_response(
-            db, goal, persist_achievement=False
-        )
+        return goal_debt_repayment_service.build_debt_repayment_goal_response(db, goal, persist_achievement=False)
     totals = month_spend_totals(
         db,
         tenant_id=goal.tenant_id,
@@ -405,14 +388,16 @@ def archive_goal(
     timezone_name: str | None = None,
 ) -> GoalResponse:
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
-    if goal.status != "archived":
-        now = now_utc()
-        goal.status = "archived"
-        goal.archived_at = now
-        goal.updated_at = now
-        bump_row_version(goal)
-        db.commit()
-        db.refresh(goal)
+    if goal.status == "archived":
+        return _goal_response_by_type(db, goal, timezone_name=timezone_name)
+    resolve_write_capability(db)
+    now = now_utc()
+    goal.status = "archived"
+    goal.archived_at = now
+    goal.updated_at = now
+    bump_row_version(goal)
+    db.commit()
+    db.refresh(goal)
     return _goal_response_by_type(db, goal, timezone_name=timezone_name)
 
 
@@ -442,6 +427,7 @@ def restore_goal(
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
     if goal.status != "archived":
         return _goal_response_by_type(db, goal, timezone_name=timezone_name)
+    resolve_write_capability(db)
     if goal.goal_type == "spending_limit" and _active_goal_conflict_exists(
         db,
         tenant_id=tenant_id,

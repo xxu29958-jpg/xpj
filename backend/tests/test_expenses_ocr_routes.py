@@ -16,6 +16,10 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense, OcrFact
+from app.services.currency_binding_service import (
+    authorize_currency_metadata_write,
+    resolve_write_capability,
+)
 from app.services.expense_service import retry_expense_ocr
 from app.services.ocr_service import OcrResult
 
@@ -268,6 +272,7 @@ def test_retry_ocr_rejects_stale_pending_snapshot(
 
     def slow_ocr_result(expense: Expense) -> OcrResult:
         with SessionLocal() as user_db:
+            resolve_write_capability(user_db)
             row = user_db.get(Expense, expense.id)
             assert row is not None
             row.merchant = "鐢ㄦ埛鎵嬪姩淇敼"
@@ -331,6 +336,7 @@ def test_two_sessions_retry_ocr_race_returns_state_conflict(
 
         row_a.merchant = "Writer A"
         row_a.row_version = shared_version + 1
+        authorize_currency_metadata_write(session_a)
         session_a.commit()
 
         with pytest.raises(AppError) as exc_info:

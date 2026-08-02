@@ -166,3 +166,10 @@ def require_admin_network_boundary(request: Request) -> None:
         "admin_api_local_only",
         status_code=403,
     )
+
+
+def require_maintenance_local(request: Request) -> None:
+    """Hard loopback boundary for installation-global maintenance ceremonies."""
+
+    if not is_loopback_request(request):
+        raise AppError("maintenance_local_only", status_code=403)

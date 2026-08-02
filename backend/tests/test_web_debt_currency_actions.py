@@ -6,32 +6,46 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.config import get_settings
+from app.database import SessionLocal
+from app.models import Debt, LedgerMember
+from app.services.time_service import now_utc
+from tests._infra.currency import activate_test_currency_authority
 
 
-def _headers(identity) -> dict[str, str]:
-    return {**identity.app_headers, "Idempotency-Key": str(uuid4())}
-
-
-def _create_debt(
-    web_client: TestClient,
+def _seed_adopted_debt(
     *,
-    identity,
+    currency_code: str,
     principal_amount_cents: int,
-) -> dict:
-    response = web_client.post(
-        "/api/debts",
-        headers=_headers(identity),
-        json={
-            "direction": "i_owe",
-            "counterparty_type": "external",
-            "counterparty_label": "整数币种测试",
-            "principal_amount_cents": principal_amount_cents,
-        },
-    )
-    assert response.status_code == 201, response.text
-    return response.json()
+) -> str:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, currency_code)
+        account_id = db.scalar(
+            select(LedgerMember.account_id)
+            .where(LedgerMember.ledger_id == "owner", LedgerMember.role == "owner")
+            .limit(1)
+        )
+        assert account_id is not None
+        timestamp = now_utc()
+        debt = Debt(
+            tenant_id="owner",
+            owner_account_id=account_id,
+            created_by_account_id=account_id,
+            direction="i_owe",
+            counterparty_type="external",
+            counterparty_label="整数币种测试",
+            principal_amount_cents=principal_amount_cents,
+            home_currency_code=currency_code,
+            status="open",
+            source_type="manual",
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        db.add(debt)
+        db.commit()
+        return debt.public_id
 
 
 def _form(
@@ -87,38 +101,20 @@ def _exercise_zero_fraction_actions(
         ),
     )
     assert repayment.status_code == 200
-    assert "还款事实已记录" in repayment.text
+    assert "当前客户端版本过旧，无法安全完成此操作，请先升级。" in repayment.text
     current = _detail(
         web_client,
         identity=identity,
         public_id=debt["public_id"],
     )
-    assert current["paid_amount_cents"] == 100
-    assert current["remaining_amount_cents"] == 9_900
-
-    adjustment = web_client.post(
-        f"/web/debts/{debt['public_id']}/adjustments",
-        data=_form(
-            current,
-            idempotency_key=str(uuid4()),
-            amount_major="-50",
-            reason="整数币种修正",
-        ),
-    )
-    assert adjustment.status_code == 200
-    assert "本金调整事实已记录" in adjustment.text
-    adjusted = _detail(
-        web_client,
-        identity=identity,
-        public_id=debt["public_id"],
-    )
-    assert adjusted["principal_amount_cents"] == 10_000
-    assert adjusted["remaining_amount_cents"] == 9_850
+    assert current["paid_amount_cents"] == 0
+    assert current["remaining_amount_cents"] == 10_000
+    assert current["row_version"] == debt["row_version"]
 
     decimal_rejected = web_client.post(
         f"/web/debts/{debt['public_id']}/repayments",
         data=_form(
-            adjusted,
+            current,
             idempotency_key=str(uuid4()),
             amount_major="1.5",
         ),
@@ -130,8 +126,8 @@ def _exercise_zero_fraction_actions(
         identity=identity,
         public_id=debt["public_id"],
     )
-    assert unchanged["remaining_amount_cents"] == 9_850
-    assert unchanged["row_version"] == adjusted["row_version"]
+    assert unchanged["remaining_amount_cents"] == 10_000
+    assert unchanged["row_version"] == current["row_version"]
 
 
 @pytest.mark.parametrize(
@@ -141,7 +137,8 @@ def _exercise_zero_fraction_actions(
         pytest.param("KRW", "₩", id="krw"),
     ],
 )
-def test_web_zero_fraction_debt_actions_use_frozen_currency_minor_units(
+@pytest.mark.currency_binding_unbound
+def test_web_zero_fraction_debt_forms_keep_frozen_units_and_require_versioned_writer(
     web_client: TestClient,
     monkeypatch,
     identity,
@@ -151,10 +148,14 @@ def test_web_zero_fraction_debt_actions_use_frozen_currency_minor_units(
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", currency_code)
     get_settings.cache_clear()
     try:
-        debt = _create_debt(
+        public_id = _seed_adopted_debt(
+            currency_code=currency_code,
+            principal_amount_cents=10_000,
+        )
+        debt = _detail(
             web_client,
             identity=identity,
-            principal_amount_cents=10_000,
+            public_id=public_id,
         )
         assert debt["home_currency_code"] == currency_code
         page = web_client.get(
@@ -166,11 +167,11 @@ def test_web_zero_fraction_debt_actions_use_frozen_currency_minor_units(
             currency_code=currency_code,
             currency_symbol=currency_symbol,
         )
+        assert 'placeholder="如 -1200"' in page.text
+        assert 'placeholder="如 -10.00"' not in page.text
 
-        # The Debt keeps its creation-time currency even if server configuration
-        # changes before a later fact is written.
-        monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
-        get_settings.cache_clear()
+        # C02 can render frozen facts but rejects legacy writes; C03 supplies
+        # the versioned client tuple that makes this path writable again.
         _exercise_zero_fraction_actions(
             web_client,
             identity=identity,

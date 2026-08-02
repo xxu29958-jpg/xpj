@@ -31,6 +31,7 @@ from app.models import (
     LedgerMember,
 )
 from app.services import bill_split_service as bsplit
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import create_bill_split_debt
 from app.services.time_service import now_utc
 
@@ -57,6 +58,7 @@ def _seed_receiver(name: str = "B", ledger_id: str = "receiver_b") -> int:
 
 def _make_expense_for_owner(*, amount_cents: int = 5000, merchant: str = "Pizza Place") -> int:
     with SessionLocal() as db:
+        resolve_write_capability(db)
         expense = Expense(
             tenant_id="owner",
             amount_cents=amount_cents,
@@ -192,7 +194,11 @@ def test_accept_without_rollout_creates_no_debt(
 
 
 def test_reaccept_does_not_create_second_debt(
-    client: TestClient, *, identity, debt_rollout_on
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+    debt_rollout_on,
 ) -> None:
     # §4: a re-accept returns the existing accepted result and MUST NOT create
     # another Debt (the fast path returns before the insert; uq_debts_source
@@ -201,7 +207,14 @@ def test_reaccept_does_not_create_second_debt(
     public_id = _invite(client, identity, receiver_id)
 
     _accept(public_id, receiver_id)
-    _accept(public_id, receiver_id)  # idempotent re-accept
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        # Idempotent terminal replay is read-only and remains available while
+        # the mutable writer is blocked by configuration drift.
+        _accept(public_id, receiver_id)
+    finally:
+        get_settings.cache_clear()
 
     assert len(_debts_for(public_id)) == 1
 

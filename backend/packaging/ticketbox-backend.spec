@@ -38,6 +38,7 @@ app_hiddenimports = [
         "app.database._c07_fresh_source_bootstrap",
         "app.database._c07_maintenance_upgrade",
         "app.database._c07_production_migration",
+        "app.database._managed_schema_upgrade",
     }
 ]
 if "app.c07_money_facts" not in app_hiddenimports:
@@ -97,6 +98,15 @@ datas = [
             "app",
             "database",
             "_c07_maintenance_upgrade.py",
+        ),
+        "app/database",
+    ),
+    (
+        os.path.join(
+            BACKEND,
+            "app",
+            "database",
+            "_managed_schema_upgrade.py",
         ),
         "app/database",
     ),

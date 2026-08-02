@@ -694,6 +694,40 @@ function Get-TicketboxC07InstalledUpgradePlan {
         -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath
 }
 
+function Get-TicketboxInstalledManagedSchemaPlan {
+    param(
+        [Parameter(Mandatory = $true)][object]$ReleaseIdentity,
+        [Parameter(Mandatory = $true)][string]$SourceRevision
+    )
+
+    return Get-TicketboxPackagedManagedSchemaPlan `
+        -SourceRevision $SourceRevision `
+        -MigrationHelperPath $ReleaseIdentity.MigrationHelperPath `
+        -MigrationHelperEvidence (
+            Get-TicketboxC07InstalledMigrationHelperEvidence $ReleaseIdentity
+        ) `
+        -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath
+}
+
+function Invoke-TicketboxInstalledManagedSchemaUpgradeAction {
+    param(
+        [Parameter(Mandatory = $true)][object]$ReleaseIdentity,
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][Security.SecureString]$MigratorPassword,
+        [Parameter(Mandatory = $true)][object]$Plan
+    )
+
+    return Invoke-TicketboxPackagedManagedSchemaUpgrade `
+        -HostAuthority $HostAuthority `
+        -MigratorPassword $MigratorPassword `
+        -Plan $Plan `
+        -MigrationHelperPath $ReleaseIdentity.MigrationHelperPath `
+        -MigrationHelperEvidence (
+            Get-TicketboxC07InstalledMigrationHelperEvidence $ReleaseIdentity
+        ) `
+        -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath
+}
+
 $script:TicketboxC07InstallerSourceRevision = "20260722_0001"
 
 function Get-TicketboxC07BootstrapCatalogDisposition {
@@ -1277,6 +1311,203 @@ function Complete-TicketboxC07InstalledSecretCleanup {
     if (Test-Path -LiteralPath $bootstrapRecoveryPath) {
         Remove-TicketboxSensitiveFile $bootstrapRecoveryPath
     }
+}
+
+function Get-TicketboxRuntimeAlembicRevision {
+    param(
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][Security.SecureString]$RuntimePassword
+    )
+
+    $revision = Invoke-TicketboxC07Sql `
+        -Authority $HostAuthority `
+        -Database $script:TicketboxC07DatabaseName `
+        -Role $script:TicketboxC07RuntimeRole `
+        -Password $RuntimePassword `
+        -Label "release schema runtime revision probe" `
+        -Sql @"
+SELECT CASE
+    WHEN count(*) = 0 THEN ''
+    WHEN count(*) = 1 THEN min(version_num)
+    ELSE '__multiple__'
+END
+FROM public.alembic_version;
+"@
+    $canonical = $revision.Trim()
+    if ($canonical -ceq "__multiple__") {
+        throw "release schema runtime probe 拒绝多个 Alembic head。"
+    }
+    if ($canonical -cnotmatch '^[0-9]{8}_[0-9]{4}$') {
+        throw "release schema runtime revision shape 无效。"
+    }
+    return $canonical
+}
+
+function Invoke-TicketboxInstalledManagedSchemaUpgrade {
+    param(
+        [Parameter(Mandatory = $true)][object]$ReleaseIdentity,
+        [Parameter(Mandatory = $true)][object]$C07Authority,
+        [Parameter(Mandatory = $true)][Security.SecureString]$RuntimePassword,
+        [Parameter(Mandatory = $true)][object]$LifecycleReceipt,
+        [Parameter(Mandatory = $true)][string]$RecoveryArtifactPath,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("fresh_install", "legacy_adoption")]
+        [string]$Mode
+    )
+
+    $hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+    $sourceRevision = Get-TicketboxRuntimeAlembicRevision `
+        -HostAuthority $hostAuthority `
+        -RuntimePassword $RuntimePassword
+    $plan = Get-TicketboxInstalledManagedSchemaPlan `
+        -ReleaseIdentity $ReleaseIdentity `
+        -SourceRevision $sourceRevision
+    if (
+        [bool]$plan.upgrade_required -and
+        [bool]$LifecycleReceipt.backup_required -and
+        (
+            -not [bool]$LifecycleReceipt.backup_completed -or
+            -not (
+                Test-Path `
+                    -LiteralPath ([string]$LifecycleReceipt.backup_path) `
+                    -PathType Leaf
+            )
+        )
+    ) {
+        throw "既有安装缺少已验证的升级前备份，拒绝执行 release schema migration。"
+    }
+    if (
+        [bool]$plan.upgrade_required -and
+        -not [bool]$LifecycleReceipt.backup_required -and
+        $Mode -cne "fresh_install"
+    ) {
+        throw "非 fresh 安装没有升级前备份权威，拒绝执行 release schema migration。"
+    }
+
+    $migratorText = [string](New-StrongPassword)
+    $migratorPassword = ConvertTo-TicketboxC07InstalledSecureString `
+        -Value $migratorText `
+        -Label "managed schema migrator password"
+    $migratorText = ""
+    $capturedHostAuthority = $hostAuthority
+    $capturedReleaseIdentity = $ReleaseIdentity
+    $capturedRuntimePassword = $RuntimePassword
+    $capturedMigratorPassword = $migratorPassword
+    $capturedPlan = $plan
+    $capturedMode = $Mode
+    $capturedOperationId = [string]$C07Authority.Receipt.operation_id
+    $boundedAction = {
+        param([Security.SecureString]$RecoveredSuperuserPassword)
+
+        $liveRevision = Get-TicketboxC07InstalledAlembicRevision `
+            -HostAuthority $capturedHostAuthority `
+            -SuperuserPassword $RecoveredSuperuserPassword
+        $migratorState = Get-TicketboxC07MigratorRetirementState `
+            -Authority $capturedHostAuthority `
+            -SuperuserPassword $RecoveredSuperuserPassword
+        if ($liveRevision -ceq [string]$capturedPlan.target_revision) {
+            if (-not $migratorState.IsActive -and -not $migratorState.IsRetired) {
+                throw "release schema 已到 target，但 migrator 不是 retired terminal。"
+            }
+            if ($migratorState.IsActive) {
+                Disable-TicketboxC07MigratorLogin `
+                    -SuperuserPassword $RecoveredSuperuserPassword `
+                    -OperationId $capturedOperationId `
+                    -Mode $capturedMode
+            }
+            try {
+                Enable-TicketboxC07MigratorForManagedSchemaUpgrade `
+                    -SuperuserPassword $RecoveredSuperuserPassword `
+                    -RuntimePassword $capturedRuntimePassword `
+                    -MigratorPassword $capturedMigratorPassword `
+                    -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(30)) `
+                    -OperationId $capturedOperationId `
+                    -Mode $capturedMode
+                $upgradeResult = Invoke-TicketboxInstalledManagedSchemaUpgradeAction `
+                    -ReleaseIdentity $capturedReleaseIdentity `
+                    -HostAuthority $capturedHostAuthority `
+                    -MigratorPassword $capturedMigratorPassword `
+                    -Plan $capturedPlan
+                Set-TicketboxManagedSchemaRuntimeAcl `
+                    -Authority $capturedHostAuthority `
+                    -SuperuserPassword $RecoveredSuperuserPassword
+                return $upgradeResult
+            }
+            finally {
+                $state = Get-TicketboxC07MigratorRetirementState `
+                    -Authority $capturedHostAuthority `
+                    -SuperuserPassword $RecoveredSuperuserPassword
+                if ($state.IsActive) {
+                    Disable-TicketboxC07MigratorLogin `
+                        -SuperuserPassword $RecoveredSuperuserPassword `
+                        -OperationId $capturedOperationId `
+                        -Mode $capturedMode
+                }
+                elseif (-not $state.IsRetired) {
+                    throw "release schema resume 留下 partial migrator authority。"
+                }
+            }
+        }
+        if ($liveRevision -cne [string]$capturedPlan.source_revision) {
+            throw "live schema revision 不属于 frozen release migration path。"
+        }
+        if (-not $migratorState.IsRetired) {
+            throw "release schema migration 前 migrator 不是 retired terminal。"
+        }
+
+        try {
+            Enable-TicketboxC07MigratorForManagedSchemaUpgrade `
+                -SuperuserPassword $RecoveredSuperuserPassword `
+                -RuntimePassword $capturedRuntimePassword `
+                -MigratorPassword $capturedMigratorPassword `
+                -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(30)) `
+                -OperationId $capturedOperationId `
+                -Mode $capturedMode
+            $upgradeResult = Invoke-TicketboxInstalledManagedSchemaUpgradeAction `
+                -ReleaseIdentity $capturedReleaseIdentity `
+                -HostAuthority $capturedHostAuthority `
+                -MigratorPassword $capturedMigratorPassword `
+                -Plan $capturedPlan
+            Set-TicketboxManagedSchemaRuntimeAcl `
+                -Authority $capturedHostAuthority `
+                -SuperuserPassword $RecoveredSuperuserPassword
+            return $upgradeResult
+        }
+        finally {
+            $state = Get-TicketboxC07MigratorRetirementState `
+                -Authority $capturedHostAuthority `
+                -SuperuserPassword $RecoveredSuperuserPassword
+            if ($state.IsActive) {
+                Disable-TicketboxC07MigratorLogin `
+                    -SuperuserPassword $RecoveredSuperuserPassword `
+                    -OperationId $capturedOperationId `
+                    -Mode $capturedMode
+            }
+            elseif (-not $state.IsRetired) {
+                throw "release schema migration 留下 partial migrator authority。"
+            }
+        }
+    }.GetNewClosure()
+
+    try {
+        $result = Invoke-TicketboxC07RecoveredSuperuserAction `
+            -HostAuthority $hostAuthority `
+            -RecoveryArtifactPath $RecoveryArtifactPath `
+            -Action $boundedAction
+    }
+    finally {
+        if ($null -ne $migratorPassword) {
+            $migratorPassword.Dispose()
+        }
+    }
+    if (
+        [string]$result.alembic_revision -cne [string]$plan.target_revision -or
+        [string]$result.revision_manifest_sha256 -cne
+            [string]$plan.revision_manifest_sha256
+    ) {
+        throw "release schema migration 未返回 exact-head evidence。"
+    }
+    return $result
 }
 
 function Assert-Admin {
@@ -2372,6 +2603,7 @@ try {
     $c07Mode = ""
     $c07ReadyProductionAuthoritySha256 = ""
     $c07ReadyRuntimeProjectionSha256 = ""
+    $runtimePassword = $null
     if ($c07Disposition -ceq "runtime_ready") {
         Complete-TicketboxC07RecoveredSuperuserResidue `
             -RecoveryArtifactPath $c07RecoveryArtifactPath
@@ -2443,13 +2675,27 @@ try {
             [string]$c07Migration.production_authority_sha256
         $c07ReadyRuntimeProjectionSha256 =
             [string]$c07Migration.runtime_projection_sha256
+        $runtimePassword = $c07Migration.runtime_password
         $databaseUrl = Write-TicketboxC07InstalledRuntimeEnvironment `
-            -RuntimePassword $c07Migration.runtime_password
+            -RuntimePassword $runtimePassword
         Complete-TicketboxC07InstalledSecretCleanup `
             -Mode $c07Mode `
             -LifecycleLock $operationLock `
             -RecoveryArtifactPath $c07RecoveryArtifactPath
     }
+    Write-Step "收敛 release schema 到 frozen head"
+    $c07Authority = Read-TicketboxC07Authority $DataRoot
+    $managedSchemaResult = Invoke-TicketboxInstalledManagedSchemaUpgrade `
+        -ReleaseIdentity $c07ReleaseIdentity `
+        -C07Authority $c07Authority `
+        -RuntimePassword $runtimePassword `
+        -LifecycleReceipt $lifecycleReceipt `
+        -RecoveryArtifactPath $c07RecoveryArtifactPath `
+        -Mode $c07Mode
+    Write-Ok (
+        "release schema exact head: " +
+        [string]$managedSchemaResult.alembic_revision
+    )
     Set-TicketboxLifecycleReceiptC07ReadyEvidence `
         -Path $LifecycleReceiptPath `
         -Receipt $lifecycleReceipt `

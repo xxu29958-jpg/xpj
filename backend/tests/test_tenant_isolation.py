@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal, migrate_upload_paths_to_tenant_dirs
 from app.models import Expense
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
 from tests._tenant_isolation_contracts import (
@@ -89,6 +90,7 @@ def test_protected_image_and_thumbnail_reject_database_path_escape(
 ) -> None:
     expense_id = upload_png(client, identity=identity)
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = db.get(Expense, expense_id)
         assert expense is not None
         expense.image_path = "../outside.png"
@@ -126,6 +128,7 @@ def test_legacy_upload_paths_migrate_into_current_tenant_dir(
     legacy_image_path = legacy_image.relative_to(BACKEND_ROOT).as_posix()
     legacy_thumb_path = legacy_thumb.relative_to(BACKEND_ROOT).as_posix()
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = Expense(
             tenant_id="owner",
             image_path=legacy_image_path,
@@ -178,6 +181,7 @@ def test_legacy_upload_migration_leaves_database_only_reference_untouched(identi
     """
     missing_path = f"{TEST_UPLOAD_RELATIVE}/2026/05/missing.png"
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = Expense(
             tenant_id="owner",
             image_path=missing_path,
@@ -211,6 +215,7 @@ def test_legacy_upload_migration_rename_failure_keeps_original_file_and_path(
     legacy_file.write_bytes(PNG_BYTES)
     legacy_path = legacy_file.relative_to(BACKEND_ROOT).as_posix()
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = Expense(
             tenant_id="owner",
             image_path=legacy_path,

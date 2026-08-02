@@ -84,6 +84,12 @@ from app.schemas._csv_import import (
     CsvImportRowResponse,
     CsvImportRowsResponse,
 )
+from app.schemas._currency import (
+    CurrencyAdoptionConfirmRequest,
+    CurrencyAdoptionPreviewResponse,
+    CurrencyAdoptionReceiptResponse,
+    CurrencyCapabilityResponse,
+)
 from app.schemas._dashboard import (
     DashboardCardResponse,
     DashboardCardsResponse,
@@ -335,6 +341,10 @@ __all__ = [
     "CsvImportBatchResponse",
     "CsvImportRowResponse",
     "CsvImportRowsResponse",
+    "CurrencyAdoptionConfirmRequest",
+    "CurrencyAdoptionPreviewResponse",
+    "CurrencyAdoptionReceiptResponse",
+    "CurrencyCapabilityResponse",
     "DashboardCardResponse",
     "DashboardCardUpdateRequest",
     "DashboardCardsResponse",

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import LedgerMember, RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.recurring_candidate_confirmation_service import (
     confirm_recurring_candidate as confirm_recurring_candidate_service,
 )
@@ -402,6 +403,7 @@ def test_recurring_anomaly_ignores_unrelated_same_merchant_large_purchase(client
 def test_recurring_status_filter_and_invalid_candidate_errors(client: TestClient, *, identity) -> None:
     now = now_utc()
     with SessionLocal() as db:
+        resolve_write_capability(db)
         db.add(
             RecurringItem(
                 tenant_id="owner",

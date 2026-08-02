@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from app.database import BACKEND_ROOT, SessionLocal, init_db
 from app.models import Expense
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_DIR
 
@@ -36,6 +37,7 @@ def test_init_db_does_not_move_legacy_uploads(client: TestClient) -> None:
     legacy_relative = legacy_image.relative_to(BACKEND_ROOT).as_posix()
 
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = Expense(
             tenant_id="owner",
             image_path=legacy_relative,
@@ -79,6 +81,7 @@ def test_protected_image_route_serves_legacy_path_without_migration(
     legacy_relative = legacy_image.relative_to(BACKEND_ROOT).as_posix()
 
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = Expense(
             tenant_id="owner",
             image_path=legacy_relative,
@@ -107,6 +110,7 @@ def test_protected_thumbnail_route_generates_for_legacy_path_without_migration(
     legacy_relative = legacy_image.relative_to(BACKEND_ROOT).as_posix()
 
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = Expense(
             tenant_id="owner",
             image_path=legacy_relative,
@@ -144,6 +148,7 @@ def test_protected_image_route_rejects_legacy_path_for_non_default_ledger(
     legacy_relative = legacy_image.relative_to(BACKEND_ROOT).as_posix()
 
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = Expense(
             tenant_id="tester_1",
             image_path=legacy_relative,

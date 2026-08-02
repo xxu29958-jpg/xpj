@@ -4813,6 +4813,324 @@
         "title": "CsvImportRowsResponse",
         "type": "object"
       },
+      "CurrencyAdoptionConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "currency_contract_version": {
+            "minimum": 1.0,
+            "title": "Currency Contract Version",
+            "type": "integer"
+          },
+          "expected_binding_revision": {
+            "minimum": 0.0,
+            "title": "Expected Binding Revision",
+            "type": "integer"
+          },
+          "expected_evidence_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Evidence Sha256",
+            "type": "string"
+          },
+          "expected_state": {
+            "const": "ADOPTION_REQUIRED",
+            "title": "Expected State",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "enum": [
+              "CNY",
+              "USD",
+              "EUR",
+              "GBP",
+              "JPY",
+              "HKD",
+              "KRW"
+            ],
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency_contract_version",
+          "home_currency_code",
+          "expected_state",
+          "expected_binding_revision",
+          "expected_evidence_sha256",
+          "reason"
+        ],
+        "title": "CurrencyAdoptionConfirmRequest",
+        "type": "object"
+      },
+      "CurrencyAdoptionPreviewResponse": {
+        "properties": {
+          "allowed_home_currency_codes": {
+            "items": {
+              "enum": [
+                "CNY",
+                "USD",
+                "EUR",
+                "GBP",
+                "JPY",
+                "HKD",
+                "KRW"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Home Currency Codes",
+            "type": "array"
+          },
+          "binding_revision": {
+            "title": "Binding Revision",
+            "type": "integer"
+          },
+          "configured_home_currency_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CNY",
+                  "USD",
+                  "EUR",
+                  "GBP",
+                  "JPY",
+                  "HKD",
+                  "KRW"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured Home Currency Code"
+          },
+          "currency_contract_version": {
+            "title": "Currency Contract Version",
+            "type": "integer"
+          },
+          "evidence_health": {
+            "enum": [
+              "adoptable",
+              "conflict"
+            ],
+            "title": "Evidence Health",
+            "type": "string"
+          },
+          "evidence_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Evidence Sha256",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "EMPTY",
+              "ADOPTION_REQUIRED",
+              "ACTIVE"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "binding_revision",
+          "currency_contract_version",
+          "evidence_sha256",
+          "configured_home_currency_code",
+          "allowed_home_currency_codes",
+          "evidence_health"
+        ],
+        "title": "CurrencyAdoptionPreviewResponse",
+        "type": "object"
+      },
+      "CurrencyAdoptionReceiptResponse": {
+        "properties": {
+          "activated_at": {
+            "title": "Activated At",
+            "type": "string"
+          },
+          "binding_revision": {
+            "title": "Binding Revision",
+            "type": "integer"
+          },
+          "currency_contract_version": {
+            "title": "Currency Contract Version",
+            "type": "integer"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "evidence_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Evidence Sha256",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "enum": [
+              "CNY",
+              "USD",
+              "EUR",
+              "GBP",
+              "JPY",
+              "HKD",
+              "KRW"
+            ],
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "minor_unit_exponent": {
+            "title": "Minor Unit Exponent",
+            "type": "integer"
+          },
+          "operation": {
+            "const": "currency_binding_adoption",
+            "title": "Operation",
+            "type": "string"
+          },
+          "rounding_mode": {
+            "const": "ROUND_HALF_UP",
+            "title": "Rounding Mode",
+            "type": "string"
+          },
+          "state": {
+            "const": "ACTIVE",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "event_id",
+          "state",
+          "home_currency_code",
+          "minor_unit_exponent",
+          "rounding_mode",
+          "currency_contract_version",
+          "binding_revision",
+          "evidence_sha256",
+          "activated_at"
+        ],
+        "title": "CurrencyAdoptionReceiptResponse",
+        "type": "object"
+      },
+      "CurrencyCapabilityResponse": {
+        "properties": {
+          "binding_revision": {
+            "title": "Binding Revision",
+            "type": "integer"
+          },
+          "currency_contract_version": {
+            "title": "Currency Contract Version",
+            "type": "integer"
+          },
+          "health": {
+            "enum": [
+              "empty",
+              "adoption_required",
+              "active_match",
+              "configuration_drift",
+              "migration_required"
+            ],
+            "title": "Health",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CNY",
+                  "USD",
+                  "EUR",
+                  "GBP",
+                  "JPY",
+                  "HKD",
+                  "KRW"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
+          "initialization_offer": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CNY",
+                  "USD",
+                  "EUR",
+                  "GBP",
+                  "JPY",
+                  "HKD",
+                  "KRW"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initialization Offer"
+          },
+          "minimum_writable_currency_contract": {
+            "title": "Minimum Writable Currency Contract",
+            "type": "integer"
+          },
+          "minor_unit_exponent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minor Unit Exponent"
+          },
+          "rounding_mode": {
+            "anyOf": [
+              {
+                "const": "ROUND_HALF_UP",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounding Mode"
+          },
+          "state": {
+            "enum": [
+              "EMPTY",
+              "ADOPTION_REQUIRED",
+              "ACTIVE"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "home_currency_code",
+          "minor_unit_exponent",
+          "rounding_mode",
+          "currency_contract_version",
+          "binding_revision",
+          "minimum_writable_currency_contract",
+          "health",
+          "initialization_offer"
+        ],
+        "title": "CurrencyCapabilityResponse",
+        "type": "object"
+      },
       "DashboardCardResponse": {
         "properties": {
           "key": {
@@ -5412,7 +5730,7 @@
         "type": "object"
       },
       "DebtListResponse": {
-        "description": "Ledger/account-scoped Debt list envelope.\n\n``home_currency_code`` repeats the installation-level currency capability at\nenvelope level (ADR-0061 C02/C03; PR#255 R6): it is the SAME server-side binding\nthe write path stamps onto each record (`currency_common.home_currency_code`),\nsurfaced here so a client looking at an EMPTY ledger can still resolve the ledger\ncurrency for first-record creation — record-level-only delivery made \"wait for\nthe first record\" circular. Clients must treat record-level and envelope values\nas one source: disagreement means binding drift (C02 forbids hot-switching) and\nwriters must fail closed. Read path is best-effort (R8-3): a misconfigured env\ndegrades the field to ``null`` instead of failing the whole list; clients\nalready fail closed on a null capability, so degrading is safe.",
+        "description": "Ledger/account-scoped Debt list envelope.\n\n``home_currency_code`` repeats the persisted installation currency authority\nused by writers. Runtime env drift never replaces or nulls an ACTIVE binding;\nclients can therefore keep interpreting historical records while new writes\nfail closed. Before the first financial fact, a genuinely EMPTY installation\nexposes only the safe CNY initialization offer accepted by the current writer\ncontract. Adoption, migration, or unsupported initialization states return\n``None``.",
         "properties": {
           "home_currency_code": {
             "anyOf": [
@@ -25065,6 +25383,142 @@
         ]
       }
     },
+    "/api/maintenance/currency-binding/adoption": {
+      "get": {
+        "operationId": "get_currency_adoption_preview_api_maintenance_currency_binding_adoption_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrencyAdoptionPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Currency Adoption Preview",
+        "tags": [
+          "maintenance"
+        ]
+      },
+      "post": {
+        "operationId": "post_currency_adoption_api_maintenance_currency_binding_adoption_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CurrencyAdoptionConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrencyAdoptionReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Currency Adoption",
+        "tags": [
+          "maintenance"
+        ]
+      }
+    },
     "/api/maintenance/learning-status": {
       "get": {
         "description": "v1.2 ops: per-table snapshot scoped to the admin's tenant.\n\nEarlier revision dropped ``auth`` and aggregated globally, which\nleaks other tenants' table volume + lifecycle metadata to any\nvalid admin token (PR #124 codex review). Pass ``auth.tenant_id``\nso the counts cover only the admin's ledger.",
@@ -29183,6 +29637,81 @@
         "summary": "Private Status",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/system/currency-capability": {
+      "get": {
+        "operationId": "get_currency_capability_api_system_currency_capability_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrencyCapabilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Currency Capability",
+        "tags": [
+          "system"
         ]
       }
     },

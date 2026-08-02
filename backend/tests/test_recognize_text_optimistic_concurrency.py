@@ -24,6 +24,7 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense
 from app.schemas import ExpenseRecognizeTextRequest
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_service import recognize_expense_text
 
 
@@ -133,6 +134,7 @@ def test_two_sessions_recognize_text_race_only_first_writer_wins(
         # Session A wins via a direct manual edit that bumps row_version.
         row_a.merchant = "Writer A"
         row_a.row_version = shared_version + 1
+        authorize_currency_metadata_write(session_a)
         session_a.commit()
 
         with pytest.raises(AppError) as exc_info:

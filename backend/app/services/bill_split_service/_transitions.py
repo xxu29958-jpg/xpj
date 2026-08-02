@@ -19,6 +19,7 @@ from app.services.bill_split_service._common import (
     _load_writer_member,
 )
 from app.services.bill_split_service._query import get_invitation
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import create_bill_split_debt
 from app.services.exchange_rate_service import default_rate_date
 from app.services.time_service import ensure_utc, now_utc
@@ -46,9 +47,11 @@ def accept_invitation(
     if settled is not None:
         return settled
 
-    settled = _resolve_expired_or_peer_settled_accept(
-        db, public_id, inv, target_ledger_id
-    )
+    # A settled re-accept is a read-only idempotent replay.  Require currency
+    # writer authority only after that terminal fast path, before expiry or a
+    # new acceptance can mutate persisted facts.
+    resolve_write_capability(db)
+    settled = _resolve_expired_or_peer_settled_accept(db, public_id, inv, target_ledger_id)
     if settled is not None:
         return settled
 
@@ -96,9 +99,7 @@ def accept_invitation(
     return inv, received
 
 
-def _ensure_accepting_receiver(
-    inv: BillSplitInvitation, accepting_account_id: int
-) -> None:
+def _ensure_accepting_receiver(inv: BillSplitInvitation, accepting_account_id: int) -> None:
     # Identity check first; do not leak invitation state to a non-receiver.
     if accepting_account_id != inv.receiver_account_id:
         raise AppError("invitation_not_yours", status_code=403)
@@ -217,9 +218,7 @@ def _claim_invitation_acceptance(
     return rowcount == 1
 
 
-def _create_accept_debt_if_enabled(
-    db: Session, inv: BillSplitInvitation, target_ledger_id: str
-) -> None:
+def _create_accept_debt_if_enabled(db: Session, inv: BillSplitInvitation, target_ledger_id: str) -> None:
     """Create the receiver's member debt in the same transaction when enabled."""
     if not get_settings().debt_rollout_enabled:
         return
@@ -284,9 +283,8 @@ def _resolve_lost_accept(
     raise AppError("server_error", status_code=500) from cause
 
 
-def reject_invitation(
-    db: Session, *, public_id: str, rejecting_account_id: int
-) -> BillSplitInvitation:
+def reject_invitation(db: Session, *, public_id: str, rejecting_account_id: int) -> BillSplitInvitation:
+    resolve_write_capability(db)
     inv = get_invitation(db, public_id)
     if rejecting_account_id != inv.receiver_account_id:
         raise AppError("invitation_not_yours", status_code=403)
@@ -320,9 +318,8 @@ def reject_invitation(
     return inv
 
 
-def cancel_invitation(
-    db: Session, *, public_id: str, sender_account_id: int
-) -> BillSplitInvitation:
+def cancel_invitation(db: Session, *, public_id: str, sender_account_id: int) -> BillSplitInvitation:
+    resolve_write_capability(db)
     inv = get_invitation(db, public_id)
     if sender_account_id != inv.sender_account_id:
         raise AppError("invitation_not_yours", status_code=403)
@@ -364,6 +361,15 @@ def expire_invitations(db: Session) -> int:
     never be clobbered to expired.
     """
     now = now_utc()
+    candidate_id = db.scalar(
+        select(BillSplitInvitation.id)
+        .where(BillSplitInvitation.status == "invited")
+        .where(BillSplitInvitation.expires_at < now)
+        .limit(1)
+    )
+    if candidate_id is None:
+        return 0
+    resolve_write_capability(db)
     expired = db.execute(
         update(BillSplitInvitation)
         .where(BillSplitInvitation.status == "invited")
@@ -392,6 +398,7 @@ def expire_invitations(db: Session) -> int:
 
 def _mark_expired(db: Session, inv: BillSplitInvitation) -> bool:
     """Best-effort expiry flip; false means a peer settled the row first."""
+    resolve_write_capability(db)
     rowcount = db.execute(
         update(BillSplitInvitation)
         .where(BillSplitInvitation.id == inv.id)

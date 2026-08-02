@@ -15,6 +15,7 @@ from app.errors import AppError
 from app.models import Expense
 from app.schemas import ExpenseRecognizeTextRequest
 from app.services.classify_service import classify_expense
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.expense_service._helpers import _replace_ocr_draft_items_from_text
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
@@ -63,6 +64,7 @@ def retry_expense_ocr(
     expected_row_version: int,
     commit: bool = True,
 ) -> Expense:
+    resolve_write_capability(db)
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
@@ -104,11 +106,7 @@ def retry_expense_ocr(
     )
     if expense.category == "其他":
         classify_expense(db, expense)
-    if (
-        expense.amount_cents is not None
-        or expense.merchant
-        or expense.expense_time is not None
-    ):
+    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
         mark_duplicate_status(db, expense)
     expense.updated_at = now
     if commit:
@@ -133,6 +131,7 @@ def recognize_expense_text(
     # ``state_conflict``. Previously the service self-claimed using
     # the row's current ``updated_at``, which silently overwrote
     # concurrent edits.
+    resolve_write_capability(db)
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
@@ -164,11 +163,7 @@ def recognize_expense_text(
     _replace_ocr_draft_items_from_text(db, expense, raw_text)
     if expense.category == "其他":
         classify_expense(db, expense)
-    if (
-        expense.amount_cents is not None
-        or expense.merchant
-        or expense.expense_time is not None
-    ):
+    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
         mark_duplicate_status(db, expense)
     expense.updated_at = now
     # ADR-0042: the idempotent route folds the key-record + this mutation into a

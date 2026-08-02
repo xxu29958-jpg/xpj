@@ -24,6 +24,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Account, Debt, ExchangeRate, LedgerMember
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -35,6 +36,7 @@ def _idem(app_headers: dict[str, str]) -> dict[str, str]:
 
 def _seed_usd_rate(*, tenant_id: str, rate_date: date, rate_to_cny: str) -> None:
     with SessionLocal() as db:
+        resolve_write_capability(db)
         db.add(
             ExchangeRate(
                 tenant_id=tenant_id,
@@ -101,6 +103,7 @@ def _seed_manual_member_debt(*, principal_amount_cents: int = 10000) -> dict:
             created_at=now,
             updated_at=now,
         )
+        resolve_write_capability(db)
         db.add(debt)
         db.commit()
         return {"public_id": debt.public_id, "row_version": debt.row_version}

@@ -15,6 +15,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, RepaymentDraft
 from app.schemas import RepaymentCreateRequest
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service._repayment import record_repayment
 from app.services.time_service import now_utc
 
@@ -63,7 +64,9 @@ def confirm_repayment_draft(
 
     # R13-8b：草稿与 parent debt 冻结币种不等即跨绑定错额 → drift 拒（挂账 D9）。
     target_home = db.scalar(
-        ledger_scoped_select(Debt, tenant_id).where(Debt.public_id == target_debt_public_id).with_only_columns(Debt.home_currency_code)
+        ledger_scoped_select(Debt, tenant_id)
+        .where(Debt.public_id == target_debt_public_id)
+        .with_only_columns(Debt.home_currency_code)
     )
     if target_home is not None and target_home != draft.home_currency_code:
         raise AppError("currency_binding_drift", status_code=409)
@@ -115,6 +118,7 @@ def dismiss_repayment_draft(
     if draft.status == "confirmed":
         raise AppError("state_conflict", status_code=409)
 
+    resolve_write_capability(db)
     draft.status = "dismissed"
     draft.resolved_at = now_utc()
     draft.resolved_by_account_id = actor_account_id

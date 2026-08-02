@@ -13,6 +13,9 @@ from pathlib import Path
 from uuid import UUID
 
 from app.config import DATA_ROOT
+from app.database._managed_postgres_contract import (
+    MIGRATION_LEASE_LABEL as MIGRATION_LEASE_LABEL,
+)
 from app.money_contract import MONEY_COLUMNS_V1
 from app.services.secure_file import windows_process_start_filetime
 
@@ -42,7 +45,6 @@ MAX_FREEZE_WINDOW = timedelta(minutes=30)
 PG_RESTORE_TIMEOUT_SECONDS = 20 * 60
 MAINTENANCE_WINDOW_SECONDS = 20 * 60
 SPACE_HEADROOM_FACTOR = 1.2
-MIGRATION_LEASE_LABEL = "xiaopiaojia:schema"
 ANALYZE_TABLES = tuple(sorted({column.table for column in MONEY_COLUMNS_V1}))
 
 

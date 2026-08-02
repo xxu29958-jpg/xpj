@@ -6,6 +6,7 @@ import csv as csv_module
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import StringIO
+from urllib.parse import unquote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,6 +19,7 @@ from app.models import CsvImportBatch, Expense
 from app.money_contract import MONEY_MINOR_MAX
 from app.routes.web_app import _require_local as _web_require_local
 from app.services.import_service import parse_csv_preview
+from tests._infra.currency import activate_test_currency_authority
 
 
 @pytest.fixture()
@@ -60,6 +62,7 @@ def test_parse_csv_preview_rejects_legacy_cny_amount_in_non_cny_home(
         get_settings.cache_clear()
 
 
+@pytest.mark.currency_binding_unbound
 def test_csv_export_preserves_legacy_column_and_adds_exact_jpy_home_value(
     web_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -68,6 +71,7 @@ def test_csv_export_preserves_legacy_column_and_adds_exact_jpy_home_value(
     get_settings.cache_clear()
     try:
         with SessionLocal() as db:
+            activate_test_currency_authority(db, "JPY")
             db.add(
                 Expense(
                     tenant_id="owner",
@@ -151,7 +155,8 @@ def test_parse_csv_preview_rejects_cross_home_currency_file(
         get_settings.cache_clear()
 
 
-def test_web_import_preview_renders_zero_fraction_home_amount(
+@pytest.mark.currency_binding_unbound
+def test_web_import_preview_fails_closed_until_jpy_consumer_is_versioned(
     web_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -175,19 +180,13 @@ def test_web_import_preview_renders_zero_fraction_home_amount(
             follow_redirects=False,
         )
         assert response.status_code == 303, response.text
+        assert "当前客户端版本过旧" in unquote(response.headers["location"])
         with SessionLocal() as db:
             batch = db.scalar(
                 select(CsvImportBatch)
                 .where(CsvImportBatch.tenant_id == "owner")
                 .where(CsvImportBatch.file_name == "jpy.csv")
             )
-            assert batch is not None
-
-        detail = web_client.get(
-            f"/web/import/{batch.public_id}?ledger_id=owner"
-        )
-        assert detail.status_code == 200, detail.text
-        assert '<td class="num">¥1234</td>' in detail.text
-        assert "¥12.34" not in detail.text
+            assert batch is None
     finally:
         get_settings.cache_clear()

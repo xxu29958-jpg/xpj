@@ -16,7 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from _web_overview_test_support import seed_confirmed_expense
+from _web_overview_test_support import seed_confirmed_expense_fact
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -162,12 +162,16 @@ def test_web_budget_write_and_reject_follow_home_currency_minor_units(
             },
             follow_redirects=False,
         )
-        assert saved.status_code == 303, saved.text
+        if currency_code == "CNY":
+            assert saved.status_code == 303, saved.text
+        else:
+            assert saved.status_code == 200, saved.text
+            assert "服务端币种配置与已持久化的本位币绑定不一致" in saved.text
         with SessionLocal() as db:
             stored = db.scalar(
                 select(Budget.total_amount_cents).where(Budget.tenant_id == "owner").where(Budget.month == "2026-05")
             )
-        assert stored == expected_minor
+        assert stored == (expected_minor if currency_code == "CNY" else None)
 
         rejected = web_client.post(
             "/web/budgets/save",
@@ -182,7 +186,7 @@ def test_web_budget_write_and_reject_follow_home_currency_minor_units(
             unchanged = db.scalar(
                 select(Budget.total_amount_cents).where(Budget.tenant_id == "owner").where(Budget.month == "2026-05")
             )
-        assert unchanged == expected_minor
+        assert unchanged == (expected_minor if currency_code == "CNY" else None)
     finally:
         get_settings.cache_clear()
 
@@ -212,6 +216,7 @@ def test_owner_budget_amount_uses_installation_minor_digits() -> None:
     assert _owner_amount_yuan(1234, "CNY") == "12.34"
 
 
+@pytest.mark.currency_binding_unbound
 def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
     web_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -221,10 +226,9 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
-        seed_confirmed_expense(
-            web_client,
-            identity=identity,
-            amount_cents=1234,
+        seed_confirmed_expense_fact(
+            currency_code="JPY",
+            amount_minor=1234,
             merchant="JPY发布回归",
             category="餐饮",
         )

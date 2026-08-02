@@ -26,7 +26,10 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Debt
 from app.schemas import DebtCreateRequest
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import (
+    assert_currency_binding_consistent,
+    resolve_write_capability,
+)
 from app.services.currency_common import home_currency_code
 from app.services.debt_service._money import (
     freeze_home_amount,
@@ -67,9 +70,7 @@ def _clean_source_type(value: str | None) -> str:
     return cleaned
 
 
-def _clean_installment(
-    debt_kind: str, count: int | None, period_months: int | None
-) -> tuple[int | None, str | None]:
+def _clean_installment(debt_kind: str, count: int | None, period_months: int | None) -> tuple[int | None, str | None]:
     """ADR-0049 §B: validate + default the installment schedule (期数 × 周期).
 
     The schedule is only meaningful for ``debt_kind == 'installment'``: a ``count`` on any other
@@ -236,6 +237,7 @@ def create_bill_split_debt(
     ``row_version`` stays at its insert default of 1 ([[0041]]); ``flush`` (not
     ``commit``) lets the accept transaction commit everything atomically.
     """
+    resolve_write_capability(db)
     money = freeze_home_amount(
         db,
         tenant_id=ledger_id,

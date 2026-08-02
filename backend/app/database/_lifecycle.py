@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 
 from sqlalchemy import inspect, text
+from sqlalchemy.engine import Connection
 
 from app.database._core import engine
 
@@ -61,47 +62,55 @@ class DatabaseLifecyclePlan:
     refusal_reason: str | None = None
 
 
-def inspect_database_lifecycle() -> DatabaseLifecycleState:
-    """Classify the public schema without issuing DDL or DML."""
-
-    with engine.connect() as connection:
-        inspector = inspect(connection)
-        table_names = frozenset(inspector.get_table_names())
-        object_names = frozenset(
-            connection.scalars(
-                text(
-                    "SELECT c.relname FROM pg_class AS c "
-                    "JOIN pg_namespace AS n ON n.oid = c.relnamespace "
-                    "WHERE n.nspname = 'public' "
-                    "AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')"
-                )
+def _inspect_database_lifecycle(connection: Connection) -> DatabaseLifecycleState:
+    inspector = inspect(connection)
+    table_names = frozenset(inspector.get_table_names())
+    object_names = frozenset(
+        connection.scalars(
+            text(
+                "SELECT c.relname FROM pg_class AS c "
+                "JOIN pg_namespace AS n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'public' "
+                "AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')"
             )
         )
-        application_tables = table_names - {"alembic_version"}
-        application_objects = object_names - {"alembic_version"}
-        if not application_tables and not application_objects:
-            return DatabaseLifecycleState(
-                DatabaseLifecycleKind.EMPTY,
-                table_names,
-                object_names,
-            )
-        if "alembic_version" in table_names:
-            current_revisions = tuple(
-                connection.scalars(
-                    text("SELECT version_num FROM alembic_version ORDER BY version_num")
-                )
-            )
-            return DatabaseLifecycleState(
-                DatabaseLifecycleKind.VERSIONED,
-                table_names,
-                object_names,
-                current_revisions=current_revisions,
-            )
+    )
+    application_tables = table_names - {"alembic_version"}
+    application_objects = object_names - {"alembic_version"}
+    if not application_tables and not application_objects:
         return DatabaseLifecycleState(
-            DatabaseLifecycleKind.LEGACY_UNVERSIONED,
+            DatabaseLifecycleKind.EMPTY,
             table_names,
             object_names,
         )
+    if "alembic_version" in table_names:
+        current_revisions = tuple(
+            connection.scalars(
+                text("SELECT version_num FROM alembic_version ORDER BY version_num")
+            )
+        )
+        return DatabaseLifecycleState(
+            DatabaseLifecycleKind.VERSIONED,
+            table_names,
+            object_names,
+            current_revisions=current_revisions,
+        )
+    return DatabaseLifecycleState(
+        DatabaseLifecycleKind.LEGACY_UNVERSIONED,
+        table_names,
+        object_names,
+    )
+
+
+def inspect_database_lifecycle(
+    connection: Connection | None = None,
+) -> DatabaseLifecycleState:
+    """Classify the public schema without issuing DDL or DML."""
+
+    if connection is not None:
+        return _inspect_database_lifecycle(connection)
+    with engine.connect() as owned_connection:
+        return _inspect_database_lifecycle(owned_connection)
 
 
 def load_alembic_context() -> AlembicContext:

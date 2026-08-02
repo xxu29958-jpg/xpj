@@ -330,6 +330,21 @@ def test_cloudflare_endpoint_script_does_not_accept_token_params() -> None:
     assert "[string]$UploadLink" not in text
     assert "$env:TICKETBOX_SESSION_TOKEN =" not in text
     assert "$env:TICKETBOX_UPLOAD_LINK =" not in text
+    preflight = (project_root / "scripts" / "real_device_preflight.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+    tunnel_contract = (project_root / "docs" / "runbook" / "CLOUDFLARE_TUNNEL.md").read_text(
+        encoding="utf-8-sig"
+    )
+    assert "/api/system/currency-capability" in preflight
+    assert '$currencyCapability.health -eq "empty"' in preflight
+    assert '$currencyCapability.health -eq "active_match"' in preflight
+    assert '$currencyCapability.initialization_offer -eq "CNY"' in preflight
+    assert '$currencyCapability.home_currency_code -eq "CNY"' in preflight
+    assert "$bindingRevision -eq 0" in preflight
+    assert "$bindingRevision -eq 1" in preflight
+    assert '"ADOPTION_REQUIRED"' not in preflight
+    assert "system/currency-capability$" in tunnel_contract
 
 
 def test_public_boundary_script_allows_edge_catchall_for_forbidden_paths() -> None:
