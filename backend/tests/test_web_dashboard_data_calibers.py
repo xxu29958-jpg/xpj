@@ -437,6 +437,7 @@ def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_curr
         assert data.status_code == 200, data.text
         row = data.json()["category_share"][0]
         assert row["amount_major"] == 1234
+        assert row["amount_major_text"] == "1234"
         assert row["amount_label"] == "¥1,234"
 
         # 服务端渲染清单 (no-JS 路径): 与环图同为 ¥1,234; 旧键 amount_yuan 会渲染成 ¥12。

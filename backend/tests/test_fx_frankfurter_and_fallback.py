@@ -174,7 +174,11 @@ def test_expense_before_any_rate_still_pending(client: TestClient, *, identity) 
 def test_run_fx_sync_once_success_updates_counters(monkeypatch: pytest.MonkeyPatch, *, identity) -> None:
     from app.database import SessionLocal
 
-    monkeypatch.setattr(scheduler, "refresh_ecb_fx_rates", lambda db: [object(), object()])
+    monkeypatch.setattr(
+        scheduler,
+        "refresh_ecb_fx_rates",
+        lambda db, *, home_currency_code: [object(), object()],
+    )
     before = scheduler.fx_rate_sync_status()
     with SessionLocal() as db:
         ok = scheduler.run_fx_sync_once(db)
@@ -188,7 +192,7 @@ def test_run_fx_sync_once_success_updates_counters(monkeypatch: pytest.MonkeyPat
 def test_run_fx_sync_once_network_drop_keeps_last_known(monkeypatch: pytest.MonkeyPatch, *, identity) -> None:
     from app.database import SessionLocal
 
-    def boom(_db):  # noqa: ANN001 - test stub
+    def boom(_db, *, home_currency_code):  # noqa: ANN001, ARG001 - test stub
         raise FxFetchError("[SSL: UNEXPECTED_EOF_WHILE_READING] simulated drop")
 
     monkeypatch.setattr(scheduler, "refresh_ecb_fx_rates", boom)
@@ -204,7 +208,7 @@ def test_run_fx_sync_once_network_drop_keeps_last_known(monkeypatch: pytest.Monk
 def test_run_fx_sync_once_unexpected_error_recorded(monkeypatch: pytest.MonkeyPatch, *, identity) -> None:
     from app.database import SessionLocal
 
-    def boom(_db):  # noqa: ANN001 - test stub
+    def boom(_db, *, home_currency_code):  # noqa: ANN001, ARG001 - test stub
         raise ValueError("provider schema changed")
 
     monkeypatch.setattr(scheduler, "refresh_ecb_fx_rates", boom)

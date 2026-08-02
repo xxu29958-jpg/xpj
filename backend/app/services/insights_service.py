@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Expense, RecurringItem
+from app.money_contract import projection_sum_to_int
 from app.services.merchant_service import normalize_merchant
 from app.services.time_service import ensure_utc, local_month_label, now_utc, safe_zone
 
@@ -49,7 +50,7 @@ def _amount_close(values: list[int]) -> tuple[bool, int]:
     lo = min(values)
     if hi <= 0:
         return False, 0
-    tolerance = max(int(hi * 0.15), 1)
+    tolerance = max((hi * 15) // 100, 1)
     representative = values[-1]
     return (hi - lo) <= tolerance, representative
 
@@ -109,7 +110,11 @@ def _group_recurring_entries(expenses: Iterable[Expense]) -> dict[str, list[_Rec
         when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
         if when is None:
             continue
-        amount = int(expense.amount_cents or 0)
+        amount = projection_sum_to_int(
+            expense.amount_cents,
+            label="insights.recurring_expense",
+            empty_is_zero=True,
+        )
         if amount <= 0:
             continue
         grouped[key].append((when, amount, merchant_raw))
@@ -147,7 +152,10 @@ def _candidate_from_entries(
     display = _display_merchant(raw for _, _, raw in entries)
     return {
         "merchant": display,
-        "amount_cents": int(representative),
+        "amount_cents": projection_sum_to_int(
+            representative,
+            label="insights.representative",
+        ),
         "occurrence_count": occurrence_count,
         "last_seen_at": entries[-1][0],
         "confidence": "high" if occurrence_count >= 3 else "medium",
@@ -160,7 +168,14 @@ def _sort_recurring_candidates(
 ) -> list[_RecurringCandidate]:
     return sorted(
         candidates,
-        key=lambda item: (-int(item["occurrence_count"]), -int(item["amount_cents"]), str(item["merchant"])),
+        key=lambda item: (
+            -int(item["occurrence_count"]),
+            -projection_sum_to_int(
+                item["amount_cents"],
+                label="insights.sort_amount",
+            ),
+            str(item["merchant"]),
+        ),
     )
 
 

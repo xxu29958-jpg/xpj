@@ -12,6 +12,7 @@ $script:PostgresBootstrapRecoveryFileName = ".postgres-bootstrap-password"
 $script:PostgresBootstrapRecoverySchema = "ticketbox-postgres-bootstrap-v1"
 $script:PostgresBootstrapAclAccounts = @("SYSTEM", "BUILTIN\Administrators")
 $script:PostgresBootstrapAclOwnerAccount = "SYSTEM"
+$script:TicketboxBundledRuntimeDatabaseRole = "ticketbox_runtime"
 
 function Initialize-TicketboxDatabaseFileNativeMethods {
     if ("TicketboxDatabaseFileNativeMethods" -as [type]) {
@@ -166,6 +167,30 @@ function Set-EnvDatabaseUrl([string]$Path, [string]$DatabaseUrl) {
     }
     $lines[$matches[0]] = "DATABASE_URL=$DatabaseUrl"
     Write-EnvNoBom -Path $Path -Lines $lines
+}
+
+function Get-TicketboxBundledApplicationDatabaseConnection {
+    param([Parameter(Mandatory = $true)][string]$DatabaseUrl)
+
+    $persistedDatabaseUrl = ConvertTo-TicketboxRequiredDatabaseUrl $DatabaseUrl
+    $libpqUrl = Assert-TicketboxLocalDatabaseUrl `
+        -DatabaseUrl $persistedDatabaseUrl `
+        -PgPort $PgPort
+    $builder = New-Object System.UriBuilder($libpqUrl)
+    $role = [Uri]::UnescapeDataString($builder.UserName)
+    if (
+        $role -cne $DbRole -and
+        $role -cne $script:TicketboxBundledRuntimeDatabaseRole
+    ) {
+        throw "DATABASE_URL 的 PostgreSQL 角色不属于已登记的 legacy/runtime authority。"
+    }
+    $connection = Get-TicketboxLocalDatabaseConnection `
+        -DatabaseUrl $persistedDatabaseUrl `
+        -PgPort $PgPort `
+        -ExpectedDatabase $DbName `
+        -ExpectedRole $role
+    $connection | Add-Member -NotePropertyName Role -NotePropertyValue $role
+    return $connection
 }
 
 function New-BaseEnvLines([string]$DatabaseUrl) {
@@ -645,7 +670,9 @@ function Initialize-PgClusterIfNeeded {
         (Test-Path -LiteralPath $PgData -PathType Container) -and
         @(Get-ChildItem -LiteralPath $PgData -Force).Count -gt 0
     ) {
-        [void](Read-PostgresBootstrapRecoveryState)
+        $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState
+        $expectedBootstrapRecoveryText =
+            ConvertTo-PostgresBootstrapRecoveryPayload $bootstrapRecoveryState
         if (Test-Path -LiteralPath (Join-Path $PgData "postmaster.pid")) {
             throw "未完成的 PostgreSQL 初始化仍含 postmaster.pid，拒绝自动清理。"
         }
@@ -654,15 +681,61 @@ function Initialize-PgClusterIfNeeded {
             throw "PostgreSQL 部分初始化目录不在动态 DataRoot 契约位置。"
         }
         Assert-NoTicketboxReparsePoints $PgData
+        Initialize-TicketboxExactTreeDeleteNativeMethods
+        $expectedPgData = [IO.Path]::GetFullPath($expectedPgData).TrimEnd('\', '/')
+        $expectedPgDataIdentity = @(
+            [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity($expectedPgData)
+        )
+        if ($expectedPgDataIdentity.Count -ne 2) {
+            throw "PostgreSQL 部分初始化目录身份无法固定。"
+        }
+        $expectedPgVersionPath = Join-Path $expectedPgData "PG_VERSION"
+        # Revalidate ACL, structure, and secret bytes immediately before the
+        # root handle is opened.  The native callback below intentionally uses
+        # only BCL/native helpers so it also works in Windows PowerShell 5.1.
+        $revalidatedBootstrapRecoveryState = Read-PostgresBootstrapRecoveryState
+        if (
+            (ConvertTo-PostgresBootstrapRecoveryPayload $revalidatedBootstrapRecoveryState) -cne
+            $expectedBootstrapRecoveryText
+        ) {
+            throw "PostgreSQL bootstrap 恢复文件在部分初始化清理前发生变化。"
+        }
         $partialCleanupGuard = {
             param($GuardedPath)
-            if (-not (Test-TicketboxPathEquals $GuardedPath $expectedPgData)) {
+            $openedPath = [IO.Path]::GetFullPath($GuardedPath).TrimEnd('\', '/')
+            if (-not [string]::Equals(
+                $openedPath,
+                $expectedPgData,
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
                 throw "PostgreSQL 部分初始化目录句柄与已验证目标不一致。"
             }
-            if (Test-Path -LiteralPath (Join-Path $GuardedPath "PG_VERSION")) {
+            $openedIdentity = @(
+                [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity($openedPath)
+            )
+            if (
+                $openedIdentity.Count -ne 2 -or
+                [string]$openedIdentity[0] -cne [string]$expectedPgDataIdentity[0] -or
+                [string]$openedIdentity[1] -cne [string]$expectedPgDataIdentity[1]
+            ) {
+                throw "PostgreSQL 部分初始化目录身份在清理前发生变化。"
+            }
+            if (
+                [TicketboxExactTreeDeleteNativeMethods]::InspectEntry(
+                    $expectedPgVersionPath
+                ) -ne 0
+            ) {
                 throw "PostgreSQL 部分初始化目录在清理前已变成完整数据簇。"
             }
-            [void](Read-PostgresBootstrapRecoveryState)
+            if (
+                [TicketboxExactTreeDeleteNativeMethods]::InspectEntry($pwfile) -ne 1 -or
+                [TicketboxExactTreeDeleteNativeMethods]::ReadExactUtf8File(
+                    $pwfile,
+                    4096
+                ) -cne $expectedBootstrapRecoveryText
+            ) {
+                throw "PostgreSQL bootstrap 恢复权威在部分初始化清理前发生变化。"
+            }
         }.GetNewClosure()
         Remove-TicketboxDataRootExact `
             -Path $PgData `
@@ -697,7 +770,11 @@ function Initialize-PgClusterIfNeeded {
     return $null
 }
 
-function Prepare-DatabaseIfNeeded([object]$BootstrapState) {
+function Prepare-DatabaseIfNeeded {
+    param(
+        [AllowNull()][object]$BootstrapState,
+        [switch]$PreserveBootstrapRecovery
+    )
     $existingEnv = Read-EnvMap $EnvPath
     $pwfile = Get-PostgresBootstrapRecoveryPath
     $recoveryState = $null
@@ -716,7 +793,7 @@ function Prepare-DatabaseIfNeeded([object]$BootstrapState) {
                 -DatabaseUrl $connection.PersistedDatabaseUrl
             $existingEnv = Read-EnvMap $EnvPath
         }
-        if ($null -ne $recoveryState) {
+        if ($null -ne $recoveryState -and -not $PreserveBootstrapRecovery) {
             if ($connection.Password -cne $recoveryState.RolePassword -or
                 -not $existingEnv.ContainsKey("ENABLE_HTTP_BOOTSTRAP") -or
                 $existingEnv["ENABLE_HTTP_BOOTSTRAP"] -cne "true" -or
@@ -732,7 +809,7 @@ function Prepare-DatabaseIfNeeded([object]$BootstrapState) {
             -ExpectedPort $PgPort `
             -Password $connection.Password `
             -TimeoutMilliseconds $DatabaseToolTimeoutMs
-        if ($null -ne $recoveryState) {
+        if ($null -ne $recoveryState -and -not $PreserveBootstrapRecovery) {
             Remove-TicketboxSensitiveFile $pwfile
         }
         Write-Ok "发现既有 .env，沿用 DATABASE_URL。"
@@ -796,7 +873,9 @@ function Prepare-DatabaseIfNeeded([object]$BootstrapState) {
         -ExpectedPort $PgPort `
         -Password $connection.Password `
         -TimeoutMilliseconds $DatabaseToolTimeoutMs
-    Remove-TicketboxSensitiveFile $pwfile
+    if (-not $PreserveBootstrapRecovery) {
+        Remove-TicketboxSensitiveFile $pwfile
+    }
     Write-Ok "已写入首次安装 .env。"
     return $databaseUrl
 }
@@ -830,11 +909,8 @@ function Invoke-TicketboxPreservedDataReinstallBackup {
     if (-not $environment.ContainsKey("DATABASE_URL")) {
         throw "保留数据重装的 .env 缺少 DATABASE_URL。"
     }
-    $connection = Get-TicketboxLocalDatabaseConnection `
-        -DatabaseUrl $environment["DATABASE_URL"] `
-        -PgPort $PgPort `
-        -ExpectedDatabase $DbName `
-        -ExpectedRole $DbRole
+    $connection = Get-TicketboxBundledApplicationDatabaseConnection `
+        -DatabaseUrl $environment["DATABASE_URL"]
 
     if (-not (Test-TicketboxServiceExists $PgServiceName)) {
         throw "保留数据重装备份必须由已验证的临时 PostgreSQL SCM 服务运行。"
@@ -928,11 +1004,8 @@ function Invoke-PreUpgradeBackupIfNeeded {
     if (-not (Test-Path -LiteralPath (Join-Path $PgData "PG_VERSION"))) {
         return
     }
-    $connection = Get-TicketboxLocalDatabaseConnection `
-        -DatabaseUrl $envMap["DATABASE_URL"] `
-        -PgPort $PgPort `
-        -ExpectedDatabase $DbName `
-        -ExpectedRole $DbRole
+    $connection = Get-TicketboxBundledApplicationDatabaseConnection `
+        -DatabaseUrl $envMap["DATABASE_URL"]
 
     Write-Step "创建服务层升级前备份"
     if (-not (Service-Exists $PgServiceName)) {

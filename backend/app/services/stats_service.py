@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 from collections import defaultdict
 from datetime import timedelta
-from decimal import Decimal
 from io import StringIO
 
 from sqlalchemy import Select, func, select
@@ -11,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Expense, ExpenseTag, Tag
+from app.money_contract import projection_sum_to_int
 from app.services.category_service import list_ledger_category_options, normalize_category
 from app.services.csv_security import safe_csv_cell
 from app.services.spending_contract_service import (
@@ -41,6 +41,15 @@ from app.services.spending_contract_service import (
 )
 from app.services.spending_contract_service import (
     stat_time_expr as _contract_stat_time_expr,
+)
+from app.services.stats_money import (
+    category_total as _category_total,
+)
+from app.services.stats_money import (
+    export_money_fields as _export_money_fields,
+)
+from app.services.stats_money import (
+    merchant_amount_total as _merchant_amount_total,
 )
 from app.services.time_service import (
     ensure_utc,
@@ -194,15 +203,14 @@ def export_confirmed_csv(
             "tags",
             "value_score",
             "regret_score",
+            # Append-only currency-aware replacements.  Keep every released
+            # column above in its original position for positional consumers.
+            "home_currency_code",
+            "amount_home_major",
         ]
     )
     for expense in expenses:
-        if expense.amount_cents is None:
-            amount_cents: int | str = ""
-            amount_yuan = ""
-        else:
-            amount_cents = int(expense.amount_cents)
-            amount_yuan = str((Decimal(amount_cents) / Decimal(100)).quantize(Decimal("0.01")))
+        amount_cents, amount_yuan, amount_home_major = _export_money_fields(expense)
         stat_time = _stat_time(expense)
         confirmed_at = ensure_utc(expense.confirmed_at)
         writer.writerow(
@@ -225,6 +233,8 @@ def export_confirmed_csv(
                 safe_csv_cell(expense.tags or ""),
                 expense.value_score or "",
                 expense.regret_score or "",
+                expense.home_currency_code,
+                amount_home_major,
             ]
         )
     return output.getvalue()
@@ -248,7 +258,15 @@ def _tag_stats_for_filtered_query(db: Session, tenant_id: str, filtered) -> list
         .group_by(Tag.name)
     )
     stats = [
-        {"tag": str(tag), "amount_cents": int(amount or 0), "count": int(count or 0)}
+        {
+            "tag": str(tag),
+            "amount_cents": projection_sum_to_int(
+                amount,
+                label="stats.tag_amount",
+                empty_is_zero=True,
+            ),
+            "count": int(count or 0),
+        }
         for tag, amount, count in rows
     ]
     return sorted(stats, key=lambda item: int(item["amount_cents"]), reverse=True)
@@ -294,7 +312,11 @@ def _ranked_scored_expenses(
         timestamp = stat_time.timestamp() if stat_time is not None else 0.0
         return (
             -(getattr(expense, score_attr) or 0),
-            -(expense.amount_cents or 0),
+            -projection_sum_to_int(
+                expense.amount_cents,
+                label="stats.ranked_expense",
+                empty_is_zero=True,
+            ),
             -timestamp,
             -(expense.id or 0),
         )
@@ -336,14 +358,28 @@ def monthly_stats(
         .group_by(filtered.c.category)
     )
     for category_value, amount_value, count_value in rows:
-        amount = int(amount_value or 0)
+        amount = projection_sum_to_int(
+            amount_value,
+            label="stats.category_row",
+            empty_is_zero=True,
+        )
         count = int(count_value or 0)
-        total_amount_cents += amount
+        total_amount_cents = projection_sum_to_int(
+            total_amount_cents + amount,
+            label="stats.month_total",
+        )
         total_count += count
         category = normalize_category(category_value)
         bucket = by_category[category]
         bucket["category"] = category
-        bucket["amount_cents"] = int(bucket["amount_cents"]) + amount
+        bucket["amount_cents"] = projection_sum_to_int(
+            projection_sum_to_int(
+                bucket["amount_cents"],
+                label="stats.category_bucket",
+            )
+            + amount,
+            label="stats.normalized_category_total",
+        )
         bucket["count"] = int(bucket["count"]) + count
 
     return {
@@ -377,20 +413,16 @@ def lifestyle_stats(
     recent_end = min(now_utc(), month_end)
     recent_start = max(month_start, recent_end - timedelta(days=7))
 
-    ai_subscription_amount_cents = sum(
-        item.amount_cents or 0
-        for item in month_expenses
-        if normalize_category(item.category) == "AI订阅"
+    ai_subscription_amount_cents = _category_total(
+        month_expenses, category="AI订阅", label="stats.ai_subscription_total"
     )
-    digital_amount_cents = sum(
-        item.amount_cents or 0
-        for item in month_expenses
-        if normalize_category(item.category) == "数码"
+    digital_amount_cents = _category_total(
+        month_expenses, category="数码", label="stats.digital_total"
     )
     max_expense = max(
         month_expenses, key=lambda item: item.amount_cents or 0, default=None
     )
-    recent_7_days_amount_cents = int(
+    recent_7_days_amount_cents = projection_sum_to_int(
         db.scalar(
             select(func.coalesce(func.sum(Expense.amount_cents), 0))
             .where(Expense.tenant_id == tenant_id)
@@ -398,8 +430,9 @@ def lifestyle_stats(
             .where(Expense.amount_cents.is_not(None))
             .where(_stat_time_expr() >= recent_start)
             .where(_stat_time_expr() < recent_end)
-        )
-        or 0
+        ),
+        label="stats.recent_seven_days",
+        empty_is_zero=True,
     ) if recent_start < recent_end else 0
 
     alias_map = enabled_merchant_display_map(db, tenant_id=tenant_id)
@@ -409,7 +442,9 @@ def lifestyle_stats(
         if item.merchant and item.merchant.strip():
             merchant = canonical_merchant_display(item.merchant, alias_map)
             merchant_counts[merchant] += 1
-            merchant_amounts[merchant] += int(item.amount_cents or 0)
+            merchant_amounts[merchant] = _merchant_amount_total(
+                merchant_amounts[merchant], item.amount_cents
+            )
 
     frequent_merchants = [
         {

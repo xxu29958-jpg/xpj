@@ -28,7 +28,10 @@ from app.models import Debt
 from app.schemas import DebtCreateRequest
 from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import home_currency_code
-from app.services.debt_service._money import freeze_home_amount
+from app.services.debt_service._money import (
+    freeze_home_amount,
+    validate_home_amount_command,
+)
 from app.services.time_service import now_utc
 
 VALID_DIRECTIONS = frozenset({"i_owe", "owed_to_me"})
@@ -142,6 +145,11 @@ def create_debt(
     hand-bumped ([[0041]]). ``commit=False`` lets the route commit the insert
     together with the [[0042]] idempotency-success record in one transaction.
     """
+    validate_home_amount_command(
+        amount_cents=payload.principal_amount_cents,
+        original_currency=payload.original_currency,
+        original_amount=payload.original_amount,
+    )
     direction = _clean_direction(payload.direction)
     # ADR-0061 C02 桥接门（PR#255 R9）：新 Debt 按 env 盖章 home_currency_code，
     # env 与已持久事实漂移时 fail closed（空库首笔放行；先于任何新事实落库）。

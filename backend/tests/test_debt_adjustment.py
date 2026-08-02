@@ -18,8 +18,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.main import app
 from app.models import Account, Debt, LedgerMember
+from app.money_contract import MONEY_AGGREGATE_MAX, MONEY_MINOR_MAX
 from app.services.time_service import now_utc
+from tests._infra.debt_aggregate_assertions import (
+    assert_adjustment_response_loss_recovery,
+    assert_aggregate_visible_in_all_read_models,
+    assert_one_adjustment_fact,
+    assert_paid_aggregate_crosses_single_command_ceiling,
+    create_repayment_goal,
+)
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -170,6 +179,69 @@ def test_adjustment_idempotent_replay_applies_once(client: TestClient, *, identi
     assert replay.status_code == 201, replay.json()
     assert replay.json()["remaining_amount_cents"] == 53000
     assert replay.json()["row_version"] == bumped_version
+
+
+def test_aggregate_debt_amounts_survive_response_loss_and_all_read_models(
+    client: TestClient, *, identity
+) -> None:
+    """A legal fact fold may exceed the single-command money ceiling.
+
+    The adjustment and its idempotency row commit before the response is built.
+    Therefore both the first response and a committed-but-unseen replay must
+    accept the aggregate envelope; otherwise a successful financial fact is
+    stranded behind repeatable response-validation 500s.
+    """
+    debt = _create_debt(
+        client,
+        identity,
+        principal_amount_cents=MONEY_MINOR_MAX,
+    )
+    goal_public_id = create_repayment_goal(
+        client,
+        identity.app_headers,
+        debt["public_id"],
+    )
+    adjusted_version = assert_adjustment_response_loss_recovery(
+        client,
+        identity.app_headers,
+        debt,
+    )
+    assert_one_adjustment_fact(debt["public_id"])
+    assert_aggregate_visible_in_all_read_models(
+        client,
+        identity.app_headers,
+        debt["public_id"],
+        goal_public_id,
+    )
+    assert_paid_aggregate_crosses_single_command_ceiling(
+        client,
+        identity.app_headers,
+        debt["public_id"],
+        adjusted_version,
+    )
+
+
+def test_debt_aggregate_openapi_bounds_use_the_exact_json_integer_envelope() -> None:
+    app.openapi_schema = None
+    components = app.openapi()["components"]["schemas"]
+    expected = {
+        "format": "int64",
+        "minimum": 0,
+        "maximum": MONEY_AGGREGATE_MAX,
+    }
+    for schema_name, fields in {
+        "DebtResponse": ("remaining_amount_cents", "paid_amount_cents"),
+        "RepaymentCreateResponse": (
+            "remaining_amount_cents",
+            "paid_amount_cents",
+        ),
+        "DebtGoalLinkView": ("remaining_amount_cents",),
+    }.items():
+        properties = components[schema_name]["properties"]
+        for field in fields:
+            assert {
+                key: properties[field][key] for key in expected
+            } == expected
 
 
 def test_manual_member_adjustment_requires_confirmation_flow(

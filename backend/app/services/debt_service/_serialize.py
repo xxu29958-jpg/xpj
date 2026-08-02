@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt
-from app.services.debt_service._fold import compute_remaining, derive_status
+from app.services.debt_service._fold import compute_remaining_for_write, derive_status
 from app.services.debt_service._query import participant_can_access
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.time_service import now_utc
@@ -125,11 +125,11 @@ def lock_and_fold(
     if expected_row_version is not None and debt.row_version != expected_row_version:
         raise AppError("state_conflict", status_code=409)
 
-    remaining_before = compute_remaining(db, debt)
+    remaining_before = compute_remaining_for_write(db, debt)
     result = mutate(debt, remaining_before)
     db.flush()
 
-    remaining_after = compute_remaining(db, debt)
+    remaining_after = compute_remaining_for_write(db, debt)
     bump_row_version(debt)
     debt.updated_at = now_utc()
     debt.status = derive_status(debt, remaining_after)

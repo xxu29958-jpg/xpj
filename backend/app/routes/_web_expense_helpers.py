@@ -6,14 +6,22 @@ route files don't have to import from each other.
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.routes.web_common import _amount_yuan, _base_ctx, _expense_view, _web_redirect, templates
+from app.money_carrier import parse_canonical_major_decimal
+from app.routes.web_common import (
+    _amount_yuan,
+    _base_ctx,
+    _currency_input_view,
+    _expense_view,
+    _web_redirect,
+    templates,
+)
 from app.schemas import (
     ExpenseItemReplaceRequest,
     ExpenseItemRequest,
@@ -21,7 +29,7 @@ from app.schemas import (
     ExpenseSplitRequest,
 )
 from app.services.category_service import list_ledger_category_options
-from app.services.currency_common import home_currency_code, major_amount_to_minor, minor_unit_digits
+from app.services.currency_common import currency_input_metadata, major_amount_to_minor
 from app.services.expense_service import get_expense
 from app.services.expense_split_service import (
     list_active_split_members,
@@ -32,39 +40,39 @@ from app.services.spending_contract_service import accounting_timezone_key
 from app.services.time_service import ensure_utc_assuming_local
 
 
-def parse_amount_yuan(raw: str) -> tuple[int | None, str | None]:
-    cleaned = (raw or "").strip()
-    if not cleaned:
+def parse_amount_yuan(
+    raw: str,
+    *,
+    currency_code: str,
+) -> tuple[int | None, str | None]:
+    text = (raw or "").strip()
+    if not text:
         return None, None
     try:
-        d = Decimal(cleaned)
-    except InvalidOperation:
-        return None, "请填写正确的金额，例如 12.34。"
-    if not d.is_finite() or d < 0:
+        amount = major_amount_to_minor(
+            text,
+            currency_code,
+            allow_negative=True,
+        )
+    except AppError:
+        example = currency_input_metadata(currency_code)["amount_example"]
+        return None, f"请填写正确的金额，例如 {example}。"
+    if amount is not None and amount < 0:
         return None, "金额不能为负数。"
-    home = home_currency_code()
-    digits = minor_unit_digits(home)
-    try:
-        exact = d.quantize(Decimal(1).scaleb(-digits))
-    except InvalidOperation:
-        return None, "请填写正确的金额，例如 12.34。"
-    if exact != d:
-        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
-        return None, f"金额按 {home} {detail}。"
-    return major_amount_to_minor(d, home), None
+    return amount, None
 
 
 def parse_original_amount(raw: str) -> tuple[Decimal | None, str | None]:
-    cleaned = (raw or "").strip()
-    if not cleaned:
+    text = raw or ""
+    if not text:
         return None, None
     try:
-        d = Decimal(cleaned)
-    except InvalidOperation:
+        amount = parse_canonical_major_decimal(text, allow_negative=True)
+    except ValueError:
         return None, "请填写正确的金额，例如 12.34。"
-    if d < 0:
+    if amount < 0:
         return None, "金额不能为负数。"
-    return d, None
+    return amount, None
 
 
 def parse_expense_time_local(raw: str | None) -> tuple[datetime | None, str | None]:
@@ -197,19 +205,43 @@ def web_edit_context(
 ) -> dict:
     expense = get_expense(db, expense_id, selected_id)
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
-    ctx["expense"] = _expense_view(expense)
+    ctx["expense"] = _expense_view(
+        expense,
+        presentation_currency_code=ctx["home_currency_code"],
+    )
     ctx["error"] = None
     ctx["message"] = request.query_params.get("msg")
     ctx["items_error"] = None
     ctx["splits_error"] = None
-    ctx["receipt_items"] = _web_item_rows(db, expense_id, selected_id)
-    ctx["split_rows"] = _web_split_rows(db, expense_id, selected_id)
+    record_currency = expense.home_currency_code or ctx["home_currency_code"]
+    ctx["currency_input"] = _currency_input_view(record_currency)
+    ctx["expense_currency_input"] = _currency_input_view(
+        expense.original_currency_code or record_currency
+    )
+    ctx["receipt_items"] = _web_item_rows(
+        db,
+        expense_id,
+        selected_id,
+        currency_code=record_currency,
+    )
+    ctx["split_rows"] = _web_split_rows(
+        db,
+        expense_id,
+        selected_id,
+        currency_code=record_currency,
+    )
     ctx["split_members"] = _web_split_members(db, selected_id)
     ctx["category_options"] = list_ledger_category_options(db, tenant_id=selected_id)
     return ctx
 
 
-def _web_item_rows(db: Session, expense_id: int, ledger_id: str) -> dict:
+def _web_item_rows(
+    db: Session,
+    expense_id: int,
+    ledger_id: str,
+    *,
+    currency_code: str,
+) -> dict:
     """Returns dict carrying both row list and items_sum_status banner state
     (ADR-0035). Template iterates ``rows`` for the table, reads ``status`` /
     ``status_label`` for the warning banner."""
@@ -219,12 +251,13 @@ def _web_item_rows(db: Session, expense_id: int, ledger_id: str) -> dict:
             "kind": item.kind,
             "name": item.name,
             "quantity_text": item.quantity_text or "",
-            "unit_price_yuan": _amount_yuan(item.unit_price_cents),
+            "unit_price_yuan": _amount_yuan(item.unit_price_cents, currency_code),
             # discount 行 amount_cents 是负数；UI 显示正数（"3.00"），sign 由
             # kind 表达；form post 时 backend 按 kind=discount 重新翻 sign。
             "amount_yuan": _amount_yuan(
                 abs(item.amount_cents) if item.amount_cents is not None and item.kind == "discount"
-                else item.amount_cents
+                else item.amount_cents,
+                currency_code,
             ),
             "category": item.category,
             "is_ocr_draft": item.is_ocr_draft,
@@ -247,18 +280,24 @@ def _web_item_rows(db: Session, expense_id: int, ledger_id: str) -> dict:
         "rows": rows,
         "status": response.items_sum_status,
         "mismatch_cents": response.mismatch_cents,
-        "mismatch_yuan": _amount_yuan(response.mismatch_cents),
+        "mismatch_yuan": _amount_yuan(response.mismatch_cents, currency_code),
     }
 
 
-def _web_split_rows(db: Session, expense_id: int, ledger_id: str) -> dict:
+def _web_split_rows(
+    db: Session,
+    expense_id: int,
+    ledger_id: str,
+    *,
+    currency_code: str,
+) -> dict:
     response = list_expense_splits(db, expense_id, ledger_id)
     rows = [
         {
             "member_id": split.member_id,
             "account_name": split.account_name,
             "role": split.role,
-            "amount_yuan": _amount_yuan(split.amount_cents),
+            "amount_yuan": _amount_yuan(split.amount_cents, currency_code),
             "note": split.note or "",
             "disabled": split.disabled_at is not None,
         }
@@ -266,9 +305,10 @@ def _web_split_rows(db: Session, expense_id: int, ledger_id: str) -> dict:
     ]
     rows.extend({"member_id": "", "amount_yuan": "", "note": ""} for _ in range(3))
     return {
-        "parent_amount_yuan": _amount_yuan(response.parent_amount_cents),
-        "total_yuan": _amount_yuan(response.splits_total_amount_cents),
-        "mismatch_yuan": _amount_yuan(response.mismatch_cents),
+        "parent_amount_yuan": _amount_yuan(response.parent_amount_cents, currency_code),
+        "total_yuan": _amount_yuan(response.splits_total_amount_cents, currency_code),
+        "mismatch_yuan": _amount_yuan(response.mismatch_cents, currency_code),
+        "has_mismatch": response.mismatch_cents != 0,
         "rows": rows,
     }
 
@@ -279,6 +319,7 @@ def _web_split_members(db: Session, ledger_id: str) -> list[dict]:
 
 def item_replace_payload(
     *,
+    currency_code: str,
     expected_row_version: int,
     item_name: list[str],
     item_kind: list[str],
@@ -308,8 +349,14 @@ def item_replace_payload(
             continue
         if not name:
             raise AppError("invalid_request", "明细名称不能为空。", status_code=422)
-        unit_price_cents, unit_error = parse_amount_yuan(unit_raw)
-        amount_cents, amount_error = parse_amount_yuan(amount_raw)
+        unit_price_cents, unit_error = parse_amount_yuan(
+            unit_raw,
+            currency_code=currency_code,
+        )
+        amount_cents, amount_error = parse_amount_yuan(
+            amount_raw,
+            currency_code=currency_code,
+        )
         if unit_error or amount_error:
             raise AppError("invalid_request", "请填写正确的明细金额。", status_code=422)
         # ADR-0035: form post 总是发正数 amount_yuan；discount 行在 backend
@@ -337,6 +384,7 @@ def item_replace_payload(
 
 def split_replace_payload(
     *,
+    currency_code: str,
     expected_row_version: int,
     split_member_id: list[str],
     split_amount_yuan: list[str],
@@ -356,7 +404,10 @@ def split_replace_payload(
             member_id = int(member_raw)
         except ValueError as exc:
             raise AppError("invalid_request", "请选择正确的家庭成员。", status_code=422) from exc
-        amount_cents, amount_error = parse_amount_yuan(amount_raw)
+        amount_cents, amount_error = parse_amount_yuan(
+            amount_raw,
+            currency_code=currency_code,
+        )
         if amount_error or amount_cents is None:
             raise AppError("invalid_request", "请填写正确的拆账金额。", status_code=422)
         splits.append(

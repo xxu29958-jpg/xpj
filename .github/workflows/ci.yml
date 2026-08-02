@@ -226,8 +226,65 @@ jobs:
       - name: Frozen backend locked smoke build
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
 
-  windows_packaging:
-    name: Windows release packaging
+  windows_packaging_lifecycle:
+    name: Windows PowerShell lifecycle safety / ${{ matrix.suite.label }}
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - label: C07 lifecycle artifacts
+            selector: test_c07_lifecycle_artifacts
+          - label: C07 superuser recovery
+            selector: test_c07_superuser_recovery
+          - label: Service lifecycle heartbeat
+            selector: test_service_lifecycle_contract and heartbeat
+          - label: Service lifecycle remainder
+            selector: test_service_lifecycle_contract and not heartbeat
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Verify qualification SHA
+        id: qualification
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Resource-isolated PowerShell lifecycle behavior
+        env:
+          PYTEST_ADDOPTS: ""
+        run: >-
+          python -m pytest -q packaging/tests -m xdist_group
+          -k "${{ matrix.suite.selector }}"
+          --strict-markers -p no:cacheprovider -o addopts=
+          -n 0 --dist loadfile --max-worker-restart 0
+
+  windows_packaging_build:
+    name: Windows installer build
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
     runs-on: windows-latest
@@ -269,7 +326,7 @@ jobs:
         env:
           PYTEST_ADDOPTS: ""
         run: >-
-          python -m pytest -q packaging/tests
+          python -m pytest -q packaging/tests -m "not xdist_group"
           --strict-markers -p no:cacheprovider -o addopts=
           -n 2 --dist loadfile --max-worker-restart 0
 
@@ -384,6 +441,59 @@ jobs:
         run: |
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  windows_packaging:
+    name: Windows release packaging
+    needs:
+      - scope
+      - windows_packaging_lifecycle
+      - windows_packaging_build
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Enforce Windows release lane results
+        env:
+          BASH_ENV: ""
+          ENV: ""
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          WINDOWS_SCOPE: ${{ needs.scope.outputs.windows }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          LIFECYCLE_RESULT: ${{ needs.windows_packaging_lifecycle.result }}
+          LIFECYCLE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_sha }}
+          LIFECYCLE_SOURCE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_source_sha }}
+          BUILD_RESULT: ${{ needs.windows_packaging_build.result }}
+          BUILD_SHA: ${{ needs.windows_packaging_build.outputs.qualification_sha }}
+          BUILD_SOURCE_SHA: ${{ needs.windows_packaging_build.outputs.qualification_source_sha }}
+        run: >-
+          python -E -S backend/scripts/verify_scoped_ci_results.py
+          --label "Windows release packaging"
+          --scope-key WINDOWS_SCOPE
+          --lane LIFECYCLE
+          --lane BUILD
 
   backend:
     name: Backend
@@ -532,12 +642,74 @@ jobs:
           fi
 
   backend_postgres_real_db:
-    name: "Backend PostgreSQL / real-db (PG ${{ matrix.postgres['postgres-major'] }})"
+    name: "Backend PostgreSQL / real-db ${{ matrix.shard.label }} (PG ${{ matrix.postgres['postgres-major'] }})"
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    strategy: &postgres_test_strategy
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}
+        shard:
+          - index: 0
+            count: 2
+            label: 1/2
+          - index: 1
+            count: 2
+            label: 2/2
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    services:
+      postgres: *postgres_test_service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - *postgres_setup_python
+      - *postgres_qualification
+      - *postgres_load_contract
+
+      - &postgres_install_supported_client
+        name: Install supported PostgreSQL client
+        # C07 real-db tests execute the production pg_dump/pg_restore drill.
+        # The client major must therefore match this job's supported server.
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo apt-get update
+          sudo apt-get install -y "postgresql-client-${{ matrix.postgres['postgres-major'] }}"
+          echo "/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin" >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin:$PATH"
+          pg_dump --version
+          pg_restore --version
+
+      - *postgres_install_dependencies
+
+      - name: Prepare real-db lane database
+        env: *postgres_prepare_environment
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --role restore --expected-major "${{ matrix.postgres['postgres-major'] }}"
+
+      - name: PostgreSQL real-db serial pytest shard
+        # Each matrix row owns a fresh service cluster; within that cluster all
+        # DDL, fixed restore-database and cluster-role tests remain serial.
+        run: ./.ci-venv/bin/python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1 --shard-index "${{ matrix.shard.index }}" --shard-count "${{ matrix.shard.count }}"
+
+      - *postgres_remove_passfile
+
+  backend_postgres_recovery:
+    name: "Backend PostgreSQL / smoke + recovery (PG ${{ matrix.postgres['postgres-major'] }})"
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
       fail-fast: false
       matrix:
         postgres: ${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}
@@ -557,54 +729,8 @@ jobs:
       - *postgres_setup_python
       - *postgres_qualification
       - *postgres_load_contract
-      - *postgres_install_dependencies
 
-      - name: Prepare real-db lane database
-        env: *postgres_prepare_environment
-        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --expected-major "${{ matrix.postgres['postgres-major'] }}"
-
-      - name: PostgreSQL real-db serial pytest lane
-        run: ./.ci-venv/bin/python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
-
-      - *postgres_remove_passfile
-
-  backend_postgres_recovery:
-    name: "Backend PostgreSQL / smoke + recovery (PG ${{ matrix.postgres['postgres-major'] }})"
-    needs: scope
-    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    strategy: *postgres_test_strategy
-    outputs:
-      qualification_sha: ${{ steps.qualification.outputs.sha }}
-      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
-    defaults:
-      run:
-        working-directory: backend
-        shell: bash
-    services:
-      postgres: *postgres_test_service
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - *postgres_setup_python
-      - *postgres_qualification
-      - *postgres_load_contract
-
-      - name: Install supported PostgreSQL client
-        # The backup tools must match the service-container major selected by
-        # this job's supported-base matrix coordinate.
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          sudo apt-get update
-          sudo apt-get install -y "postgresql-client-${{ matrix.postgres['postgres-major'] }}"
-          echo "/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin" >> "$GITHUB_PATH"
-          export PATH="/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin:$PATH"
-          pg_dump --version
-          pg_restore --version
+      - *postgres_install_supported_client
 
       - *postgres_install_dependencies
 

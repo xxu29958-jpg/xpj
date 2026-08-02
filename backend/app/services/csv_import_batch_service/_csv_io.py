@@ -14,8 +14,10 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow
+from app.money_contract import MoneySign, ensure_optional_money_minor
 from app.services.csv_import_batch_service._common import DEFAULT_BATCH_FILE_NAME
 from app.services.csv_security import safe_csv_cell
 from app.services.import_service import DEFAULT_SOURCE
@@ -28,16 +30,37 @@ def _clean_file_name(value: str | None) -> str:
 
 
 def _row_from_parsed(batch: CsvImportBatch, parsed) -> CsvImportRow:
+    try:
+        amount_cents = ensure_optional_money_minor(
+            parsed.amount_cents,
+            sign=MoneySign.NONNEGATIVE,
+            label="csv_import_row.amount_cents",
+        )
+        original_amount_minor = ensure_optional_money_minor(
+            parsed.original_amount_minor,
+            sign=MoneySign.NONNEGATIVE,
+            label="csv_import_row.original_amount_minor",
+        )
+    except AppError:
+        amount_cents = None
+        original_amount_minor = None
+        valid = False
+        error_code = parsed.error_code or "amount_out_of_range"
+        error_message = parsed.error or "金额超出当前版本可支持范围"
+    else:
+        valid = parsed.is_valid
+        error_code = None if valid else (parsed.error_code or "invalid_row")
+        error_message = parsed.error
     return CsvImportRow(
         tenant_id=batch.tenant_id,
         batch_id=batch.id,
         line_number=parsed.line_number,
-        status="valid" if parsed.is_valid else "error",
-        error_code=None if parsed.is_valid else "invalid_row",
-        error_message=parsed.error,
-        amount_cents=parsed.amount_cents,
+        status="valid" if valid else "error",
+        error_code=error_code,
+        error_message=error_message,
+        amount_cents=amount_cents,
         original_currency_code=parsed.original_currency_code,
-        original_amount_minor=parsed.original_amount_minor,
+        original_amount_minor=original_amount_minor,
         exchange_rate_to_cny=parsed.exchange_rate_to_cny,
         exchange_rate_date=parsed.exchange_rate_date,
         exchange_rate_source=parsed.exchange_rate_source,
@@ -93,6 +116,7 @@ def build_csv_import_errors_csv(
             "error_code",
             "error_message",
             "amount_cents",
+            "amount_yuan",
             "original_currency_code",
             "original_amount_minor",
             "exchange_rate_to_cny",
@@ -113,6 +137,7 @@ def build_csv_import_errors_csv(
                 safe_csv_cell(row.error_code or ""),
                 safe_csv_cell(row.error_message or ""),
                 row.amount_cents if row.amount_cents is not None else "",
+                "",
                 row.original_currency_code,
                 row.original_amount_minor if row.original_amount_minor is not None else "",
                 row.exchange_rate_to_cny if row.exchange_rate_to_cny is not None else "",
@@ -126,5 +151,3 @@ def build_csv_import_errors_csv(
             ]
         )
     return output.getvalue()
-
-

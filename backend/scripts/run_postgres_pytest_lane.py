@@ -42,6 +42,7 @@ POSTGRES_PYTEST_LANE_MARKERS = {
     "real-db": "real_db",
 }
 PARALLEL_POSTGRES_PYTEST_LANE = "ordinary"
+SHARDED_POSTGRES_PYTEST_LANES = frozenset({"ordinary", "real-db"})
 MAX_POSTGRES_PYTEST_SHARDS = 4
 _ShardItem = TypeVar("_ShardItem")
 _LIBPQ_ROUTE_ENV = {
@@ -76,8 +77,8 @@ def validate_shard_coordinates(
         )
     if shard_index < 0 or shard_index >= shard_count:
         raise ValueError("PostgreSQL pytest shard index is outside the shard count")
-    if shard_count > 1 and lane != PARALLEL_POSTGRES_PYTEST_LANE:
-        raise ValueError("only the ordinary PostgreSQL lane may be sharded")
+    if shard_count > 1 and lane not in SHARDED_POSTGRES_PYTEST_LANES:
+        raise ValueError("only a declared PostgreSQL lane may be sharded")
 
 
 def nodeid_shard(nodeid: str, *, shard_count: int) -> int:

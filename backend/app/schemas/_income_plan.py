@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._money import NonNegativeMoneyAggregate, NonNegativeMoneyMinor
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -28,7 +29,7 @@ class IncomePlanCreateRequest(BaseModel):
         default=None,
         pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
     )
-    amount_cents: int = Field(ge=0)
+    amount_cents: NonNegativeMoneyMinor
     pay_day: int = Field(ge=1, le=31)
 
 
@@ -51,7 +52,7 @@ class IncomePlanUpdateRequest(BaseModel):
         default=None,
         pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
     )
-    amount_cents: int | None = Field(default=None, ge=0)
+    amount_cents: NonNegativeMoneyMinor | None = None
     pay_day: int | None = Field(default=None, ge=1, le=31)
 
 
@@ -74,7 +75,7 @@ class IncomePlanResponse(BaseModel):
     source_type: str
     frequency: Literal["monthly", "one_time"]
     income_month: str | None
-    amount_cents: int
+    amount_cents: NonNegativeMoneyMinor
     pay_day: int
     status: Literal["active", "archived"]
     created_at: datetime
@@ -89,4 +90,4 @@ class IncomePlanResponse(BaseModel):
 
 class IncomePlanListResponse(BaseModel):
     items: list[IncomePlanResponse]
-    total_active_amount_cents: int
+    total_active_amount_cents: NonNegativeMoneyAggregate

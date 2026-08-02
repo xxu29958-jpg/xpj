@@ -40,6 +40,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
+from app.services.currency_common import home_currency_code
 from app.services.expense_service import (
     get_expense,
     list_duplicate_expenses,
@@ -83,6 +84,7 @@ def web_duplicates(
         e.id: e
         for e in list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=original_ids)
     }
+    home = home_currency_code()
     pairs = []
     for row in rows:
         original = (
@@ -101,8 +103,15 @@ def web_duplicates(
             score = 0.72
         else:
             score = 0.7
-        current_view = _expense_view(row)
-        original_view = _expense_view(original) if original is not None else None
+        current_view = _expense_view(
+            row,
+            presentation_currency_code=home,
+        )
+        original_view = (
+            _expense_view(original, presentation_currency_code=home)
+            if original is not None
+            else None
+        )
         diff_fields: list[str] = []
         if original_view:
             if current_view.get("merchant") != original_view.get("merchant"):

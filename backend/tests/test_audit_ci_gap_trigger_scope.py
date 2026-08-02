@@ -359,11 +359,7 @@ def test_windows_scope_protects_real_installer_provenance(tmp_path: Path) -> Non
     )
 
     workflow.write_text(
-        source.replace(
-            "needs.scope.outputs.windows != 'false'",
-            "needs.scope.outputs.desktop != 'false'",
-            1,
-        ),
+        source.replace("      - windows_packaging_build\n", "", 1),
         encoding="utf-8",
     )
     commands = mod._iter_workflow_run_commands(workflows, protected_only=True)

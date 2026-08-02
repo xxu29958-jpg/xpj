@@ -23,7 +23,7 @@ from app.services.duplicate_service import (
     mark_duplicate_status,
     revalidate_duplicate_references_to,
 )
-from app.services.exchange_rate_service import refresh_currency_snapshot
+from app.services.exchange_rate_service import refresh_currency_snapshot, validate_currency_payload_money_command
 from app.services.expense_service._helpers import (
     EDITABLE_STATUSES,
     _clean_category,
@@ -175,6 +175,9 @@ def update_expense(
     commit: bool = True,
     preserve_currency_snapshot: bool = False,
 ) -> Expense:
+    validate_currency_payload_money_command(
+        payload, amount_was_explicit="amount_cents" in payload.model_fields_set
+    )
     # ADR-0038: atomic UPDATE WHERE id, tenant_id, status, updated_at =
     # expected. Race-rejected at the DB layer (rowcount=0 → 404/409),
     # so two clients that both read the same updated_at can't both

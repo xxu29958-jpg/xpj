@@ -12,12 +12,13 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 
 from app.database import engine
+from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
 
 _PREVIOUS_REVISION = "20260711_0001"
-# Head pin follows the chain tip: each new head migration updates it.
-_HEAD_REVISION = "20260722_0001"
+# Exact target keeps this receipt test independent of later forward-only migrations.
+_TARGET_REVISION = "20260722_0001"
 _ENROLLMENT_COLUMNS = {
     "id",
     "public_id",
@@ -57,16 +58,11 @@ def _alembic_cfg():
 
 
 def _run_alembic(action, *args) -> None:
-    cfg = _alembic_cfg()
-    with engine.begin() as connection:
-        cfg.attributes["connection"] = connection
-        action(cfg, *args)
+    run_alembic_for_test(engine, _alembic_cfg(), action, *args)
 
 
 def _reset_schema() -> None:
-    with engine.begin() as connection:
-        connection.execute(text("DROP SCHEMA public CASCADE"))
-        connection.execute(text("CREATE SCHEMA public"))
+    reset_public_schema(engine)
 
 
 def _seed_account_ledger_device(
@@ -256,7 +252,7 @@ def test_identity_receipts_upgrade_real_previous_revision_and_reject_downgrade()
         _run_alembic(command.upgrade, _PREVIOUS_REVISION)
         values = _seed_previous_revision()
 
-        _run_alembic(command.upgrade, "head")
+        _run_alembic(command.upgrade, _TARGET_REVISION)
         _assert_identity_schema()
         with engine.begin() as connection:
             assert connection.scalar(
@@ -278,7 +274,7 @@ def test_identity_receipts_upgrade_real_previous_revision_and_reject_downgrade()
             _run_alembic(command.downgrade, _PREVIOUS_REVISION)
 
         with engine.begin() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == _HEAD_REVISION
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == _TARGET_REVISION
             assert connection.scalar(
                 text("SELECT count(*) FROM device_enrollment_attempts")
             ) == 1

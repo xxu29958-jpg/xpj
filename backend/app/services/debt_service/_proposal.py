@@ -30,6 +30,12 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Debt, MemberRepaymentProposal, Repayment
+from app.money_contract import (
+    MoneySign,
+    ensure_money_minor,
+    fold_sum_to_int,
+    projection_sum_to_int,
+)
 from app.schemas import (
     DebtResponse,
     MemberRepaymentProposalConfirmRequest,
@@ -40,14 +46,17 @@ from app.schemas import (
 )
 from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import home_currency_code
-from app.services.debt_service._fold import compute_remaining
+from app.services.debt_service._fold import compute_remaining_for_write
 from app.services.debt_service._guards import (
     guard_actor_is_creditor,
     guard_actor_is_debtor,
     guard_member_debt,
     proposal_debtor_creditor,
 )
-from app.services.debt_service._money import freeze_home_amount
+from app.services.debt_service._money import (
+    freeze_home_amount,
+    validate_home_amount_command,
+)
 from app.services.debt_service._query import (
     get_participant_debt_response,
     resolve_debt_for_participant,
@@ -119,7 +128,7 @@ def _lock_creatable_member_debt(
         raise AppError("debt_already_voided", status_code=409)
     guard_member_debt(debt)
     guard_actor_is_debtor(debt, actor_account_id)
-    if compute_remaining(db, debt) <= 0:
+    if compute_remaining_for_write(db, debt) <= 0:
         raise AppError("state_conflict", status_code=409)
     return debt
 
@@ -276,6 +285,12 @@ def create_repayment_proposal(
     ``commit=False`` lets the route commit the insert together with the [[0042]]
     idempotency-success record in one transaction.
     """
+    validate_home_amount_command(
+        amount_cents=payload.proposed_amount_cents,
+        original_currency=payload.original_currency_code,
+        original_amount=payload.original_amount,
+        amount_error="repayment_proposal_amount_invalid",
+    )
     # Lock the parent Debt FOR UPDATE and gate it (§3.2 / §0): voided / non-member /
     # not-the-debtor / already-settled all refuse a new proposal (see helper).
     debt = _lock_creatable_member_debt(
@@ -367,13 +382,24 @@ def _confirmed_amount(
     partial confirm is allowed); else ``repayment_proposal_amount_invalid`` 422.
     ``amount > remaining_before`` is an overpay (F8) → ``debt_overpay_rejected``.
     """
-    proposed = int(proposal.proposed_amount_cents)
+    proposed = ensure_money_minor(
+        proposal.proposed_amount_cents,
+        sign=MoneySign.POSITIVE,
+        label="repayment_proposal.proposed_amount_cents",
+        error_code="repayment_proposal_amount_invalid",
+    )
     amount = (
         payload.confirmed_amount_cents
         if payload.confirmed_amount_cents is not None
         else proposed
     )
-    if amount <= 0 or amount > proposed:
+    amount = ensure_money_minor(
+        amount,
+        sign=MoneySign.POSITIVE,
+        label="repayment_proposal.confirmed_amount_cents",
+        error_code="repayment_proposal_amount_invalid",
+    )
+    if amount > proposed:
         raise AppError("repayment_proposal_amount_invalid", status_code=422)
     # §3.1 / F8: a repayment that would push remaining below 0 is rejected inside
     # the serialized section, never silently clamped.
@@ -398,7 +424,10 @@ def _commit_confirmation(
     repayment (original_* null — a partial home amount has no faithful
     original-currency split).
     """
-    is_full = amount == int(proposal.proposed_amount_cents)
+    is_full = amount == fold_sum_to_int(
+        proposal.proposed_amount_cents,
+        label="debt_proposal.proposed_amount",
+    )
     repayment = Repayment(
         debt_id=debt_id,
         amount_cents=amount,
@@ -451,6 +480,13 @@ def confirm_repayment_proposal(
     runs before the lock; ``lock_and_fold(account_id=...)`` re-admits the same
     participant under the row lock.
     """
+    if payload.confirmed_amount_cents is not None:
+        ensure_money_minor(
+            payload.confirmed_amount_cents,
+            sign=MoneySign.POSITIVE,
+            label="repayment_proposal.confirmed_amount_cents",
+            error_code="repayment_proposal_amount_invalid",
+        )
     debt = _load_participant_debt(
         db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
     )
@@ -587,8 +623,18 @@ def proposal_response(
         public_id=proposal.public_id,
         debt_public_id=debt_public_id,
         status=proposal.status,
-        proposed_amount_cents=int(proposal.proposed_amount_cents),
-        confirmed_amount_cents=proposal.confirmed_amount_cents,
+        proposed_amount_cents=projection_sum_to_int(
+            proposal.proposed_amount_cents,
+            label="debt_proposal.response_proposed_amount",
+        ),
+        confirmed_amount_cents=(
+            projection_sum_to_int(
+                proposal.confirmed_amount_cents,
+                label="debt_proposal.response_confirmed_amount",
+            )
+            if proposal.confirmed_amount_cents is not None
+            else None
+        ),
         home_currency_code=proposal.home_currency_code,
         original_currency_code=proposal.original_currency_code,
         original_amount_minor=proposal.original_amount_minor,

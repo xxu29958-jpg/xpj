@@ -23,6 +23,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.BudgetProgressStatus
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.moneyPercent
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -240,7 +241,6 @@ internal fun budgetTickFraction(budget: BudgetProgress): Float? {
     return (budget.budgetCents.toFloat() / budget.spentCents.toFloat()).coerceIn(0f, 1f)
 }
 
-internal fun budgetSpentPercent(budget: BudgetProgress): Int {
-    if (budget.budgetCents <= 0L) return (budget.progress.coerceIn(0f, 1f) * 100).toInt()
-    return ((budget.spentCents * 100) / budget.budgetCents).toInt()
-}
+internal fun budgetSpentPercent(budget: BudgetProgress): Long =
+    moneyPercent(budget.spentCents, budget.budgetCents)
+        ?: (budget.progress.coerceIn(0f, 1f) * 100).toLong()

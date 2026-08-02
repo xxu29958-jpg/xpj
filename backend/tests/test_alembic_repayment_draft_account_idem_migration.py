@@ -4,9 +4,9 @@ Issue #224 (C3): ``uq_repayment_drafts_idem`` was tenant-wide
 ``(tenant_id, draft_idempotency_key)`` while a repayment capture is personal
 (ADR-0049 §8). The ORM now declares it account-scoped ``(tenant_id,
 created_by_account_id, draft_idempotency_key)``, so ``init_db`` on a fresh DB runs
-``create_all`` with the new shape then ``alembic stamp head`` — and the migration
+``create_all`` with the new shape then ``alembic stamp 20260722_0001`` — and the migration
 body never runs on the normal path. This drives the migration directly on
-PostgreSQL: create_all → assert the account-scoped columns → stamp head → downgrade
+PostgreSQL: create_all → assert the account-scoped columns → stamp the tested revision → downgrade
 to 20260720_0001 (``downgrade`` re-adds the tenant-wide constraint) → upgrade to
 head (``upgrade`` drops it via ``DROP CONSTRAINT IF EXISTS`` and re-creates the
 account-scoped one), asserting the constraint COLUMN SET at every step — not just
@@ -25,6 +25,7 @@ import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
 
@@ -40,7 +41,7 @@ def _idem_constraint_columns() -> list[str]:
 
 
 def _reset_empty_database() -> None:
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
 
 
 def _drop_alembic_version() -> None:
@@ -60,10 +61,7 @@ def _alembic_cfg():
 def _run_alembic(action, *args) -> None:
     # Drive Alembic through the test engine's connection, one command per
     # transaction (mirrors init_db's _stamp_alembic_baseline_if_needed).
-    cfg = _alembic_cfg()
-    with engine.begin() as connection:
-        cfg.attributes["connection"] = connection
-        action(cfg, *args)
+    run_alembic_for_test(engine, _alembic_cfg(), action, *args)
 
 
 def test_repayment_draft_account_scoped_idem_round_trips_on_postgres() -> None:
@@ -77,7 +75,7 @@ def test_repayment_draft_account_scoped_idem_round_trips_on_postgres() -> None:
         # (tenant_id, created_by_account_id, draft_idempotency_key) constraint.
         assert _idem_constraint_columns() == _ACCOUNT_SCOPED_COLUMNS
 
-        _run_alembic(command.stamp, "head")
+        _run_alembic(command.stamp, "20260722_0001")
         # Downgrade past 20260722_0001 → downgrade() re-adds the tenant-wide constraint.
         _run_alembic(command.downgrade, "20260720_0001")
         assert _idem_constraint_columns() == _TENANT_SCOPED_COLUMNS

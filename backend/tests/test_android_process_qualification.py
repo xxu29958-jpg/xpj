@@ -105,6 +105,7 @@ def test_stale_crash_from_before_the_run_is_ignored() -> None:
         (9, 0),
         (10, 1),
         (12, 0),
+        (13, 0),
         (15, 1),
         (16, 1),
         (17, 0),
@@ -147,6 +148,41 @@ def test_expected_process_exit_accepts_only_normal_status(reason: int) -> None:
         == 1
     )
     assert qualification.new_unhealthy_exits(before, after, {"com.ticketbox"}) == []
+
+
+def test_api36_instrumentation_package_cleanup_is_not_a_product_health_bypass() -> None:
+    before = qualification.parse_exit_snapshot(_snapshot(""))
+    normal_cleanup = qualification.parse_exit_snapshot(
+        _snapshot(
+            _new_record(
+                process="com.ticketbox.test",
+                reason=qualification.REASON_OTHER,
+                status=qualification.NORMAL_EXIT_STATUS,
+            )
+        )
+    )
+    product_other = qualification.parse_exit_snapshot(
+        _snapshot(
+            _new_record(
+                process="com.ticketbox",
+                reason=qualification.REASON_OTHER,
+                status=qualification.NORMAL_EXIT_STATUS,
+            )
+        )
+    )
+
+    assert qualification.new_unhealthy_exits(
+        before,
+        normal_cleanup,
+        {"com.ticketbox.test"},
+        instrumentation_cleanup_processes={"com.ticketbox.test"},
+    ) == []
+    assert [record.process for record in qualification.new_unhealthy_exits(
+        before,
+        product_other,
+        {"com.ticketbox"},
+        instrumentation_cleanup_processes={"com.ticketbox.test"},
+    )] == ["com.ticketbox"]
 
 
 def test_exit_snapshot_fails_closed_on_malformed_evidence() -> None:
@@ -249,9 +285,9 @@ def test_connected_cli_qualifies_results_and_process_exit(
             "after.txt",
             "--apkanalyzer",
             "apkanalyzer",
-            "--apk-output-dir",
+            "--target-apk-output-dir",
             "app-apk",
-            "--apk-output-dir",
+            "--instrumentation-apk-output-dir",
             "test-apk",
         ]
     ) == 0

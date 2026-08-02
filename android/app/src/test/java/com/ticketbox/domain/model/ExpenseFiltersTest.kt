@@ -295,7 +295,12 @@ class ExpenseFiltersTest {
         assertEquals(3500, comparison.currentAmountCents)
         assertEquals(2000, comparison.previousAmountCents)
         assertEquals(1500, comparison.deltaAmountCents)
-        assertEquals(75, comparison.percentChange)
+        assertEquals(75L, comparison.percentChange)
+        assertEquals(50L, moneyPercent(1L, 2L))
+        assertEquals(125L, moneyPercent(5L, 4L))
+        assertEquals(-1L, moneyPercent(-1L, 200L))
+        assertEquals(null, moneyPercent(1L, 0L))
+        assertEquals(900_719_925_474_099_100L, moneyPercent(9_007_199_254_740_991L, 1L))
     }
 
     @Test
@@ -457,7 +462,7 @@ class ExpenseFiltersTest {
         assertEquals(12_000, progress.spentCents)
         assertEquals(-2_000, progress.remainingCents)
         assertEquals(1.0f, progress.progress)
-        assertEquals(120, progress.percent)
+        assertEquals(120L, progress.percent)
         assertEquals(true, progress.overBudget)
     }
 
@@ -538,9 +543,9 @@ class ExpenseFiltersTest {
         assertEquals(1_200L, parseSearchAmountCents("1200", CurrencyCode.JPY))
         assertEquals(1_200L, parseSearchAmountCents("¥1200", CurrencyCode.JPY))
         assertEquals(0L, parseSearchAmountCents("0", CurrencyCode.KRW))
-        // 零小数币种带小数部分 → 不解析为金额（落回文本匹配），不静默进位。
+        // 零小数币种拒绝非零小数；等值尾零可精确解析，不静默进位。
         assertNull(parseSearchAmountCents("1200.5", CurrencyCode.JPY))
-        assertNull(parseSearchAmountCents("12.0", CurrencyCode.KRW))
+        assertEquals(12L, parseSearchAmountCents("12.0", CurrencyCode.KRW))
         // 2 位小数 home 显式传参时与默认口径一致。
         assertEquals(1_250L, parseSearchAmountCents("12.5", CurrencyCode.USD))
     }

@@ -1,350 +1,110 @@
-"""Shared helpers for /web routes (v0.4-alpha3 slice 2 structure split).
+"""Stable facade and dashboard context shared by ``/web`` routes.
 
-This module hosts everything that previously lived as helpers in
-``web_app.py``: the loopback gate, ledger selector, formatters, and the
-expense view-model. Each /web route module imports from here so we keep a
-single source of truth for ledger isolation rules and amount/time/string
-formatting.
+Session/ledger mechanics and currency-aware expense formatting live in private
+modules.  This module keeps the established import surface used by route and
+test consumers while owning the base template and dashboard composition.
 """
 
 from __future__ import annotations
 
-import dataclasses
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
-from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
-from fastapi import Depends, Request
-from fastapi.responses import RedirectResponse
+from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
-from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
 from app.middleware.csrf import csrf_context
-from app.network_boundary import require_owner_console_local
-from app.services import backup_status_service, bill_split_service, web_stats_service
-from app.services import owner_console_service as owner_svc
+from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
+from app.routes._web_dashboard_calculations import (
+    dashboard_month_delta,
+    previous_month_string,
+    recurring_status_counts,
+)
+from app.routes._web_money_views import (
+    _amount_segments,
+    _amount_yuan,
+    _calendar_date_label,
+    _confirmed_by_day,
+    _confirmed_source_breakdown,
+    _currency_input_view,
+    _currency_symbol,
+    _expense_amount_labels,
+    _expense_time_local_input,
+    _expense_view,
+    _home_amount_label,
+    _minor_amount_label,
+    _minor_amount_value,
+    _month_display_label,
+    _trend14_amounts,
+)
+from app.routes._web_session_common import (
+    LedgerOption,
+    LocalOnly,
+    _list_ledger_options,
+    _require_local,
+    _require_selected_ledger_write,
+    _resolve_selected_ledger_id,
+    _safe_same_site_redirect_path,
+    _selected_option,
+    _web_redirect,
+    _with_ledger,
+    parse_form_row_version_token,
+)
+from app.services import backup_status_service, web_stats_service
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_common import (
-    currency_input_metadata,
-    minor_amount_label,
+    home_currency_code,
     minor_amount_major_number,
     minor_amount_value,
     minor_unit_digits,
 )
 from app.services.dashboard_service import list_dashboard_cards
-from app.services.data_quality_service import is_uncategorized_expense_category, is_usable_pending_merchant
-from app.services.exchange_rate_service import home_currency_code
-from app.services.expense_service import list_pending  # noqa: F401  (re-exported to web_pending)
 from app.services.goal_service import list_goals
 from app.services.insights_service import unclaimed_recurring_candidate_count
-from app.services.recurring_service import list_recurring_items
-from app.services.spending_contract_service import accounting_zone, default_accounting_timezone_name
+from app.services.spending_contract_service import default_accounting_timezone_name
 from app.services.stats_service import monthly_stats
-from app.services.time_service import (
-    current_month,
-    ensure_utc,
-    now_utc,
-    parse_month_label,
-)
+from app.services.time_service import current_month, now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
+__all__ = [
+    "LocalOnly",
+    "LedgerOption",
+    "_amount_segments",
+    "_amount_yuan",
+    "_base_ctx",
+    "_calendar_date_label",
+    "_confirmed_by_day",
+    "_confirmed_source_breakdown",
+    "_currency_input_view",
+    "_expense_amount_labels",
+    "_expense_time_local_input",
+    "_expense_view",
+    "_home_amount_label",
+    "_list_ledger_options",
+    "_minor_amount_label",
+    "_minor_amount_value",
+    "_month_display_label",
+    "_require_local",
+    "_require_selected_ledger_write",
+    "_resolve_selected_ledger_id",
+    "_safe_same_site_redirect_path",
+    "_selected_option",
+    "_sidebar_counts",
+    "_trend14_amounts",
+    "_web_redirect",
+    "_with_ledger",
+    "parse_form_row_version_token",
+    "templates",
+]
+
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[csrf_context])
-# ADR-0038 PR-2e: register ``to_iso`` so /web templates can render
-# ORM ``updated_at`` values (datetime) into the canonical ISO-Z form
-# the hidden ``expected_row_version`` form fields use. Without this
-# filter the template would emit Python's ``str(datetime)`` (no T
-# separator, no Z), which ``parse_form_row_version_token`` rejects.
+templates = Jinja2Templates(
+    directory=str(_TEMPLATES_DIR),
+    context_processors=[csrf_context],
+)
 templates.env.filters["to_iso"] = _datetime_to_iso
-
-
-def parse_form_row_version_token(value: str) -> int | None:
-    """ADR-0041: parse the hidden ``expected_row_version`` form field as int.
-
-    Returns ``None`` when the field is blank or malformed; callers surface the
-    same "页面已过期/账单已在其它端被修改" UX as a stale-write 409. ``row_version``
-    is a monotonic integer — no ISO/tz normalisation (that was the ``updated_at``
-    era); a non-numeric value is simply treated as a stale/absent token.
-    """
-    cleaned = (value or "").strip()
-    if not cleaned:
-        return None
-    try:
-        return int(cleaned)
-    except ValueError:
-        return None
-
-
-def _require_local(request: Request) -> None:
-    """Loopback OR Web-session gate.
-
-    Pre-PR-4 this was a strict loopback check (same rule as Owner Console).
-    PR-4 expands it: a public-host request that already carries a valid
-    ``__Host-session`` cookie (verified by :mod:`app.middleware.web_session`)
-    is also accepted. The middleware stashes :class:`AuthContext` on
-    ``request.state.web_session_auth`` for that case.
-
-    Defense-in-depth: if middleware was ever bypassed (config error, route
-    not reaching middleware), this dependency still requires loopback. So
-    a /web request only reaches a handler when at least one of "loopback
-    peer + Host" or "valid cookie verified by middleware" is true.
-    """
-
-    if getattr(request.state, "web_session_auth", None) is not None:
-        # Middleware already verified the session token AND that the
-        # ?ledger_id= query (if any) matches the session ledger.
-        return
-    require_owner_console_local(request)
-
-
-LocalOnly = Depends(_require_local)
-
-
-@dataclass
-class LedgerOption:
-    """Option row for the /web ledger selector. Safe to render in HTML."""
-
-    ledger_id: str
-    name: str
-    role: str
-    is_default: bool
-    pending_count: int
-    confirmed_count: int
-
-
-def _list_ledger_options(db: Session) -> list[LedgerOption]:
-    return [
-        LedgerOption(
-            ledger_id=row.ledger_id,
-            name=row.name,
-            role=row.role,
-            is_default=row.is_default,
-            pending_count=row.pending_count,
-            confirmed_count=row.confirmed_count,
-        )
-        for row in owner_svc.list_console_ledgers(db)
-    ]
-
-
-def _project_session_ledger_options(
-    options: list[LedgerOption] | None,
-    session_auth,
-) -> None:
-    """Project the ledger selector to the single ledger authorized by a Web session.
-
-    ``_list_ledger_options`` is deliberately the loopback Owner Console read
-    surface, so it can contain every ledger visible to the local owner account.
-    A public Web session is a different principal: exposing those rows in the
-    rendered selector would disclose unrelated ledger ids and names even though
-    the middleware correctly blocks cross-ledger data reads.
-
-    Mutate the caller-owned list in place because every /web route resolves the
-    selected ledger before passing that same list to ``_base_ctx``.  Rebuild the
-    option from the authenticated context so both the visible name and role come
-    from the session-bound ledger, never from the local owner's projection.
-
-    (218-D S3 移植自产品矿, 替换旧 ``_stamp_session_role`` 的角色盖章语义;
-    desktop 桥接路径仍先走 ``_scope_options_for_desktop_session`` + 锁内重验,
-    本投影随后以重验后的会话角色重建选项, 行为等价。)
-    """
-    if options is None:
-        return
-    matched = next(
-        (opt for opt in options if opt.ledger_id == session_auth.ledger_id),
-        None,
-    )
-    options[:] = [
-        LedgerOption(
-            ledger_id=session_auth.ledger_id,
-            name=session_auth.ledger_name,
-            role=session_auth.role,
-            is_default=matched.is_default if matched is not None else False,
-            pending_count=matched.pending_count if matched is not None else 0,
-            confirmed_count=matched.confirmed_count if matched is not None else 0,
-        )
-    ]
-
-
-def _scope_options_for_desktop_session(options: list[LedgerOption] | None, session_auth) -> None:
-    """Replace a desktop bridge session's option list with its bound ledger.
-
-    The console enumeration is the server-owner's full membership roster;
-    a bridged desktop session is bound to exactly one ledger (foreign
-    ``?ledger_id=`` is refused by the middleware), so every downstream
-    consumer — the write gate AND the rendered switcher — must see only the
-    session's ledger with the session's role. When the bound ledger is not
-    even in the console roster (a member of someone else's ledger), the
-    option is derived from the session's own record.
-    """
-    if options is None:
-        return
-    scoped = [opt for opt in options if opt.ledger_id == session_auth.ledger_id]
-    if not scoped:
-        scoped = [
-            LedgerOption(
-                ledger_id=session_auth.ledger_id,
-                name=session_auth.ledger_name,
-                role=session_auth.role,
-                is_default=False,
-                pending_count=0,
-                confirmed_count=0,
-            )
-        ]
-    options[:] = scoped
-
-
-def _revalidate_desktop_session_under_lock(db: Session, request: Request, session_auth) -> str:
-    """Service-layer lock-time revalidation for the desktop bridge principal.
-
-    Thin route-side delegate so ``app.routes`` never imports models directly;
-    the real query lives in :mod:`app.services.desktop_switch_service`.
-    Mutation methods serialize through the identity advisory lock; reads don't.
-    """
-    from app.services.desktop_switch_service import (
-        revalidate_desktop_session_under_lock as _service_revalidate,
-    )
-
-    mutation = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
-    return _service_revalidate(db, session_auth, mutation=mutation)
-
-
-def _resolve_selected_ledger_id(
-    db: Session,
-    requested: str | None,
-    options: list[LedgerOption] | None = None,
-    *,
-    request: Request | None = None,
-) -> str:
-    """Return the ledger_id the current /web page should operate on.
-
-    ``requested`` comes from query / form. The result is **only** valid
-    when it appears in :func:`owner_console_service.list_console_ledgers`;
-    arbitrary tenant_id is rejected with a Chinese error.
-
-    When a Web session cookie identifies the caller (set by
-    :mod:`app.middleware.web_session` for public Host requests), the
-    ledger is locked to the session's account regardless of any
-    ``?ledger_id=`` query — the middleware has already rejected a query
-    that disagreed with the session, so by the time we get here a stale
-    or absent query just defers to the session ledger.
-    """
-    if request is not None:
-        session_auth = getattr(request.state, "web_session_auth", None)
-        if session_auth is not None:
-            if getattr(request.state, "web_session_platform", "") == "desktop":
-                # Desktop bridge principals are bound to one ledger: scope the
-                # option list in place so both the write gate and the switcher
-                # operate on the session ledger (never the console roster) —
-                # and revalidate the principal under lock in THIS transaction
-                # so an auth→commit revocation/demotion cannot slip a write in.
-                _scope_options_for_desktop_session(options, session_auth)
-                live_role = _revalidate_desktop_session_under_lock(db, request, session_auth)
-                session_auth = dataclasses.replace(session_auth, role=live_role)
-                request.state.web_session_auth = session_auth
-            # ENGINEERING_RULES §14: a Web session is bound to one ledger. Keep
-            # the Owner Console's other ledger ids/names out of the HTML context,
-            # and use the paired principal's role for both rendering and writes.
-            _project_session_ledger_options(options, session_auth)
-            return session_auth.ledger_id
-
-    opts = options if options is not None else _list_ledger_options(db)
-    if not opts:
-        raise AppError(
-            "invalid_request",
-            "服务尚未初始化，请先运行本机的 bootstrap 脚本。",
-            status_code=400,
-        )
-    visible_ids = {opt.ledger_id for opt in opts}
-    if requested is None or requested == "":
-        for opt in opts:
-            if opt.is_default:
-                return opt.ledger_id
-        return opts[0].ledger_id
-    if requested not in visible_ids:
-        raise AppError(
-            "invalid_request",
-            "请选择一个有权限的账本。",
-            status_code=400,
-        )
-    return requested
-
-
-def _selected_option(options: list[LedgerOption], ledger_id: str) -> LedgerOption:
-    for opt in options:
-        if opt.ledger_id == ledger_id:
-            return opt
-    return options[0]
-
-
-def _require_selected_ledger_write(options: list[LedgerOption], ledger_id: str) -> None:
-    # Deny if the ledger isn't an explicit option for this caller: never fall
-    # back to options[0] (a different ledger that may be writable) for a WRITE
-    # gate. The role on the matching option already reflects the Web session
-    # (stamped by _resolve_selected_ledger_id) vs. the owner console.
-    selected = next((opt for opt in options if opt.ledger_id == ledger_id), None)
-    if selected is None or selected.role not in {"owner", "member"}:
-        raise AppError(
-            "permission_denied",
-            "当前角色为只读，无法修改账本。",
-            status_code=403,
-        )
-
-
-def _with_ledger(path: str, ledger_id: str, **extra: str) -> str:
-    params: dict[str, str] = {"ledger_id": ledger_id}
-    for key, value in extra.items():
-        if value:
-            params[key] = value
-    return _safe_same_site_redirect_path(f"{path}?{urlencode(params)}", fallback="/web")
-
-
-def _web_redirect(path: str, ledger_id: str, **extra: str) -> RedirectResponse:
-    return RedirectResponse(url=_with_ledger(path, ledger_id, **extra), status_code=303)
-
-
-def _safe_same_site_redirect_path(
-    raw: str | None,
-    *,
-    allowed_roots: tuple[str, ...] = ("/web",),
-    fallback: str = "",
-) -> str:
-    """Normalize server-side redirects to same-site paths only.
-
-    Browsers treat several malformed URL forms more liberally than
-    ``urlsplit``. Rejecting backslashes, schemes, hosts, and decoded path
-    escapes keeps user-controlled form/query values out of open redirects.
-    """
-    if not raw:
-        return fallback
-    candidate = raw.strip()
-    if not candidate or any(ch in candidate for ch in ("\\", "\n", "\r", "\t")):
-        return fallback
-    if candidate.startswith("//"):
-        return fallback
-
-    parsed = urlsplit(candidate)
-    if parsed.scheme or parsed.netloc:
-        return fallback
-
-    path = parsed.path or ""
-    decoded_path = unquote(path)
-    if (
-        not path.startswith("/")
-        or decoded_path.startswith("//")
-        or "\\" in decoded_path
-        or ":" in decoded_path
-    ):
-        return fallback
-    if any(decoded_path.startswith(root + "//") for root in allowed_roots):
-        return fallback
-    if not any(decoded_path == root or decoded_path.startswith(root + "/") for root in allowed_roots):
-        return fallback
-    return urlunsplit(("", "", path, parsed.query, ""))
-
 
 _VALID_UI_THEMES = {"paper", "mono", "midnight"}
 
@@ -357,7 +117,6 @@ def _read_ui_theme(request: Request) -> str:
 
 
 def _sidebar_counts(db: Session, ledger_id: str) -> tuple[int, int]:
-    """Sidebar pending + suspected counts. Delegates to web_stats_service."""
     return web_stats_service.sidebar_counts(db, ledger_id)
 
 
@@ -373,6 +132,7 @@ def _base_ctx(
 ) -> dict:
     selected = _selected_option(options, selected_ledger_id)
     pending_count, suspected_count = sidebar_counts or (0, 0)
+    home = home_currency_code()
     return {
         "backend_version": BACKEND_VERSION,
         "asset_version": STATIC_ASSET_VERSION,
@@ -390,272 +150,46 @@ def _base_ctx(
         "selected_month": selected_month,
         "pending_count": pending_count,
         "suspected_duplicate_count": suspected_count,
-        "home_currency_code": home_currency_code(),
-        "home_currency_symbol": _currency_symbol(home_currency_code()),
-        "home_currency_minor_digits": minor_unit_digits(home_currency_code()),
+        "home_currency_code": home,
+        "home_currency_symbol": _currency_symbol(home),
+        "home_currency_minor_digits": minor_unit_digits(home),
+        "home_amount_value": lambda amount: minor_amount_value(amount, home),
+        "currency_input": _currency_input_view(home),
     }
 
 
-# ── Formatters ──────────────────────────────────────────────────────────────
-
-
-def _amount_yuan(amount_cents: int | None) -> str:
-    if amount_cents is None:
-        return ""
-    return f"{amount_cents / 100:.2f}"
-
-
-def _month_display_label(value: str | None, *, fallback: str = "所选月份") -> str:
-    """(218-D S3 移植自产品矿) ``YYYY-MM`` → ``2026 年 7 月`` 展示标签;
-    无法解析时回退 ``fallback``, 不把脏月份串渲染进页面。"""
-    parsed = parse_month_label(value)
-    if parsed is None:
-        return fallback
-    year, month = parsed
-    return f"{year} 年 {month} 月"
-
-
-def _calendar_date_label(value: date | datetime | None) -> str:
-    """(218-D S3 移植自产品矿) date/datetime → ``2026 年 7 月 18 日`` 展示标签。
-    datetime 先归一 UTC 再落到账务时区, 与 /web 其余日期口径一致。"""
-    if value is None:
-        return ""
-    if isinstance(value, datetime):
-        normalized = ensure_utc(value)
-        if normalized is None:
-            return ""
-        calendar_date = normalized.astimezone(accounting_zone()).date()
-    else:
-        calendar_date = value
-    return (
-        f"{calendar_date.year} 年 {calendar_date.month} 月 "
-        f"{calendar_date.day} 日"
-    )
-
-
-def _expense_time_local_input(value) -> str:
-    """Render a stored UTC ``expense_time`` into the ``YYYY-MM-DDTHH:MM`` shape an
-    ``<input type="datetime-local">`` expects, in the accounting timezone
-    (Asia/Shanghai) — the same wall-clock the rest of /web shows (see
-    ``web_bill_split._fmt_local``). Empty when unset.
-
-    Storage stays UTC: this is only the prefill side. ``web_save`` parses the
-    submitted value back from accounting-tz to UTC (assume-local), so the
-    round-trip is consistent and never drifts 8h. Keeping the conversion in one
-    helper (not the template) honours ENGINEERING_RULES §14.
-    """
-    value = ensure_utc(value)
-    if value is None:
-        return ""
-    return value.astimezone(accounting_zone()).strftime("%Y-%m-%dT%H:%M")
-
-
-def _currency_symbol(currency_code: str | None) -> str:
-    code = (currency_code or home_currency_code()).upper()
-    return CURRENCY_SYMBOLS.get(code, f"{code} ")
-
-
-def _minor_amount_label(amount_minor: int | None, currency_code: str | None) -> str:
-    """Symbol label for stored minor units.
-
-    Delegates to ``currency_common.minor_amount_label`` (C5b-3): one divmod
-    implementation owns zero-fraction digits, grouping and sign placement —
-    /web must not re-derive them with ``/100`` floats.
-    """
-    return minor_amount_label(amount_minor, currency_code)
-
-
-def _minor_amount_value(amount_minor: int | None, currency_code: str | None) -> str:
-    """Symbol-less major-unit value; same delegation contract as above."""
-    return minor_amount_value(amount_minor, currency_code)
-
-
-def _home_amount_label(amount_cents: int | None, currency_code: str | None) -> str:
-    return _minor_amount_label(amount_cents, currency_code or home_currency_code())
-
-
-def _currency_input_view(currency_code: str | None) -> dict[str, object]:
-    """Currency-neutral major-unit input metadata for HTML number fields."""
-    return currency_input_metadata(currency_code or home_currency_code())
-
-
-def _amount_segments(amount_cents: int | None, currency_code: str | None) -> dict[str, str]:
-    """Editorial split of a home-currency amount into ``cur`` / ``int`` / ``dec`` for
-    the premium hero rendering (照 ``confirmed.css .ledger-hero .lh-amt``: a small muted
-    currency mark + a large integer + a small muted decimal tail).
-
-    ``dec`` is ``""`` for no-fraction currencies (mirrors ``_minor_amount_label``'s
-    fraction handling); the thousands-separated integer matches the rest of /web's debt
-    labels. Keeping the split here — not in the template — honours §14: the template just
-    drops the three pieces into spans.
-    """
-    code = (currency_code or home_currency_code()).upper()
-    symbol = _currency_symbol(code)
-    cents = amount_cents or 0
-    if code in NO_FRACTION_CURRENCY_CODES:
-        return {"cur": symbol, "int": f"{cents:,}", "dec": ""}
-    sign = "-" if cents < 0 else ""
-    whole, frac = divmod(abs(cents), 100)
-    return {"cur": symbol, "int": f"{sign}{whole:,}", "dec": f".{frac:02d}"}
-
-
-def _expense_amount_labels(expense) -> tuple[str, str | None]:
-    home_code = (getattr(expense, "home_currency_code", None) or home_currency_code()).upper()
-    original_code = (getattr(expense, "original_currency_code", None) or home_code).upper()
-    original_minor = getattr(expense, "original_amount_minor", None)
-    amount_cents = getattr(expense, "amount_cents", None)
-    is_foreign = original_code != home_code
-    primary = (
-        _minor_amount_label(original_minor, original_code)
-        if is_foreign and original_minor is not None
-        else _home_amount_label(amount_cents, home_code)
-    )
-    if not is_foreign:
-        return primary, None
-    rate_date = getattr(expense, "exchange_rate_date", None)
-    date_text = rate_date.isoformat() if hasattr(rate_date, "isoformat") else (str(rate_date) if rate_date else "")
-    if getattr(expense, "fx_status", "") == FX_STATUS_PENDING or amount_cents is None:
-        return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
-    rate = getattr(expense, "exchange_rate_to_cny", None)
-    if rate is None:
-        return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
-    meta = (
-        f"≈ {_home_amount_label(amount_cents, home_code)} · "
-        f"汇率 1 {original_code} = {rate} {home_code}"
-    )
-    if date_text:
-        meta += f" · {date_text}"
-    return primary, meta
-
-
-def _trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
-    """14-day trend. Delegates to web_stats_service."""
-    return web_stats_service.trend14_amounts(db, ledger_id)
-
-
-def _confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
-    """Per-day confirmed totals in month. Delegates to web_stats_service."""
-    return web_stats_service.confirmed_by_day(db, ledger_id, month)
-
-
-def _confirmed_source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dict]:
-    """Source breakdown. Delegates to web_stats_service."""
-    return web_stats_service.source_breakdown(db, ledger_id, month)
-
-
-def _expense_view(expense) -> dict:
-    amount_label, fx_meta = _expense_amount_labels(expense)
-    home_code = getattr(expense, "home_currency_code", None) or home_currency_code()
-    original_code = getattr(expense, "original_currency_code", None) or home_code
-    original_minor = getattr(expense, "original_amount_minor", None)
-    has_image = bool(expense.image_path) and not expense.image_deleted_at
-    if has_image:
-        image_state = "available"
-    elif expense.image_deleted_at is not None:
-        image_state = "cleaned"
-    else:
-        image_state = "missing"
-    source_raw = getattr(expense, "source", "") or ""
-    source_label = web_stats_service.source_label(source_raw, "未知")
-    # ADR-0029: a received split expense is itself the foot of a split chain and
-    # cannot be re-split (服务端 ``create_invitation`` 也会 split_chain_not_allowed
-    # 兜底)。发起卡据此隐藏。
-    is_split_received = source_raw == bill_split_service.SPLIT_RECEIVED_SOURCE
-    needs_amount = expense.amount_cents is None
-    # Shared with the data-quality counters + Android inbox (PR #230): OCR
-    # time/date noise and other unusable merchants count as missing, not just
-    # NULL/blank — see data_quality_service for the ported rules.
-    needs_merchant = not is_usable_pending_merchant(expense.merchant)
-    # Same shared category caliber (round 12): dirty tokens (未分类/未分類/
-    # none/null) must surface as missing on the row, not render as plain text
-    # nor leave the row showing the green 可确认 pill the ready filter denies.
-    needs_category = is_uncategorized_expense_category(expense.category)
-    is_duplicate = (getattr(expense, "duplicate_status", None) or "") == "suspected"
-    return {
-        "id": expense.id,
-        "amount_yuan": _amount_yuan(expense.amount_cents),
-        "amount_cents": expense.amount_cents,
-        "home_currency_code": home_code,
-        "original_currency_code": original_code,
-        "original_amount_minor": original_minor,
-        "original_amount_value": _minor_amount_value(original_minor, original_code)
-        or _amount_yuan(expense.amount_cents),
-        "amount_symbol": _currency_symbol(original_code),
-        "is_foreign_currency": original_code != home_code,
-        "exchange_rate_to_cny": getattr(expense, "exchange_rate_to_cny", None),
-        "exchange_rate_date": getattr(expense, "exchange_rate_date", None),
-        "exchange_rate_source": getattr(expense, "exchange_rate_source", None),
-        "fx_status": getattr(expense, "fx_status", ""),
-        "amount_label": amount_label,
-        "fx_meta": fx_meta,
-        "merchant": expense.merchant or "",
-        "category": expense.category or "未分类",
-        "note": expense.note or "",
-        "tags": getattr(expense, "tags", None) or "",
-        "status": expense.status,
-        "expense_time": expense.expense_time.strftime("%Y-%m-%d %H:%M") if expense.expense_time else "",
-        # datetime-local prefill in accounting tz (storage stays UTC); the edit
-        # form's <input type="datetime-local"> binds to this, not the display
-        # string above (which is the legacy raw-UTC label kept for list views).
-        "expense_time_local": _expense_time_local_input(getattr(expense, "expense_time", None)),
-        "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),
-        # ADR-0041: row_version is the OCC token the hidden form fields carry now
-        # (updated_at_iso kept for any display use).
-        "row_version": getattr(expense, "row_version", None),
-        "created_at": expense.created_at.strftime("%Y-%m-%d %H:%M") if expense.created_at else "",
-        "has_image": has_image,
-        "image_state": image_state,
-        "duplicate_status": expense.duplicate_status,
-        "is_duplicate": is_duplicate,
-        "needs_amount": needs_amount,
-        "needs_merchant": needs_merchant,
-        "needs_category": needs_category,
-        "fx_pending": getattr(expense, "fx_status", "") == FX_STATUS_PENDING,
-        "source_label": source_label,
-        "is_split_received": is_split_received,
-    }
-
-
-def _previous_month_string(month: str) -> str | None:
-    try:
-        year_text, month_text = month.split("-", 1)
-        year = int(year_text)
-        month_number = int(month_text)
-    except (TypeError, ValueError):
-        return None
-    if not 1 <= month_number <= 12:
-        return None
-    if month_number == 1:
-        return f"{year - 1:04d}-12"
-    return f"{year:04d}-{month_number - 1:02d}"
-
-
-def _budget_top_rows(budget) -> list[dict]:
-    """Top per-category budget rows for the dashboard 预算 card progress bars.
-
-    Reuses ``budget.category_budgets`` (already computed by ``budget_service`` —
-    no new aggregation): per category we have the limit (``amount_cents``),
-    used (``spent_amount_cents``) and overspend. ``percent`` is used/limit
-    capped at 100 for the bar width; ``overspent_yuan`` carries the
-    over-the-limit amount so the template/JS can show「超 ¥X」. Sorted by spend
-    desc so the most-used categories surface first, top 3."""
+def _budget_top_rows(budget, *, currency_code: str) -> list[dict]:
     rows = sorted(
         budget.category_budgets,
-        key=lambda c: c.spent_amount_cents,
+        key=lambda category: category.spent_amount_cents,
         reverse=True,
     )[:3]
     out: list[dict] = []
     for category in rows:
-        limit_cents = int(category.amount_cents)
-        spent_cents = int(category.spent_amount_cents)
-        percent = int(round(spent_cents * 100 / limit_cents)) if limit_cents > 0 else 0
+        limit_cents = projection_sum_to_int(
+            category.amount_cents,
+            label="web.budget_limit",
+        )
+        spent_cents = projection_sum_to_int(
+            category.spent_amount_cents,
+            label="web.budget_spent",
+        )
+        overspent_cents = projection_sum_to_int(
+            category.overspent_amount_cents,
+            label="web.budget_overspent",
+        )
+        percent = (
+            (spent_cents * 100 + limit_cents // 2) // limit_cents
+            if limit_cents > 0
+            else 0
+        )
         out.append(
             {
                 "name": category.category,
-                "limit_yuan": _amount_yuan(limit_cents),
-                "spent_yuan": _amount_yuan(spent_cents),
-                "overspent_yuan": _amount_yuan(int(category.overspent_amount_cents)),
-                "overspent_cents": int(category.overspent_amount_cents),
+                "limit_yuan": _amount_yuan(limit_cents, currency_code),
+                "spent_yuan": _amount_yuan(spent_cents, currency_code),
+                "overspent_yuan": _amount_yuan(overspent_cents, currency_code),
+                "overspent_cents": overspent_cents,
                 "percent": min(percent, 100),
                 "is_over": category.overspent_amount_cents > 0,
             }
@@ -663,21 +197,25 @@ def _budget_top_rows(budget) -> list[dict]:
     return out
 
 
-def _goals_top_rows(goals) -> list[dict]:
-    """Top goal rows for the dashboard 目标 card progress bars.
-
-    Reuses ``list_goals`` output (already carries ``progress_percent`` /
-    ``progress_state`` from ``goal_service`` — no new aggregation). The bar
-    width is ``progress_percent`` capped at 100; ``state`` drives the bar
-    colour (over_limit → danger, near_limit → brand-primary, 对齐 dashboard
-    bar 调色板——同卡上方的 pill 用 warn 琥珀,bar 与既有 cat-bar 同语自洽). Sorted by
-    progress desc so the most-at-risk goals surface first, top 3."""
-    rows = sorted(goals, key=lambda g: g.progress_percent, reverse=True)[:3]
+def _goals_top_rows(goals, *, currency_code: str) -> list[dict]:
+    rows = sorted(goals, key=lambda goal: goal.progress_percent, reverse=True)[:3]
     return [
         {
             "name": goal.name,
-            "target_yuan": _amount_yuan(int(goal.target_amount_cents)),
-            "spent_yuan": _amount_yuan(int(goal.spent_amount_cents)),
+            "target_yuan": _amount_yuan(
+                projection_sum_to_int(
+                    goal.target_amount_cents,
+                    label="web.goal_target",
+                ),
+                currency_code,
+            ),
+            "spent_yuan": _amount_yuan(
+                projection_sum_to_int(
+                    goal.spent_amount_cents,
+                    label="web.goal_spent",
+                ),
+                currency_code,
+            ),
             "percent": min(int(goal.progress_percent), 100),
             "state": goal.progress_state,
         }
@@ -685,94 +223,119 @@ def _goals_top_rows(goals) -> list[dict]:
     ]
 
 
-def _dashboard_budget_goals_block(budget, goals) -> dict:
-    """budget/goals 两卡的 ctx 片段(从 ``_dashboard_cards`` 拆出守 80 行债线)。"""
+def _dashboard_budget_goals_block(
+    budget,
+    goals,
+    *,
+    currency_code: str,
+) -> dict:
     goal_risk_count = sum(
-        1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"}
+        1
+        for goal in goals
+        if goal.progress_state in {"near_limit", "over_limit"}
     )
     return {
         "budget_configured": budget.configured,
-        "budget_total_yuan": _amount_yuan(int(budget.total_amount_cents)),
-        "budget_remaining_yuan": _amount_yuan(int(budget.remaining_amount_cents)),
-        "budget_remaining_cents": int(budget.remaining_amount_cents),
-        "budget_overspent_yuan": _amount_yuan(int(budget.overspent_amount_cents)),
+        "budget_total_yuan": _amount_yuan(
+            projection_sum_to_int(
+                budget.total_amount_cents,
+                label="web.budget_total",
+            ),
+            currency_code,
+        ),
+        "budget_remaining_yuan": _amount_yuan(
+            projection_sum_to_int(
+                budget.remaining_amount_cents,
+                label="web.budget_remaining",
+            ),
+            currency_code,
+        ),
+        "budget_remaining_cents": projection_sum_to_int(
+            budget.remaining_amount_cents,
+            label="web.budget_remaining",
+        ),
+        "budget_overspent_yuan": _amount_yuan(
+            projection_sum_to_int(
+                budget.overspent_amount_cents,
+                label="web.budget_overspent",
+            ),
+            currency_code,
+        ),
         "budget_is_over": budget.remaining_amount_cents < 0,
-        "budget_top": _budget_top_rows(budget),
+        "budget_top": _budget_top_rows(budget, currency_code=currency_code),
         "goals_count": len(goals),
         "goals_risk_count": goal_risk_count,
-        "goals_top": _goals_top_rows(goals),
+        "goals_top": _goals_top_rows(goals, currency_code=currency_code),
     }
 
 
 def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
-    """recent/device/backup 状态计数的 ctx 片段(从 ``_dashboard_cards`` 拆出守 80 行债线)。
-
-    PR #253 R2-R5: backup 走轻量口径——候选 dump 按 mtime 新→旧逐个
-    ``pg_restore --list`` 验证 (per-(name, mtime, size) 进程内缓存, 稳态每请求
-    零子进程), 返回首个有效者; 三态落 UI: 验证通过=已备份, 全无效/无文件=
-    无可恢复备份, 工具失败=「检测到备份文件, 尚未验证」。恢复/健康流仍用全量
-    验证的 ``latest_backup()``。
-    """
     week_ago = now - timedelta(days=7)
     backup_status = backup_status_service.latest_backup_lightweight()
     backup_age_days = None
     if backup_status.state == "valid" and backup_status.entry is not None:
-        backup_age_days = max(0, (now.astimezone() - backup_status.entry.created_at).days)
+        backup_age_days = max(
+            0,
+            (now.astimezone() - backup_status.entry.created_at).days,
+        )
     return {
-        "recent_count": web_stats_service.recent_expense_count(db, ledger_id, week_ago),
-        # PR #253 R2: overview 最近新增卡链接 /web/confirmed, 专配 confirmed-only
-        # 计数使卡面数字与目标页一致; /web 首页「最近 7 日上传」卡沿用全状态口径。
+        "recent_count": web_stats_service.recent_expense_count(
+            db,
+            ledger_id,
+            week_ago,
+        ),
         "recent_confirmed_count": web_stats_service.recent_confirmed_expense_count(
-            db, ledger_id, week_ago
+            db,
+            ledger_id,
+            week_ago,
         ),
         "active_device_count": web_stats_service.active_device_count(db, ledger_id),
         "backup_available": backup_status.state == "valid",
-        # PR #253 R5 第三态: 有 dump 文件但验证工具暂时失败 — 不谎称可用也不谎称没有。
         "backup_unverified": backup_status.state == "unverified",
         "backup_age_days": backup_age_days,
     }
 
 
-def _dashboard_cards(db: Session, ledger_id: str) -> dict:
-    # PR #253 R3: 计数走 stats 聚合查询 (COUNT/单列投影), 不再物化全部 pending 行;
-    # 谓词与 list_pending/旧卡块逐字一致 (测试钉新旧口径相等)。
+def _dashboard_cards(
+    db: Session,
+    ledger_id: str,
+    *,
+    currency_code: str | None = None,
+) -> dict:
+    home = currency_code or home_currency_code()
     quality = web_stats_service.pending_quality_counts(db, ledger_id)
-    # 与 monthly_stats 无显式 tz 的口径同源 (PR #253 P2-7): accounting 默认时区,
-    # 不再硬编码 Asia/Shanghai — 月末边界时月份/budget/goal 装配才不错位。
     timezone_name = default_accounting_timezone_name()
     month = current_month(timezone_name)
     stats = monthly_stats(db, month, ledger_id)
-    prev_month = _previous_month_string(month)
+    prev_month = previous_month_string(month)
     prev_stats = monthly_stats(db, prev_month, ledger_id) if prev_month else None
-    recurring_rows = list_recurring_items(db, tenant_id=ledger_id, include_archived=False)
-    active_recurring = sum(1 for item in recurring_rows if item.status == "active")
-    paused_recurring = sum(1 for item in recurring_rows if item.status == "paused")
-    budget = get_monthly_budget(db, tenant_id=ledger_id, month=month, timezone_name=timezone_name)
-    goals = list_goals(db, tenant_id=ledger_id, month=month, timezone_name=timezone_name)
+    active_recurring, paused_recurring = recurring_status_counts(db, ledger_id)
+    budget = get_monthly_budget(
+        db,
+        tenant_id=ledger_id,
+        month=month,
+        timezone_name=timezone_name,
+    )
+    goals = list_goals(
+        db,
+        tenant_id=ledger_id,
+        month=month,
+        timezone_name=timezone_name,
+    )
     now = now_utc()
     layout = list_dashboard_cards(db, tenant_id=ledger_id, surface="web")
-    # PR #253 R4: 候选扫描即使限界也有成本, 固定支出卡隐藏时跳过装配。
-    recurring_card_visible = any(item.visible and item.key == "recurring" for item in layout.items)
+    recurring_card_visible = any(
+        item.visible and item.key == "recurring"
+        for item in layout.items
+    )
     candidate_count = (
         unclaimed_recurring_candidate_count(db, tenant_id=ledger_id)
         if recurring_card_visible
         else 0
     )
-    current_total = int(stats["total_amount_cents"])
-    prev_total = int(prev_stats["total_amount_cents"]) if prev_stats else 0
-    delta_amount = current_total - prev_total
-    if prev_total <= 0:
-        delta_direction = "none"
-        delta_percent = None
-    elif delta_amount == 0:
-        delta_direction = "flat"
-        delta_percent = 0
-    elif delta_amount > 0:
-        delta_direction = "up"
-        delta_percent = int(round(delta_amount * 100 / prev_total))
-    else:
-        delta_direction = "down"
-        delta_percent = int(round(abs(delta_amount) * 100 / prev_total))
+    current_total, prev_total, delta_amount, delta_direction, delta_percent = (
+        dashboard_month_delta(stats, prev_stats)
+    )
     return {
         "layout": [
             {
@@ -785,77 +348,121 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
         ],
         **quality,
         "month": month,
-        "total_amount_yuan": _amount_yuan(int(stats["total_amount_cents"])),
+        "total_amount_yuan": _amount_yuan(current_total, home),
         "total_amount_cents": current_total,
+        "total_amount_segments": _amount_segments(current_total, home),
         "confirmed_count": int(stats["count"]),
         "previous_month": prev_month,
-        "previous_total_amount_yuan": _amount_yuan(prev_total),
+        "previous_total_amount_yuan": _amount_yuan(prev_total, home),
         "previous_total_amount_cents": prev_total,
-        "delta_amount_yuan": _amount_yuan(abs(delta_amount)),
+        "delta_amount_yuan": _amount_yuan(abs(delta_amount), home),
         "delta_amount_cents": abs(delta_amount),
         "delta_direction": delta_direction,
         "delta_percent": delta_percent,
         "recurring_active_count": active_recurring,
         "recurring_paused_count": paused_recurring,
         "recurring_candidate_count": candidate_count,
-        **_dashboard_budget_goals_block(budget, goals),
+        **_dashboard_budget_goals_block(
+            budget,
+            goals,
+            currency_code=home,
+        ),
         **_dashboard_status_counts_block(db, ledger_id, now),
     }
 
 
-def _dashboard_category_share(db: Session, selected_id: str) -> list[dict]:
+def _dashboard_category_share(
+    db: Session,
+    selected_id: str,
+    *,
+    currency_code: str | None = None,
+) -> list[dict]:
     timezone_name = default_accounting_timezone_name()
     month = current_month(timezone_name)
-    stats = monthly_stats(db, month, selected_id, timezone_name=timezone_name)
-    home = home_currency_code()
+    stats = monthly_stats(
+        db,
+        month,
+        selected_id,
+        timezone_name=timezone_name,
+    )
+    home = currency_code or home_currency_code()
     by_category = list(stats.get("by_category", []))
     if len(by_category) > 6:
-        # PR #253 R3: 前 5 + 第 6 名起聚合为「其他」片 — 环图 percent 按截断集重算会
-        # 夸大占比; 聚合后环图与清单同口径, 百分比合计才是全量的 100%。
-        # 复审 P2a: head 已含规范「其他」桶 (normalize_category 的缺省桶) 时, 溢出
-        # 并入该桶而非另起同名片 (照 source_breakdown 的 by_label 合并做法)。
         head, tail = by_category[:5], by_category[5:]
-        tail_cents = sum(int(item["amount_cents"]) for item in tail)
+        tail_cents = projection_values_sum_to_int(
+            (item["amount_cents"] for item in tail),
+            label="web.category_tail",
+        )
         tail_count = sum(int(item["count"]) for item in tail)
         merged_into_existing = False
         for item in head:
             if item["category"] == "其他":
-                item["amount_cents"] = int(item["amount_cents"]) + tail_cents
+                item["amount_cents"] = projection_sum_to_int(
+                    projection_sum_to_int(
+                        item["amount_cents"],
+                        label="web.category_other",
+                    )
+                    + tail_cents,
+                    label="web.category_other_merged",
+                )
                 item["count"] = int(item["count"]) + tail_count
                 merged_into_existing = True
                 break
         by_category = (
             head
             if merged_into_existing
-            else [*head, {"category": "其他", "amount_cents": tail_cents, "count": tail_count}]
+            else [
+                *head,
+                {
+                    "category": "其他",
+                    "amount_cents": tail_cents,
+                    "count": tail_count,
+                },
+            ]
         )
     rows = []
     for item in by_category:
-        amount_minor = int(item["amount_cents"])
+        amount_minor = projection_sum_to_int(
+            item["amount_cents"],
+            label="web.category_share",
+        )
         rows.append(
             {
                 "name": item["category"],
-                "amount_yuan": amount_minor / 100.0,
+                "amount_yuan": minor_amount_major_number(amount_minor, home),
                 "amount_cents": amount_minor,
-                # exponent 感知投影 (PR #253 P1-1): amount_label 给 overview 与旧首页
-                # 清单展示 (R9 统一口径), amount_major 给 category-donut 的几何与 tooltip。
                 "amount_label": _minor_amount_label(amount_minor, home),
                 "amount_major": minor_amount_major_number(amount_minor, home),
+                "amount_major_text": minor_amount_value(amount_minor, home),
                 "count": int(item["count"]),
             }
         )
     return rows
 
 
-def _dashboard_data_payload(db: Session, selected_id: str, *, include_trend: bool = True) -> dict:
-    cards = _dashboard_cards(db, selected_id)
+def _dashboard_data_payload(
+    db: Session,
+    selected_id: str,
+    *,
+    include_trend: bool = True,
+) -> dict:
+    home = home_currency_code()
+    cards = _dashboard_cards(db, selected_id, currency_code=home)
     return {
         "selected_ledger_id": selected_id,
         "month": cards["month"],
         "cards": cards,
-        "visible_layout": [item for item in cards["layout"] if item["visible"]],
-        # PR #253 R2: trend14 物化 14 天 confirmed 流水, 只有 /web 首页与 JSON 端
-        # 需要; overview 不传 include_trend 以免白加载。
-        "trend14": _trend14_amounts(db, selected_id) if include_trend else [],
-        "category_share": _dashboard_category_share(db, selected_id),
+        "visible_layout": [
+            item for item in cards["layout"] if item["visible"]
+        ],
+        "trend14": (
+            _trend14_amounts(db, selected_id, currency_code=home)
+            if include_trend
+            else []
+        ),
+        "category_share": _dashboard_category_share(
+            db,
+            selected_id,
+            currency_code=home,
+        ),
     }

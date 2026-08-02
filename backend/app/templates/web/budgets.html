@@ -106,16 +106,16 @@
     <input type="hidden" name="month" value="{{ month }}">
     <div class="dt-form-grid">
       <div class="dt-form-row">
-        <label for="budget-total-amount-yuan">月度总预算（元）</label>
-        <input id="budget-total-amount-yuan" class="dt-input" type="text" name="total_amount_yuan" value="{{ budget.total_yuan if budget.configured else '' }}" inputmode="decimal" required>
+        <label for="budget-total-amount-yuan">月度总预算（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
+        <input id="budget-total-amount-yuan" class="dt-input" type="number" name="total_amount_yuan" value="{{ budget.total_yuan if budget.configured else '' }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
       </div>
       <div class="dt-form-row">
-        <label for="budget-rollover-amount-yuan">结转金额（元）</label>
-        <input id="budget-rollover-amount-yuan" class="dt-input" type="text" name="rollover_amount_yuan" value="{{ budget.rollover_yuan if budget.configured else '' }}" inputmode="decimal">
+        <label for="budget-rollover-amount-yuan">结转金额（{{ currency_input.currency_code }}，可为负数）</label>
+        <input id="budget-rollover-amount-yuan" class="dt-input" type="number" name="rollover_amount_yuan" value="{{ budget.rollover_yuan if budget.configured else '' }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}">
       </div>
       <div class="dt-form-row">
-        <label for="budget-non-monthly-amount-yuan">非月度预留（元）</label>
-        <input id="budget-non-monthly-amount-yuan" class="dt-input" type="text" name="non_monthly_amount_yuan" value="{{ budget.non_monthly_yuan if budget.configured else '' }}" inputmode="decimal">
+        <label for="budget-non-monthly-amount-yuan">非月度预留（{{ currency_input.currency_code }}）</label>
+        <input id="budget-non-monthly-amount-yuan" class="dt-input" type="number" name="non_monthly_amount_yuan" value="{{ budget.non_monthly_yuan if budget.configured else '' }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}">
       </div>
     </div>
     <div class="dt-form-row">
@@ -130,7 +130,7 @@
         <thead>
           <tr>
             <th>分类</th>
-            <th>预算（元）</th>
+            <th>预算（{{ currency_input.currency_code }}）</th>
             <th class="amount">本月已花</th>
             <th class="amount">剩余</th>
           </tr>
@@ -139,9 +139,9 @@
           {% for row in budget.category_rows %}
           <tr>
             <td><input class="dt-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮" aria-label="分类预算分类"></td>
-            <td><input class="dt-input" type="text" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" inputmode="decimal" placeholder="1000.00" aria-label="分类预算金额"></td>
+            <td><input class="dt-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" aria-label="分类预算金额"></td>
             <td class="amount">{{ home_currency_symbol ~ row.spent_yuan if not row.is_blank else '—' }}</td>
-            <td class="amount {{ 'text-over' if row.overspent_yuan != '0.00' and not row.is_blank else '' }}">
+            <td class="amount {{ 'text-over' if row.has_overspend and not row.is_blank else '' }}">
               {{ home_currency_symbol ~ row.remaining_yuan if not row.is_blank else '—' }}
             </td>
           </tr>
@@ -182,9 +182,9 @@
         <td><span class="dt-tag">{{ row.category }}</span></td>
         <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
         <td class="amount">{{ home_currency_symbol }}{{ row.spent_yuan }}</td>
-        <td class="amount {{ 'text-over' if row.overspent_yuan != '0.00' else '' }}">{{ home_currency_symbol }}{{ row.remaining_yuan }}</td>
+        <td class="amount {{ 'text-over' if row.has_overspend else '' }}">{{ home_currency_symbol }}{{ row.remaining_yuan }}</td>
         <td>
-          {% if row.overspent_yuan != '0.00' %}
+          {% if row.has_overspend %}
             <span class="dt-pill danger">超支 {{ home_currency_symbol }}{{ row.overspent_yuan }}</span>
           {% else %}
             <span class="dt-pill ok">正常</span>

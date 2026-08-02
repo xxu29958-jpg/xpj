@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -29,6 +30,7 @@ from app.fx_constants import (
     FX_STATUS_READY,
     NO_FRACTION_CURRENCY_CODES,
 )
+from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -36,23 +38,12 @@ from app.tenants import DEFAULT_TENANT_ID
 class Expense(Base):
     __tablename__ = "expenses"
     __table_args__ = (
+        *money_check_constraints_for_table("expenses"),
         UniqueConstraint("id", "tenant_id", name="uq_expenses_id_tenant_id"),
         ForeignKeyConstraint(
             ["duplicate_of_id", "tenant_id"],
             ["expenses.id", "expenses.tenant_id"],
             name="fk_expenses_duplicate_of_tenant",
-        ),
-        CheckConstraint(
-            "amount_cents IS NULL OR amount_cents >= 0",
-            name="ck_expenses_amount_non_negative",
-        ),
-        CheckConstraint(
-            "original_amount_minor IS NULL OR original_amount_minor >= 0",
-            name="ck_expenses_original_amount_non_negative",
-        ),
-        CheckConstraint(
-            "exchange_rate_to_cny IS NULL OR exchange_rate_to_cny > 0",
-            name="ck_expenses_exchange_rate_positive",
         ),
         CheckConstraint(
             f"fx_status IN ('{FX_STATUS_READY}', '{FX_STATUS_PENDING}')",
@@ -69,6 +60,10 @@ class Expense(Base):
         CheckConstraint(
             "items_sum_status IN ('matched', 'mismatch_known', 'mismatch_acknowledged', 'no_items')",
             name="ck_expenses_items_sum_status_valid",
+        ),
+        CheckConstraint(
+            "exchange_rate_to_cny IS NULL OR exchange_rate_to_cny > 0",
+            name="ck_expenses_exchange_rate_positive",
         ),
         # ADR-0041 OCC token is server-controlled: server_default=1, monotonic +1 per
         # update, never sourced from a client (0 is only the transient
@@ -90,7 +85,7 @@ class Expense(Base):
         index=True,
     )
     public_id: Mapped[str] = mapped_column(String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True)
-    amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     home_currency_code: Mapped[str] = mapped_column(
         String(3),
         default=DEFAULT_HOME_CURRENCY_CODE,
@@ -105,10 +100,15 @@ class Expense(Base):
         nullable=False,
         index=True,
     )
-    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     exchange_rate_to_cny: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
     exchange_rate_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
-    exchange_rate_source: Mapped[str | None] = mapped_column(String(32), default=FX_SOURCE_BASE, server_default=FX_SOURCE_BASE, nullable=True)
+    exchange_rate_source: Mapped[str | None] = mapped_column(
+        String(32),
+        default=FX_SOURCE_BASE,
+        server_default=FX_SOURCE_BASE,
+        nullable=True,
+    )
     fx_status: Mapped[str] = mapped_column(
         String(32),
         default=FX_STATUS_READY,
@@ -239,21 +239,12 @@ Index(
 class ExpenseItem(Base):
     __tablename__ = "expense_items"
     __table_args__ = (
+        *money_check_constraints_for_table("expense_items"),
         CheckConstraint("position >= 0", name="ck_expense_items_position_non_negative"),
-        CheckConstraint(
-            "unit_price_cents IS NULL OR unit_price_cents >= 0",
-            name="ck_expense_items_unit_price_non_negative",
-        ),
         CheckConstraint("confidence IS NULL OR (confidence >= 0 AND confidence <= 1)", name="ck_expense_items_confidence"),
         CheckConstraint(
             "kind IN ('product', 'discount', 'tax', 'service_fee')",
             name="ck_expense_items_kind_valid",
-        ),
-        CheckConstraint(
-            "(kind = 'product' AND (amount_cents IS NULL OR amount_cents >= 0))"
-            " OR (kind = 'discount' AND (amount_cents IS NULL OR amount_cents <= 0))"
-            " OR (kind IN ('tax', 'service_fee') AND (amount_cents IS NULL OR amount_cents >= 0))",
-            name="ck_expense_items_amount_by_kind",
         ),
         ForeignKeyConstraint(
             ["expense_id", "tenant_id"],
@@ -275,8 +266,8 @@ class ExpenseItem(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     quantity_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    unit_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    unit_price_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     category: Mapped[str] = mapped_column(String(64), default="其他", nullable=False)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -293,8 +284,8 @@ Index("ix_expense_items_tenant_category", ExpenseItem.tenant_id, ExpenseItem.cat
 class ExpenseSplit(Base):
     __tablename__ = "expense_splits"
     __table_args__ = (
+        *money_check_constraints_for_table("expense_splits"),
         CheckConstraint("position >= 0", name="ck_expense_splits_position_non_negative"),
-        CheckConstraint("amount_cents >= 0", name="ck_expense_splits_amount_non_negative"),
         ForeignKeyConstraint(
             ["expense_id", "tenant_id"],
             ["expenses.id", "expenses.tenant_id"],
@@ -317,7 +308,7 @@ class ExpenseSplit(Base):
     expense_id: Mapped[int] = mapped_column(Integer, ForeignKey("expenses.id"), nullable=False, index=True)
     member_id: Mapped[int] = mapped_column(Integer, ForeignKey("ledger_members.id"), nullable=False, index=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     note: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

@@ -9,7 +9,9 @@ import app.services.ocr_service._apply as ocr_apply
 import app.services.ocr_service._providers as ocr_providers
 from app.errors import AppError
 from app.models import Expense
+from app.money_contract import MONEY_MINOR_MAX
 from app.services.category_common import DEFAULT_CATEGORIES
+from app.services.local_llm_vision import parse_json_object
 from app.services.ocr_service import (
     MockOcrProvider,
     OcrProvider,
@@ -23,8 +25,14 @@ from app.services.ocr_service._llm_parsing import _result_from_llm_json
 from app.services.ocr_service._providers import _local_llm_prompt_text
 
 
+def _expense(**kwargs) -> Expense:
+    kwargs.setdefault("home_currency_code", "CNY")
+    kwargs.setdefault("original_currency_code", "CNY")
+    return Expense(**kwargs)
+
+
 def test_apply_ocr_result_is_noop_for_terminal_expenses() -> None:
-    expense = Expense(
+    expense = _expense(
         status="confirmed",
         amount_cents=1234,
         merchant="Stable Cafe",
@@ -43,7 +51,7 @@ def test_apply_ocr_result_is_noop_for_terminal_expenses() -> None:
 
 
 def test_ocr_draft_field_aliases_are_canonicalized_when_applying_result() -> None:
-    expense = Expense(
+    expense = _expense(
         status="pending",
         amount_cents=7200,
         merchant="Stable Cafe",
@@ -56,7 +64,7 @@ def test_ocr_draft_field_aliases_are_canonicalized_when_applying_result() -> Non
     apply_ocr_result(
         expense,
         OcrResult(
-            raw_text="Changed Cafe\n19.00",
+            raw_text="Changed Cafe\n交易金额：19.00",
             amount_cents=1900,
             merchant="Changed Cafe",
             expense_time=datetime(2026, 5, 2, tzinfo=UTC),
@@ -71,7 +79,7 @@ def test_ocr_draft_field_aliases_are_canonicalized_when_applying_result() -> Non
 
 
 def test_mock_ocr_provider_populates_pending_draft() -> None:
-    expense = Expense(status="pending", category="其他", raw_text="")
+    expense = _expense(status="pending", category="其他", raw_text="")
     retry_ocr(expense, MockOcrProvider())
     assert expense.amount_cents == 1851
     assert expense.merchant == "中国建设银行"
@@ -80,7 +88,7 @@ def test_mock_ocr_provider_populates_pending_draft() -> None:
 
 
 def test_zero_amount_from_ocr_is_treated_as_missing() -> None:
-    expense = Expense(status="pending", category=DEFAULT_CATEGORIES[-1], raw_text="")
+    expense = _expense(status="pending", category=DEFAULT_CATEGORIES[-1], raw_text="")
 
     apply_ocr_result(
         expense,
@@ -106,6 +114,35 @@ def test_zero_amount_from_llm_json_is_treated_as_missing() -> None:
     assert result.merchant == "Zero Cafe"
 
 
+@pytest.mark.parametrize(
+    "raw_json",
+    [
+        '{"amount_cents": true}',
+        '{"amount_cents": 1.0}',
+        '{"amount_cents": 12.9}',
+        '{"amount_cents": 1e3}',
+        '{"amount_cents": "1"}',
+    ],
+)
+def test_llm_json_rejects_non_integer_amount_carriers(raw_json: str) -> None:
+    result = _result_from_llm_json(parse_json_object(raw_json))
+
+    assert result.amount_cents is None
+
+
+@pytest.mark.parametrize("amount_cents", [1, MONEY_MINOR_MAX])
+def test_llm_json_accepts_in_range_integer_amounts(amount_cents: int) -> None:
+    result = _result_from_llm_json({"amount_cents": amount_cents})
+
+    assert result.amount_cents == amount_cents
+
+
+def test_llm_json_rejects_amount_above_c07_limit() -> None:
+    result = _result_from_llm_json({"amount_cents": MONEY_MINOR_MAX + 1})
+
+    assert result.amount_cents is None
+
+
 def test_unknown_category_from_llm_json_is_treated_as_missing() -> None:
     result = _result_from_llm_json(
         {
@@ -121,7 +158,7 @@ def test_unknown_category_from_llm_json_is_treated_as_missing() -> None:
 
 
 def test_unknown_category_from_provider_result_is_treated_as_missing() -> None:
-    expense = Expense(status="pending", category=DEFAULT_CATEGORIES[-1], raw_text="")
+    expense = _expense(status="pending", category=DEFAULT_CATEGORIES[-1], raw_text="")
 
     apply_ocr_result(
         expense,
@@ -139,7 +176,8 @@ def test_unknown_category_from_provider_result_is_treated_as_missing() -> None:
 
 def test_ocr_fact_snapshot_does_not_record_zero_amount() -> None:
     snapshot = ocr_fact_snapshot(
-        OcrResult(raw_text="Zero Cafe", amount_cents=0, merchant="Zero Cafe", confidence=0.7)
+        OcrResult(raw_text="Zero Cafe", amount_cents=0, merchant="Zero Cafe", confidence=0.7),
+        expense=_expense(status="pending"),
     )
 
     assert snapshot.parsed_amount_cents is None
@@ -172,7 +210,7 @@ def test_low_confidence_fallback_does_not_override_better_primary(monkeypatch: p
     monkeypatch.setattr(ocr_apply, "get_ocr_provider", lambda name=None: providers[str(name)])
 
     extractions = collect_auto_ocr_extractions(
-        Expense(status="pending", category=DEFAULT_CATEGORIES[-1], raw_text="")
+        _expense(status="pending", category=DEFAULT_CATEGORIES[-1], raw_text="")
     )
 
     assert [extraction.provider_name for extraction in extractions] == ["mock"]
@@ -201,6 +239,141 @@ def test_rapidocr_result_shape_drift_maps_to_app_error(monkeypatch: pytest.Monke
     monkeypatch.setattr(ocr_providers, "resolve_protected_image", lambda *_args: (image_path, "image/png"))
 
     with pytest.raises(AppError) as exc_info:
-        ocr_providers.RapidOcrProvider().extract(Expense(image_path="uploads/ticket.png", tenant_id="owner"))
+        ocr_providers.RapidOcrProvider().extract(
+            _expense(image_path="uploads/ticket.png", tenant_id="owner")
+        )
 
     assert exc_info.value.error == "server_error"
+
+
+@pytest.mark.parametrize(
+    ("currency_code", "raw_text", "expected_minor"),
+    [
+        ("CNY", "示例超市\n交易金额：12.34", 1234),
+        ("JPY", "示例超市\n交易金额：1200", 1200),
+        ("KRW", "示例超市\n交易金额：1200", 1200),
+    ],
+)
+def test_expense_and_fact_use_the_same_frozen_currency_exponent(
+    currency_code: str,
+    raw_text: str,
+    expected_minor: int,
+) -> None:
+    expense = _expense(
+        status="pending",
+        category="其他",
+        raw_text="",
+        amount_cents=None,
+        original_amount_minor=None,
+        home_currency_code=currency_code,
+        original_currency_code=currency_code,
+    )
+    result = OcrResult(raw_text=raw_text, confidence=0.8)
+
+    apply_ocr_result(expense, result)
+    snapshot = ocr_fact_snapshot(result, expense=expense)
+
+    assert expense.amount_cents == expected_minor
+    assert expense.original_amount_minor == expected_minor
+    assert snapshot.parsed_amount_cents == expected_minor
+
+
+def test_jpy_fractional_text_and_provider_parse_mismatch_fail_money_closed() -> None:
+    fractional_expense = _expense(
+        status="pending",
+        category="其他",
+        raw_text="",
+        amount_cents=None,
+        original_amount_minor=None,
+        home_currency_code="JPY",
+        original_currency_code="JPY",
+    )
+    fractional = OcrResult(
+        raw_text="示例超市\n交易金额：1200.50",
+        amount_cents=120050,
+        confidence=0.8,
+    )
+
+    apply_ocr_result(fractional_expense, fractional)
+    fractional_snapshot = ocr_fact_snapshot(
+        fractional,
+        expense=fractional_expense,
+    )
+
+    assert fractional_expense.amount_cents is None
+    assert fractional_expense.original_amount_minor is None
+    assert fractional_snapshot.parsed_amount_cents is None
+
+    mismatch_expense = _expense(
+        status="pending",
+        category="其他",
+        raw_text="",
+        amount_cents=None,
+        original_amount_minor=None,
+        home_currency_code="JPY",
+        original_currency_code="JPY",
+    )
+    mismatch = OcrResult(
+        raw_text="示例超市\n交易金额：1200",
+        amount_cents=120000,
+        confidence=0.8,
+    )
+
+    apply_ocr_result(mismatch_expense, mismatch)
+    mismatch_snapshot = ocr_fact_snapshot(mismatch, expense=mismatch_expense)
+
+    assert mismatch_expense.amount_cents is None
+    assert mismatch_expense.original_amount_minor is None
+    assert mismatch_snapshot.parsed_amount_cents is None
+
+
+def test_cross_currency_ocr_keeps_non_money_but_does_not_invent_fx() -> None:
+    expense = _expense(
+        status="pending",
+        category="其他",
+        raw_text="",
+        amount_cents=None,
+        original_amount_minor=None,
+        home_currency_code="CNY",
+        original_currency_code="JPY",
+    )
+    result = OcrResult(
+        raw_text="东京商店\n交易金额：1200",
+        merchant="东京商店",
+        confidence=0.8,
+    )
+
+    apply_ocr_result(expense, result)
+    snapshot = ocr_fact_snapshot(result, expense=expense)
+
+    assert expense.amount_cents is None
+    assert expense.original_amount_minor is None
+    assert expense.merchant == "东京商店"
+    assert snapshot.parsed_amount_cents is None
+    assert snapshot.parsed_merchant == "东京商店"
+
+
+def test_explicit_receipt_currency_mismatch_fails_expense_and_fact_money_closed() -> None:
+    expense = _expense(
+        status="pending",
+        category="其他",
+        raw_text="",
+        amount_cents=None,
+        original_amount_minor=None,
+        home_currency_code="JPY",
+        original_currency_code="JPY",
+    )
+    result = OcrResult(
+        raw_text="示例超市\n交易金额：1200（人民币）",
+        amount_cents=1200,
+        merchant="示例超市",
+        confidence=0.8,
+    )
+
+    apply_ocr_result(expense, result)
+    snapshot = ocr_fact_snapshot(result, expense=expense)
+
+    assert expense.amount_cents is None
+    assert expense.original_amount_minor is None
+    assert expense.merchant == "示例超市"
+    assert snapshot.parsed_amount_cents is None

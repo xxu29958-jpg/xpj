@@ -25,6 +25,14 @@ def live_provider_env(monkeypatch: pytest.MonkeyPatch):
     reset_settings_cache()
 
 
+@pytest.fixture()
+def jpy_home_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    reset_settings_cache()
+    yield
+    reset_settings_cache()
+
+
 def _patch_openai_call(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_post(self, body):
         return {
@@ -92,6 +100,97 @@ def test_web_budget_advise_form_keeps_csrf_token_out_of_get_url(
     assert 'name="csrf_token"' in response.text
     assert 'method="get"' not in response.text
     assert "formmethod" not in response.text
+
+
+def test_web_budget_advise_post_defaults_money_to_canonical_zero_text(
+    web_client: TestClient, *, identity
+) -> None:
+    response = web_client.post(
+        "/web/budget-advise",
+        data={"ledger_id": "owner", "month": "2026-05"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert 'name="savings_target_yuan"' in response.text
+    assert (
+        'name="savings_target_yuan" min="0" step="0.01" inputmode="decimal" '
+        'placeholder="0.00" value="0"'
+    ) in response.text
+    assert (
+        'name="reserved_buffer_yuan" min="0" step="0.01" inputmode="decimal" '
+        'placeholder="0.00" value="0"'
+    ) in response.text
+
+
+def test_web_budget_advise_post_accepts_canonical_cny_decimal_text(
+    web_client: TestClient, *, identity
+) -> None:
+    response = web_client.post(
+        "/web/budget-advise",
+        data={
+            "ledger_id": "owner",
+            "month": "2026-05",
+            "savings_target_yuan": "12.34",
+            "reserved_buffer_yuan": "0.1",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert "− ¥12.34 储蓄目标" in response.text
+    assert "− ¥0.10 备用金" in response.text
+    assert (
+        'name="savings_target_yuan" min="0" step="0.01" inputmode="decimal" '
+        'placeholder="0.00" value="12.34"'
+    ) in response.text
+    assert (
+        'name="reserved_buffer_yuan" min="0" step="0.01" inputmode="decimal" '
+        'placeholder="0.00" value="0.1"'
+    ) in response.text
+
+
+def test_web_budget_advise_post_accepts_canonical_jpy_integer_text(
+    jpy_home_env, web_client: TestClient, *, identity
+) -> None:
+    response = web_client.post(
+        "/web/budget-advise",
+        data={
+            "ledger_id": "owner",
+            "month": "2026-05",
+            "savings_target_yuan": "1234",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert "− ¥1234 储蓄目标" in response.text
+    assert (
+        'name="savings_target_yuan" min="0" step="1" inputmode="numeric" '
+        'placeholder="0" value="1234"'
+    ) in response.text
+
+
+@pytest.mark.parametrize(
+    "amount_text",
+    ("12.5", "1e2", "abc", "9000000000001"),
+    ids=("fraction", "exponent", "invalid", "c07-overflow"),
+)
+def test_web_budget_advise_post_rejects_noncanonical_or_out_of_range_jpy_text(
+    jpy_home_env,
+    web_client: TestClient,
+    *,
+    identity,
+    amount_text: str,
+) -> None:
+    response = web_client.post(
+        "/web/budget-advise",
+        data={
+            "ledger_id": "owner",
+            "month": "2026-05",
+            "savings_target_yuan": amount_text,
+        },
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"] == "amount_invalid"
 
 
 def test_web_live_provider_without_owner_confirm_does_not_audit(

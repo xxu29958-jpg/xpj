@@ -23,7 +23,6 @@ from app.routes.web_common import (
 )
 from app.schemas import DashboardCardsUpdateRequest, DashboardCardUpdateRequest
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
-from app.services.exchange_rate_service import home_currency_code
 from app.services.expense_service import ledger_has_any_expense
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -51,20 +50,34 @@ def _overview_lanes(visible_cards: list[dict]) -> list[dict]:
     return lanes
 
 
-def _overview_amount_views(cards: dict) -> dict:
+def _overview_amount_views(cards: dict, *, currency_code: str) -> dict:
     """exponent 感知的金额展示投影 (PR #253 P1-1)。
 
     payload 的 ``*_yuan`` 键固定 /100, 零小数币种 (JPY/KRW) 会错两位;
     这里统一走 C5b-3 的 minor-units 格式化族, 模板不再自己拼币种符号。
     """
-    home = home_currency_code()
     for row in cards["budget_top"]:
-        row["overspent_label"] = _minor_amount_label(row["overspent_cents"], home)
+        row["overspent_label"] = _minor_amount_label(
+            row["overspent_cents"],
+            currency_code,
+        )
     return {
-        "hero_amount": _amount_segments(cards["total_amount_cents"], home),
-        "delta_amount_label": _minor_amount_label(cards["delta_amount_cents"], home),
-        "previous_total_label": _minor_amount_label(cards["previous_total_amount_cents"], home),
-        "budget_remaining_label": _minor_amount_label(cards["budget_remaining_cents"], home),
+        "hero_amount": _amount_segments(
+            cards["total_amount_cents"],
+            currency_code,
+        ),
+        "delta_amount_label": _minor_amount_label(
+            cards["delta_amount_cents"],
+            currency_code,
+        ),
+        "previous_total_label": _minor_amount_label(
+            cards["previous_total_amount_cents"],
+            currency_code,
+        ),
+        "budget_remaining_label": _minor_amount_label(
+            cards["budget_remaining_cents"],
+            currency_code,
+        ),
     }
 
 
@@ -99,7 +112,12 @@ def web_overview(
     ctx["category_share"] = category_share
     ctx["has_any_expense"] = ledger_has_any_expense(db, selected_id)
     ctx["overview_lanes"] = _overview_lanes(visible_cards)
-    ctx.update(_overview_amount_views(cards))
+    ctx.update(
+        _overview_amount_views(
+            cards,
+            currency_code=ctx["home_currency_code"],
+        )
+    )
     # P2-3: ~1.1MB ECharts 只在环图真的渲染时才下载 (reports 卡可见且有分类数据)。
     ctx["overview_load_charts"] = bool(category_share) and any(
         item["key"] == "reports" for item in visible_cards

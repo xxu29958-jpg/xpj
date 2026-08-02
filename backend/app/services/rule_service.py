@@ -18,6 +18,7 @@ from app.services.optimistic_concurrency import (
     claim_row_with_token,
 )
 from app.services.resource_audit import record_resource_action
+from app.services.rule_money import clean_rule_amount_range, clean_rule_update_amounts
 from app.services.soft_delete_policy import (
     is_within_recycle_bin_window,
     is_within_undo_window,
@@ -227,9 +228,10 @@ def update_rule(
     commit: bool = True,
 ) -> CategoryRule:
     """Update a rule through the DB row-version predicate."""
-    rule_id, rule_tenant_id, existing_min, existing_max = _snapshot_rule_update_context(
-        rule
+    amount_min_cents, amount_max_cents = clean_rule_update_amounts(
+        amount_min_cents, amount_max_cents, unset=_UNSET
     )
+    rule_id, rule_tenant_id, existing_min, existing_max = _snapshot_rule_update_context(rule)
     update_values = _build_rule_update_values(
         existing_min=existing_min,
         existing_max=existing_max,
@@ -468,10 +470,9 @@ def _clean_amount_range(
     amount_min_cents: int | None,
     amount_max_cents: int | None,
 ) -> tuple[int | None, int | None]:
-    if amount_min_cents is not None and amount_min_cents < 0:
-        raise AppError("invalid_request", "金额下限不能为负数。", status_code=422)
-    if amount_max_cents is not None and amount_max_cents < 0:
-        raise AppError("invalid_request", "金额上限不能为负数。", status_code=422)
+    amount_min_cents, amount_max_cents = clean_rule_amount_range(
+        amount_min_cents, amount_max_cents
+    )
     if (
         amount_min_cents is not None
         and amount_max_cents is not None

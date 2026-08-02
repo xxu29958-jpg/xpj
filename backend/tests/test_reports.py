@@ -7,6 +7,8 @@ from sqlalchemy import event, select
 
 from app.database import SessionLocal, engine
 from app.models import Expense, LedgerMember
+from app.money_contract import MONEY_AGGREGATE_MAX
+from app.routes._web_report_money_views import six_month_average_amount_yuan
 from app.services.reports_service import reports_overview, six_month_summary
 from app.services.time_service import now_utc
 from tests._reports_overview_contracts import (
@@ -79,7 +81,9 @@ def _set_owner_ledger_role(role: str) -> None:
 
 
 def test_reports_overview_trends_rankings_and_category_comparison(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     seed_reports_overview_contract(client, identity=identity)
     payload = fetch_reports_overview_contract(client, identity=identity)
@@ -90,7 +94,9 @@ def test_reports_overview_trends_rankings_and_category_comparison(
 
 
 def test_reports_merchant_ranking_category_metric_and_csv_export(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     for _ in range(3):
         _manual_expense(
@@ -128,8 +134,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     )
 
     response = client.get(
-        "/api/reports/overview?"
-        "month=2026-05&timezone=UTC&merchant_category=吃饭&ranking_metric=count&top_n=2",
+        "/api/reports/overview?month=2026-05&timezone=UTC&merchant_category=吃饭&ranking_metric=count&top_n=2",
         headers=identity.app_headers,
     )
     assert response.status_code == 200, response.json()
@@ -152,9 +157,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     )
     assert csv_response.status_code == 200, csv_response.text
     assert csv_response.headers["content-type"].startswith("text/csv")
-    assert "ticketbox-reports-overview-2026-05-week.csv" in csv_response.headers[
-        "content-disposition"
-    ]
+    assert "ticketbox-reports-overview-2026-05-week.csv" in csv_response.headers["content-disposition"]
     assert csv_response.text.startswith("\ufeffsection,field,value")
     assert "summary,ranking_metric,count" in csv_response.text
     assert "summary,year_over_year_month,2025-05" in csv_response.text
@@ -226,14 +229,14 @@ def test_reports_daily_trend_uses_bounded_aggregate_query_shape(
 
     assert len(payload["trend"]) == 31
     assert sum(point["count"] for point in payload["trend"]) == 31
-    assert sum(point["amount_cents"] for point in payload["trend"]) == sum(
-        100 + day for day in range(1, 32)
-    )
+    assert sum(point["amount_cents"] for point in payload["trend"]) == sum(100 + day for day in range(1, 32))
     assert len(expense_selects) <= 6
 
 
 def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     _insert_expense(
         amount_cents=1851,
@@ -258,9 +261,7 @@ def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
         "count": 1,
     }
 
-    utc_may = client.get(
-        "/api/reports/overview?month=2026-05&timezone=UTC", headers=identity.app_headers
-    )
+    utc_may = client.get("/api/reports/overview?month=2026-05&timezone=UTC", headers=identity.app_headers)
     assert utc_may.status_code == 200, utc_may.json()
     assert utc_may.json()["total_amount_cents"] == 0
 
@@ -274,7 +275,9 @@ def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
 
 
 def test_reports_overview_month_granularity_and_viewer_read(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     _manual_expense(
         client,
@@ -331,18 +334,15 @@ def test_six_month_summary_budget_line_includes_rollover(client: TestClient, *, 
     may = next(row for row in summary if row["month"] == "2026-05")
     assert may["budget_cents"] == 105000
     assert may["budget_yuan"] == 1050.0
+    assert may["budget_major_text"] == "1050.00"
 
 
 def test_reports_overview_invalid_month_and_empty_data(client: TestClient, *, identity) -> None:
-    invalid = client.get(
-        "/api/reports/overview?month=2026-13", headers=identity.app_headers
-    )
+    invalid = client.get("/api/reports/overview?month=2026-13", headers=identity.app_headers)
     assert invalid.status_code == 422
     assert invalid.json()["error"] == "invalid_request"
 
-    empty = client.get(
-        "/api/reports/overview?month=2026-06&timezone=UTC", headers=identity.app_headers
-    )
+    empty = client.get("/api/reports/overview?month=2026-06&timezone=UTC", headers=identity.app_headers)
     assert empty.status_code == 200, empty.json()
     payload = empty.json()
     assert payload["total_amount_cents"] == 0
@@ -350,3 +350,21 @@ def test_reports_overview_invalid_month_and_empty_data(client: TestClient, *, id
     assert payload["merchant_ranking"] == []
     assert payload["category_comparison"] == []
     assert len(payload["trend"]) == 30
+
+
+def test_six_month_average_accepts_wide_exact_numerator() -> None:
+    rows = [
+        {"amount_cents": MONEY_AGGREGATE_MAX},
+        {"amount_cents": MONEY_AGGREGATE_MAX},
+    ]
+    expected = f"{MONEY_AGGREGATE_MAX // 100}.{MONEY_AGGREGATE_MAX % 100:02d}"
+
+    assert six_month_average_amount_yuan(rows, currency_code="CNY") == expected
+    assert six_month_average_amount_yuan([], currency_code="CNY") == "0.00"
+    assert (
+        six_month_average_amount_yuan(
+            [{"amount_cents": 1}, {"amount_cents": 2}],
+            currency_code="CNY",
+        )
+        == "0.02"
+    )

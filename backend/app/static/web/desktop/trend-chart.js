@@ -14,8 +14,18 @@
     const chart = echarts.init(el, null, { renderer: "canvas" });
     function build() {
       const labels = series.map(function (s) { return s.month.slice(5) + "月"; });
-      const amounts = series.map(function (s) { return Math.round(s.amount_yuan); });
-      const budgets = series.map(function (s) { return Math.round(s.budget_yuan); });
+      const amounts = series.map(function (s) {
+        return {
+          value: app.homeMinorToMajor(s.amount_cents),
+          majorText: s.amount_major_text || app.homeMinorToMajorText(s.amount_cents),
+        };
+      });
+      const budgets = series.map(function (s) {
+        return {
+          value: app.homeMinorToMajor(s.budget_cents),
+          majorText: s.budget_major_text || app.homeMinorToMajorText(s.budget_cents),
+        };
+      });
       const ink = app.readVar("--text-default");
       const ink3 = app.readVar("--text-meta");
       const ink4 = app.readVar("--text-faint");
@@ -38,7 +48,7 @@
                 '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' +
                 p.color + ';margin-right:6px;vertical-align:1px"></span>' + p.seriesName + "</span>" +
                 '<b style="font-variant-numeric:tabular-nums">' +
-                app.homeMoney((p.value || 0).toLocaleString()) + "</b></div>";
+                app.homeMoneyMajor(p.data.majorText) + "</b></div>";
             }).join("");
           },
         },
@@ -71,7 +81,9 @@
             itemStyle: {
               color: function (params) {
                 const i = params.dataIndex;
-                return budgets[i] && amounts[i] > budgets[i] ? app.readVar("--state-danger-fg") : ink;
+                return budgets[i].value && amounts[i].value > budgets[i].value
+                  ? app.readVar("--state-danger-fg")
+                  : ink;
               },
               borderRadius: [2, 2, 0, 0],
             },

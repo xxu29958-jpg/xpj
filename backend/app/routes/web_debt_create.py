@@ -90,9 +90,10 @@ def _create_payload(
     debt_kind: str,
     installment_count: str,
     installment_period_months: str,
+    home_currency: str,
 ) -> DebtCreateRequest:
     code = normalize_currency_code(currency_code)
-    amount_text = (amount_major or "").strip()
+    amount_text = amount_major or ""
     amount_minor = major_amount_to_minor(amount_text, code)
     if amount_minor is None or amount_minor <= 0:
         raise AppError(
@@ -107,14 +108,13 @@ def _create_payload(
             time_error or "请填写债务发生时间。",
             status_code=422,
         )
-    home = home_currency_code()
     return DebtCreateRequest(
         direction=(direction or "").strip(),
         counterparty_type="external",
         counterparty_label=(counterparty_label or "").strip(),
-        principal_amount_cents=amount_minor if code == home else None,
-        original_currency=code if code != home else None,
-        original_amount=Decimal(amount_text) if code != home else None,
+        principal_amount_cents=amount_minor if code == home_currency else None,
+        original_currency=code if code != home_currency else None,
+        original_amount=Decimal(amount_text) if code != home_currency else None,
         event_time=parsed_time,
         source_type="manual",
         debt_kind=(debt_kind or "").strip(),
@@ -168,6 +168,7 @@ def web_create_debt(
         "idempotency_key": idempotency_key,
     }
     try:
+        presentation_currency = home_currency_code()
         payload = _create_payload(
             direction=direction,
             counterparty_label=counterparty_label,
@@ -177,6 +178,7 @@ def web_create_debt(
             debt_kind=debt_kind,
             installment_count=installment_count,
             installment_period_months=installment_period_months,
+            home_currency=presentation_currency,
         )
         created = create_debt_idempotently(
             db,

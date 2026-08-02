@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -41,6 +42,10 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
     assert "ReplaceVerifiedLegacyReceipt" in receipt
     assert "AllowLegacyV7WithoutTargetVersionFloor" in receipt
     assert "Set-TicketboxLifecycleReceiptTargetVersionFloor" in receipt
+    assert "Set-TicketboxLifecycleReceiptC07InstallationOperation" in receipt
+    assert "c07_installation_operation_id" in receipt
+    assert "Promote-TicketboxPendingInstallationIdentity" in receipt
+    assert "ExpectedOperationId" in receipt
     assert "Assert-TicketboxProtectedLifecycleReceipt" in receipt
     assert "Write-TicketboxProtectedUtf8FileDurable" in receipt
     receipt_writer = receipt[
@@ -222,10 +227,29 @@ $script:events = New-Object System.Collections.Generic.List[string]
 function Read-TicketboxLifecycleReceipt {{
     param($Path, $InstallDir, $DataRoot, $PgPort, $BackendPort, $TargetReleaseConfig, $CurrentTargetBackendVersion, $InstallerOwnerProcessId)
     [void]$script:events.Add('read')
-    return [pscustomobject]@{{ preparation_stage = $script:stage }}
+    return [pscustomobject]@{{
+        preparation_stage = $script:stage
+        c07_installation_operation_id = '11111111-1111-1111-1111-111111111111'
+        c07_production_authority_sha256 = ('A' * 64)
+        c07_runtime_projection_sha256 = ('B' * 64)
+    }}
 }}
-function Write-TicketboxPersistentInstallationIdentity {{
-    param($DataRoot, $InstallDir, $PgPort, $BackendPort, $PgServiceName, $BackendServiceName, $BuildManifestPath)
+function Assert-TicketboxC07CommitReadyArtifacts {{
+    param($ExpectedOperationId, $BackendServiceName, $ExpectedProductionAuthoritySha256, $ExpectedRuntimeProjectionSha256)
+    if ($ExpectedOperationId -cne '11111111-1111-1111-1111-111111111111' -or
+        $BackendServiceName -cne 'TicketboxBackend' -or
+        $ExpectedProductionAuthoritySha256 -cne ('A' * 64) -or
+        $ExpectedRuntimeProjectionSha256 -cne ('B' * 64)) {{
+        throw 'unexpected C07 READY commit evidence'
+    }}
+    [void]$script:events.Add('ready')
+    if ($script:failReady) {{ throw 'injected READY evidence drift' }}
+}}
+function Promote-TicketboxPendingInstallationIdentity {{
+    param($DataRoot, $InstallDir, $PgPort, $BackendPort, $PgServiceName, $BackendServiceName, $BuildManifestPath, $ExpectedOperationId)
+    if ($ExpectedOperationId -cne '11111111-1111-1111-1111-111111111111') {{
+        throw "unexpected installation operation id $ExpectedOperationId"
+    }}
     [void]$script:events.Add('identity')
 }}
 function Set-TicketboxLifecycleReceiptInstallCompleted {{
@@ -267,15 +291,24 @@ $arguments = @{{
     RuntimeRecoveryGuardPath = 'installer-runtime-recovery-pending'
 }}
 Complete-TicketboxInstalledLifecycleTransaction @arguments
-if (($script:events -join ',') -cne 'read,identity,receipt,read,assert,tools,autostart,latch,runtime') {{
+if (($script:events -join ',') -cne 'read,ready,identity,receipt,read,assert,tools,autostart,latch,runtime') {{
     throw "first commit order was $($script:events -join ',')"
 }}
 $script:events.Clear()
 Complete-TicketboxInstalledLifecycleTransaction @arguments
-if (($script:events -join ',') -cne 'read,identity,assert,tools,autostart,latch,runtime') {{
+if (($script:events -join ',') -cne 'read,ready,identity,assert,tools,autostart,latch,runtime') {{
     throw "retry commit was not idempotent: $($script:events -join ',')"
 }}
 $script:events.Clear()
+$script:failReady = $true
+$readyDriftRejected = $false
+try {{ Complete-TicketboxInstalledLifecycleTransaction @arguments }}
+catch {{ $readyDriftRejected = $true }}
+if (-not $readyDriftRejected -or ($script:events -contains 'identity')) {{
+    throw 'commit promoted identity after C07 READY evidence drift'
+}}
+$script:events.Clear()
+$script:failReady = $false
 $script:failToolCleanup = $true
 $toolCleanupRejected = $false
 try {{ Complete-TicketboxInstalledLifecycleTransaction @arguments }}
@@ -300,7 +333,7 @@ if (-not $promotionRejected -or
 $script:events.Clear()
 $script:failPromotion = $false
 Complete-TicketboxInstalledLifecycleTransaction @arguments
-if (($script:events -join ',') -cne 'read,identity,assert,tools,autostart,latch,runtime') {{
+if (($script:events -join ',') -cne 'read,ready,identity,assert,tools,autostart,latch,runtime') {{
     throw "promotion retry did not converge: $($script:events -join ',')"
 }}
 """,
@@ -589,15 +622,27 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
         data_root = root / "data"
         install_dir = root / "program"
         data_root.mkdir(parents=True)
-        install_dir.mkdir()
-        manifest = root / "BUILD_PROVENANCE.json"
+        helper_payload = b"c07-migration-helper-fixture"
+        helper_dir = install_dir / "program" / "ticketbox-backend"
+        helper_dir.mkdir(parents=True)
+        helper = helper_dir / "ticketbox-c07-migrator.exe"
+        helper.write_bytes(helper_payload)
+        manifest = install_dir / "installer" / "BUILD_PROVENANCE.json"
+        manifest.parent.mkdir()
         manifest.write_text(
             json.dumps(
                 {
                     "schema_version": 3,
                     "artifact_type": "ticketbox-windows-installer-inputs",
                     "build_mode": "installer-build",
-                    "backend": {"version": "7.8.9"},
+                    "backend": {
+                        "version": "7.8.9",
+                        "c07_migration_helper": {
+                            "path": helper.name,
+                            "size": len(helper_payload),
+                            "sha256": hashlib.sha256(helper_payload).hexdigest(),
+                        },
+                    },
                     "postgresql": {"major": 17},
                     "compiler_defines": ["/DTargetPgMajor=17"],
                 }

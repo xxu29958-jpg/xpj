@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from app.services.receipt_parse_common import _ReceiptContext, _ReceiptSignals
 from app.services.receipt_parse_service import _context_quality_bonus, parse_receipt_text
 from app.services.time_service import ensure_utc
@@ -10,6 +12,15 @@ from app.services.time_service import ensure_utc
 
 def _utc_iso(value) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _parse_cny(raw_text: str, *, timezone_name: str | None = None):
+    return parse_receipt_text(
+        raw_text,
+        timezone_name=timezone_name,
+        currency_code="CNY",
+        minor_unit_exponent=2,
+    )
 
 
 def test_scoring_prefers_alipay_primary_amount_merchant_and_time() -> None:
@@ -38,7 +49,7 @@ def test_scoring_prefers_alipay_primary_amount_merchant_and_time() -> None:
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 1789
     assert parsed.merchant == "好想来零食乐园"
@@ -51,8 +62,8 @@ def test_scoring_prefers_alipay_primary_amount_merchant_and_time() -> None:
 def test_receipt_time_parser_accepts_client_timezone() -> None:
     raw_text = "交易时间：2026-04-30 23:30:00"
 
-    shanghai = parse_receipt_text(raw_text, timezone_name="Asia/Shanghai")
-    los_angeles = parse_receipt_text(raw_text, timezone_name="America/Los_Angeles")
+    shanghai = _parse_cny(raw_text, timezone_name="Asia/Shanghai")
+    los_angeles = _parse_cny(raw_text, timezone_name="America/Los_Angeles")
 
     assert shanghai.expense_time is not None
     assert los_angeles.expense_time is not None
@@ -99,7 +110,7 @@ def test_profile_calibration_demotes_alipay_order_amount() -> None:
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 1789
     assert parsed.merchant == "好想来零食乐园"
@@ -123,7 +134,7 @@ def test_scoring_does_not_let_ad_keywords_steal_category() -> None:
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 750
     assert parsed.merchant == "罗森便利店"
@@ -147,7 +158,7 @@ def test_scoring_uses_repeated_amount_as_cross_evidence() -> None:
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 2182
     assert parsed.merchant == "乐尔乐特价批发超市"
@@ -166,7 +177,7 @@ def test_scoring_prefers_business_time_over_generic_time() -> None:
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 1851
     assert parsed.merchant == "中国建设银行"
@@ -183,7 +194,7 @@ def test_labeled_amount_and_merchant_parse_with_long_spacing() -> None:
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 1234
     assert parsed.merchant == "罗森便利店"
@@ -208,7 +219,7 @@ def test_profile_calibration_keeps_mobility_provider_over_destination_text() -> 
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 1173
     assert parsed.merchant == "高德"
@@ -231,7 +242,7 @@ def test_bank_push_reminder_extracts_inline_spend_time() -> None:
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
     current_year = datetime.now(ZoneInfo("Asia/Shanghai")).year
     expected_time = ensure_utc(datetime(current_year, 5, 7, 15, 29, tzinfo=ZoneInfo("Asia/Shanghai")))
 
@@ -264,7 +275,7 @@ def test_taobao_flash_payment_sheet_prefers_bottom_amount_and_merchant() -> None
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 2568
     assert parsed.merchant == "淘宝闪购商户"
@@ -294,7 +305,7 @@ def test_alipay_bill_detail_prefers_specific_merchant_over_short_alias() -> None
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 2568
     assert parsed.merchant == "淘宝闪购"
@@ -317,8 +328,75 @@ def test_status_bar_battery_number_does_not_beat_payment_amount() -> None:
         ]
     )
 
-    parsed = parse_receipt_text(raw_text)
+    parsed = _parse_cny(raw_text)
 
     assert parsed.amount_cents == 1900
     assert parsed.merchant == "巴南区卢记牛肉面"
     assert parsed.category == "餐饮"
+
+
+@pytest.mark.parametrize(
+    ("currency_code", "minor_unit_exponent", "raw_text", "expected_minor", "expected_items"),
+    [
+        (
+            "CNY",
+            2,
+            "示例超市\n苹果 x1 10.00\n牛奶 x1 2.34\n合计：12.34",
+            1234,
+            (1000, 234),
+        ),
+        (
+            "JPY",
+            0,
+            "示例超市\n苹果 x1 1000\n牛奶 x1 200\n合计：1200",
+            1200,
+            (1000, 200),
+        ),
+        (
+            "KRW",
+            0,
+            "示例超市\n苹果 x1 1000\n牛奶 x1 200\n合计：1200",
+            1200,
+            (1000, 200),
+        ),
+    ],
+)
+def test_receipt_money_uses_explicit_frozen_currency_exponent(
+    currency_code: str,
+    minor_unit_exponent: int,
+    raw_text: str,
+    expected_minor: int,
+    expected_items: tuple[int, int],
+) -> None:
+    parsed = parse_receipt_text(
+        raw_text,
+        currency_code=currency_code,
+        minor_unit_exponent=minor_unit_exponent,
+    )
+
+    assert parsed.amount_cents == expected_minor
+    assert tuple(item.amount_cents for item in parsed.items) == expected_items
+
+
+@pytest.mark.parametrize(
+    ("currency_code", "minor_unit_exponent", "raw_text"),
+    [
+        ("JPY", 0, "示例超市\n合计：1200.50"),
+        ("JPY", 2, "示例超市\n合计：1200"),
+        ("JPY", 0, "示例超市\n交易金额：1200（人民币）"),
+        (None, None, "示例超市\n合计：12.34"),
+    ],
+)
+def test_receipt_money_fails_closed_without_matching_explicit_context(
+    currency_code: str | None,
+    minor_unit_exponent: int | None,
+    raw_text: str,
+) -> None:
+    parsed = parse_receipt_text(
+        raw_text,
+        currency_code=currency_code,
+        minor_unit_exponent=minor_unit_exponent,
+    )
+
+    assert parsed.amount_cents is None
+    assert parsed.items == ()

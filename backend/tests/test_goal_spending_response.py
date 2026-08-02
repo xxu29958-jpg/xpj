@@ -9,6 +9,7 @@ goal API integration tests, which can't hand-craft a multi-category spend blob.
 from __future__ import annotations
 
 from app.models import Goal
+from app.money_contract import MONEY_AGGREGATE_MAX
 from app.services.goal_spending_response import GoalSpendTotals, goal_response
 from app.services.time_service import now_utc
 
@@ -47,3 +48,11 @@ def test_goal_response_total_goal_uses_total_and_marks_over_limit() -> None:
     # A category-less (total) goal aggregates everything and trips over_limit.
     assert response.spent_amount_cents == 5200
     assert response.progress_state == "over_limit"
+
+    max_response = goal_response(
+        _spending_goal(category=None, target_amount_cents=1),
+        GoalSpendTotals(total_amount_cents=MONEY_AGGREGATE_MAX, by_category={}),
+    )
+    assert max_response.progress_percent == 100
+    assert max_response.progress_state == "over_limit"
+    assert max_response.spent_amount_cents == MONEY_AGGREGATE_MAX

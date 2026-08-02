@@ -70,20 +70,28 @@ private fun BudgetCategoryDraft.normalized(): BudgetCategoryDraft = copy(
     category = normalizeExpenseCategory(category),
 )
 
-fun BudgetAdviseResponseDto.toDomain(): BudgetAdviceResult = BudgetAdviceResult(
-    advice = advice?.let { response ->
-        BudgetAdvice(
-            summary = response.summary,
-            suggestions = response.suggestions.map { suggestion ->
-                BudgetSuggestion(
-                    category = suggestion.category,
-                    suggestedAmountCents = suggestion.suggestedAmountCents,
-                    rationale = suggestion.rationale,
-                )
-            },
-            confidence = response.confidence,
+fun BudgetAdviseResponseDto.toDomain(): BudgetAdviceResult {
+    val responseCurrency = homeCurrencyCode?.trim()?.takeIf(String::isNotEmpty)
+        ?: throw RepositoryException(
+            message = "服务器版本过旧，预算建议暂时无法确认金额币种。请先升级小票夹服务。",
+            errorCode = "server_upgrade_required",
         )
-    },
-    providerName = providerName,
-    reasonCode = reasonCode,
-)
+    return BudgetAdviceResult(
+        advice = advice?.let { response ->
+            BudgetAdvice(
+                summary = response.summary,
+                suggestions = response.suggestions.map { suggestion ->
+                    BudgetSuggestion(
+                        category = suggestion.category,
+                        suggestedAmountCents = suggestion.suggestedAmountCents,
+                        rationale = suggestion.rationale,
+                    )
+                },
+                confidence = response.confidence,
+            )
+        },
+        homeCurrencyCode = responseCurrency,
+        providerName = providerName,
+        reasonCode = reasonCode,
+    )
+}

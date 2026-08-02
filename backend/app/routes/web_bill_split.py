@@ -19,14 +19,13 @@ back to the owner Account of the currently-selected ledger.
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -37,7 +36,11 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import bill_split_service as bsplit
-from app.services.currency_common import home_currency_code, major_amount_to_minor, minor_amount_value
+from app.services.currency_common import (
+    home_currency_code,
+    major_amount_to_minor,
+    minor_amount_value,
+)
 from app.services.invitation_members import list_members
 from app.services.ledger_service import (
     find_owner_account_id_for_ledger,
@@ -88,6 +91,29 @@ def _resolve_request_account_id(
 
 
 _INVITE_ACTIVE_STATUSES = ("invited", "accepted")
+
+
+def _remaining_split_capacity(expense: dict, invitations: list) -> tuple[str, int]:
+    currency_code = expense.get("home_currency_code") or home_currency_code()
+    active_total = projection_values_sum_to_int(
+        (
+            invitation.amount_cents
+            for invitation in invitations
+            if invitation.status in _INVITE_ACTIVE_STATUSES
+        ),
+        label="web_bill_split.active_total",
+    )
+    raw_parent = expense.get("amount_cents")
+    parent = (
+        0
+        if raw_parent is None
+        else projection_sum_to_int(raw_parent, label="web_bill_split.parent_amount")
+    )
+    remaining = projection_sum_to_int(
+        parent - active_total,
+        label="web_bill_split.remaining",
+    )
+    return currency_code, max(remaining, 0)
 
 
 def build_split_invite_context(
@@ -144,11 +170,12 @@ def build_split_invite_context(
     invitations = bsplit.list_sent_for_expense(
         db, sender_account_id=sender_account_id, expense_id=expense["id"]
     )
+    expense_currency, remaining_cents = _remaining_split_capacity(expense, invitations)
     sent_rows = [
         {
             "public_id": inv.public_id,
             "status": inv.status,
-            "amount_yuan": _cents_to_yuan(inv.amount_cents),
+            "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
             "receiver_display_name": inv.receiver_display_name_snapshot or "",
             "expires_at": _fmt_local(inv.expires_at),
             "is_cancellable": inv.status == "invited",
@@ -156,18 +183,10 @@ def build_split_invite_context(
         for inv in invitations
     ]
 
-    active_total_cents = sum(
-        inv.amount_cents
-        for inv in invitations
-        if inv.status in _INVITE_ACTIVE_STATUSES
-    )
-    parent_cents = expense.get("amount_cents") or 0
-    remaining_cents = max(parent_cents - active_total_cents, 0)
-
     return {
         "members": members,
         "sent_rows": sent_rows,
-        "remaining_yuan": _cents_to_yuan(remaining_cents),
+        "remaining_yuan": _cents_to_yuan(remaining_cents, expense_currency),
         "has_capacity": remaining_cents > 0,
     }
 
@@ -215,7 +234,9 @@ def web_bill_split_inbox(
         rows.append({
             "public_id": inv.public_id,
             "status": inv.status,
-            "amount_yuan": _cents_to_yuan(inv.amount_cents),
+            "amount_yuan": _cents_to_yuan(
+                inv.amount_cents, inv.home_currency_code
+            ),
             "sender_display_name": inv.sender_display_name,
             "merchant": inv.merchant_snapshot or "",
             "category": inv.category_suggestion or "",
@@ -257,7 +278,9 @@ def web_bill_split_sent(
         {
             "public_id": inv.public_id,
             "status": inv.status,
-            "amount_yuan": _cents_to_yuan(inv.amount_cents),
+            "amount_yuan": _cents_to_yuan(
+                inv.amount_cents, inv.home_currency_code
+            ),
             "receiver_display_name": inv.receiver_display_name_snapshot or "",
             "merchant": inv.merchant_snapshot or "",
             "expense_time": _fmt_local(inv.expense_time_snapshot),
@@ -307,7 +330,7 @@ def web_split_invite(
     # flash back onto the page instead of escaping to the global AppError
     # handler, which renders a bare-JSON page in the browser.
     try:
-        amount_cents = _yuan_to_cents(amount_yuan)
+        amount_cents = _yuan_to_cents(amount_yuan, home_currency_code())
         if amount_cents is None or amount_cents <= 0:
             raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
         bsplit.create_invitation(
@@ -411,19 +434,20 @@ def web_split_cancel(
 # Money helpers (kept local to avoid expense-module coupling)
 
 
-def _cents_to_yuan(cents: int | None) -> str:
-    # R13-3：按 env home 的 minor 语义渲染（JPY 零小数整数直显，不 ÷100）。
+def _cents_to_yuan(cents: int | None, currency_code: str) -> str:
+    # Frozen invitation/expense currency is presentation authority.
     if cents is None:
         cents = 0
-    return minor_amount_value(cents, home_currency_code())
+    return minor_amount_value(cents, currency_code)
 
 
-def _yuan_to_cents(value: str) -> int | None:
-    # R13-3：按 env home 的 minor 语义解析（JPY 零小数：整数直存、拒小数）。
-    cleaned = (value or "").strip()
-    if not cleaned:
+def _yuan_to_cents(value: str, currency_code: str) -> int | None:
+    # The write form parses against the same persisted authority its resulting
+    # invitation will freeze, never against mutable process configuration.
+    raw = value or ""
+    if not raw:
         return None
     try:
-        return major_amount_to_minor(Decimal(cleaned), home_currency_code())
-    except (InvalidOperation, ValueError, AppError):
+        return major_amount_to_minor(raw, currency_code)
+    except AppError:
         return None

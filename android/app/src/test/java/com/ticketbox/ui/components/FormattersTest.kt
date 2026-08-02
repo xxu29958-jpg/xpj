@@ -16,7 +16,13 @@ class FormattersTest {
     @Test
     fun parsesYuanInputToCents() {
         assertEquals(3680, parseAmountCents("36.80", CurrencyCode.CNY))
-        assertEquals(3681, parseAmountCents("36.805", CurrencyCode.CNY))
+        assertEquals(123, parseAmountCents("1.230", CurrencyCode.CNY))
+        assertNull(parseAmountCents("10.004", CurrencyCode.CNY))
+        assertEquals(9_000_000_000_000L, parseAmountCents("90000000000.00", CurrencyCode.CNY))
+        assertNull(parseAmountCents("90000000000.01", CurrencyCode.CNY))
+        assertEquals(9_000_000_000_000L, parseAmountCents("90000000000.00", CurrencyCode.USD))
+        assertNull(parseAmountCents("90000000000.01", CurrencyCode.USD))
+        assertNull(parseAmountCents("1".repeat(65), CurrencyCode.CNY))
         assertNull(parseAmountCents("abc", CurrencyCode.CNY))
     }
 
@@ -28,9 +34,14 @@ class FormattersTest {
 
     @Test
     fun parsesAndFormatsHomeInputPerCurrency() {
-        // 零小数 home（JPY/KRW）：minor == major，不 ×100，且拒绝任何小数部分。
+        // 零小数 home（JPY/KRW）：minor == major，不 ×100；等值尾零仍是 exact。
         assertEquals(1200, parseAmountCents("1200", CurrencyCode.JPY))
         assertNull(parseAmountCents("1200.5", CurrencyCode.JPY))
+        assertEquals(1200, parseAmountCents("1200.0", CurrencyCode.JPY))
+        assertEquals(9_000_000_000_000L, parseAmountCents("9000000000000", CurrencyCode.JPY))
+        assertNull(parseAmountCents("9000000000001", CurrencyCode.JPY))
+        assertEquals(9_000_000_000_000L, parseAmountCents("9000000000000", CurrencyCode.KRW))
+        assertNull(parseAmountCents("9000000000001", CurrencyCode.KRW))
         assertEquals("1200", formatAmountInput(1200, CurrencyCode.JPY))
         // 2 位小数 home 保持 ×100 口径。
         assertEquals(36_805, parseAmountCents("368.05", CurrencyCode.USD))
@@ -39,12 +50,10 @@ class FormattersTest {
 
     @Test
     fun rejectsFractionInputForZeroDecimalCurrencies() {
-        // 严于后端 422（后端按值接受等值尾零，客户端连 "0.00" 也拒，方向安全）：
-        // 零小数币种带小数部分一律 null，不再 HALF_UP 静默进位。
+        // 与后端 exact Decimal 对齐：非零小数拒绝；等值尾零精确接受。
         assertNull(parseMinorAmount("1200.5", CurrencyCode.JPY))
-        assertNull(parseMinorAmount("1200.0", CurrencyCode.JPY))
-        assertNull(parseMinorAmount("0.00", CurrencyCode.KRW))
-        // 整数与负 scale 记法仍可解析。
+        assertEquals(1200, parseMinorAmount("1200.0", CurrencyCode.JPY))
+        assertEquals(0, parseMinorAmount("0.00", CurrencyCode.KRW))
         assertEquals(1200, parseMinorAmount("1200", CurrencyCode.JPY))
         assertEquals(0, parseMinorAmount("0", CurrencyCode.KRW))
     }
@@ -63,6 +72,8 @@ class FormattersTest {
         assertEquals("123.45", sanitizeMinorAmountInput(" ¥123.45abc ", CurrencyCode.CNY))
         assertEquals("12.34", sanitizeMinorAmountInput("12..34", CurrencyCode.USD))
         assertEquals("123", sanitizeMinorAmountInput("123.45", CurrencyCode.JPY))
+        assertEquals("9000000000000", sanitizeMinorAmountInput("9000000000000", CurrencyCode.JPY))
+        assertEquals("90000000000.00", sanitizeMinorAmountInput("90000000000.00", CurrencyCode.USD))
         assertEquals("123456", sanitizeMinorAmountInput("123456789", CurrencyCode.CNY, maxLength = 6))
     }
 
@@ -96,7 +107,14 @@ class FormattersTest {
             "¥3,883",
             formatDisplayAmount(
                 amountCents = 3883,
-                display = CurrencyDisplay(homeCurrency = CurrencyCode.JPY),
+                display = CurrencyDisplay.forRecord("JPY"),
+            ),
+        )
+        assertEquals(
+            "₩3,883",
+            formatDisplayAmount(
+                amountCents = 3883,
+                display = CurrencyDisplay.forRecord("KRW"),
             ),
         )
     }

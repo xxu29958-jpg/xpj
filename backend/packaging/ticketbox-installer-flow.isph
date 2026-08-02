@@ -761,6 +761,11 @@ begin
     AssertLifecycleLockActive();
     AssertManagerMaintenanceGateActive();
     AssertDataRootMutationGuardActive();
+    if not BeginLifecycleFinalizationAttempt() then
+    begin
+      RaiseException(
+        'Unable to derive the protected C07 lifecycle finalization attempt.');
+    end;
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
       ' -DataRoot ' + Quote(SelectedDataRoot()) +
@@ -769,7 +774,9 @@ begin
       ' -TargetPgMajor {#TargetPgMajor}' +
       ' -TargetBackendVersion {#AppVersion}' +
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
-      ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);
+      ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
+      ' -LifecycleFinalizationAttemptId ' +
+        LifecycleFinalizationAttemptId;
     if not RunPowerShellChecked(
       ExpandConstant('{app}\installer\install_bundled_services.ps1'),
       Args,

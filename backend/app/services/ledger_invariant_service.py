@@ -28,6 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, ExpenseSplit
+from app.money_contract import projection_sum_to_int
 
 InvariantCode = Literal[
     "split_sum_mismatch",
@@ -90,7 +91,15 @@ def _check_split_sum(
                 )
             )
             continue
-        if int(split_total or 0) != int(amount_cents):
+        exact_split_total = projection_sum_to_int(
+            split_total,
+            label="ledger_invariant.split_total",
+        )
+        exact_amount = projection_sum_to_int(
+            amount_cents,
+            label="ledger_invariant.expense_amount",
+        )
+        if exact_split_total != exact_amount:
             findings.append(
                 InvariantViolation(
                     code="split_sum_mismatch",

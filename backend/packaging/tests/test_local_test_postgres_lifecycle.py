@@ -267,6 +267,56 @@ def test_postgres_process_identity_rejects_relative_data_paths(
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
+def test_final_ownership_scan_accepts_only_the_exact_vanished_process_error() -> None:
+    powershell_51, powershell_7 = powershell_contract_engines()
+    escaped_contract = str(_LIFECYCLE_CONTRACT).replace("'", "''")
+    command = f"""
+$ErrorActionPreference = 'Stop'
+. '{escaped_contract}'
+$process = Start-Process -FilePath 'cmd.exe' -ArgumentList '/d /c ping 127.0.0.1 -n 6 >nul' -PassThru -WindowStyle Hidden
+$processId = $process.Id
+Stop-Process -Id $processId -Force
+$process.WaitForExit()
+$process.Close()
+$missing = @(Get-XpjFinalOwnershipScanProcessHandle -ProcessId $processId)
+if ($missing.Count -ne 0) {{
+    throw 'A process that vanished after the CIM snapshot was not treated as absent'
+}}
+function Get-Process {{
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][int[]]$Id
+    )
+    throw [UnauthorizedAccessException]::new('synthetic access denied')
+}}
+try {{
+    $null = Get-XpjFinalOwnershipScanProcessHandle -ProcessId 42
+    throw 'The final ownership scan accepted a non-object-not-found failure'
+}}
+catch {{
+    if ($_.Exception -isnot [UnauthorizedAccessException]) {{
+        throw
+    }}
+}}
+Write-Output 'final ownership scan race contract passed'
+"""
+    for engine in (powershell_51, powershell_7):
+        completed = _run_powershell(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                command,
+            ]
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_stop_resumes_a_protected_deletion_transaction(
     protected_test_postgres_root: Path,
 ) -> None:

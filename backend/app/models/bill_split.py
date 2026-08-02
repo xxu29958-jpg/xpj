@@ -17,6 +17,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -30,6 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 
 
@@ -38,13 +40,10 @@ class BillSplitInvitation(Base):
 
     __tablename__ = "bill_split_invitations"
     __table_args__ = (
+        *money_check_constraints_for_table("bill_split_invitations"),
         CheckConstraint(
             "status IN ('invited', 'accepted', 'rejected', 'cancelled', 'expired')",
             name="ck_bill_split_invitations_status_valid",
-        ),
-        CheckConstraint(
-            "amount_cents > 0",
-            name="ck_bill_split_invitations_amount_positive",
         ),
         # When accepted: receiver_ledger_id, receiver_member_id, and
         # received_expense_id all present. When NOT accepted: all three
@@ -102,10 +101,10 @@ class BillSplitInvitation(Base):
     receiver_member_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # --- money snapshot (frozen at create) ---------------------------
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     original_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
-    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     exchange_rate_to_cny = mapped_column(Numeric(18, 8), nullable=True)
     exchange_rate_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)

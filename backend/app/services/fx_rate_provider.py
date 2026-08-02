@@ -241,13 +241,13 @@ def upsert_fx_rate(
     currency_code: str,
     rate_date: date,
     rate_to_home: Decimal,
-    home_currency_code: str | None = None,
+    home_currency_code: str,
     source: str = FX_SOURCE_ECB,
     provider_base_currency: str = ECB_PROVIDER_BASE_CURRENCY,
     provider_rate: Decimal | None = None,
 ) -> FxRate:
     currency = normalize_currency_code(currency_code)
-    home = normalize_currency_code(home_currency_code or current_home_currency_code())
+    home = normalize_currency_code(home_currency_code)
     if currency == home:
         raise ValueError("base currency does not need fx rate")
     rate = format_decimal_rate(rate_to_home)
@@ -287,14 +287,16 @@ def upsert_fx_rate(
 def refresh_ecb_fx_rates(
     db: Session,
     *,
-    home_currency_code: str | None = None,
+    home_currency_code: str,
     currencies: set[str] | None = None,
     url: str | None = None,
 ) -> list[FxRate]:
+    # Write callers pass the configured home code explicitly so fetch and
+    # persistence use one minor-unit interpretation throughout this command.
+    home = normalize_currency_code(home_currency_code)
     # ``url`` forces the ECB XML transport (tests / explicit override); the
     # default path dispatches on FX_RATE_SOURCE (Frankfurter by default).
     daily = fetch_ecb_daily_rates(url) if url is not None else fetch_reference_rates()
-    home = normalize_currency_code(home_currency_code or current_home_currency_code())
     target_currencies = currencies or supported_currency_codes()
     rows: list[FxRate] = []
     for raw_code in sorted(target_currencies):

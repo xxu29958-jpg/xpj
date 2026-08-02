@@ -24,7 +24,12 @@ from app.services.csv_import_batch_service._csv_io import (
     _row_from_parsed,
 )
 from app.services.csv_import_batch_service._queries import get_csv_import_batch
-from app.services.import_service import ParsedRow, parse_csv_row
+from app.services.currency_common import home_currency_code
+from app.services.import_service import (
+    ParsedRow,
+    parse_csv_row,
+    validate_csv_headers,
+)
 from app.services.time_service import now_utc
 
 _ = get_csv_import_batch  # quiet F401: re-exported through this module's surface
@@ -94,12 +99,7 @@ def _read_csv_import_header(reader, *, max_cell_bytes: int) -> list[str]:
         raise AppError("invalid_request", "CSV 缺少表头。", status_code=400)
     _assert_cells_bounded(header_row, max_cell_bytes=max_cell_bytes)
     headers = [header.strip().lstrip("\ufeff").lower() for header in header_row]
-    if not any(header in {"amount_yuan", "amount_cents"} for header in headers):
-        raise AppError(
-            "invalid_request",
-            "CSV 必须包含 amount_yuan 或 amount_cents 列。",
-            status_code=400,
-        )
+    validate_csv_headers(headers)
     return headers
 
 
@@ -110,6 +110,7 @@ def _parse_csv_import_rows(
     max_cell_bytes: int,
     max_data_rows: int,
     timezone_name: str,
+    home_currency: str,
 ) -> tuple[list[ParsedRow], int, int, int]:
     raw_bytes = _read_csv_bounded(file_obj, max_bytes=max_bytes)
     text_stream = TextIOWrapper(BytesIO(raw_bytes), encoding="utf-8-sig", newline="")
@@ -134,6 +135,7 @@ def _parse_csv_import_rows(
             row,
             line_number=line_number,
             timezone_name=timezone_name,
+            home_currency=home_currency,
         )
         valid_rows += 1 if parsed.is_valid else 0
         error_rows += 0 if parsed.is_valid else 1
@@ -192,12 +194,14 @@ def create_csv_import_batch(
         _csv_import_limits()
     )
     try:
+        parsed_home_currency = home_currency_code()
         parsed_rows, total_rows, valid_rows, error_rows = _parse_csv_import_rows(
             file_obj,
             max_bytes=max_bytes,
             max_cell_bytes=max_cell_bytes,
             max_data_rows=max_data_rows,
             timezone_name=timezone_name,
+            home_currency=parsed_home_currency,
         )
         batch = _create_csv_import_batch_record(
             db,

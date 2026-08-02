@@ -137,6 +137,24 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     for name in pre_copy_dependencies:
         assert f'Source: "{name}"; Flags: dontcopy noencryption' in installer
         assert f"'{name}'," in installer
+    prepare_source = _read("prepare_bundled_upgrade.ps1")
+    prepare_sibling_imports = set(
+        re.findall(
+            r'Join-Path \$ScriptDir "([A-Za-z0-9_-]+\.ps1)"',
+            prepare_source,
+        )
+    )
+    installer_lines = installer.splitlines()
+    for name in prepare_sibling_imports:
+        assert any(
+            "Source:" in line
+            and name in line
+            and "Flags: dontcopy noencryption" in line
+            for line in installer_lines
+        ), f"prepare sibling is missing from protected pre-copy sources: {name}"
+        assert f"'{name}'," in installer, (
+            f"prepare sibling is not staged into the protected bootstrap bundle: {name}"
+        )
     for name in (
         "windows_backend_build_provenance.ps1",
         "windows_build_provenance.ps1",
@@ -151,6 +169,14 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
 
     installed_dependencies = pre_copy_dependencies + (
         "windows_bundled_database.ps1",
+        "windows_c07_database.ps1",
+        "windows_c07_superuser_recovery.ps1",
+        "windows_c07_heartbeat_authority.ps1",
+        "windows_c07_lifecycle.ps1",
+        "windows_c07_heartbeat_helper.ps1",
+        "windows_c07_failure_summary.ps1",
+        "windows_c07_recovery_generation.ps1",
+        "windows_c07_packaged_migration.ps1",
         "windows_backend_bootstrap.ps1",
         "windows_bootstrap_exposure_recovery.ps1",
         "install_bundled_services.ps1",
@@ -166,11 +192,35 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "'windows_backend_build_provenance.ps1',"
     )
 
-    prepare = _read("prepare_bundled_upgrade.ps1")
+    prepare = prepare_source
     install = _read("install_bundled_services.ps1")
     uninstall = _read("uninstall_bundled_services.ps1")
     bootstrap = _read("windows_backend_bootstrap.ps1")
     receipt = _read("windows_lifecycle_receipt.ps1")
+    for variable in (
+        "$C07DatabaseScript",
+        "$C07SuperuserRecoveryScript",
+        "$C07LifecycleScript",
+        "$C07FailureSummaryScript",
+        "$C07RecoveryGenerationScript",
+        "$C07PackagedMigrationScript",
+    ):
+        assert f". {variable}" in install
+    assert "$C07HeartbeatAuthorityScript = Join-Path `" in install
+    assert '"windows_c07_heartbeat_authority.ps1"' in install
+    assert (
+        "Test-Path -LiteralPath $C07HeartbeatAuthorityScript -PathType Leaf"
+        in install
+    )
+    assert ". $C07HeartbeatAuthorityScript" not in install
+    assert "$C07HeartbeatHelperScript = Join-Path `" in install
+    assert '"windows_c07_heartbeat_helper.ps1"' in install
+    assert "Test-Path -LiteralPath $C07HeartbeatHelperScript -PathType Leaf" in install
+    assert ". $C07HeartbeatHelperScript" not in install
+    assert '$C07MigrationHelper = Join-Path $ProgramDir "ticketbox-c07-migrator.exe"' in install
+    assert "function Invoke-TicketboxC07InstalledMigrationAction" in install
+    assert "function Invoke-TicketboxC07InstalledFreshSourceBootstrapAction" in install
+    assert 'Assert-File $C07MigrationHelper "ticketbox-c07-migrator.exe"' in install
     for script in (prepare, install, uninstall):
         assert ". $ReleaseConfigScript" in script
         assert ". $LifecycleScript" in script
@@ -540,7 +590,7 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
         prepare.index('elseif ($mode -ne "fresh_install")')
     ]
     assert "Assert-TicketboxLegacyPreservedDataLayout" in preserved_branch
-    assert "Get-TicketboxLocalDatabaseConnection" in preserved_branch
+    assert "Get-TicketboxPreparedApplicationDatabaseConnection" in preserved_branch
     assert "Assert-TicketboxRegisteredDataRootBinding" not in preserved_branch
     captured = prepare.index('-PreparationStage "captured"')
     deferred_return = prepare.index("if ($deferredPreservedBackup)", captured)
@@ -743,26 +793,77 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     assert "{#PgServiceName}" in persistent_reader
     assert "{#BackendServiceName}" in persistent_reader
 
+    release_candidate = safety[
+        safety.index("function Get-TicketboxInstallationReleaseCandidate") : safety.index(
+            "function Assert-TicketboxInstallationIdentityBaseMatches"
+        )
+    ]
+    assert 'Join-Path $canonicalInstallDir "installer\\BUILD_PROVENANCE.json"' in release_candidate
+    assert "Read-TicketboxInstalledBuildManifest $expectedManifestPath" in release_candidate
+    assert "Open-TicketboxC07VerifiedMigrationHelperLease" in release_candidate
+    assert "-ExpectedSize $helperEvidence.Size" in release_candidate
+    assert "-ExpectedSha256 $helperEvidence.Sha256" in release_candidate
+    assert "Get-TicketboxPortableFileSha256 $expectedManifestPath" in release_candidate
+    assert "BackendVersionFloor = [string]$buildManifest.BackendVersion" in release_candidate
+
+    identity_matcher = safety[
+        safety.index("function Assert-TicketboxInstallationIdentityBaseMatches") : safety.index(
+            "function Test-TicketboxInstallationIdentityReleaseMatches"
+        )
+    ]
+    assert "Compare-TicketboxNumericVersion" in identity_matcher
+
+    identity_state_writer = safety[
+        safety.index("function Write-TicketboxInstallationIdentityState") : safety.index(
+            "function Initialize-TicketboxPendingInstallationIdentity"
+        )
+    ]
+    assert "Write-TicketboxProtectedUtf8FileDurable" in identity_state_writer
+    assert "$script:TicketboxPersistentInstallationIdentityAclAccounts" in identity_state_writer
+    assert "$script:TicketboxPersistentInstallationIdentityOwnerAccount" in identity_state_writer
+    assert 'Read-TicketboxPersistentInstallationIdentity `' in identity_state_writer
+    assert '$persisted.State -cne $State' in identity_state_writer
+
+    identity_initializer = safety[
+        safety.index("function Initialize-TicketboxPendingInstallationIdentity") : safety.index(
+            "function Promote-TicketboxPendingInstallationIdentity"
+        )
+    ]
+    assert "[guid]::NewGuid()" in identity_initializer
+    pending_write = identity_initializer.index("Write-TicketboxInstallationIdentityState")
+    assert pending_write < identity_initializer.index('-State "PENDING"', pending_write)
+
+    identity_promoter = safety[
+        safety.index("function Promote-TicketboxPendingInstallationIdentity") : safety.index(
+            "function Write-TicketboxPersistentInstallationIdentity"
+        )
+    ]
+    assert "([guid]$ExpectedOperationId).ToString(\"D\")" in identity_promoter
+    ready_write = identity_promoter.index("Write-TicketboxInstallationIdentityState")
+    ready_state = identity_promoter.index('-State "READY"', ready_write)
+    pending_retire = identity_promoter.index("Remove-TicketboxProtectedUtf8Artifact", ready_state)
+    assert ready_write < ready_state < pending_retire
+
     identity_writer = safety[
         safety.index("function Write-TicketboxPersistentInstallationIdentity") : safety.index(
             "function Assert-TicketboxRegisteredDataRootBinding"
         )
     ]
-    assert "Write-TicketboxProtectedUtf8FileDurable" in identity_writer
-    assert "$script:TicketboxPersistentInstallationIdentityAclAccounts" in identity_writer
-    assert "Get-TicketboxPortableFileSha256 $BuildManifestPath" in identity_writer
-    assert "Compare-TicketboxNumericVersion" in identity_writer
-    assert "[guid]::NewGuid()" in identity_writer
+    initialize_pending = identity_writer.index("Initialize-TicketboxPendingInstallationIdentity")
+    promote_pending = identity_writer.index("Promote-TicketboxPendingInstallationIdentity")
+    assert initialize_pending < promote_pending
+    assert "-ExpectedOperationId $pending.OperationId" in identity_writer
 
     transaction = receipt[
         receipt.index("function Complete-TicketboxInstalledLifecycleTransaction") : receipt.index(
             "function Set-TicketboxLifecycleReceiptInstallerOwner"
         )
     ]
-    persist_identity = transaction.index("Write-TicketboxPersistentInstallationIdentity")
+    ready_artifact_guard = transaction.index("Assert-TicketboxC07CommitReadyArtifacts")
+    persist_identity = transaction.index("Promote-TicketboxPendingInstallationIdentity")
     commit_receipt = transaction.index("Set-TicketboxLifecycleReceiptInstallCompleted")
     retire_latch = transaction.index("Remove-TicketboxInstallerRecoveryMarker")
-    assert persist_identity < commit_receipt < retire_latch
+    assert ready_artifact_guard < persist_identity < commit_receipt < retire_latch
     receipt_guard = install.index('if ($InstallerLockOwnerProcessId -le 0)')
     operation_lock = install.index("$operationLock = Enter-TicketboxLifecycleLock")
     assert receipt_guard < operation_lock
@@ -1165,18 +1266,27 @@ def test_uninstall_preflights_marker_and_paths_before_mutation() -> None:
             "Write-Ok \"数据目录已删除。\""
         )
     ]
-    root_revalidation = deletion_guard.index("Assert-TicketboxDataRootForDeletion $GuardedPath")
-    intent_revalidation = deletion_guard.index("Read-TicketboxDeleteDataIntent", root_revalidation)
-    runtime_revalidation = deletion_guard.index(
+    pre_open_guard = uninstall[
+        uninstall.index('Write-Step "删除数据目录 $safeRoot"') : uninstall.index(
+            "$finalDeletionGuard = {"
+        )
+    ]
+    intent_revalidation = pre_open_guard.index("Read-TicketboxDeleteDataIntent")
+    runtime_revalidation = pre_open_guard.index(
         "Assert-TicketboxRuntimeProcessesStoppedForDataDeletion",
         intent_revalidation,
     )
-    assert root_revalidation < intent_revalidation < runtime_revalidation
-    assert "-DataRoot $revalidatedRoot" in deletion_guard
-    assert "if (-not $script:DeleteDataIntentValidated)" in deletion_guard
-    assert "Assert-TicketboxRuntimeProcessesStoppedForDataDeletion" in deletion_guard
-    assert "Assert-TicketboxBackendPortStoppedForDataDeletion" in deletion_guard
-    assert "Assert-TicketboxPgScmProcessAgreement" in deletion_guard
+    assert intent_revalidation < runtime_revalidation
+    assert "Assert-TicketboxBackendPortStoppedForDataDeletion" in pre_open_guard
+    assert "Assert-TicketboxPgScmProcessAgreement" in pre_open_guard
+    assert "GetDirectoryIdentity" in deletion_guard
+    assert "ReadExactUtf8File" in deletion_guard
+    assert "InspectEntry" in deletion_guard
+    assert "Assert-TicketboxDataRootForDeletion" not in deletion_guard
+    assert "Read-TicketboxDeleteDataIntent" not in deletion_guard
+    assert "Assert-TicketboxRuntimeProcessesStoppedForDataDeletion" not in deletion_guard
+    assert "Assert-TicketboxBackendPortStoppedForDataDeletion" not in deletion_guard
+    assert "Assert-TicketboxPgScmProcessAgreement" not in deletion_guard
     assert "TicketboxExactTreeDeleteNativeMethods" in safety
     assert "SetFileInformationByHandle" in safety
     delete_open = safety[
@@ -1193,6 +1303,7 @@ def test_uninstall_preflights_marker_and_paths_before_mutation() -> None:
     ]
     assert "FileShareRead | FileShareWrite | FileShareDelete" in no_follow_inspection
     assert "Remove-Item -LiteralPath $safeRoot -Recurse" not in uninstall
+
 
     retain_branch = uninstall[
         uninstall.index("else {", uninstall.index("if ($DeleteData) {", first_remove)) : uninstall.index(
@@ -1222,6 +1333,89 @@ def test_uninstall_preflights_marker_and_paths_before_mutation() -> None:
     assert "Remove-TicketboxCompletedLifecycleReceipt" in retain_branch
     assert "Remove-TicketboxPreservedInstallationIdentity" not in retain_branch
     assert "Remove-TicketboxPgRecoveryToolset" not in retain_branch
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows exact delete callback")
+def test_uninstall_exact_delete_callback_runs_under_both_powershell_engines(
+    tmp_path: Path,
+) -> None:
+    uninstall = _read("uninstall_bundled_services.ps1")
+    remove_helper = uninstall[
+        uninstall.index("function Remove-TicketboxDataRootForUninstall") : uninstall.index(
+            "function Get-TicketboxInstallerStateDataDeletionSnapshot"
+        )
+    ]
+    safety_path = PACKAGING / "windows_installation_safety.ps1"
+
+    for index, engine in enumerate(powershell_contract_engines()):
+        root = tmp_path / f"delete-root-{index}"
+        root.mkdir()
+        marker = root / ".ticketbox-data-root.json"
+        marker.write_text("marker-authority\n", encoding="utf-8")
+        payload = root / "payload.txt"
+        payload.write_text("delete-me", encoding="utf-8")
+        intent = tmp_path / f"delete-intent-{index}.json"
+        intent.write_text("intent-authority\n", encoding="utf-8")
+        harness = tmp_path / f"delete-callback-{index}.ps1"
+        harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{str(safety_path).replace("'", "''")}'
+$script:DeleteDataIntentValidated = $true
+$script:TicketboxDataRootMarkerName = '.ticketbox-data-root.json'
+$DeleteDataIntentPath = '{str(intent).replace("'", "''")}'
+$InstallDir = 'C:\\Program Files\\Ticketbox'
+$script:runtimeChecks = 0
+function Write-Step {{ param([string]$Message) }}
+function Write-Ok {{ param([string]$Message) }}
+function Assert-TicketboxDataRootForDeletion {{
+    param([string]$CandidateRoot)
+    return [IO.Path]::GetFullPath($CandidateRoot)
+}}
+function Read-TicketboxDeleteDataIntent {{
+    param($Path, $InstallDir, $DataRoot)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {{
+        throw 'missing intent'
+    }}
+}}
+function Assert-TicketboxRuntimeProcessesStoppedForDataDeletion {{
+    $script:runtimeChecks++
+}}
+function Assert-TicketboxBackendPortStoppedForDataDeletion {{
+    $script:runtimeChecks++
+}}
+function Assert-TicketboxPgScmProcessAgreement {{
+    $script:runtimeChecks++
+}}
+{remove_helper}
+Remove-TicketboxDataRootForUninstall '{str(root).replace("'", "''")}'
+if (Test-Path -LiteralPath '{str(root).replace("'", "''")}') {{
+    throw 'exact delete left the data root'
+}}
+if ($script:runtimeChecks -ne 3) {{
+    throw 'pre-open runtime proofs did not execute exactly once'
+}}
+""",
+            encoding="utf-8-sig",
+        )
+        result = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                harness,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8-sig",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
 def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_missing() -> None:
@@ -1323,6 +1517,11 @@ def test_delete_data_requires_completed_receipt_or_bound_retry_intent(tmp_path: 
     uninstall = _read("uninstall_bundled_services.ps1")
     lifecycle_receipt = _read("windows_lifecycle_receipt.ps1")
     installation_safety = _read("windows_installation_safety.ps1")
+    win32_path_init = installation_safety[
+        installation_safety.index("function Initialize-TicketboxWin32FilePathMethods") : installation_safety.index(
+            "function Initialize-TicketboxDirectoryGuardNativeMethods"
+        )
+    ]
     exact_entry_init = installation_safety[
         installation_safety.index("function Initialize-TicketboxExactTreeDeleteNativeMethods") : installation_safety.index(
             "function Remove-TicketboxTreeExact"
@@ -1432,6 +1631,7 @@ function ConvertTo-TicketboxCanonicalPath {{
     param([string]$Path)
     return [System.IO.Path]::GetFullPath($Path)
 }}
+{win32_path_init}
 function Get-TicketboxInstallerRuntimeStateDirectory {{ return $runtimeStateDirectory }}
 function Get-TicketboxInstallerRuntimeRecoveryGuardPath {{ return Join-Path $runtimeStateDirectory 'installer-runtime-recovery-pending' }}
 function Test-TicketboxPathWithin {{ param($Path, $Parent); return $false }}
@@ -4281,10 +4481,26 @@ def test_installer_input_gate_requires_lifecycle_scripts() -> None:
     assert '$ServiceContractScript = Join-Path $ScriptDir "windows_service_contract.ps1"' in build
     assert '$LifecycleScript = Join-Path $ScriptDir "windows_service_lifecycle.ps1"' in build
     assert '$DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"' in build
+    assert (
+        '$C07HeartbeatAuthorityScript = Join-Path $ScriptDir '
+        '"windows_c07_heartbeat_authority.ps1"'
+    ) in build
+    assert (
+        '$C07HeartbeatHelperScript = Join-Path $ScriptDir '
+        '"windows_c07_heartbeat_helper.ps1"'
+    ) in build
     assert '$BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"' in build
     assert '$ReleaseConfigScript = Join-Path $ScriptDir "windows_release_config.ps1"' in build
     assert 'Assert-File $DataRootGuardScript "Windows DataRoot guard holder 脚本"' in build
     assert 'Assert-File $PrepareScript "升级前预检脚本"' in build
     assert 'Assert-File $ServiceContractScript "Windows 服务命令契约脚本"' in build
     assert 'Assert-File $LifecycleScript "Windows 服务生命周期脚本"' in build
+    assert (
+        'Assert-File $C07HeartbeatAuthorityScript '
+        '"Windows C07 shared heartbeat authority module"'
+    ) in build
+    assert (
+        'Assert-File $C07HeartbeatHelperScript '
+        '"Windows C07 durable heartbeat helper"'
+    ) in build
     assert 'Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"' in build

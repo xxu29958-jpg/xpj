@@ -33,12 +33,16 @@ supersedes any pending proposal in the same transaction.
 
 from __future__ import annotations
 
-from app.services.debt_service._adjustment import record_adjustment
+from app.services.debt_service._adjustment import (
+    record_adjustment,
+    validate_adjustment_command,
+)
 from app.services.debt_service._create import create_bill_split_debt, create_debt
 from app.services.debt_service._fold import (
     compute_paid,
     compute_remaining,
     compute_remaining_as_of,
+    compute_remaining_for_write,
     derive_status,
     latest_fact_at,
 )
@@ -48,6 +52,7 @@ from app.services.debt_service._installment import (
     installment_payoff_date,
 )
 from app.services.debt_service._kind import set_debt_kind
+from app.services.debt_service._money import validate_home_amount_command
 from app.services.debt_service._proposal import (
     confirm_repayment_proposal,
     create_repayment_proposal,
@@ -91,6 +96,7 @@ __all__ = [
     "compute_paid",
     "compute_remaining",
     "compute_remaining_as_of",
+    "compute_remaining_for_write",
     "confirm_repayment_draft",
     "confirm_repayment_proposal",
     "count_open_external_debts",
@@ -126,5 +132,7 @@ __all__ = [
     "set_debt_kind",
     "void_debt",
     "void_repayment",
+    "validate_adjustment_command",
+    "validate_home_amount_command",
     "withdraw_repayment_proposal",
 ]

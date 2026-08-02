@@ -30,6 +30,11 @@ from urllib.parse import urlparse
 
 from app.config import get_settings
 from app.errors import AppError, DataIntegrityError
+from app.money_contract import (
+    MoneySign,
+    ensure_money_minor,
+    parse_canonical_money_minor,
+)
 from app.services.budget_advisor_service._models import (
     BudgetAdvice,
     BudgetAdvisorChatRequest,
@@ -61,6 +66,9 @@ _SECRETISH_DETAIL_RE = re.compile(
 
 _SYSTEM_PROMPT = (
     "你是家庭预算助手。给定结构化预算数据 JSON（仅含分类聚合和匿名占位，绝无真实商户名 / 姓名 / 路径），"
+    "home_currency 是所有后缀为 _cents 的整数金额的本位币；这些字段表示该币种的最小货币单位，"
+    "JPY/KRW 为 0 位小数，CNY 等为 2 位小数。返回的 suggested_amount_cents 必须使用完全相同的"
+    "home_currency 与最小货币单位，不得自行换币、缩放或假定为 CNY。"
     "用中文给出建议。只返回 JSON 对象，不要解释，不要 markdown 代码块。字段："
     "summary(string, 一句总结), "
     "suggestions(array of {category(string|null, null=整体建议; category must be one of "
@@ -272,6 +280,44 @@ def _extract_message_content(response_json: BudgetAdvisorChatResponse) -> str:
     raise AppError("server_error", "AI 没有返回文本。", status_code=500)
 
 
+def _budget_suggestion_from_json(
+    raw: object,
+    *,
+    accepted_categories: set[str],
+) -> BudgetSuggestion | None:
+    if not isinstance(raw, dict):
+        return None
+    category = raw.get("category")
+    category_str = normalize_category(str(category)) if category is not None else None
+    if category is not None and category_str not in accepted_categories:
+        return None
+    raw_amount = raw.get("suggested_amount_cents")
+    try:
+        if type(raw_amount) is int:
+            amount = ensure_money_minor(
+                raw_amount,
+                sign=MoneySign.NONNEGATIVE,
+                label="budget_advisor.suggested_amount_cents",
+            )
+        elif type(raw_amount) is str:
+            amount = parse_canonical_money_minor(
+                raw_amount,
+                sign=MoneySign.NONNEGATIVE,
+                label="budget_advisor.suggested_amount_cents",
+            )
+        else:
+            return None
+    except AppError:
+        return None
+    if amount > 100_000_000:
+        return None
+    return BudgetSuggestion(
+        category=category_str,
+        suggested_amount_cents=amount,
+        rationale=_cap_text(raw.get("rationale"), MAX_ADVICE_RATIONALE_CHARS),
+    )
+
+
 def _parse_advice_json(content: str) -> BudgetAdvice:
     cleaned = content.strip()
     if cleaned.startswith("```"):
@@ -301,26 +347,12 @@ def _parse_advice_json(content: str) -> BudgetAdvice:
     raw_suggestions = payload.get("suggestions")
     if isinstance(raw_suggestions, list):
         for raw in raw_suggestions[:MAX_ADVICE_SUGGESTIONS]:
-            if not isinstance(raw, dict):
-                continue
-            category = raw.get("category")
-            category_str = normalize_category(str(category)) if category is not None else None
-            if category is not None and category_str not in accepted_categories:
-                continue
-            try:
-                amount = int(raw.get("suggested_amount_cents"))
-            except (TypeError, ValueError):
-                continue
-            if amount < 0 or amount > 100_000_000:
-                continue
-            rationale = _cap_text(raw.get("rationale"), MAX_ADVICE_RATIONALE_CHARS)
-            suggestions.append(
-                BudgetSuggestion(
-                    category=category_str,
-                    suggested_amount_cents=amount,
-                    rationale=rationale,
-                )
+            suggestion = _budget_suggestion_from_json(
+                raw,
+                accepted_categories=accepted_categories,
             )
+            if suggestion is not None:
+                suggestions.append(suggestion)
     return BudgetAdvice(summary=summary, suggestions=suggestions, confidence=confidence)
 
 

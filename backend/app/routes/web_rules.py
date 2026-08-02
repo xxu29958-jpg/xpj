@@ -5,7 +5,6 @@ Split from ``web_app.py`` in v0.4-alpha3 slice 2.
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -44,7 +43,6 @@ from app.services.currency_common import (
     home_currency_code,
     major_amount_to_minor,
     minor_amount_value,
-    minor_unit_digits,
 )
 
 if TYPE_CHECKING:
@@ -53,23 +51,18 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/web", tags=["web"])
 
 
-def _parse_optional_amount_cents(raw: str) -> int | None:
-    text = (raw or "").strip()
+def _parse_optional_amount_cents(raw: str, *, currency_code: str) -> int | None:
+    text = raw or ""
     if not text:
         return None
     try:
-        amount = Decimal(text)
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", "金额条件不是合法数字。", status_code=422) from exc
-    if amount < 0:
-        raise AppError("invalid_request", "金额条件不能为负数。", status_code=422)
-    # R13-3：按 env home 的 minor 语义解析（JPY 零小数：整数直存、拒小数；不再硬编 ×100）。
-    home = home_currency_code()
-    digits = minor_unit_digits(home)
-    if amount != amount.quantize(Decimal(1).scaleb(-digits)):
-        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
-        raise AppError("invalid_request", f"金额条件按 {home} {detail}。", status_code=422)
-    return major_amount_to_minor(amount, home)
+        return major_amount_to_minor(text, currency_code)
+    except AppError as exc:
+        raise AppError(
+            "invalid_request",
+            "金额条件不是合法金额或超出当前版本可支持范围。",
+            status_code=422,
+        ) from exc
 
 
 @router.get("/rules", response_class=HTMLResponse)
@@ -124,8 +117,10 @@ def web_rules(
             limit=20,
         )
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
-    # R15a-3：规则金额条件回显按 env home minor 语义（JPY 零小数不 ÷100；R13-3 未竟面）。
-    ctx["minor_amount_label"] = lambda cents: minor_amount_value(cents, home_currency_code())
+    presentation_currency = ctx["home_currency_code"]
+    ctx["minor_amount_label"] = lambda cents: minor_amount_value(
+        cents, presentation_currency
+    )
     ctx["rules"] = rules
     ctx["rule_applications"] = rule_applications
     ctx["preview"] = preview
@@ -160,6 +155,7 @@ def web_rules_create(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
+        presentation_currency = home_currency_code()
         create_rule(
             db,
             tenant_id=selected_id,
@@ -167,8 +163,14 @@ def web_rules_create(
             category=category,
             enabled=True,
             priority=priority,
-            amount_min_cents=_parse_optional_amount_cents(amount_min_yuan),
-            amount_max_cents=_parse_optional_amount_cents(amount_max_yuan),
+            amount_min_cents=_parse_optional_amount_cents(
+                amount_min_yuan,
+                currency_code=presentation_currency,
+            ),
+            amount_max_cents=_parse_optional_amount_cents(
+                amount_max_yuan,
+                currency_code=presentation_currency,
+            ),
             source_contains=source_contains,
             tag_contains=tag_contains,
         )

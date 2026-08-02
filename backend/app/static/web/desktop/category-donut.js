@@ -32,10 +32,9 @@
           textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: "'Noto Sans SC', Inter" },
           formatter: function (p) {
             // PR #253 P1-2: 分类名是用户/导入可控文本, 进 HTML tooltip 前必须转义。
-            // R6-2: 金额与中心/清单同口径 — homeMoneyMajor 按 minor digits 格式化
-            // (toLocaleString 会把 12.30 打成 12.3)。
+            // 金额文案只消费服务器生成的精确 label；value 仅供几何。
             return '<div style="font-size:12px"><b>' + app.escapeHtml(p.name) + "</b><br/>" +
-                   app.homeMoneyMajor(p.value || 0) + " · " + p.percent + "%</div>";
+                   app.escapeHtml(p.data.amountLabel) + " · " + p.percent + "%</div>";
           },
         },
         legend: { show: false },
@@ -56,8 +55,7 @@
                 // 纯文本拼接, 不用 ECharts rich-text DSL: 分类名里的 "}"/"{x|" 元字符
                 // 会被当成样式段解析而破坏中心排版 (canvas 无 XSS, 但排版注入同样
                 // 不可接受 — PR #253 R2 复审 P2-2)。
-                // 中心值按币种 exponent 格式化 (R5: 不再 Math.round 丢小数)。
-                return p.name + "\n" + app.homeMoneyMajor(p.value || 0) + "\n" + p.percent + "%";
+                return p.name + "\n" + p.data.amountLabel + "\n" + p.percent + "%";
               },
             },
           },
@@ -68,6 +66,7 @@
             return {
               name: d.name,
               value: d.amount_major == null ? d.amount_yuan : d.amount_major,
+              amountLabel: d.amount_label,
               itemStyle: { color: palette[i % palette.length] },
             };
           }),

@@ -12,6 +12,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
+from app.schemas._money import (
+    NonNegativeCanonicalDecimalInput,
+    NonNegativeMoneyAggregate,
+    NonNegativeMoneyMinor,
+    PositiveMoneyMinor,
+    SignedMoneyAggregate,
+    SignedMoneyMinor,
+    expense_item_money_schema_extra,
+)
 from app.services.time_service import to_iso
 
 ExpenseItemKind = Literal["product", "discount", "tax", "service_fee"]
@@ -68,12 +77,12 @@ class UploadResponse(BaseModel):
 class ExpenseManualCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    amount_cents: int | None = Field(default=None, ge=0)
+    amount_cents: NonNegativeMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
-    original_amount: Decimal | None = Field(default=None, ge=0)
+    original_amount: NonNegativeCanonicalDecimalInput | None = None
     spent_at: datetime | None = None
     original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
-    original_amount_minor: int | None = Field(default=None, ge=0)
+    original_amount_minor: NonNegativeMoneyMinor | None = None
     merchant: str | None = None
     category: str | None = None
     note: str | None = None
@@ -92,12 +101,12 @@ class NotificationDraftCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: str = Field(min_length=1, max_length=32)
-    amount_cents: int | None = Field(default=None, ge=0)
+    amount_cents: NonNegativeMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
-    original_amount: Decimal | None = Field(default=None, ge=0)
+    original_amount: NonNegativeCanonicalDecimalInput | None = None
     spent_at: datetime | None = None
     original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
-    original_amount_minor: int | None = Field(default=None, ge=0)
+    original_amount_minor: NonNegativeMoneyMinor | None = None
     merchant: str | None = Field(default=None, max_length=255)
     category: str | None = Field(default=None, max_length=64)
     expense_time: datetime | None = None
@@ -118,12 +127,12 @@ class ExpenseUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
-    amount_cents: int | None = Field(default=None, ge=0)
+    amount_cents: NonNegativeMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
-    original_amount: Decimal | None = Field(default=None, ge=0)
+    original_amount: NonNegativeCanonicalDecimalInput | None = None
     spent_at: datetime | None = None
     original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
-    original_amount_minor: int | None = Field(default=None, ge=0)
+    original_amount_minor: NonNegativeMoneyMinor | None = None
     merchant: str | None = None
     category: str | None = None
     note: str | None = None
@@ -294,8 +303,8 @@ class ExpenseResponse(BaseModel):
 
     id: int
     public_id: str
-    amount_cents: int | None
-    home_amount_cents: int | None
+    amount_cents: NonNegativeMoneyMinor | None
+    home_amount_cents: NonNegativeMoneyMinor | None
     home_currency: str
     original_currency: str
     original_amount: Decimal | None
@@ -304,7 +313,7 @@ class ExpenseResponse(BaseModel):
     fx_source: str | None
     fx_status: str
     original_currency_code: str
-    original_amount_minor: int | None
+    original_amount_minor: NonNegativeMoneyMinor | None
     exchange_rate_to_cny: Decimal | None
     exchange_rate_date: date | None
     exchange_rate_source: str | None
@@ -355,13 +364,16 @@ class ExpenseResponse(BaseModel):
 
 
 class ExpenseItemRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra=expense_item_money_schema_extra(),
+    )
 
     name: str = Field(min_length=1, max_length=255)
     kind: ExpenseItemKind = "product"
     quantity_text: str | None = Field(default=None, max_length=64)
-    unit_price_cents: int | None = Field(default=None, ge=0)
-    amount_cents: int | None = None
+    unit_price_cents: NonNegativeMoneyMinor | None = None
+    amount_cents: SignedMoneyMinor | None = None
     category: str | None = Field(default=None, max_length=64)
     raw_text: str | None = Field(default=None, max_length=1000)
     confidence: float | None = Field(default=None, ge=0, le=1)
@@ -395,8 +407,8 @@ class ExpenseItemResponse(BaseModel):
     kind: ExpenseItemKind
     name: str
     quantity_text: str | None
-    unit_price_cents: int | None
-    amount_cents: int | None
+    unit_price_cents: NonNegativeMoneyMinor | None
+    amount_cents: SignedMoneyMinor | None
     category: str
     raw_text: str | None
     confidence: float | None
@@ -411,9 +423,9 @@ class ExpenseItemResponse(BaseModel):
 
 class ExpenseItemsResponse(BaseModel):
     expense_id: int
-    parent_amount_cents: int | None
-    items_total_amount_cents: int | None
-    mismatch_cents: int | None
+    parent_amount_cents: NonNegativeMoneyMinor | None
+    items_total_amount_cents: SignedMoneyAggregate | None
+    mismatch_cents: SignedMoneyAggregate | None
     items_sum_status: ItemsSumStatus
     # Parent Expense.row_version (ADR-0041). The items replace /
     # acknowledge-mismatch endpoints bump the *parent* expense's CAS
@@ -427,7 +439,7 @@ class ExpenseSplitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     member_id: int = Field(ge=1)
-    amount_cents: int = Field(ge=0)
+    amount_cents: PositiveMoneyMinor
     note: str | None = Field(default=None, max_length=200)
 
 
@@ -444,7 +456,7 @@ class ExpenseSplitResponse(BaseModel):
     member_id: int
     account_name: str
     role: str
-    amount_cents: int
+    amount_cents: NonNegativeMoneyMinor
     note: str | None
     disabled_at: datetime | None
     created_at: datetime
@@ -457,9 +469,9 @@ class ExpenseSplitResponse(BaseModel):
 
 class ExpenseSplitsResponse(BaseModel):
     expense_id: int
-    parent_amount_cents: int | None
-    splits_total_amount_cents: int | None
-    mismatch_cents: int | None
+    parent_amount_cents: NonNegativeMoneyMinor | None
+    splits_total_amount_cents: NonNegativeMoneyAggregate | None
+    mismatch_cents: SignedMoneyAggregate | None
     # Parent Expense.row_version (ADR-0041). The splits replace endpoint
     # bumps the *parent* expense's CAS counter; exposing it here lets a
     # chained client reuse the fresh token without a second GET.

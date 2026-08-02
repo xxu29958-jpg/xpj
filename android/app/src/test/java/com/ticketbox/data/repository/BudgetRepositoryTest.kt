@@ -361,6 +361,7 @@ class BudgetRepositoryAdviceBindingTest {
         val api = BudgetApiHandler().apply {
             adviceResponse = BudgetAdviseResponseDto(
                 advice = null,
+                homeCurrencyCode = null,
                 providerName = "empty",
                 reasonCode = "ai_advisor_provider_empty",
             )
@@ -368,9 +369,22 @@ class BudgetRepositoryAdviceBindingTest {
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val repository = repository(api, tokenStore)
 
+        val incompatible = repository.requestBudgetAdvice("2026-05")
+        val incompatibility = incompatible.exceptionOrNull()
+        assertTrue(incompatibility is RepositoryException)
+        assertEquals("server_upgrade_required", incompatibility.errorCode)
+        assertNull(repository.cachedBudgetAdvice("2026-05"))
+
+        api.adviceResponse = BudgetAdviseResponseDto(
+            advice = null,
+            homeCurrencyCode = "KRW",
+            providerName = "empty",
+            reasonCode = "ai_advisor_provider_empty",
+        )
         val result = repository.requestBudgetAdvice("2026-05").getOrThrow()
 
         assertNull(result.advice)
+        assertEquals("KRW", result.homeCurrencyCode)
         assertNull(repository.cachedBudgetAdvice("2026-05"))
     }
 
@@ -415,6 +429,7 @@ class BudgetRepositoryAdviceBindingTest {
                     suggestions = emptyList(),
                     confidence = 0.5,
                 ),
+                homeCurrencyCode = "CNY",
                 providerName = "mock",
                 reasonCode = "advisor_ready",
             )
@@ -424,6 +439,7 @@ class BudgetRepositoryAdviceBindingTest {
                     suggestions = emptyList(),
                     confidence = 0.6,
                 ),
+                homeCurrencyCode = "CNY",
                 providerName = "mock",
                 reasonCode = "advisor_ready",
             )
@@ -601,8 +617,6 @@ private class BudgetApiHandler : InvocationHandler {
             }
             "budgetAdvise" -> {
                 adviceError?.let { throw it }
-                adviceEntered?.countDown()
-                adviceRelease?.await(10, TimeUnit.SECONDS)
                 val request = values[0] as BudgetAdviseRequestDto
                 val queuedResponse = synchronized(adviceResponses) {
                     adviceCalls += AdviceCall(
@@ -611,6 +625,12 @@ private class BudgetApiHandler : InvocationHandler {
                     )
                     adviceResponses.removeFirstOrNull()
                 }
+                // Reserve this invocation's response before announcing that it
+                // entered the barrier. Otherwise two released callers race on
+                // removeFirstOrNull() and the fixture can swap the pre-write
+                // and post-write responses even when the repository is correct.
+                adviceEntered?.countDown()
+                adviceRelease?.await(10, TimeUnit.SECONDS)
                 queuedResponse ?: adviceResponse ?: BudgetAdviseResponseDto(
                     advice = BudgetAdviceDto(
                         summary = "为弹性支出留出余量。",
@@ -623,6 +643,7 @@ private class BudgetApiHandler : InvocationHandler {
                         ),
                         confidence = 0.8,
                     ),
+                    homeCurrencyCode = "CNY",
                     providerName = "mock",
                     reasonCode = "advisor_ready",
                 )

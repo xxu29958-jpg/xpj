@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.ledger_scope import add_ledger_scope
 from app.models import Expense
+from app.money_contract import projection_sum_to_int
 from app.services.reports_service._models import ReportGranularity, _TrendBucket
 from app.services.reports_service._time import (
     _days_in_month,
@@ -44,7 +45,14 @@ def _range_amount_count(
         .where(stat_time < end_utc)
     )
     row = db.execute(statement).one()
-    return int(row[0] or 0), int(row[1] or 0)
+    return (
+        projection_sum_to_int(
+            row[0],
+            label="reports.range_amount",
+            empty_is_zero=True,
+        ),
+        int(row[1] or 0),
+    )
 
 
 def _range_amount_counts(
@@ -82,7 +90,14 @@ def _range_amount_counts(
     )
     row = db.execute(statement).one()
     return {
-        label: (int(row[index * 2] or 0), int(row[index * 2 + 1] or 0))
+        label: (
+            projection_sum_to_int(
+                row[index * 2],
+                label=f"reports.range_amount.{label}",
+                empty_is_zero=True,
+            ),
+            int(row[index * 2 + 1] or 0),
+        )
         for index, label in enumerate(labels)
     }
 
@@ -177,7 +192,14 @@ def _bucket_amount_counts(
     )
     row = db.execute(statement).one()
     return {
-        bucket.bucket: (int(row[index * 2] or 0), int(row[index * 2 + 1] or 0))
+        bucket.bucket: (
+            projection_sum_to_int(
+                row[index * 2],
+                label=f"reports.bucket_amount.{bucket.bucket}",
+                empty_is_zero=True,
+            ),
+            int(row[index * 2 + 1] or 0),
+        )
         for index, bucket in enumerate(buckets)
     }
 

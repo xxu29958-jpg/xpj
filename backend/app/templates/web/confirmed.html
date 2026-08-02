@@ -8,12 +8,12 @@
 {# ── 月份 chip + 英雄月合计 ── #}
 <div class="ledger-hero">
   <span class="lh-month">{{ selected_month }}</span>
-  {% set _t = ('%.2f' % month_total_amount_yuan).split('.') %}
-  <div class="lh-amt"><span class="cur">{{ home_currency_symbol }}</span><span class="int">{{ _t[0] }}</span><span class="dec">.{{ _t[1] }}</span></div>
+  {% set _t = month_total_amount_yuan.split('.') %}
+  <div class="lh-amt"><span class="cur">{{ home_currency_symbol }}</span><span class="int">{{ _t[0] }}</span>{% if _t | length > 1 %}<span class="dec">.{{ _t[1] }}</span>{% endif %}</div>
   <div class="lh-ctx">
     <b>{{ month_total_count }}</b> 笔<span class="dot"></span>已确认支出
-    {%- if month_total_count > 0 %}<span class="dot"></span>笔均 <b>{{ home_currency_symbol }}{{ '%.0f' % (month_total_amount_yuan / month_total_count) }}</b>{% endif %}
-    {%- if by_day | length > 0 %}{% set _dm = (by_day | map(attribute='amount_yuan') | list | max) %}<span class="dot"></span>日峰 <b>{{ home_currency_symbol }}{{ '%.0f' % _dm }}</b>{% endif %}
+    {%- if month_total_count > 0 %}<span class="dot"></span>笔均 <b>{{ home_currency_symbol }}{{ month_average_amount_yuan }}</b>{% endif %}
+    {%- if by_day | length > 0 %}<span class="dot"></span>日峰 <b>{{ home_currency_symbol }}{{ month_peak_amount_yuan }}</b>{% endif %}
   </div>
 </div>
 
@@ -61,7 +61,7 @@
     <div class="lday">
       <span class="lday-d">{{ d[5:7] }} 月 {{ d.split('-')[2] if '-' in d else d }} 日</span>
       <span class="lday-n">{{ _items | length }} 笔</span>
-      <span class="lday-s">{{ home_currency_symbol }}{{ '%.2f' % (_day_sum / 100) }}</span>
+      <span class="lday-s">{{ home_currency_symbol }}{{ home_amount_value(_day_sum) }}</span>
     </div>
       {% for e in _items %}
       {# amount_label 已是带原币符号的完整串（FX 时是原币如 $12.34,本币时是 ¥X）;
@@ -135,7 +135,7 @@
         {% set _ratio = ((_hit.amount_cents / _max_amt) if _hit and _max_amt else 0) %}
         <div class="day {% if _hit %}has{% endif %}"
              style="{% if _hit %}background:color-mix(in oklch, var(--brand-primary) {{ (_ratio * 60 + 14) | round | int }}%, var(--surface-sunken));color:{% if _ratio > 0.5 %}var(--surface-card){% else %}var(--text-default){% endif %}{% endif %}"
-             title="{{ _dstr }}{% if _hit %} · {{ home_currency_symbol }}{{ '%.2f' % _hit.amount_yuan }}{% endif %}">
+             title="{{ _dstr }}{% if _hit %} · {{ home_currency_symbol }}{{ home_amount_value(_hit.amount_cents) }}{% endif %}">
           {{ i }}
         </div>
         {% endfor %}

@@ -17,6 +17,8 @@ import importlib.util
 import json
 import os
 import stat
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -370,3 +372,35 @@ def test_alembic_env_skips_fileconfig_when_logging_already_configured():
         )
     finally:
         root.removeHandler(sentinel)
+
+    backend_root = Path(__file__).resolve().parents[1]
+    cli_probe = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from alembic import command
+from alembic.config import Config
+
+config = Config(sys.argv[1] + "/alembic.ini")
+config.set_main_option("script_location", sys.argv[1] + "/migrations")
+command.current(config)
+"""
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            cli_probe,
+            str(backend_root),
+        ],
+        cwd=backend_root,
+        env=os.environ.copy(),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "[alembic.runtime.migration]" in completed.stderr

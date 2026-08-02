@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.ledger_scope import add_ledger_scope
 from app.models import Expense
+from app.money_contract import projection_sum_to_int
 from app.services.category_service import category_filter_values, normalize_category
 from app.services.merchant_alias_service import canonical_merchant_for
 from app.services.merchant_service import display_merchant, normalize_merchant
@@ -76,7 +77,18 @@ def _merchant_ranking(
         key = normalize_merchant(display) or "__empty_merchant__"
         bucket = buckets[key]
         bucket["merchant"] = display
-        bucket["amount_cents"] = int(bucket["amount_cents"]) + int(amount_value or 0)
+        bucket["amount_cents"] = projection_sum_to_int(
+            projection_sum_to_int(
+                bucket["amount_cents"],
+                label="reports.merchant_bucket",
+            )
+            + projection_sum_to_int(
+                amount_value,
+                label="reports.merchant_row",
+                empty_is_zero=True,
+            ),
+            label="reports.merchant_total",
+        )
         bucket["count"] = int(bucket["count"]) + int(count_value or 0)
     if ranking_metric == "count":
         return sorted(
@@ -128,7 +140,18 @@ def _category_totals(
         category = normalize_category(category_raw)
         bucket = buckets[category]
         bucket["category"] = category
-        bucket["amount_cents"] = int(bucket["amount_cents"]) + int(amount_value or 0)
+        bucket["amount_cents"] = projection_sum_to_int(
+            projection_sum_to_int(
+                bucket["amount_cents"],
+                label="reports.category_bucket",
+            )
+            + projection_sum_to_int(
+                amount_value,
+                label="reports.category_row",
+                empty_is_zero=True,
+            ),
+            label="reports.category_total",
+        )
         bucket["count"] = int(bucket["count"]) + int(count_value or 0)
     return buckets
 
@@ -167,9 +190,18 @@ def _category_comparison(
         current_item = current.get(category, {"amount_cents": 0, "count": 0})
         previous_item = previous.get(category, {"amount_cents": 0, "count": 0})
         yoy_item = year_over_year.get(category, {"amount_cents": 0, "count": 0})
-        amount = int(current_item["amount_cents"])
-        prev_amount = int(previous_item["amount_cents"])
-        yoy_amount = int(yoy_item["amount_cents"])
+        amount = projection_sum_to_int(
+            current_item["amount_cents"],
+            label="reports.current_amount",
+        )
+        prev_amount = projection_sum_to_int(
+            previous_item["amount_cents"],
+            label="reports.previous_amount",
+        )
+        yoy_amount = projection_sum_to_int(
+            yoy_item["amount_cents"],
+            label="reports.yoy_amount",
+        )
         count = int(current_item["count"])
         prev_count = int(previous_item["count"])
         yoy_count = int(yoy_item["count"])
@@ -180,11 +212,19 @@ def _category_comparison(
                 "count": count,
                 "previous_amount_cents": prev_amount,
                 "previous_count": prev_count,
-                "delta_amount_cents": amount - prev_amount,
+                "delta_amount_cents": projection_sum_to_int(
+                    amount - prev_amount,
+                    label="reports.delta_amount",
+                ),
                 "delta_count": count - prev_count,
                 "year_over_year_amount_cents": yoy_amount,
                 "year_over_year_count": yoy_count,
-                "year_over_year_delta_amount_cents": amount - yoy_amount,
+                "year_over_year_delta_amount_cents": (
+                    projection_sum_to_int(
+                        amount - yoy_amount,
+                        label="reports.yoy_delta_amount",
+                    )
+                ),
                 "year_over_year_delta_count": count - yoy_count,
             }
         )

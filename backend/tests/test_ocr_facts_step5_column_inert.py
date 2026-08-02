@@ -60,7 +60,7 @@ def test_ocr_amount_preserves_upload_frozen_home_currency(
 
         apply_ocr_result(
             expense,
-            OcrResult(raw_text="合計 1234", confidence=0.9, amount_cents=1234),
+            OcrResult(raw_text="合计：1234", confidence=0.9, amount_cents=1234),
         )
 
         assert expense.home_currency_code == "JPY"

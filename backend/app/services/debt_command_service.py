@@ -31,6 +31,8 @@ from app.services.debt_service import (
     record_adjustment,
     record_repayment,
     set_debt_kind,
+    validate_adjustment_command,
+    validate_home_amount_command,
     void_debt,
     void_repayment,
 )
@@ -81,6 +83,11 @@ def create_debt_idempotently(
     """Create one external/manual Debt with the collection-create replay contract."""
     if not idempotency_key:
         raise AppError("idempotency_key_required", status_code=422)
+    validate_home_amount_command(
+        amount_cents=payload.principal_amount_cents,
+        original_currency=payload.original_currency,
+        original_amount=payload.original_amount,
+    )
     fingerprint = fingerprint_request(
         operation=_CREATE_OPERATION,
         target_id=idempotency_key,
@@ -152,6 +159,11 @@ def record_repayment_idempotently(
     payload: RepaymentCreateRequest,
     idempotency_key: str | None,
 ) -> RepaymentCreateResponse:
+    validate_home_amount_command(
+        amount_cents=payload.amount_cents,
+        original_currency=payload.original_currency,
+        original_amount=payload.original_amount,
+    )
     claim = claim_idempotent_request(
         db,
         idempotency_key=idempotency_key,
@@ -210,6 +222,7 @@ def record_adjustment_idempotently(
     payload: DebtAdjustmentCreateRequest,
     idempotency_key: str | None,
 ) -> DebtResponse:
+    validate_adjustment_command(payload)
     claim = claim_idempotent_request(
         db,
         idempotency_key=idempotency_key,

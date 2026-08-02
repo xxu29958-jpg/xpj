@@ -318,13 +318,15 @@ def test_category_donut_escapes_tooltip_name_and_prefers_amount_major() -> None:
     # tooltip: 名称进 HTML 前必须转义 — 正向钉完整片段, 负向钉漏洞形态 (复审 P2-1)。
     assert "app.escapeHtml(p.name)" in source
     assert '+ p.name + "</b>' not in source
-    # tooltip 金额与中心/清单同口径按 minor digits 格式化 (R6-2: 12.30 不再打成 12.3)。
-    assert "app.homeMoneyMajor(p.value || 0)" in source
+    # tooltip 金额与中心/清单消费服务器生成的精确 label；几何 value
+    # 不能重新格式化金额（否则会再次引入 exponent/浮点解释）。
+    assert "p.data.amountLabel" in source
+    assert "app.homeMoneyMajor(p.value || 0)" not in source
     assert "(p.value || 0).toLocaleString()" not in source
     # 中心 label: 纯文本, 不用 rich-text DSL — 分类名的 }/{x| 元字符会破坏排版 (复审 P2-2)。
     assert '"{n|"' not in source
-    # 中心金额按币种 exponent 格式化 (R5), 不再 Math.round 丢小数。
-    assert "app.homeMoneyMajor(p.value || 0)" in source
+    # 中心金额同样使用精确 label，不再 Math.round 或自行解释币种。
+    assert "p.data.amountLabel" in source
     assert "Math.round(p.value" not in source
     # exponent 感知的图表数值投影。
     assert "amount_major" in source
@@ -335,9 +337,9 @@ def test_overview_skips_trend14_assembly(web_client: TestClient, monkeypatch: py
     calls: list[str] = []
     real_trend14 = web_common._trend14_amounts
 
-    def _spy_trend14(db, ledger_id: str):
+    def _spy_trend14(db, ledger_id: str, *, currency_code: str):
         calls.append(ledger_id)
-        return real_trend14(db, ledger_id)
+        return real_trend14(db, ledger_id, currency_code=currency_code)
 
     monkeypatch.setattr(web_common, "_trend14_amounts", _spy_trend14)
 

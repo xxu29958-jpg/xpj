@@ -45,6 +45,7 @@ $TargetReleaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
 $DatabaseToolTimeoutMs = [int]$TargetReleaseConfig.database_tool_timeout_ms
 $HasPersistedInstalledReleaseConfig = $false
 $InstalledReleaseConfig = $TargetReleaseConfig | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$script:TicketboxPreparedRuntimeDatabaseRole = "ticketbox_runtime"
 
 function Set-TicketboxInstalledReleaseConfiguration([object]$Config, [bool]$Persisted) {
     $script:InstalledReleaseConfig = $Config
@@ -313,6 +314,80 @@ function Repair-TicketboxPreflightInstallAcl([string[]]$ServiceReadAccounts) {
         -ServiceReadExecuteAccounts $ServiceReadAccounts | Out-Null
 }
 
+function Repair-TicketboxInterruptedPayloadLeaseAcl {
+    $serviceReadAccounts = @()
+    if (Test-TicketboxServiceExists $PgServiceName) {
+        $serviceReadAccounts += "NT SERVICE\$PgServiceName"
+    }
+    if (Test-TicketboxServiceExists $BackendServiceName) {
+        $serviceReadAccounts += "NT SERVICE\$BackendServiceName"
+    }
+    Repair-TicketboxPreflightInstallAcl `
+        -ServiceReadAccounts $serviceReadAccounts
+}
+
+function New-TicketboxPrepareAggregateFailure {
+    param(
+        [AllowNull()][Exception]$OperationFailure,
+        [Parameter(Mandatory = $true)][Exception[]]$SecondaryFailures,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("compensation", "finalization")][string]$FailureKind
+    )
+
+    [Exception[]]$causes = @()
+    if ($null -ne $OperationFailure) {
+        if ($OperationFailure -is [AggregateException]) {
+            $causes += @($OperationFailure.InnerExceptions)
+        }
+        else {
+            $causes += $OperationFailure
+        }
+    }
+    $causes += @($SecondaryFailures)
+    if ($causes.Count -eq 0) {
+        throw "安装预检异常聚合器缺少原始异常。"
+    }
+    $aggregateFailure = [AggregateException]::new(
+        (
+            "安装预检的 $FailureKind 阶段未完整完成；" +
+            "全部原始异常均已保留。"
+        ),
+        $causes
+    )
+    $aggregateFailure.Data["TicketboxPrepareFailureKind"] = $FailureKind
+    if ($FailureKind -ceq "compensation") {
+        $aggregateFailure.Data["TicketboxPrepareCompensationFailed"] = $true
+    }
+    else {
+        $aggregateFailure.Data["TicketboxPrepareFinalizationFailed"] = $true
+    }
+    if ($null -ne $OperationFailure) {
+        foreach ($key in @(
+            "TicketboxC07FailureCode",
+            "TicketboxPrepareCompensationFailed"
+        )) {
+            if ($OperationFailure.Data.Contains($key)) {
+                $aggregateFailure.Data[$key] = $OperationFailure.Data[$key]
+            }
+        }
+    }
+    $failureCodes = @(
+        $causes |
+            ForEach-Object {
+                if ($_.Data.Contains("TicketboxC07FailureCode")) {
+                    [string]$_.Data["TicketboxC07FailureCode"]
+                }
+            } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Unique
+    )
+    if ($failureCodes.Count -gt 0) {
+        $aggregateFailure.Data["TicketboxC07FailureCodes"] =
+            $failureCodes -join ","
+    }
+    return $aggregateFailure
+}
+
 function Set-TicketboxPreparedServiceDemandStart([string]$Name, [string]$ExpectedExecutable) {
     Set-TicketboxOwnedServiceDemandStartIfExists `
         -Name $Name `
@@ -330,6 +405,34 @@ function Read-EnvMap([string]$Path) {
         $map[$parts[0].Trim()] = $parts[1].Trim()
     }
     return $map
+}
+
+function Get-TicketboxPreparedApplicationDatabaseConnection {
+    param([Parameter(Mandatory = $true)][string]$DatabaseUrl)
+
+    $persistedDatabaseUrl = ConvertTo-TicketboxRequiredDatabaseUrl $DatabaseUrl
+    $libpqUrl = Assert-TicketboxLocalDatabaseUrl `
+        -DatabaseUrl $persistedDatabaseUrl `
+        -PgPort $PgPort
+    $builder = New-Object System.UriBuilder($libpqUrl)
+    $role = [System.Uri]::UnescapeDataString($builder.UserName)
+    if (
+        $role -cne $DbRole -and
+        $role -cne $script:TicketboxPreparedRuntimeDatabaseRole
+    ) {
+        throw "DATABASE_URL 的 PostgreSQL 角色不属于已登记的 legacy/runtime authority。"
+    }
+    $connection = Get-TicketboxLocalDatabaseConnection `
+        -DatabaseUrl $persistedDatabaseUrl `
+        -PgPort $PgPort `
+        -ExpectedDatabase $DbName `
+        -ExpectedRole $role
+    return [pscustomobject]@{
+        DatabaseUrl = $connection.DatabaseUrl
+        PersistedDatabaseUrl = $connection.PersistedDatabaseUrl
+        Password = $connection.Password
+        Role = $role
+    }
 }
 
 function Assert-TicketboxPreparedServiceRuntimeCommand {
@@ -957,6 +1060,7 @@ if ($ValidateOnly) {
 
 $operationLock = Enter-TicketboxLifecycleLock `
     -ExternalOwnerProcessId $InstallerLockOwnerProcessId
+$prepareOperationFailure = $null
 try {
     Assert-Admin
     Set-TicketboxPreparedRuntimeServiceContract
@@ -1201,6 +1305,7 @@ try {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
                 -Persisted $true
+            Repair-TicketboxInterruptedPayloadLeaseAcl
             Remove-TicketboxRecoveryPgServiceIfExists
             if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending) {
                 Remove-TicketboxDeferredPreservedPgServiceIfExists
@@ -1241,6 +1346,7 @@ try {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
                 -Persisted $true
+            Repair-TicketboxInterruptedPayloadLeaseAcl
             Remove-TicketboxRecoveryPgServiceIfExists
             Assert-TicketboxPreparedServiceContracts `
                 -AllowTargetPolicyFallback `
@@ -1316,11 +1422,8 @@ try {
         if (-not $legacyEnvironment.ContainsKey("DATABASE_URL")) {
             throw "legacy 保留数据的 .env 缺少 DATABASE_URL。"
         }
-        Get-TicketboxLocalDatabaseConnection `
-            -DatabaseUrl $legacyEnvironment["DATABASE_URL"] `
-            -PgPort $PgPort `
-            -ExpectedDatabase $DbName `
-            -ExpectedRole $DbRole | Out-Null
+        Get-TicketboxPreparedApplicationDatabaseConnection `
+            -DatabaseUrl $legacyEnvironment["DATABASE_URL"] | Out-Null
     }
     elseif ($mode -ne "fresh_install") {
         Assert-TicketboxRegisteredDataRootBinding -DataRoot $DataRoot
@@ -1446,11 +1549,8 @@ try {
             if (-not $envMap.ContainsKey("DATABASE_URL")) {
                 throw "既有 .env 缺少 DATABASE_URL，拒绝无备份升级。"
             }
-            $connection = Get-TicketboxLocalDatabaseConnection `
-                -DatabaseUrl $envMap["DATABASE_URL"] `
-                -PgPort $PgPort `
-                -ExpectedDatabase $DbName `
-                -ExpectedRole $DbRole
+            $connection = Get-TicketboxPreparedApplicationDatabaseConnection `
+                -DatabaseUrl $envMap["DATABASE_URL"]
             if ($hasPgService -and $pgStartPolicy -eq "disabled") {
                 Set-TicketboxPreparedServiceDemandStart `
                     -Name $PgServiceName `
@@ -1540,14 +1640,17 @@ try {
     }
     catch {
         $failure = $_.Exception
-        $compensationFailures = @()
+        [Exception[]]$compensationFailures = @()
         if ($usingRecoveryPgService) {
             try {
                 Remove-TicketboxRecoveryPgServiceIfExists
                 Set-TicketboxActivePgTools $InstalledPgHome
             }
             catch {
-                $compensationFailures += "清理 PostgreSQL 恢复服务失败：$($_.Exception.Message)"
+                $compensationFailure = $_.Exception
+                $compensationFailure.Data["TicketboxPrepareCompensationStep"] =
+                    "recovery_pg_cleanup"
+                $compensationFailures += $compensationFailure
             }
         }
         if ($installAclMutationStarted) {
@@ -1555,7 +1658,10 @@ try {
                 Repair-TicketboxPreflightInstallAcl -ServiceReadAccounts $serviceReadAccounts
             }
             catch {
-                $compensationFailures += "恢复旧服务读执行 ACL 失败：$($_.Exception.Message)"
+                $compensationFailure = $_.Exception
+                $compensationFailure.Data["TicketboxPrepareCompensationStep"] =
+                    "install_acl_restore"
+                $compensationFailures += $compensationFailure
             }
         }
         try {
@@ -1566,17 +1672,48 @@ try {
                 -PgStartPolicy $pgStartPolicy
         }
         catch {
-            $compensationFailures += "恢复旧服务启动策略/运行态失败：$($_.Exception.Message)"
+            $compensationFailure = $_.Exception
+            $compensationFailure.Data["TicketboxPrepareCompensationStep"] =
+                "service_state_restore"
+            $compensationFailures += $compensationFailure
+        }
+        if (
+            $compensationFailures.Count -eq 0 -and
+            (Test-Path -LiteralPath $LifecycleReceiptPath -PathType Leaf)
+        ) {
+            try {
+                Remove-TicketboxLifecycleReceipt -Path $LifecycleReceiptPath
+            }
+            catch {
+                $compensationFailure = $_.Exception
+                $compensationFailure.Data["TicketboxPrepareCompensationStep"] =
+                    "receipt_retire"
+                $compensationFailures += $compensationFailure
+            }
         }
         if ($compensationFailures.Count -gt 0) {
-            throw "$($failure.Message) 同时预检补偿未完整完成：$($compensationFailures -join '；')"
-        }
-        if (Test-Path -LiteralPath $LifecycleReceiptPath -PathType Leaf) {
-            Remove-TicketboxLifecycleReceipt -Path $LifecycleReceiptPath
+            throw (New-TicketboxPrepareAggregateFailure `
+                -OperationFailure $failure `
+                -SecondaryFailures $compensationFailures `
+                -FailureKind "compensation")
         }
         throw $failure
     }
 }
+catch {
+    $prepareOperationFailure = $_.Exception
+}
 finally {
-    Exit-TicketboxLifecycleLock $operationLock
+    try {
+        Exit-TicketboxLifecycleLock $operationLock
+    }
+    catch {
+        throw (New-TicketboxPrepareAggregateFailure `
+            -OperationFailure $prepareOperationFailure `
+            -SecondaryFailures ([Exception[]]@($_.Exception)) `
+            -FailureKind "finalization")
+    }
+}
+if ($null -ne $prepareOperationFailure) {
+    throw $prepareOperationFailure
 }

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -22,47 +20,45 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import GoalCreateRequest
-from app.services.currency_common import home_currency_code, major_amount_to_minor, minor_unit_digits
+from app.services.currency_common import home_currency_code, major_amount_to_minor
 from app.services.goal_service import archive_goal, create_goal, list_goals
 from app.services.time_service import current_month
 
 router = APIRouter(prefix="/web/goals", tags=["web"])
 
 
-def _parse_amount_yuan(raw: str) -> int:
-    text = (raw or "").strip()
+def _parse_amount_yuan(raw: str, *, currency_code: str) -> int:
+    text = raw or ""
     if not text:
         raise AppError("invalid_request", "请填写目标金额。", status_code=422)
     try:
-        amount = Decimal(text)
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", "目标金额不是合法金额。", status_code=422) from exc
-    if not amount.is_finite() or amount <= 0:
-        raise AppError("invalid_request", "目标金额必须大于 0。", status_code=422)
-    home = home_currency_code()
-    digits = minor_unit_digits(home)
-    try:
-        exact = amount.quantize(Decimal(1).scaleb(-digits))
-    except InvalidOperation as exc:
-        raise AppError("invalid_request", "目标金额不是合法金额。", status_code=422) from exc
-    if exact != amount:
-        detail = "只能填写整数" if digits == 0 else f"最多填写 {digits} 位小数"
-        raise AppError("invalid_request", f"目标金额按 {home} {detail}。", status_code=422)
-    result = major_amount_to_minor(amount, home)
+        result = major_amount_to_minor(text, currency_code)
+    except AppError as exc:
+        raise AppError(
+            "invalid_request",
+            "目标金额不是合法正数或超出当前版本可支持范围。",
+            status_code=422,
+        ) from exc
+    if result is None or result <= 0:
+        raise AppError(
+            "invalid_request",
+            "目标金额必须大于 0。",
+            status_code=422,
+        )
     assert result is not None
     return result
 
 
-def _goal_view(goal) -> dict:
+def _goal_view(goal, *, currency_code: str) -> dict:
     percent = min(120, max(0, int(goal.progress_percent)))
     return {
         "public_id": goal.public_id,
         "name": goal.name,
         "month": goal.month,
         "category": goal.category or "总支出",
-        "target_yuan": _amount_yuan(goal.target_amount_cents),
-        "spent_yuan": _amount_yuan(goal.spent_amount_cents),
-        "remaining_yuan": _amount_yuan(goal.remaining_amount_cents),
+        "target_yuan": _amount_yuan(goal.target_amount_cents, currency_code),
+        "spent_yuan": _amount_yuan(goal.spent_amount_cents, currency_code),
+        "remaining_yuan": _amount_yuan(goal.remaining_amount_cents, currency_code),
         "progress_percent": int(goal.progress_percent),
         "bar_percent": percent,
         "progress_state": goal.progress_state,
@@ -102,7 +98,13 @@ def _render_goals(
         {
             "month": month,
             "include_archived": include_archived,
-            "goals": [_goal_view(goal) for goal in goals],
+            "goals": [
+                _goal_view(
+                    goal,
+                    currency_code=ctx["home_currency_code"],
+                )
+                for goal in goals
+            ],
             "message": message,
             "error": error,
         }
@@ -152,10 +154,14 @@ def web_goals_create(
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_month(timezone_name)
     try:
+        presentation_currency = home_currency_code()
         payload = GoalCreateRequest(
             name=name,
             month=target_month,
-            target_amount_cents=_parse_amount_yuan(target_amount_yuan),
+            target_amount_cents=_parse_amount_yuan(
+                target_amount_yuan,
+                currency_code=presentation_currency,
+            ),
             category=category.strip() or None,
         )
         create_goal(db, tenant_id=selected_id, payload=payload, timezone_name=timezone_name)

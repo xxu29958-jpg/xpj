@@ -20,6 +20,12 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.config import get_settings
+from app.errors import AppError
+from app.money_contract import (
+    MoneySign,
+    ensure_money_minor,
+    parse_canonical_money_minor,
+)
 from app.services.local_llm_vision import call_local_llm_vision
 
 # 与 DebtCreateRequest 对齐的上界：期数 le=600、周期 le=120（见 schemas/_debts.py），
@@ -147,7 +153,23 @@ def _coerce_int(value: Any) -> int | None:
 
 
 def _coerce_amount_cents(value: Any) -> int | None:
-    amount = _coerce_int(value)
+    try:
+        if type(value) is int:
+            amount = ensure_money_minor(
+                value,
+                sign=MoneySign.POSITIVE,
+                label="debt_bill.amount_cents",
+            )
+        elif type(value) is str:
+            amount = parse_canonical_money_minor(
+                value,
+                sign=MoneySign.POSITIVE,
+                label="debt_bill.amount_cents",
+            )
+        else:
+            return None
+    except AppError:
+        return None
     if amount is not None and 0 < amount <= _MAX_AMOUNT_CENTS:
         return amount
     return None

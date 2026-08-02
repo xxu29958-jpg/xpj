@@ -23,9 +23,27 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Debt, DebtAdjustment
+from app.money_contract import MoneySign, ensure_money_minor, fold_sum_to_int
 from app.schemas import DebtAdjustmentCreateRequest
 from app.services.debt_service._guards import guard_direct_fact_writable
 from app.services.debt_service._serialize import lock_and_fold
+
+
+def validate_adjustment_command(
+    payload: DebtAdjustmentCreateRequest,
+) -> tuple[int, str]:
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise AppError("debt_reason_required", status_code=422)
+    amount_cents = ensure_money_minor(
+        payload.amount_cents,
+        sign=MoneySign.SIGNED,
+        label="debt_adjustment.amount_cents",
+        error_code="debt_amount_invalid",
+    )
+    if amount_cents == 0:
+        raise AppError("debt_amount_invalid", status_code=422)
+    return amount_cents, reason
 
 
 def record_adjustment(
@@ -43,19 +61,16 @@ def record_adjustment(
     ``commit=False`` lets the route commit the DebtAdjustment insert + parent
     bump + [[0042]] idempotency-success record in one transaction.
     """
-    reason = (payload.reason or "").strip()
-    if not reason:
-        raise AppError("debt_reason_required", status_code=422)
-    amount_cents = int(payload.amount_cents)
-    if amount_cents == 0:
-        # A zero-delta adjustment changes nothing; reject as invalid rather than
-        # writing a no-op fact.
-        raise AppError("debt_amount_invalid", status_code=422)
+    amount_cents, reason = validate_adjustment_command(payload)
 
     def _mutate(debt: Debt, remaining_before: int) -> None:
         guard_direct_fact_writable(debt)
         # §3.3: an adjustment MUST NOT make remaining < 0.
-        if remaining_before + amount_cents < 0:
+        remaining_after = fold_sum_to_int(
+            remaining_before + amount_cents,
+            label="debt.adjustment_remaining",
+        )
+        if remaining_after < 0:
             raise AppError("debt_adjustment_negative_remaining", status_code=422)
         db.add(
             DebtAdjustment(

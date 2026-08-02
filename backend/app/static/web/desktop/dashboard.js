@@ -236,7 +236,10 @@
     const parts = moneyParts(cards.total_amount_yuan);
     const amount = el("div", "kpi-cell kpi-cell--bare kpi-cell--hero");
     const amountVal = el("div", "val");
-    append(amountVal, el("span", "yuan", homeCurrencySymbol()), text(parts[0]), el("span", "decimals", "." + text(parts[1])));
+    append(amountVal, el("span", "yuan", homeCurrencySymbol()), text(parts[0]));
+    if (parts[1]) {
+      append(amountVal, el("span", "decimals", "." + text(parts[1])));
+    }
     append(amount, amountVal);
     const foot = el("div", "trend-foot");
     if (cards.budget_configured) {

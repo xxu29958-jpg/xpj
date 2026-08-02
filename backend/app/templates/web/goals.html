@@ -40,8 +40,8 @@
         <input class="dt-input" type="text" name="name" maxlength="80" placeholder="本月餐饮" required>
       </div>
       <div class="dt-form-row">
-        <label>目标金额（元）</label>
-        <input class="dt-input" type="number" name="target_amount_yuan" step="0.01" min="0.01" placeholder="800.00" required>
+        <label>目标金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
+        <input class="dt-input" type="number" name="target_amount_yuan" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
       </div>
       <div class="dt-form-row">
         <label>分类（留空为总支出）</label>

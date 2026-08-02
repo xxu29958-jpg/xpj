@@ -38,7 +38,7 @@ fun parseSearchAmountsByCurrency(query: String): ParsedSearchAmounts {
         val amountPart = explicit.groupValues[1]
         val code = explicit.groupValues[2].uppercase()
         val known = CurrencyCode.fromStorageKeyOrNull(code)
-        // 未知码按原 minor 整数解析（JPY 代理 = 不缩放且拒绝小数）；已知码按其币种规则。
+        // 未知码按原 minor 整数解析（JPY 代理 = 不缩放且拒非零小数）；已知码按其币种规则。
         val minor = parseSearchAmountCents(amountPart, known ?: CurrencyCode.JPY)
         return ParsedSearchAmounts(
             amountsByCurrency = emptyMap(),

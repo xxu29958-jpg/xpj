@@ -19,6 +19,11 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._money import (
+    NonNegativeMoneyAggregate,
+    PositiveMoneyMinor,
+    SignedMoneyAggregate,
+)
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -45,7 +50,7 @@ class GoalCreateRequest(BaseModel):
     # schema can't, since one route serves both goal types).
     month: str | None = Field(default=None, min_length=7, max_length=7)
     category: str | None = Field(default=None, max_length=64)
-    target_amount_cents: int | None = Field(default=None, gt=0)
+    target_amount_cents: PositiveMoneyMinor | None = None
     # debt_repayment shape: the Debt ids whose clearance the goal tracks. Required
     # (non-empty) for debt_repayment and rejected for spending_limit (service-enforced).
     debt_public_ids: list[str] | None = Field(default=None)
@@ -71,7 +76,7 @@ class GoalUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     month: str | None = Field(default=None, min_length=7, max_length=7)
     category: str | None = Field(default=None, max_length=64)
-    target_amount_cents: int | None = Field(default=None, gt=0)
+    target_amount_cents: PositiveMoneyMinor | None = None
 
 
 class GoalTokenRequest(BaseModel):
@@ -152,8 +157,8 @@ class DebtGoalLinkView(BaseModel):
     direction: str
     counterparty_type: str
     counterparty_label: str | None = None
-    principal_amount_cents: int
-    remaining_amount_cents: int
+    principal_amount_cents: PositiveMoneyMinor
+    remaining_amount_cents: NonNegativeMoneyAggregate
     home_currency_code: str
 
 
@@ -215,10 +220,14 @@ class GoalResponse(BaseModel):
     # None for debt_repayment goals (ADR-0049 §6); always set for spending_limit.
     month: str | None = None
     category: str | None = None
-    target_amount_cents: int | None = None
-    spent_amount_cents: int | None = None
-    remaining_amount_cents: int | None = None
-    progress_percent: int | None = None
+    target_amount_cents: PositiveMoneyMinor | None = None
+    spent_amount_cents: NonNegativeMoneyAggregate | None = None
+    remaining_amount_cents: SignedMoneyAggregate | None = None
+    progress_percent: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+    )
     # spending_limit: not_started/on_track/near_limit/over_limit/archived.
     # debt_repayment: mirrors ``debt_repayment.evaluation_state`` (always populated).
     progress_state: str

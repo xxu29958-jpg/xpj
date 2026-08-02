@@ -23,7 +23,10 @@ from app.services.classify_service import classify_expense
 from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import home_currency_code
 from app.services.duplicate_service import mark_duplicate_status
-from app.services.exchange_rate_service import apply_currency_payload
+from app.services.exchange_rate_service import (
+    apply_currency_payload,
+    validate_currency_payload_money_command,
+)
 from app.services.expense_query import local_ref_storage_key, resolve_expense
 from app.services.expense_service._helpers import (
     NOTIFICATION_DRAFT_SOURCE_LABELS,
@@ -328,6 +331,10 @@ def _insert_manual_expense(
 def create_manual_expense(
     db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext
 ) -> Expense:
+    validate_currency_payload_money_command(
+        payload,
+        amount_was_explicit=payload.amount_cents is not None,
+    )
     tenant_id = auth.tenant_id
     if not payload.client_ref:
         # No client-supplied ref (absent, or empty-string from a client bug) — no
@@ -395,6 +402,10 @@ def create_notification_draft(
     payload: NotificationDraftCreateRequest,
     tenant_id: str,
 ) -> Expense:
+    validate_currency_payload_money_command(
+        payload,
+        amount_was_explicit=payload.amount_cents is not None,
+    )
     now = now_utc()
     source = _clean_notification_source(payload.source)
     _guard_notification_capture_currency(payload)

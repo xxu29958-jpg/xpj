@@ -6,12 +6,13 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.BudgetCategoryDraft
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.parseExactMoneyMinor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -460,16 +461,12 @@ private fun parseOptionalCents(
     return amount
 }
 
-// R13-7：按账本币种 exponent 解析（JPY/KRW 零小数不 ×100）；R15b-3：小数位多于币种
-// minor 位一律拒（JPY "12.5"、CNY "12.345" 不再 HALF_UP 静默舍入，与 parseMinorAmount
-// 同族口径）；负值保留（rollover 允许负）。
-private fun parseCents(value: String, currency: CurrencyCode): Long? {
-    return runCatching {
-        val decimal = BigDecimal(value)
-        if (decimal.scale() > currency.minorUnitDigits) return null
-        decimal.movePointRight(currency.minorUnitDigits).longValueExact()
-    }.getOrNull()
-}
+// R13-7：按账本币种 exponent 精确解析（JPY/KRW 零小数不 ×100）。多余的非零
+// 精度一律拒绝，等值尾零（如 CNY "1.230"）可接受，不做 HALF_UP；负值仅 rollover 可用。
+private fun parseCents(
+    value: String,
+    currency: CurrencyCode,
+): Long? = parseExactMoneyMinor(value, currency, allowNegative = true)
 
 private fun amountInput(amountCents: Long, currency: CurrencyCode): String {
     if (amountCents == 0L) return ""

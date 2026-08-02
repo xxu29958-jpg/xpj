@@ -4,6 +4,7 @@ from datetime import date, datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -16,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -23,6 +25,7 @@ from app.tenants import DEFAULT_TENANT_ID
 class RecurringItem(Base):
     __tablename__ = "recurring_items"
     __table_args__ = (
+        *money_check_constraints_for_table("recurring_items"),
         CheckConstraint("frequency IN ('monthly')", name="ck_recurring_items_frequency_valid"),
         CheckConstraint("status IN ('active', 'paused', 'archived')", name="ck_recurring_items_status_valid"),
         UniqueConstraint("tenant_id", "merchant_key", "frequency", name="uq_recurring_items_tenant_merchant_frequency"),
@@ -42,8 +45,8 @@ class RecurringItem(Base):
     merchant_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     merchant_name: Mapped[str] = mapped_column(String(255), nullable=False)
     frequency: Mapped[str] = mapped_column(String(32), default="monthly", nullable=False, index=True)
-    baseline_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    last_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    baseline_amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     occurrence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     next_expected_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)

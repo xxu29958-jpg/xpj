@@ -40,6 +40,10 @@ from sqlalchemy.orm import Session
 
 from app.models import AlgorithmDecision, Expense, LedgerLearningEvent, OcrFact
 from app.models.ocr_facts import OCR_PROVIDER_VALUES
+from app.money_contract import (
+    MoneySign,
+    ensure_optional_money_minor,
+)
 from app.services._json_types import JsonObject
 from app.services.learning_service._algorithm_registry import (
     ALGORITHM_TYPES,
@@ -472,6 +476,12 @@ def record_ocr_fact(
     distinguished by ``extracted_at``.
     """
 
+    parsed_amount_cents = ensure_optional_money_minor(
+        draft.parsed_amount_cents,
+        sign=MoneySign.NONNEGATIVE,
+        label="ocr_fact.parsed_amount_cents",
+    )
+
     expense = db.get(Expense, draft.expense_id)
     if expense is None:
         raise ValueError("ocr fact expense does not exist")
@@ -488,7 +498,7 @@ def record_ocr_fact(
         ocr_provider=provider_name,
         ocr_model=draft.ocr_model,
         raw_text=draft.raw_text,
-        parsed_amount_cents=draft.parsed_amount_cents,
+        parsed_amount_cents=parsed_amount_cents,
         parsed_merchant=draft.parsed_merchant,
         parsed_category=draft.parsed_category,
         parsed_expense_time=draft.parsed_expense_time,

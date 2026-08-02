@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas._money import NonNegativeMoneyAggregate, NonNegativeMoneyMinor
+
 __all__ = [
     "BudgetAdviceDto",
     "BudgetAdviseRequest",
@@ -21,12 +23,12 @@ class DiscretionaryResponse(BaseModel):
     subtraction step by step.
     """
 
-    monthly_income_cents: int = Field(ge=0)
-    fixed_expenses_cents: int = Field(ge=0)
-    spent_amount_cents: int = Field(ge=0)
-    savings_target_cents: int = Field(ge=0)
-    reserved_buffer_cents: int = Field(ge=0)
-    discretionary_cents: int = Field(ge=0)
+    monthly_income_cents: NonNegativeMoneyAggregate
+    fixed_expenses_cents: NonNegativeMoneyAggregate
+    spent_amount_cents: NonNegativeMoneyAggregate
+    savings_target_cents: NonNegativeMoneyMinor
+    reserved_buffer_cents: NonNegativeMoneyMinor
+    discretionary_cents: NonNegativeMoneyAggregate
 
 
 class BudgetAdviseRequest(BaseModel):
@@ -42,7 +44,7 @@ class BudgetAdviseRequest(BaseModel):
 
 class BudgetSuggestionDto(BaseModel):
     category: str | None
-    suggested_amount_cents: int
+    suggested_amount_cents: NonNegativeMoneyMinor
     rationale: str
 
 
@@ -57,6 +59,7 @@ class BudgetAdviseResponse(BaseModel):
     "no advice this time" without ambiguity."""
 
     advice: BudgetAdviceDto | None
+    home_currency_code: str
     provider_name: str
     reason_code: str | None = None
 

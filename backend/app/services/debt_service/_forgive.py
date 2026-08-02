@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Debt, DebtForgiveness, MemberRepaymentProposal
+from app.money_contract import fold_sum_to_int
 from app.services.debt_service._guards import (
     guard_actor_is_creditor,
     guard_member_debt,
@@ -89,15 +90,19 @@ def forgive_debt(
     guard_actor_is_creditor(debt, actor_account_id)
 
     def _mutate(locked_debt: Debt, remaining_before: int) -> None:
+        forgiveness_amount = fold_sum_to_int(
+            remaining_before,
+            label="debt.forgiveness_amount",
+        )
         # §4 F2: nothing left to forgive (already two-clear / already forgiven). Reject
         # rather than insert a 0-amount fact (CHECK amount_cents > 0 would also reject it,
         # but the explicit 409 is the user-facing contract).
-        if remaining_before == 0:
+        if forgiveness_amount <= 0:
             raise AppError("state_conflict", status_code=409)
         db.add(
             DebtForgiveness(
                 debt_id=locked_debt.id,
-                amount_cents=remaining_before,
+                amount_cents=forgiveness_amount,
                 actor_account_id=actor_account_id,
                 idempotency_key=idempotency_key,
             )

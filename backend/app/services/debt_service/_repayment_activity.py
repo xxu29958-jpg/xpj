@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Repayment, RepaymentVoid
+from app.money_contract import projection_sum_to_int
 from app.schemas import (
     RepaymentFactListResponse,
     RepaymentFactResponse,
@@ -81,7 +82,10 @@ def list_repayment_facts(
         items.append(
             RepaymentFactResponse(
                 public_id=repayment.public_id,
-                amount_cents=int(repayment.amount_cents),
+                amount_cents=projection_sum_to_int(
+                    repayment.amount_cents,
+                    label="debt_activity.repayment_amount",
+                ),
                 original_currency_code=repayment.original_currency_code,
                 original_amount_minor=repayment.original_amount_minor,
                 exchange_rate_to_cny=repayment.exchange_rate_to_cny,

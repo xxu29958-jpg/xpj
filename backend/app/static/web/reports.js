@@ -5,6 +5,8 @@
 (function () {
   'use strict';
 
+  var app = window.TicketboxWeb = window.TicketboxWeb || {};
+
   function disableExport(reason) {
     var button = document.getElementById('reports-export-png');
     if (!button) return;
@@ -61,34 +63,21 @@
     }
   }
 
-  function yuan(cents) {
-    var amount = Number(cents || 0) / 100;
-    return amount.toLocaleString('zh-CN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-
   function compactYuan(cents) {
-    var yuanValue = Number(cents || 0) / 100;
+    var yuanValue = app.homeMinorToMajor(cents);
+    if (yuanValue === null) return '金额不可用';
     var abs = Math.abs(yuanValue);
     if (abs >= 10000) return (yuanValue / 10000).toFixed(1) + '万';
     if (abs >= 1000) return Math.round(yuanValue).toString();
     return yuanValue.toFixed(0);
   }
 
-  function homeCurrencySymbol() {
-    return root.getAttribute('data-home-currency-symbol') ||
-      root.getAttribute('data-home-currency') ||
-      '';
-  }
-
   function homeMoneyCents(cents) {
-    return homeCurrencySymbol() + yuan(cents);
+    return app.homeMoneyMinor(cents);
   }
 
   function homeCompactCents(cents) {
-    return homeCurrencySymbol() + compactYuan(cents);
+    return app.homeCurrencySymbol() + compactYuan(cents);
   }
 
   function rgba(color, alpha) {

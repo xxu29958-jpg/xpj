@@ -31,6 +31,7 @@ from app.services.category_service import normalize_category
 from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.expense_query import EDITABLE_STATUSES  # re-exported
 from app.services.ocr_service import serialize_ocr_draft_fields
+from app.services.ocr_service._apply import _expense_ocr_source_money_context
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.thumb_service import generate_thumbnail
 from app.services.time_service import ensure_utc
@@ -238,7 +239,15 @@ def _replace_ocr_draft_items_from_text(
 ) -> None:
     if expense.status != "pending":
         return
-    parsed = parse_receipt_text(raw_text, timezone_name=timezone_name)
+    money_context = _expense_ocr_source_money_context(expense)
+    parsed = parse_receipt_text(
+        raw_text,
+        timezone_name=timezone_name,
+        currency_code=money_context[0] if money_context is not None else None,
+        minor_unit_exponent=(
+            money_context[1] if money_context is not None else None
+        ),
+    )
     # Top-level import would form a cycle with receipt_item_service if
     # that module ever re-introduced an expense_service dependency. It
     # currently imports from expense_query only, so this stays local

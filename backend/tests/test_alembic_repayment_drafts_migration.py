@@ -4,12 +4,11 @@
 ``repayment_drafts``) then ``alembic stamp head``, so the guarded ``create_table`` body
 never runs on the normal path — which means a divergence between the migration's
 hand-written ``create_table`` and the ORM would ship UNDETECTED by the deployment path.
-This drives the migration directly on PostgreSQL: create_all → stamp head → downgrade past
-20260617_0001 (drops the table) → upgrade to head (re-creates it via the migration body),
-then REFLECTS the migration-built table and asserts its columns / nullability / CHECK
-constraints / unique constraint / indexes — not just that the table name exists, so a
-dropped CHECK / unique / index / column in the migration fails HERE (mirrors the four
-sibling alembic round-trip tests).
+This drives the migration directly on PostgreSQL: create_all → stamp the tested
+revision → downgrade past 20260617_0001 (drops the table) → upgrade to that
+revision (re-creates it via the migration body). It separately asserts the
+current ORM/C07 shape and the historical migration-built shape, including
+columns, nullability, CHECKs, unique constraints, and indexes.
 
 Marked ``real_db`` below because it issues DDL via its own
 ``engine.begin()`` connections outside the per-test transaction.
@@ -23,6 +22,7 @@ import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
 
@@ -46,11 +46,13 @@ _NULLABLE_COLUMNS = (
     "resolved_at",
     "resolved_by_account_id",
 )
-_CHECK_CONSTRAINTS = {
-    "ck_repayment_drafts_amount_positive",
+_COMMON_CHECK_CONSTRAINTS = {
     "ck_repayment_drafts_status_valid",
     "ck_repayment_drafts_home_currency_format",
 }
+_LEGACY_AMOUNT_CHECK = "ck_repayment_drafts_amount_positive"
+_C07_AMOUNT_CHECK = "ck_repayment_drafts_amount_cents_money_bounds"
+_C07_SOURCE_REVISION = "20260722_0001"
 _INDEXES = {
     "ix_repayment_drafts_public_id",
     "ix_repayment_drafts_tenant_id",
@@ -85,7 +87,7 @@ def _index_names() -> set[str]:
     return {ix["name"] for ix in inspect(engine).get_indexes("repayment_drafts")}
 
 
-def _assert_full_shape() -> None:
+def _assert_full_shape(*, c07: bool, account_scoped: bool) -> None:
     cols = _columns()
     for name in _NOT_NULL_COLUMNS:
         assert name in cols, f"{name} missing from repayment_drafts"
@@ -93,20 +95,33 @@ def _assert_full_shape() -> None:
     for name in _NULLABLE_COLUMNS:
         assert name in cols, f"{name} missing from repayment_drafts"
         assert cols[name]["nullable"] is True, f"{name} should be nullable"
-    assert _check_names() >= _CHECK_CONSTRAINTS, (
-        f"missing CHECK(s): {_CHECK_CONSTRAINTS - _check_names()}"
+    amount_type = str(cols["amount_cents"]["type"]).lower()
+    if c07:
+        assert "bigint" in amount_type or amount_type == "int8"
+    else:
+        assert amount_type in {"integer", "int4"}
+    expected_checks = _COMMON_CHECK_CONSTRAINTS | {
+        _C07_AMOUNT_CHECK if c07 else _LEGACY_AMOUNT_CHECK
+    }
+    absent_check = _LEGACY_AMOUNT_CHECK if c07 else _C07_AMOUNT_CHECK
+    assert _check_names() >= expected_checks, (
+        f"missing CHECK(s): {expected_checks - _check_names()}"
     )
+    assert absent_check not in _check_names()
     assert "uq_repayment_drafts_idem" in _unique_names(), "missing dedup unique constraint"
     # Issue #224 (C3): the dedup unique is ACCOUNT-scoped — assert the column set, not
-    # just the name, so a tenant-wide regression fails here. (After ``upgrade head``
-    # this shape comes from 20260617_0001's create_table + 20260722_0001's swap, so the
-    # full chain is validated, not only the ORM's create_all.)
-    assert _idem_constraint_columns() == ["tenant_id", "created_by_account_id", "draft_idempotency_key"]
+    # just the name, so a tenant-wide regression fails here.
+    expected_idem_columns = (
+        ["tenant_id", "created_by_account_id", "draft_idempotency_key"]
+        if account_scoped
+        else ["tenant_id", "draft_idempotency_key"]
+    )
+    assert _idem_constraint_columns() == expected_idem_columns
     assert _index_names() >= _INDEXES, f"missing index(es): {_INDEXES - _index_names()}"
 
 
 def _reset_empty_database() -> None:
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
 
 
 def _drop_alembic_version() -> None:
@@ -124,10 +139,7 @@ def _alembic_cfg():
 
 
 def _run_alembic(action, *args) -> None:
-    cfg = _alembic_cfg()
-    with engine.begin() as connection:
-        cfg.attributes["connection"] = connection
-        action(cfg, *args)
+    run_alembic_for_test(engine, _alembic_cfg(), action, *args)
 
 
 def test_add_repayment_drafts_round_trips_on_postgres() -> None:
@@ -137,17 +149,27 @@ def test_add_repayment_drafts_round_trips_on_postgres() -> None:
     _drop_alembic_version()
     try:
         Base.metadata.create_all(bind=engine)
-        _assert_full_shape()  # the current ORM shape
+        _assert_full_shape(c07=True, account_scoped=True)
 
         _run_alembic(command.stamp, "20260617_0001")
         _run_alembic(command.downgrade, "20260616_0002")
         assert "repayment_drafts" not in _table_names()  # downgrade drops it
 
+        _run_alembic(command.upgrade, "20260617_0001")
+        # First prove the historical create_table body exactly, before later
+        # migrations replace its tenant-scoped idempotency and amount CHECK.
+        _assert_full_shape(c07=False, account_scoped=False)
+
+        # Do not cross C07 from this synthetic shape: only the recreated
+        # repayment_drafts carrier is int4 while every untouched current-ORM
+        # money table is int8. The C07 migration correctly rejects that mixed
+        # state. Reset before exercising a true all-int4 source-to-head path.
+
+        _reset_empty_database()
+        _run_alembic(command.upgrade, _C07_SOURCE_REVISION)
+        _assert_full_shape(c07=False, account_scoped=True)
         _run_alembic(command.upgrade, "head")
-        # Re-created via the migration's hand-written create_table — assert the FULL
-        # shape (columns/nullability/CHECKs/unique/indexes), not just the table name, so
-        # a migration↔ORM divergence (dropped CHECK / unique / index / column) fails here.
-        _assert_full_shape()
+        _assert_full_shape(c07=True, account_scoped=True)
     finally:
         _reset_empty_database()
         _drop_alembic_version()

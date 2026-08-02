@@ -3,6 +3,7 @@
   "use strict";
 
   const app = window.TicketboxWeb = window.TicketboxWeb || {};
+  const UNKNOWN_MONEY_TEXT = "金额不可用";
 
   app.THEMES = ["paper", "mono", "midnight"];
 
@@ -15,28 +16,75 @@
       .replace(/'/g, "&#39;");
   };
 
+  app.homeCurrencyCode = function homeCurrencyCode() {
+    const raw = document.documentElement.getAttribute("data-home-currency");
+    return typeof raw === "string" && /^[A-Z]{3}$/.test(raw) ? raw : "";
+  };
+
   app.homeCurrencySymbol = function homeCurrencySymbol() {
-    return document.documentElement.getAttribute("data-home-currency-symbol") ||
-      document.documentElement.getAttribute("data-home-currency") ||
-      "";
+    const raw = document.documentElement.getAttribute("data-home-currency-symbol");
+    const symbol = typeof raw === "string" ? raw.trim() : "";
+    if (symbol) return symbol;
+    const code = app.homeCurrencyCode();
+    return code ? code + " " : "币种未知 ";
   };
 
   // PR #253 R5: 币种 exponent 经 base.html 的 data-home-currency-minor-digits
   // 下发 (源: currency_common.minor_unit_digits), 图表中心值/大数字按此格式化。
   app.homeCurrencyMinorDigits = function homeCurrencyMinorDigits() {
     const raw = document.documentElement.getAttribute("data-home-currency-minor-digits");
-    const parsed = Number.parseInt(raw == null ? "" : raw, 10);
-    return Number.isInteger(parsed) && parsed >= 0 ? parsed : 2;
+    if (typeof raw !== "string" || !/^(?:0|[1-9][0-9]*)$/.test(raw)) return null;
+    const parsed = Number(raw);
+    return Number.isSafeInteger(parsed) && parsed <= 20 ? parsed : null;
   };
 
   app.homeMajorNumber = function homeMajorNumber(value) {
-    const amount = Number(value || 0);
     const digits = app.homeCurrencyMinorDigits();
+    if (digits === null) return UNKNOWN_MONEY_TEXT;
+    const raw = value == null || value === "" ? "0" : String(value);
+    if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(raw)) {
+      return UNKNOWN_MONEY_TEXT;
+    }
     return new Intl.NumberFormat("zh-CN", {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
       useGrouping: true,
-    }).format(Number.isFinite(amount) ? amount : 0);
+    }).format(raw);
+  };
+
+  app.homeMinorToMajorText = function homeMinorToMajorText(value) {
+    let raw;
+    if (typeof value === "bigint") {
+      raw = value.toString();
+    } else if (typeof value === "number" && Number.isSafeInteger(value)) {
+      raw = String(value);
+    } else {
+      raw = String(value == null || value === "" ? "0" : value);
+    }
+    if (!/^-?(?:0|[1-9][0-9]*)$/.test(raw)) return null;
+    const digits = app.homeCurrencyMinorDigits();
+    if (digits === null) return null;
+    const amount = BigInt(raw);
+    if (digits === 0) return amount.toString();
+    const negative = amount < 0n;
+    const absolute = negative ? -amount : amount;
+    const scale = 10n ** BigInt(digits);
+    const whole = absolute / scale;
+    const fraction = String(absolute % scale).padStart(digits, "0");
+    return (negative ? "-" : "") + whole.toString() + "." + fraction;
+  };
+
+  app.homeMinorToMajor = function homeMinorToMajor(value) {
+    const amount = Number(value || 0);
+    const digits = app.homeCurrencyMinorDigits();
+    if (!Number.isSafeInteger(amount) || digits === null) return null;
+    return amount / Math.pow(10, digits);
+  };
+
+  app.homeMoneyMinor = function homeMoneyMinor(value) {
+    const major = app.homeMinorToMajorText(value);
+    return app.homeCurrencySymbol() +
+      (major === null ? UNKNOWN_MONEY_TEXT : app.homeMajorNumber(major));
   };
 
   app.homeMoneyMajor = function homeMoneyMajor(value) {
@@ -55,9 +103,20 @@
   };
 
   app.moneyParts = function moneyParts(value) {
-    const raw = String(value || "0.00");
+    const digits = app.homeCurrencyMinorDigits();
+    if (digits === null) return [UNKNOWN_MONEY_TEXT, ""];
+    const raw = String(value == null || value === "" ? "0" : value);
+    if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(raw)) {
+      return [UNKNOWN_MONEY_TEXT, ""];
+    }
     const parts = raw.split(".");
-    return [parts[0] || "0", parts[1] || "00"];
+    if (digits === 0) {
+      return parts.length === 1 ? [parts[0], ""] : [UNKNOWN_MONEY_TEXT, ""];
+    }
+    if (parts.length !== 2 || parts[1].length !== digits) {
+      return [UNKNOWN_MONEY_TEXT, ""];
+    }
+    return [parts[0], parts[1]];
   };
 
   app.readVar = function readVar(name) {

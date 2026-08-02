@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import ApiIdempotencyKey, Debt, DebtGoalLink, Goal
+from app.money_contract import projection_sum_to_int
 from app.schemas import (
     DebtGoalLinkView,
     DebtRepaymentEvaluation,
@@ -126,7 +127,10 @@ def _evaluate_links(
                 direction=debt.direction,
                 counterparty_type=debt.counterparty_type,
                 counterparty_label=debt.counterparty_label,
-                principal_amount_cents=int(debt.principal_amount_cents),
+                principal_amount_cents=projection_sum_to_int(
+                    debt.principal_amount_cents,
+                    label="debt_goal_link.principal",
+                ),
                 remaining_amount_cents=remaining,
                 home_currency_code=debt.home_currency_code,
             )

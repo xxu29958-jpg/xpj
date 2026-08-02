@@ -965,7 +965,7 @@ timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传
 
 返回 `text/csv`，用于导出已确认账单。导出接口只返回账单数据，不提供文件目录浏览或任意文件下载。
 
-CSV 会包含原始币种、原始金额、汇率、汇率日期和汇率来源列；旧导入文件缺少这些列时按当前 home currency 兼容。
+CSV 会包含原始币种、原始金额、汇率、汇率日期和汇率来源列；旧导入文件缺少这些列时按当前 home currency 兼容。`amount_cents` 是权威 home-currency minor-unit 值；追加的 `home_currency_code` 与 `amount_home_major` 提供带币种上下文的可读值。已发布的 `amount_yuan` 仅保留历史 CNY 两位小数兼容语义，不得用于推断非 CNY 的 home major 值。
 
 ### GET /api/exchange-rates
 

@@ -9,9 +9,14 @@ authoritative currency code instead of assuming every stored unit is 1/100.
 
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from _web_overview_test_support import seed_confirmed_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -36,6 +41,10 @@ from app.services.currency_common import (
     normalize_currency_code,
     supported_currency_codes,
 )
+from app.services.owner_console_service._common import (
+    _amount_yuan as _owner_amount_yuan,
+)
+from app.services.time_service import current_month
 
 
 def test_product_currency_minor_metadata_is_explicit_and_closed() -> None:
@@ -196,3 +205,218 @@ def test_web_common_minor_label_delegates_to_currency_common_divmod() -> None:
     assert _minor_amount_value(1234, "CNY") == "12.34"
     assert _minor_amount_value(-1234, "CNY") == "-12.34"
     assert _minor_amount_value(None, "JPY") == ""
+
+
+def test_owner_budget_amount_uses_installation_minor_digits() -> None:
+    assert _owner_amount_yuan(1234, "JPY") == "1234"
+    assert _owner_amount_yuan(1234, "CNY") == "12.34"
+
+
+def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
+    web_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        seed_confirmed_expense(
+            web_client,
+            identity=identity,
+            amount_cents=1234,
+            merchant="JPY发布回归",
+            category="餐饮",
+        )
+        month = current_month("Asia/Shanghai")
+
+        confirmed = web_client.get(
+            f"/web/confirmed?ledger_id=owner&month={month}"
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        assert '<span class="int">1234</span>' in confirmed.text
+        assert "笔均 <b>¥1234</b>" in confirmed.text
+        assert "日峰 <b>¥1234</b>" in confirmed.text
+        assert '<span class="lday-s">¥1234</span>' in confirmed.text
+        assert "¥12.34" not in confirmed.text
+
+        search = web_client.get(
+            "/web/search?ledger_id=owner&q=JPY发布回归"
+        )
+        assert search.status_code == 200, search.text
+        assert '<span class="search-amount">¥1234</span>' in search.text
+        assert "¥12.34" not in search.text
+
+        reports = web_client.get(
+            f"/web/reports?ledger_id=owner&month={month}"
+        )
+        assert reports.status_code == 200, reports.text
+        assert '<span class="yuan">¥</span>206' in reports.text
+        assert '"amount_yuan": 1234' in reports.text
+    finally:
+        get_settings.cache_clear()
+
+
+def test_report_scripts_share_the_home_currency_minor_digit_contract() -> None:
+    static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"
+    core = (static_root / "desktop" / "core.js").read_text(encoding="utf-8")
+    dashboard = (static_root / "desktop" / "dashboard.js").read_text(
+        encoding="utf-8"
+    )
+    reports = (static_root / "reports.js").read_text(encoding="utf-8")
+    trend = (static_root / "desktop" / "trend-chart.js").read_text(
+        encoding="utf-8"
+    )
+    donut = (static_root / "desktop" / "category-donut.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "app.homeMinorToMajor" in core
+    assert "app.homeMinorToMajorText" in core
+    assert "app.homeMoneyMinor" in core
+    assert "if (parts[1])" in dashboard
+    assert "Number(cents || 0) / 100" not in reports
+    assert "app.homeMoneyMinor(cents)" in reports
+    assert "app.homeCurrencySymbol() + compactYuan(cents)" in reports
+    assert "root.getAttribute('data-home-currency-symbol')" not in reports
+    assert "Math.round(s.amount_yuan)" not in trend
+    assert "app.homeMinorToMajor(s.amount_cents)" in trend
+    assert "app.homeMoneyMajor(p.data.majorText)" in trend
+    assert "app.homeMoneyMajor(p.value || 0)" not in trend
+    assert "p.data.amountLabel" in donut
+    assert "app.homeMoneyMajor(p.value || 0)" not in donut
+
+
+def test_web_money_copy_formats_exact_minor_strings_without_number_rounding() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.fail("Node.js is required for the Web money contract")
+    core = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "static"
+        / "web"
+        / "desktop"
+        / "core.js"
+    )
+    script = f"""
+const fs = require("fs");
+const vm = require("vm");
+let digits = "2";
+const document = {{
+  documentElement: {{
+    getAttribute: function (name) {{
+      if (name === "data-home-currency-minor-digits") return digits;
+      if (name === "data-home-currency-symbol") return "¥";
+      return "";
+    }},
+  }},
+}};
+const window = {{}};
+vm.runInNewContext(
+  fs.readFileSync({json.dumps(str(core))}, "utf8"),
+  {{ window, document, Intl, Number, BigInt, String, Math, URLSearchParams }}
+);
+const app = window.TicketboxWeb;
+const result = {{
+  edge2: app.homeMoneyMinor("9000000000000001"),
+  safeMax2: app.homeMoneyMinor("9007199254740991"),
+  parts2: app.moneyParts("12.34"),
+}};
+digits = "0";
+result.zero = app.homeMoneyMinor("1234");
+result.parts0 = app.moneyParts("1234");
+digits = "3";
+result.three = app.homeMoneyMinor("1234567");
+result.parts3 = app.moneyParts("1234.567");
+process.stdout.write(JSON.stringify(result));
+"""
+    completed = subprocess.run(
+        [node, "-e", script],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "edge2": "¥90,000,000,000,000.01",
+        "safeMax2": "¥90,071,992,547,409.91",
+        "parts2": ["12", "34"],
+        "zero": "¥1,234",
+        "parts0": ["1234", ""],
+        "three": "¥1,234.567",
+        "parts3": ["1234", "567"],
+    }
+
+
+def test_web_money_copy_fails_closed_without_canonical_currency_metadata() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.fail("Node.js is required for the Web money contract")
+    core = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "static"
+        / "web"
+        / "desktop"
+        / "core.js"
+    )
+    script = f"""
+const fs = require("fs");
+const vm = require("vm");
+let digits = "2";
+let symbol = "¥";
+let code = "CNY";
+const document = {{
+  documentElement: {{
+    getAttribute: function (name) {{
+      if (name === "data-home-currency-minor-digits") return digits;
+      if (name === "data-home-currency-symbol") return symbol;
+      if (name === "data-home-currency") return code;
+      return null;
+    }},
+  }},
+}};
+const window = {{}};
+vm.runInNewContext(
+  fs.readFileSync({json.dumps(str(core))}, "utf8"),
+  {{ window, document, Intl, Number, BigInt, String, Math, URLSearchParams }}
+);
+const app = window.TicketboxWeb;
+const result = {{}};
+digits = null;
+result.missing = [app.homeCurrencyMinorDigits(), app.homeMinorToMajor("1234"), app.homeMoneyMinor("1234")];
+digits = "-1";
+result.negative = [app.homeCurrencyMinorDigits(), app.homeMoneyMinor("1234")];
+digits = "02";
+result.leadingZero = [app.homeCurrencyMinorDigits(), app.homeMoneyMinor("1234")];
+digits = "2.0";
+result.decimal = [app.homeCurrencyMinorDigits(), app.homeMoneyMinor("1234")];
+digits = "2";
+symbol = "";
+result.codeFallback = app.homeMoneyMinor("1234");
+code = "";
+result.unknownCode = app.homeMoneyMinor("1234");
+process.stdout.write(JSON.stringify(result));
+"""
+    completed = subprocess.run(
+        [node, "-e", script],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "missing": [None, None, "¥金额不可用"],
+        "negative": [None, "¥金额不可用"],
+        "leadingZero": [None, "¥金额不可用"],
+        "decimal": [None, "¥金额不可用"],
+        "codeFallback": "CNY 12.34",
+        "unknownCode": "币种未知 12.34",
+    }

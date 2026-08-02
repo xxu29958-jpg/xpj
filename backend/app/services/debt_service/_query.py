@@ -1,15 +1,9 @@
-"""ADR-0049 Debt read paths: ledger-scoped lookup + derived-fold response.
+"""ADR-0049 debt reads: ledger scope plus the member counterparty exception.
 
-Slice 5 (§5.2) adds the ACCOUNT-scoped participant read: a member Debt's two
-parties can live in different ledgers (a bill_split Debt is owned by the
-receiver's ledger with the sender as the cross-ledger creditor), so the
-repayment-proposal flow resolves a Debt by ledger membership unioned with the
-member-counterparty relationship — the counterparty is the only cross-ledger
-party, since the owner is always a member of the Debt's own ledger — not by
-ledger scope alone. :func:`resolve_debt_for_participant` is that union resolver
-and :func:`get_participant_debt_response` redacts the counterparty's ledger id
-when the viewer is a participant-but-not-member (§5.2 "expose only the Debt
-shell").
+A member Debt can span ledgers, so repayment proposals resolve ledger
+membership unioned with the counterparty account. The owner remains scoped to
+the Debt ledger. Cross-ledger responses therefore expose only the Debt shell
+and redact the counterparty ledger id.
 """
 
 from __future__ import annotations
@@ -23,6 +17,7 @@ from app.models import Account, Debt, LedgerMember
 from app.schemas import DebtListResponse, DebtResponse
 from app.services.currency_common import home_currency_code_or_none
 from app.services.debt_service._fold import (
+    _materialize_total,
     compute_paid,
     compute_remaining,
     derive_status,
@@ -35,9 +30,7 @@ from app.services.debt_service._installment import (
 )
 
 
-def participant_can_access(
-    debt: Debt, *, ledger_id: str, account_id: int | None
-) -> tuple[bool, bool]:
+def participant_can_access(debt: Debt, *, ledger_id: str, account_id: int | None) -> tuple[bool, bool]:
     """Return ``(is_ledger_member, is_cross_ledger_counterparty)`` for §5.2 access.
 
     ``is_ledger_member``: the actor's authenticated ledger IS the Debt's own
@@ -61,15 +54,11 @@ def participant_can_access(
     decide whether the response keeps the (counterparty's) ledger id.
     """
     is_ledger_member = debt.tenant_id == ledger_id
-    is_cross_ledger_counterparty = (
-        account_id is not None and account_id == debt.counterparty_account_id
-    )
+    is_cross_ledger_counterparty = account_id is not None and account_id == debt.counterparty_account_id
     return is_ledger_member, is_cross_ledger_counterparty
 
 
-def resolve_debt_for_participant(
-    db: Session, *, public_id: str, ledger_id: str, account_id: int
-) -> tuple[Debt, bool]:
+def resolve_debt_for_participant(db: Session, *, public_id: str, ledger_id: str, account_id: int) -> tuple[Debt, bool]:
     """Load a Debt visible to the actor as a ledger member OR the cross-ledger
     member counterparty.
 
@@ -85,17 +74,13 @@ def resolve_debt_for_participant(
     debt = db.scalar(select(Debt).where(Debt.public_id == public_id).limit(1))
     if debt is None:
         raise AppError("debt_not_found", status_code=404)
-    is_ledger_member, is_counterparty = participant_can_access(
-        debt, ledger_id=ledger_id, account_id=account_id
-    )
+    is_ledger_member, is_counterparty = participant_can_access(debt, ledger_id=ledger_id, account_id=account_id)
     if not (is_ledger_member or is_counterparty):
         raise AppError("debt_not_found", status_code=404)
     return debt, is_ledger_member
 
 
-def get_participant_debt_response(
-    db: Session, *, public_id: str, ledger_id: str, account_id: int
-) -> DebtResponse:
+def get_participant_debt_response(db: Session, *, public_id: str, ledger_id: str, account_id: int) -> DebtResponse:
     """Debt response for a participant; redacts the ledger id for cross-ledger access.
 
     Same-ledger members get the full response. A participant who is NOT a member
@@ -130,9 +115,7 @@ def get_participant_debt_response(
         # (viewer_is_debtor is False) — the debtor's own payable view stays generic (the
         # counterparty there is the creditor, framed by the communal headline, not named).
         if viewer_is_debtor is False:
-            debtor_name = _owner_display_names(db, {debt.owner_account_id}).get(
-                debt.owner_account_id
-            )
+            debtor_name = _owner_display_names(db, {debt.owner_account_id}).get(debt.owner_account_id)
             if debtor_name:
                 update["counterparty_label"] = debtor_name
     return response.model_copy(update=update)
@@ -150,9 +133,7 @@ def _owner_display_names(db: Session, owner_account_ids: set[int]) -> dict[int, 
     """
     if not owner_account_ids:
         return {}
-    rows = db.execute(
-        select(Account.id, Account.display_name).where(Account.id.in_(owner_account_ids))
-    ).all()
+    rows = db.execute(select(Account.id, Account.display_name).where(Account.id.in_(owner_account_ids))).all()
     return {acc_id: name for acc_id, name in rows if (name or "").strip()}
 
 
@@ -174,9 +155,7 @@ def _viewer_is_debtor(debt: Debt, account_id: int) -> bool | None:
 
 
 def _debt_by_public_id(db: Session, *, tenant_id: str, public_id: str) -> Debt | None:
-    return db.scalar(
-        ledger_scoped_select(Debt, tenant_id).where(Debt.public_id == public_id).limit(1)
-    )
+    return db.scalar(ledger_scoped_select(Debt, tenant_id).where(Debt.public_id == public_id).limit(1))
 
 
 def get_debt(db: Session, *, tenant_id: str, public_id: str) -> Debt:
@@ -186,9 +165,7 @@ def get_debt(db: Session, *, tenant_id: str, public_id: str) -> Debt:
     return debt
 
 
-def debt_response(
-    debt: Debt, *, remaining: int, paid: int, is_forgiven: bool = False
-) -> DebtResponse:
+def debt_response(debt: Debt, *, remaining: int, paid: int, is_forgiven: bool = False) -> DebtResponse:
     # §B: gate ALL schedule fields on debt_kind. ``set_debt_kind`` leaves the columns populated when
     # reclassifying AWAY from installment, so reading them raw would expose stale installment metadata
     # on a now-revolving/one_off debt. Gating the whole shape (count + period + the already-gated
@@ -202,7 +179,9 @@ def debt_response(
         counterparty_type=debt.counterparty_type,
         counterparty_account_id=debt.counterparty_account_id,
         counterparty_label=debt.counterparty_label,
-        principal_amount_cents=int(debt.principal_amount_cents),
+        principal_amount_cents=_materialize_total(
+            debt.principal_amount_cents, label="debt_response.principal", for_write=False
+        ),
         remaining_amount_cents=remaining,
         paid_amount_cents=paid,
         status=derive_status(debt, remaining),
@@ -245,9 +224,7 @@ def get_debt_response(db: Session, *, tenant_id: str, public_id: str) -> DebtRes
     return _debt_response_with_fold(db, debt)
 
 
-def list_debts(
-    db: Session, *, tenant_id: str, viewer_account_id: int | None = None
-) -> DebtListResponse:
+def list_debts(db: Session, *, tenant_id: str, viewer_account_id: int | None = None) -> DebtListResponse:
     """Ledger-scoped Debt list. With ``viewer_account_id`` each row carries the
     server-authoritative ``viewer_is_debtor`` for that viewer (§3.2).
 
@@ -275,9 +252,7 @@ def list_debts(
     for debt in debts:
         response = _debt_response_with_fold(db, debt)
         if viewer_account_id is not None:
-            response = response.model_copy(
-                update={"viewer_is_debtor": _viewer_is_debtor(debt, viewer_account_id)}
-            )
+            response = response.model_copy(update={"viewer_is_debtor": _viewer_is_debtor(debt, viewer_account_id)})
         items.append(response)
     return DebtListResponse(items=items, home_currency_code=home_currency_code_or_none())
 
@@ -320,18 +295,14 @@ def _list_personal_ledger_debts(
     # When the viewer is the member counterparty, the stored label names that
     # counterparty (the viewer).  The relationship row must name the other side,
     # which is the Debt owner. Resolve those names in one query.
-    counterparty_view_debts = [
-        debt for debt in debts if debt.counterparty_account_id == account_id
-    ]
+    counterparty_view_debts = [debt for debt in debts if debt.counterparty_account_id == account_id]
     owner_names = _owner_display_names(
         db,
         {debt.owner_account_id for debt in counterparty_view_debts},
     )
     items: list[DebtResponse] = []
     for debt in debts:
-        update: dict[str, object] = {
-            "viewer_is_debtor": _viewer_is_debtor(debt, account_id)
-        }
+        update: dict[str, object] = {"viewer_is_debtor": _viewer_is_debtor(debt, account_id)}
         if debt.counterparty_account_id == account_id:
             owner_name = owner_names.get(debt.owner_account_id)
             if owner_name:
@@ -396,9 +367,7 @@ def list_receivables_for_account(
     return DebtListResponse(items=items, home_currency_code=home_currency_code_or_none())
 
 
-def list_member_receivables_for_account(
-    db: Session, *, account_id: int
-) -> DebtListResponse:
+def list_member_receivables_for_account(db: Session, *, account_id: int) -> DebtListResponse:
     """Account-scoped list of the CROSS-LEDGER member Debts this account is the
     creditor of — "money owed to me" that the ledger-scoped :func:`list_debts`
     cannot surface (creditor-discovery gap, ADR-0049 P3b / ⑤c).

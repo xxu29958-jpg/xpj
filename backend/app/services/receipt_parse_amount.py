@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from app.money_contract import MONEY_MINOR_MAX
 from app.services.receipt_parse_common import (
     _AmountCandidate,
     _best_candidate,
@@ -14,6 +14,18 @@ from app.services.receipt_parse_common import (
     _nearby_text,
     _ReceiptContext,
     _ScoreDimensions,
+)
+from app.services.receipt_parse_money import (
+    amount_plausibility_score as _amount_plausibility_score,
+)
+from app.services.receipt_parse_money import (
+    money_to_minor as _money_to_cents,
+)
+from app.services.receipt_parse_money import (
+    text_currency_matches_context as _text_currency_matches_context,
+)
+from app.services.receipt_parse_money import (
+    validated_money_context as _validated_money_context,
 )
 from app.services.receipt_parse_rules import (
     AMOUNT_LABEL_SCORES,
@@ -28,42 +40,87 @@ from app.services.receipt_parse_rules import (
 )
 
 
-def _extract_amount_cents(text: str) -> int | None:
+def _extract_amount_cents(
+    text: str,
+    *,
+    currency_code: str | None,
+    minor_unit_exponent: int | None,
+) -> int | None:
+    context_pair = _validated_money_context(currency_code, minor_unit_exponent)
+    if context_pair is None:
+        return None
+    code, exponent = context_pair
     context = _build_receipt_context(text)
     candidate = _best_candidate(
-        _calibrate_amount_candidates(_amount_candidates(text), context)
+        _calibrate_amount_candidates(
+            _amount_candidates(
+                text,
+                currency_code=code,
+                minor_unit_exponent=exponent,
+            ),
+            context,
+        )
     )
     return candidate.amount_cents if candidate else None
 
 
-def _amount_candidates(text: str) -> list[_AmountCandidate]:
+def _amount_candidates(
+    text: str,
+    *,
+    currency_code: str | None,
+    minor_unit_exponent: int | None,
+) -> list[_AmountCandidate]:
+    context_pair = _validated_money_context(currency_code, minor_unit_exponent)
+    if context_pair is None:
+        return []
+    code, exponent = context_pair
+    if not _text_currency_matches_context(text, code):
+        return []
     lines = text.splitlines()
     candidates = [
-        *_primary_line_amount_candidates(lines),
-        *_labeled_amount_candidates(lines),
-        *_inline_amount_candidates(text, lines),
+        *_primary_line_amount_candidates(lines, code, exponent),
+        *_labeled_amount_candidates(lines, code, exponent),
+        *_inline_amount_candidates(text, lines, code, exponent),
     ]
     return _apply_amount_cross_evidence(candidates)
 
 
-def _primary_line_amount_candidates(lines: list[str]) -> list[_AmountCandidate]:
+def _primary_line_amount_candidates(
+    lines: list[str],
+    currency_code: str,
+    minor_unit_exponent: int,
+) -> list[_AmountCandidate]:
     candidates: list[_AmountCandidate] = []
     for index, line in enumerate(lines):
-        candidate = _primary_line_amount_candidate(lines, index, line.strip())
+        candidate = _primary_line_amount_candidate(
+            lines,
+            index,
+            line.strip(),
+            currency_code,
+            minor_unit_exponent,
+        )
         if candidate is not None:
             candidates.append(candidate)
     return candidates
 
 
 def _primary_line_amount_candidate(
-    lines: list[str], index: int, line_text: str
+    lines: list[str],
+    index: int,
+    line_text: str,
+    currency_code: str,
+    minor_unit_exponent: int,
 ) -> _AmountCandidate | None:
     parsed = parse_primary_amount_line(line_text)
     if parsed is None:
         return None
     sign, amount = parsed
-    cents = _money_to_cents(amount)
-    if cents is None or not 0 < cents < 10_000_000_00:
+    cents = _money_to_cents(
+        amount,
+        currency_code=currency_code,
+        minor_unit_exponent=minor_unit_exponent,
+    )
+    if cents is None or not 0 < cents <= MONEY_MINOR_MAX:
         return None
 
     has_money_marker = _has_money_marker(line_text)
@@ -84,7 +141,7 @@ def _primary_line_amount_candidate(
         source=28 if has_money_marker else 24,
         context=62 if has_nearby_success else 0,
         label=12 if has_sign else 0,
-        consistency=_amount_plausibility_score(cents),
+        consistency=_amount_plausibility_score(cents, minor_unit_exponent),
         noise=-50 if has_discount_context else 0,
         evidence=tuple(evidence),
     )
@@ -100,11 +157,19 @@ def _primary_line_amount_candidate(
     )
 
 
-def _labeled_amount_candidates(lines: list[str]) -> list[_AmountCandidate]:
+def _labeled_amount_candidates(
+    lines: list[str],
+    currency_code: str,
+    minor_unit_exponent: int,
+) -> list[_AmountCandidate]:
     candidates: list[_AmountCandidate] = []
     for match in iter_labeled_amount_matches(lines):
-        cents = _money_to_cents(match.amount)
-        if cents is None or not 0 < cents < 10_000_000_00:
+        cents = _money_to_cents(
+            match.amount,
+            currency_code=currency_code,
+            minor_unit_exponent=minor_unit_exponent,
+        )
+        if cents is None or not 0 < cents <= MONEY_MINOR_MAX:
             continue
         label = match.label
         index = match.line_index
@@ -118,7 +183,7 @@ def _labeled_amount_candidates(lines: list[str]) -> list[_AmountCandidate]:
         dimensions = _ScoreDimensions(
             label=AMOUNT_LABEL_SCORES.get(label, 35),
             context=10 if has_nearby_success else 0,
-            consistency=_amount_plausibility_score(cents),
+            consistency=_amount_plausibility_score(cents, minor_unit_exponent),
             noise=-45 if has_discount_context else 0,
             evidence=tuple(evidence),
         )
@@ -135,12 +200,21 @@ def _labeled_amount_candidates(lines: list[str]) -> list[_AmountCandidate]:
     return candidates
 
 
-def _inline_amount_candidates(text: str, lines: list[str]) -> list[_AmountCandidate]:
+def _inline_amount_candidates(
+    text: str,
+    lines: list[str],
+    currency_code: str,
+    minor_unit_exponent: int,
+) -> list[_AmountCandidate]:
     candidates: list[_AmountCandidate] = []
     for pattern, source, base_score in INLINE_AMOUNT_PATTERNS:
         for match in pattern.finditer(text):
-            cents = _money_to_cents(match.group("amount"))
-            if cents is None or not 0 < cents < 10_000_000_00:
+            cents = _money_to_cents(
+                match.group("amount"),
+                currency_code=currency_code,
+                minor_unit_exponent=minor_unit_exponent,
+            )
+            if cents is None or not 0 < cents <= MONEY_MINOR_MAX:
                 continue
             index = _line_index_for_offset(text, match.start())
             line_text = lines[index].strip() if 0 <= index < len(lines) else ""
@@ -154,7 +228,7 @@ def _inline_amount_candidates(text: str, lines: list[str]) -> list[_AmountCandid
             dimensions = _ScoreDimensions(
                 source=base_score,
                 context=42 if has_nearby_success else 0,
-                consistency=_amount_plausibility_score(cents),
+                consistency=_amount_plausibility_score(cents, minor_unit_exponent),
                 noise=-45 if has_discount_context else 0,
                 evidence=tuple(evidence),
             )
@@ -319,16 +393,6 @@ _AMOUNT_PROFILE_SCORERS = {
 }
 
 
-def _amount_plausibility_score(cents: int) -> int:
-    if cents < 50:
-        return -8
-    if cents <= 200_000:
-        return 8
-    if cents <= 1_000_000:
-        return 2
-    return -4
-
-
 def _apply_amount_cross_evidence(
     candidates: list[_AmountCandidate],
 ) -> list[_AmountCandidate]:
@@ -413,12 +477,3 @@ def _looks_like_status_bar_numeric_amount(
         for line in context.lines[: candidate.line_index + 1]
     )
     return has_network_marker or has_clock_marker
-
-
-def _money_to_cents(value: str) -> int | None:
-    try:
-        amount = Decimal(value.replace(",", "").strip())
-    except (InvalidOperation, ValueError):
-        return None
-    cents = (amount * Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    return int(cents)

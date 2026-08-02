@@ -21,10 +21,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Debt, DebtAdjustment, DebtForgiveness, Repayment, RepaymentVoid
+from app.money_contract import fold_sum_to_int, projection_sum_to_int
 from app.services.time_service import ensure_utc
 
 
-def _non_voided_repayment_total(db: Session, debt_id: int) -> int:
+def _materialize_total(value: object, *, label: str, for_write: bool) -> int:
+    if for_write:
+        return fold_sum_to_int(value, label=label)
+    return projection_sum_to_int(value, label=label)
+
+
+def _non_voided_repayment_total(
+    db: Session, debt_id: int, *, for_write: bool = False
+) -> int:
     """Sum of repayments on the Debt that have NOT been voided (§3.4).
 
     A voided repayment keeps its original row (never deleted) but is excluded
@@ -38,20 +47,32 @@ def _non_voided_repayment_total(db: Session, debt_id: int) -> int:
         .where(Repayment.debt_id == debt_id)
         .where(~voided.exists())
     )
-    return int(total or 0)
+    return _materialize_total(
+        total,
+        label="debt.repayment_total",
+        for_write=for_write,
+    )
 
 
-def _adjustment_total(db: Session, debt_id: int) -> int:
+def _adjustment_total(
+    db: Session, debt_id: int, *, for_write: bool = False
+) -> int:
     """Signed sum of all append-only adjustments on the Debt (§3.3)."""
     total = db.scalar(
         select(func.coalesce(func.sum(DebtAdjustment.amount_cents), 0)).where(
             DebtAdjustment.debt_id == debt_id
         )
     )
-    return int(total or 0)
+    return _materialize_total(
+        total,
+        label="debt.adjustment_total",
+        for_write=for_write,
+    )
 
 
-def _forgiveness_total(db: Session, debt_id: int) -> int:
+def _forgiveness_total(
+    db: Session, debt_id: int, *, for_write: bool = False
+) -> int:
     """Sum of creditor forgiveness facts on the Debt (§3.7 / §4, slice 8e-3).
 
     A ``DebtForgiveness`` waives the creditor's remaining claim; its amount is the
@@ -63,7 +84,11 @@ def _forgiveness_total(db: Session, debt_id: int) -> int:
             DebtForgiveness.debt_id == debt_id
         )
     )
-    return int(total or 0)
+    return _materialize_total(
+        total,
+        label="debt.forgiveness_total",
+        for_write=for_write,
+    )
 
 
 def has_forgiveness(db: Session, debt_id: int) -> bool:
@@ -123,14 +148,40 @@ def compute_paid(db: Session, debt: Debt) -> int:
     return _non_voided_repayment_total(db, debt.id)
 
 
-def compute_remaining(db: Session, debt: Debt) -> int:
-    """remaining = principal + adjustments - non-voided repayments - forgiveness (§2 / §3.7)."""
-    return (
-        int(debt.principal_amount_cents)
-        + _adjustment_total(db, debt.id)
-        - _non_voided_repayment_total(db, debt.id)
-        - _forgiveness_total(db, debt.id)
+def _compute_remaining(
+    db: Session,
+    debt: Debt,
+    *,
+    for_write: bool,
+) -> int:
+    materialize = fold_sum_to_int if for_write else projection_sum_to_int
+    principal = materialize(
+        debt.principal_amount_cents,
+        label="debt.principal",
     )
+    total = (
+        principal
+        + _adjustment_total(db, debt.id, for_write=for_write)
+        - _non_voided_repayment_total(db, debt.id, for_write=for_write)
+        - _forgiveness_total(db, debt.id, for_write=for_write)
+    )
+    return _materialize_total(
+        total,
+        label="debt.remaining",
+        for_write=for_write,
+    )
+
+
+def compute_remaining(db: Session, debt: Debt) -> int:
+    """Read projection of the canonical remaining balance."""
+
+    return _compute_remaining(db, debt, for_write=False)
+
+
+def compute_remaining_for_write(db: Session, debt: Debt) -> int:
+    """Canonical remaining balance inside a serialized write transaction."""
+
+    return _compute_remaining(db, debt, for_write=True)
 
 
 def _non_voided_repayment_total_as_of(db: Session, debt_id: int, cutoff: datetime) -> int:
@@ -152,7 +203,7 @@ def _non_voided_repayment_total_as_of(db: Session, debt_id: int, cutoff: datetim
         .where(Repayment.created_at <= cutoff)
         .where(~voided.exists())
     )
-    return int(total or 0)
+    return projection_sum_to_int(total, label="debt.repayment_total_as_of")
 
 
 def _adjustment_total_as_of(db: Session, debt_id: int, cutoff: datetime) -> int:
@@ -162,7 +213,7 @@ def _adjustment_total_as_of(db: Session, debt_id: int, cutoff: datetime) -> int:
         .where(DebtAdjustment.debt_id == debt_id)
         .where(DebtAdjustment.created_at <= cutoff)
     )
-    return int(total or 0)
+    return projection_sum_to_int(total, label="debt.adjustment_total_as_of")
 
 
 def _forgiveness_total_as_of(db: Session, debt_id: int, cutoff: datetime) -> int:
@@ -172,7 +223,7 @@ def _forgiveness_total_as_of(db: Session, debt_id: int, cutoff: datetime) -> int
         .where(DebtForgiveness.debt_id == debt_id)
         .where(DebtForgiveness.created_at <= cutoff)
     )
-    return int(total or 0)
+    return projection_sum_to_int(total, label="debt.forgiveness_total_as_of")
 
 
 def compute_remaining_as_of(db: Session, debt: Debt, cutoff: datetime) -> int:
@@ -191,12 +242,17 @@ def compute_remaining_as_of(db: Session, debt: Debt, cutoff: datetime) -> int:
     """
     if ensure_utc(debt.created_at) > ensure_utc(cutoff):
         return 0
-    return (
-        int(debt.principal_amount_cents)
+    principal = projection_sum_to_int(
+        debt.principal_amount_cents,
+        label="debt.principal_as_of",
+    )
+    total = (
+        principal
         + _adjustment_total_as_of(db, debt.id, cutoff)
         - _non_voided_repayment_total_as_of(db, debt.id, cutoff)
         - _forgiveness_total_as_of(db, debt.id, cutoff)
     )
+    return projection_sum_to_int(total, label="debt.remaining_as_of")
 
 
 def derive_status(debt: Debt, remaining: int) -> str:

@@ -56,12 +56,16 @@ def _lock_input_fingerprint(root: Path) -> str:
 
 def _write_minimal_backend(root: Path) -> Path:
     (root / "app").mkdir(parents=True)
-    (root / "migrations").mkdir()
+    (root / "migrations" / "versions").mkdir(parents=True)
     (root / "packaging").mkdir()
     (root / "scripts").mkdir()
     (root / "app" / "version.py").write_text('BACKEND_VERSION = "7.8.9"\n', encoding="utf-8")
     (root / "app" / "main.py").write_text("VALUE = 1\n", encoding="utf-8")
     (root / "migrations" / "env.py").write_text("# migration\n", encoding="utf-8")
+    target_migration = "20260729_0001_money_minor_bigint_expand.py"
+    (root / "migrations" / "versions" / target_migration).write_text(
+        "# target migration\n", encoding="utf-8"
+    )
     for relative in (
         "alembic.ini",
         "requirements.txt",
@@ -140,7 +144,11 @@ def _write_minimal_backend(root: Path) -> Path:
     dist = root / "dist" / "ticketbox-backend"
     (dist / "_internal").mkdir(parents=True)
     (dist / "ticketbox-backend.exe").write_bytes(b"frozen-exe-v1")
+    (dist / "ticketbox-c07-migrator.exe").write_bytes(b"c07-migrator-v1")
     (dist / "_internal" / "runtime.dat").write_bytes(b"runtime-v1")
+    packaged_target = dist / "_internal" / "migrations" / "versions" / target_migration
+    packaged_target.parent.mkdir(parents=True)
+    packaged_target.write_text("# target migration\n", encoding="utf-8")
     return dist
 
 
@@ -171,6 +179,14 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_database_safety.ps1",
     "packaging/windows_pg_recovery_tools.ps1",
     "packaging/windows_bundled_database.ps1",
+    "packaging/windows_c07_database.ps1",
+    "packaging/windows_c07_superuser_recovery.ps1",
+    "packaging/windows_c07_heartbeat_authority.ps1",
+    "packaging/windows_c07_lifecycle.ps1",
+    "packaging/windows_c07_heartbeat_helper.ps1",
+    "packaging/windows_c07_failure_summary.ps1",
+    "packaging/windows_c07_recovery_generation.ps1",
+    "packaging/windows_c07_packaged_migration.ps1",
     "packaging/windows_backend_bootstrap.ps1",
     "packaging/windows_bootstrap_exposure_recovery.ps1",
     "packaging/install_bundled_services.ps1",
@@ -183,6 +199,52 @@ def _write_minimal_installer_recipe(root: Path) -> None:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"recipe:{relative}\n", encoding="utf-8")
+
+
+def _c07_smoke_evidence_command(dist: Path) -> str:
+    target_migration = (
+        dist
+        / "_internal"
+        / "migrations"
+        / "versions"
+        / "20260729_0001_money_minor_bigint_expand.py"
+    )
+    return (
+        f"$smokePayload = Get-TicketboxBackendPayloadSnapshot '{_ps_literal(dist)}'; "
+        f"$helper = Get-TicketboxFileEvidence '{_ps_literal(dist)}' "
+        f"'{_ps_literal(dist / 'ticketbox-c07-migrator.exe')}'; "
+        f"$moduleSha = Get-TicketboxFileSha256 '{_ps_literal(target_migration)}'; "
+        "$revision = [ordered]@{"
+        "revision='20260729_0001';down_revision='20260722_0001';"
+        "module_sha256=$moduleSha;transactionality='postgresql_single_transaction';"
+        "reversibility='forward_only';downgrade_guard='raises_runtime_error_before_ddl';"
+        "resources=@('meta:test-contract');"
+        "asset_recovery='same_generation_database_and_assets'}; "
+        "$revisionManifest = [ordered]@{"
+        "schema='ticketbox-c07-revision-manifest-v1';"
+        "operation_kind='c07_money_minor_bigint_v1';"
+        "source_revision='20260722_0001';target_revision='20260729_0001';"
+        "revisions=@($revision)}; "
+        "$manifestJson = $revisionManifest | ConvertTo-Json -Depth 32 -Compress; "
+        "$result = [ordered]@{"
+        "schema='ticketbox-c07-maintenance-plan-v2';"
+        "operation_kind='c07_money_minor_bigint_v1';"
+        "source_revision='20260722_0001';target_revision='20260729_0001';"
+        "upgrade_required=$true;revision_manifest=$revisionManifest;"
+        "revision_manifest_sha256=(Get-TicketboxSha256HexFromText $manifestJson)}; "
+        "$resultJson = $result | ConvertTo-Json -Depth 32 -Compress; "
+        "$smoke = [ordered]@{"
+        "schema='ticketbox-c07-migration-helper-smoke-v1';helper=$helper;"
+        "payload_algorithm=$smokePayload.algorithm;"
+        "payload_fingerprint=$smokePayload.fingerprint;"
+        "payload_file_count=@($smokePayload.files).Count;"
+        "argv=@('--c07-installed-upgrade-plan','--source-revision','20260722_0001');"
+        "stdin='closed_empty_eof';"
+        "environment='system-runtime-allowlist-without-pg-or-database-url-v1';"
+        "exit_code=0;stderr='empty';"
+        "stdout_json_sha256=(Get-TicketboxSha256HexFromText $resultJson);"
+        "result=$result}; "
+    )
 
 
 def _manifest_command(root: Path, dist: Path, operation: str) -> str:
@@ -204,9 +266,10 @@ def _manifest_command(root: Path, dist: Path, operation: str) -> str:
         )
         invocation = (
             f"$source = Get-TicketboxBackendSourceSnapshot '{_ps_literal(root)}'; "
+            f"{_c07_smoke_evidence_command(dist)}"
             f"{operation} -BackendRoot '{_ps_literal(root)}' "
             f"-DistDir '{_ps_literal(dist)}' -ToolchainProvenance $toolchain "
-            "-SourceSnapshot $source | Out-Null"
+            "-SourceSnapshot $source -C07MigrationHelperSmokeEvidence $smoke | Out-Null"
         )
     else:
         toolchain = ""
@@ -227,7 +290,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
 
     manifest_path = dist / "BUILD_PROVENANCE.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == 3
+    assert manifest["schema_version"] == 4
     assert manifest["artifact_type"] == "ticketbox-frozen-backend"
     assert manifest["backend_version"] == "7.8.9"
     assert len(manifest["source"]["fingerprint"]) == 64
@@ -245,9 +308,37 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert manifest["payload"]["executable"]["sha256"] == hashlib.sha256(
         b"frozen-exe-v1"
     ).hexdigest()
+    smoke = manifest["payload"]["c07_migration_helper_smoke"]
+    assert smoke["helper"] == manifest["payload"]["c07_migration_helper"]
+    assert smoke["payload_algorithm"] == manifest["payload"]["algorithm"]
+    assert smoke["payload_fingerprint"] == manifest["payload"]["fingerprint"]
+    assert smoke["payload_file_count"] == len(manifest["payload"]["files"])
+    assert smoke["stdin"] == "closed_empty_eof"
+    assert smoke["environment"] == (
+        "system-runtime-allowlist-without-pg-or-database-url-v1"
+    )
+    assert smoke["exit_code"] == 0
+    assert smoke["stderr"] == "empty"
+    assert smoke["result"]["source_revision"] == "20260722_0001"
+    assert smoke["result"]["target_revision"] == "20260729_0001"
 
     validate = _manifest_command(backend, dist, "Assert-TicketboxBackendBuildManifest")
     assert _run_powershell(validate).returncode == 0
+
+    manifest["payload"]["c07_migration_helper_smoke"]["result"][
+        "source_revision"
+    ] = "20260722_0000"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    tampered_helper_smoke = _run_powershell(validate)
+    assert tampered_helper_smoke.returncode != 0
+    assert "smoke" in (
+        tampered_helper_smoke.stdout + tampered_helper_smoke.stderr
+    ).lower()
+    rewrite = _run_powershell(
+        _manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest")
+    )
+    assert rewrite.returncode == 0, rewrite.stderr
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     manifest["toolchain"]["pyinstaller"]["version"] = "6.20.0"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -302,6 +393,8 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     (dist / "ticketbox-backend.exe").write_bytes(b"frozen-exe-v2")
     stale_exe = _run_powershell(validate)
     assert stale_exe.returncode != 0
+
+
     assert "payload" in (stale_exe.stdout + stale_exe.stderr).lower()
 
     recipe_backend = tmp_path / "recipe-backend"
@@ -336,6 +429,260 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert validate.returncode != 0
 
 
+def test_installed_c07_external_assets_are_manifest_bound_and_held(
+    tmp_path: Path,
+) -> None:
+    safety = PACKAGING / "windows_installation_safety.ps1"
+    for index, engine in enumerate(powershell_contract_engines()):
+        install_dir = tmp_path / f"installed-authority-{index}"
+        payload = install_dir / "program" / "ticketbox-backend"
+        for relative, content in {
+            "ticketbox-backend.exe": b"backend-exe",
+            "ticketbox-c07-migrator.exe": b"migration-helper",
+            "_internal/app/database/_c07_fresh_source_bootstrap.py": b"fresh",
+            "_internal/app/database/_c07_maintenance_upgrade.py": b"maintenance",
+            "_internal/app/database/_c07_production_migration.py": b"production",
+            "_internal/alembic.ini": b"[alembic]",
+            "_internal/runtime.dat": b"runtime",
+            "_internal/replacement.dat": b"replacement",
+            "_internal/migrations/env.py": b"# env",
+            (
+                "_internal/migrations/versions/"
+                "20260722_0001_bind_repayment_draft_idem_to_account.py"
+            ): b"# source",
+            (
+                "_internal/migrations/versions/"
+                "20260729_0001_money_minor_bigint_expand.py"
+            ): b"# target",
+        }.items():
+            target = payload / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        (install_dir / "installer").mkdir(parents=True)
+        primary = install_dir / "installer" / "BUILD_PROVENANCE.json"
+        secondary = payload / "BUILD_PROVENANCE.json"
+        existing = payload / "_internal" / "migrations" / "env.py"
+        runtime = payload / "_internal" / "runtime.dat"
+        replacement = payload / "_internal" / "replacement.dat"
+        extra = payload / "_internal" / "migrations" / "versions" / "extra.py"
+        required_target = (
+            payload
+            / "_internal"
+            / "migrations"
+            / "versions"
+            / "20260729_0001_money_minor_bigint_expand.py"
+        )
+        renamed_target = required_target.with_name("renamed-target.py")
+        versions_dir = required_target.parent
+        moved_versions = versions_dir.with_name("versions-moved")
+        replace_backup = install_dir / "installer" / "replace-backup.dat"
+        command = rf"""
+. '{_ps_literal(safety)}'
+. '{_ps_literal(PROVENANCE_HELPER)}'
+$payload = '{_ps_literal(payload)}'
+$primaryPath = '{_ps_literal(primary)}'
+$secondaryPath = '{_ps_literal(secondary)}'
+$installDir = '{_ps_literal(install_dir)}'
+$existing = '{_ps_literal(existing)}'
+$runtime = '{_ps_literal(runtime)}'
+$replacement = '{_ps_literal(replacement)}'
+$extra = '{_ps_literal(extra)}'
+$requiredTarget = '{_ps_literal(required_target)}'
+$renamedTarget = '{_ps_literal(renamed_target)}'
+$versionsDir = '{_ps_literal(versions_dir)}'
+$movedVersions = '{_ps_literal(moved_versions)}'
+$replaceBackup = '{_ps_literal(replace_backup)}'
+function Write-TestManifest {{
+    $paths = @(
+        Get-ChildItem -LiteralPath $payload -Recurse -File |
+            Where-Object {{ $_.FullName -cne $secondaryPath }} |
+            ForEach-Object {{ $_.FullName }}
+    )
+    $snapshot = Get-TicketboxFileSetSnapshot $payload $paths
+    $helper = Get-TicketboxC07MigrationHelperEvidenceFromPayload $snapshot
+    {_c07_smoke_evidence_command(payload)}
+    $secondary = [ordered]@{{
+        schema_version = 4
+        artifact_type = 'ticketbox-frozen-backend'
+        backend_version = '7.8.9'
+        payload = [ordered]@{{
+            algorithm = $snapshot.algorithm
+            fingerprint = $snapshot.fingerprint
+            files = @($snapshot.files)
+            executable = Get-TicketboxFileEvidence $payload (Join-Path $payload 'ticketbox-backend.exe')
+            c07_migration_helper = $helper
+            c07_migration_helper_smoke = $smoke
+        }}
+    }}
+    Write-TicketboxJsonFile $secondaryPath $secondary
+    $primary = [ordered]@{{
+        schema_version = 3
+        artifact_type = 'ticketbox-windows-installer-inputs'
+        build_mode = 'installer-build'
+        compiler_defines = @('/DTargetPgMajor=17')
+        backend = [ordered]@{{
+            version = '7.8.9'
+            payload_algorithm = $snapshot.algorithm
+            payload_fingerprint = $snapshot.fingerprint
+            executable = $secondary.payload.executable
+            c07_migration_helper = $helper
+            c07_migration_helper_smoke = $smoke
+            manifest = [ordered]@{{
+                path = 'dist/ticketbox-backend/BUILD_PROVENANCE.json'
+                size = [int64](Get-Item -LiteralPath $secondaryPath).Length
+                sha256 = Get-TicketboxFileSha256 $secondaryPath
+            }}
+        }}
+        postgresql = [ordered]@{{ major = 17 }}
+    }}
+    Write-TicketboxJsonFile $primaryPath $primary
+}}
+Write-TestManifest
+$lease = Enter-TicketboxInstalledC07PayloadAuthorityLease `
+    -InstallDir $installDir `
+    -InstallerManifestPath $primaryPath `
+    -ExpectedPgMajor 17
+try {{
+    $existingBlocked = $false
+    try {{ [System.IO.File]::WriteAllText($existing, 'tampered') }}
+    catch {{ $existingBlocked = $true }}
+    $appendBlocked = $false
+    try {{
+        $appendStream = [System.IO.File]::Open(
+            $existing,
+            [System.IO.FileMode]::Append,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None
+        )
+        $appendStream.Dispose()
+    }}
+    catch {{ $appendBlocked = $true }}
+    $deleteBlocked = $false
+    try {{ [System.IO.File]::Delete($runtime) }}
+    catch {{ $deleteBlocked = $true }}
+    if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) {{
+        $deleteBlocked = $false
+    }}
+    $renameBlocked = $false
+    try {{ [System.IO.File]::Move($requiredTarget, $renamedTarget) }}
+    catch {{ $renameBlocked = $true }}
+    $replaceBlocked = $false
+    try {{ [System.IO.File]::Replace($replacement, $existing, $replaceBackup) }}
+    catch {{ $replaceBlocked = $true }}
+    $parentRenameBlocked = $false
+    try {{ [System.IO.Directory]::Move($versionsDir, $movedVersions) }}
+    catch {{ $parentRenameBlocked = $true }}
+    $additionBlocked = $false
+    try {{ [System.IO.File]::WriteAllText($extra, 'extra') }}
+    catch {{ $additionBlocked = $true }}
+    if (
+        -not $existingBlocked -or
+        -not $appendBlocked -or
+        -not $deleteBlocked -or
+        -not $renameBlocked -or
+        -not $replaceBlocked -or
+        -not $parentRenameBlocked -or
+        -not $additionBlocked
+    ) {{
+        throw (
+            'payload lease did not block write/append/delete/rename/' +
+            'replace/parent-rename/addition'
+        )
+    }}
+}}
+finally {{
+    Close-TicketboxInstalledC07PayloadAuthorityLease $lease
+}}
+[System.IO.File]::WriteAllText($existing, '# restored after lease')
+[System.IO.File]::AppendAllText($existing, '# append after lease')
+[System.IO.File]::Move($requiredTarget, $renamedTarget)
+[System.IO.File]::Move($renamedTarget, $requiredTarget)
+[System.IO.Directory]::Move($versionsDir, $movedVersions)
+[System.IO.Directory]::Move($movedVersions, $versionsDir)
+[System.IO.File]::Delete($runtime)
+if (Test-Path -LiteralPath $runtime) {{ throw 'payload delete remained blocked after lease' }}
+[System.IO.File]::WriteAllText($runtime, 'runtime restored after lease')
+[System.IO.File]::Replace($replacement, $existing, $replaceBackup)
+if (Test-Path -LiteralPath $replacement) {{
+    throw 'payload replace remained blocked after lease'
+}}
+if (-not (Test-Path -LiteralPath $replaceBackup -PathType Leaf)) {{
+    throw 'payload replace backup was not created after lease'
+}}
+[System.IO.File]::Delete($replaceBackup)
+[System.IO.File]::WriteAllText($existing, '# restored after replace')
+[System.IO.File]::WriteAllText($replacement, 'replacement restored after lease')
+[System.IO.File]::WriteAllText($extra, '# unsealed addition')
+[System.IO.File]::Delete($extra)
+Write-TestManifest
+[System.IO.File]::WriteAllText($extra, '# not in secondary manifest')
+$unrecordedRejected = $false
+try {{
+    [void](Enter-TicketboxInstalledC07PayloadAuthorityLease `
+        -InstallDir $installDir `
+        -InstallerManifestPath $primaryPath `
+        -ExpectedPgMajor 17)
+}}
+catch {{ $unrecordedRejected = $true }}
+if (-not $unrecordedRejected) {{ throw 'unrecorded migration asset was accepted' }}
+[System.IO.File]::Delete($extra)
+[System.IO.File]::Delete($requiredTarget)
+Write-TestManifest
+$criticalRejected = $false
+try {{
+    [void](Enter-TicketboxInstalledC07PayloadAuthorityLease `
+        -InstallDir $installDir `
+        -InstallerManifestPath $primaryPath `
+        -ExpectedPgMajor 17)
+}}
+catch {{ $criticalRejected = $true }}
+if (-not $criticalRejected) {{ throw 'missing target migration authority was accepted' }}
+"""
+        result = _run_powershell(command, executable=engine)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_installed_c07_payload_lease_close_preserves_dual_failures() -> None:
+    for engine in powershell_contract_engines():
+        command = rf"""
+. '{_ps_literal(PROVENANCE_HELPER)}'
+function Restore-TicketboxInstalledPayloadMutationDeny {{
+    throw 'injected payload DACL restore crash'
+}}
+$lease = [pscustomobject]@{{
+    Streams = @()
+    StreamEvidence = @([pscustomobject]@{{ Path = 'missing-stream' }})
+    Guard = [pscustomobject]@{{ Root = 'injected' }}
+}}
+$caught = $null
+try {{ Close-TicketboxInstalledC07PayloadAuthorityLease $lease }}
+catch {{ $caught = $_.Exception }}
+if (
+    $null -eq $caught -or
+    $caught -isnot [AggregateException] -or
+    $caught.InnerExceptions.Count -ne 2 -or
+    $caught.InnerExceptions[0].Message -notlike '*evidence 数量漂移*' -or
+    $caught.InnerExceptions[1].Message -cne
+        'injected payload DACL restore crash' -or
+    [string]$caught.Data['TicketboxC07FailureCode'] -cne
+        'installed_payload_lease_close_failed'
+) {{
+    $innerMessages = @(
+        $caught.InnerExceptions | ForEach-Object {{ $_.Message }}
+    )
+    throw (
+        'payload lease dual failure was not preserved: ' +
+        "type=$($caught.GetType().FullName) " +
+        "count=$(@($caught.InnerExceptions).Count) " +
+        "messages=$($innerMessages -join ' | ') " +
+        "code=$($caught.Data['TicketboxC07FailureCode'])"
+    )
+}}
+"""
+        result = _run_powershell(command, executable=engine)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_installer_build_probes_and_records_local_vendor_provenance(
     tmp_path: Path,
 ) -> None:
@@ -344,6 +691,12 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     backend_spec = (PACKAGING / "ticketbox-backend.spec").read_text(encoding="utf-8")
     backend_build = (ROOT / "scripts" / "build_backend_exe.ps1").read_text(
         encoding="utf-8-sig"
+    )
+    backend_provenance = (
+        ROOT / "scripts" / "windows_backend_build_provenance.ps1"
+    ).read_text(encoding="utf-8-sig")
+    ci_workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
     )
     toolchain_preparer = (PACKAGING / "prepare_windows_build_toolchain.ps1").read_text(
         encoding="utf-8-sig"
@@ -439,6 +792,92 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "Remove-TicketboxPublishFilesVerified" in build
     for excluded_database_driver in ('"sqlite3"', '"_sqlite3"', '"pysqlite2"', '"MySQLdb"'):
         assert excluded_database_driver in backend_spec
+    for standalone_module in (
+        "app.database._c07_fresh_source_bootstrap",
+        "app.database._c07_production_migration",
+        "_c07_fresh_source_bootstrap.py",
+        "_c07_production_migration.py",
+    ):
+        assert f'"{standalone_module}"' in backend_spec
+    for standalone_dependency in (
+        "app.c07_money_facts",
+        "alembic.command",
+        "alembic.config",
+        "alembic.context",
+        "alembic.migration",
+        "alembic.operations",
+        "alembic.script",
+    ):
+        assert f'"{standalone_dependency}"' in backend_spec
+    assert "sys.path.insert(0, BACKEND)" in backend_spec
+    assert 'collect_submodules("app", on_error="raise")' in backend_spec
+    assert 'name="ticketbox-c07-migrator"' in backend_spec
+    assert (
+        '$stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"'
+        in backend_build
+    )
+    smoke_call = backend_build.index(
+        "$c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke"
+    )
+    payload_gate = backend_build.index("Assert-TicketboxPostgresOnlyFrozenPayload `")
+    manifest_write = backend_build.index("Write-TicketboxBackendBuildManifest `")
+    assert payload_gate < smoke_call < manifest_write
+    assert "-HelperPath $stagedC07Helper" in backend_build
+    assert "-PayloadSnapshot $c07SmokePayloadSnapshot" in backend_build
+    assert "-C07MigrationHelperSmokeEvidence $c07MigrationHelperSmoke" in backend_build
+    payload_snapshot = backend_build.index(
+        "$c07SmokePayloadSnapshot = Get-TicketboxBackendPayloadSnapshot"
+    )
+    payload_lock = backend_build.index(
+        "$C07SmokePayloadLocks = @(Enter-TicketboxFileSetReadLocks"
+    )
+    payload_unlock = backend_build.index(
+        "Exit-TicketboxFileSetReadLocks $C07SmokePayloadLocks",
+        manifest_write,
+    )
+    publish = backend_build.index("Publish-TicketboxRecoverableDirectory `")
+    assert payload_gate < payload_snapshot < payload_lock < smoke_call
+    assert manifest_write < payload_unlock < publish
+    assert "function Invoke-TicketboxC07MigrationHelperSmoke" in backend_provenance
+    assert '$startInfo.FileName = $HelperPath' in backend_provenance
+    assert '$startInfo.RedirectStandardInput = $true' in backend_provenance
+    assert (
+        '[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)'
+        in backend_provenance
+    )
+    assert '$process.StandardInput.Close()' in backend_provenance
+    console_input_override = backend_provenance.index(
+        '[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)'
+    )
+    helper_start = backend_provenance.index('$process.Start()', console_input_override)
+    console_input_restore = backend_provenance.index(
+        '[Console]::InputEncoding = $previousConsoleInputEncoding', helper_start
+    )
+    stdin_close = backend_provenance.index(
+        '$process.StandardInput.Close()', console_input_restore
+    )
+    assert console_input_override < helper_start < console_input_restore < stdin_close
+    assert "$processStarted = $process.Start()" in backend_provenance
+    assert "if ($processStarted -and -not $process.HasExited)" in backend_provenance
+    assert '$startInfo.EnvironmentVariables.Clear()' in backend_provenance
+    assert '"--c07-installed-upgrade-plan --source-revision "' in backend_provenance
+    assert 'Assert-TicketboxC07MigrationHelperSmokeResult $result $DistDir' in (
+        backend_provenance
+    )
+    assert backend_provenance.count(
+        "Get-TicketboxBackendPayloadSnapshot $DistDir"
+    ) >= 2
+    assert "payload_fingerprint = [string]$PayloadSnapshot.fingerprint" in (
+        backend_provenance
+    )
+    assert ci_workflow.count(
+        "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass "
+        "-File scripts\\build_backend_exe.ps1 -Clean"
+    ) == 2
+    assert (
+        'Assert-File (Join-Path $BackendDist "ticketbox-c07-migrator.exe")'
+        in build
+    )
     assert "Read-TicketboxWindowsBuildToolchain $BackendRoot" in backend_build
     assert "prepare_windows_build_toolchain.ps1" in backend_build
     assert "-Component Backend" in backend_build

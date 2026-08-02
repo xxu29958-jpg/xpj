@@ -17,6 +17,7 @@ import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.StatsTab
+import com.ticketbox.domain.model.moneyPercent
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAdaptivePaneScaffold
 import com.ticketbox.ui.components.AppAdaptivePanePurpose
@@ -42,7 +43,6 @@ import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.viewmodel.StatsFilterOptionsLoadState
 import com.ticketbox.viewmodel.StatsSource
 import com.ticketbox.viewmodel.StatsUiState
-import kotlin.math.roundToInt
 
 data class StatsScreenActions(
     val filters: StatsFilterActions,
@@ -261,7 +261,7 @@ private fun ReportsOverview.toAuthoritativeMonthComparison(): MonthComparison? {
         currentAmountCents = currentAmount,
         previousAmountCents = previousTotalAmountCents,
         deltaAmountCents = delta,
-        percentChange = ((delta.toDouble() / previousTotalAmountCents.toDouble()) * 100).roundToInt(),
+        percentChange = moneyPercent(delta, previousTotalAmountCents),
     )
 }
 

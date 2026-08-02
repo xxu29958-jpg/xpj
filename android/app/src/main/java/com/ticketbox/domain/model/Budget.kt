@@ -1,7 +1,5 @@
 package com.ticketbox.domain.model
 
-import kotlin.math.roundToInt
-
 data class BudgetCategoryBudget(
     val category: String,
     val amountCents: Long,
@@ -37,11 +35,7 @@ data class BudgetMonthly(
 ) {
     val availableAmountCents: Long = totalAmountCents + rolloverAmountCents
     val isOverBudget: Boolean = overspentAmountCents > 0L || remainingAmountCents < 0L
-    val spentPercent: Int = if (availableAmountCents > 0L) {
-        ((spentAmountCents.toDouble() / availableAmountCents.toDouble()) * 100).roundToInt()
-    } else {
-        0
-    }
+    val spentPercent: Long = moneyPercent(spentAmountCents, availableAmountCents) ?: 0L
     val spentProgress: Float = if (availableAmountCents > 0L) {
         (spentAmountCents.toFloat() / availableAmountCents.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -71,6 +65,7 @@ data class BudgetMonthlyUpdate(
 
 data class BudgetAdviceResult(
     val advice: BudgetAdvice?,
+    val homeCurrencyCode: String,
     val providerName: String,
     val reasonCode: String?,
 )

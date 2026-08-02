@@ -7,18 +7,19 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import inspect, text
 
+from app.database._c07_contract import C07_SOURCE_REVISION
 from app.database._lifecycle import DatabaseLifecycleKind
 
 pytestmark = pytest.mark.real_db
 
-_PREVIOUS_HEAD = "20260630_0002"
+_OLDER_REVISION = "20260630_0002"
 
 
-def _stamp_below_head(db_pkg) -> None:
+def _stamp_revision(db_pkg, revision: str) -> None:
     with db_pkg.engine.begin() as conn:
         conn.execute(
             text("UPDATE alembic_version SET version_num = :revision"),
-            {"revision": _PREVIOUS_HEAD},
+            {"revision": revision},
         )
 
 
@@ -59,55 +60,57 @@ def _patch_database_writes(monkeypatch, db_pkg, calls: list[str]) -> None:
     monkeypatch.setattr(db_pkg, "reconcile_expense_tag_mirror_once", lambda: calls.append("seed"))
 
 
-def test_pre_migration_backup_runs_before_upgrade(monkeypatch):
-    """A managed database upgrades through real Alembic only after backup."""
-    from alembic import command
-
+def test_c07_source_revision_refuses_before_backup_or_writes(monkeypatch):
+    """Ordinary startup cannot consume the C07 managed source revision."""
     import app.database as db_pkg
     from app.services import backup_service
 
-    order: list[str] = []
-    original_upgrade = command.upgrade
+    calls: list[str] = []
+    monkeypatch.setattr(
+        backup_service,
+        "create_pre_upgrade_backup",
+        lambda: calls.append("backup"),
+    )
+    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
+    monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
+    _patch_database_writes(monkeypatch, db_pkg, calls)
 
-    def _fake_backup():
-        order.append("backup")
-        return SimpleNamespace(file_name="ticketbox-pre-upgrade-test.dump")
-
-    def _tracked_upgrade(*args, **kwargs):
-        order.append("upgrade")
-        return original_upgrade(*args, **kwargs)
-
-    monkeypatch.setattr(backup_service, "create_pre_upgrade_backup", _fake_backup)
-    monkeypatch.setattr(command, "upgrade", _tracked_upgrade)
-
-    _stamp_below_head(db_pkg)
-    db_pkg.init_db()
-
-    assert order[:2] == ["backup", "upgrade"]
-    assert _head_revision(db_pkg) == db_pkg.load_alembic_context().head_revision
-
-
-def test_pre_migration_backup_failure_aborts_migration(monkeypatch):
-    """A failed pg_dump leaves the database catalog and rows untouched."""
-    import app.database as db_pkg
-    from app.services import backup_service
-
-    writes: list[str] = []
-
-    def _boom():
-        raise RuntimeError("pg_dump exploded")
-
-    monkeypatch.setattr(backup_service, "create_pre_upgrade_backup", _boom)
-    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: writes.append("upgrade"))
-    monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: writes.append("stamp"))
-    _patch_database_writes(monkeypatch, db_pkg, writes)
-
-    _stamp_below_head(db_pkg)
+    _stamp_revision(db_pkg, C07_SOURCE_REVISION)
     before = _catalog_snapshot(db_pkg)
-
-    with pytest.raises(db_pkg.DatabaseMigrationPreflightError, match="迁移前自动备份失败"):
+    with pytest.raises(
+        db_pkg.DatabaseMigrationPreflightError,
+        match="只能由 C07 发布迁移动作推进",
+    ):
         db_pkg.init_db()
-    assert writes == []
+
+    assert calls == []
+    assert _catalog_snapshot(db_pkg) == before
+
+
+def test_older_revision_refuses_before_backup_or_writes(monkeypatch):
+    """Older managed revisions are inspect-only under ordinary startup."""
+    import app.database as db_pkg
+    from app.services import backup_service
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        backup_service,
+        "create_pre_upgrade_backup",
+        lambda: calls.append("backup"),
+    )
+    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
+    monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
+    _patch_database_writes(monkeypatch, db_pkg, calls)
+
+    _stamp_revision(db_pkg, _OLDER_REVISION)
+    before = _catalog_snapshot(db_pkg)
+    with pytest.raises(
+        db_pkg.DatabaseMigrationPreflightError,
+        match="inspect-only REFUSED",
+    ):
+        db_pkg.init_db()
+
+    assert calls == []
     assert _catalog_snapshot(db_pkg) == before
 
 

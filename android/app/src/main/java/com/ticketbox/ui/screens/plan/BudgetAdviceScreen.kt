@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetAdvice
 import com.ticketbox.domain.model.BudgetSuggestion
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppDataAuthorityStrip
@@ -33,7 +34,6 @@ import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.BudgetAdviceLoadState
 import com.ticketbox.viewmodel.BudgetAdviceUiState
 import kotlin.math.roundToInt
@@ -92,11 +92,14 @@ private fun BudgetAdviceBody(
         )
         BudgetAdviceLoadState.Empty -> BudgetAdviceEmptyCard(onRequestAdvice)
         BudgetAdviceLoadState.Unavailable -> BudgetAdviceUnavailableCard(state)
-        BudgetAdviceLoadState.Ready -> state.result?.advice?.let { advice ->
-            BudgetAdviceResultContent(
-                advice = advice,
-                onRequestAdvice = onRequestAdvice,
-            )
+        BudgetAdviceLoadState.Ready -> state.result?.let { result ->
+            result.advice?.let { advice ->
+                BudgetAdviceResultContent(
+                    advice = advice,
+                    currencyDisplay = CurrencyDisplay.forRecord(result.homeCurrencyCode),
+                    onRequestAdvice = onRequestAdvice,
+                )
+            }
         } ?: BudgetAdviceEmptyCard(onRequestAdvice)
         BudgetAdviceLoadState.Failed -> AppErrorState(
             title = stringResource(R.string.budget_advice_error_title),
@@ -194,6 +197,7 @@ private fun BudgetAdviceEmptyCard(onRequestAdvice: () -> Unit) {
 @Composable
 private fun BudgetAdviceResultContent(
     advice: BudgetAdvice,
+    currencyDisplay: CurrencyDisplay,
     onRequestAdvice: () -> Unit,
 ) {
     Column(
@@ -223,7 +227,7 @@ private fun BudgetAdviceResultContent(
             }
         }
         if (advice.suggestions.isNotEmpty()) {
-            BudgetSuggestionList(advice.suggestions)
+            BudgetSuggestionList(advice.suggestions, currencyDisplay)
         }
         AppSecondaryButton(
             text = stringResource(R.string.budget_advice_generate_again),
@@ -235,7 +239,10 @@ private fun BudgetAdviceResultContent(
 }
 
 @Composable
-private fun BudgetSuggestionList(suggestions: List<BudgetSuggestion>) {
+private fun BudgetSuggestionList(
+    suggestions: List<BudgetSuggestion>,
+    currencyDisplay: CurrencyDisplay,
+) {
     AppContentCard {
         Text(
             text = stringResource(R.string.budget_advice_suggestions_title),
@@ -246,7 +253,7 @@ private fun BudgetSuggestionList(suggestions: List<BudgetSuggestion>) {
             if (index > 0) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
-            BudgetSuggestionRow(suggestion)
+            BudgetSuggestionRow(suggestion, currencyDisplay)
         }
         Text(
             text = stringResource(R.string.budget_advice_result_note),
@@ -257,8 +264,10 @@ private fun BudgetSuggestionList(suggestions: List<BudgetSuggestion>) {
 }
 
 @Composable
-private fun BudgetSuggestionRow(suggestion: BudgetSuggestion) {
-    val currency = LocalCurrencyDisplay.current
+private fun BudgetSuggestionRow(
+    suggestion: BudgetSuggestion,
+    currencyDisplay: CurrencyDisplay,
+) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
@@ -276,7 +285,7 @@ private fun BudgetSuggestionRow(suggestion: BudgetSuggestion) {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = formatDisplayAmount(suggestion.suggestedAmountCents, currency),
+                text = formatDisplayAmount(suggestion.suggestedAmountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,

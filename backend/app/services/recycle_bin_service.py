@@ -30,6 +30,7 @@ from app.models import (
     Tag,
     TagMutationUndoGroup,
 )
+from app.money_contract import projection_sum_to_int
 from app.services.budget_service import list_archived_budgets, restore_monthly_budget
 from app.services.category_preference_service import restore_category_preference
 from app.services.classify_service import undo_delete_rule
@@ -434,7 +435,7 @@ def _goal_detail(item: Goal) -> str:
     if item.goal_type == "debt_repayment":
         return "还债目标"
     scope = item.category or "总支出"
-    return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents or 0)}"
+    return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents)}"
 
 
 def _budget_detail(db: Session, item: Budget) -> str:
@@ -454,7 +455,13 @@ def _money(amount_cents: int) -> str:
     # amounts are stored in home-currency minor units, so None lets
     # currency_common resolve the deployment home code (JPY/KRW → zero
     # fraction, divmod-based, no float).
-    return minor_amount_label(int(amount_cents or 0), None)
+    return minor_amount_label(
+        projection_sum_to_int(
+            amount_cents,
+            label="recycle_bin.money",
+        ),
+        None,
+    )
 
 
 __all__ = [

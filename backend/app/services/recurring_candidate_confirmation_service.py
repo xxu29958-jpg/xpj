@@ -11,6 +11,11 @@ from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import RecurringItem
+from app.money_contract import (
+    MoneySign,
+    ensure_money_minor,
+    projection_sum_to_int,
+)
 from app.schemas import RecurringCandidateConfirmRequest
 from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import home_currency_code
@@ -48,7 +53,11 @@ def _idempotent_formal_match(
         formal is not None
         and formal.status != "archived"
         and formal.archived_at is None
-        and int(formal.last_amount_cents) == amount_cents
+        and projection_sum_to_int(
+            formal.last_amount_cents,
+            label="recurring_candidate.formal_last_amount",
+        )
+        == amount_cents
     ):
         return formal
     return None
@@ -67,7 +76,11 @@ def confirm_recurring_candidate(
     # 继续走候选匹配原路径 (恢复 404 守卫), 不静默返回既有项。
     merchant_key = normalize_merchant(payload.merchant.strip())
     frequency = _clean_frequency(payload.frequency)
-    amount_cents = int(payload.amount_cents)
+    amount_cents = ensure_money_minor(
+        payload.amount_cents,
+        sign=MoneySign.POSITIVE,
+        label="recurring_candidate.amount_cents",
+    )
     if merchant_key:
         formal = _idempotent_formal_match(
             db,
@@ -139,7 +152,11 @@ def _require_recurring_candidate_match(
     if not merchant_key:
         raise AppError("recurring_candidate_not_found", status_code=404)
 
-    amount_cents = int(payload.amount_cents)
+    amount_cents = ensure_money_minor(
+        payload.amount_cents,
+        sign=MoneySign.POSITIVE,
+        label="recurring_candidate.amount_cents",
+    )
     candidate = _find_recurring_candidate(
         db,
         tenant_id=tenant_id,
@@ -297,7 +314,10 @@ def _find_recurring_candidate(
     for item in recurring_candidates(db, tenant_id=tenant_id, timezone_name=timezone_name):
         if normalize_merchant(item.get("merchant")) != merchant_key:
             continue
-        if int(item.get("amount_cents") or 0) != amount_cents:
+        if projection_sum_to_int(
+            item.get("amount_cents"),
+            label="recurring_candidate.match_amount",
+        ) != amount_cents:
             continue
         return item
     return None

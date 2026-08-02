@@ -21,11 +21,13 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Expense
+from app.money_contract import projection_sum_to_int
 from app.services.income_plan_service import total_monthly_income_cents
 from app.services.spending_contract_service import (
     accounting_timezone_key,
@@ -52,7 +54,10 @@ class CashflowMonth:
 
     @property
     def net_cents(self) -> int:
-        return self.income_cents - self.expense_cents
+        return projection_sum_to_int(
+            self.income_cents - self.expense_cents,
+            label="insight_radar.net",
+        )
 
 
 @dataclass(frozen=True)
@@ -118,7 +123,14 @@ def cashflow_radar(
     for expense in expenses:
         key = stat_month_label(expense, timezone_key)
         if key in months:
-            expense_by_month[key] += int(expense.amount_cents or 0)
+            amount = projection_sum_to_int(
+                expense.amount_cents,
+                label="insight_radar.expense",
+            )
+            expense_by_month[key] = projection_sum_to_int(
+                expense_by_month[key] + amount,
+                label="insight_radar.month_total",
+            )
 
     return [
         CashflowMonth(
@@ -128,10 +140,47 @@ def cashflow_radar(
                 tenant_id=tenant_id,
                 month=month,
             ),
-            expense_cents=int(expense_by_month.get(month, 0)),
+            expense_cents=projection_sum_to_int(
+                expense_by_month.get(month, 0),
+                label="insight_radar.month_projection",
+            ),
         )
         for month in months
     ]
+
+
+def _subscription_candidate(
+    merchant: str,
+    entries: list[tuple[str, int]],
+    *,
+    min_occurrences: int,
+    amount_tolerance_pct: float,
+) -> SubscriptionCandidate | None:
+    if len(entries) < min_occurrences:
+        return None
+    # Distinct-month count is the real signal: repeated same-month charges do
+    # not establish a subscription.
+    distinct_months = {month for month, _ in entries}
+    if len(distinct_months) < min_occurrences:
+        return None
+    amounts = sorted(amount for _, amount in entries)
+    median = amounts[len(amounts) // 2]
+    tolerance_ratio = Decimal(str(amount_tolerance_pct))
+    if median == 0 or not tolerance_ratio.is_finite() or tolerance_ratio < 0:
+        return None
+    tolerance = max(int(Decimal(median) * tolerance_ratio), 1)
+    if any(abs(amount - median) > tolerance for amount in amounts):
+        return None
+    return SubscriptionCandidate(
+        merchant=merchant,
+        typical_amount_cents=projection_sum_to_int(
+            median,
+            label="insight_radar.typical_amount",
+        ),
+        occurrences=len(entries),
+        months_covered=len(distinct_months),
+        last_seen_month=max(month for month, _ in entries),
+    )
 
 
 def subscription_radar(
@@ -180,35 +229,25 @@ def subscription_radar(
         if month_key not in months_window:
             continue
         per_merchant[merchant_key].append(
-            (month_key, int(expense.amount_cents or 0))
+            (
+                month_key,
+                projection_sum_to_int(
+                    expense.amount_cents,
+                    label="insight_radar.subscription_amount",
+                ),
+            )
         )
 
     candidates: list[SubscriptionCandidate] = []
     for merchant_key, entries in per_merchant.items():
-        if len(entries) < min_occurrences:
-            continue
-        # Distinct-month count is the real signal — multiple charges
-        # in one month from one merchant don't make a subscription.
-        distinct_months = {month for month, _ in entries}
-        if len(distinct_months) < min_occurrences:
-            continue
-        amounts = sorted(amount for _, amount in entries)
-        median = amounts[len(amounts) // 2]
-        if median == 0:
-            continue
-        tolerance = max(int(median * amount_tolerance_pct), 1)
-        if any(abs(a - median) > tolerance for a in amounts):
-            continue
-        last_seen = max(month for month, _ in entries)
-        candidates.append(
-            SubscriptionCandidate(
-                merchant=merchant_key,
-                typical_amount_cents=int(median),
-                occurrences=len(entries),
-                months_covered=len(distinct_months),
-                last_seen_month=last_seen,
-            )
+        candidate = _subscription_candidate(
+            merchant_key,
+            entries,
+            min_occurrences=min_occurrences,
+            amount_tolerance_pct=amount_tolerance_pct,
         )
+        if candidate is not None:
+            candidates.append(candidate)
     candidates.sort(
         key=lambda c: (c.months_covered, c.typical_amount_cents),
         reverse=True,

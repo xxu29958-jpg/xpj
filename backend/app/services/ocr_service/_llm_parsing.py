@@ -13,6 +13,8 @@ from datetime import datetime
 from typing import Any
 
 from app.config import get_settings
+from app.errors import AppError
+from app.money_contract import MoneySign, ensure_money_minor
 from app.services.category_common import DEFAULT_CATEGORIES, normalize_category
 from app.services.ocr_service._models import OcrResult
 from app.services.receipt_parse_service import parse_receipt_text
@@ -55,20 +57,15 @@ def _coerce_category(value: Any) -> str | None:
     return category
 
 
-def _coerce_int(value: Any) -> int | None:
-    coerced: int | None = None
-    if value is not None:
-        with suppress(TypeError, ValueError):
-            coerced = int(value)
-    return coerced
-
-
 def _coerce_amount_cents(value: Any) -> int | None:
-    amount_cents: int | None = None
-    amount = _coerce_int(value)
-    if amount is not None and amount > 0:
-        amount_cents = amount
-    return amount_cents
+    try:
+        return ensure_money_minor(
+            value,
+            sign=MoneySign.POSITIVE,
+            label="ocr.llm_amount_cents",
+        )
+    except AppError:
+        return None
 
 
 def _coerce_float(value: Any) -> float | None:

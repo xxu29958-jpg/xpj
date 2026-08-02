@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
@@ -11,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.fx_constants import NO_FRACTION_CURRENCY_CODES
+from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -42,47 +40,6 @@ from app.services.debt_service import get_debt_response
 router = APIRouter(prefix="/web/debts", tags=["web"])
 
 _STALE_MESSAGE = "欠款已在其它端被修改，请刷新后重试。"
-
-
-def _parse_major_minor(
-    raw: str,
-    *,
-    currency_code: str,
-    allow_negative: bool,
-) -> int:
-    text = (raw or "").strip()
-    code = (currency_code or "").strip().upper()
-    zero_fraction = code in NO_FRACTION_CURRENCY_CODES
-    example = "120" if zero_fraction else "120.50"
-    try:
-        amount = Decimal(text)
-    except (InvalidOperation, ValueError) as exc:
-        raise AppError(
-            "invalid_request",
-            f"请填写正确的 {code} 金额，例如 {example}。",
-            status_code=422,
-        ) from exc
-    if not amount.is_finite():
-        raise AppError(
-            "invalid_request",
-            f"请填写正确的 {code} 金额，例如 {example}。",
-            status_code=422,
-        )
-    scaled = amount * (Decimal("1") if zero_fraction else Decimal("100"))
-    if scaled != scaled.to_integral_value():
-        raise AppError(
-            "invalid_request",
-            (f"{code} 金额只能填写整数。" if zero_fraction else f"{code} 金额最多保留两位小数。"),
-            status_code=422,
-        )
-    amount_minor = int(scaled)
-    if (allow_negative and amount_minor == 0) or (not allow_negative and amount_minor <= 0):
-        raise AppError(
-            "debt_amount_invalid",
-            "金额必须大于 0；调整时可用负数减少账面。",
-            status_code=422,
-        )
-    return amount_minor
 
 
 def _action_redirect(
@@ -152,7 +109,7 @@ def web_record_repayment(
             public_id=public_id,
         )
         payload = RepaymentCreateRequest(
-            amount_cents=_parse_major_minor(
+            amount_cents=parse_web_debt_major_minor(
                 amount_major,
                 currency_code=debt.home_currency_code,
                 allow_negative=False,
@@ -219,7 +176,7 @@ def web_record_adjustment(
             public_id=public_id,
         )
         payload = DebtAdjustmentCreateRequest(
-            amount_cents=_parse_major_minor(
+            amount_cents=parse_web_debt_major_minor(
                 amount_major,
                 currency_code=debt.home_currency_code,
                 allow_negative=True,

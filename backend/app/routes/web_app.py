@@ -19,8 +19,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.money_contract import projection_sum_to_int
 from app.routes.web_common import (
     LocalOnly,
+    _amount_yuan,
     _base_ctx,
     _confirmed_by_day,
     _confirmed_source_breakdown,
@@ -37,6 +39,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import ConfirmedExpenseBatchUpdateRequest
+from app.services.currency_common import average_minor_amount, home_currency_code
 from app.services.expense_service import (
     batch_update_confirmed_expenses,
     ledger_has_any_expense,
@@ -109,6 +112,54 @@ def _confirmed_redirect(
     )
 
 
+def _confirmed_month_context(
+    db: Session,
+    *,
+    selected_id: str,
+    effective_month: str,
+    currency_code: str,
+    month_stats: dict,
+) -> dict:
+    """Build the confirmed-ledger summary without bloating the route handler."""
+
+    month_total_cents = projection_sum_to_int(
+        month_stats.get("total_amount_cents", 0),
+        label="web.confirmed_month_total",
+    )
+    month_total_count = int(month_stats.get("count", 0))
+    by_day = _confirmed_by_day(
+        db,
+        selected_id,
+        effective_month,
+        currency_code=currency_code,
+    )
+    peak_day_cents = max(
+        (
+            projection_sum_to_int(
+                item["amount_cents"],
+                label="web.confirmed_peak_day",
+            )
+            for item in by_day
+        ),
+        default=0,
+    )
+    return {
+        "month_total_amount_yuan": _amount_yuan(month_total_cents, currency_code),
+        "month_total_count": month_total_count,
+        "month_average_amount_yuan": _amount_yuan(
+            average_minor_amount(month_total_cents, month_total_count),
+            currency_code,
+        ),
+        "month_peak_amount_yuan": _amount_yuan(peak_day_cents, currency_code),
+        "by_day": by_day,
+        "source_breakdown": _confirmed_source_breakdown(
+            db,
+            selected_id,
+            effective_month,
+        ),
+    }
+
+
 @router.get("/confirmed", response_class=HTMLResponse)
 def web_confirmed(
     request: Request,
@@ -131,7 +182,11 @@ def web_confirmed(
         month=month,
         tag=tag,
     )
-    items = [_expense_view(e) for e in expenses]
+    home = home_currency_code()
+    items = [
+        _expense_view(e, presentation_currency_code=home)
+        for e in expenses
+    ]
     total_pages = max(1, (total + page_size - 1) // page_size)
     pager_params = {"ledger_id": selected_id}
     if month:
@@ -158,10 +213,15 @@ def web_confirmed(
     ctx["month"] = month or ""
     ctx["tag"] = tag or ""
     ctx["pager_query"] = urlencode(pager_params)
-    ctx["month_total_amount_yuan"] = int(month_stats.get("total_amount_cents", 0)) / 100.0
-    ctx["month_total_count"] = int(month_stats.get("count", 0))
-    ctx["by_day"] = _confirmed_by_day(db, selected_id, effective_month)
-    ctx["source_breakdown"] = _confirmed_source_breakdown(db, selected_id, effective_month)
+    ctx.update(
+        _confirmed_month_context(
+            db,
+            selected_id=selected_id,
+            effective_month=effective_month,
+            currency_code=home,
+            month_stats=month_stats,
+        )
+    )
     ctx["flash_message"] = msg or ""
     return templates.TemplateResponse(request=request, name="confirmed.html", context=ctx)
 

@@ -47,9 +47,13 @@ class StatsMetricGridBulletTest {
     @Test
     fun spentPercentReportsRealRatioBeyondHundred() {
         // 旧行为 progress 截断在 1 → 超支永远显示 100%;bullet 后数字报真实占比。
-        assertEquals(125, budgetSpentPercent(budgetOf(budgetCents = 100_000L, spentCents = 125_000L)))
-        assertEquals(60, budgetSpentPercent(budgetOf(budgetCents = 100_000L, spentCents = 60_000L)))
+        assertEquals(125L, budgetSpentPercent(budgetOf(budgetCents = 100_000L, spentCents = 125_000L)))
+        assertEquals(60L, budgetSpentPercent(budgetOf(budgetCents = 100_000L, spentCents = 60_000L)))
+        assertEquals(
+            900_719_925_474_099_100L,
+            budgetSpentPercent(budgetOf(budgetCents = 1L, spentCents = 9_007_199_254_740_991L)),
+        )
         // 预算不可用:退回截断版 progress 百分比,绝不除零。
-        assertEquals(0, budgetSpentPercent(budgetOf(budgetCents = 0L, spentCents = 500L)))
+        assertEquals(0L, budgetSpentPercent(budgetOf(budgetCents = 0L, spentCents = 500L)))
     }
 }

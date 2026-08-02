@@ -362,19 +362,20 @@ def test_duplicate_pending_invite_integrity_error_maps_to_contract(
 
     with SessionLocal() as db:
         original_scalar = db.scalar
-        scalar_calls = 0
+        duplicate_precheck_was_hidden = False
 
-        # White-box: null out the active-split-total SELECT so the in-Python
-        # pre-check is bypassed and the genuine pre-existing pending invite is
-        # caught by the DB partial UNIQUE index path. The scalar-call order in
-        # create_invitation is: 1) writer-member lookup, 2) ledger archived_at
-        # guard, 3) expense lookup, 4) active-split-total sum, 5) duplicate
-        # pre-check — so the sum is call #4. (#2 was added with the F6 archived
-        # -ledger guard; before that the sum was #3.)
+        # White-box: hide only the pending-invitation lookup so the genuine
+        # pre-existing row reaches the database partial-UNIQUE race backstop.
+        # Select by semantic target, not scalar call order: a new guard or
+        # aggregate query must not silently turn this into a false-green test.
         def scalar_hiding_duplicate(statement, *args, **kwargs):
-            nonlocal scalar_calls
-            scalar_calls += 1
-            if scalar_calls == 4:
+            nonlocal duplicate_precheck_was_hidden
+            selected = tuple(statement.selected_columns)
+            if (
+                len(selected) == 1
+                and selected[0].compare(BillSplitInvitation.__table__.c.id)
+            ):
+                duplicate_precheck_was_hidden = True
                 return None
             return original_scalar(statement, *args, **kwargs)
 
@@ -392,6 +393,7 @@ def test_duplicate_pending_invite_integrity_error_maps_to_contract(
 
         assert exc_info.value.error == "split_invitation_already_pending"
         assert exc_info.value.status_code == 409
+        assert duplicate_precheck_was_hidden
         rows = list(
             db.scalars(
                 select(BillSplitInvitation)

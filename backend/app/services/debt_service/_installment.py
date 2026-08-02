@@ -20,6 +20,7 @@ from datetime import date
 
 from app.config import get_settings
 from app.models import Debt
+from app.money_contract import projection_sum_to_int
 from app.services.time_service import ensure_utc, safe_zone
 
 
@@ -88,7 +89,11 @@ def installment_paid_count(debt: Debt, *, paid: int) -> int | None:
     """
     if debt.debt_kind != "installment" or debt.installment_count is None:
         return None
-    per_period = int(debt.principal_amount_cents) // debt.installment_count
+    principal = projection_sum_to_int(
+        debt.principal_amount_cents,
+        label="debt_installment.principal",
+    )
+    per_period = principal // debt.installment_count
     if per_period == 0:
         # Degenerate input (principal < 期数): no whole standard period exists. Guard the divide
         # (a ZeroDivisionError would surface as a 500) and report no progress rather than crash.

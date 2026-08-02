@@ -12,6 +12,7 @@ from hashlib import sha256
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.money_contract import MoneySign, ensure_money_minor
 from app.schemas import (
     DebtResponse,
     MemberRepaymentProposalConfirmRequest,
@@ -27,6 +28,7 @@ from app.services.debt_service import (
     get_participant_debt_response,
     get_repayment_proposal_response,
     reject_repayment_proposal,
+    validate_home_amount_command,
     withdraw_repayment_proposal,
 )
 from app.services.exchange_rate_service import (
@@ -118,6 +120,12 @@ def create_repayment_proposal_idempotently(
     """Create a member repayment proposal with canonical replay rules."""
     if not idempotency_key:
         raise AppError("idempotency_key_required", status_code=422)
+    validate_home_amount_command(
+        amount_cents=payload.proposed_amount_cents,
+        original_currency=payload.original_currency_code,
+        original_amount=payload.original_amount,
+        amount_error="repayment_proposal_amount_invalid",
+    )
     fingerprint = fingerprint_request(
         operation=_PROPOSAL_CREATE_OPERATION,
         target_id=public_id,
@@ -219,6 +227,19 @@ def withdraw_repayment_proposal_idempotently(
     return response
 
 
+def _validate_confirmed_proposal_amount(
+    payload: MemberRepaymentProposalConfirmRequest,
+) -> None:
+    if payload.confirmed_amount_cents is None:
+        return
+    ensure_money_minor(
+        payload.confirmed_amount_cents,
+        sign=MoneySign.POSITIVE,
+        label="repayment_proposal.confirmed_amount_cents",
+        error_code="repayment_proposal_amount_invalid",
+    )
+
+
 def confirm_repayment_proposal_idempotently(
     db: Session,
     *,
@@ -232,6 +253,7 @@ def confirm_repayment_proposal_idempotently(
     """Confirm all or part of a proposal and return the participant fold."""
     if not idempotency_key:
         raise AppError("idempotency_key_required", status_code=422)
+    _validate_confirmed_proposal_amount(payload)
     target_id = _proposal_target_id(public_id, proposal_public_id)
     reject_idempotency_target_mismatch(
         db,

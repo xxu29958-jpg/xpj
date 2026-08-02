@@ -10,12 +10,24 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Budget, BudgetCategory
+from app.money_contract import (
+    MoneySign,
+    ensure_money_minor,
+    projection_sum_to_int,
+    projection_values_sum_to_int,
+)
 from app.schemas import (
     BudgetCategoryRequest,
     BudgetCategoryResponse,
     BudgetExcludedCategoryResponse,
     BudgetMonthlyResponse,
     BudgetMonthlyUpdateRequest,
+)
+from app.services.budget_money import (
+    budget_amount_breakdown as _budget_amount_breakdown,
+)
+from app.services.budget_money import (
+    validated_monthly_budget_amounts as _validated_monthly_budget_amounts,
 )
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import assert_currency_binding_consistent
@@ -93,7 +105,12 @@ def _clean_category_budget_rows(rows: list[BudgetCategoryRequest]) -> list[tuple
         category = _clean_category(row.category)
         if category in seen:
             raise AppError("invalid_request", status_code=422)
-        normalized.append((category, int(row.amount_cents)))
+        amount_cents = ensure_money_minor(
+            row.amount_cents,
+            sign=MoneySign.NONNEGATIVE,
+            label="budget_category.amount_cents",
+        )
+        normalized.append((category, amount_cents))
         seen.add(category)
     return normalized
 
@@ -156,7 +173,11 @@ def _fixed_amount_cents_for_month(
             timezone_name=timezone_name,
         )
     )
-    return int(amount or 0)
+    return projection_sum_to_int(
+        amount,
+        label="budget.fixed_recurring_total",
+        empty_is_zero=True,
+    )
 
 
 def _month_spend_by_category(
@@ -184,8 +205,16 @@ def _month_spend_by_category(
     for category_value, amount_value, count_value in rows:
         category = normalize_category(category_value)
         current = spend.get(category, CategorySpend())
+        amount_cents = projection_sum_to_int(
+            amount_value,
+            label="budget.category_spend_row",
+            empty_is_zero=True,
+        )
         spend[category] = CategorySpend(
-            amount_cents=current.amount_cents + int(amount_value or 0),
+            amount_cents=projection_sum_to_int(
+                current.amount_cents + amount_cents,
+                label="budget.category_spend_total",
+            ),
             count=current.count + int(count_value or 0),
         )
     return spend
@@ -203,23 +232,10 @@ def _build_excluded_breakdown(
         for category, spend in sorted(spend_by_category.items())
         if category in excluded_set
     ]
-    return breakdown, sum(item.amount_cents for item in breakdown)
-
-
-def _budget_amount_breakdown(
-    budget,
-    *,
-    fixed_amount_cents: int,
-    spent_amount_cents: int,
-) -> tuple[int, int, int, int, int, int]:
-    total = int(budget.total_amount_cents if budget else 0)
-    rollover = int(budget.rollover_amount_cents if budget else 0)
-    non_monthly = int(budget.non_monthly_amount_cents if budget else 0)
-    available = total + rollover
-    flex = max(available - fixed_amount_cents - non_monthly, 0)
-    remaining = available - spent_amount_cents if budget is not None else 0
-    overspent = max(-remaining, 0) if budget is not None else 0
-    return total, rollover, non_monthly, flex, remaining, overspent
+    return breakdown, projection_values_sum_to_int(
+        (item.amount_cents for item in breakdown),
+        label="budget.excluded_total",
+    )
 
 
 def _build_category_budgets(
@@ -229,11 +245,18 @@ def _build_category_budgets(
     for category_budget in category_rows:
         category = normalize_category(category_budget.category)
         spent = spend_by_category.get(category, CategorySpend()).amount_cents
-        remaining = int(category_budget.amount_cents) - spent
+        amount_cents = projection_sum_to_int(
+            category_budget.amount_cents,
+            label="budget.category_limit",
+        )
+        remaining = projection_sum_to_int(
+            amount_cents - spent,
+            label="budget.category_remaining",
+        )
         out.append(
             BudgetCategoryResponse(
                 category=category,
-                amount_cents=int(category_budget.amount_cents),
+                amount_cents=amount_cents,
                 spent_amount_cents=spent,
                 remaining_amount_cents=remaining,
                 overspent_amount_cents=max(-remaining, 0),
@@ -265,10 +288,13 @@ def _budget_response(
     excluded_breakdown, excluded_amount_cents = _build_excluded_breakdown(
         spend_by_category, excluded_set
     )
-    spent_amount_cents = sum(
-        spend.amount_cents
-        for category, spend in spend_by_category.items()
-        if category not in excluded_set
+    spent_amount_cents = projection_sum_to_int(
+        sum(
+            spend.amount_cents
+            for category, spend in spend_by_category.items()
+            if category not in excluded_set
+        ),
+        label="budget.spent_total",
     )
     fixed_amount_cents = _fixed_amount_cents_for_month(
         db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
@@ -336,6 +362,9 @@ def upsert_monthly_budget(
     timezone_name: str | None = None,
 ) -> BudgetMonthlyResponse:
     clean_month = _clean_month(month)
+    total_amount_cents, non_monthly_amount_cents, rollover_amount_cents = (
+        _validated_monthly_budget_amounts(payload)
+    )
     excluded_categories = _clean_excluded_categories(payload.excluded_categories)
     category_budget_rows = _clean_category_budget_rows(payload.category_budgets)
     now = now_utc()
@@ -359,9 +388,9 @@ def upsert_monthly_budget(
         )
     else:
         bump_row_version(budget)
-    budget.total_amount_cents = int(payload.total_amount_cents)
-    budget.non_monthly_amount_cents = int(payload.non_monthly_amount_cents)
-    budget.rollover_amount_cents = int(payload.rollover_amount_cents)
+    budget.total_amount_cents = total_amount_cents
+    budget.non_monthly_amount_cents = non_monthly_amount_cents
+    budget.rollover_amount_cents = rollover_amount_cents
     budget.excluded_categories = _serialize_excluded_categories(excluded_categories)
     budget.updated_at = now
 

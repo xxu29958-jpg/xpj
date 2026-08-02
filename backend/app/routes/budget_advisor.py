@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context
 from app.database import get_db
+from app.money_contract import MoneySign, parse_canonical_money_minor
 from app.schemas import (
     BudgetAdviceDto,
     BudgetAdviseRequest,
@@ -15,6 +18,7 @@ from app.schemas import (
     BudgetSuggestionDto,
     DiscretionaryResponse,
 )
+from app.schemas._money import NonNegativeMoneyMinorText
 from app.services.budget_advisor_service import (
     BudgetAdvice,
     advisor_status_for_tenant,
@@ -39,11 +43,21 @@ def get_discretionary(
         pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
         description="Accounting month used for one-time income.",
     ),
-    savings_target_cents: int = Query(default=0, ge=0),
-    reserved_buffer_cents: int = Query(default=0, ge=0),
+    savings_target_cents: Annotated[NonNegativeMoneyMinorText, Query()] = "0",
+    reserved_buffer_cents: Annotated[NonNegativeMoneyMinorText, Query()] = "0",
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> DiscretionaryResponse:
+    savings_target = parse_canonical_money_minor(
+        savings_target_cents,
+        sign=MoneySign.NONNEGATIVE,
+        label="budget_discretionary.savings_target_cents",
+    )
+    reserved_buffer = parse_canonical_money_minor(
+        reserved_buffer_cents,
+        sign=MoneySign.NONNEGATIVE,
+        label="budget_discretionary.reserved_buffer_cents",
+    )
     month_label = month or current_accounting_month()
     income = total_monthly_income_cents(
         db,
@@ -61,8 +75,8 @@ def get_discretionary(
         monthly_income_cents=income,
         fixed_expenses_cents=fixed,
         spent_amount_cents=spent,
-        savings_target_cents=savings_target_cents,
-        reserved_buffer_cents=reserved_buffer_cents,
+        savings_target_cents=savings_target,
+        reserved_buffer_cents=reserved_buffer,
     )
     return DiscretionaryResponse(
         monthly_income_cents=breakdown.monthly_income_cents,
@@ -90,6 +104,7 @@ def post_advise(
     )
     return BudgetAdviseResponse(
         advice=_advice_to_dto(result.advice),
+        home_currency_code=result.home_currency_code,
         provider_name=result.provider_name,
         reason_code=result.reason_code,
     )

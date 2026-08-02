@@ -11,6 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._money import NonNegativeMoneyMinor
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -51,8 +52,8 @@ class CategoryRuleCreateRequest(BaseModel):
     category: str
     enabled: bool = True
     priority: int = 100
-    amount_min_cents: int | None = Field(default=None, ge=0)
-    amount_max_cents: int | None = Field(default=None, ge=0)
+    amount_min_cents: NonNegativeMoneyMinor | None = None
+    amount_max_cents: NonNegativeMoneyMinor | None = None
     source_contains: str | None = None
     tag_contains: str | None = None
 
@@ -65,8 +66,8 @@ class CategoryRuleUpdateRequest(BaseModel):
     category: str | None = None
     enabled: bool | None = None
     priority: int | None = None
-    amount_min_cents: int | None = Field(default=None, ge=0)
-    amount_max_cents: int | None = Field(default=None, ge=0)
+    amount_min_cents: NonNegativeMoneyMinor | None = None
+    amount_max_cents: NonNegativeMoneyMinor | None = None
     source_contains: str | None = None
     tag_contains: str | None = None
 
@@ -93,8 +94,8 @@ class CategoryRuleResponse(BaseModel):
     category: str
     enabled: bool
     priority: int
-    amount_min_cents: int | None = None
-    amount_max_cents: int | None = None
+    amount_min_cents: NonNegativeMoneyMinor | None = None
+    amount_max_cents: NonNegativeMoneyMinor | None = None
     source_contains: str | None = None
     tag_contains: str | None = None
     created_at: datetime
@@ -244,7 +245,7 @@ class RulePreviewRequest(BaseModel):
 class RulePreviewItem(BaseModel):
     id: int
     merchant: str | None
-    amount_cents: int | None
+    amount_cents: NonNegativeMoneyMinor | None
     current_category: str
     suggested_category: str | None
     reason: str

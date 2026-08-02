@@ -21,11 +21,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.money_contract import (
+    projection_sum_to_int,
+    projection_values_sum_to_int,
+)
 from app.services.category_common import category_filter_values
 from app.services.learning_service._budget_quantile import (
+    BudgetQuantileSuggestion,
     compute_budget_quantile_suggestion,
 )
 from app.services.spending_contract_service import (
@@ -65,6 +71,43 @@ class BudgetExplanation:
     verdict: str  # "under" / "on_track" / "over_p75" / "no_history"
 
 
+def _budget_explanation(
+    *,
+    category: str,
+    year_month: str,
+    actual: int,
+    suggestion: BudgetQuantileSuggestion | None,
+) -> BudgetExplanation:
+    if suggestion is None or (
+        suggestion.p50_cents == 0 and suggestion.p75_cents == 0
+    ):
+        return BudgetExplanation(
+            category=category,
+            year_month=year_month,
+            actual_cents=actual,
+            p50_cents=None,
+            p75_cents=None,
+            delta_vs_p75_cents=None,
+            verdict="no_history",
+        )
+    p50 = projection_sum_to_int(suggestion.p50_cents, label="monthly_report.p50")
+    p75 = projection_sum_to_int(suggestion.p75_cents, label="monthly_report.p75")
+    delta = projection_sum_to_int(
+        actual - p75,
+        label="monthly_report.delta_vs_p75",
+    )
+    verdict = "under" if actual <= p50 else "on_track" if actual <= p75 else "over_p75"
+    return BudgetExplanation(
+        category=category,
+        year_month=year_month,
+        actual_cents=actual,
+        p50_cents=p50,
+        p75_cents=p75,
+        delta_vs_p75_cents=delta,
+        verdict=verdict,
+    )
+
+
 def _previous_month(year_month: str) -> str:
     return shift_month(year_month, -1)
 
@@ -86,7 +129,14 @@ def _confirmed_in_month(
         )
     )
     return [
-        (expense.category or "其他", int(expense.amount_cents or 0))
+        (
+            expense.category or "其他",
+            projection_sum_to_int(
+                expense.amount_cents,
+                label="monthly_report.expense",
+                empty_is_zero=True,
+            ),
+        )
         for expense in rows
     ]
 
@@ -108,11 +158,17 @@ def compose_monthly_report(
         year_month=year_month,
         timezone_name=timezone_name,
     )
-    total = sum(amount for _, amount in rows)
+    total = projection_values_sum_to_int(
+        (amount for _, amount in rows),
+        label="monthly_report.total",
+    )
     by_category: dict[str, int] = defaultdict(int)
     count_by_category: dict[str, int] = defaultdict(int)
     for category, amount in rows:
-        by_category[category] += amount
+        by_category[category] = projection_sum_to_int(
+            by_category[category] + amount,
+            label="monthly_report.category",
+        )
         count_by_category[category] += 1
     top = sorted(
         (
@@ -131,11 +187,19 @@ def compose_monthly_report(
     prev_rows = _confirmed_in_month(
         db, tenant_id=tenant_id, year_month=prev, timezone_name=timezone_name
     )
-    prev_total = sum(amount for _, amount in prev_rows)
-    delta = total - prev_total
+    prev_total = projection_values_sum_to_int(
+        (amount for _, amount in prev_rows),
+        label="monthly_report.previous_total",
+    )
+    delta = projection_sum_to_int(
+        total - prev_total,
+        label="monthly_report.delta",
+    )
     delta_pct: float | None = None
     if prev_total > 0:
-        delta_pct = (delta / prev_total) * 100.0
+        delta_pct = float(
+            Decimal(delta) * Decimal(100) / Decimal(prev_total)
+        )
 
     return MonthlyReport(
         year_month=year_month,
@@ -169,7 +233,14 @@ def compose_budget_explanation(
     # baseline cover the same set the category breakdown rolls up under — a
     # caller passing any alias of the group gets the whole group's history.
     category_values = category_filter_values(category)
-    actual = sum(amount for cat, amount in rows if cat in category_values)
+    actual = projection_values_sum_to_int(
+        (
+            amount
+            for cat, amount in rows
+            if cat in category_values
+        ),
+        label="monthly_report.category_actual",
+    )
 
     # Anchor the quantile lookback at the start of THIS month so the
     # month we're explaining doesn't pollute its own baseline.
@@ -184,39 +255,11 @@ def compose_budget_explanation(
         timezone_name=timezone_name,
     )
 
-    # "All-zero baseline" (every padded month had zero spend in this
-    # category) is functionally the same as no history at all — the
-    # quantile is 0 and any non-zero current spend would flag as
-    # "over_p75", which is unhelpful noise. Treat it as no_history
-    # explicitly.
-    if suggestion is None or (
-        suggestion.p50_cents == 0 and suggestion.p75_cents == 0
-    ):
-        return BudgetExplanation(
-            category=category,
-            year_month=year_month,
-            actual_cents=actual,
-            p50_cents=None,
-            p75_cents=None,
-            delta_vs_p75_cents=None,
-            verdict="no_history",
-        )
-
-    delta = actual - suggestion.p75_cents
-    if actual <= suggestion.p50_cents:
-        verdict = "under"
-    elif actual <= suggestion.p75_cents:
-        verdict = "on_track"
-    else:
-        verdict = "over_p75"
-    return BudgetExplanation(
+    return _budget_explanation(
         category=category,
         year_month=year_month,
-        actual_cents=actual,
-        p50_cents=suggestion.p50_cents,
-        p75_cents=suggestion.p75_cents,
-        delta_vs_p75_cents=delta,
-        verdict=verdict,
+        actual=actual,
+        suggestion=suggestion,
     )
 
 

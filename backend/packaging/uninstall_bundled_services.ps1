@@ -638,25 +638,100 @@ function Remove-TicketboxDataRootForUninstall([string]$CandidateRoot) {
         return
     }
     Write-Step "删除数据目录 $safeRoot"
+    if (-not $script:DeleteDataIntentValidated) {
+        throw "数据目录删除前缺少已验证的删除意图。"
+    }
+    Read-TicketboxDeleteDataIntent `
+        -Path $DeleteDataIntentPath `
+        -InstallDir $InstallDir `
+        -DataRoot $safeRoot | Out-Null
+    Initialize-TicketboxExactTreeDeleteNativeMethods
+    $expectedDeleteIntentText = [TicketboxExactTreeDeleteNativeMethods]::ReadExactUtf8File(
+        $DeleteDataIntentPath,
+        16384
+    )
+    $safeRoot = [IO.Path]::GetFullPath($safeRoot).TrimEnd('\', '/')
+    $expectedRootIdentity = @(
+        [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity($safeRoot)
+    )
+    if ($expectedRootIdentity.Count -ne 2) {
+        throw "数据目录身份无法固定，拒绝删除。"
+    }
+    $dataRootMarkerPath = Join-Path $safeRoot $script:TicketboxDataRootMarkerName
+    $expectedMarkerKind =
+        [TicketboxExactTreeDeleteNativeMethods]::InspectEntry($dataRootMarkerPath)
+    $expectedMarkerText = if ($expectedMarkerKind -eq 1) {
+        [TicketboxExactTreeDeleteNativeMethods]::ReadExactUtf8File(
+            $dataRootMarkerPath,
+            16384
+        )
+    }
+    elseif ($expectedMarkerKind -eq 0) {
+        if ([IO.Directory]::GetFileSystemEntries($safeRoot).Length -ne 0) {
+            throw "无 marker 的中断删除目录在最终句柄获取前已不再为空。"
+        }
+        ""
+    }
+    else {
+        throw "数据目录权威 marker 形态在最终删除前发生变化。"
+    }
+    # Services have already been removed.  Keep the live process, port, and
+    # SCM proofs immediately adjacent to the exact root open; the callback is
+    # native-delegate-safe and rebinds the opened directory plus authority
+    # bytes without relying on script-scope command resolution.
+    Assert-TicketboxRuntimeProcessesStoppedForDataDeletion
+    Assert-TicketboxBackendPortStoppedForDataDeletion
+    Assert-TicketboxPgScmProcessAgreement
     $finalDeletionGuard = {
         param($GuardedPath)
-        if (-not (Test-TicketboxPathEquals $GuardedPath $safeRoot)) {
+        $openedPath = [IO.Path]::GetFullPath($GuardedPath).TrimEnd('\', '/')
+        if (-not [string]::Equals(
+            $openedPath,
+            $safeRoot,
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
             throw "数据目录句柄与已验证删除目标不一致。"
         }
-        $revalidatedRoot = Assert-TicketboxDataRootForDeletion $GuardedPath
-        if (-not (Test-TicketboxPathEquals $revalidatedRoot $GuardedPath)) {
-            throw "数据目录句柄获取后的安全复核返回了不同目标。"
+        $openedIdentity = @(
+            [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity($openedPath)
+        )
+        if (
+            $openedIdentity.Count -ne 2 -or
+            [string]$openedIdentity[0] -cne [string]$expectedRootIdentity[0] -or
+            [string]$openedIdentity[1] -cne [string]$expectedRootIdentity[1]
+        ) {
+            throw "数据目录身份在最终删除前发生变化。"
         }
-        if (-not $script:DeleteDataIntentValidated) {
-            throw "数据目录句柄获取后缺少已验证的删除意图。"
+        if (
+            [TicketboxExactTreeDeleteNativeMethods]::InspectEntry(
+                $DeleteDataIntentPath
+            ) -ne 1 -or
+            [TicketboxExactTreeDeleteNativeMethods]::ReadExactUtf8File(
+                $DeleteDataIntentPath,
+                16384
+            ) -cne $expectedDeleteIntentText
+        ) {
+            throw "数据目录句柄获取后删除意图发生变化。"
         }
-        Read-TicketboxDeleteDataIntent `
-            -Path $DeleteDataIntentPath `
-            -InstallDir $InstallDir `
-            -DataRoot $revalidatedRoot | Out-Null
-        Assert-TicketboxRuntimeProcessesStoppedForDataDeletion
-        Assert-TicketboxBackendPortStoppedForDataDeletion
-        Assert-TicketboxPgScmProcessAgreement
+        $openedMarkerKind =
+            [TicketboxExactTreeDeleteNativeMethods]::InspectEntry($dataRootMarkerPath)
+        if ($expectedMarkerKind -eq 1) {
+            if (
+                $openedMarkerKind -ne 1 -or
+                [TicketboxExactTreeDeleteNativeMethods]::ReadExactUtf8File(
+                    $dataRootMarkerPath,
+                    16384
+                ) -cne $expectedMarkerText
+            ) {
+                throw "数据目录权威 marker 在最终删除前发生变化。"
+            }
+        }
+        elseif (
+            $openedMarkerKind -ne 0 -or
+            [IO.Directory]::GetFileSystemEntries($openedPath).Length -ne 0
+        ) {
+            throw "无 marker 的中断删除目录在最终删除前已不再为空。"
+        }
     }.GetNewClosure()
     Remove-TicketboxDataRootExact `
         -Path $safeRoot `

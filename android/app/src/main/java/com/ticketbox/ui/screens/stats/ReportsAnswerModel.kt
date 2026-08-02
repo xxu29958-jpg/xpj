@@ -2,8 +2,8 @@ package com.ticketbox.ui.screens.stats
 
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.domain.model.moneyPercent
 import java.time.LocalDate
-import kotlin.math.abs
 
 private const val DominantPeakPercent = 75
 private const val SparseTrendBucketLimit = 3
@@ -43,7 +43,7 @@ internal data class ReportsAnswerModel(
     val hasPreviousMonthComparison: Boolean,
     val previousTotalAmountCents: Long,
     val monthDeltaAmountCents: Long,
-    val monthDeltaPercent: Int?,
+    val monthDeltaPercent: Long?,
     val yearOverYearMonth: String,
     val hasYearOverYearComparison: Boolean,
     val yearOverYearDeltaAmountCents: Long,
@@ -111,7 +111,9 @@ internal fun reportsTrendEvidence(points: List<ReportTrendChartPoint>): ReportsT
     )
 }
 
-private fun percentChange(deltaAmountCents: Long, baselineAmountCents: Long): Int? {
-    if (baselineAmountCents <= 0L) return null
-    return ((abs(deltaAmountCents) * 100L) / baselineAmountCents).toInt()
-}
+private fun percentChange(deltaAmountCents: Long, baselineAmountCents: Long): Long? =
+    moneyPercent(
+        numeratorAmountMinor = deltaAmountCents,
+        denominatorAmountMinor = baselineAmountCents,
+        absoluteNumerator = true,
+    )

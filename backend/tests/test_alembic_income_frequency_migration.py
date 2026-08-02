@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine
+from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
 
@@ -29,7 +30,7 @@ def _index_names() -> set[str]:
 
 
 def _reset_empty_database() -> None:
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
 
 
 def _drop_alembic_version() -> None:
@@ -47,10 +48,7 @@ def _alembic_cfg():
 
 
 def _run_alembic(action, *args) -> None:
-    cfg = _alembic_cfg()
-    with engine.begin() as connection:
-        cfg.attributes["connection"] = connection
-        action(cfg, *args)
+    run_alembic_for_test(engine, _alembic_cfg(), action, *args)
 
 
 def _assert_full_shape() -> None:

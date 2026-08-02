@@ -56,7 +56,6 @@ class BudgetDtoContractTest {
                 categoryBudgets = listOf(BudgetCategoryRequestDto("餐饮", 120000)),
             ),
         )
-
         assertEquals("owner", dto.ledgerId)
         assertEquals("2026-05", dto.month)
         assertEquals(3L, dto.rowVersion)
@@ -68,5 +67,41 @@ class BudgetDtoContractTest {
             """{"total_amount_cents":500000,"non_monthly_amount_cents":30000,"rollover_amount_cents":-20000,"excluded_categories":["医疗"],"category_budgets":[{"category":"餐饮","amount_cents":120000}]}""",
             requestJson,
         )
+    }
+
+    @Test
+    fun budgetAdvicePreservesCurrentCurrencyAndDecodesN1Response() {
+        val adapter = moshi.adapter(BudgetAdviseResponseDto::class.java)
+        val dto = requireNotNull(
+            adapter.fromJson(
+                """
+                {
+                  "advice": {
+                    "summary": "JPY 建议",
+                    "suggestions": [
+                      {
+                        "category": "餐饮",
+                        "suggested_amount_cents": 300000,
+                        "rationale": "保持最小货币单位"
+                      }
+                    ],
+                    "confidence": 0.8
+                  },
+                  "home_currency_code": "JPY",
+                  "provider_name": "mock",
+                  "reason_code": null
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("JPY", dto.homeCurrencyCode)
+        assertEquals(300000L, dto.advice?.suggestions?.single()?.suggestedAmountCents)
+        val n1Dto = requireNotNull(
+            adapter.fromJson(
+                """{"advice":null,"provider_name":"mock","reason_code":null}""",
+            ),
+        )
+        assertEquals(null, n1Dto.homeCurrencyCode)
     }
 }

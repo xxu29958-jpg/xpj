@@ -27,6 +27,14 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "packaging\windows_database_safety.ps1",
     "packaging\windows_pg_recovery_tools.ps1",
     "packaging\windows_bundled_database.ps1",
+    "packaging\windows_c07_database.ps1",
+    "packaging\windows_c07_superuser_recovery.ps1",
+    "packaging\windows_c07_heartbeat_authority.ps1",
+    "packaging\windows_c07_lifecycle.ps1",
+    "packaging\windows_c07_heartbeat_helper.ps1",
+    "packaging\windows_c07_failure_summary.ps1",
+    "packaging\windows_c07_recovery_generation.ps1",
+    "packaging\windows_c07_packaged_migration.ps1",
     "packaging\windows_backend_bootstrap.ps1",
     "packaging\windows_bootstrap_exposure_recovery.ps1",
     "packaging\install_bundled_services.ps1",
@@ -196,6 +204,581 @@ function Exit-TicketboxFileSetReadLocks([object]$Streams) {
     if ($null -eq $Streams) { return }
     foreach ($stream in @($Streams)) { $stream.Dispose() }
 }
+
+$script:TicketboxInstalledBackendManifestRelativePath =
+    "dist/ticketbox-backend/BUILD_PROVENANCE.json"
+$script:TicketboxInstalledBackendPayloadManifestName = "BUILD_PROVENANCE.json"
+$script:TicketboxInstalledC07ExternalAuthorityPaths = @(
+    "_internal/app/database/_c07_fresh_source_bootstrap.py",
+    "_internal/app/database/_c07_maintenance_upgrade.py",
+    "_internal/app/database/_c07_production_migration.py",
+    "_internal/alembic.ini",
+    "_internal/migrations/env.py",
+    "_internal/migrations/versions/20260722_0001_bind_repayment_draft_idem_to_account.py",
+    "_internal/migrations/versions/20260729_0001_money_minor_bigint_expand.py"
+)
+
+function Get-TicketboxOpenFileSha256Lower(
+    [Parameter(Mandatory = $true)][System.IO.FileStream]$Stream
+) {
+    $Stream.Position = 0
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return (
+            [System.BitConverter]::ToString($sha256.ComputeHash($Stream))
+        ).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+        $Stream.Position = 0
+    }
+}
+
+function Read-TicketboxUtf8JsonFromOpenFile(
+    [Parameter(Mandatory = $true)][System.IO.FileStream]$Stream,
+    [Parameter(Mandatory = $true)][string]$Label
+) {
+    $Stream.Position = 0
+    $reader = New-Object System.IO.StreamReader(
+        $Stream,
+        (New-Object System.Text.UTF8Encoding($false, $true)),
+        $true,
+        4096,
+        $true
+    )
+    try {
+        $text = $reader.ReadToEnd()
+    }
+    finally {
+        $reader.Dispose()
+        $Stream.Position = 0
+    }
+    try {
+        return $text | ConvertFrom-Json
+    }
+    catch {
+        throw "$Label 不是有效 UTF-8 JSON。"
+    }
+}
+
+function Get-TicketboxInstalledPayloadAcl([string]$Path) {
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ($PSVersionTable.PSEdition -eq "Core") {
+        return [System.IO.FileSystemAclExtensions]::GetAccessControl($item)
+    }
+    return $item.GetAccessControl()
+}
+
+function Set-TicketboxInstalledPayloadAcl(
+    [string]$Path,
+    [System.Security.AccessControl.FileSystemSecurity]$Acl
+) {
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ($PSVersionTable.PSEdition -eq "Core") {
+        [System.IO.FileSystemAclExtensions]::SetAccessControl($item, $Acl)
+        return
+    }
+    $item.SetAccessControl($Acl)
+}
+
+function Copy-TicketboxInstalledPayloadAcl(
+    [System.Security.AccessControl.FileSystemSecurity]$Acl,
+    [switch]$Directory
+) {
+    $sddl = $Acl.GetSecurityDescriptorSddlForm(
+        [System.Security.AccessControl.AccessControlSections]::Access
+    )
+    $copy = if ($Directory) {
+        New-Object System.Security.AccessControl.DirectorySecurity
+    }
+    else {
+        New-Object System.Security.AccessControl.FileSecurity
+    }
+    $copy.SetSecurityDescriptorSddlForm(
+        $sddl,
+        [System.Security.AccessControl.AccessControlSections]::Access
+    )
+    return $copy
+}
+
+function Get-TicketboxInstalledPayloadAclEvidence(
+    [System.Security.AccessControl.FileSystemSecurity]$Acl
+) {
+    $rules = @($Acl.GetAccessRules(
+        $true,
+        $true,
+        [System.Security.Principal.SecurityIdentifier]
+    ) | ForEach-Object {
+        "{0}|{1}|{2}|{3}|{4}|{5}" -f
+            $_.IdentityReference.Value,
+            [int]$_.AccessControlType,
+            [int64]$_.FileSystemRights,
+            [int]$_.InheritanceFlags,
+            [int]$_.PropagationFlags,
+            [bool]$_.IsInherited
+    })
+    [Array]::Sort($rules, [System.StringComparer]::Ordinal)
+    return [pscustomobject][ordered]@{
+        Protected = [bool]$Acl.AreAccessRulesProtected
+        Rules = @($rules)
+    }
+}
+
+function Get-TicketboxInstalledPayloadEntries([string]$PayloadRoot) {
+    if ((Get-TicketboxPathEntryKindNoFollow $PayloadRoot) -cne "Directory") {
+        throw "已安装 frozen backend payload root 不是普通目录。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $PayloadRoot
+    $entries = @(
+        Get-Item -LiteralPath $PayloadRoot -Force -ErrorAction Stop
+    ) + @(
+        Get-ChildItem -LiteralPath $PayloadRoot -Force -Recurse -ErrorAction Stop
+    )
+    foreach ($entry in $entries) {
+        $kind = Get-TicketboxPathEntryKindNoFollow $entry.FullName
+        if ($kind -cnotin @("File", "Directory")) {
+            throw "已安装 frozen backend payload 含非普通目录项：$($entry.FullName)"
+        }
+        Assert-NoTicketboxAncestorReparsePoints $entry.FullName
+    }
+    return @($entries)
+}
+
+function Add-TicketboxInstalledPayloadMutationDeny([string]$PayloadRoot) {
+    $sourceAcl = Get-TicketboxInstalledPayloadAcl $PayloadRoot
+    $originalAcl = Copy-TicketboxInstalledPayloadAcl $sourceAcl -Directory
+    $guardedAcl = Copy-TicketboxInstalledPayloadAcl $sourceAcl -Directory
+    $everyone = New-Object System.Security.Principal.SecurityIdentifier(
+        "S-1-1-0"
+    )
+    $deniedRights =
+        [System.Security.AccessControl.FileSystemRights]::CreateFiles -bor
+        [System.Security.AccessControl.FileSystemRights]::CreateDirectories -bor
+        [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+        [System.Security.AccessControl.FileSystemRights]::Delete -bor
+        [System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
+        [System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes
+    $inheritance =
+        [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+        [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $everyone,
+        $deniedRights,
+        $inheritance,
+        [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AccessControlType]::Deny
+    )
+    # This closes ordinary installer-time mutation races.  It is deliberately
+    # not described as a sandbox against a local Administrator/SYSTEM actor,
+    # which can change the DACL or terminate the installer.
+    [void]$guardedAcl.AddAccessRule($rule)
+    Set-TicketboxInstalledPayloadAcl $PayloadRoot $guardedAcl
+    return [pscustomobject][ordered]@{
+        Root = [System.IO.Path]::GetFullPath($PayloadRoot)
+        EveryoneSid = $everyone.Value
+        DeniedRights = $deniedRights
+        OriginalAcl = $originalAcl
+        OriginalAclEvidence = Get-TicketboxInstalledPayloadAclEvidence $originalAcl
+    }
+}
+
+function Assert-TicketboxInstalledPayloadMutationDeny(
+    [Parameter(Mandatory = $true)][object]$Guard,
+    [Parameter(Mandatory = $true)][object[]]$Entries
+) {
+    foreach ($entry in $Entries) {
+        $acl = Get-TicketboxInstalledPayloadAcl $entry.FullName
+        $matching = @($acl.GetAccessRules(
+            $true,
+            $true,
+            [System.Security.Principal.SecurityIdentifier]
+        ) | Where-Object {
+            $_.IdentityReference.Value -ceq [string]$Guard.EveryoneSid -and
+            $_.AccessControlType -eq
+                [System.Security.AccessControl.AccessControlType]::Deny -and
+            ($_.FileSystemRights -band $Guard.DeniedRights) -eq
+                $Guard.DeniedRights
+        })
+        if ($matching.Count -eq 0) {
+            throw "已安装 frozen backend payload 项未继承 mutation deny：$($entry.FullName)"
+        }
+    }
+}
+
+function Restore-TicketboxInstalledPayloadMutationDeny(
+    [AllowNull()][object]$Guard
+) {
+    if ($null -eq $Guard) { return }
+    Set-TicketboxInstalledPayloadAcl $Guard.Root $Guard.OriginalAcl
+    $restored = Get-TicketboxInstalledPayloadAcl $Guard.Root
+    Assert-TicketboxStructuredEvidence `
+        "已安装 frozen backend payload 原 DACL 恢复" `
+        (Get-TicketboxInstalledPayloadAclEvidence $restored) `
+        $Guard.OriginalAclEvidence
+}
+
+function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
+    if (
+        $null -eq $Payload -or
+        [string]$Payload.algorithm -cne "SHA-256" -or
+        [string]$Payload.fingerprint -cnotmatch "^[0-9a-f]{64}$"
+    ) {
+        throw "已安装 frozen backend secondary payload authority 无效。"
+    }
+    $records = @($Payload.files)
+    if ($records.Count -eq 0) {
+        throw "已安装 frozen backend secondary payload 文件集为空。"
+    }
+    $seen = @{}
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($record in $records) {
+        $propertyNames = @($record.PSObject.Properties.Name)
+        if (
+            $propertyNames.Count -ne 3 -or
+            "path" -notin $propertyNames -or
+            "size" -notin $propertyNames -or
+            "sha256" -notin $propertyNames
+        ) {
+            throw "已安装 frozen backend secondary payload 文件证据 shape 无效。"
+        }
+        $relativePath = [string]$record.path
+        $segments = @($relativePath.Split("/"))
+        if (
+            [string]::IsNullOrWhiteSpace($relativePath) -or
+            [System.IO.Path]::IsPathRooted($relativePath) -or
+            $relativePath.Contains("\") -or
+            $relativePath.Contains(":") -or
+            $relativePath.StartsWith("/") -or
+            $relativePath.EndsWith("/") -or
+            @($segments | Where-Object {
+                [string]::IsNullOrEmpty($_) -or $_ -in @(".", "..")
+            }).Count -gt 0
+        ) {
+            throw "已安装 frozen backend secondary payload 路径不是 canonical 相对路径。"
+        }
+        if ($seen.ContainsKey($relativePath)) {
+            throw "已安装 frozen backend secondary payload 路径大小写重复：$relativePath"
+        }
+        $size = [int64]0
+        if (
+            -not [int64]::TryParse([string]$record.size, [ref]$size) -or
+            $size -lt 0 -or
+            [string]$record.sha256 -cnotmatch "^[0-9a-f]{64}$"
+        ) {
+            throw "已安装 frozen backend secondary payload size/SHA-256 无效：$relativePath"
+        }
+        $seen[$relativePath] = $true
+        $paths.Add($relativePath)
+    }
+    $sorted = [string[]]@($paths)
+    [Array]::Sort($sorted, [System.StringComparer]::OrdinalIgnoreCase)
+    for ($index = 0; $index -lt $sorted.Count; $index++) {
+        if ($sorted[$index] -cne [string]$records[$index].path) {
+            throw "已安装 frozen backend secondary payload 文件记录未按 ordinal-ignore-case 排序。"
+        }
+    }
+    foreach ($requiredPath in $script:TicketboxInstalledC07ExternalAuthorityPaths) {
+        if (-not $seen.ContainsKey($requiredPath)) {
+            throw "已安装 C07 外置迁移 authority 缺少必需文件：$requiredPath"
+        }
+    }
+    $migrationRecords = @($records | Where-Object {
+        ([string]$_.path).StartsWith(
+            "_internal/migrations/",
+            [System.StringComparison]::Ordinal
+        )
+    })
+    if ($migrationRecords.Count -lt 3) {
+        throw "已安装 C07 外置 migrations authority 文件集不完整。"
+    }
+    return @($records)
+}
+
+function Assert-TicketboxInstalledBackendManifestChain(
+    [Parameter(Mandatory = $true)][object]$Primary,
+    [Parameter(Mandatory = $true)][object]$Secondary,
+    [Parameter(Mandatory = $true)][System.IO.FileStream]$SecondaryStream
+) {
+    if (
+        [int]$Secondary.schema_version -ne 4 -or
+        [string]$Secondary.artifact_type -cne "ticketbox-frozen-backend" -or
+        [string]$Secondary.backend_version -cne [string]$Primary.backend.version
+    ) {
+        throw "installed primary/secondary backend identity 不一致。"
+    }
+    $manifestEvidence = $Primary.backend.manifest
+    $manifestProperties = @($manifestEvidence.PSObject.Properties.Name)
+    if (
+        $manifestProperties.Count -ne 3 -or
+        [string]$manifestEvidence.path -cne
+            $script:TicketboxInstalledBackendManifestRelativePath -or
+        [int64]$manifestEvidence.size -ne [int64]$SecondaryStream.Length -or
+        [string]$manifestEvidence.sha256 -cnotmatch "^[0-9a-f]{64}$" -or
+        [string]$manifestEvidence.sha256 -cne
+            (Get-TicketboxOpenFileSha256Lower $SecondaryStream)
+    ) {
+        throw "installed primary 未精确绑定 secondary backend manifest size/SHA-256。"
+    }
+    if (
+        [string]$Primary.backend.payload_algorithm -cne "SHA-256" -or
+        [string]$Primary.backend.payload_fingerprint -cne
+            [string]$Secondary.payload.fingerprint
+    ) {
+        throw "installed primary/secondary backend payload fingerprint 不一致。"
+    }
+    $primaryHelper = $Primary.backend.c07_migration_helper
+    $secondaryHelper = $Secondary.payload.c07_migration_helper
+    foreach ($name in @("path", "size", "sha256")) {
+        if ([string]$primaryHelper.$name -cne [string]$secondaryHelper.$name) {
+            throw "installed primary/secondary C07 migration helper evidence 不一致。"
+        }
+    }
+    $helperRecords = @($Secondary.payload.files | Where-Object {
+        [string]$_.path -ceq [string]$secondaryHelper.path
+    })
+    if ($helperRecords.Count -ne 1) {
+        throw "installed secondary payload 未唯一绑定 C07 migration helper record。"
+    }
+    foreach ($name in @("path", "size", "sha256")) {
+        if ([string]$helperRecords[0].$name -cne [string]$secondaryHelper.$name) {
+            throw "installed secondary C07 migration helper evidence 与 payload record 不一致。"
+        }
+    }
+    Assert-TicketboxStructuredEvidence `
+        "installed primary/secondary C07 migration helper smoke" `
+        $Primary.backend.c07_migration_helper_smoke `
+        $Secondary.payload.c07_migration_helper_smoke
+    Assert-TicketboxC07MigrationHelperSmokeEvidence `
+        $Secondary.payload.c07_migration_helper_smoke `
+        $secondaryHelper `
+        $Secondary.payload `
+        (Split-Path -Parent $SecondaryStream.Name)
+}
+
+function Enter-TicketboxInstalledC07PayloadAuthorityLease {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$InstallerManifestPath,
+        [ValidateRange(0, 99)][int]$ExpectedPgMajor = 0
+    )
+
+    foreach ($requiredFunction in @(
+        "Get-TicketboxPathEntryKindNoFollow",
+        "Assert-NoTicketboxAncestorReparsePoints",
+        "Read-TicketboxInstalledBuildManifest"
+    )) {
+        if (-not (Get-Command $requiredFunction -CommandType Function -ErrorAction SilentlyContinue)) {
+            throw "installed C07 payload authority lease 缺少依赖：$requiredFunction"
+        }
+    }
+    $canonicalInstallDir = [System.IO.Path]::GetFullPath($InstallDir).TrimEnd("\", "/")
+    $expectedPrimaryPath = [System.IO.Path]::GetFullPath(
+        (Join-Path $canonicalInstallDir "installer\BUILD_PROVENANCE.json")
+    )
+    $primaryPath = [System.IO.Path]::GetFullPath($InstallerManifestPath)
+    if (-not [string]::Equals(
+        $primaryPath,
+        $expectedPrimaryPath,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "installed C07 payload authority 只接受安装目录内 primary manifest。"
+    }
+    $payloadRoot = [System.IO.Path]::GetFullPath(
+        (Join-Path $canonicalInstallDir "program\ticketbox-backend")
+    )
+    $secondaryPath = Join-Path `
+        $payloadRoot `
+        $script:TicketboxInstalledBackendPayloadManifestName
+    $streams = New-Object System.Collections.Generic.List[System.IO.FileStream]
+    $streamEvidence = New-Object System.Collections.Generic.List[object]
+    $guard = $null
+    try {
+        $entries = @(Get-TicketboxInstalledPayloadEntries $payloadRoot)
+        $guard = Add-TicketboxInstalledPayloadMutationDeny $payloadRoot
+        $sealedEntries = @(Get-TicketboxInstalledPayloadEntries $payloadRoot)
+        $beforePaths = [string[]]@($entries | ForEach-Object { $_.FullName })
+        $afterPaths = [string[]]@($sealedEntries | ForEach-Object { $_.FullName })
+        [Array]::Sort($beforePaths, [System.StringComparer]::OrdinalIgnoreCase)
+        [Array]::Sort($afterPaths, [System.StringComparer]::OrdinalIgnoreCase)
+        if (($beforePaths -join "`n") -cne ($afterPaths -join "`n")) {
+            throw "installed frozen backend payload 在 ACL seal 期间发生目录项漂移。"
+        }
+        Assert-TicketboxInstalledPayloadMutationDeny $guard $sealedEntries
+
+        foreach ($manifestPath in @($primaryPath, $secondaryPath)) {
+            if ((Get-TicketboxPathEntryKindNoFollow $manifestPath) -cne "File") {
+                throw "installed build provenance manifest 不是普通文件：$manifestPath"
+            }
+            Assert-NoTicketboxAncestorReparsePoints $manifestPath
+            $streams.Add([System.IO.File]::Open(
+                $manifestPath,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::Read
+            ))
+            $manifestStream = $streams[$streams.Count - 1]
+            $streamEvidence.Add([pscustomobject][ordered]@{
+                Path = $manifestPath
+                Size = [int64]$manifestStream.Length
+                Sha256 = Get-TicketboxOpenFileSha256Lower $manifestStream
+            })
+        }
+        $primaryResult = Read-TicketboxInstalledBuildManifest `
+            -Path $primaryPath `
+            -ExpectedPgMajor $ExpectedPgMajor
+        $primary = Read-TicketboxUtf8JsonFromOpenFile $streams[0] "installed primary provenance"
+        $secondary = Read-TicketboxUtf8JsonFromOpenFile $streams[1] "installed secondary provenance"
+        Assert-TicketboxStructuredEvidence `
+            "installed primary manifest locked reread" `
+            $primaryResult.Manifest `
+            $primary
+        Assert-TicketboxInstalledBackendManifestChain $primary $secondary $streams[1]
+        $records = @(ConvertTo-TicketboxInstalledPayloadRecords $secondary.payload)
+
+        $fingerprintRows = New-Object System.Collections.Generic.List[string]
+        $recordedPaths = New-Object System.Collections.Generic.List[string]
+        foreach ($record in $records) {
+            $relativePath = [string]$record.path
+            $path = [System.IO.Path]::GetFullPath(
+                (Join-Path $payloadRoot $relativePath.Replace("/", "\"))
+            )
+            $prefix = $payloadRoot.TrimEnd("\", "/") +
+                [System.IO.Path]::DirectorySeparatorChar
+            if (-not $path.StartsWith(
+                $prefix,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )) {
+                throw "installed secondary payload 路径逃逸 payload root：$relativePath"
+            }
+            if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "File") {
+                throw "installed secondary payload 记录不是普通文件：$relativePath"
+            }
+            Assert-NoTicketboxAncestorReparsePoints $path
+            $stream = [System.IO.File]::Open(
+                $path,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::Read
+            )
+            $streams.Add($stream)
+            $sha256 = Get-TicketboxOpenFileSha256Lower $stream
+            if (
+                [int64]$stream.Length -ne [int64]$record.size -or
+                $sha256 -cne [string]$record.sha256
+            ) {
+                throw "installed secondary payload size/SHA-256 漂移：$relativePath"
+            }
+            $streamEvidence.Add([pscustomobject][ordered]@{
+                Path = $path
+                Size = [int64]$stream.Length
+                Sha256 = $sha256
+            })
+            $recordedPaths.Add($relativePath)
+            $fingerprintRows.Add(
+                ("{0}`0{1}`0{2}`n" -f $relativePath, $stream.Length, $sha256)
+            )
+        }
+        $actualPaths = [string[]]@($sealedEntries | Where-Object {
+            -not $_.PSIsContainer -and
+            -not [string]::Equals(
+                $_.FullName,
+                $secondaryPath,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+        } | ForEach-Object {
+            Get-TicketboxRelativePath $payloadRoot $_.FullName
+        })
+        [Array]::Sort($actualPaths, [System.StringComparer]::OrdinalIgnoreCase)
+        if (($actualPaths -join "`n") -cne (@($recordedPaths) -join "`n")) {
+            throw "installed secondary payload 文件集合存在 extra/missing 路径。"
+        }
+        $actualFingerprint = Get-TicketboxSha256HexFromText (
+            @($fingerprintRows) -join ""
+        )
+        if ($actualFingerprint -cne [string]$secondary.payload.fingerprint) {
+            throw "installed secondary payload 汇总 fingerprint 漂移。"
+        }
+        return [pscustomobject][ordered]@{
+            InstallDir = $canonicalInstallDir
+            PayloadRoot = $payloadRoot
+            PrimaryManifestPath = $primaryPath
+            SecondaryManifestPath = $secondaryPath
+            InstalledBuildManifest = $primaryResult
+            PayloadFingerprint = $actualFingerprint
+            PayloadFileCount = $records.Count
+            Guard = $guard
+            Streams = @($streams.ToArray())
+            StreamEvidence = @($streamEvidence.ToArray())
+        }
+    }
+    catch {
+        foreach ($stream in $streams) {
+            $stream.Dispose()
+        }
+        Restore-TicketboxInstalledPayloadMutationDeny $guard
+        throw
+    }
+}
+
+function Close-TicketboxInstalledC07PayloadAuthorityLease(
+    [AllowNull()][object]$Lease
+) {
+    if ($null -eq $Lease) { return }
+    $failure = $null
+    try {
+        $streams = @($Lease.Streams)
+        $evidence = @($Lease.StreamEvidence)
+        if ($streams.Count -ne $evidence.Count) {
+            throw "installed C07 payload authority lease evidence 数量漂移。"
+        }
+        for ($index = 0; $index -lt $streams.Count; $index++) {
+            $stream = $streams[$index]
+            if ($stream.SafeFileHandle.IsClosed) {
+                throw "installed C07 payload authority lease 中途关闭。"
+            }
+            $sha256 = Get-TicketboxOpenFileSha256Lower $stream
+            if (
+                [int64]$stream.Length -ne [int64]$evidence[$index].Size -or
+                $sha256 -cne [string]$evidence[$index].Sha256
+            ) {
+                throw "installed C07 payload authority lease 字节身份漂移：$($evidence[$index].Path)"
+            }
+        }
+    }
+    catch {
+        $failure = $_.Exception
+    }
+    finally {
+        foreach ($stream in @($Lease.Streams)) {
+            if (-not $stream.SafeFileHandle.IsClosed) {
+                $stream.Dispose()
+            }
+        }
+        try {
+            Restore-TicketboxInstalledPayloadMutationDeny $Lease.Guard
+        }
+        catch {
+            if ($null -eq $failure) {
+                $failure = $_.Exception
+            }
+            else {
+                $restoreFailure = $_.Exception
+                $aggregateFailure = [AggregateException]::new(
+                    (
+                        "installed C07 payload authority lease 关闭失败；" +
+                        "字节验证与 DACL 恢复错误均已保留。"
+                    ),
+                    [Exception[]]@($failure, $restoreFailure)
+                )
+                $aggregateFailure.Data["TicketboxC07FailureCode"] =
+                    "installed_payload_lease_close_failed"
+                $failure = $aggregateFailure
+            }
+        }
+    }
+    if ($null -ne $failure) { throw $failure }
+}
+
 function Assert-TicketboxStructuredEvidence(
     [string]$Label,
     [object]$Recorded,

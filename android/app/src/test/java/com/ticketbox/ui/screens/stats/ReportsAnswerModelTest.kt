@@ -21,7 +21,14 @@ class ReportsAnswerModelTest {
 
         assertEquals(ReportGranularity.Week, model.granularity)
         assertEquals(4_000L, model.monthDeltaAmountCents)
-        assertEquals(50, model.monthDeltaPercent)
+        assertEquals(50L, model.monthDeltaPercent)
+        val aggregateBoundary = reportsAnswerModel(
+            overview(
+                totalAmountCents = 9_007_199_254_740_991L,
+                previousTotalAmountCents = 1L,
+            ),
+        )
+        assertEquals(900_719_925_474_099_000L, aggregateBoundary.monthDeltaPercent)
     }
 
     @Test

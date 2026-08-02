@@ -13,6 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_scoped_select
 from app.models import RecurringItem
+from app.money_contract import (
+    projection_sum_to_int,
+    projection_values_sum_to_int,
+)
 from app.services.budget_advisor_service._models import (
     ALLOWED_INCOME_SOURCE_TYPES,
     BudgetInputs,
@@ -34,10 +38,15 @@ def build_budget_inputs(
     *,
     tenant_id: str,
     month: str,
+    home_currency: str,
     timezone_name: str = "Asia/Shanghai",
-    home_currency: str = "CNY",
 ) -> BudgetInputs:
-    """Build advisor input from anonymised monthly-report aggregates."""
+    """Build advisor input from anonymised monthly-report aggregates.
+
+    ``home_currency`` is deliberately required.  Amount integers have no
+    standalone currency semantics, so a caller may not fall back to CNY while
+    reading a JPY/KRW installation.
+    """
 
     report = compose_monthly_report(
         db,
@@ -77,7 +86,16 @@ def _recurring_total_monthly_cents(db: Session, *, tenant_id: str) -> int:
     """Aggregate monthly recurring commitment. Coarse magnitude only —
     recurring rows are merchant-keyed (PII), so no per-item / per-merchant
     detail leaves the device; the advisor sees just the total."""
-    return sum(int(item.last_amount_cents) for item in _active_recurring_items(db, tenant_id=tenant_id))
+    return projection_values_sum_to_int(
+        (
+            item.last_amount_cents
+            for item in _active_recurring_items(
+                db,
+                tenant_id=tenant_id,
+            )
+        ),
+        label="budget_advisor.recurring_total",
+    )
 
 
 def _recurring_active_count(db: Session, *, tenant_id: str) -> int:
@@ -90,7 +108,14 @@ def _category_breakdown(report: MonthlyReport) -> list[CategorySnapshot]:
         category = _advisor_category(row.category)
         amount, count = grouped.get(category, (0, 0))
         grouped[category] = (
-            amount + int(row.amount_cents),
+            projection_sum_to_int(
+                amount
+                + projection_sum_to_int(
+                    row.amount_cents,
+                    label="budget_advisor.category_row",
+                ),
+                label="budget_advisor.category_total",
+            ),
             count + int(row.count),
         )
     return [
@@ -130,8 +155,14 @@ def _historical_baseline(
         rows.append(
             HistoricalBaseline(
                 category=advisor_category,
-                median_cents=int(explanation.p50_cents),
-                p75_cents=int(explanation.p75_cents),
+                median_cents=projection_sum_to_int(
+                    explanation.p50_cents,
+                    label="budget_advisor.median",
+                ),
+                p75_cents=projection_sum_to_int(
+                    explanation.p75_cents,
+                    label="budget_advisor.p75",
+                ),
             )
         )
     return rows
@@ -143,7 +174,10 @@ def _income_plan(db: Session, *, tenant_id: str, month: str) -> list[IncomePlanS
     return [
         IncomePlanSnapshot(
             source_type=_generalize_source_type(plan.source_type),
-            amount_cents=int(plan.amount_cents),
+            amount_cents=projection_sum_to_int(
+                plan.amount_cents,
+                label="budget_advisor.income_plan",
+            ),
             pay_day=int(plan.pay_day),
         )
         for plan in list_applicable_income_plans(db, tenant_id=tenant_id, month=month)

@@ -86,6 +86,7 @@ class BudgetViewModelTest {
             Result.success(
                 BudgetAdviceResult(
                     advice = null,
+                    homeCurrencyCode = "CNY",
                     providerName = "empty",
                     reasonCode = "ai_advisor_provider_empty",
                 ),
@@ -348,7 +349,12 @@ class BudgetAdviceViewModelTest {
         // 重新生成 CTA stays the right state there.
         fake.adviceResponder = {
             Result.success(
-                BudgetAdviceResult(advice = null, providerName = "mock", reasonCode = null),
+                BudgetAdviceResult(
+                    advice = null,
+                    homeCurrencyCode = "CNY",
+                    providerName = "mock",
+                    reasonCode = null,
+                ),
             )
         }
         adviceViewModel.requestAdvice()
@@ -361,6 +367,7 @@ class BudgetAdviceViewModelTest {
             Result.success(
                 BudgetAdviceResult(
                     advice = null,
+                    homeCurrencyCode = "CNY",
                     providerName = "mock",
                     reasonCode = "ai_advisor_no_advice",
                 ),
@@ -393,7 +400,12 @@ class BudgetAdviceViewModelTest {
         for (reason in retryableReasons) {
             fake.adviceResponder = {
                 Result.success(
-                    BudgetAdviceResult(advice = null, providerName = "live", reasonCode = reason),
+                    BudgetAdviceResult(
+                        advice = null,
+                        homeCurrencyCode = "CNY",
+                        providerName = "live",
+                        reasonCode = reason,
+                    ),
                 )
             }
             adviceViewModel.requestAdvice()
@@ -508,6 +520,7 @@ class BudgetAdviceViewModelTest {
                 ),
                 confidence = 0.8,
             ),
+            homeCurrencyCode = "JPY",
             providerName = "mock",
             reasonCode = "advisor_ready",
         )
@@ -520,6 +533,7 @@ class BudgetAdviceViewModelTest {
         val state = adviceViewModel.uiState.value
         assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
         assertEquals(cached, state.result)
+        assertEquals("JPY", state.result?.homeCurrencyCode)
         assertEquals(0, fake.adviceMonths.size)
     }
 
@@ -599,6 +613,7 @@ class BudgetAdviceViewModelTest {
                 suggestions = emptyList(),
                 confidence = 0.8,
             ),
+            homeCurrencyCode = "CNY",
             providerName = "mock",
             reasonCode = "advisor_ready",
         )
@@ -636,6 +651,7 @@ class BudgetAdvicePayloadInvalidTest {
             Result.success(
                 BudgetAdviceResult(
                     advice = null,
+                    homeCurrencyCode = "CNY",
                     providerName = "live",
                     reasonCode = "ai_advisor_payload_invalid",
                 ),
@@ -869,6 +885,7 @@ class BudgetAdviceInvalidationTest {
             Result.success(
                 BudgetAdviceResult(
                     advice = null,
+                    homeCurrencyCode = "CNY",
                     providerName = "empty",
                     reasonCode = "ai_advisor_provider_empty",
                 ),
@@ -929,6 +946,7 @@ class BudgetAdviceInvalidationTest {
                         suggestions = emptyList(),
                         confidence = 0.9,
                     ),
+                    homeCurrencyCode = "CNY",
                     providerName = "mock",
                     reasonCode = "advisor_ready",
                 ),
@@ -948,6 +966,7 @@ class BudgetAdviceInvalidationTest {
             Result.success(
                 BudgetAdviceResult(
                     advice = null,
+                    homeCurrencyCode = "CNY",
                     providerName = "live",
                     reasonCode = "ai_advisor_payload_invalid",
                 ),
@@ -1068,6 +1087,7 @@ internal class FakeBudgetActions(
                     ),
                     confidence = 0.8,
                 ),
+                homeCurrencyCode = "CNY",
                 providerName = "mock",
                 reasonCode = "advisor_ready",
             ),
