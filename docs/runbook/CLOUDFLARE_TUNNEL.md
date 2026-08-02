@@ -255,7 +255,8 @@ Cloudflare Tunnel 配置 ingress 时，下面两类路径互不重叠。**不要
 | `/api/health` | Liveness 探测，只返回 `{"status":"ok"}` | 无 |
 | `/api/auth/check` | Android session token 校验 | Bearer token |
 | `/api/auth/pair` | Android 首次绑定（pairing code → session token）| 8 位 code，一次性 + 短 TTL |
-| `/api/system/currency-capability` | 客户端写入前读取持久币种合同与绑定版本 | Bearer token |
+| `/api/system/runtime-compatibility` | 当前客户端写入前读取稳定运行兼容结论与币种绑定证明 | Bearer token |
+| `/api/system/currency-capability` | 旧客户端过渡读取；已弃用，桥接段删除前暂留 | Bearer token |
 | `/api/expenses/*` `/api/reports/*` `/api/goals/*` `/api/dashboard/*` `/api/budgets/*` `/api/recurring/*` `/api/merchants/*` `/api/rules/*` `/api/duplicates/*` `/api/imports/*` `/api/stats/*` `/api/me/*` `/api/exchange-rates/*` `/api/settings/*` `/api/ledgers/*` `/api/invitations/*` | Android / Web 账本主面 | Bearer token + viewer/member/owner 角色 |
 | `/u/{upload_key}` | iPhone UploadLink | 一次性 upload_key（URL-as-credential，必须 HTTPS）|
 | `/web/auth/login` | 浏览器登录页和绑定码提交 | GET 无 cookie 返回 200；POST 需 CSRF；成功后 `303` 并设置 `__Host-session` |
@@ -342,7 +343,7 @@ credentials-file: C:\Users\<you>\.cloudflared\<tunnel-uuid>.json
 ingress:
   # allowlist 优先匹配
   - hostname: api.your-domain.com
-    path: ^/(web(?:/|$)|static/(?:web|shared)(?:/|$)|u/|api/(?:health$|auth/(?:check|pair)$|system/currency-capability$|expenses(?:/|$)|reports(?:/|$)|goals(?:/|$)|dashboard(?:/|$)|budgets(?:/|$)|recurring(?:/|$)|merchants(?:/|$)|rules(?:/|$)|duplicates(?:/|$)|imports(?:/|$)|stats(?:/|$)|me(?:/|$)|exchange-rates(?:/|$)|settings(?:/|$)|ledgers(?:/|$)|invitations(?:/|$)))
+    path: ^/(web(?:/|$)|static/(?:web|shared)(?:/|$)|u/|api/(?:health$|auth/(?:check|pair)$|system/(?:currency-capability|runtime-compatibility)$|expenses(?:/|$)|reports(?:/|$)|goals(?:/|$)|dashboard(?:/|$)|budgets(?:/|$)|recurring(?:/|$)|merchants(?:/|$)|rules(?:/|$)|duplicates(?:/|$)|imports(?:/|$)|stats(?:/|$)|me(?:/|$)|exchange-rates(?:/|$)|settings(?:/|$)|ledgers(?:/|$)|invitations(?:/|$)))
     service: http://127.0.0.1:8000
   # catch-all return 404，绝对不要让其它路径漏到 backend
   - service: http_status:404

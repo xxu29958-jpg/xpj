@@ -1,5 +1,26 @@
 {
   "components": {
+    "parameters": {
+      "TicketboxApiVersion": {
+        "description": "API contract version returned by the runtime compatibility handshake.",
+        "in": "header",
+        "name": "Ticketbox-Api-Version",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "TicketboxCurrencyBinding": {
+        "description": "Currency proof returned by the runtime compatibility handshake: <contract-version>:<binding-revision>:<home-currency>.",
+        "in": "header",
+        "name": "Ticketbox-Currency-Binding",
+        "required": false,
+        "schema": {
+          "pattern": "^[1-9][0-9]*:(?:0|[1-9][0-9]*):[A-Z]{3}$",
+          "type": "string"
+        }
+      }
+    },
     "schemas": {
       "AdminDeviceRenameRequest": {
         "additionalProperties": false,
@@ -13587,6 +13608,215 @@
         "title": "RulePreviewResponse",
         "type": "object"
       },
+      "RuntimeCompatibilitySnapshotResponse": {
+        "properties": {
+          "api_version": {
+            "title": "Api Version",
+            "type": "string"
+          },
+          "api_version_header": {
+            "const": "Ticketbox-Api-Version",
+            "title": "Api Version Header",
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/RuntimeProductCapabilitiesResponse"
+          },
+          "contract": {
+            "const": "ticketbox-runtime-compatibility-v1",
+            "title": "Contract",
+            "type": "string"
+          },
+          "legacy_write_compatibility": {
+            "enum": [
+              "compatible",
+              "client_upgrade_required"
+            ],
+            "title": "Legacy Write Compatibility",
+            "type": "string"
+          },
+          "observed_at": {
+            "title": "Observed At",
+            "type": "string"
+          },
+          "read_compatibility": {
+            "enum": [
+              "compatible",
+              "client_upgrade_required",
+              "owner_action_required",
+              "configuration_required",
+              "server_upgrade_required"
+            ],
+            "title": "Read Compatibility",
+            "type": "string"
+          },
+          "write_compatibility": {
+            "enum": [
+              "compatible",
+              "client_upgrade_required",
+              "owner_action_required",
+              "configuration_required",
+              "server_upgrade_required"
+            ],
+            "title": "Write Compatibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract",
+          "observed_at",
+          "api_version",
+          "api_version_header",
+          "read_compatibility",
+          "write_compatibility",
+          "legacy_write_compatibility",
+          "capabilities"
+        ],
+        "title": "RuntimeCompatibilitySnapshotResponse",
+        "type": "object"
+      },
+      "RuntimeCurrencyCapabilityResponse": {
+        "properties": {
+          "binding_revision": {
+            "minimum": 0.0,
+            "title": "Binding Revision",
+            "type": "integer"
+          },
+          "contract_version": {
+            "minimum": 1.0,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CNY",
+                  "USD",
+                  "EUR",
+                  "GBP",
+                  "JPY",
+                  "HKD",
+                  "KRW"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
+          "initialization_offer": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CNY",
+                  "USD",
+                  "EUR",
+                  "GBP",
+                  "JPY",
+                  "HKD",
+                  "KRW"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initialization Offer"
+          },
+          "minor_unit_exponent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minor Unit Exponent"
+          },
+          "read_compatibility": {
+            "enum": [
+              "compatible",
+              "client_upgrade_required",
+              "owner_action_required",
+              "configuration_required",
+              "server_upgrade_required"
+            ],
+            "title": "Read Compatibility",
+            "type": "string"
+          },
+          "request_binding": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]*:(?:0|[1-9][0-9]*):[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Binding"
+          },
+          "request_binding_header": {
+            "const": "Ticketbox-Currency-Binding",
+            "title": "Request Binding Header",
+            "type": "string"
+          },
+          "rounding_mode": {
+            "anyOf": [
+              {
+                "const": "ROUND_HALF_UP",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounding Mode"
+          },
+          "write_compatibility": {
+            "enum": [
+              "compatible",
+              "client_upgrade_required",
+              "owner_action_required",
+              "configuration_required",
+              "server_upgrade_required"
+            ],
+            "title": "Write Compatibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "home_currency_code",
+          "minor_unit_exponent",
+          "rounding_mode",
+          "contract_version",
+          "binding_revision",
+          "request_binding",
+          "request_binding_header",
+          "initialization_offer",
+          "read_compatibility",
+          "write_compatibility"
+        ],
+        "title": "RuntimeCurrencyCapabilityResponse",
+        "type": "object"
+      },
+      "RuntimeProductCapabilitiesResponse": {
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/RuntimeCurrencyCapabilityResponse"
+          }
+        },
+        "required": [
+          "currency"
+        ],
+        "title": "RuntimeProductCapabilitiesResponse",
+        "type": "object"
+      },
       "ServerSettingsResponse": {
         "properties": {
           "account_name": {
@@ -14215,6 +14445,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -14293,6 +14529,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -14413,6 +14655,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -14491,6 +14739,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -14559,6 +14813,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -14627,6 +14887,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -14718,6 +14984,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -14853,6 +15125,12 @@
               ],
               "title": "X-Ticketbox-Previous-Session"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -14906,6 +15184,14 @@
     "/api/auth/pair": {
       "post": {
         "operationId": "pair_api_auth_pair_post",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -14974,6 +15260,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -15241,6 +15533,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -15335,6 +15633,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -15419,6 +15723,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -15462,6 +15772,14 @@
     "/api/bootstrap/owner": {
       "post": {
         "operationId": "post_bootstrap_owner_api_bootstrap_owner_post",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -15529,6 +15847,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -15614,6 +15938,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -16001,6 +16331,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -16109,6 +16445,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -16287,6 +16629,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -16461,6 +16809,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -16546,6 +16900,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -16815,6 +17175,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -16925,6 +17291,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -17035,6 +17407,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -17227,6 +17605,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -17346,6 +17730,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -17465,6 +17855,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -17584,6 +17980,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -17694,6 +18096,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -17910,6 +18318,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -18020,6 +18434,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -18306,6 +18726,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -18550,6 +18976,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -18644,6 +19076,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -18891,6 +19329,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -19113,6 +19557,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -19289,6 +19739,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -19636,6 +20092,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -19746,6 +20208,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -20020,6 +20488,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -20130,6 +20604,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -20240,6 +20720,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -20350,6 +20836,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -20460,6 +20952,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -20570,6 +21068,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -20664,6 +21168,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -20758,6 +21268,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -20950,6 +21466,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -21053,6 +21575,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -21146,6 +21674,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -21312,6 +21846,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -21544,6 +22084,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -21768,6 +22314,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -21878,6 +22430,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -21978,6 +22536,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -22088,6 +22652,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -22198,6 +22768,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -22308,6 +22884,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -22475,6 +23057,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -22653,6 +23241,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -23053,6 +23647,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -23147,6 +23747,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -23255,6 +23861,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -23349,6 +23961,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -23584,6 +24202,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -23637,6 +24261,14 @@
     "/api/invitations/preview": {
       "post": {
         "operationId": "preview_invitation_endpoint_api_invitations_preview_post",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -23777,6 +24409,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -24003,6 +24641,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -24090,6 +24734,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -24160,6 +24810,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -24247,6 +24903,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -24381,6 +25043,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -24468,6 +25136,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -24613,6 +25287,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -24690,6 +25370,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -24777,6 +25463,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -24845,6 +25537,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -24914,6 +25612,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -24995,6 +25699,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -25084,6 +25794,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -25143,6 +25859,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -25215,6 +25937,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -25284,6 +26012,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -25343,6 +26077,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -25469,6 +26209,12 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -25687,6 +26433,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -25845,6 +26597,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -25955,6 +26713,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -26063,6 +26827,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -26157,6 +26927,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -26315,6 +27091,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -26409,6 +27191,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -26501,6 +27289,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -26595,6 +27389,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -26696,6 +27496,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -27039,6 +27845,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -27123,6 +27935,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -27217,6 +28035,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -27311,6 +28135,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -27471,6 +28301,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -27639,6 +28475,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -27749,6 +28591,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -27843,6 +28691,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -28352,6 +29206,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -28451,6 +29311,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -28555,6 +29421,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -28671,6 +29543,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -28823,6 +29701,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -28933,6 +29817,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -29041,6 +29931,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -29135,6 +30031,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {
@@ -29210,6 +30112,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -29642,6 +30550,7 @@
     },
     "/api/system/currency-capability": {
       "get": {
+        "deprecated": true,
         "operationId": "get_currency_capability_api_system_currency_capability_get",
         "parameters": [
           {
@@ -29710,6 +30619,81 @@
           }
         },
         "summary": "Get Currency Capability",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/system/runtime-compatibility": {
+      "get": {
+        "operationId": "get_runtime_compatibility_api_system_runtime_compatibility_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeCompatibilitySnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Runtime Compatibility",
         "tags": [
           "system"
         ]
@@ -29834,6 +30818,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -29928,6 +30918,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -30022,6 +31018,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -30116,6 +31118,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "requestBody": {
@@ -30369,6 +31377,12 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
         "responses": {

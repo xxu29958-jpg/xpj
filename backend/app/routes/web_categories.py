@@ -61,7 +61,7 @@ def web_categories(
         )
     except ValueError as exc:
         raise AppError("invalid_request", "请使用 YYYY-MM 格式的月份。", status_code=400) from exc
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     home = ctx["home_currency_code"]
     rows = []
     for s in dashboard.summaries:
@@ -95,7 +95,7 @@ def web_uncategorized(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     home = ctx["home_currency_code"]
     rows = list_uncategorized_pending(db, tenant_id=selected_id)
     items = []

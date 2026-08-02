@@ -36,8 +36,8 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import bill_split_service as bsplit
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
-    home_currency_code,
     major_amount_to_minor,
     minor_amount_value,
 )
@@ -93,8 +93,13 @@ def _resolve_request_account_id(
 _INVITE_ACTIVE_STATUSES = ("invited", "accepted")
 
 
-def _remaining_split_capacity(expense: dict, invitations: list) -> tuple[str, int]:
-    currency_code = expense.get("home_currency_code") or home_currency_code()
+def _remaining_split_capacity(
+    expense: dict,
+    invitations: list,
+    *,
+    presentation_currency: str,
+) -> tuple[str, int]:
+    currency_code = expense.get("home_currency_code") or presentation_currency
     active_total = projection_values_sum_to_int(
         (
             invitation.amount_cents
@@ -170,7 +175,11 @@ def build_split_invite_context(
     invitations = bsplit.list_sent_for_expense(
         db, sender_account_id=sender_account_id, expense_id=expense["id"]
     )
-    expense_currency, remaining_cents = _remaining_split_capacity(expense, invitations)
+    expense_currency, remaining_cents = _remaining_split_capacity(
+        expense,
+        invitations,
+        presentation_currency=require_runtime_home_currency_code(db),
+    )
     sent_rows = [
         {
             "public_id": inv.public_id,
@@ -248,6 +257,7 @@ def web_bill_split_inbox(
 
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="拆账收件箱",
@@ -291,6 +301,7 @@ def web_bill_split_sent(
 
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="已发出拆账",
@@ -330,7 +341,10 @@ def web_split_invite(
     # flash back onto the page instead of escaping to the global AppError
     # handler, which renders a bare-JSON page in the browser.
     try:
-        amount_cents = _yuan_to_cents(amount_yuan, home_currency_code())
+        amount_cents = _yuan_to_cents(
+            amount_yuan,
+            require_runtime_home_currency_code(db),
+        )
         if amount_cents is None or amount_cents <= 0:
             raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
         bsplit.create_invitation(

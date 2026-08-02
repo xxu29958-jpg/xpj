@@ -31,7 +31,7 @@ from app.routes.web_common import (
     _sidebar_counts,
     templates,
 )
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.monthly_report_service import (
     BudgetExplanation,
     MonthlyReport,
@@ -337,7 +337,7 @@ def web_reports(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_month(timezone_name)
     selected_granularity = _clean_granularity(granularity)
@@ -360,6 +360,7 @@ def web_reports(
     )
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="报表",

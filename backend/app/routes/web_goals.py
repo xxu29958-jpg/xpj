@@ -20,7 +20,8 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import GoalCreateRequest
-from app.services.currency_common import home_currency_code, major_amount_to_minor
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import major_amount_to_minor
 from app.services.goal_service import archive_goal, create_goal, list_goals
 from app.services.time_service import current_month
 
@@ -89,6 +90,7 @@ def _render_goals(
     )
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         show_month_picker=True,
@@ -154,7 +156,7 @@ def web_goals_create(
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_month(timezone_name)
     try:
-        presentation_currency = home_currency_code()
+        presentation_currency = require_runtime_home_currency_code(db)
         payload = GoalCreateRequest(
             name=name,
             month=target_month,

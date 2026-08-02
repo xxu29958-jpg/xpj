@@ -8,11 +8,18 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
+from fastapi import Request
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import BACKEND_ROOT, get_settings
+from app.runtime_compatibility_contract import (
+    RUNTIME_COMPATIBILITY_SESSION_KEY,
+    TICKETBOX_API_VERSION_HEADER,
+    TICKETBOX_CURRENCY_BINDING_HEADER,
+    RuntimeCompatibilityRequest,
+)
 
 __all__ = [
     "BACKEND_ROOT",
@@ -94,8 +101,27 @@ class Base(DeclarativeBase):
     pass
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db(
+    request: Request,
+) -> Generator[Session, None, None]:
     db = SessionLocal()
+    # ``SessionLocal()`` callers are trusted server-internal consumers and do
+    # not receive this marker.  HTTP callers always do, including legacy
+    # clients that sent neither field, so the currency writer can distinguish
+    # an internal job from an old client without a User-Agent guess.
+    db.info[RUNTIME_COMPATIBILITY_SESSION_KEY] = RuntimeCompatibilityRequest(
+        api_version=request.headers.get(TICKETBOX_API_VERSION_HEADER),
+        currency_binding=request.headers.get(TICKETBOX_CURRENCY_BINDING_HEADER),
+        origin=(
+            "server_runtime"
+            if request.url.path == "/web"
+            or request.url.path.startswith("/web/")
+            or request.url.path == "/owner"
+            or request.url.path.startswith("/owner/")
+            or request.url.path.startswith("/u/")
+            else "http_client"
+        ),
+    )
     try:
         yield db
     finally:

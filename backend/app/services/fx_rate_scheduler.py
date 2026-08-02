@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.fx_rate_provider import FxFetchError, refresh_ecb_fx_rates
 from app.services.scheduler_lease_service import try_claim_scheduler_lease
 from app.services.time_service import now_utc
@@ -104,7 +104,7 @@ def run_fx_sync_once(db: Session) -> bool:
     try:
         rows = refresh_ecb_fx_rates(
             db,
-            home_currency_code=home_currency_code(),
+            home_currency_code=require_runtime_home_currency_code(db),
         )
     except FxFetchError as exc:
         _status.failed_count += 1

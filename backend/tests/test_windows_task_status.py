@@ -336,15 +336,20 @@ def test_cloudflare_endpoint_script_does_not_accept_token_params() -> None:
     tunnel_contract = (project_root / "docs" / "runbook" / "CLOUDFLARE_TUNNEL.md").read_text(
         encoding="utf-8-sig"
     )
-    assert "/api/system/currency-capability" in preflight
-    assert '$currencyCapability.health -eq "empty"' in preflight
-    assert '$currencyCapability.health -eq "active_match"' in preflight
-    assert '$currencyCapability.initialization_offer -eq "CNY"' in preflight
-    assert '$currencyCapability.home_currency_code -eq "CNY"' in preflight
-    assert "$bindingRevision -eq 0" in preflight
-    assert "$bindingRevision -eq 1" in preflight
+    assert "/api/system/runtime-compatibility" in preflight
+    assert '$runtimeCompatibility.read_compatibility -ne "compatible"' in preflight
+    assert '$runtimeCompatibility.write_compatibility -ne "compatible"' in preflight
+    assert '"Ticketbox-Api-Version"' in preflight
+    assert '"Ticketbox-Currency-Binding"' in preflight
+    assert "$appHeaders[$apiVersionHeader]" in preflight
+    assert "$appHeaders[$currencyBindingHeader]" in preflight
     assert '"ADOPTION_REQUIRED"' not in preflight
-    assert "system/currency-capability$" in tunnel_contract
+    assert "system/(?:currency-capability|runtime-compatibility)$" in tunnel_contract
+    public_boundary = (
+        project_root / "scripts" / "check_public_boundary.ps1"
+    ).read_text(encoding="utf-8-sig")
+    assert "public /api/system/runtime-compatibility (no token)" in public_boundary
+    assert "-ExpectedStatus @(401)" in public_boundary
 
 
 def test_public_boundary_script_allows_edge_catchall_for_forbidden_paths() -> None:

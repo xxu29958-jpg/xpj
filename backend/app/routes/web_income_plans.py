@@ -19,8 +19,8 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
-    home_currency_code,
     major_amount_to_minor,
     minor_amount_value,
 )
@@ -127,6 +127,7 @@ def page_income_plans(
     income_year_options, income_default_year, income_default_month = _income_month_options()
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected,
         page_title="收入记录",
@@ -168,7 +169,7 @@ def post_create(
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     _require_selected_ledger_write(options, selected)
-    presentation_currency = home_currency_code()
+    presentation_currency = require_runtime_home_currency_code(db)
     amount_cents = _parse_yuan(
         amount_yuan,
         currency_code=presentation_currency,

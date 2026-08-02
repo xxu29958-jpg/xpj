@@ -101,6 +101,7 @@ def web_tasks(
     active = [r for r in rows if r["status"] in ("queued", "running")]
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="后台任务",

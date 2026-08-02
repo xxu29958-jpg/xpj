@@ -6,12 +6,12 @@ from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
 from app.money_contract import projection_sum_to_int
 from app.services import bill_split_service, web_stats_service
 from app.services.currency_common import (
     currency_input_metadata,
-    home_currency_code,
     minor_amount_label,
     minor_amount_value,
 )
@@ -85,13 +85,20 @@ def _currency_input_view(currency_code: str) -> dict[str, object]:
     return currency_input_metadata(currency_code)
 
 
+def _required_currency_code(*candidates: str | None) -> str:
+    for candidate in candidates:
+        if candidate:
+            return candidate.upper()
+    raise AppError("currency_binding_corrupt", status_code=503)
+
+
 def _amount_segments(
     amount_cents: int | None,
     currency_code: str | None = None,
 ) -> dict[str, str]:
     """Split a display amount into currency, integer, and fraction segments."""
 
-    code = (currency_code or home_currency_code()).upper()
+    code = _required_currency_code(currency_code)
     symbol = _currency_symbol(code)
     cents = projection_sum_to_int(
         amount_cents,
@@ -110,12 +117,10 @@ def _expense_amount_labels(
     *,
     presentation_currency_code: str | None = None,
 ) -> tuple[str, str | None]:
-    home_code_raw = (
-        getattr(expense, "home_currency_code", None)
-        or presentation_currency_code
-        or home_currency_code()
+    home_code = _required_currency_code(
+        getattr(expense, "home_currency_code", None),
+        presentation_currency_code,
     )
-    home_code = home_code_raw.upper()
     original_code = (
         getattr(expense, "original_currency_code", None) or home_code
     ).upper()
@@ -194,10 +199,9 @@ def _expense_view(
         expense,
         presentation_currency_code=presentation_currency_code,
     )
-    home_code = (
-        getattr(expense, "home_currency_code", None)
-        or presentation_currency_code
-        or home_currency_code()
+    home_code = _required_currency_code(
+        getattr(expense, "home_currency_code", None),
+        presentation_currency_code,
     )
     original_code = getattr(expense, "original_currency_code", None) or home_code
     original_minor = getattr(expense, "original_amount_minor", None)

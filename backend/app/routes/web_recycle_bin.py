@@ -81,6 +81,7 @@ def _render_recycle_bin(
     listing = list_recycle_bin_items(db, tenant_id=selected)
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected,
         page_title="回收站",

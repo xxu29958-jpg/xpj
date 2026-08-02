@@ -24,8 +24,8 @@ from app.routes.web_common import (
 from app.routes.web_debt_actions import _actor_account_id, _error_message
 from app.routes.web_debts import _debt_create_context
 from app.schemas import DebtCreateRequest
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
-    home_currency_code,
     major_amount_to_minor,
     normalize_currency_code,
 )
@@ -168,7 +168,7 @@ def web_create_debt(
         "idempotency_key": idempotency_key,
     }
     try:
-        presentation_currency = home_currency_code()
+        presentation_currency = require_runtime_home_currency_code(db)
         payload = _create_payload(
             direction=direction,
             counterparty_label=counterparty_label,

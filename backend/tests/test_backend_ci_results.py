@@ -22,16 +22,16 @@ def _steps(job: dict[str, object]) -> dict[str, dict[str, object]]:
 
 
 def _valid_results(*, frozen_scope: str, windows_scope: str) -> dict[str, str]:
+    # The nested Windows aggregator is stable and returns success for both
+    # scoped execution and a verified all-child-jobs-skipped result.
+    assert windows_scope in {"true", "false"}
     sha = "a" * 40
     return {
         "SCOPE_RESULT": "success",
         "BACKEND_FROZEN_SCOPE": frozen_scope,
-        "WINDOWS_SCOPE": windows_scope,
         "BACKEND_CONTRACTS_RESULT": "success",
         "BACKEND_FROZEN_RESULT": "success" if frozen_scope == "true" else "skipped",
-        "WINDOWS_PACKAGING_RESULT": (
-            "success" if windows_scope == "true" else "skipped"
-        ),
+        "WINDOWS_PACKAGING_RESULT": "success",
         "EXPECTED_SHA": sha,
         "EXPECTED_SOURCE_SHA": sha,
         "AGGREGATOR_SHA": sha,
@@ -42,8 +42,8 @@ def _valid_results(*, frozen_scope: str, windows_scope: str) -> dict[str, str]:
         "BACKEND_CONTRACTS_SOURCE_SHA": sha,
         "BACKEND_FROZEN_SHA": sha if frozen_scope == "true" else "",
         "BACKEND_FROZEN_SOURCE_SHA": sha if frozen_scope == "true" else "",
-        "WINDOWS_PACKAGING_SHA": sha if windows_scope == "true" else "",
-        "WINDOWS_PACKAGING_SOURCE_SHA": sha if windows_scope == "true" else "",
+        "WINDOWS_PACKAGING_SHA": sha,
+        "WINDOWS_PACKAGING_SOURCE_SHA": sha,
     }
 
 
@@ -67,6 +67,16 @@ def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -
         )
         assert _steps(job)["Verify qualification SHA"]["id"] == "qualification"
 
+    windows_aggregator = jobs["windows_packaging"]
+    assert windows_aggregator["if"] == "${{ always() }}"
+    assert _steps(windows_aggregator)["Enforce Windows release lane results"][
+        "run"
+    ] == (
+        "python -E -S backend/scripts/verify_scoped_ci_results.py "
+        '--label "Windows release packaging" --scope-key WINDOWS_SCOPE '
+        "--lane LIFECYCLE --lane BUILD"
+    )
+
     windows_safety = _steps(jobs["windows_packaging_build"])[
         "Windows installer safety behavior"
     ]["run"]
@@ -82,7 +92,6 @@ def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -
         "ENV": "",
         "SCOPE_RESULT": "${{ needs.scope.result }}",
         "BACKEND_FROZEN_SCOPE": "${{ needs.scope.outputs.backend_frozen }}",
-        "WINDOWS_SCOPE": "${{ needs.scope.outputs.windows }}",
         "BACKEND_CONTRACTS_RESULT": "${{ needs.backend_contracts.result }}",
         "BACKEND_FROZEN_RESULT": "${{ needs.backend_frozen.result }}",
         "WINDOWS_PACKAGING_RESULT": "${{ needs.windows_packaging.result }}",
@@ -116,14 +125,11 @@ def test_backend_result_verifier_rejects_every_single_field_mutation(
     mutations = {
         "SCOPE_RESULT": "failure",
         "BACKEND_FROZEN_SCOPE": "unknown",
-        "WINDOWS_SCOPE": "unknown",
         "BACKEND_CONTRACTS_RESULT": "failure",
         "BACKEND_FROZEN_RESULT": (
             "skipped" if frozen_scope == "true" else "success"
         ),
-        "WINDOWS_PACKAGING_RESULT": (
-            "skipped" if windows_scope == "true" else "success"
-        ),
+        "WINDOWS_PACKAGING_RESULT": "skipped",
         "EXPECTED_SHA": "b" * 40,
         "EXPECTED_SOURCE_SHA": "b" * 40,
         "AGGREGATOR_SHA": "b" * 40,

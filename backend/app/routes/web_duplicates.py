@@ -40,7 +40,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.expense_service import (
     get_expense,
     list_duplicate_expenses,
@@ -84,7 +84,7 @@ def web_duplicates(
         e.id: e
         for e in list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=original_ids)
     }
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     pairs = []
     for row in rows:
         original = (
@@ -133,6 +133,7 @@ def web_duplicates(
         )
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="疑似重复",

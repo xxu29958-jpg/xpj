@@ -14,8 +14,8 @@ from app.errors import AppError
 from app.money_contract import projection_sum_to_int
 from app.services.category_service import normalize_category
 from app.services.csv_security import safe_csv_cell
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
-    home_currency_code,
     minor_amount_major_number,
     minor_amount_value,
 )
@@ -161,7 +161,7 @@ def six_month_summary(
     # 避免循环导入：budget_service 没有反向依赖 reports_service。
     from app.services.budget_service import get_monthly_budget
 
-    home = currency_code or home_currency_code()
+    home = currency_code or require_runtime_home_currency_code(db)
     results: list[dict] = []
     for month_label in _month_labels_ending_at(anchor_month, 6):
         start_utc, end_utc = _month_bounds(month_label, timezone_key)

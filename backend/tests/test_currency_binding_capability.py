@@ -82,6 +82,7 @@ def test_currency_capability_requires_session_and_is_private(client, identity, m
         assert unsupported.json()["state"] == "EMPTY"
         assert unsupported.json()["initialization_offer"] is None
     finally:
+        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
 
 

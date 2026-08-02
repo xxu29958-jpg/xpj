@@ -17,6 +17,10 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Debt, Expense
+from app.runtime_compatibility_contract import (
+    RUNTIME_COMPATIBILITY_SESSION_KEY,
+    RuntimeCompatibilityRequest,
+)
 from app.schemas import BudgetMonthlyUpdateRequest, GoalCreateRequest, RecurringCandidateConfirmRequest
 from app.services.app_meta_service import get_value
 from app.services.budget_service import upsert_monthly_budget
@@ -41,6 +45,13 @@ from tests.test_debt_binding_drift import (
 pytestmark = pytest.mark.currency_binding_unbound
 
 
+def _mark_legacy_http_writer(db) -> None:
+    db.info[RUNTIME_COMPATIBILITY_SESSION_KEY] = RuntimeCompatibilityRequest(
+        api_version=None,
+        currency_binding=None,
+    )
+
+
 def _seed_cny_expense_fact_row() -> None:
     with SessionLocal() as db:
         resolve_write_capability(db)
@@ -55,6 +66,7 @@ def test_jpy_fresh_install_legacy_writer_requires_upgrade(monkeypatch) -> None:
     get_settings.cache_clear()
     try:
         with SessionLocal() as db:
+            _mark_legacy_http_writer(db)
             with pytest.raises(AppError) as excinfo:
                 create_income_plan(
                     db,
@@ -354,6 +366,7 @@ def test_recurring_candidate_confirm_gated_under_drift(monkeypatch) -> None:
     get_settings.cache_clear()
     try:
         with SessionLocal() as db:
+            _mark_legacy_http_writer(db)
             with pytest.raises(AppError) as excinfo:
                 _candidate_confirm_call(db, "JPY")
             assert excinfo.value.error == "currency_binding_configuration_drift"
@@ -368,6 +381,7 @@ def test_recurring_candidate_confirm_requires_versioned_writer_on_jpy(monkeypatc
     get_settings.cache_clear()
     try:
         with SessionLocal() as db:
+            _mark_legacy_http_writer(db)
             with pytest.raises(AppError) as excinfo:
                 _candidate_confirm_call(db, "JPY")
             assert excinfo.value.error == "client_upgrade_required"

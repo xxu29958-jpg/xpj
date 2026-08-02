@@ -126,7 +126,7 @@ def _render_recurring(
         items=items,
         timezone_name=None,
     )
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx["items"] = [
         _item_view(
             item,

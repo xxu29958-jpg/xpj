@@ -531,7 +531,6 @@ jobs:
           ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           BACKEND_FROZEN_SCOPE: ${{ needs.scope.outputs.backend_frozen }}
-          WINDOWS_SCOPE: ${{ needs.scope.outputs.windows }}
           BACKEND_CONTRACTS_RESULT: ${{ needs.backend_contracts.result }}
           BACKEND_FROZEN_RESULT: ${{ needs.backend_frozen.result }}
           WINDOWS_PACKAGING_RESULT: ${{ needs.windows_packaging.result }}

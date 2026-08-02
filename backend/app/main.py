@@ -128,6 +128,11 @@ from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _PROJECT_ERROR_RESPONSE_REF = {"$ref": "#/components/schemas/ErrorResponse"}
+_RUNTIME_WRITE_METHODS = frozenset({"post", "put", "patch", "delete"})
+_RUNTIME_WRITE_PARAMETER_REFS = (
+    {"$ref": "#/components/parameters/TicketboxApiVersion"},
+    {"$ref": "#/components/parameters/TicketboxCurrencyBinding"},
+)
 _logger = logging.getLogger(__name__)
 
 
@@ -270,12 +275,46 @@ def _custom_openapi() -> dict:
         description=app.description,
         routes=app.routes,
     )
-    components = schema.setdefault("components", {}).setdefault("schemas", {})
+    component_root = schema.setdefault("components", {})
+    components = component_root.setdefault("schemas", {})
     components["ErrorResponse"] = ErrorResponse.model_json_schema(ref_template="#/components/schemas/{model}")
+    parameter_components = component_root.setdefault("parameters", {})
+    parameter_components["TicketboxApiVersion"] = {
+        "name": "Ticketbox-Api-Version",
+        "in": "header",
+        "required": False,
+        "description": "API contract version returned by the runtime compatibility handshake.",
+        "schema": {"type": "string"},
+    }
+    parameter_components["TicketboxCurrencyBinding"] = {
+        "name": "Ticketbox-Currency-Binding",
+        "in": "header",
+        "required": False,
+        "description": (
+            "Currency proof returned by the runtime compatibility handshake: "
+            "<contract-version>:<binding-revision>:<home-currency>."
+        ),
+        "schema": {
+            "type": "string",
+            "pattern": r"^[1-9][0-9]*:(?:0|[1-9][0-9]*):[A-Z]{3}$",
+        },
+    }
     for path, path_item in schema.get("paths", {}).items():
-        for operation in path_item.values():
+        for method, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
+            if path.startswith("/api/") and method.lower() in _RUNTIME_WRITE_METHODS:
+                operation_parameters = operation.setdefault("parameters", [])
+                existing_refs = {
+                    parameter.get("$ref")
+                    for parameter in operation_parameters
+                    if isinstance(parameter, dict)
+                }
+                operation_parameters.extend(
+                    dict(parameter_ref)
+                    for parameter_ref in _RUNTIME_WRITE_PARAMETER_REFS
+                    if parameter_ref["$ref"] not in existing_refs
+                )
             for parameter in operation.get("parameters", []):
                 if parameter.get("in") == "header" and parameter.get("name") == "Idempotency-Key":
                     parameter["required"] = True

@@ -99,6 +99,7 @@ def web_overview(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="总览",
@@ -186,7 +187,7 @@ def web_dashboard_cards_get(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx["dashboard_cards"] = _dashboard_cards_context(db, selected_id)
     ctx["message"] = msg
     return templates.TemplateResponse(request=request, name="dashboard_cards.html", context=ctx)

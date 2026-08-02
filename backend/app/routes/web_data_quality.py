@@ -35,7 +35,7 @@ def web_data_quality(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     summary = data_quality_summary(db, tenant_id=selected_id)
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx["summary"] = summary
     # Render the snapshot stamp in the accounting timezone (wall-clock the rest
     # of /web shows) instead of the raw UTC ``str(datetime)`` — keeping the

@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
-from app.models import CsvImportBatch, Expense
+from app.models import CsvImportBatch, CsvImportRow, Expense
 from app.money_contract import MONEY_MINOR_MAX
 from app.routes.web_app import _require_local as _web_require_local
 from app.services.import_service import parse_csv_preview
@@ -156,7 +156,7 @@ def test_parse_csv_preview_rejects_cross_home_currency_file(
 
 
 @pytest.mark.currency_binding_unbound
-def test_web_import_preview_fails_closed_until_jpy_consumer_is_versioned(
+def test_web_import_preview_uses_current_server_jpy_contract(
     web_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -180,13 +180,24 @@ def test_web_import_preview_fails_closed_until_jpy_consumer_is_versioned(
             follow_redirects=False,
         )
         assert response.status_code == 303, response.text
-        assert "当前客户端版本过旧" in unquote(response.headers["location"])
+        location = unquote(response.headers["location"])
+        assert "已解析+1+行，1+行可导入。" in location
         with SessionLocal() as db:
             batch = db.scalar(
                 select(CsvImportBatch)
                 .where(CsvImportBatch.tenant_id == "owner")
                 .where(CsvImportBatch.file_name == "jpy.csv")
             )
-            assert batch is None
+            assert batch is not None
+            assert batch.status == "parsed"
+            assert (batch.total_rows, batch.valid_rows, batch.error_rows) == (1, 1, 0)
+            row = db.scalar(
+                select(CsvImportRow).where(CsvImportRow.batch_id == batch.id)
+            )
+            assert row is not None
+            assert row.status == "valid"
+            assert row.amount_cents == 1234
+            assert row.original_currency_code == "JPY"
+            assert row.original_amount_minor == 1234
     finally:
         get_settings.cache_clear()

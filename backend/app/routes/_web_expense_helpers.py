@@ -204,7 +204,7 @@ def web_edit_context(
     expense_id: int,
 ) -> dict:
     expense = get_expense(db, expense_id, selected_id)
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx["expense"] = _expense_view(
         expense,
         presentation_currency_code=ctx["home_currency_code"],

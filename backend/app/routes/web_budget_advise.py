@@ -26,9 +26,9 @@ from app.services.budget_baseline_service import (
     total_active_recurring_monthly_cents,
     total_confirmed_spent_cents,
 )
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
     currency_input_metadata,
-    home_currency_code,
     major_amount_to_minor,
     minor_amount_value,
 )
@@ -116,7 +116,7 @@ def _render_budget_advise(
         timezone_name="Asia/Shanghai",
     )
     # Local inputs and aggregate output share one explicit configured currency.
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     savings_cents = major_amount_to_minor(savings_target_yuan, home)
     reserved_cents = major_amount_to_minor(reserved_buffer_yuan, home)
     breakdown = compute_monthly_discretionary(
@@ -140,6 +140,7 @@ def _render_budget_advise(
 
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected,
         page_title="AI 预算建议",

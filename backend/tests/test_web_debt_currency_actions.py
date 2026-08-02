@@ -101,15 +101,14 @@ def _exercise_zero_fraction_actions(
         ),
     )
     assert repayment.status_code == 200
-    assert "当前客户端版本过旧，无法安全完成此操作，请先升级。" in repayment.text
     current = _detail(
         web_client,
         identity=identity,
         public_id=debt["public_id"],
     )
-    assert current["paid_amount_cents"] == 0
-    assert current["remaining_amount_cents"] == 10_000
-    assert current["row_version"] == debt["row_version"]
+    assert current["paid_amount_cents"] == 100
+    assert current["remaining_amount_cents"] == 9_900
+    assert current["row_version"] == debt["row_version"] + 1
 
     decimal_rejected = web_client.post(
         f"/web/debts/{debt['public_id']}/repayments",
@@ -126,7 +125,7 @@ def _exercise_zero_fraction_actions(
         identity=identity,
         public_id=debt["public_id"],
     )
-    assert unchanged["remaining_amount_cents"] == 10_000
+    assert unchanged["remaining_amount_cents"] == 9_900
     assert unchanged["row_version"] == current["row_version"]
 
 
@@ -138,7 +137,7 @@ def _exercise_zero_fraction_actions(
     ],
 )
 @pytest.mark.currency_binding_unbound
-def test_web_zero_fraction_debt_forms_keep_frozen_units_and_require_versioned_writer(
+def test_web_zero_fraction_debt_forms_use_current_server_currency_contract(
     web_client: TestClient,
     monkeypatch,
     identity,
@@ -170,8 +169,9 @@ def test_web_zero_fraction_debt_forms_keep_frozen_units_and_require_versioned_wr
         assert 'placeholder="如 -1200"' in page.text
         assert 'placeholder="如 -10.00"' not in page.text
 
-        # C02 can render frozen facts but rejects legacy writes; C03 supplies
-        # the versioned client tuple that makes this path writable again.
+        # The server-rendered Web controller is a current C03 consumer. It
+        # writes the persisted installation currency directly, while a legacy
+        # external API client remains fail-closed without negotiation headers.
         _exercise_zero_fraction_actions(
             web_client,
             identity=identity,
