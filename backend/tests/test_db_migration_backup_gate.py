@@ -7,7 +7,11 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import inspect, text
 
-from app.database._c07_contract import C07_SOURCE_REVISION, C07_TARGET_REVISION
+from app.database._c07_contract import (
+    C07_SOURCE_REVISION,
+    C07_TARGET_REVISION,
+    MIGRATION_LEASE_LABEL,
+)
 from app.database._lifecycle import DatabaseLifecycleKind
 
 pytestmark = pytest.mark.real_db
@@ -158,7 +162,7 @@ def test_managed_schema_at_head_skips_lifecycle_backup(monkeypatch):
 
 
 def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
-    """A proven C07 target may advance to the current head after a backup."""
+    """Managed startup is lease-fenced, then backs up and reaches head."""
     from alembic import command
 
     import app.database as db_pkg
@@ -175,6 +179,22 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
         "create_pre_upgrade_backup",
         lambda: calls.append("backup") or SimpleNamespace(file_name="pre-c02.dump"),
     )
+
+    with db_pkg.engine.begin() as blocker:
+        blocker.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtext(current_database()), hashtext(:label))"
+            ),
+            {"label": MIGRATION_LEASE_LABEL},
+        )
+        with pytest.raises(
+            db_pkg.DatabaseMigrationPreflightError,
+            match="schema migration lease",
+        ):
+            db_pkg.init_db()
+        assert calls == []
+        assert _head_revision(db_pkg) == C07_TARGET_REVISION
 
     db_pkg.init_db()
 

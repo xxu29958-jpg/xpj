@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
@@ -16,12 +17,14 @@ def _idem_headers(app_headers: dict[str, str]) -> dict[str, str]:
     return {**app_headers, "Idempotency-Key": str(uuid4())}
 
 
+@pytest.mark.currency_binding_unbound
 def test_list_debts_envelope_carries_installation_home_currency(client: TestClient, *, identity) -> None:
     # ADR-0061 C02/C03 / PR#255 R6: the list envelope repeats the installation-level
     # currency capability (the same binding the write path stamps per record) so an
     # EMPTY ledger's clients can resolve the ledger currency for first-record
     # creation — record-level-only delivery made "wait for the first record" circular.
-    # Empty and non-empty lists both carry it, matching the record-level stamp.
+    # EMPTY exposes the safe first-fact CNY offer; after creation that same value
+    # is the persisted installation authority and record-level stamp.
     empty_list = client.get("/api/debts", headers=identity.app_headers)
     assert empty_list.status_code == 200, empty_list.json()
     assert empty_list.json()["items"] == []

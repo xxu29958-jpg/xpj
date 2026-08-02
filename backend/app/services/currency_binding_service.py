@@ -128,11 +128,29 @@ def get_capability(db: Session) -> CurrencyCapability:
     )
 
 
-def persisted_home_currency_code(db: Session) -> str | None:
+def readable_or_initialization_home_currency_code(db: Session) -> str | None:
+    """Resolve the currency an existing debt client may safely present.
+
+    ACTIVE installations expose their persisted authority even when runtime
+    configuration has drifted, so historical facts remain interpretable.  A
+    genuinely EMPTY installation has no persisted authority yet; the current
+    client may nevertheless offer the one first-fact transition the writer
+    contract accepts (CNY, revision 0).  Adoption, migration, and unsupported
+    initialization states remain fail-closed.
+    """
+
     capability = get_capability(db)
-    if capability.state != CURRENCY_BINDING_ACTIVE:
-        return None
-    return capability.home_currency_code
+    if capability.state == CURRENCY_BINDING_ACTIVE:
+        return capability.home_currency_code
+    if (
+        capability.state == CURRENCY_BINDING_EMPTY
+        and capability.health == "empty"
+        and capability.initialization_offer == DEFAULT_HOME_CURRENCY_CODE
+        and capability.currency_contract_version == MINIMUM_WRITABLE_CURRENCY_CONTRACT
+        and capability.binding_revision == 0
+    ):
+        return capability.initialization_offer
+    return None
 
 
 def _snapshot(binding: InstallationCurrencyBinding) -> dict[str, object]:

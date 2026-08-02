@@ -262,12 +262,30 @@ if (-not $SkipBackend) {
     Write-Host "Session Token 检查通过。"
 
     $currencyCapability = Invoke-Json -Uri "$baseUrl/api/system/currency-capability" -Headers $appHeaders
-    if ($currencyCapability.state -notin @("EMPTY", "ADOPTION_REQUIRED", "ACTIVE") -or
-        $null -eq $currencyCapability.currency_contract_version -or
-        $null -eq $currencyCapability.binding_revision) {
-        throw "币种能力握手返回了无效合同。"
+    $currencyContractVersion = [int]$currencyCapability.currency_contract_version
+    $minimumWritableContract = [int]$currencyCapability.minimum_writable_currency_contract
+    $bindingRevision = [int]$currencyCapability.binding_revision
+    $emptyInitializationIsWritable = (
+        $currencyCapability.state -eq "EMPTY" -and
+        $currencyCapability.health -eq "empty" -and
+        $currencyCapability.initialization_offer -eq "CNY" -and
+        $null -eq $currencyCapability.home_currency_code -and
+        $currencyContractVersion -eq 1 -and
+        $minimumWritableContract -eq 1 -and
+        $bindingRevision -eq 0
+    )
+    $activeLegacyContractIsWritable = (
+        $currencyCapability.state -eq "ACTIVE" -and
+        $currencyCapability.health -eq "active_match" -and
+        $currencyCapability.home_currency_code -eq "CNY" -and
+        $currencyContractVersion -eq 1 -and
+        $minimumWritableContract -eq 1 -and
+        $bindingRevision -eq 1
+    )
+    if (-not ($emptyInitializationIsWritable -or $activeLegacyContractIsWritable)) {
+        throw "币种能力握手不可写：state=$($currencyCapability.state) health=$($currencyCapability.health)。"
     }
-    Write-Host "币种能力握手检查通过。"
+    Write-Host "币种能力握手检查通过：当前客户端写合同可用。"
 
     $confirmedProbe = Invoke-Json -Uri "$baseUrl/api/expenses/confirmed?page=1&page_size=1" -Headers $appHeaders
     if ($confirmedProbe.items -and $confirmedProbe.items.Count -gt 0) {

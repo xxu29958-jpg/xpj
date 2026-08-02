@@ -165,8 +165,10 @@ class DebtListResponse(BaseModel):
     ``home_currency_code`` repeats the persisted installation currency authority
     used by writers. Runtime env drift never replaces or nulls an ACTIVE binding;
     clients can therefore keep interpreting historical records while new writes
-    fail closed. ``None`` means the installation is genuinely unbound, not that a
-    mutable process setting was invalid.
+    fail closed. Before the first financial fact, a genuinely EMPTY installation
+    exposes only the safe CNY initialization offer accepted by the current writer
+    contract. Adoption, migration, or unsupported initialization states return
+    ``None``.
     """
 
     items: list[DebtResponse]
