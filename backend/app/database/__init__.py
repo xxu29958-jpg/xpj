@@ -151,6 +151,7 @@ def _assert_c07_startup_lifecycle_ready(alembic: AlembicContext) -> None:
             engine,
             alembic_config=alembic.config,
             production_authority_required=_is_installed_host_database(),
+            expected_release_revision=alembic.head_revision,
         )
     except C07ReceiptRepairRequiredError as exc:
         raise DatabaseMigrationPreflightError(f"拒绝开放数据库 writer:C07 生命周期回执未完成({exc})。") from exc

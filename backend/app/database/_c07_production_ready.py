@@ -34,6 +34,10 @@ from app.database._c07_runtime_projection import (
 from app.database._c07_runtime_projection import (
     read_c07_runtime_projection as read_c07_runtime_projection,
 )
+from app.database._release_schema_readiness import (
+    ReleaseHeadVerificationError,
+    assert_release_head,
+)
 
 _PRODUCTION_MARKER_SCHEMA = "ticketbox-c07-production-authority-v2"
 _HOST_ENVELOPE_SCHEMA = "ticketbox-c07-host-envelope-v2"
@@ -240,24 +244,14 @@ def _read_live_alembic_revision(
     expected_revision: str = C07_TARGET_REVISION,
 ) -> str:
     try:
-        revisions = tuple(
-            str(value)
-            for value in connection.scalars(
-                text(
-                    "SELECT version_num FROM public.alembic_version "
-                    "ORDER BY version_num"
-                )
-            )
+        return assert_release_head(
+            connection,
+            expected_revision=expected_revision,
         )
-    except SQLAlchemyError as exc:
-        raise C07ReceiptRepairRequiredError(
-            "C07 cannot read the live Alembic authority"
-        ) from exc
-    if revisions != (expected_revision,):
+    except ReleaseHeadVerificationError as exc:
         raise C07ReceiptRepairRequiredError(
             "C07 live database does not match the expected managed revision"
-        )
-    return revisions[0]
+        ) from exc
 
 
 def _read_money_facts_seal(connection) -> str:
@@ -272,22 +266,19 @@ def _read_money_facts_seal(connection) -> str:
     )
 
 
-def assert_c07_production_ready(
+def assert_c07_historical_invariants(
     connection,
     *,
     projection_path: Path | None = None,
-    expected_revision: str = C07_TARGET_REVISION,
 ) -> bool:
+    """Verify immutable C07 evidence without deciding the current release head."""
+
     marker = read_c07_production_database_marker(connection)
     if marker is None:
         return False
     projection = read_c07_runtime_projection(projection_path)
     live_server_id, live_data_generation = (
         _read_live_logical_database_identity(connection)
-    )
-    _read_live_alembic_revision(
-        connection,
-        expected_revision=expected_revision,
     )
     expected_binding = _database_binding_sha256(
         installation_id=projection.installation_id,
@@ -336,4 +327,24 @@ def assert_c07_production_ready(
             "C07 marker, SYSTEM READY projection, live identity, "
             "money-contract shape, and money facts do not share one authority"
         )
+    return True
+
+
+def assert_c07_production_ready(
+    connection,
+    *,
+    projection_path: Path | None = None,
+    expected_revision: str = C07_TARGET_REVISION,
+) -> bool:
+    """Legacy C07 verifier composed from separate release and history gates."""
+
+    if not assert_c07_historical_invariants(
+        connection,
+        projection_path=projection_path,
+    ):
+        return False
+    _read_live_alembic_revision(
+        connection,
+        expected_revision=expected_revision,
+    )
     return True

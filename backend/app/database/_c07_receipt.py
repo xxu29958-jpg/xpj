@@ -33,6 +33,10 @@ from app.database._c07_execution import (
 from app.database._c07_receipt_validation import (
     validate_receipt_against_live_database,
 )
+from app.database._release_schema_readiness import (
+    ReleaseHeadVerificationError,
+    assert_release_head,
+)
 from app.money_contract import (
     MONEY_CONTRACT_PHASE_C07,
     MONEY_CONTRACT_PHASE_KEY,
@@ -291,19 +295,29 @@ def assert_c07_lifecycle_ready(
     production_projection_path: Path | None = None,
     production_authority_required: bool = False,
     alembic_config: Config | None = None,
+    expected_release_revision: str | None = None,
 ) -> None:
     """Fail closed when C07 committed but its durable receipt is incomplete."""
 
-    from app.database._c07_production_ready import assert_c07_production_ready
+    from app.database._c07_production_ready import (
+        assert_c07_historical_invariants,
+    )
 
     with source_engine.connect() as connection:
         current_revision = _revision(connection)
-        if assert_c07_production_ready(
+        if assert_c07_historical_invariants(
             connection,
             projection_path=production_projection_path,
-            expected_revision=current_revision,
         ):
             try:
+                assert_release_head(
+                    connection,
+                    expected_revision=(
+                        C07_TARGET_REVISION
+                        if expected_release_revision is None
+                        else expected_release_revision
+                    ),
+                )
                 if not _revision_includes_c07(
                     current_revision,
                     alembic_config=alembic_config,
@@ -315,9 +329,9 @@ def assert_c07_lifecycle_ready(
                     connection,
                     target_revision=C07_TARGET_REVISION,
                 )
-            except C07CeremonyError as exc:
+            except (C07CeremonyError, ReleaseHeadVerificationError) as exc:
                 raise C07ReceiptRepairRequiredError(
-                    "C07 production database live shape is invalid"
+                    "release head or C07 historical invariant is invalid"
                 ) from exc
             return
         if production_authority_required:

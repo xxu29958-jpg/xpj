@@ -111,13 +111,29 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
             managed,
         )
     ]
-    assert len(acl_calls) == len(retire_calls) == 2
-    assert all(acl < retire for acl, retire in zip(acl_calls, retire_calls, strict=True))
-    assert managed.index("$upgradeResult = Invoke-TicketboxInstalledManagedSchemaUpgradeAction") < managed.index(
-        "Set-TicketboxManagedSchemaRuntimeAcl",
-        acl_calls[0] + 1,
-    )
-    assert managed.index("return $upgradeResult") > acl_calls[1]
+    action_calls = [
+        match.start()
+        for match in re.finditer(
+            r"\$upgradeResult = Invoke-TicketboxInstalledManagedSchemaUpgradeAction",
+            managed,
+        )
+    ]
+    enable_calls = [
+        match.start()
+        for match in re.finditer(
+            "Enable-TicketboxC07MigratorForManagedSchemaUpgrade",
+            managed,
+        )
+    ]
+    return_calls = [
+        match.start() for match in re.finditer(r"return \$upgradeResult", managed)
+    ]
+    assert len(action_calls) == len(enable_calls) == len(acl_calls) == len(return_calls) == 2
+    assert len(retire_calls) == 3
+    assert retire_calls[0] < enable_calls[0] < action_calls[0] < acl_calls[0]
+    assert acl_calls[0] < return_calls[0] < retire_calls[1] < enable_calls[1]
+    assert enable_calls[1] < action_calls[1] < acl_calls[1] < return_calls[1]
+    assert return_calls[1] < retire_calls[2]
 
 
 def test_installed_payload_authority_lease_spans_c07_under_lifecycle_lock() -> None:

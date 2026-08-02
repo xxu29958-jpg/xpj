@@ -1409,19 +1409,29 @@ function Invoke-TicketboxInstalledManagedSchemaUpgrade {
             if (-not $migratorState.IsActive -and -not $migratorState.IsRetired) {
                 throw "release schema 已到 target，但 migrator 不是 retired terminal。"
             }
+            if ($migratorState.IsActive) {
+                Disable-TicketboxC07MigratorLogin `
+                    -SuperuserPassword $RecoveredSuperuserPassword `
+                    -OperationId $capturedOperationId `
+                    -Mode $capturedMode
+            }
             try {
+                Enable-TicketboxC07MigratorForManagedSchemaUpgrade `
+                    -SuperuserPassword $RecoveredSuperuserPassword `
+                    -RuntimePassword $capturedRuntimePassword `
+                    -MigratorPassword $capturedMigratorPassword `
+                    -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(30)) `
+                    -OperationId $capturedOperationId `
+                    -Mode $capturedMode
+                $upgradeResult = Invoke-TicketboxInstalledManagedSchemaUpgradeAction `
+                    -ReleaseIdentity $capturedReleaseIdentity `
+                    -HostAuthority $capturedHostAuthority `
+                    -MigratorPassword $capturedMigratorPassword `
+                    -Plan $capturedPlan
                 Set-TicketboxManagedSchemaRuntimeAcl `
                     -Authority $capturedHostAuthority `
                     -SuperuserPassword $RecoveredSuperuserPassword
-                return [pscustomobject][ordered]@{
-                    schema = $script:TicketboxManagedSchemaResultSchema
-                    source_revision = [string]$capturedPlan.source_revision
-                    target_revision = [string]$capturedPlan.target_revision
-                    revision_manifest_sha256 =
-                        [string]$capturedPlan.revision_manifest_sha256
-                    result = "target_observed_after_interruption"
-                    alembic_revision = [string]$capturedPlan.target_revision
-                }
+                return $upgradeResult
             }
             finally {
                 $state = Get-TicketboxC07MigratorRetirementState `

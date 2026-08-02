@@ -168,6 +168,7 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
     import app.database as db_pkg
     from app.database._c07_production_ready import _read_live_alembic_revision
     from app.services import backup_service
+    from tests._infra.c07_alembic import run_alembic_for_test
 
     alembic = db_pkg.load_alembic_context()
     command.downgrade(alembic.config, C07_TARGET_REVISION)
@@ -190,22 +191,15 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
     assert _head_revision(db_pkg) == C07_TARGET_REVISION
     monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH")
 
-    # The frozen installer helper executes the same packaged revision through
-    # an externally owned transaction. Exercise that exact path with the test
-    # database principal standing in for the short-lived migrator/owner pair.
-    from app.database import _managed_schema_upgrade as managed_schema
-
-    db_pkg.engine.dispose()
-    with db_pkg.engine.connect() as connection:
-        session_user, database_name = connection.execute(
-            text("SELECT session_user, current_database()")
-        ).one()
-    monkeypatch.setattr(managed_schema, "MIGRATOR_ROLE", str(session_user))
-    monkeypatch.setattr(managed_schema, "SCHEMA_OWNER_ROLE", str(session_user))
-    monkeypatch.setattr(managed_schema, "DATABASE_NAME", str(database_name))
-    managed_plan = managed_schema._load_plan(C07_TARGET_REVISION)
-    with db_pkg.engine.begin() as connection:
-        assert managed_schema._run_plan(connection, managed_plan) == "target_committed"
+    # Development/operator Alembic still uses the same external-connection
+    # environment. The dedicated installed-role runtime has its own topology
+    # integration proof.
+    run_alembic_for_test(
+        db_pkg.engine,
+        alembic.config,
+        command.upgrade,
+        "head",
+    )
     assert _head_revision(db_pkg) == alembic.head_revision
     command.downgrade(alembic.config, C07_TARGET_REVISION)
     assert _head_revision(db_pkg) == C07_TARGET_REVISION

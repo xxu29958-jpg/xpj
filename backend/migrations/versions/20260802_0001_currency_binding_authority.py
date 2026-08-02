@@ -436,6 +436,132 @@ def upgrade() -> None:
     _create_triggers(bind)
 
 
+def assert_postcondition(bind: sa.Connection) -> None:
+    """Prove the C02 authority and writer fence before migration commit."""
+
+    inspector = sa.inspect(bind)
+    required_tables = {
+        _BINDING_TABLE,
+        _IDEMPOTENCY_TABLE,
+        _AUDIT_TABLE,
+    }
+    if not required_tables.issubset(inspector.get_table_names(schema="public")):
+        raise RuntimeError("C02 postcondition is missing an authority table")
+
+    binding_rows = bind.execute(
+        sa.text(
+            f"SELECT singleton_id, state, currency_contract_version, "
+            f"binding_revision FROM public.{_BINDING_TABLE} ORDER BY singleton_id"
+        )
+    ).all()
+    if (
+        len(binding_rows) != 1
+        or tuple(binding_rows[0])[:1] != (1,)
+        or str(binding_rows[0].state) not in {"EMPTY", "ADOPTION_REQUIRED", "ACTIVE"}
+        or int(binding_rows[0].currency_contract_version) != 1
+        or int(binding_rows[0].binding_revision) not in {0, 1}
+    ):
+        raise RuntimeError("C02 postcondition has no valid binding singleton")
+
+    binding_checks = {
+        str(check["name"])
+        for check in inspector.get_check_constraints(
+            _BINDING_TABLE,
+            schema="public",
+        )
+    }
+    if binding_checks != {
+        "ck_installation_currency_binding_contract_version",
+        "ck_installation_currency_binding_shape",
+        "ck_installation_currency_binding_singleton",
+        "ck_installation_currency_binding_state",
+    }:
+        raise RuntimeError("C02 postcondition binding constraints drifted")
+
+    expected_triggers = {
+        (table, f"trg_currency_writer_{table}", _WRITER_FUNCTION)
+        for table in _WRITER_FENCE_TABLES
+    }
+    expected_triggers.update(
+        {
+            (
+                _CATEGORY_RULE_TABLE,
+                f"trg_currency_writer_{_CATEGORY_RULE_TABLE}_truncate",
+                _WRITER_FUNCTION,
+            ),
+            (
+                _BINDING_TABLE,
+                "trg_currency_binding_update_delete",
+                _BINDING_GUARD_FUNCTION,
+            ),
+            (
+                _BINDING_TABLE,
+                "trg_currency_binding_truncate",
+                _BINDING_GUARD_FUNCTION,
+            ),
+            (
+                _AUDIT_TABLE,
+                "trg_currency_audit_update_delete",
+                _IMMUTABLE_FUNCTION,
+            ),
+            (
+                _AUDIT_TABLE,
+                "trg_currency_audit_truncate",
+                _IMMUTABLE_FUNCTION,
+            ),
+        }
+    )
+    live_triggers = {
+        (str(table), str(trigger), str(function))
+        for table, trigger, function in bind.execute(
+            sa.text(
+                """
+                SELECT c.relname, t.tgname, p.proname
+                  FROM pg_trigger AS t
+                  JOIN pg_class AS c ON c.oid = t.tgrelid
+                  JOIN pg_namespace AS n ON n.oid = c.relnamespace
+                  JOIN pg_proc AS p ON p.oid = t.tgfoid
+                 WHERE n.nspname = 'public'
+                   AND NOT t.tgisinternal
+                   AND t.tgenabled = 'O'
+                """
+            )
+        )
+    }
+    if not expected_triggers.issubset(live_triggers):
+        raise RuntimeError("C02 postcondition writer fences are incomplete")
+
+    functions = {
+        str(name)
+        for (name,) in bind.execute(
+            sa.text(
+                """
+                SELECT p.proname
+                  FROM pg_proc AS p
+                  JOIN pg_namespace AS n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'public'
+                   AND p.pronargs = 0
+                   AND NOT p.prosecdef
+                   AND p.proname = ANY(:names)
+                """
+            ),
+            {
+                "names": [
+                    _WRITER_FUNCTION,
+                    _BINDING_GUARD_FUNCTION,
+                    _IMMUTABLE_FUNCTION,
+                ]
+            },
+        )
+    }
+    if functions != {
+        _WRITER_FUNCTION,
+        _BINDING_GUARD_FUNCTION,
+        _IMMUTABLE_FUNCTION,
+    }:
+        raise RuntimeError("C02 postcondition guard functions drifted")
+
+
 def _drop_triggers(bind: sa.Connection) -> None:
     for table in reversed(_WRITER_FENCE_TABLES):
         _drop_trigger_if_present(bind, table, f"trg_currency_writer_{table}")

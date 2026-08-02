@@ -15,30 +15,26 @@ from pathlib import Path
 from typing import Any
 
 from alembic.config import Config
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
 from alembic.script import ScriptDirectory
-from sqlalchemy import text
-from sqlalchemy.engine import Engine
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.alembic_revision_contract import assert_linear_descendant_chain
-from app.database._c07_contract import MIGRATION_LEASE_LABEL
-from app.database._c07_production_connection import (
-    _create_production_engine,
-    _temporary_pgpass_environment,
-    _validated_migrator_url,
-    _validated_pgpass_path,
-)
-from app.database._c07_production_contract_types import (
+from app.database._managed_postgres_contract import (
     DATABASE_NAME,
+    MIGRATION_LEASE_LABEL,
     MIGRATOR_ROLE,
     SCHEMA_OWNER_ROLE,
+)
+from app.database._managed_postgres_migration_runtime import (
+    ManagedPostgresMigrationRuntimeError,
+    ManagedPostgresMigrationRuntimeV1,
+    ManagedPostgresRuntimeContractV1,
 )
 
 PLAN_SCHEMA = "ticketbox-managed-schema-plan-v1"
 RESULT_SCHEMA = "ticketbox-managed-schema-upgrade-result-v1"
 MANIFEST_SCHEMA = "ticketbox-managed-schema-manifest-v1"
+_TRANSACTION_TIMEOUT_MS = 20 * 60 * 1000
+_ALEMBIC_JSON_PROTOCOL_ATTRIBUTE = "ticketbox_managed_migration_json_protocol_v1"
 
 
 class ManagedSchemaUpgradeError(RuntimeError):
@@ -47,6 +43,7 @@ class ManagedSchemaUpgradeError(RuntimeError):
 
 @dataclass(frozen=True)
 class ManagedSchemaPlan:
+    config: Config
     source_revision: str
     target_revision: str
     revisions: tuple[dict[str, str], ...]
@@ -71,6 +68,7 @@ def _load_plan(source_revision: str) -> ManagedSchemaPlan:
     root = _backend_root()
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("script_location", str(root / "migrations"))
+    config.attributes[_ALEMBIC_JSON_PROTOCOL_ATTRIBUTE] = True
     try:
         scripts = ScriptDirectory.from_config(config)
         heads = tuple(scripts.get_heads())
@@ -129,6 +127,7 @@ def _load_plan(source_revision: str) -> ManagedSchemaPlan:
         "revisions": revisions,
     }
     return ManagedSchemaPlan(
+        config=config,
         source_revision=source_revision,
         target_revision=target_revision,
         revisions=tuple(revisions),
@@ -146,20 +145,6 @@ def get_managed_schema_plan(*, source_revision: str) -> dict[str, object]:
         "revision_count": len(plan.revisions),
         "revision_manifest_sha256": plan.manifest_sha256,
     }
-
-
-def _current_revision(connection: Any) -> str:
-    revisions = tuple(
-        str(value)
-        for value in connection.scalars(
-            text("SELECT version_num FROM alembic_version ORDER BY version_num")
-        )
-    )
-    if len(revisions) != 1:
-        raise ManagedSchemaUpgradeError(
-            "managed schema database must expose exactly one revision"
-        )
-    return revisions[0]
 
 
 def _load_revision(revision: dict[str, str]) -> Any:
@@ -187,87 +172,18 @@ def _load_revision(revision: dict[str, str]) -> Any:
         getattr(module, "revision", None) != revision["revision"]
         or getattr(module, "down_revision", None) != revision["down_revision"]
         or not callable(getattr(module, "upgrade", None))
+        or not callable(getattr(module, "assert_postcondition", None))
     ):
         raise ManagedSchemaUpgradeError("managed schema revision metadata drifted")
     return module
 
 
-def _run_plan(connection: Any, plan: ManagedSchemaPlan) -> str:
-    principal = tuple(
-        str(value)
-        for value in connection.execute(
-            text("SELECT session_user, current_user, current_database()")
-        ).one()
-    )
-    if principal != (MIGRATOR_ROLE, MIGRATOR_ROLE, DATABASE_NAME):
+def _target_postcondition(plan: ManagedSchemaPlan) -> Any:
+    if not plan.revisions:
         raise ManagedSchemaUpgradeError(
-            "managed schema connection is not the dedicated migrator"
+            "managed schema plan does not contain a release postcondition"
         )
-    acquired = connection.scalar(
-        text(
-            "SELECT pg_try_advisory_xact_lock("
-            "hashtext(current_database()), hashtext(:label))"
-        ),
-        {"label": MIGRATION_LEASE_LABEL},
-    )
-    if acquired is not True:
-        raise ManagedSchemaUpgradeError("managed schema migration lease is busy")
-    other_clients = connection.scalar(
-        text(
-            "SELECT count(*) FROM pg_stat_activity "
-            "WHERE datid = (SELECT oid FROM pg_database "
-            "WHERE datname = current_database()) "
-            "AND pid <> pg_backend_pid() AND backend_type = 'client backend'"
-        )
-    )
-    if int(other_clients or 0) != 0:
-        raise ManagedSchemaUpgradeError(
-            "managed schema migration observed another client writer"
-        )
-    connection.execute(text(f'SET LOCAL ROLE "{SCHEMA_OWNER_ROLE}"'))
-    effective = tuple(
-        str(value)
-        for value in connection.execute(
-            text("SELECT session_user, current_user")
-        ).one()
-    )
-    if effective != (MIGRATOR_ROLE, SCHEMA_OWNER_ROLE):
-        raise ManagedSchemaUpgradeError(
-            "managed schema migrator cannot assume the schema owner"
-        )
-
-    current = _current_revision(connection)
-    if current == plan.target_revision:
-        return "target_observed_after_interruption"
-    if current != plan.source_revision:
-        raise ManagedSchemaUpgradeError(
-            "managed schema live revision is outside the frozen release path"
-        )
-
-    operations = Operations(MigrationContext.configure(connection))
-    for revision in plan.revisions:
-        module = _load_revision(revision)
-        module.op = operations
-        module.upgrade()
-        advanced = connection.scalar(
-            text(
-                "UPDATE alembic_version SET version_num = :target "
-                "WHERE version_num = :source RETURNING version_num"
-            ),
-            {
-                "source": revision["down_revision"],
-                "target": revision["revision"],
-            },
-        )
-        if advanced != revision["revision"]:
-            raise ManagedSchemaUpgradeError(
-                "managed schema revision marker did not advance atomically"
-            )
-    if _current_revision(connection) != plan.target_revision:
-        raise ManagedSchemaUpgradeError(
-            "managed schema migration did not reach the frozen head"
-        )
-    return "target_committed"
+    return _load_revision(plan.revisions[-1]).assert_postcondition
 
 
 def run_managed_schema_upgrade_action(
@@ -287,23 +203,28 @@ def run_managed_schema_upgrade_action(
         raise ManagedSchemaUpgradeError(
             "managed schema CLI does not match the frozen release plan"
         )
-    parsed_url = _validated_migrator_url(database_url)
-    protected_pgpass = _validated_pgpass_path(pgpassfile)
-    engine: Engine | None = None
+    runtime = ManagedPostgresMigrationRuntimeV1(
+        ManagedPostgresRuntimeContractV1(
+            database_name=DATABASE_NAME,
+            migrator_role=MIGRATOR_ROLE,
+            schema_owner_role=SCHEMA_OWNER_ROLE,
+            lease_label=MIGRATION_LEASE_LABEL,
+            transaction_timeout_ms=_TRANSACTION_TIMEOUT_MS,
+        )
+    )
     try:
-        with _temporary_pgpass_environment(protected_pgpass):
-            engine = _create_production_engine(parsed_url)
-            with engine.begin() as connection:
-                result = _run_plan(connection, plan)
-    except ManagedSchemaUpgradeError:
-        raise
-    except SQLAlchemyError as exc:
+        result = runtime.run(
+            database_url=database_url,
+            pgpassfile=pgpassfile,
+            alembic_config=plan.config,
+            source_revision=plan.source_revision,
+            target_revision=plan.target_revision,
+            verify_postcondition=_target_postcondition(plan),
+        )
+    except ManagedPostgresMigrationRuntimeError as exc:
         raise ManagedSchemaUpgradeError(
             "managed schema PostgreSQL action failed"
         ) from exc
-    finally:
-        if engine is not None:
-            engine.dispose()
     return {
         "schema": RESULT_SCHEMA,
         "source_revision": plan.source_revision,

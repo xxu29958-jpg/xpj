@@ -15,6 +15,16 @@ from datetime import UTC, datetime
 from pathlib import PureWindowsPath
 from uuid import UUID
 
+from app.database._managed_postgres_contract import (
+    DATABASE_NAME as DATABASE_NAME,
+)
+from app.database._managed_postgres_contract import (
+    MIGRATOR_ROLE as MIGRATOR_ROLE,
+)
+from app.database._managed_postgres_contract import (
+    SCHEMA_OWNER_ROLE as SCHEMA_OWNER_ROLE,
+)
+
 PRODUCTION_MIGRATION_CONTEXT_SCHEMA = "ticketbox-c07-production-migration-context-v5"
 PRODUCTION_MIGRATION_EVIDENCE_SCHEMA = "ticketbox-c07-migration-evidence-v1"
 HOST_ENVELOPE_SCHEMA = "ticketbox-c07-host-envelope-v2"
@@ -26,9 +36,6 @@ ISOLATED_RESTORE_EVIDENCE_SCHEMA = "ticketbox-c07-isolated-restore-evidence-v2"
 RECOVERY_INTEGRITY_SCOPE = "acl_hash_only"
 DATABASE_AUTHORITY_SCHEMA = "ticketbox-c07-live-database-authority-v1"
 
-MIGRATOR_ROLE = "ticketbox_migrator"
-SCHEMA_OWNER_ROLE = "ticketbox_owner"
-DATABASE_NAME = "ticketbox"
 MAX_CONTEXT_BYTES = 64 * 1024
 MAX_AUTHORITY_ARTIFACT_BYTES = 1024 * 1024
 MAINTENANCE_WINDOW_SECONDS = 20 * 60
