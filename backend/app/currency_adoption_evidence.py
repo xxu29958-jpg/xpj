@@ -63,6 +63,29 @@ def _json_line(payload: object) -> bytes:
     ).encode()
 
 
+def _resolve_allowed_home_currency_codes(
+    explicit_codes: set[str],
+    rate_source_codes: set[str],
+) -> tuple[tuple[str, ...], bool]:
+    has_conflict = any(
+        code not in DEFAULT_SUPPORTED_CURRENCY_CODES
+        for code in explicit_codes | rate_source_codes
+    ) or len(explicit_codes) > 1
+    selected = next(iter(explicit_codes), None)
+    # ``exchange_rates.rate_to_cny`` is a legacy column name. Released writers
+    # stored source-currency -> configured-home rates and rejected source ==
+    # home, so a row can eliminate its source code as the historical home but
+    # cannot itself prove that the home was CNY.
+    if selected is not None and selected in rate_source_codes:
+        has_conflict = True
+    if has_conflict:
+        return (), True
+    if selected is not None:
+        return (selected,), False
+    allowed = tuple(sorted(DEFAULT_SUPPORTED_CURRENCY_CODES - rate_source_codes))
+    return allowed, not allowed
+
+
 def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEvidence:
     """Bind legacy facts and derive choices that cannot reinterpret them."""
 
@@ -125,24 +148,10 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
         # that historical meaning; an explicit non-CNY fact now becomes a
         # conflict instead of silently relabelling the currencyless facts.
         explicit_codes.add(DEFAULT_HOME_CURRENCY_CODE)
-    has_conflict = any(
-        code not in DEFAULT_SUPPORTED_CURRENCY_CODES
-        for code in explicit_codes | rate_source_codes
-    ) or len(explicit_codes) > 1
-    selected = next(iter(explicit_codes), None)
-    # ``exchange_rates.rate_to_cny`` is a legacy column name. Released writers
-    # stored source-currency -> configured-home rates and rejected source ==
-    # home, so a row can eliminate its source code as the historical home but
-    # cannot itself prove that the home was CNY.
-    if selected is not None and selected in rate_source_codes:
-        has_conflict = True
-    if has_conflict:
-        allowed: tuple[str, ...] = ()
-    elif selected is not None:
-        allowed = (selected,)
-    else:
-        allowed = tuple(sorted(DEFAULT_SUPPORTED_CURRENCY_CODES - rate_source_codes))
-        has_conflict = not allowed
+    allowed, has_conflict = _resolve_allowed_home_currency_codes(
+        explicit_codes,
+        rate_source_codes,
+    )
     return CurrencyAdoptionEvidence(
         sha256=digest.hexdigest(),
         allowed_home_currency_codes=allowed,

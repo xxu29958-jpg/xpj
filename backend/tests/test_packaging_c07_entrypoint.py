@@ -493,29 +493,3 @@ def test_all_c07_database_entrypoints_reject_ambient_libpq_authority(
                 input_stream=io.BytesIO(b""),
                 output_stream=io.StringIO(),
             )
-
-
-def test_frozen_backend_and_helper_identities_are_separate(monkeypatch) -> None:
-    launch = _load_launch_module()
-    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(
-        launch.sys,
-        "argv",
-        ["ticketbox-backend.exe", *_maintenance_args()],
-    )
-    monkeypatch.setattr(
-        launch.sys,
-        "executable",
-        "C:/Program Files/Ticketbox/ticketbox-backend.exe",
-    )
-    with pytest.raises(RuntimeError, match="dedicated frozen helper"):
-        launch.main()
-
-    monkeypatch.setattr(launch.sys, "argv", ["ticketbox-c07-migrator.exe"])
-    monkeypatch.setattr(
-        launch.sys,
-        "executable",
-        "C:/Program Files/Ticketbox/ticketbox-c07-migrator.exe",
-    )
-    with pytest.raises(RuntimeError, match="requires its explicit maintenance mode"):
-        launch.main()

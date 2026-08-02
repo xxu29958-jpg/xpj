@@ -459,10 +459,7 @@ def test_dismiss_latches_dismissed(client: TestClient, *, identity) -> None:
 
 
 def test_dismiss_is_idempotent_when_already_dismissed(
-    client: TestClient,
-    monkeypatch,
-    *,
-    identity,
+    client: TestClient, monkeypatch, *, identity
 ) -> None:
     draft = _create_draft(client, identity, amount_cents=4200)
     first = client.post(
