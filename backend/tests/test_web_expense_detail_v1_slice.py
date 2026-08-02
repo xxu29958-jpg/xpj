@@ -202,7 +202,7 @@ def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestCl
     assert api_splits.json()["splits_total_amount_cents"] == 1234
 
 
-def test_web_detail_money_posts_use_record_currency_after_env_drift(
+def test_web_detail_money_posts_fail_closed_after_env_drift(
     web_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -218,11 +218,12 @@ def test_web_detail_money_posts_use_record_currency_after_env_drift(
             f"/api/expenses/{expense_id}", headers=identity.app_headers
         )
         assert item_snapshot.status_code == 200, item_snapshot.json()
+        initial_row_version = item_snapshot.json()["row_version"]
         items = web_client.post(
             f"/web/expenses/{expense_id}/items/save",
             data={
                 "ledger_id": "owner",
-                "expected_row_version": item_snapshot.json()["row_version"],
+                "expected_row_version": initial_row_version,
                 "item_name": ["牛奶"],
                 "item_quantity": ["1盒"],
                 "item_unit_price_yuan": ["12.34"],
@@ -231,17 +232,19 @@ def test_web_detail_money_posts_use_record_currency_after_env_drift(
             },
             follow_redirects=False,
         )
-        assert items.status_code in {303, 307}, items.text
+        assert items.status_code == 200, items.text
+        assert "服务端币种配置与已持久化的本位币绑定不一致" in items.text
         api_items = web_client.get(
             f"/api/expenses/{expense_id}/items", headers=identity.app_headers
         )
         assert api_items.status_code == 200, api_items.json()
-        assert api_items.json()["items"][0]["amount_cents"] == 1234
+        assert api_items.json()["items"] == []
 
         split_snapshot = web_client.get(
             f"/api/expenses/{expense_id}", headers=identity.app_headers
         )
         assert split_snapshot.status_code == 200, split_snapshot.json()
+        assert split_snapshot.json()["row_version"] == initial_row_version
         splits = web_client.post(
             f"/web/expenses/{expense_id}/splits/save",
             data={
@@ -253,12 +256,18 @@ def test_web_detail_money_posts_use_record_currency_after_env_drift(
             },
             follow_redirects=False,
         )
-        assert splits.status_code in {303, 307}, splits.text
+        assert splits.status_code == 200, splits.text
+        assert "服务端币种配置与已持久化的本位币绑定不一致" in splits.text
         api_splits = web_client.get(
             f"/api/expenses/{expense_id}/splits", headers=identity.app_headers
         )
         assert api_splits.status_code == 200, api_splits.json()
-        assert api_splits.json()["splits"][0]["amount_cents"] == 1234
+        assert api_splits.json()["splits"] == []
+        final_snapshot = web_client.get(
+            f"/api/expenses/{expense_id}", headers=identity.app_headers
+        )
+        assert final_snapshot.status_code == 200, final_snapshot.json()
+        assert final_snapshot.json()["row_version"] == initial_row_version
     finally:
         get_settings.cache_clear()
 

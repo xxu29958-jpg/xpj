@@ -14,6 +14,7 @@ from app.database import SessionLocal, engine
 from app.errors import AppError
 from app.models import BillSplitInvitation, Expense, Ledger, LedgerMember
 from app.services import bill_split_service as bsplit
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests.test_bill_split import (
     _make_expense_for_owner,
@@ -152,6 +153,7 @@ def test_foreign_currency_split_lands_received_expense_in_home_currency() -> Non
     home-currency row (original == home, rate == 1)."""
     rate_date = date(2026, 5, 1)
     with SessionLocal() as db:
+        resolve_write_capability(db)
         expense = Expense(
             tenant_id="owner",
             amount_cents=7000,
