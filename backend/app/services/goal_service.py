@@ -387,16 +387,17 @@ def archive_goal(
     public_id: str,
     timezone_name: str | None = None,
 ) -> GoalResponse:
-    resolve_write_capability(db)
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
-    if goal.status != "archived":
-        now = now_utc()
-        goal.status = "archived"
-        goal.archived_at = now
-        goal.updated_at = now
-        bump_row_version(goal)
-        db.commit()
-        db.refresh(goal)
+    if goal.status == "archived":
+        return _goal_response_by_type(db, goal, timezone_name=timezone_name)
+    resolve_write_capability(db)
+    now = now_utc()
+    goal.status = "archived"
+    goal.archived_at = now
+    goal.updated_at = now
+    bump_row_version(goal)
+    db.commit()
+    db.refresh(goal)
     return _goal_response_by_type(db, goal, timezone_name=timezone_name)
 
 
@@ -423,10 +424,10 @@ def restore_goal(
     ``IntegrityError`` catch is the race backstop). ``debt_repayment`` goals have
     a NULL month and no such uniqueness, so they skip the pre-check.
     """
-    resolve_write_capability(db)
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
     if goal.status != "archived":
         return _goal_response_by_type(db, goal, timezone_name=timezone_name)
+    resolve_write_capability(db)
     if goal.goal_type == "spending_limit" and _active_goal_conflict_exists(
         db,
         tenant_id=tenant_id,

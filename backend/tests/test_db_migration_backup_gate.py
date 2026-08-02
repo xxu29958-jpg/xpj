@@ -5,7 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.pool import NullPool
 
 from app.database._c07_contract import (
     C07_SOURCE_REVISION,
@@ -58,6 +59,52 @@ def _patch_database_writes(monkeypatch, db_pkg, calls: list[str]) -> None:
     monkeypatch.setattr(db_pkg, "seed_identity_data", lambda: calls.append("seed"))
     monkeypatch.setattr(db_pkg, "seed_runtime_data", lambda: calls.append("seed"))
     monkeypatch.setattr(db_pkg, "reconcile_expense_tag_mirror_once", lambda: calls.append("seed"))
+
+
+def _assert_migration_lease_blocks(db_pkg, calls: list[str]) -> None:
+    contender_engine = create_engine(
+        db_pkg.engine.url,
+        poolclass=NullPool,
+        future=True,
+    )
+    try:
+        with contender_engine.begin() as blocker:
+            blocker.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock("
+                    "hashtext(current_database()), hashtext(:label))"
+                ),
+                {"label": MIGRATION_LEASE_LABEL},
+            )
+            with pytest.raises(
+                db_pkg.DatabaseMigrationPreflightError,
+                match="schema migration lease",
+            ):
+                db_pkg.init_db()
+            assert calls == []
+            assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    finally:
+        contender_engine.dispose()
+
+
+def _assert_old_runtime_blocks(db_pkg, calls: list[str]) -> None:
+    old_runtime_engine = create_engine(
+        db_pkg.engine.url,
+        poolclass=NullPool,
+        future=True,
+    )
+    try:
+        with old_runtime_engine.connect() as old_runtime:
+            old_runtime.execute(text("SELECT 1"))
+            with pytest.raises(
+                db_pkg.DatabaseMigrationPreflightError,
+                match="another client session",
+            ):
+                db_pkg.init_db()
+            assert calls == []
+            assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    finally:
+        old_runtime_engine.dispose()
 
 
 def test_c07_source_revision_refuses_before_backup_or_writes(monkeypatch):
@@ -204,22 +251,8 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
     command.downgrade(alembic.config, C07_TARGET_REVISION)
     assert _head_revision(db_pkg) == C07_TARGET_REVISION
 
-    with db_pkg.engine.begin() as blocker:
-        blocker.execute(
-            text(
-                "SELECT pg_advisory_xact_lock("
-                "hashtext(current_database()), hashtext(:label))"
-            ),
-            {"label": MIGRATION_LEASE_LABEL},
-        )
-        with pytest.raises(
-            db_pkg.DatabaseMigrationPreflightError,
-            match="schema migration lease",
-        ):
-            db_pkg.init_db()
-        assert calls == []
-        assert _head_revision(db_pkg) == C07_TARGET_REVISION
-
+    _assert_migration_lease_blocks(db_pkg, calls)
+    _assert_old_runtime_blocks(db_pkg, calls)
     db_pkg.init_db()
 
     assert calls == ["backup"]

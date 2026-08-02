@@ -416,11 +416,11 @@ def archive_monthly_budget(
     month: str,
     expected_row_version: int,
 ) -> Budget:
-    resolve_write_capability(db)
     clean_month = _clean_month(month)
     budget = _require_budget(db, tenant_id=tenant_id, month=clean_month)
     if budget.archived_at is not None:
         return budget
+    resolve_write_capability(db)
     now = now_utc()
     rowcount = claim_row_with_token(
         db,
@@ -450,11 +450,11 @@ def restore_monthly_budget(
     month: str,
     expected_row_version: int,
 ) -> Budget:
-    resolve_write_capability(db)
     clean_month = _clean_month(month)
     budget = _require_budget(db, tenant_id=tenant_id, month=clean_month)
     if budget.archived_at is None:
         return budget
+    resolve_write_capability(db)
     now = now_utc()
     rowcount = claim_row_with_token(
         db,

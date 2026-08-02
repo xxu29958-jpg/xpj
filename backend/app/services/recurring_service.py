@@ -293,10 +293,10 @@ def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expec
     Idempotent on an already-active item (404 only when absent); a stale token
     against an archived item is 409 ``state_conflict``.
     """
-    resolve_write_capability(db)
     item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status != "archived":
         return item  # not in the recycle bin — nothing to restore
+    resolve_write_capability(db)
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -323,6 +323,9 @@ def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expec
 
 
 def archive_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
+    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    if item.status == "archived":
+        return item
     resolve_write_capability(db)
     now = now_utc()
     result = db.execute(

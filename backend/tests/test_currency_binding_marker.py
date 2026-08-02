@@ -6,6 +6,7 @@ RepaymentDraft 事实集与 confirm 冻结币种比对。
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -144,6 +145,112 @@ def test_unbound_write_services_gated_under_drift(client: TestClient, monkeypatc
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
+
+
+def _patch_terminal_retry_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    archived: SimpleNamespace,
+    active: SimpleNamespace,
+) -> None:
+    from app.services import (
+        budget_service,
+        goal_service,
+        income_plan_service,
+        recurring_service,
+    )
+
+    def unexpected_writer_gate(*_args, **_kwargs) -> None:
+        raise AssertionError("terminal no-op must not enter the currency writer gate")
+
+    for module in (
+        budget_service,
+        goal_service,
+        income_plan_service,
+        recurring_service,
+    ):
+        monkeypatch.setattr(module, "resolve_write_capability", unexpected_writer_gate)
+
+    monkeypatch.setattr(
+        budget_service,
+        "_require_budget",
+        lambda _db, *, tenant_id, month: archived if month == "2026-01" else active,
+    )
+    monkeypatch.setattr(
+        income_plan_service,
+        "_require_plan",
+        lambda _db, *, tenant_id, public_id: archived if public_id == "archived" else active,
+    )
+    monkeypatch.setattr(
+        recurring_service,
+        "get_recurring_item",
+        lambda _db, *, tenant_id, public_id: archived if public_id == "archived" else active,
+    )
+    monkeypatch.setattr(
+        goal_service,
+        "get_goal",
+        lambda _db, *, tenant_id, public_id: archived if public_id == "archived" else active,
+    )
+    monkeypatch.setattr(
+        goal_service,
+        "_goal_response_by_type",
+        lambda _db, goal, *, timezone_name: goal,
+    )
+
+
+def test_terminal_archive_restore_retries_do_not_require_a_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import (
+        budget_service,
+        goal_service,
+        income_plan_service,
+        recurring_service,
+    )
+
+    archived = SimpleNamespace(status="archived", archived_at=object())
+    active = SimpleNamespace(status="active", archived_at=None)
+    _patch_terminal_retry_dependencies(
+        monkeypatch,
+        archived=archived,
+        active=active,
+    )
+    cases = (
+        (
+            budget_service.archive_monthly_budget,
+            {"month": "2026-01", "expected_row_version": 1},
+            archived,
+        ),
+        (
+            budget_service.restore_monthly_budget,
+            {"month": "2026-02", "expected_row_version": 1},
+            active,
+        ),
+        (
+            income_plan_service.archive_income_plan,
+            {"public_id": "archived", "expected_row_version": 1},
+            archived,
+        ),
+        (
+            income_plan_service.restore_income_plan,
+            {"public_id": "active", "expected_row_version": 1},
+            active,
+        ),
+        (recurring_service.archive_recurring_item, {"public_id": "archived"}, archived),
+        (
+            recurring_service.restore_recurring_item,
+            {"public_id": "active", "expected_row_version": 1},
+            active,
+        ),
+        (goal_service.archive_goal, {"public_id": "archived"}, archived),
+        (
+            goal_service.restore_goal,
+            {"public_id": "active", "expected_row_version": 1},
+            active,
+        ),
+    )
+    for action, arguments, expected in cases:
+        assert action(object(), tenant_id="owner", **arguments) is expected
 
 
 def test_first_binding_rejected_when_legacy_cny_draft_exists(client: TestClient, monkeypatch, *, identity) -> None:

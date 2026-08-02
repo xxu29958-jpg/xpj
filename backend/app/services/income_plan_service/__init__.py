@@ -204,10 +204,10 @@ def archive_income_plan(
 ) -> MonthlyIncomePlan:
     """Soft-delete an income row. Atomic optimistic concurrency."""
 
-    resolve_write_capability(db)
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "archived":
         return plan
+    resolve_write_capability(db)
     when = now or now_utc()
     rowcount = claim_row_with_token(
         db,
@@ -240,10 +240,10 @@ def restore_income_plan(
 ) -> MonthlyIncomePlan:
     """Reactivate an archived income row. Atomic optimistic concurrency."""
 
-    resolve_write_capability(db)
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "active":
         return plan
+    resolve_write_capability(db)
     when = now or now_utc()
     rowcount = claim_row_with_token(
         db,
