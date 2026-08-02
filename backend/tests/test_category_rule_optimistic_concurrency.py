@@ -23,6 +23,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import CategoryRule
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.rule_service import update_rule
 
 
@@ -231,6 +232,7 @@ def test_two_sessions_concurrent_delete_then_update_resolves_to_404_or_409(
         assert rule_a is not None and rule_b is not None
         shared_version = rule_a.row_version
 
+        authorize_currency_metadata_write(session_a)
         session_a.delete(rule_a)
         session_a.commit()
 
