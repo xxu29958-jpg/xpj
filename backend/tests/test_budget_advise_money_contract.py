@@ -18,9 +18,11 @@ from app.services.budget_advisor_service import (
 )
 from app.services.time_service import now_utc
 from tests._infra.budget_advise_fixtures import current_month
+from tests._infra.currency import activate_test_currency_authority
 
 
 @pytest.mark.parametrize("currency", ["JPY", "KRW"])
+@pytest.mark.currency_binding_unbound
 def test_advise_binds_outbound_and_returned_minor_units_to_runtime_home(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -60,6 +62,7 @@ def test_advise_binds_outbound_and_returned_minor_units_to_runtime_home(
     )
     try:
         with SessionLocal() as db:
+            activate_test_currency_authority(db, currency)
             db.add(
                 Expense(
                     tenant_id="owner",
