@@ -34,9 +34,9 @@ def mark_expense_not_duplicate(
 ) -> Expense:
     """ADR-0038 PR-2b: claim-then-apply mark-not-duplicate.
 
-    Atomic ``UPDATE WHERE id, tenant_id, status ∈ EDITABLE, updated_at =
-    expected`` clears duplicate flags and bumps ``updated_at`` in one
-    statement. The pre-claim read captures the row's ``duplicate_of_id``
+    Atomic ``UPDATE WHERE id, tenant_id, status ∈ EDITABLE, row_version =
+    expected`` clears duplicate flags and advances both ``row_version`` and
+    ``updated_at`` in one statement. The pre-claim read captures the row's ``duplicate_of_id``
     so we can record the "ignore" memory after the claim succeeds.
     Idempotent when already cleared (token still required to prevent
     stale clients from undoing a freshly-reapplied flag).

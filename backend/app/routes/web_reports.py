@@ -43,6 +43,7 @@ from app.services.reports_service import (
     reports_overview,
     six_month_summary,
 )
+from app.services.spending_contract_service import accounting_datetime_label
 from app.services.stats_service import top_expenses_for_month
 from app.services.time_service import current_month
 
@@ -259,7 +260,11 @@ def _top_expenses_view(
                     e.home_currency_code or presentation_currency_code,
                 ),
                 "category": e.category or "未分类",
-                "expense_time": e.expense_time.strftime("%Y-%m-%d") if e.expense_time else "",
+                "expense_time": accounting_datetime_label(
+                    e.expense_time,
+                    timezone_name,
+                    pattern="%Y-%m-%d",
+                ),
             }
         )
     return rows

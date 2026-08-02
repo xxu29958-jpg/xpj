@@ -1,15 +1,16 @@
 """Product-shell contracts for the Web UI/IA rebuild (218-D S3, 移植自产品矿并适配 main).
 
-本片只落「壳基座」: base.html / _sidebar_nav.html 重写 + product 设计系统 CSS
-+ web_common 展示 helper。页面模板重绘属 S4+ 各域片, 因此矿版测试中与页面内容
-重写耦合的用例 (新文案标题、dt-* DOM 清除、正文零内联样式) 不在本片断言。
+S3 落「壳基座」: base.html / _sidebar_nav.html 重写 + product 设计系统 CSS
++ web_common 展示 helper。S4 落「收件域正文」: pending/tasks/duplicates 三页
+换 product 新标记, 经 _product_body_domains 开关断旧栈、挂 domains/inbox.css,
+/web 根 303→/web/pending —— 页面级断言族在 test_web_inbox_rebuild.py,
+本文件只钉壳层与旧栈分流防回归。
 
 218-D S3-R1 翻转 (#256 P1: 收件行整列塌缩): 挂载策略按页面正文标记新旧分流——
-- 正文仍是旧标记的页 (当前除 overview 外全部): 旧全局栈+页级 CSS 保持在场
+- 正文仍是旧标记的页 (confirmed/debts/budgets 等): 旧全局栈+页级 CSS 保持在场
   (本文件钉死防回归), 对应 domain 模块不双挂 (矿域模块与旧页共享类名谱系
   .exp-row/.timeline-row 等, 双挂则旧规则被盖、新 grid 不认嵌套标记)。
-- 正文已是新标记的页 (当前仅 overview): 断旧栈, 挂 domains/insights.css +
-  页级 pages/overview.css (S2 适配标记矿域模块未覆盖)。
+- 正文已是新标记的页 (overview S2; 收件域三页 S4): 断旧栈, 挂对应 domain 模块。
 """
 
 from __future__ import annotations
@@ -42,8 +43,7 @@ def _demote_owner_ledger_to_viewer() -> None:
 
 
 def _assert_shell_chrome_has_no_inline_style(body: str) -> None:
-    """壳 chrome (侧边导航 + 顶栏) 零内联样式; 页面正文残留的数据驱动内联
-    (进度条宽度等) 随 S4+ 页面重绘清除, 本片不钉。"""
+    """壳 chrome (侧边导航 + 顶栏) 零内联样式。"""
     sidebar = re.search(r'<aside class="sidebar">.*?</aside>', body, re.S)
     assert sidebar is not None
     assert 'style="' not in sidebar.group(0)
@@ -55,7 +55,6 @@ def _assert_shell_chrome_has_no_inline_style(body: str) -> None:
 @pytest.mark.parametrize(
     ("path", "domain", "primary_href", "page_css"),
     [
-        ("/web/pending?ledger_id=owner", "inbox", "/web/pending?ledger_id=owner", "/static/web/pages/pending.css"),
         ("/web/confirmed?ledger_id=owner", "transactions", "/web/confirmed?ledger_id=owner", "/static/web/pages/confirmed.css"),
         ("/web/debts?ledger_id=owner", "obligations", "/web/debts?ledger_id=owner", "/static/web/pages/debts.css"),
         ("/web/budgets?ledger_id=owner", "plans", "/web/budgets?ledger_id=owner", "/static/web/pages/budgets.css"),
@@ -94,17 +93,9 @@ def test_old_body_primary_pages_keep_legacy_page_css(
 
 
 def test_old_body_row_grids_have_their_stylesheets(web_client: TestClient) -> None:
-    """行格渲染钉 (S3-R1): pending 六格嵌套行 (a.exp-row-detail) 的 grid 规则
-    在 pages/pending.css; confirmed 时间线行 (.timeline-row-detail) 在
-    pages/confirmed.css。样式链接或规则缺失 = 整列塌缩回归。"""
-    pending = web_client.get("/web/pending?ledger_id=owner")
-    assert pending.status_code == 200
-    assert "/static/web/pages/pending.css" in pending.text
-    css = web_client.get("/static/web/pages/pending.css")
-    assert css.status_code == 200
-    assert re.search(r"\.exp-row\s*\{", css.text)
-    assert re.search(r"\.exp-row-detail\s*\{", css.text)
-
+    """行格渲染钉 (S3-R1): confirmed 时间线行 (.timeline-row-detail) 的 grid 规则
+    在 pages/confirmed.css。样式链接或规则缺失 = 整列塌缩回归。
+    (pending 的行格 S4 起迁到 domains/inbox.css, 见收件域用例族。)"""
     confirmed = web_client.get("/web/confirmed?ledger_id=owner")
     assert confirmed.status_code == 200
     assert "/static/web/pages/confirmed.css" in confirmed.text
@@ -119,15 +110,14 @@ def test_old_body_pages_keep_desktop_hook_and_legacy_drawer_source(
     """S3-R2 (#256): 旧标记页补回 desktop-shell-active body hook (旧 _base/_misc/
     a11y 作用域规则依赖), 且旧 drawer 的样式来源 (components/drawer.css) 在场;
     product drawer 族规则已收窄到 [data-body-stack="product"], 不再吃旧 drawer。"""
-    pending = web_client.get("/web/pending?ledger_id=owner")
-    assert pending.status_code == 200
-    body = pending.text
+    confirmed = web_client.get("/web/confirmed?ledger_id=owner")
+    assert confirmed.status_code == 200
+    body = confirmed.text
     body_tag = re.search(r"<body [^>]+>", body)
     assert body_tag is not None
     assert "desktop-shell-active" in body_tag.group(0)
     assert 'data-body-stack="product"' not in body_tag.group(0)
     assert "/static/web/components/drawer.css" in body
-    assert 'id="drawer"' in body
 
     css = web_client.get("/static/web/product/components.css")
     assert css.status_code == 200

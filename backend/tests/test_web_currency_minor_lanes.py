@@ -7,6 +7,8 @@ R15a-3 起补渲染侧：rules 列表金额条件回显、budget-advise breakdow
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -245,10 +247,18 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
     )
     assert saved.status_code in (302, 303), saved.text
 
-    dashboard = web_client.get("/web?ledger_id=owner")
+    # /web is now the inbox entry; totals live on the overview domain.
+    dashboard = web_client.get("/web/overview?ledger_id=owner")
     assert dashboard.status_code == 200, dashboard.text
-    assert '<span class="yuan">¥</span>0</div>' in dashboard.text
-    assert '<span class="yuan">¥</span>0<span class="decimals">.00</span>' not in dashboard.text
+    hero = re.search(
+        r'<div class="insight-hero-value">\s*<small>(?P<symbol>[^<]+)</small>'
+        r'(?P<integer>[^<]*)(?P<decimal><small>[^<]*</small>)?\s*</div>',
+        dashboard.text,
+    )
+    assert hero is not None
+    assert hero.group("symbol") == "¥"
+    assert hero.group("integer").strip() == "0"
+    assert hero.group("decimal") is None
 
     budgets = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
     assert budgets.status_code == 200, budgets.text
@@ -279,6 +289,11 @@ def test_jpy_drawer_uses_zero_fraction_input_contract(
         f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
     )
     assert drawer.status_code == 200, drawer.text
-    assert 'type="number" name="amount_yuan"' in drawer.text
-    assert 'min="0" step="1" inputmode="numeric" placeholder="例如 1200"' in drawer.text
+    amount_input = re.search(
+        r'<input\b(?=[^>]*\bname="amount_yuan")(?=[^>]*\btype="number")'
+        r'(?=[^>]*\bmin="0")(?=[^>]*\bstep="1")(?=[^>]*\binputmode="numeric")'
+        r'(?=[^>]*\bplaceholder="例如 1200")[^>]*>',
+        drawer.text,
+    )
+    assert amount_input is not None
     assert 'placeholder="0.00"' not in drawer.text

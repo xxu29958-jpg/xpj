@@ -2433,6 +2433,14 @@
             "title": "Expense Ids",
             "type": "array"
           },
+          "expense_snapshot": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expense Snapshot",
+            "type": "array"
+          },
           "filter": {
             "default": "all",
             "title": "Filter",
@@ -2694,6 +2702,14 @@
               "type": "integer"
             },
             "title": "Expense Ids",
+            "type": "array"
+          },
+          "expense_snapshot": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expense Snapshot",
             "type": "array"
           },
           "filter": {
@@ -35208,6 +35224,16 @@
             "schema": {
               "default": "",
               "title": "Msg",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
               "type": "string"
             }
           }

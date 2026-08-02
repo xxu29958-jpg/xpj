@@ -168,6 +168,11 @@ def test_valid_desktop_bridge_projects_bound_viewer_and_its_ledger(
     # The console roster's other ledgers never reach a bridged desktop page.
     assert "不应泄漏的本机账本" not in response.text
     assert "tester_1" not in response.text
+    # Owner Console is a loopback-only authority and must never be advertised
+    # inside a bridged viewer session. The read-only export path remains valid.
+    assert 'href="/owner/upload-links"' not in response.text
+    assert "从 CSV 导入" not in response.text
+    assert "导出当前账本" in response.text
     # The bridge never mints a browser cookie session.
     assert SESSION_COOKIE_NAME not in response.headers.get("set-cookie", "")
 

@@ -60,6 +60,17 @@ def test_web_dashboard_cards_remote_returns_403(client: TestClient) -> None:
     assert client.post("/web/dashboard/cards/reset").status_code == 403
 
 
+def test_web_dashboard_cards_back_link_targets_overview(web_client: TestClient) -> None:
+    """S4-R2: /web 根 303→pending 后, 模块设置的返回链指向卡片归属页
+    /web/overview, 文案「返回总览」, 不再把用户带进收件域。"""
+    page = web_client.get("/web/dashboard/cards?ledger_id=owner")
+    assert page.status_code == 200
+    assert 'href="/web/overview?ledger_id=owner"' in page.text
+    assert "返回总览" in page.text
+    assert "返回仪表盘" not in page.text
+    assert 'href="/web?ledger_id=owner"' not in page.text
+
+
 def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) -> None:
     settings = web_client.get("/web/dashboard/cards?ledger_id=owner")
     assert settings.status_code == 200
@@ -85,18 +96,18 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
     assert saved.status_code == 303, saved.text
     assert "ledger_id=owner" in saved.headers["location"]
 
-    dashboard = web_client.get("/web?ledger_id=owner")
-    assert dashboard.status_code == 200
-    assert 'id="dashboard-app"' in dashboard.text
-    assert "dashboard-skeleton-grid" in dashboard.text
-    assert "data-dashboard-status" in dashboard.text
-    assert "data-dashboard-retry" in dashboard.text
-    assert "正在整理仪表盘" in dashboard.text
-    assert "data-dashboard-fallback" in dashboard.text
-    assert dashboard.text.index('data-dashboard-card="goals"') < dashboard.text.index(
-        'data-dashboard-card="monthly_spend"'
+    # 218-D S4: /web 根改向收件域后, 卡片布局的 HTML 承接面是 /web/overview
+    # (S2 泳道: 泳道归属固定, 组内卡片按持久化 position 渲染, 全隐藏卡不出)。
+    # 顺序断言因此落在同泳道内 (goals/budget/recurring 同属「计划状态」)。
+    overview = web_client.get("/web/overview?ledger_id=owner")
+    assert overview.status_code == 200
+    assert overview.text.index('data-overview-card="goals"') < overview.text.index(
+        'data-overview-card="budget"'
     )
-    assert 'data-dashboard-card="reports"' not in dashboard.text
+    assert overview.text.index('data-overview-card="budget"') < overview.text.index(
+        'data-overview-card="recurring"'
+    )
+    assert 'data-overview-card="reports"' not in overview.text
 
     dashboard_data = web_client.get("/web/dashboard/data?ledger_id=owner")
     assert dashboard_data.status_code == 200, dashboard_data.text
@@ -114,11 +125,11 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
         follow_redirects=False,
     )
     assert hidden_all.status_code == 303, hidden_all.text
-    empty_dashboard = web_client.get("/web?ledger_id=owner")
-    assert empty_dashboard.status_code == 200
-    assert "当前仪表盘没有可见卡片" in empty_dashboard.text
-    # 空态必须给出「仪表盘卡片」入口(孤儿页接回:服务端 fallback 分支)。
-    assert 'href="/web/dashboard/cards?ledger_id=owner"' in empty_dashboard.text
+    empty_overview = web_client.get("/web/overview?ledger_id=owner")
+    assert empty_overview.status_code == 200
+    assert "总览暂时没有可见模块" in empty_overview.text
+    # 空态必须给出「模块设置」入口(孤儿页接回:服务端 fallback 分支)。
+    assert 'href="/web/dashboard/cards?ledger_id=owner"' in empty_overview.text
     empty_data = web_client.get("/web/dashboard/data?ledger_id=owner")
     assert empty_data.status_code == 200, empty_data.text
     assert empty_data.json()["visible_layout"] == []
@@ -130,12 +141,13 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
     )
     assert reset.status_code == 303, reset.text
 
-    reset_dashboard = web_client.get("/web?ledger_id=owner")
-    assert reset_dashboard.status_code == 200
-    assert reset_dashboard.text.index('data-dashboard-card="monthly_spend"') < reset_dashboard.text.index(
-        'data-dashboard-card="pending"'
+    reset_overview = web_client.get("/web/overview?ledger_id=owner")
+    assert reset_overview.status_code == 200
+    # 默认序在同泳道 (「本月事实」) 内恢复: monthly_spend 在 reports 前。
+    assert reset_overview.text.index('data-overview-card="monthly_spend"') < reset_overview.text.index(
+        'data-overview-card="reports"'
     )
-    assert 'data-dashboard-card="reports"' in reset_dashboard.text
+    assert 'data-overview-card="reports"' in reset_overview.text
 
 
 def test_web_dashboard_cards_viewer_can_read_but_not_save(web_client: TestClient) -> None:
@@ -184,22 +196,23 @@ _TINY_PNG = (
 )
 
 
-def test_web_dashboard_first_day_shows_entry_links_until_first_expense(
+def test_web_overview_first_day_shows_entry_links_until_first_expense(
     web_client: TestClient, identity
 ) -> None:
-    """首日引导:全新账本(lifetime exists()=False)的仪表盘 page-header 换成三个
-    进票口直达,而不是满屏 0;有了第一笔账单后回到稳态标题、首日链接消失。
+    """首日引导:全新账本(lifetime exists()=False)的总览页给出「先录入第一笔
+    流水」引导与产品内进票口(待我处理 / 导入历史记录),而不是满屏 0;有了第一笔
+    账单后回到稳态账面摘要、引导消失。
 
-    page-header 在 JS 渲染区外服务端无条件渲染,所以这条路由级断言对脚本开/关
-    两路径都成立。撤掉首日分支或任一入口链接本测试必红。"""
-    first_day = web_client.get("/web?ledger_id=owner")
+    218-D S4: /web 根改向收件域, 原仪表盘首日分支 (dashboard.html) 不再直接
+    服务; 首日引导的承接面是 /web/overview (S2 起就有 has_any_expense 分支)。
+    引导在 JS 渲染区外服务端无条件渲染,所以这条路由级断言对脚本开/关两路径
+    都成立。撤掉首日分支或任一入口链接本测试必红。"""
+    first_day = web_client.get("/web/overview?ledger_id=owner")
     assert first_day.status_code == 200
     body = first_day.text
-    assert "欢迎使用，先记第一笔。" in body
-    assert "今日账面" not in body
-    # 三个进票口:绑定码 / iPhone 上传链接 / CSV 导入(ledger_id 透传)。
-    assert 'href="/owner/pairing"' in body
-    assert 'href="/owner/upload-links"' in body
+    assert "先录入第一笔流水" in body
+    # 两个产品内进票口(ledger_id 透传)。
+    assert 'href="/web/pending?ledger_id=owner"' in body
     assert 'href="/web/import?ledger_id=owner"' in body
 
     # 上传一张截图(经 UploadLink 落 owner 账本的 pending)→ 不再是首日。
@@ -210,10 +223,8 @@ def test_web_dashboard_first_day_shows_entry_links_until_first_expense(
     )
     assert upload.status_code == 200, upload.text
 
-    after = web_client.get("/web?ledger_id=owner")
+    after = web_client.get("/web/overview?ledger_id=owner")
     assert after.status_code == 200
     after_body = after.text
-    assert "今日账面，井然有序。" in after_body
-    assert "欢迎使用，先记第一笔。" not in after_body
-    # 稳态下首日入口链接不再出现在 page-header(/owner/pairing 仅首日分支用)。
-    assert 'href="/owner/pairing"' not in after_body
+    assert "1 笔待处理" in after_body
+    assert "先录入第一笔流水" not in after_body

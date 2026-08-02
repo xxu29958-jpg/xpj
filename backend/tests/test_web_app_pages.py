@@ -29,17 +29,17 @@ def test_web_pending_empty_all_offers_upload_entry_links(web_client: TestClient)
     是过滤无结果,不挂这些入口。撤掉空态链接本测试必红。
 
     判别用 /owner/upload-links —— 它只在本空态分支出现;/web/import 不能当判别,
-    顶栏「导入 / 导出」按钮在任何状态下都有该链接。"""
+    页头「导入与导出」按钮在任何状态下都有该链接。"""
     resp = web_client.get("/web/pending?ledger_id=owner")
     assert resp.status_code == 200
     body = resp.text
     assert 'href="/owner/upload-links"' in body
-    assert "从 CSV 导入" in body  # 空态内的 CSV 导入直达(措辞区别于顶栏「导入 / 导出」)
+    assert "从 CSV 导入" in body  # 空态内的 CSV 导入直达(措辞区别于页头「导入与导出」)
 
-    # 过滤态空(疑似重复)只说没有匹配,不重复挂首日入口。
+    # 过滤态空(疑似重复)只说没有符合条件,不重复挂首日入口。
     filtered = web_client.get("/web/pending?ledger_id=owner&filter=duplicate")
     assert filtered.status_code == 200
-    assert "没有匹配当前筛选的账单" in filtered.text
+    assert "没有符合当前条件的账单" in filtered.text
     assert 'href="/owner/upload-links"' not in filtered.text
     assert "从 CSV 导入" not in filtered.text
 
@@ -187,13 +187,19 @@ def test_web_search_local_returns_200(web_client: TestClient) -> None:
 
 
 def test_web_nav_links_orphan_pages_reachable(web_client: TestClient) -> None:
-    """孤儿页接回:四个有路由有模板但曾零入站链接的页面,在五域 IA 下各自从
+    """孤儿页接回:有路由有模板但曾零入站链接的页面,在五域 IA 下各自从
     所属域的页面一次 GET 应能看到入口(收件域侧栏子导航 ×1 + 计划域侧栏子导航
-    ×2 + 仪表盘页头卡片设置),且 ledger_id 透传。撤掉任一模板链接本测试必红。"""
+    ×2 + 总览页头「模块设置」),且 ledger_id 透传。撤掉任一模板链接本测试必红。"""
+    # 218-D S4: /web 根 303→/web/pending, 收件域落地页即 pending。
     inbox = web_client.get("/web?ledger_id=owner")
     assert inbox.status_code == 200
     assert 'href="/web/tasks?ledger_id=owner"' in inbox.text
-    assert 'href="/web/dashboard/cards?ledger_id=owner"' in inbox.text
+
+    # 仪表盘卡片设置入口 S4 起由 /web/overview 页头「模块设置」承接
+    # (dashboard.html 不再直接服务, 删旧片统一处置)。
+    overview = web_client.get("/web/overview?ledger_id=owner")
+    assert overview.status_code == 200
+    assert 'href="/web/dashboard/cards?ledger_id=owner"' in overview.text
 
     plans = web_client.get("/web/budgets?ledger_id=owner")
     assert plans.status_code == 200

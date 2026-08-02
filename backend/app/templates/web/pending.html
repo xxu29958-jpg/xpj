@@ -1,27 +1,69 @@
 {% extends "base.html" %}
-{% block title %}待确认 · 小票夹{% endblock %}
+{% block title %}待我处理 · 小票夹{% endblock %}
 
+{# 218-D S4 收件域首页正文重绘 (移植自产品矿 pending.html, 适配 main):
+   行格/页头/筛选条/空态全部换成 product 新标记, 经 base.html 的
+   _product_body_domains['/web/pending']='inbox' 开关断旧栈、挂 inbox 域模块。
+   与矿的偏离点 (以 main 合同为准, 勿回退):
+   - 分类列与「可确认」判定走 main 共享口径 (_expense_view.needs_category,
+     脏 token 也算缺分类; 「其他」是合法分类不算缺) — 矿用字面 ['未分类','其他']
+     判断会把脏分类渲染成正常分类、把「其他」误标待分类;
+   - 行内保留 data-row-version (main 的批量 OCC fail-closed 合同, 服务端缺 token
+     即 409) 与 fx_pending「待汇率」pill (ready 口径含 fx_status, 缺它会让行显示
+     绿色可确认而 ready 筛选不收 — S1 已修过的不一致);
+   - 行链接不带 return_to/return_filter 查询参数: main 的编辑路由不读它们,
+     no-JS 保存回队靠抽屉表单里的 hidden return_to=pending (批10 合同);
+   - 空态按真实权限与入口边界分流: 只有本机默认 owner 账本能进入
+     /owner/upload-links；writer 可导入，viewer 只引向导出;
+   - 批量条保留 main 的「取消选择」按钮 (data-bulk-clear)；勾选控件
+     用原生 checkbox，并把 id:row_version 快照关联到 bulk-form，无 JS 也能安全提交。 #}
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">
-    {% if pending_count > 0 %}
-      {{ pending_count }} 笔账单等你过目。
-    {% else %}
-      今天还没有待确认账单。
-    {% endif %}
-  </h1>
-  <div class="page-sub">
-    系统已生成草稿，金额、商家、分类可在卡片上直接编辑。
-    疑似重复的会和原账单并排展示，先选择保留哪一份再确认。
+{% set _q = '?ledger_id=' ~ selected_ledger_id %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">收件 / 待我处理</span>
+    <h1 class="page-title">把新账单整理清楚</h1>
+    <p class="product-page-summary">
+      先处理缺失信息与重复风险，再批量确认。当前显示 {{ filtered_count }} 笔，共 {{ pending_count }} 笔待整理。
+    </p>
   </div>
-</div>
+  <div class="product-page-actions">
+    <a class="product-button" href="/web/import{{ _q }}">导入与导出</a>
+  </div>
+</header>
+
+<section class="inbox-summary" aria-label="收件处理概况">
+  <div class="inbox-summary-main">
+    <span class="product-eyebrow">当前队列</span>
+    <strong>{{ '可以开始确认' if ready_count else '先补齐关键信息' }}</strong>
+    <span class="text-muted">
+      {% if pending_count %}
+        {{ ready_count }} 笔已经具备确认条件
+      {% else %}
+        当前账本没有待处理记录
+      {% endif %}
+    </span>
+  </div>
+  <div class="inbox-summary-item">
+    <strong>{{ needs_amount_count }}</strong>
+    <span>缺金额</span>
+  </div>
+  <div class="inbox-summary-item">
+    <strong>{{ needs_merchant_count + needs_category_count }}</strong>
+    <span>待补信息</span>
+  </div>
+  <div class="inbox-summary-item">
+    <strong>{{ suspected_duplicate_count }}</strong>
+    <span>重复风险</span>
+  </div>
+</section>
 
 {% if flash_message %}
-{# ADR-0038 undo: flash_type 决定颜色 — success → 绿色(刚 reject + 可撤销 / undo 成功),
-   error → 红色(undo 失败:超窗 / 不属于当前 ledger / 已恢复)。flash_type 为空 fallback
-   到默认 info 样式(蓝色)。undo-banner 修饰只在能撤销时加上,触发 CSS 5s auto-dismiss
-   动画(_components/alert.css)。 #}
-<div class="dt-alert{% if flash_type == 'success' %} success{% elif flash_type == 'error' %} danger{% endif %}{% if undo_items or undo_expense_id %} undo-banner{% endif %}">
+{# ADR-0038 undo: flash_type 决定颜色 — success → 绿(刚 reject + 可撤销 / undo 成功),
+   error → 红(undo 失败)。空值落到默认 info 样式。undo-banner 修饰保留(矿同);
+   product 组件表只有 .undo-banner-action 布局, 旧 5s auto-dismiss 动画不移植。 #}
+<div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}{% if undo_items or undo_expense_id %} undo-banner{% endif %}"
+     role="status">
   <span>{{ flash_message }}</span>
   {% if undo_items %}
   <form method="post" action="/web/pending/batch-undo" class="undo-banner-action">
@@ -31,7 +73,7 @@
     <input type="hidden" name="expense_ids" value="{{ item.id }}">
     <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
     {% endfor %}
-    <button type="submit" class="dt-btn">撤销 {{ undo_items|length }} 条</button>
+    <button type="submit" class="product-button">撤销 {{ undo_items|length }} 条</button>
   </form>
   {% elif undo_expense_id %}
   {# csrf_token explicit so the form works even if csrf.js fails to load —
@@ -39,53 +81,90 @@
   <form method="post" action="/web/expenses/{{ undo_expense_id }}/undo" class="undo-banner-action">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    {# ADR-0038 PR-A: OCC token = rejected row's updated_at at banner-seed time.
-       If the row is re-rejected (new updated_at) before the user clicks 撤销,
-       this stale token fails the atomic UPDATE WHERE and the route flashes
-       the standard "无法撤销" error — protects against a cached banner un-doing
-       a NEW intentional reject. #}
+    {# ADR-0038/0041: OCC token = rejected row's monotonic row_version at banner seed. #}
     <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">
-    <button type="submit" class="dt-btn">撤销</button>
+    <button type="submit" class="product-button">撤销</button>
   </form>
   {% endif %}
 </div>
 {% endif %}
 
-{% set _q = '?ledger_id=' ~ selected_ledger_id %}
-<div class="toolbar">
-  <div class="seg">
-    <a class="filter-tab{% if filter == 'all' %} is-active{% endif %}" href="/web/pending{{ _q }}">全部 <span class="count">{{ pending_count }}</span></a>
-    <a class="filter-tab{% if filter == 'missing_amount' %} is-active{% endif %}" href="/web/pending{{ _q }}&filter=missing_amount">缺金额 <span class="count">{{ needs_amount_count }}</span></a>
-    <a class="filter-tab{% if filter == 'missing_merchant' %} is-active{% endif %}" href="/web/pending{{ _q }}&filter=missing_merchant">缺商家 <span class="count">{{ needs_merchant_count }}</span></a>
-    <a class="filter-tab{% if filter == 'missing_category' %} is-active{% endif %}" href="/web/pending{{ _q }}&filter=missing_category">缺分类 <span class="count">{{ needs_category_count }}</span></a>
-    <a class="filter-tab{% if filter == 'duplicate' %} is-active{% endif %}" href="/web/pending{{ _q }}&filter=duplicate">疑似重复 <span class="count">{{ suspected_duplicate_count }}</span></a>
-    <a class="filter-tab{% if filter == 'ready' %} is-active{% endif %}" href="/web/pending{{ _q }}&filter=ready">可确认 <span class="count">{{ ready_count }}</span></a>
+<nav class="product-commandbar" aria-label="待处理筛选">
+  <div class="product-segments">
+    <a class="filter-tab{% if filter == 'all' %} is-active{% endif %}"
+       href="/web/pending{{ _q }}"
+       {% if filter == 'all' %}aria-current="page"{% endif %}>
+      全部 <span class="count">{{ pending_count }}</span>
+    </a>
+    <a class="filter-tab{% if filter == 'missing_amount' %} is-active{% endif %}"
+       href="/web/pending{{ _q }}&filter=missing_amount"
+       {% if filter == 'missing_amount' %}aria-current="page"{% endif %}>
+      缺金额 <span class="count">{{ needs_amount_count }}</span>
+    </a>
+    <a class="filter-tab{% if filter == 'missing_merchant' %} is-active{% endif %}"
+       href="/web/pending{{ _q }}&filter=missing_merchant"
+       {% if filter == 'missing_merchant' %}aria-current="page"{% endif %}>
+      缺商家 <span class="count">{{ needs_merchant_count }}</span>
+    </a>
+    <a class="filter-tab{% if filter == 'missing_category' %} is-active{% endif %}"
+       href="/web/pending{{ _q }}&filter=missing_category"
+       {% if filter == 'missing_category' %}aria-current="page"{% endif %}>
+      缺分类 <span class="count">{{ needs_category_count }}</span>
+    </a>
+    <a class="filter-tab{% if filter == 'duplicate' %} is-active{% endif %}"
+       href="/web/pending{{ _q }}&filter=duplicate"
+       {% if filter == 'duplicate' %}aria-current="page"{% endif %}>
+      疑似重复 <span class="count">{{ suspected_duplicate_count }}</span>
+    </a>
+    <a class="filter-tab{% if filter == 'ready' %} is-active{% endif %}"
+       href="/web/pending{{ _q }}&filter=ready"
+       {% if filter == 'ready' %}aria-current="page"{% endif %}>
+      可确认 <span class="count">{{ ready_count }}</span>
+    </a>
   </div>
-  <div class="spacer"></div>
-  <a class="dt-btn" href="/web/import{{ _q }}">导入 / 导出</a>
-</div>
+</nav>
 
-<div class="exp-table" id="exp-table" data-ledger="{{ selected_ledger_id }}">
+<p class="inbox-filter-note" aria-live="polite">
+  {% if filter == 'all' %}
+    按最新上传排序。打开一条记录即可在侧栏核对原图和字段。
+  {% else %}
+    当前筛选命中 {{ filtered_count }} 笔；切回“全部”可查看完整队列。
+  {% endif %}
+</p>
+
+<section class="exp-table" id="exp-table" data-ledger="{{ selected_ledger_id }}" aria-label="待处理账单">
+  {# S4-R1: 表头不做整树 aria-hidden (#check-all 是可聚焦控件, 藏在 aria-hidden
+     里读屏会摸到无公告控件); 只对纯展示列标签隐藏, 控件暴露 role/label/state。 #}
   <div class="exp-head">
     <div>
       {% if can_write %}
       <input class="checkbox" id="check-all" type="checkbox" aria-label="选择全部账单">
       {% endif %}
     </div>
-    <div>小票</div>
-    <div>商家 / 来源</div>
-    <div>分类</div>
-    <div>时间</div>
-    <div>状态</div>
-    <div class="text-end">金额</div>
+    <div aria-hidden="true">凭证</div>
+    <div aria-hidden="true">商家与来源</div>
+    <div aria-hidden="true">分类</div>
+    <div aria-hidden="true">时间</div>
+    <div aria-hidden="true">检查结果</div>
+    <div aria-hidden="true" class="text-end">金额</div>
   </div>
   {% for e in expenses %}
-  {# #218 行结构:选择槽与整行链接是兄弟节点。只读行保留空槽对齐桌面表头,
-     移动端由 CSS 折叠;行链接内不存在嵌套交互元素。 #}
-  <div class="exp-row{% if can_write %} has-check{% endif %}" data-expense-id="{{ e.id }}">
+  {# S4-R1 行结构: 勾选控件移出行链接 (HTML 禁止链接内嵌交互控件, JS 未载时
+     嵌套点击会穿透跳转) — 选择槽与整行链接是 .exp-row 容器内的兄弟节点
+     (#218 同构)；行链接子树内零交互控件，视觉布局由 inbox.css 的
+     .exp-row/.exp-row-detail 双 grid 保持。expense_snapshot 同时携带 id 与页面
+     row_version：原生表单可用，JS 增强后则与并行字段交叉核对。 #}
+  <div class="exp-row" data-expense-id="{{ e.id }}">
     <div class="exp-row-selector"{% if not can_write %} aria-hidden="true"{% endif %}>
       {% if can_write %}
-      <input class="checkbox row-check" type="checkbox" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单 #{{ e.id }}">
+      <input class="checkbox row-check"
+           type="checkbox"
+           name="expense_snapshot"
+           value="{{ e.id }}:{{ e.row_version }}"
+           form="bulk-form"
+           data-id="{{ e.id }}"
+           data-row-version="{{ e.row_version }}"
+           aria-label="选择账单 #{{ e.id }}">
       {% endif %}
     </div>
     <a class="exp-row-detail"
@@ -94,66 +173,79 @@
        aria-selected="false">
       <div>
         {% if e.image_state == 'available' %}
-          <div class="exp-thumb exp-thumb-receipt"></div>
-        {% else %}
-          <div class="exp-thumb"></div>
-        {% endif %}
-      </div>
-      <div>
-        <div class="exp-merch">{{ e.merchant or '（待识别）' }}</div>
-        <div class="exp-meta">
-          <span>#{{ e.id }}</span>
-          <span class="sep">·</span>
-          <span>{{ e.source_label }}</span>
+        <div class="exp-thumb exp-thumb-receipt" data-receipt-thumb>
+          <img src="/web/expenses/{{ e.id }}/thumbnail{{ _q }}" alt="" loading="lazy" decoding="async">
+          <span class="exp-thumb-label" data-receipt-thumb-label>加载中</span>
         </div>
-      </div>
-      <div>
-        {% if e.category and e.category not in ['未分类', '其他'] and not e.needs_category %}
-          <span class="exp-cat">{{ e.category }}</span>
+        {% elif e.image_state == 'cleaned' %}
+        <div class="exp-thumb exp-thumb-state is-cleaned" aria-label="凭证图片已清理">
+          <span class="exp-thumb-label">已清理</span>
+        </div>
         {% else %}
-          <span class="exp-cat exp-cat-missing">— 待分类</span>
+        <div class="exp-thumb exp-thumb-state is-empty" aria-label="没有凭证图片">
+          <span class="exp-thumb-label">无图</span>
+        </div>
         {% endif %}
       </div>
       <div>
-        <div class="exp-time">{{ e.expense_time or '—' }}</div>
+        <div class="exp-merch">{{ e.merchant or '待识别商家' }}</div>
+        <div class="exp-meta">#{{ e.id }} · {{ e.source_label }}</div>
+      </div>
+      <div>
+        {% if not e.needs_category %}
+        <span class="exp-cat">{{ e.category }}</span>
+        {% else %}
+        <span class="exp-cat exp-cat-missing">待分类</span>
+        {% endif %}
+      </div>
+      <div>
+        <div class="exp-time">{{ e.expense_time or '时间待核对' }}</div>
         <div class="exp-time-meta">上传 {{ e.created_at }}</div>
       </div>
       <div>
-        {% set _flags = [] %}
-        {% if e.needs_amount %}{% set _ = _flags.append(('danger', '缺金额')) %}{% endif %}
-        {% if e.needs_merchant %}{% set _ = _flags.append(('warn', '缺商家')) %}{% endif %}
-        {% if e.needs_category %}{% set _ = _flags.append(('warn', '缺分类')) %}{% endif %}
-        {% if e.is_duplicate %}{% set _ = _flags.append(('danger', '疑似重复')) %}{% endif %}
-        {% if e.fx_pending %}{% set _ = _flags.append(('warn', '待汇率')) %}{% endif %}
-        {% if _flags %}
-          <div class="pill-row">
-            {% for cls, label in _flags %}<span class="dt-pill {{ cls }}">{{ label }}</span>{% endfor %}
-          </div>
-        {% else %}
-          <span class="dt-pill ok">可确认</span>
-        {% endif %}
+        <div class="pill-row">
+          {% if e.needs_amount %}<span class="product-status product-status--danger">缺金额</span>{% endif %}
+          {% if e.needs_merchant %}<span class="product-status product-status--warning">缺商家</span>{% endif %}
+          {% if e.is_duplicate %}<span class="product-status product-status--danger">疑似重复</span>{% endif %}
+          {% if e.fx_pending %}<span class="product-status product-status--warning">待汇率</span>{% endif %}
+          {% if not e.needs_amount and not e.needs_merchant and not e.needs_category and not e.is_duplicate and not e.fx_pending %}
+          <span class="product-status product-status--success">可确认</span>
+          {% endif %}
+        </div>
       </div>
       <div class="text-end">
         {% if e.amount_label %}
-          <span class="exp-amt">{{ e.amount_label }}</span>
-          {% if e.fx_meta %}<div class="exp-meta">{{ e.fx_meta }}</div>{% endif %}
+        <span class="exp-amt">{{ e.amount_label }}</span>
+        {% if e.fx_meta %}<div class="exp-meta">{{ e.fx_meta }}</div>{% endif %}
         {% else %}
-          <span class="exp-amt-missing">未识别</span>
+        <span class="exp-amt-missing">未识别</span>
         {% endif %}
       </div>
     </a>
   </div>
   {% else %}
-  <div class="empty-cell">
+  <div class="product-state">
     {% if filter == 'all' %}
-      今天还没有截图待确认。从 Android 或 iPhone 上传截图后会出现在这里。<br>
-      还没配好上传口？<a href="/owner/upload-links">配 iPhone 快捷指令</a> · <a href="/web/import{{ _q }}">从 CSV 导入</a>。
+    <div class="product-state-title">收件队列已经清空</div>
+    <div class="product-state-body">
+      新上传的截图、OCR 识别结果和导入草稿会出现在这里；手动记账可直接在流水中查看。
+    </div>
+    <div class="product-state-body">
+      {% if can_write %}
+        还没配好进票方式？{% if show_owner_upload_setup %}<a href="/owner/upload-links">配 iPhone 快捷指令</a> · {% endif %}<a href="/web/import{{ _q }}">从 CSV 导入</a>。
+      {% else %}
+        当前为只读访问；可前往<a href="/web/import{{ _q }}">导出当前账本</a>留存副本。
+      {% endif %}
+    </div>
+    <a class="product-state-action" href="/web/confirmed{{ _q }}">查看全部流水</a>
     {% else %}
-      没有匹配当前筛选的账单。
+    <div class="product-state-title">没有符合当前条件的账单</div>
+    <div class="product-state-body">换一个筛选条件，或返回完整队列继续处理。</div>
+    <a class="product-state-action" href="/web/pending{{ _q }}">返回全部</a>
     {% endif %}
   </div>
   {% endfor %}
-</div>
+</section>
 
 {% if can_write %}
 <form id="bulk-form" method="post" action="/web/review/bulk" class="bulk-bar" data-bulk>
@@ -161,21 +253,32 @@
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="filter" value="{{ filter }}">
   <span class="count" data-bulk-count>0</span>
-  <span class="label">已选中</span>
-  <button class="dt-btn" type="button" data-bulk-clear>取消选择</button>
+  <span class="label">笔已选</span>
+  {# main 保留 (矿无): 一键清空选择并把焦点还回第一个已选行 (批选可达性合同)。 #}
+  <button class="product-button" type="button" data-bulk-clear>取消选择</button>
   <div class="spacer"></div>
-  <input class="bulk-field" type="text" name="category" maxlength="64" placeholder="分类" aria-label="批量设置分类">
-  <button class="dt-btn" type="submit" name="action" value="set_category">设置分类</button>
-  <input class="bulk-field" type="text" name="merchant" maxlength="120" placeholder="商家" aria-label="批量设置商家">
-  <button class="dt-btn" type="submit" name="action" value="set_merchant">设置商家</button>
-  <button class="dt-btn" type="submit" formaction="/web/pending/batch-reject"
-          data-confirm="确认忽略已选账单？">批量忽略</button>
-  <button class="dt-btn primary" type="submit" name="action" value="confirm_ready">批量确认入账</button>
+  <input class="bulk-field" type="text" name="category" maxlength="64" placeholder="统一分类" aria-label="批量设置分类">
+  <button class="product-button" type="submit" name="action" value="set_category">应用分类</button>
+  <input class="bulk-field" type="text" name="merchant" maxlength="120" placeholder="统一商家" aria-label="批量设置商家">
+  <button class="product-button" type="submit" name="action" value="set_merchant">应用商家</button>
+  <button class="product-button product-button--danger"
+          type="submit"
+          formaction="/web/pending/batch-reject"
+          data-confirm="确认忽略已选账单？">
+    忽略
+  </button>
+  <button class="product-button product-button--primary" type="submit" name="action" value="confirm_ready">确认入账</button>
 </form>
 {% endif %}
 {% endblock %}
 
 {% block drawer %}
-<div class="scrim" id="drawer-scrim"></div>
-<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="编辑账单" tabindex="-1"></aside>
+<div class="scrim" id="drawer-scrim" aria-hidden="true"></div>
+<aside class="drawer"
+       id="drawer"
+       role="dialog"
+       aria-modal="true"
+       aria-label="编辑账单"
+       aria-hidden="true"
+       tabindex="-1"></aside>
 {% endblock %}

@@ -19,7 +19,10 @@ from app.services.data_quality_service import (
     is_uncategorized_expense_category,
     is_usable_pending_merchant,
 )
-from app.services.spending_contract_service import accounting_zone
+from app.services.spending_contract_service import (
+    accounting_datetime_label,
+    accounting_zone,
+)
 from app.services.time_service import ensure_utc, parse_month_label
 from app.services.time_service import to_iso as _datetime_to_iso
 
@@ -52,10 +55,7 @@ def _calendar_date_label(value: date | datetime | None) -> str:
 
 
 def _expense_time_local_input(value) -> str:
-    value = ensure_utc(value)
-    if value is None:
-        return ""
-    return value.astimezone(accounting_zone()).strftime("%Y-%m-%dT%H:%M")
+    return accounting_datetime_label(value, pattern="%Y-%m-%dT%H:%M")
 
 
 def _currency_symbol(currency_code: str) -> str:
@@ -241,21 +241,13 @@ def _expense_view(
         "note": expense.note or "",
         "tags": getattr(expense, "tags", None) or "",
         "status": expense.status,
-        "expense_time": (
-            expense.expense_time.strftime("%Y-%m-%d %H:%M")
-            if expense.expense_time
-            else ""
-        ),
+        "expense_time": accounting_datetime_label(expense.expense_time),
         "expense_time_local": _expense_time_local_input(
             getattr(expense, "expense_time", None)
         ),
         "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),
         "row_version": getattr(expense, "row_version", None),
-        "created_at": (
-            expense.created_at.strftime("%Y-%m-%d %H:%M")
-            if expense.created_at
-            else ""
-        ),
+        "created_at": accounting_datetime_label(expense.created_at),
         "has_image": has_image,
         "image_state": image_state,
         "duplicate_status": expense.duplicate_status,
