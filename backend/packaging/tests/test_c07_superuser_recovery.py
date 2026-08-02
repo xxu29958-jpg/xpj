@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.xdist_group(name="windows_powershell_lifecycle")
+
 PACKAGING = Path(__file__).resolve().parents[1]
 SCRIPT = PACKAGING / "windows_c07_superuser_recovery.ps1"
 SAFETY = PACKAGING / "windows_installation_safety.ps1"

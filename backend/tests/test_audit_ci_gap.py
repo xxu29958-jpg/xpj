@@ -21,7 +21,7 @@ jobs:
 
 _INSTALLER_SAFETY_COMMAND = (
     "python -m pytest packaging/tests --strict-markers "
-    "-p no:cacheprovider -o addopts= -n 3 --dist loadfile "
+    "-p no:cacheprovider -o addopts= -n 3 --dist loadgroup "
     "--max-worker-restart 0"
 )
 _SAFE_PYTEST_ENVIRONMENT = (("PYTEST_ADDOPTS", ""),)
@@ -42,7 +42,7 @@ jobs:
       - run: .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests packaging/tests
       - env:
           PYTEST_ADDOPTS: ""
-        run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -n 2 --dist loadfile --max-worker-restart 0
+        run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -n 2 --dist loadgroup --max-worker-restart 0
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\\build_backend_exe.ps1 -Clean
@@ -110,7 +110,7 @@ def _assert_installer_safety_tuning_contract(mod: object) -> None:
     assert "pytest installer safety lane" not in mod._missing_ci_invocations(
         [precedence]
     )
-    for workers in (0, 2, 3, 4):
+    for workers in (2, 3, 4):
         tuned = mod.WorkflowCommand(
             Path("ci.yml"),
             _INSTALLER_SAFETY_COMMAND.replace("-n 3", f"-n {workers}"),

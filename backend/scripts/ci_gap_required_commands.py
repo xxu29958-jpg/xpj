@@ -186,8 +186,8 @@ def _matches_installer_safety_pytest(command: str) -> bool:
         and set(options) == value_options
         and options["-p"] == "no:cacheprovider"
         and options["-o"] == "addopts="
-        and (workers == 0 or 2 <= workers <= 4)
-        and options["--dist"] == "loadfile"
+        and 2 <= workers <= 4
+        and options["--dist"] == "loadgroup"
         and options["--max-worker-restart"] == "0"
         and targets == ["packaging/tests"]
     )

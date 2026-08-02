@@ -9,6 +9,8 @@ import pytest
 import test_c07_lifecycle_artifacts as c07_lifecycle_support
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.xdist_group(name="windows_powershell_lifecycle")
+
 PACKAGING = Path(__file__).resolve().parents[1]
 
 
