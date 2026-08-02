@@ -344,7 +344,8 @@ def test_cloudflare_endpoint_script_does_not_accept_token_params() -> None:
     assert "$appHeaders[$apiVersionHeader]" in preflight
     assert "$appHeaders[$currencyBindingHeader]" in preflight
     assert '"ADOPTION_REQUIRED"' not in preflight
-    assert "system/(?:currency-capability|runtime-compatibility)$" in tunnel_contract
+    assert "system/runtime-compatibility$" in tunnel_contract
+    assert "currency-capability" not in tunnel_contract
     public_boundary = (
         project_root / "scripts" / "check_public_boundary.ps1"
     ).read_text(encoding="utf-8-sig")
