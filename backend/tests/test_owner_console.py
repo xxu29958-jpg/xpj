@@ -829,6 +829,42 @@ def test_owner_settings_page_opens(local_client: TestClient) -> None:
     assert "/owner/settings/api" in resp.text
 
 
+@pytest.mark.currency_binding_unbound
+def test_owner_recovery_pages_remain_available_during_currency_adoption(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import currency_binding_service
+    from app.services.currency_binding_service import CurrencyCapability
+
+    adoption = CurrencyCapability(
+        state="ADOPTION_REQUIRED",
+        home_currency_code=None,
+        minor_unit_exponent=None,
+        rounding_mode=None,
+        currency_contract_version=1,
+        binding_revision=0,
+        minimum_writable_currency_contract=1,
+        health="adoption_required",
+        initialization_offer=None,
+    )
+    monkeypatch.setattr(
+        currency_binding_service,
+        "get_capability",
+        lambda _db: adoption,
+    )
+
+    for path in (
+        "/owner",
+        "/owner/backups",
+        "/owner/diagnostics",
+        "/owner/settings",
+        "/owner/pairing",
+    ):
+        response = local_client.get(path)
+        assert response.status_code == 200, f"{path}: {response.text}"
+
+
 def test_owner_ai_advisor_panel_opens(local_client: TestClient) -> None:
     response = local_client.get("/owner/ai-advisor")
     assert response.status_code == 200

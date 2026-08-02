@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.fx_rate_scheduler import run_fx_sync_once
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
@@ -25,7 +26,8 @@ router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 def _fx_context(request: Request, db: Session, *, refreshed: str | None = None) -> dict:
     ctx = _base(request, db)
-    vm = svc.get_fx_panel_vm(db, home_currency_code=ctx["home_currency_code"])
+    home_currency = require_runtime_home_currency_code(db)
+    vm = svc.get_fx_panel_vm(db, home_currency_code=home_currency)
     ctx.update(
         fx_source=vm.source,
         fx_source_url=vm.source_url,

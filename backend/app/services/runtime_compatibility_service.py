@@ -44,7 +44,7 @@ class RuntimeCurrencyCapability:
     rounding_mode: str | None
     contract_version: int
     binding_revision: int
-    request_binding: str
+    request_binding: str | None
     request_binding_header: str
     initialization_offer: str | None
     read_compatibility: CompatibilityConclusion
@@ -150,9 +150,14 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
             rounding_mode=product_rounding_mode,
             contract_version=capability.currency_contract_version,
             binding_revision=capability.binding_revision,
-            request_binding=format_currency_binding(
-                contract_version=capability.currency_contract_version,
-                binding_revision=capability.binding_revision,
+            request_binding=(
+                format_currency_binding(
+                    contract_version=capability.currency_contract_version,
+                    binding_revision=capability.binding_revision,
+                    home_currency_code=product_home_currency,
+                )
+                if product_home_currency is not None
+                else None
             ),
             request_binding_header=TICKETBOX_CURRENCY_BINDING_HEADER,
             initialization_offer=capability.initialization_offer,

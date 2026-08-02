@@ -15,7 +15,7 @@ import app.services.runtime_compatibility_service as runtime_compatibility_servi
 from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Budget
+from app.models import Budget, Expense
 from app.models.currency_binding import (
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
@@ -32,6 +32,7 @@ from app.services.currency_binding_service import (
     CurrencyCapability,
     resolve_write_capability,
 )
+from tests._infra.assets import PNG_BYTES
 
 pytestmark = pytest.mark.currency_binding_unbound
 
@@ -116,7 +117,7 @@ def test_runtime_snapshot_is_authenticated_private_and_product_facing(
                 "rounding_mode": "ROUND_HALF_UP",
                 "contract_version": 1,
                 "binding_revision": 0,
-                "request_binding": "1:0",
+                "request_binding": "1:0:CNY",
                 "request_binding_header": TICKETBOX_CURRENCY_BINDING_HEADER,
                 "initialization_offer": "CNY",
                 "read_compatibility": "compatible",
@@ -232,7 +233,7 @@ def test_jpy_snapshot_exposes_minor_unit_without_expanding_legacy_envelope(
     assert currency["home_currency_code"] == "JPY"
     assert currency["minor_unit_exponent"] == 0
     assert currency["rounding_mode"] == "ROUND_HALF_UP"
-    assert currency["request_binding"] == "1:0"
+    assert currency["request_binding"] == "1:0:JPY"
     assert currency["initialization_offer"] == "JPY"
     assert payload["write_compatibility"] == "compatible"
     assert payload["legacy_write_compatibility"] == "client_upgrade_required"
@@ -252,7 +253,7 @@ def test_negotiated_jpy_first_write_claims_binding_and_internal_jobs_follow_it(
 
     created = _put_budget(
         client,
-        headers=_runtime_headers(identity.app_headers, binding="1:0"),
+        headers=_runtime_headers(identity.app_headers, binding="1:0:JPY"),
     )
     assert created.status_code == 200, created.json()
 
@@ -279,7 +280,7 @@ def test_negotiated_jpy_first_write_claims_binding_and_internal_jobs_follow_it(
 
     second = _put_budget(
         client,
-        headers=_runtime_headers(identity.app_headers, binding="1:1"),
+        headers=_runtime_headers(identity.app_headers, binding="1:1:JPY"),
         month="2026-09",
         amount=3400,
     )
@@ -292,7 +293,7 @@ def test_initial_revision_is_reusable_only_inside_the_claiming_transaction(
     configure_home_currency("JPY")
     request = RuntimeCompatibilityRequest(
         api_version=CURRENT_API_VERSION,
-        currency_binding="1:0",
+        currency_binding="1:0:JPY",
     )
 
     with SessionLocal() as db:
@@ -332,14 +333,14 @@ def test_legacy_jpy_writer_is_rejected_before_any_financial_side_effect(
     "extra_headers",
     [
         {TICKETBOX_API_VERSION_HEADER: CURRENT_API_VERSION},
-        {TICKETBOX_CURRENCY_BINDING_HEADER: "1:0"},
+        {TICKETBOX_CURRENCY_BINDING_HEADER: "1:0:JPY"},
         {
             TICKETBOX_API_VERSION_HEADER: "2026-07-01",
-            TICKETBOX_CURRENCY_BINDING_HEADER: "1:0",
+            TICKETBOX_CURRENCY_BINDING_HEADER: "1:0:JPY",
         },
         {
             TICKETBOX_API_VERSION_HEADER: CURRENT_API_VERSION,
-            TICKETBOX_CURRENCY_BINDING_HEADER: "01:0",
+            TICKETBOX_CURRENCY_BINDING_HEADER: "01:0:JPY",
         },
     ],
 )
@@ -378,7 +379,7 @@ def test_stale_binding_revision_and_configuration_drift_are_distinct(
 
     stale = _put_budget(
         client,
-        headers=_runtime_headers(identity.app_headers, binding="1:0"),
+        headers=_runtime_headers(identity.app_headers, binding="1:0:CNY"),
         month="2026-09",
     )
     assert stale.status_code == 409, stale.json()
@@ -394,7 +395,7 @@ def test_stale_binding_revision_and_configuration_drift_are_distinct(
     assert payload["read_compatibility"] == "compatible"
     assert payload["write_compatibility"] == "configuration_required"
     assert payload["capabilities"]["currency"]["home_currency_code"] == "CNY"
-    assert payload["capabilities"]["currency"]["request_binding"] == "1:1"
+    assert payload["capabilities"]["currency"]["request_binding"] == "1:1:CNY"
 
     budgets_page = web_client.get(
         "/web/budgets?ledger_id=owner&month=2026-08"
@@ -406,8 +407,91 @@ def test_stale_binding_revision_and_configuration_drift_are_distinct(
 
     drifted = _put_budget(
         client,
-        headers=_runtime_headers(identity.app_headers, binding="1:1"),
+        headers=_runtime_headers(identity.app_headers, binding="1:1:CNY"),
         month="2026-10",
     )
     assert drifted.status_code == 409, drifted.json()
     assert drifted.json()["error"] == "currency_binding_configuration_drift"
+
+
+def test_empty_binding_proof_rejects_configuration_change_before_first_write(
+    client: TestClient,
+    configure_home_currency: Callable[[str], None],
+    *,
+    identity,
+) -> None:
+    configure_home_currency("JPY")
+    snapshot = client.get(
+        "/api/system/runtime-compatibility",
+        headers=identity.app_headers,
+    )
+    assert snapshot.status_code == 200, snapshot.json()
+    binding_proof = snapshot.json()["capabilities"]["currency"]["request_binding"]
+    assert binding_proof == "1:0:JPY"
+
+    configure_home_currency("CNY")
+    stale = _put_budget(
+        client,
+        headers=_runtime_headers(identity.app_headers, binding=binding_proof),
+    )
+    assert stale.status_code == 409, stale.json()
+    assert stale.json()["error"] == "currency_binding_revision_conflict"
+
+    with SessionLocal() as db:
+        authority = db.get(InstallationCurrencyBinding, 1)
+        assert authority is not None
+        assert authority.state == "EMPTY"
+        assert db.query(Budget).count() == 0
+        assert db.query(InstallationCurrencyAuditLog).count() == 0
+
+
+def test_upload_link_is_a_trusted_amount_free_adapter_for_non_cny_first_claim(
+    client: TestClient,
+    configure_home_currency: Callable[[str], None],
+    *,
+    identity,
+) -> None:
+    configure_home_currency("JPY")
+
+    uploaded = client.post(
+        identity.upload_url_path,
+        headers={**identity.upload_headers, "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+
+    assert uploaded.status_code == 200, uploaded.json()
+    with SessionLocal() as db:
+        authority = db.get(InstallationCurrencyBinding, 1)
+        expense = db.get(Expense, uploaded.json()["id"])
+        assert authority is not None
+        assert authority.state == "ACTIVE"
+        assert authority.home_currency_code == "JPY"
+        assert expense is not None
+        assert expense.home_currency_code == "JPY"
+
+
+def test_openapi_publishes_runtime_headers_on_mutating_api_operations(
+    client: TestClient,
+) -> None:
+    schema = client.app.openapi()
+    expected_refs = {
+        "#/components/parameters/TicketboxApiVersion",
+        "#/components/parameters/TicketboxCurrencyBinding",
+    }
+    for path, method in (
+        ("/api/budgets/monthly/{month}", "put"),
+        ("/api/goals", "post"),
+        ("/api/expenses/manual", "post"),
+    ):
+        parameters = schema["paths"][path][method]["parameters"]
+        assert expected_refs <= {
+            parameter.get("$ref")
+            for parameter in parameters
+            if isinstance(parameter, dict)
+        }
+
+    currency_parameter = schema["components"]["parameters"][
+        "TicketboxCurrencyBinding"
+    ]
+    assert currency_parameter["required"] is False
+    assert currency_parameter["schema"]["pattern"].endswith(":[A-Z]{3}$")

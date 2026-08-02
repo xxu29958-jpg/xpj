@@ -268,6 +268,7 @@ class _CurrencyWriteExpectation:
     mode: Literal["internal", "legacy_http", "negotiated"]
     contract_version: int | None = None
     binding_revision: int | None = None
+    home_currency_code: str | None = None
 
 
 def _http_runtime_request(db: Session) -> RuntimeCompatibilityRequest | None:
@@ -296,7 +297,7 @@ def _currency_write_expectation(
             if request.is_legacy:
                 raise AppError("client_upgrade_required", status_code=409)
             try:
-                header_contract, header_revision = parse_currency_binding(
+                header_contract, header_revision, header_currency = parse_currency_binding(
                     request.currency_binding or ""
                 )
             except ValueError:
@@ -311,6 +312,7 @@ def _currency_write_expectation(
             mode="negotiated",
             contract_version=contract_version,
             binding_revision=expected_revision,
+            home_currency_code=header_currency if request is not None else None,
         )
     if request is None:
         return _CurrencyWriteExpectation(mode="internal")
@@ -319,7 +321,7 @@ def _currency_write_expectation(
     if request.api_version != CURRENT_API_VERSION or request.currency_binding is None:
         raise AppError("client_upgrade_required", status_code=409)
     try:
-        contract_version, binding_revision = parse_currency_binding(
+        contract_version, binding_revision, binding_currency = parse_currency_binding(
             request.currency_binding
         )
     except ValueError:
@@ -328,6 +330,7 @@ def _currency_write_expectation(
         mode="negotiated",
         contract_version=contract_version,
         binding_revision=binding_revision,
+        home_currency_code=binding_currency,
     )
 
 
@@ -357,6 +360,11 @@ def _assert_write_expectation(
     if expectation.mode == "negotiated":
         if expectation.contract_version != binding.currency_contract_version:
             raise AppError("client_upgrade_required", status_code=409)
+        if (
+            expectation.home_currency_code is not None
+            and expectation.home_currency_code != binding.home_currency_code
+        ):
+            raise AppError("currency_binding_revision_conflict", status_code=409)
         if not _negotiated_revision_is_current(
             db,
             binding,
@@ -412,6 +420,12 @@ def resolve_write_capability(
             )
         ):
             raise AppError("client_upgrade_required", status_code=409)
+        if (
+            expectation.mode == "negotiated"
+            and expectation.home_currency_code is not None
+            and expectation.home_currency_code != configured
+        ):
+            raise AppError("currency_binding_revision_conflict", status_code=409)
         _claim_initial_binding(db, binding, configured=configured)
         claim_transaction = db.get_transaction()
         if claim_transaction is None:

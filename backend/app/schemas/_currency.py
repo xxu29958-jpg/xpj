@@ -40,7 +40,9 @@ class RuntimeCurrencyCapabilityResponse(BaseModel):
     rounding_mode: Literal["ROUND_HALF_UP"] | None
     contract_version: int = Field(ge=1)
     binding_revision: int = Field(ge=0)
-    request_binding: str = Field(pattern=r"^[1-9][0-9]*:(?:0|[1-9][0-9]*)$")
+    request_binding: str | None = Field(
+        pattern=r"^[1-9][0-9]*:(?:0|[1-9][0-9]*):[A-Z]{3}$"
+    )
     request_binding_header: Literal["Ticketbox-Currency-Binding"]
     initialization_offer: CurrencyCode | None
     read_compatibility: RuntimeCompatibilityConclusion

@@ -258,6 +258,9 @@ Test-Probe -Name 'local /owner' -Url "$LocalUrl/owner" -Method 'GET' -ExpectedSt
 Test-Probe -Name 'public /api/health' -Url "$BaseUrl/api/health" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 Test-Probe -Name 'public /api/status/private (no token)' -Url "$BaseUrl/api/status/private" -Method 'GET' `
     -ExpectedStatus @(401, 404) -ExpectedErrors @('invalid_token', 'route_not_found', '') | Out-Null
+Test-Probe -Name 'public /api/system/runtime-compatibility (no token)' `
+    -Url "$BaseUrl/api/system/runtime-compatibility" -Method 'GET' `
+    -ExpectedStatus @(401) -ExpectedErrors @('invalid_token', '') | Out-Null
 Test-Probe -Name 'public /static/web/web.css' -Url "$BaseUrl/static/web/web.css" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 Test-Probe -Name 'public /static/shared/tokens.css' -Url "$BaseUrl/static/shared/tokens.css" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 # PWA install assets — must be public so iOS Safari / Android Chrome can

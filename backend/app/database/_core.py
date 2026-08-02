@@ -118,6 +118,7 @@ def get_db(
             or request.url.path.startswith("/web/")
             or request.url.path == "/owner"
             or request.url.path.startswith("/owner/")
+            or request.url.path.startswith("/u/")
             else "http_client"
         ),
     )

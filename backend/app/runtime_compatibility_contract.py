@@ -24,7 +24,9 @@ TICKETBOX_CURRENCY_BINDING_HEADER = "Ticketbox-Currency-Binding"
 RUNTIME_COMPATIBILITY_SESSION_KEY = "ticketbox.runtime_compatibility_request"
 
 _CURRENCY_BINDING_PATTERN = re.compile(
-    r"^(?P<contract_version>[1-9][0-9]*):(?P<binding_revision>0|[1-9][0-9]*)$"
+    r"^(?P<contract_version>[1-9][0-9]*):"
+    r"(?P<binding_revision>0|[1-9][0-9]*):"
+    r"(?P<home_currency_code>[A-Z]{3})$"
 )
 
 
@@ -45,8 +47,14 @@ class RuntimeCompatibilityRequest:
         )
 
 
-def parse_currency_binding(value: str) -> tuple[int, int]:
-    """Parse ``<currency-contract-version>:<binding-revision>`` strictly."""
+def parse_currency_binding(value: str) -> tuple[int, int, str]:
+    """Parse ``<contract-version>:<revision>:<home-currency>`` strictly.
+
+    The currency is part of the proof even at revision zero.  Otherwise two
+    different EMPTY-installation offers would share the same token and a
+    configuration change between discovery and the first write could silently
+    reinterpret the client's minor units.
+    """
 
     match = _CURRENCY_BINDING_PATTERN.fullmatch(value.strip())
     if match is None:
@@ -54,13 +62,23 @@ def parse_currency_binding(value: str) -> tuple[int, int]:
     return (
         int(match.group("contract_version")),
         int(match.group("binding_revision")),
+        match.group("home_currency_code"),
     )
 
 
-def format_currency_binding(*, contract_version: int, binding_revision: int) -> str:
-    if contract_version < 1 or binding_revision < 0:
+def format_currency_binding(
+    *,
+    contract_version: int,
+    binding_revision: int,
+    home_currency_code: str,
+) -> str:
+    if (
+        contract_version < 1
+        or binding_revision < 0
+        or re.fullmatch(r"[A-Z]{3}", home_currency_code) is None
+    ):
         raise ValueError("currency binding components are outside the product contract")
-    return f"{contract_version}:{binding_revision}"
+    return f"{contract_version}:{binding_revision}:{home_currency_code}"
 
 
 __all__ = [
