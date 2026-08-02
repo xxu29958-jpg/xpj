@@ -564,6 +564,7 @@ Authorization: Bearer <session_token>
 行为：
 
 - 如果 `amount_cents` 为空，返回 `amount_required`。
+- 如果分类为空或仍是未分类脏标记，返回 `category_required`；`其他` 是合法分类。
 - `status` 改为 `confirmed`。
 - `confirmed_at` 设置当前 UTC 时间。
 - 更新 `updated_at`。
