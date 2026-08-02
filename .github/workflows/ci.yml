@@ -557,11 +557,27 @@ jobs:
       - *postgres_setup_python
       - *postgres_qualification
       - *postgres_load_contract
+
+      - &postgres_install_supported_client
+        name: Install supported PostgreSQL client
+        # C07 real-db tests execute the production pg_dump/pg_restore drill.
+        # The client major must therefore match this job's supported server.
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo apt-get update
+          sudo apt-get install -y "postgresql-client-${{ matrix.postgres['postgres-major'] }}"
+          echo "/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin" >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin:$PATH"
+          pg_dump --version
+          pg_restore --version
+
       - *postgres_install_dependencies
 
       - name: Prepare real-db lane database
         env: *postgres_prepare_environment
-        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --expected-major "${{ matrix.postgres['postgres-major'] }}"
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --role restore --expected-major "${{ matrix.postgres['postgres-major'] }}"
 
       - name: PostgreSQL real-db serial pytest lane
         run: ./.ci-venv/bin/python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
@@ -592,19 +608,7 @@ jobs:
       - *postgres_qualification
       - *postgres_load_contract
 
-      - name: Install supported PostgreSQL client
-        # The backup tools must match the service-container major selected by
-        # this job's supported-base matrix coordinate.
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          sudo apt-get update
-          sudo apt-get install -y "postgresql-client-${{ matrix.postgres['postgres-major'] }}"
-          echo "/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin" >> "$GITHUB_PATH"
-          export PATH="/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin:$PATH"
-          pg_dump --version
-          pg_restore --version
+      - *postgres_install_supported_client
 
       - *postgres_install_dependencies
 

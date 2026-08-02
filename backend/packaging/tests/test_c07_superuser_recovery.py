@@ -215,21 +215,50 @@ $semanticSecurity.SetSecurityDescriptorSddlForm(
     $allSections
 )
 $semanticSecurityBytes = $semanticSecurity.GetSecurityDescriptorBinaryForm()
-$defaultedSecurity = New-Object `
+$resourceManagerDerivedSecurity = New-Object `
     Security.AccessControl.RawSecurityDescriptor($semanticSecurityBytes,0)
-$defaultedSecurity.SetFlags(
-    $defaultedSecurity.ControlFlags -bor
+$resourceManagerDerivedSecurity.SetFlags(
+    $resourceManagerDerivedSecurity.ControlFlags -bor
         [Security.AccessControl.ControlFlags]::OwnerDefaulted -bor
         [Security.AccessControl.ControlFlags]::GroupDefaulted -bor
         [Security.AccessControl.ControlFlags]::DiscretionaryAclDefaulted -bor
-        [Security.AccessControl.ControlFlags]::SystemAclDefaulted
+        [Security.AccessControl.ControlFlags]::SystemAclDefaulted -bor
+        [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInheritRequired -bor
+        [Security.AccessControl.ControlFlags]::SystemAclAutoInheritRequired -bor
+        [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited -bor
+        [Security.AccessControl.ControlFlags]::SystemAclAutoInherited
 )
-$defaultedSecurityBytes = New-Object byte[] $defaultedSecurity.BinaryLength
-$defaultedSecurity.GetBinaryForm($defaultedSecurityBytes,0)
+$resourceManagerDerivedSecurityBytes =
+    New-Object byte[] $resourceManagerDerivedSecurity.BinaryLength
+$resourceManagerDerivedSecurity.GetBinaryForm(
+    $resourceManagerDerivedSecurityBytes,
+    0
+)
 if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
     -Left $semanticSecurityBytes `
-    -Right $defaultedSecurityBytes)) {{
-    throw 'descriptor default-source flags changed security authority'
+    -Right $resourceManagerDerivedSecurityBytes)) {{
+    throw 'descriptor resource-manager provenance changed security authority'
+}}
+foreach ($protectionFlag in @(
+    [Security.AccessControl.ControlFlags]::DiscretionaryAclProtected,
+    [Security.AccessControl.ControlFlags]::SystemAclProtected
+)) {{
+    $unprotectedSecurity = New-Object `
+        Security.AccessControl.RawSecurityDescriptor($semanticSecurityBytes,0)
+    $unprotectedSecurity.SetFlags(
+        [Security.AccessControl.ControlFlags](
+            [int]$unprotectedSecurity.ControlFlags -band
+                (-bnot [int]$protectionFlag)
+        )
+    )
+    $unprotectedSecurityBytes =
+        New-Object byte[] $unprotectedSecurity.BinaryLength
+    $unprotectedSecurity.GetBinaryForm($unprotectedSecurityBytes,0)
+    if (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+        -Left $semanticSecurityBytes `
+        -Right $unprotectedSecurityBytes) {{
+        throw 'descriptor comparison ignored ACL protection authority'
+    }}
 }}
 $mutatedSecuritySddls = @(
     ("O:S-1-5-32-544G:{{0}}D:P(A;;FA;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
@@ -696,10 +725,38 @@ if ($persisted.Sha256 -cne $replacementSha -or
     throw 'ReplaceFileW did not preserve the full security descriptor'
 }}
 
-# Mutation intent: the former MoveFileEx replacement must lose the explicit
-# file SACL and therefore be rejected by the full post-publication verification.
+# Mutation intent: publish a source whose SACL was deliberately corrupted via
+# the former MoveFileEx path. A same-volume move preserves the source security
+# descriptor, so the full post-publication verification must reject it.
 function Replace-TicketboxFileDurablePreservingMetadata {{
     param($Replacement,$Destination,$Backup)
+    $replacementItem = Get-Item -LiteralPath $Replacement -Force
+    $allSections = [Security.AccessControl.AccessControlSections]::All
+    $replacementSecurity = if ($PSVersionTable.PSEdition -eq 'Core') {{
+        [IO.FileSystemAclExtensions]::GetAccessControl(
+            $replacementItem,
+            $allSections
+        )
+    }}
+    else {{ $replacementItem.GetAccessControl($allSections) }}
+    $replacementSecurity.PurgeAuditRules(
+        [Security.Principal.WindowsIdentity]::GetCurrent().User
+    )
+    if ($PSVersionTable.PSEdition -eq 'Core') {{
+        [IO.FileSystemAclExtensions]::SetAccessControl(
+            $replacementItem,
+            $replacementSecurity
+        )
+    }}
+    else {{ $replacementItem.SetAccessControl($replacementSecurity) }}
+    $mutatedSource = Get-TicketboxC07SuperuserRecoveryAuthFile `
+        -Path $Replacement `
+        -Label 'MoveFileEx mutation source'
+    if (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+        -Left $mutatedSource.SecurityBytes `
+        -Right $captured.SecurityBytes) {{
+        throw 'MoveFileEx mutation source retained the captured SACL'
+    }}
     Move-TicketboxFileDurable `
         -Source $Replacement `
         -Destination $Destination `

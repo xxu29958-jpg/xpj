@@ -106,6 +106,12 @@ def _assert_postgres_job_contract(
         "POSTGRES_INITDB_ARGS": "--auth-host=scram-sha-256",
     }
     assert service["ports"] == ["5432/tcp"]
+    assert (has_supported_client := "Install supported PostgreSQL client" in (steps := _steps(job))) is (not ordinary)
+    if has_supported_client:
+        client_install = str(steps["Install supported PostgreSQL client"]["run"])
+        assert all(part in client_install for part in ("postgresql-client-${{ matrix.postgres['postgres-major'] }}", "/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin"))
+        assert not any(part in client_install for part in ("postgresql-client-17", "/usr/lib/postgresql/17/bin"))
+        assert (names := list(steps)).index("Load test PostgreSQL contract") < names.index("Install supported PostgreSQL client") < names.index("Install dependencies")
 
 
 def _assert_checkout_independent_passfile_cleanup(step: dict[str, object]) -> None:
@@ -239,11 +245,6 @@ def _assert_recovery_job(job: object) -> None:
         "TEST_POSTGRES_PASSWORD": "xpj-ci-${{ github.run_id }}-${{ github.run_attempt }}",
         "TEST_POSTGRES_APPLICATION_PASSWORD": ("xpj-app-${{ github.run_id }}-${{ github.run_attempt }}"),
     }
-    client_install = steps["Install supported PostgreSQL client"]["run"]
-    assert "postgresql-client-${{ matrix.postgres['postgres-major'] }}" in client_install
-    assert "/usr/lib/postgresql/${{ matrix.postgres['postgres-major'] }}/bin" in client_install
-    assert "postgresql-client-17" not in client_install
-    assert "/usr/lib/postgresql/17/bin" not in client_install
     prepare = shlex.split(steps["Prepare smoke and recovery databases"]["run"])
     assert steps["Prepare smoke and recovery databases"]["env"] == {
         "XPJ_TEST_APPLICATION_PASSWORD": ("xpj-app-${{ github.run_id }}-${{ github.run_attempt }}")
@@ -408,12 +409,11 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
             "(PG ${{ matrix.postgres['postgres-major'] }})"
         ),
         prepare_step="Prepare real-db lane database",
-        prepare_roles=("base",),
+        prepare_roles=("base", "restore"),
         runner_step="PostgreSQL real-db serial pytest lane",
         lane="real-db",
         workers=1,
     )
-
     _assert_recovery_job(jobs["backend_postgres_recovery"])
     _assert_no_postgres_password_leaks(jobs)
     _assert_postgres_aggregator(jobs["backend-postgres"])

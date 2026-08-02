@@ -2848,10 +2848,89 @@ finally {{ Exit-TicketboxLifecycleLock $lock }}
     _run_harness(engine, harness)
 
 
+def _assert_c07_host_envelope_expected_predecessor_fails_closed(
+    tmp_path: Path,
+) -> None:
+    for engine_index, engine in enumerate(powershell_contract_engines()):
+        root = tmp_path / f"host-envelope-predecessor-{engine_index}"
+        root.mkdir()
+        current_path = root / "current.json"
+        missing_path = root / "missing.json"
+        harness = root / "predecessor.ps1"
+        _write_ps1(
+            harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$script:TicketboxC07HostFullControlAccounts = @($currentAccount)
+$script:TicketboxC07HostOwnerAccount = $currentAccount
+
+$initial = Write-TicketboxC07HostEnvelope `
+    -Path '{_literal(current_path)}' `
+    -ArtifactKind 'test_authority' `
+    -Payload ([ordered]@{{ generation = 'initial' }})
+$drifted = Write-TicketboxC07HostEnvelope `
+    -Path '{_literal(current_path)}' `
+    -ArtifactKind 'test_authority' `
+    -Payload ([ordered]@{{ generation = 'drifted' }}) `
+    -ReplaceExisting
+$beforeRejectedWrite = Read-TicketboxC07HostEnvelope `
+    -Path '{_literal(current_path)}' `
+    -ExpectedKind 'test_authority'
+
+$driftRejected = $false
+try {{
+    Write-TicketboxC07HostEnvelope `
+        -Path '{_literal(current_path)}' `
+        -ArtifactKind 'test_authority' `
+        -Payload ([ordered]@{{ generation = 'stale-writer' }}) `
+        -ReplaceExisting `
+        -ExpectedExistingPayloadSha256 $initial.PayloadSha256 | Out-Null
+}}
+catch {{
+    if ($_.Exception.Message -notlike '*预期前态漂移*') {{ throw }}
+    $driftRejected = $true
+}}
+$afterRejectedWrite = Read-TicketboxC07HostEnvelope `
+    -Path '{_literal(current_path)}' `
+    -ExpectedKind 'test_authority'
+if (
+    -not $driftRejected -or
+    $drifted.PayloadSha256 -cne $beforeRejectedWrite.PayloadSha256 -or
+    $afterRejectedWrite.Text -cne $beforeRejectedWrite.Text
+) {{
+    throw 'stale predecessor overwrote the current legal envelope'
+}}
+
+$missingRejected = $false
+try {{
+    Write-TicketboxC07HostEnvelope `
+        -Path '{_literal(missing_path)}' `
+        -ArtifactKind 'test_authority' `
+        -Payload ([ordered]@{{ generation = 'unexpected-create' }}) `
+        -ReplaceExisting `
+        -ExpectedExistingPayloadSha256 $drifted.PayloadSha256 | Out-Null
+}}
+catch {{
+    if ($_.Exception.Message -notlike '*预期前态已丢失*') {{ throw }}
+    $missingRejected = $true
+}}
+if (-not $missingRejected -or
+    (Get-TicketboxPathEntryKindNoFollow '{_literal(missing_path)}') -cne 'Missing') {{
+    throw 'missing predecessor was recreated by a stale writer'
+}}
+""",
+        )
+        _run_harness(engine, harness)
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows protected artifact contract")
 def test_c07_hash_mismatch_and_backend_writable_roots_fail_closed(
     tmp_path: Path,
 ) -> None:
+    _assert_c07_host_envelope_expected_predecessor_fails_closed(tmp_path)
     engine = powershell_contract_engines()[0]
     root = tmp_path / "hash"
     prefix, data_root, _, _ = _common_harness(root)
@@ -2931,7 +3010,23 @@ def test_c07_precommitted_runtime_acl_evidence_survives_takeover(
         for mutated in (False, True):
             case = "mutated" if mutated else "valid"
             root = tmp_path / f"runtime-acl-takeover-{engine_index}-{case}"
-            root.mkdir()
+            evidence_suffix = (
+                Path("machine")
+                / "c07-lifecycle"
+                / (
+                    f"operation-{operation_id}-stage-"
+                    "runtime_acl_verified-evidence.json"
+                )
+            )
+            evidence_path_length = len(str(root / evidence_suffix))
+            if evidence_path_length < 261:
+                root = (
+                    tmp_path
+                    / ("p" * (261 - evidence_path_length))
+                    / f"runtime-acl-takeover-{engine_index}-{case}"
+                )
+            assert len(str(root / evidence_suffix)) >= 261
+            root.mkdir(parents=True)
             prefix, data_root, _, _ = _common_harness(
                 root,
                 pending_operation_id=operation_id,

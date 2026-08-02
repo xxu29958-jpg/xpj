@@ -1063,15 +1063,20 @@ function Test-TicketboxC07SuperuserRecoverySecurityEquals {
     }
 
     try {
-        # Windows may recompute the four DEFAULTED provenance bits when the
-        # captured owner/group/DACL/SACL are applied to a new file.  Normalize
-        # only those non-authoritative bits; every ACL byte and other control
-        # flag remains part of the equality contract.
+        # Windows may recompute DEFAULTED provenance and automatic-inheritance
+        # request/result metadata when the captured owner/group/DACL/SACL are
+        # applied to an ordinary auth file. Normalize only those provider-
+        # recomputed bits; every ACL byte plus PRESENT/PROTECTED, RM control,
+        # and all other control flags remain part of the equality contract.
         $ignoredFlags =
             [Security.AccessControl.ControlFlags]::OwnerDefaulted -bor
             [Security.AccessControl.ControlFlags]::GroupDefaulted -bor
             [Security.AccessControl.ControlFlags]::DiscretionaryAclDefaulted -bor
-            [Security.AccessControl.ControlFlags]::SystemAclDefaulted
+            [Security.AccessControl.ControlFlags]::SystemAclDefaulted -bor
+            [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInheritRequired -bor
+            [Security.AccessControl.ControlFlags]::SystemAclAutoInheritRequired -bor
+            [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited -bor
+            [Security.AccessControl.ControlFlags]::SystemAclAutoInherited
         $ignoredMask = [int]$ignoredFlags
         $comparable = @()
         foreach ($bytes in @($Left, $Right)) {

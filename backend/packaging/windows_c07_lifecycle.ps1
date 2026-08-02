@@ -1041,17 +1041,32 @@ function Write-TicketboxC07HostEnvelope {
         [Parameter(Mandatory = $true)][string]$ArtifactKind,
         [Parameter(Mandatory = $true)][object]$Payload,
         [switch]$ReplaceExisting,
-        [switch]$ReadCompareReuse
+        [switch]$ReadCompareReuse,
+        [string]$ExpectedExistingPayloadSha256 = ""
     )
+    if (-not [string]::IsNullOrEmpty($ExpectedExistingPayloadSha256)) {
+        Assert-TicketboxC07Sha256 `
+            $ExpectedExistingPayloadSha256 `
+            "$ArtifactKind expected existing payload hash"
+    }
     $text = New-TicketboxC07EnvelopeText -ArtifactKind $ArtifactKind -Payload $Payload
     if (Test-Path -LiteralPath $Path) {
         $existing = Read-TicketboxC07HostEnvelope -Path $Path -ExpectedKind $ArtifactKind
+        if (
+            -not [string]::IsNullOrEmpty($ExpectedExistingPayloadSha256) -and
+            [string]$existing.PayloadSha256 -cne $ExpectedExistingPayloadSha256
+        ) {
+            throw "C07 host authority artifact 已从预期前态漂移：$Path"
+        }
         if ($ReadCompareReuse -and $existing.Text -ceq $text) {
             return $existing
         }
         if (-not $ReplaceExisting) {
             throw "C07 host authority artifact 已存在但内容不可复用：$Path"
         }
+    }
+    elseif (-not [string]::IsNullOrEmpty($ExpectedExistingPayloadSha256)) {
+        throw "C07 host authority artifact 的预期前态已丢失：$Path"
     }
     Write-TicketboxProtectedUtf8FileDurable `
         -Path $Path `
@@ -5301,6 +5316,7 @@ function Read-TicketboxC07HeartbeatForBinding {
     ) {
         throw "C07 heartbeat 与当前 operation binding 不一致。"
     }
+    $validatedAttempt = $null
     $attemptSequence = [int64]$payload.maintenance_attempt_sequence
     if ($attemptSequence -eq 0) {
         if (
@@ -5318,7 +5334,7 @@ function Read-TicketboxC07HeartbeatForBinding {
         }
     }
     else {
-        $attempt = Read-TicketboxC07MaintenanceAttempt `
+        $validatedAttempt = Read-TicketboxC07MaintenanceAttempt `
             -Authority $Authority `
             -AttemptId ([string]$payload.maintenance_attempt_id) `
             -Sequence ([int]$attemptSequence) `
@@ -5326,7 +5342,7 @@ function Read-TicketboxC07HeartbeatForBinding {
                 [string]$payload.maintenance_attempt_sha256
             )
         if (
-            [string]$attempt.Payload.attempt_id -cne
+            [string]$validatedAttempt.Payload.attempt_id -cne
                 [string]$payload.maintenance_attempt_id
         ) {
             throw "C07 heartbeat maintenance attempt identity 不一致。"
@@ -5336,10 +5352,16 @@ function Read-TicketboxC07HeartbeatForBinding {
         if (-not [string]::IsNullOrEmpty($failureSha256)) {
             Read-TicketboxC07MaintenanceAttemptFailure `
                 -Authority $Authority `
-                -Attempt $attempt `
+                -Attempt $validatedAttempt `
                 -ExpectedPayloadSha256 $failureSha256 | Out-Null
         }
     }
+    Add-Member `
+        -InputObject $Envelope `
+        -MemberType NoteProperty `
+        -Name ValidatedMaintenanceAttempt `
+        -Value $validatedAttempt `
+        -Force
     return $Envelope
 }
 
@@ -6360,9 +6382,25 @@ function Write-TicketboxC07HeartbeatPayload {
     param(
         [Parameter(Mandatory = $true)][object]$Authority,
         [ValidateRange(-1, 1200000)]
-        [int64]$MaintenanceRemainingCeilingMilliseconds = -1
+        [int64]$MaintenanceRemainingCeilingMilliseconds = -1,
+        [AllowNull()][object]$CurrentHeartbeat
     )
-    $current = Read-TicketboxC07Heartbeat $Authority
+    $current = $CurrentHeartbeat
+    if ($null -eq $current) {
+        $current = Read-TicketboxC07Heartbeat $Authority
+    }
+    if (
+        [string]$current.Payload.operation_id -cne
+            [string]$Authority.Receipt.operation_id -or
+        [string]$current.Payload.descriptor_sha256 -cne
+            [string]$Authority.Descriptor.PayloadSha256 -or
+        [string]$current.Payload.coordinator_binding_sha256 -cne
+            [string]$Authority.Binding.PayloadSha256 -or
+        [int64]$current.Payload.coordinator_binding_sequence -ne
+            [int64]$Authority.Binding.Sequence
+    ) {
+        throw "C07 verified heartbeat snapshot 与 current authority 不一致。"
+    }
     $currentSequence = [int64]$current.Payload.sequence
     if ($currentSequence -eq [int64]::MaxValue) {
         throw "C07 heartbeat sequence 已耗尽。"
@@ -6432,7 +6470,8 @@ function Write-TicketboxC07HeartbeatPayload {
         -Path $heartbeatPath `
         -ArtifactKind "heartbeat" `
         -Payload $payload `
-        -ReplaceExisting
+        -ReplaceExisting `
+        -ExpectedExistingPayloadSha256 ([string]$current.PayloadSha256)
 }
 
 function Write-TicketboxC07HeartbeatForAuthority {
@@ -6516,11 +6555,10 @@ function Write-TicketboxC07DurableHeartbeat {
     if ($ExpectedDeadlineUtc.Kind -eq [DateTimeKind]::Unspecified) {
         throw "C07 heartbeat helper deadline 必须是显式 UTC 时间。"
     }
-    $attempt = Read-TicketboxC07MaintenanceAttempt `
-        -Authority $authority `
-        -AttemptId $ExpectedMaintenanceAttemptId `
-        -Sequence ([int]$ExpectedMaintenanceAttemptSequence) `
-        -ExpectedPayloadSha256 $ExpectedMaintenanceAttemptSha256
+    $attempt = $currentHeartbeat.ValidatedMaintenanceAttempt
+    if ($null -eq $attempt) {
+        throw "C07 heartbeat helper 缺少已验证的 maintenance attempt snapshot。"
+    }
     if (
         [string]$attempt.Payload.started_boot_identity -cne
             (Get-TicketboxC07BootIdentity)
@@ -6554,7 +6592,8 @@ function Write-TicketboxC07DurableHeartbeat {
         -Authority $authority `
         -MaintenanceRemainingCeilingMilliseconds (
             $effectiveRemaining
-        )
+        ) `
+        -CurrentHeartbeat $currentHeartbeat
 }
 
 function Write-TicketboxC07RuntimeProjection {
@@ -9073,8 +9112,12 @@ function Resume-TicketboxC07PrecommittedRuntimeAclStage {
     $evidencePath = Get-TicketboxC07StageEvidencePath `
         -OperationId ([string]$authority.Receipt.operation_id) `
         -Stage "runtime_acl_verified"
-    if (-not (Test-Path -LiteralPath $evidencePath -PathType Leaf)) {
+    $evidenceKind = Get-TicketboxPathEntryKindNoFollow $evidencePath
+    if ($evidenceKind -ceq "Missing") {
         return $null
+    }
+    if ($evidenceKind -cne "File") {
+        throw "C07 precommitted runtime ACL evidence 不是受支持的普通文件。"
     }
 
     # The evidence is immutable and may reference a production authority from
@@ -9812,6 +9855,59 @@ function New-TicketboxC07FailureEvidence {
         -Payload $payload
 }
 
+function New-TicketboxC07PersistedStageAuthoritySnapshot {
+    param(
+        [Parameter(Mandatory = $true)][object]$PreviousAuthority,
+        [Parameter(Mandatory = $true)][object]$PersistedEnvelope,
+        [Parameter(Mandatory = $true)][string]$ExpectedStage,
+        [Parameter(Mandatory = $true)][string]$ExpectedEvidenceSha256,
+        [string]$ExpectedFailureCode = ""
+    )
+    $receipt = $PersistedEnvelope.Payload
+    Assert-TicketboxC07ReceiptShape `
+        -Receipt $receipt `
+        -ReleaseIdentity $PreviousAuthority.ReleaseIdentity `
+        -Descriptor $PreviousAuthority.Descriptor `
+        -RecoveryEpoch $PreviousAuthority.RecoveryEpoch
+    $expectedTransitionKind = if (
+        [string]::IsNullOrEmpty($ExpectedFailureCode)
+    ) { "stage" } else { "failure" }
+    if (
+        [string]$receipt.operation_id -cne
+            [string]$PreviousAuthority.Receipt.operation_id -or
+        [string]$receipt.stage -cne $ExpectedStage -or
+        [string]$receipt.previous_stage -cne
+            [string]$PreviousAuthority.Receipt.stage -or
+        [int64]$receipt.stage_sequence -ne
+            ([int64]$PreviousAuthority.Receipt.stage_sequence + 1) -or
+        [int64]$receipt.authority_revision -ne
+            ([int64]$PreviousAuthority.Receipt.authority_revision + 1) -or
+        [string]$receipt.transition_kind -cne $expectedTransitionKind -or
+        [string]$receipt.coordinator_binding_sha256 -cne
+            [string]$PreviousAuthority.Binding.PayloadSha256 -or
+        [int64]$receipt.coordinator_binding_sequence -ne
+            [int64]$PreviousAuthority.Binding.Sequence -or
+        [string]$receipt.previous_receipt_payload_sha256 -cne
+            [string]$PreviousAuthority.Envelope.PayloadSha256 -or
+        [string]$receipt.previous_authority_chain_sha256 -cne
+            [string]$PreviousAuthority.Receipt.authority_chain_sha256 -or
+        [string]$receipt.transition_evidence_sha256 -cne
+            $ExpectedEvidenceSha256 -or
+        [string]$receipt.failure_code -cne $ExpectedFailureCode
+    ) {
+        throw "C07 写后 receipt snapshot 未精确延续已验证的 authority lineage。"
+    }
+    return [pscustomobject]@{
+        ReleaseIdentity = $PreviousAuthority.ReleaseIdentity
+        Roots = $PreviousAuthority.Roots
+        RecoveryEpoch = $PreviousAuthority.RecoveryEpoch
+        Envelope = $PersistedEnvelope
+        Receipt = $receipt
+        Descriptor = $PreviousAuthority.Descriptor
+        Binding = $PreviousAuthority.Binding
+    }
+}
+
 function Set-TicketboxC07LifecycleStage {
     param(
         [Parameter(Mandatory = $true)][string]$DataRoot,
@@ -9976,12 +10072,24 @@ function Set-TicketboxC07LifecycleStage {
         failure_code = $FailureCode
         updated_at_utc = [DateTime]::UtcNow.ToString("o")
     })
-    Write-TicketboxC07HostEnvelope `
+    $persistedReceipt = Write-TicketboxC07HostEnvelope `
         -Path (Get-TicketboxC07AuthorityPath) `
         -ArtifactKind "authority_receipt" `
         -Payload $receipt `
-        -ReplaceExisting | Out-Null
-    $updated = Read-TicketboxC07Authority $DataRoot
+        -ReplaceExisting `
+        -ExpectedExistingPayloadSha256 (
+            [string]$authority.Envelope.PayloadSha256
+        )
+    # The operation lock excludes another lifecycle writer. Reuse only the
+    # immutable authority objects validated at entry and the exact receipt that
+    # the durable writer has just read back. The next operation still performs
+    # a complete authority read; this snapshot exists only for this projection.
+    $updated = New-TicketboxC07PersistedStageAuthoritySnapshot `
+        -PreviousAuthority $authority `
+        -PersistedEnvelope $persistedReceipt `
+        -ExpectedStage $TargetStage `
+        -ExpectedEvidenceSha256 $evidenceSha256 `
+        -ExpectedFailureCode $FailureCode
     Write-TicketboxC07RuntimeProjection `
         -Authority $updated `
         -HeartbeatSequence ([int64]$heartbeat.Payload.sequence) | Out-Null
