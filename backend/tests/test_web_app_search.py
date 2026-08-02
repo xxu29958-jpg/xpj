@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
@@ -44,6 +46,11 @@ def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00"
 def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, identity) -> None:
     pending_id = _seed_pending_with_amount(web_client, "9.00", "SearchCafe Pending", identity=identity)
     confirmed_id = _seed_pending_with_amount(web_client, "11.00", "SearchCafe Confirmed", identity=identity)
+    with SessionLocal() as db:
+        pending_row = db.get(Expense, pending_id)
+        assert pending_row is not None
+        pending_row.expense_time = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
+        db.commit()
     confirmed = web_confirm_expense(
         web_client, confirmed_id, identity=identity, follow_redirects=False
     )
@@ -77,6 +84,7 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, ide
     assert f"/web/expenses/{pending_id}/edit?ledger_id=owner" in page.text
     assert f"/web/expenses/{confirmed_id}/edit?ledger_id=owner" in page.text
     assert "/web/rules?ledger_id=owner" in page.text
+    assert "2026-05-04 20:00" in page.text
 
     goals = web_client.get("/web/search?ledger_id=owner&q=SearchGoal")
     assert goals.status_code == 200

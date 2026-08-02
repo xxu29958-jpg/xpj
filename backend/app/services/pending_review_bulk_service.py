@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -27,6 +28,7 @@ from app.services.data_quality_service import (
     is_uncategorized_expense_category,
     is_usable_pending_merchant,
 )
+from app.services.duplicate_service import clear_duplicate_references_to
 from app.services.expense_service import (
     confirm_expense,
     list_expenses_by_ids,
@@ -120,15 +122,36 @@ def apply_review_bulk(
     # nesting depth 6 because the if/elif chain compiles to a nested
     # ``If(orelse=[If(...)])`` tree).
     handler = _resolve_bulk_action_handler(action, category_clean=category_clean, merchant_clean=merchant_clean)
-    for expense_id in unique_expense_ids:
-        row = rows_by_id.get(expense_id)
-        if row is None:
-            continue
-        expected_row_version = expected_row_version_by_id[expense_id]
-        if row.row_version != expected_row_version:
-            result.bump(SKIP_REASON_STALE)
-            continue
-        handler(db, row, tenant_id, expected_row_version, result)
+    try:
+        for expense_id in unique_expense_ids:
+            row = rows_by_id.get(expense_id)
+            if row is None:
+                continue
+            expected_row_version = expected_row_version_by_id[expense_id]
+            if row.row_version != expected_row_version:
+                result.bump(SKIP_REASON_STALE)
+                continue
+            handler(db, row, tenant_id, expected_row_version, result)
+
+        if action == "reject" and result.success_ids:
+            # A selected row may itself reference another selected row as a
+            # suspected duplicate. Clearing that reference after rejecting the
+            # first row would otherwise advance the second row's OCC token and
+            # make this command reject its own still-valid page snapshot. Mark
+            # every successful selection terminal first, then clear references:
+            # rejected rows are excluded, while surviving dependants still get
+            # the required row-version bump. Commit the whole bulk command once.
+            for expense_id in result.success_ids:
+                clear_duplicate_references_to(
+                    db,
+                    tenant_id=tenant_id,
+                    duplicate_of_id=expense_id,
+                )
+            db.commit()
+    except SQLAlchemyError:
+        if action == "reject":
+            db.rollback()
+        raise
     return result
 
 
@@ -196,7 +219,14 @@ def _apply_reject(
         result.bump(SKIP_REASON_NOT_PENDING)
         return
     try:
-        rejected = reject_expense(db, row.id, tenant_id, expected_row_version=expected_row_version)
+        rejected = reject_expense(
+            db,
+            row.id,
+            tenant_id,
+            expected_row_version=expected_row_version,
+            commit=False,
+            cleanup_duplicate_references=False,
+        )
         result.record_success(row.id, undo_row_version=rejected.row_version)
     except AppError as exc:
         _record_action_error(result, exc, fallback="忽略失败")

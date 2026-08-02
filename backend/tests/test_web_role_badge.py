@@ -71,11 +71,17 @@ def test_web_pending_shows_owner_role_chip_by_default(web_client: TestClient) ->
     assert "ledger-role-chip" in resp.text
     assert 'class="skip-link" href="#main-content"' in resp.text
     assert 'class="content" id="main-content" tabindex="-1"' in resp.text
-    assert 'id="drawer" role="dialog" aria-modal="true" aria-label="编辑账单" tabindex="-1"' in resp.text
+    # 218-D S4: 抽屉容器随收件域进新栈 (aria-hidden 初始态由 drawer.js 开关)。
+    assert 'id="drawer"' in resp.text
+    assert 'role="dialog"' in resp.text
+    assert 'aria-modal="true"' in resp.text
+    assert 'aria-label="编辑账单"' in resp.text
+    assert 'aria-hidden="true"' in resp.text
     assert "拥有者" in resp.text
     assert "个人账本" in resp.text
     # owner can write → bulk-actions visible.
-    assert "批量确认" in resp.text
+    assert 'id="bulk-form"' in resp.text
+    assert "确认入账" in resp.text
     assert 'aria-label="批量设置分类"' in resp.text
     assert 'aria-label="批量设置商家"' in resp.text
 
@@ -89,11 +95,12 @@ def test_web_pending_viewer_hides_bulk_actions(web_client: TestClient, *, identi
     assert "只读" in resp.text
     # viewer banner present.
     assert "只读角色" in resp.text
-    # Bulk confirm/reject/keep buttons must be gone.
-    assert "批量确认" not in resp.text
-    assert "批量忽略" not in resp.text
-    # Read-only desktop rows keep the noninteractive selector slot so their
-    # six detail columns still align with the seven-column table header.
+    # Bulk confirm/reject/keep affordances must be gone.
+    assert 'id="bulk-form"' not in resp.text
+    assert 'name="action" value="confirm_ready"' not in resp.text
+    assert "batch-reject" not in resp.text
+    # 行结构 (#218/S4-R1): 只读行保留 exp-row-selector 空槽对齐表头,
+    # 槽内不渲染任何勾选控件。
     assert 'class="exp-row-selector" aria-hidden="true"' in resp.text
     assert "row-check" not in resp.text
 
@@ -106,7 +113,7 @@ def test_web_member_role_keeps_write_buttons(web_client: TestClient, *, identity
     assert "ledger-role-member" in resp.text
     assert "成员" in resp.text
     assert "共享账本" in resp.text
-    assert "批量确认" in resp.text
+    assert 'id="bulk-form"' in resp.text
 
 
 def test_web_edit_viewer_disables_inputs(web_client: TestClient, *, identity) -> None:

@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session, aliased
 
 from app.config import get_settings
 from app.models import DuplicateIgnore, Expense
-from app.services.time_service import ensure_utc
+from app.services.optimistic_concurrency import bump_row_version
+from app.services.time_service import ensure_utc, now_utc
 
 ACTIVE_DUPLICATE_IGNORE_KINDS = ("image_hash", "image_perceptual_hash", "similar")
 
@@ -179,12 +180,19 @@ def list_suspected_duplicates(db: Session, tenant_id: str) -> list[Expense]:
 
 
 def clear_duplicate_references_to(db: Session, *, tenant_id: str, duplicate_of_id: int) -> int:
+    now = now_utc()
     result = db.execute(
         update(Expense)
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status != "rejected")
         .where(Expense.duplicate_of_id == duplicate_of_id)
-        .values(duplicate_status="none", duplicate_of_id=None, duplicate_reason=None)
+        .values(
+            duplicate_status="none",
+            duplicate_of_id=None,
+            duplicate_reason=None,
+            updated_at=now,
+            row_version=Expense.row_version + 1,
+        )
         .execution_options(synchronize_session=False)
     )
     return int(result.rowcount or 0)
@@ -201,7 +209,20 @@ def revalidate_duplicate_references_to(db: Session, *, tenant_id: str, duplicate
         )
     )
     for expense in referenced:
+        previous = (
+            expense.duplicate_status,
+            expense.duplicate_of_id,
+            expense.duplicate_reason,
+        )
         mark_duplicate_status(db, expense)
+        current = (
+            expense.duplicate_status,
+            expense.duplicate_of_id,
+            expense.duplicate_reason,
+        )
+        if current != previous:
+            expense.updated_at = now_utc()
+            bump_row_version(expense)
     return len(referenced)
 
 

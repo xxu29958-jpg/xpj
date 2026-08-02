@@ -349,8 +349,9 @@ def test_overview_skips_trend14_assembly(web_client: TestClient, monkeypatch: py
     assert resp.status_code == 200
     assert calls == []
 
-    # /web 首页与 JSON 端行为不变 (trend 仍装配)。
-    resp = web_client.get("/web?ledger_id=owner")
+    # 218-D S4: /web 根改向收件域 (303, 不再装配 trend14); JSON 端行为不变
+    # (trend14 仍由 /web/dashboard/data 装配)。
+    resp = web_client.get("/web/dashboard/data?ledger_id=owner")
     assert resp.status_code == 200
     assert calls == ["owner"]
 

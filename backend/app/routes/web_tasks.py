@@ -26,6 +26,7 @@ from app.routes.web_common import (
 )
 from app.services import background_task_service as bgtasks
 from app.services.ledger_service import find_owner_account_id_for_ledger
+from app.services.spending_contract_service import accounting_datetime_label
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -90,10 +91,12 @@ def web_tasks(
             "error_code": task.error_code,
             "error_message": task.error_message,
             "result_summary": result_summary,
-            "created_at": task.created_at,
-            "started_at": task.started_at,
-            "completed_at": task.completed_at,
-            "cancellation_requested_at": task.cancellation_requested_at,
+            "created_at": accounting_datetime_label(task.created_at),
+            "started_at": accounting_datetime_label(task.started_at),
+            "completed_at": accounting_datetime_label(task.completed_at),
+            "cancellation_requested_at": accounting_datetime_label(
+                task.cancellation_requested_at
+            ),
             "is_cancellable": task.status in ("queued", "running")
             and task.cancellation_requested_at is None,
         })

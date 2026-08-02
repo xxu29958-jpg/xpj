@@ -206,6 +206,7 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
     assert second.status_code == 200, second.json()
     second_id = second.json()["id"]
     assert second.json()["duplicate_of_id"] == first_id
+    second_row_version = second.json()["row_version"]
 
     response = patch_expense(
         client,
@@ -224,3 +225,4 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
     assert after.status_code == 200
     assert after.json()["duplicate_status"] == "none"
     assert after.json()["duplicate_of_id"] is None
+    assert after.json()["row_version"] == second_row_version + 1

@@ -372,6 +372,36 @@ button[disabled] {
     flex: 0 0 auto;
 }
 
+/* ADR-0038 undo banner: 5s auto-dismiss。product 新栈页不载旧 alert.css
+   (断旧栈), 契约动画移植至此 (与旧规则同名同帧内容, 双栈同效);
+   行在服务端 5 分钟保留窗内仍可恢复, 横幅只是 UI 提示。 */
+.undo-banner {
+    overflow: hidden;
+    animation: undo-banner-dismiss 5s forwards;
+}
+
+@keyframes undo-banner-dismiss {
+    0%,
+    88% {
+        opacity: 1;
+    }
+
+    99% {
+        opacity: 0;
+        max-height: calc(var(--space-9) * 3);
+    }
+
+    100% {
+        opacity: 0;
+        visibility: hidden;
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        margin-bottom: 0;
+        border-width: 0;
+    }
+}
+
 .product-state,
 .empty-cell,
 .dt-card--empty,
@@ -577,18 +607,33 @@ textarea:focus {
     cursor: pointer;
 }
 
-.checkbox.checked {
+.checkbox[type="checkbox"] {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+    appearance: none;
+}
+
+.checkbox:checked,
+.checkbox:indeterminate {
     border-color: var(--brand-primary);
     background: var(--brand-primary);
 }
 
-.checkbox.checked::after {
+.checkbox:checked::after {
     width: var(--space-2);
     height: var(--space-4);
     border: solid var(--text-on-primary);
     border-width: 0 var(--space-1) var(--space-1) 0;
     content: "";
     transform: translateY(calc(var(--space-1) * -1)) rotate(45deg);
+}
+
+.checkbox:indeterminate::after {
+    width: var(--space-3);
+    height: var(--space-1);
+    background: var(--text-on-primary);
+    content: "";
 }
 
 .bulk-bar {

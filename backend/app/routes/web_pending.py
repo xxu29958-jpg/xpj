@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_bulk_snapshot import parse_bulk_snapshot
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -188,6 +189,11 @@ def web_pending(
     ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))
     ctx["suspected_duplicate_count"] = suspected_total
     ctx["ready_count"] = sum(1 for it in raw_items if _is_ready(it))
+    ctx["show_owner_upload_setup"] = (
+        getattr(request.state, "web_session_auth", None) is None
+        and ctx["selected_ledger_role"] == "owner"
+        and ctx["selected_ledger_is_default"]
+    )
     return templates.TemplateResponse(request=request, name="pending.html", context=ctx)
 
 
@@ -282,29 +288,6 @@ def _bulk_no_selection(
     return _pending_redirect(selected_id, filter=filter, msg=msg)
 
 
-def _parse_bulk_snapshot(
-    expense_ids: list[int],
-    expected_row_versions: list[str],
-) -> tuple[list[int], dict[int, int]] | None:
-    if len(expense_ids) != len(expected_row_versions):
-        return None
-
-    unique_expense_ids: list[int] = []
-    expected_by_id: dict[int, int] = {}
-    for expense_id, raw_token in zip(expense_ids, expected_row_versions, strict=True):
-        parsed = parse_form_row_version_token(raw_token)
-        if parsed is None or parsed <= 0:
-            return None
-        previous = expected_by_id.get(expense_id)
-        if previous is not None:
-            if previous != parsed:
-                return None
-            continue
-        unique_expense_ids.append(expense_id)
-        expected_by_id[expense_id] = parsed
-    return unique_expense_ids, expected_by_id
-
-
 def _bulk_invalid_snapshot(
     selected_id: str,
     *,
@@ -351,6 +334,7 @@ def web_pending_batch_reject(
     # it and keep the redirect — progressive enhancement, mirrors the drawer.
     fragment: int = Form(default=0),
     expected_row_version: list[str] = Form(default=[]),
+    expense_snapshot: list[str] = Form(default=[]),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -358,10 +342,14 @@ def web_pending_batch_reject(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
 
-    if not expense_ids:
+    if not expense_ids and not expense_snapshot:
         return _bulk_no_selection(selected_id, filter=filter, fragment=bool(fragment))
 
-    snapshot = _parse_bulk_snapshot(expense_ids, expected_row_version)
+    snapshot = parse_bulk_snapshot(
+        expense_ids,
+        expected_row_version,
+        expense_snapshot,
+    )
     if snapshot is None:
         return _bulk_invalid_snapshot(
             selected_id,
@@ -449,6 +437,7 @@ def web_review_bulk(
     # and stay on the redirect, since they don't pop rows from the list.
     fragment: int = Form(default=0),
     expected_row_version: list[str] = Form(default=[]),
+    expense_snapshot: list[str] = Form(default=[]),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -462,10 +451,14 @@ def web_review_bulk(
 
     fragment_removal = bool(fragment) and action_clean in _REMOVAL_ACTIONS
 
-    if not expense_ids:
+    if not expense_ids and not expense_snapshot:
         return _bulk_no_selection(selected_id, filter=filter, fragment=fragment_removal)
 
-    snapshot = _parse_bulk_snapshot(expense_ids, expected_row_version)
+    snapshot = parse_bulk_snapshot(
+        expense_ids,
+        expected_row_version,
+        expense_snapshot,
+    )
     if snapshot is None:
         return _bulk_invalid_snapshot(
             selected_id,

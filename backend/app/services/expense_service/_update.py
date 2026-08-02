@@ -366,12 +366,11 @@ def reject_expense(
     *,
     expected_row_version: int,
     commit: bool = True,
+    cleanup_duplicate_references: bool = True,
 ) -> Expense:
-    """ADR-0038 PR-2b: reject with optimistic concurrency.
-
-    Like ``confirm_expense``, idempotent on ``rejected`` (terminal) and
-    409 on stale ``pending`` / ``confirmed`` rows. ADR-0042 ``commit=False``:
-    the idempotent route owns the single commit (folds in the key record).
+    """Reject with OCC; terminal rejected rows are idempotent. Stale writable
+    rows fail with 409. ``commit=False`` lets the caller own the
+    transaction, including any deferred duplicate-reference cleanup.
     """
     resolve_write_capability(db)
     now = now_utc()
@@ -396,7 +395,8 @@ def reject_expense(
 
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
-    clear_duplicate_references_to(db, tenant_id=tenant_id, duplicate_of_id=expense.id)
+    if cleanup_duplicate_references:
+        clear_duplicate_references_to(db, tenant_id=tenant_id, duplicate_of_id=expense.id)
     # v1.2 ops: rejected → no UI shows suggestions for this expense
     # again either; close them.
     from app.services.learning_service import close_active_decisions_for_subject

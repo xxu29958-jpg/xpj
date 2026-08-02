@@ -1,79 +1,138 @@
 {% extends "base.html" %}
-{% block title %}后台任务 · 小票夹{% endblock %}
+{% block title %}处理中 · 小票夹{% endblock %}
 
+{# 218-D S4 收件域二级页 (移植自产品矿 tasks.html, 适配 main):
+   正文换 product 新标记, 经 base.html 的 _product_body_domains['/web/tasks']='inbox'
+   开关断旧栈、挂 inbox 域模块。与矿的偏离点 (以 main 合同为准):
+   - page_title/topbar 与侧栏标签沿用 main 的「后台任务」(S3 裁决保留 main 措辞);
+   - 未知任务类型回退原始 type 串 (main 裁决: 新类型可见且可辨识, 不粉饰)。 #}
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">后台任务</h1>
-  <div class="page-sub">
-    耗时较长的批量操作在这里跟踪进度。任务不跨重启保留：后端重启后，所有未完成任务会被标记为失败。
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">收件 / 处理中</span>
+    <h1 class="page-title page-title--compact">处理中</h1>
+    <p class="product-page-summary">
+      跟踪导入、迁移等耗时操作。进行中的任务可以取消，完成或失败后仍保留结果供核对。
+    </p>
   </div>
-</div>
+</header>
 
 {% if message %}
-<div class="callout-info">{{ message }}</div>
-{% endif %}
-
-{% if active_task_count > 0 %}
-<div class="callout-info">当前有 {{ active_task_count }} 个活跃任务。</div>
+<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>
 {% endif %}
 
 {% if not task_rows %}
-<div class="dt-card">
-  <div class="empty-state">
-    <div class="empty-state-title">还没有后台任务</div>
-    <div class="empty-state-hint">耗时较长的批量操作开始后会显示在这里。</div>
-  </div>
+<div class="product-state">
+  <div class="product-state-title">现在没有处理中的任务</div>
+  <div class="product-state-body">上传 CSV 或启动批量操作后，可以在这里查看进度与最终结果。</div>
+  <a class="product-state-action" href="/web/import?ledger_id={{ selected_ledger_id }}">前往导入导出</a>
 </div>
 {% else %}
-<table class="dt-table">
-  <thead>
-    <tr>
-      <th>状态</th>
-      <th>类型</th>
-      <th>进度</th>
-      <th>开始</th>
-      <th>结束</th>
-      <th>消息</th>
-      <th>操作</th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for row in task_rows %}
-    <tr>
-      <td>
-        {% if row.status == 'queued' %}<span class="dt-pill">排队</span>
-        {% elif row.status == 'running' %}<span class="dt-pill">运行</span>
-        {% elif row.status == 'completed' %}<span class="dt-pill ok">完成</span>
-        {% elif row.status == 'cancelled' %}<span class="dt-pill">已取消</span>
-        {% elif row.status == 'failed' %}<span class="dt-pill danger">失败</span>
-        {% endif %}
-      </td>
-      <td><span title="{{ row.task_type }}">{{ row.task_type_label }}</span></td>
-      <td>
-        {% if row.progress_total %}{{ row.progress_current }}/{{ row.progress_total }}{% else %}—{% endif %}
-      </td>
-      <td>{{ row.started_at or '—' }}</td>
-      <td>{{ row.completed_at or '—' }}</td>
-      <td>
-        {% if row.progress_message %}<div class="meta">{{ row.progress_message }}</div>{% endif %}
-        {% if row.error_message %}<div class="text-danger">{{ row.error_message }}</div>{% endif %}
-      </td>
-      <td>
-        {# can_write gates the action client-side; the POST route still enforces
-           the writer role server-side (web_task_cancel → _require_selected_ledger_write),
-           so a paired viewer sees "—" here and is 403'd if they forge the request. #}
-        {% if row.is_cancellable and can_write %}
-        <form method="post" action="/web/tasks/{{ row.public_id }}/cancel" class="inline-form">
-          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-          <button type="submit" class="dt-btn">取消</button>
-        </form>
-        {% else %}
-          <span class="meta">—</span>
-        {% endif %}
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<section class="task-workspace" aria-label="任务进度">
+  <div class="task-overview">
+    <div>
+      <span class="product-eyebrow">当前队列</span>
+      <strong>{{ active_task_count }}</strong>
+      <span>个任务正在等待或处理</span>
+    </div>
+    <div>
+      <span class="product-eyebrow">最近记录</span>
+      <strong>{{ task_rows | length }}</strong>
+      <span>个任务可供核对</span>
+    </div>
+  </div>
+
+  <div class="product-table-wrap task-table-wrap">
+    <table class="product-table task-table">
+      <thead>
+        <tr>
+          <th>任务</th>
+          <th>状态</th>
+          <th>进度</th>
+          <th>时间</th>
+          <th>结果</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in task_rows %}
+        <tr>
+          <td>
+            <strong>{{ row.task_type_label }}</strong>
+          </td>
+          <td>
+            {% if row.status == 'queued' %}
+            <span class="product-status">等待开始</span>
+            {% elif row.status == 'running' %}
+            <span class="product-status product-status--info">处理中</span>
+            {% elif row.status == 'completed' %}
+            <span class="product-status product-status--success">已完成</span>
+            {% elif row.status == 'cancelled' %}
+            <span class="product-status">已取消</span>
+            {% elif row.status == 'failed' %}
+            {# S4-R2: 任务服务与路由无重试操作, failed (含重启孤儿任务) 用
+               失败标签, 不指引不可能执行的动作。 #}
+            <span class="product-status product-status--danger">已失败</span>
+            {% else %}
+            <span class="product-status">状态待核对</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="task-progress">
+              {% if row.progress_total %}
+              <progress class="product-progress{% if row.status == 'completed' %} is-complete{% endif %}"
+                        value="{{ row.progress_current or 0 }}"
+                        max="{{ row.progress_total }}"
+                        aria-label="{{ row.task_type_label }}进度"></progress>
+              <span>{{ row.progress_current or 0 }} / {{ row.progress_total }}</span>
+              {% elif row.status == 'completed' %}
+              <span>已处理完毕</span>
+              {% else %}
+              <span>等待进度</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            <div class="task-time">
+              <span>开始 {{ row.started_at or '尚未开始' }}</span>
+              <span>结束 {{ row.completed_at or '尚未结束' }}</span>
+            </div>
+          </td>
+          <td>
+            {% if row.error_message %}
+            <div class="task-message task-message--error">{{ row.error_message }}</div>
+            {% elif row.progress_message %}
+            <div class="task-message">{{ row.progress_message }}</div>
+            {% elif row.status == 'completed' %}
+            <div class="task-message">处理完成</div>
+            {% else %}
+            <div class="task-message">暂无补充信息</div>
+            {% endif %}
+          </td>
+          <td>
+            {# can_write gates the action client-side; the POST route still enforces
+               the writer role server-side (web_task_cancel → _require_selected_ledger_write),
+               so a paired viewer sees 仅查看 here and is 403'd if they forge the request. #}
+            {% if row.is_cancellable and can_write %}
+            <form method="post"
+                  action="/web/tasks/{{ row.public_id }}/cancel"
+                  class="product-inline-form"
+                  data-confirm="取消“{{ row.task_type_label }}”任务？">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <button type="submit" class="product-button product-button--small">取消任务</button>
+            </form>
+            {% elif row.is_cancellable %}
+            <span class="readonly-inline">仅查看</span>
+            {% else %}
+            <span class="task-complete-mark">无需操作</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% endif %}
 {% endblock %}

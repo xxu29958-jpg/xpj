@@ -27,11 +27,13 @@ from app.models import Expense
 class _RowLinkNestingProbe(HTMLParser):
     """Flags interactive elements nested inside a row navigation anchor.
 
-    #218 row structure: the batch checkbox and the whole-row link are siblings
-    under the row container (.exp-row / .timeline-row); the link itself must
-    contain only presentational markup. A nested interactive element inside an
-    anchor is invalid HTML and re-opens the C5a regression where clicking the
-    checkbox also triggers whole-row navigation.
+    行结构合同 (#218, S4-R1 复核): 两个批量页的选择控件都与整行链接互为
+    兄弟节点 (pending 的 .exp-row-selector / confirmed 的 .timeline-row 选择
+    槽); 行链接 (a.exp-row-detail / a.timeline-row-detail) 内不允许出现任何
+    交互标签 (<a>/<button>/<input>/<select>/<textarea>) — 嵌套交互标签是
+    无效 HTML, 且会回到 C5a 的穿透回归 (点击勾选控件同时触发整行跳转)。
+    pending 的原生 checkbox 同样在行链接外；其兄弟位与无 JS 表单
+    关联由 test_web_inbox_rebuild 的断言钉死。
     """
 
     _INTERACTIVE = {"a", "button", "input", "select", "textarea"}
@@ -65,10 +67,9 @@ class _RowLinkNestingProbe(HTMLParser):
 
 
 def test_web_bulk_rows_do_not_nest_interactive_elements(web_client: TestClient, *, identity) -> None:
-    """#218 行结构合同:批量行的 checkbox 与整行链接互为兄弟节点 — 行链接
-    (a.exp-row-detail / a.timeline-row-detail) 内不允许出现任何交互元素
-    (<a>/<button>/<input>/<select>/<textarea>),否则回到 C5a 的嵌套交互回归
-    (勾选 checkbox 穿透触发整行跳转,且 <a> 内嵌交互元素是无效 HTML)。"""
+    """行链接嵌套合同: 两个批量页的行导航锚点 (pending 的 a.exp-row-detail,
+    confirmed 的 a.timeline-row-detail) 内都不允许出现任何交互标签
+    (<a>/<button>/<input>/<select>/<textarea>)。"""
     confirmed_id = _seed_pending_with_amount(web_client, "9.00", "Nesting Confirmed", identity=identity)
     confirmed = web_confirm_expense(web_client, confirmed_id, identity=identity, follow_redirects=False)
     assert confirmed.status_code in {303, 307}

@@ -247,6 +247,8 @@ def test_undo_does_not_restore_cleared_duplicate_references(
         second = db.scalar(select(Expense).where(Expense.id == second_id))
         assert second is not None
         assert second.duplicate_of_id == first_id, "test precondition: duplicate detection wired"
+        before_clear_row_version = second.row_version
+        before_clear_updated_at = second.updated_at
 
     _reject(client, first_id, identity=identity)
     # reject clears the duplicate pointer on `second` (and the duplicate_status
@@ -256,6 +258,8 @@ def test_undo_does_not_restore_cleared_duplicate_references(
         assert second is not None
         assert second.duplicate_of_id is None
         assert second.duplicate_status == "none"
+        assert second.row_version == before_clear_row_version + 1
+        assert second.updated_at >= before_clear_updated_at
 
     response = undo_expense_api(client, first_id, headers=identity.app_headers)
     assert response.status_code == 200, response.text

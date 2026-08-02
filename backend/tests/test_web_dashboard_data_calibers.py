@@ -443,10 +443,12 @@ def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_curr
         assert row["amount_label"] == "¥1,234"
 
         # 服务端渲染清单 (no-JS 路径): 与环图同为 ¥1,234; 旧键 amount_yuan 会渲染成 ¥12。
-        page = web_client.get("/web?ledger_id=owner")
+        # 218-D S4: /web 根改向收件域, 服务端清单由 /web/overview 的 reports 卡
+        # 承接 (同一 amount_label 消费点, <strong class="cat-amt">)。
+        page = web_client.get("/web/overview?ledger_id=owner")
         assert page.status_code == 200
-        assert '<div class="cat-amt">¥1,234</div>' in page.text
-        assert '<div class="cat-amt">¥12</div>' not in page.text
+        assert 'class="cat-amt">¥1,234</strong>' in page.text
+        assert 'class="cat-amt">¥12</strong>' not in page.text
     finally:
         get_settings.cache_clear()
 

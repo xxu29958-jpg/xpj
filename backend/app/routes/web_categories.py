@@ -32,6 +32,7 @@ from app.services.category_service import (
     merge_categories,
 )
 from app.services.spending_contract_service import (
+    accounting_datetime_label,
     current_accounting_month,
     default_accounting_timezone_name,
 )
@@ -107,7 +108,7 @@ def web_uncategorized(
                 "amount_yuan": _amount_yuan(r.amount_cents, home),
                 "category": r.category or "",
                 "note": (r.note or "").strip(),
-                "created_at": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
+                "created_at": accounting_datetime_label(r.created_at),
             }
         )
     available = merge_categories([r.category for r in rows if r.category])

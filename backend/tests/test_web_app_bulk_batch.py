@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from _web_bulk_test_support import (
     bulk_snapshot_fields as _bulk_snapshot_fields,
@@ -139,46 +137,6 @@ def test_web_pending_filter_active_tab_marker(web_client: TestClient, *, identit
     assert 'class="filter-tab is-active"' in resp.text
 
 
-def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestClient, *, identity) -> None:
-    eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
-    resp = web_client.get("/web/pending?ledger_id=owner")
-    assert resp.status_code == 200
-    assert f'data-expense-id="{eid}"' in resp.text
-    # main 保留 drawer.js 的 aria-selected 选中标记(#218 才换成 aria-current);
-    # 行结构已按 #218 拆开:checkbox 与整行链接是兄弟节点(嵌套合同测试见
-    # test_web_batch_confirmed_and_fragments.py)。
-    assert 'aria-selected="false"' in resp.text
-    assert ('<button class="dt-btn" type="button" data-bulk-clear>取消选择</button>') in resp.text
-    assert f'aria-label="选择账单 #{eid}"' in resp.text
-    assert 'type="checkbox"' in resp.text
-    assert 'role="checkbox"' not in resp.text
-    assert 'data-row-version="' in resp.text
-    assert "exp-row-detail" in resp.text
-    assert 'name="category"' in resp.text
-    assert 'name="merchant"' in resp.text
-
-    js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
-    js = js_path.read_text(encoding="utf-8")
-    assert 'h.name = "expense_ids";' in js
-    assert 'token.name = "expected_row_version";' in js
-    # 快照 token 恒 emitted(不再 if (entry.rowVersion) 条件跳过)——缺失即 409 fail-closed。
-    assert "token.value = entry.rowVersion;" in js
-    assert "if (entry.rowVersion)" not in js
-    assert '".row-check:checked"' in js
-    assert 'row.setAttribute("aria-disabled", "true");' in js
-    assert 'row.setAttribute("tabindex", "-1");' in js
-    assert "setBatchNavigationMode(entries.length > 0);" in js
-    # checkbox 与行链接拆开为兄弟节点后,stopPropagation 仍兜底:任何残留监听都不
-    # 会因勾选而触发整行跳转。
-    assert "e.stopPropagation();" in js
-
-    drawer_js = js_path.with_name("drawer.js").read_text(encoding="utf-8")
-    hotkeys_js = js_path.with_name("review-hotkeys.js").read_text(encoding="utf-8")
-    # 批选模式(非空选择)挂起行导航:drawer 点击 + 程序化 open 都要尊重 aria-disabled。
-    assert 'row.getAttribute("aria-disabled") === "true"' in drawer_js
-    assert 'getAttribute("aria-disabled") !== "true"' in hotkeys_js
-
-
 def test_web_bulk_set_category_updates_pending(web_client: TestClient, *, identity) -> None:
     eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     before_token = _row_version(web_client, eid, identity=identity)
@@ -241,6 +199,22 @@ def test_web_pending_bulk_fails_closed_on_invalid_payloads(
     assert malformed_token.status_code == 409
     assert malformed_token.json()["removed_ids"] == []
     assert "页面已过期" in malformed_token.json()["message"]
+
+    mixed_snapshot = web_client.post(
+        "/web/review/bulk",
+        data={
+            "action": "set_category",
+            "ledger_id": "owner",
+            "expense_ids": [str(eid)],
+            "expected_row_version": [str(before["row_version"])],
+            "expense_snapshot": f"{eid}:{before['row_version'] + 1}",
+            "category": "不应写入",
+            "filter": "all",
+        },
+        follow_redirects=True,
+    )
+    assert mixed_snapshot.status_code == 200
+    assert "页面已过期，请刷新后重新操作" in mixed_snapshot.text
 
     empty_category = web_client.post(
         "/web/review/bulk",

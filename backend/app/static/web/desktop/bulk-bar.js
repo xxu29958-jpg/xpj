@@ -108,6 +108,7 @@
         const checked = cb.checked;
         const row = cb.closest(".exp-row, .timeline-row");
         if (row) {
+          // 选中态视觉: 容器 .selected 类 (旧页旧 CSS / 新栈 inbox.css 同名规则)。
           row.classList.toggle("selected", checked);
         }
       });
@@ -142,6 +143,7 @@
     // 批10: shift-click 范围连选。记最近点击的行 index;按住 shift 点另一行时,把
     // 区间内的可见行全部设成被点行的新状态(剔除隐藏行,与 isVisible 一致)。
     let lastIndex = -1;
+
     checks.forEach(function (cb, index) {
       cb.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -197,14 +199,15 @@
       if (!banner) {
         banner = document.createElement("div");
         banner.id = "bulk-flash";
-        // Match the no-JS flash position: pending.html renders its .dt-alert
-        // right after .page-header, so place ours there too (nextSibling null →
-        // appended). Falls back to the top if the header isn't present.
-        const header = content.querySelector(".page-header");
+        // Match the no-JS flash position: 新栈 pending.html 的 feedback 在
+        // .product-page-header 之后, 旧页在 .page-header 之后 (nextSibling
+        // null → appended). Falls back to the top if the header isn't present.
+        const header = content.querySelector(".product-page-header, .page-header");
         content.insertBefore(banner, header ? header.nextSibling : content.firstElementChild);
       }
-      // Reuse the server flash classes (alert.css) so the look matches the no-JS
-      // redirect banner — no new CSS, no hardcoded values.
+      // Reuse the server flash classes (alert.css; product/components.css 给
+      // 新栈页备了同名别名) so the look matches the no-JS redirect banner —
+      // no new CSS, no hardcoded values.
       banner.className = "dt-alert" +
         (type === "success" ? " success" : type === "error" ? " danger" : "") +
         (undoItems && undoItems.length ? " undo-banner" : "");

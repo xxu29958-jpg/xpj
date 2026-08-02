@@ -47,6 +47,20 @@ def accounting_timezone_key(timezone_name: str | None = None) -> str:
     return accounting_zone(timezone_name).key
 
 
+def accounting_datetime_label(
+    value: datetime | None,
+    timezone_name: str | None = None,
+    *,
+    pattern: str = "%Y-%m-%d %H:%M",
+) -> str:
+    """Render a stored instant in the product's accounting timezone."""
+
+    normalized = ensure_utc(value)
+    if normalized is None:
+        return ""
+    return normalized.astimezone(accounting_zone(timezone_name)).strftime(pattern)
+
+
 def current_accounting_month(timezone_name: str | None = None) -> str:
     return current_month(accounting_timezone_key(timezone_name))
 

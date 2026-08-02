@@ -231,6 +231,8 @@ def web_confirm(
             "页面已过期，请刷新后重新确认。", fragment,
         )
     try:
+        # 缺类门在服务层 confirm_expense 守门 (218-D S4-R2 下沉,
+        # 与 API/bulk 入口同一不变量), 路由只传参。
         confirm_expense(db, expense_id, selected_id, expected_row_version=parsed)
     except AppError as exc:
         # ADR-0038 PR-2b: 409 state_conflict surfaces a clearer message

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CategoryRule, Expense, Goal, OcrFact
 from app.services.spending_contract_service import (
+    accounting_datetime_label,
     category_search_terms,
     merchant_search_terms,
     stat_time,
@@ -166,9 +167,9 @@ def _expense_subtitle(expense: Expense) -> str:
     ]
     when = stat_time(expense)
     if when:
-        parts.append(when.strftime("%Y-%m-%d %H:%M"))
+        parts.append(accounting_datetime_label(when))
     elif expense.created_at:
-        parts.append(expense.created_at.strftime("%Y-%m-%d %H:%M"))
+        parts.append(accounting_datetime_label(expense.created_at))
     return " · ".join(parts)
 
 

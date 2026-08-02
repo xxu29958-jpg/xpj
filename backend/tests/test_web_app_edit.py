@@ -111,6 +111,9 @@ def test_web_edit_save_sets_expense_time_in_accounting_tz(
     # Prefilled back into the datetime-local input as the Beijing wall-clock.
     assert 'name="expense_time"' in detail.text
     assert 'value="2026-05-04T20:00"' in detail.text
+    pending = web_client.get("/web/pending?ledger_id=owner")
+    assert pending.status_code == 200
+    assert "2026-05-04 20:00" in pending.text
 
 
 def test_web_edit_save_bad_expense_time_shows_error(

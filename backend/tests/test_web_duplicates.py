@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.errors import AppError
 from app.main import app
 from app.models import Expense
 from app.routes.web_app import _require_local as _web_require_local
@@ -65,6 +66,9 @@ def test_web_duplicates_renders_pair(web_client: TestClient, *, identity) -> Non
     assert f"#{second}" in body
     assert f"#{first}" in body
     assert "保留两条" in body
+    assert "图片一致" in body
+    assert "% 相似" not in body
+    assert "置信度" not in body
 
 
 # ── Loopback gate + secret leak ────────────────────────────────────────────
@@ -125,6 +129,10 @@ def test_web_duplicates_reject_current_marks_rejected(web_client: TestClient, *,
 
 def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *, identity) -> None:
     first, second = _seed_duplicate_pair(web_client, identity=identity)
+    with SessionLocal() as db:
+        before = db.scalar(select(Expense).where(Expense.id == second))
+        assert before is not None
+        before_row_version = before.row_version
     resp = web_duplicates_action(
         web_client, second, identity=identity, action="reject-original"
     )
@@ -136,7 +144,88 @@ def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *,
         assert kept.status == "pending"
         assert kept.duplicate_status == "none"
         assert kept.duplicate_of_id is None
+        assert kept.row_version == before_row_version + 1
         assert rejected.status == "rejected"
+
+
+def test_web_duplicates_reject_original_is_atomic(
+    web_client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _seed_duplicate_pair(web_client, identity=identity)
+    token = _token(web_client, second, identity=identity)
+
+    def fail_reject(*args, **kwargs):
+        raise AppError("state_conflict", status_code=409)
+
+    monkeypatch.setattr("app.routes.web_duplicates.reject_expense", fail_reject)
+    resp = web_client.post(
+        f"/web/duplicates/{second}/reject-original",
+        data={"ledger_id": "owner", "expected_row_version": token},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "flash_type=error" in resp.headers.get("location", "")
+
+    with SessionLocal() as db:
+        kept = db.scalar(select(Expense).where(Expense.id == second))
+        original = db.scalar(select(Expense).where(Expense.id == first))
+        assert kept is not None and original is not None
+        assert kept.duplicate_status == "suspected"
+        assert kept.duplicate_of_id == first
+        assert kept.row_version == int(token)
+        assert original.status == "pending"
+
+
+def test_web_duplicates_stale_token_renders_error_style(web_client: TestClient, *, identity) -> None:
+    """S4-R1: 判定动作遇 stale OCC token 时, 重定向带 flash_type=error, 页面按
+    错误样式渲染且文案保留 (此前一律绿成功, 「已在其它端被修改」被误读为成功);
+    成功动作仍按成功样式渲染。"""
+    _, second = _seed_duplicate_pair(web_client, identity=identity)
+
+    stale = web_client.post(
+        f"/web/duplicates/{second}/keep",
+        data={"ledger_id": "owner", "expected_row_version": "not-a-token"},
+        follow_redirects=False,
+    )
+    assert stale.status_code == 303
+    location = stale.headers.get("location", "")
+    assert "flash_type=error" in location
+    page = web_client.get(location)
+    assert page.status_code == 200
+    assert "product-feedback--error" in page.text
+    assert "账单已在其它端被修改" in page.text
+
+    token = _token(web_client, second, identity=identity)
+    ok = web_client.post(
+        f"/web/duplicates/{second}/keep",
+        data={"ledger_id": "owner", "expected_row_version": token},
+        follow_redirects=False,
+    )
+    assert ok.status_code == 303
+    ok_location = ok.headers.get("location", "")
+    assert "flash_type=success" in ok_location
+    ok_page = web_client.get(ok_location)
+    assert "product-feedback--success" in ok_page.text
+
+
+def test_web_duplicates_missing_reason_shows_honest_fallback(
+    web_client: TestClient, *, identity
+) -> None:
+    """S4-R2: legacy 空 reason 不捏造「多项字段相似」证据 — 空/未识别 reason
+    诚实兜底「系统未提供判定原因」。"""
+    _, second = _seed_duplicate_pair(web_client, identity=identity)
+    with SessionLocal() as db:
+        row = db.scalar(select(Expense).where(Expense.id == second))
+        assert row is not None
+        row.duplicate_reason = None
+        db.commit()
+
+    resp = web_client.get("/web/duplicates?ledger_id=owner")
+    assert resp.status_code == 200
+    assert "系统未提供判定原因" in resp.text
+    assert "待人工核对" in resp.text
+    assert "70%" not in resp.text
+    assert "多项账单信息相似" not in resp.text
 
 
 def test_web_duplicates_unknown_id_returns_friendly_msg(web_client: TestClient) -> None:
