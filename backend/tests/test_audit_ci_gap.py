@@ -110,7 +110,7 @@ def _assert_installer_safety_tuning_contract(mod: object) -> None:
     assert "pytest installer safety lane" not in mod._missing_ci_invocations(
         [precedence]
     )
-    for workers in (2, 3, 4):
+    for workers in (0, 2, 3, 4):
         tuned = mod.WorkflowCommand(
             Path("ci.yml"),
             _INSTALLER_SAFETY_COMMAND.replace("-n 3", f"-n {workers}"),

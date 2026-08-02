@@ -92,7 +92,7 @@ def acquire_backup_job_lease(path: Path) -> BackupJobLease:
     except _BackupLeaseBusyError:
         stream.close()
         raise AppError("backup_in_progress", status_code=409) from None
-    except BaseException:
+    except OSError:
         stream.close()
         raise
 
@@ -104,7 +104,7 @@ def acquire_backup_job_lease(path: Path) -> BackupJobLease:
         stream.flush()
         os.fsync(stream.fileno())
         stream.seek(0)
-    except BaseException:
+    except OSError:
         lease.release()
         raise
     return lease
