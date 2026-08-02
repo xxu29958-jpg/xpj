@@ -306,7 +306,7 @@ $autoInheritedSecurity = New-Object `
     Security.AccessControl.RawSecurityDescriptor($inheritanceSecurityBytes,0)
 $reorderedAcl = New-Object Security.AccessControl.RawAcl(
     $autoInheritedSecurity.DiscretionaryAcl.Revision,
-    $autoInheritedSecurity.DiscretionaryAcl.Count
+    ($autoInheritedSecurity.DiscretionaryAcl.Count + 1)
 )
 for (
     $aceIndex = $autoInheritedSecurity.DiscretionaryAcl.Count - 1;
@@ -319,6 +319,10 @@ for (
             [int][Security.AccessControl.AceFlags]::Inherited
     )
     $reorderedAcl.InsertAce($reorderedAcl.Count,$ace)
+    # Automatic inheritance may materialize an equivalent qualified ACE twice.
+    if ($aceIndex -eq 0) {{
+        $reorderedAcl.InsertAce($reorderedAcl.Count,$ace)
+    }}
 }}
 $autoInheritedSecurity.DiscretionaryAcl = $reorderedAcl
 $autoInheritedSecurity.SetFlags(

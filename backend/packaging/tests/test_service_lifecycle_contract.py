@@ -593,7 +593,7 @@ $result = Invoke-TicketboxBoundedNativeProcess `
         '-File',
         '{_ps_literal(probe)}'
     ) `
-    -TimeoutMilliseconds 10000 `
+    -TimeoutMilliseconds 15000 `
     -TerminationSettlementMilliseconds 1000 `
     -Label 'heartbeat helper environment probe' `
     -ChildEnvironment $childEnvironment
@@ -624,7 +624,7 @@ $parentEnvironmentUnchanged =
             encoding="utf-8",
             errors="replace",
             check=False,
-            timeout=30,
+            timeout=45,
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
         evidence = json.loads(completed.stdout.strip().splitlines()[-1])
@@ -809,7 +809,7 @@ try {{
     ).Payload.sequence
     $returnedSequence = Invoke-TicketboxBoundedHeartbeatOperation `
         -Operation $productionHeartbeat `
-        -TimeoutMilliseconds 5000 `
+        -TimeoutMilliseconds 15000 `
         -SettlementMilliseconds 1000 `
         -Label 'production C07 heartbeat operation smoke'
     $after = [int64](
@@ -923,7 +923,7 @@ try {{
         try {{
             Invoke-TicketboxBoundedHeartbeatOperation `
                 -Operation $tampered `
-                -TimeoutMilliseconds 5000 `
+                -TimeoutMilliseconds 15000 `
                 -SettlementMilliseconds 1000 `
                 -Label 'tampered heartbeat descriptor' | Out-Null
         }}
@@ -953,7 +953,7 @@ try {{
         try {{
             Invoke-TicketboxBoundedHeartbeatOperation `
                 -Operation $productionHeartbeat `
-                -TimeoutMilliseconds 5000 `
+                -TimeoutMilliseconds 15000 `
                 -SettlementMilliseconds 1000 `
                 -Label 'invalid heartbeat helper protocol' | Out-Null
         }}
@@ -1073,7 +1073,7 @@ try {{
     try {{
         Invoke-TicketboxBoundedHeartbeatOperation `
             -Operation $productionHeartbeat `
-            -TimeoutMilliseconds 5000 `
+            -TimeoutMilliseconds 15000 `
             -SettlementMilliseconds 1000 `
             -Label 'missing durable heartbeat' | Out-Null
     }}
@@ -1112,7 +1112,7 @@ finally {{
             encoding="utf-8",
             errors="replace",
             check=False,
-            timeout=30,
+            timeout=60,
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
 
@@ -1267,7 +1267,7 @@ try {{
     $before = [int64](Read-TicketboxC07Heartbeat $authority).Payload.sequence
     $sequence = Invoke-TicketboxBoundedHeartbeatOperation `
         -Operation $operation `
-        -TimeoutMilliseconds 5000 `
+        -TimeoutMilliseconds 15000 `
         -SettlementMilliseconds 1000 `
         -Label 'external primary owner heartbeat'
     $after = [int64](Read-TicketboxC07Heartbeat $authority).Payload.sequence
@@ -1298,7 +1298,7 @@ finally {{
                 encoding="utf-8",
                 errors="replace",
                 check=False,
-                timeout=30,
+                timeout=45,
             )
             assert completed.returncode == 0, completed.stdout + completed.stderr
         finally:

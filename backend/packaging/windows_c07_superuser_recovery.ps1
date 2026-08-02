@@ -1064,9 +1064,9 @@ function Test-TicketboxC07SuperuserRecoverySecurityEquals {
 
     try {
         # Windows may recompute DEFAULTED/automatic-inheritance provenance when
-        # an ACL is reapplied. Normalize those flags and the matching inherited
-        # ACE provenance only; rights, identities, inheritance behavior,
-        # PRESENT/PROTECTED flags and both ACL shapes remain authoritative.
+        # an ACL is reapplied. Normalize those flags, inherited provenance and
+        # equivalent auto-inherited DACL mask splits only; identities, ACE type,
+        # inheritance behavior, PRESENT/PROTECTED and the SACL stay authoritative.
         $ignoredFlags =
             [Security.AccessControl.ControlFlags]::OwnerDefaulted -bor
             [Security.AccessControl.ControlFlags]::GroupDefaulted -bor
@@ -1105,11 +1105,17 @@ function Test-TicketboxC07SuperuserRecoverySecurityEquals {
         ) {
             return $false
         }
+        $normalizeDaclMasks = (
+            ([int]$leftDescriptor.ControlFlags -bor
+                [int]$rightDescriptor.ControlFlags) -band
+                [int][Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited
+        ) -ne 0
         return (
             (Test-TicketboxC07SuperuserRecoveryRawAclEquals `
                 -Left $leftDescriptor.DiscretionaryAcl `
                 -Right $rightDescriptor.DiscretionaryAcl `
-                -NormalizeInheritedProvenance) -and
+                -NormalizeInheritedProvenance `
+                -NormalizeEquivalentQualifiedMasks:$normalizeDaclMasks) -and
             (Test-TicketboxC07SuperuserRecoveryRawAclEquals `
                 -Left $leftDescriptor.SystemAcl `
                 -Right $rightDescriptor.SystemAcl `
@@ -1125,7 +1131,8 @@ function Test-TicketboxC07SuperuserRecoveryRawAclEquals {
     param(
         [AllowNull()][object]$Left,
         [AllowNull()][object]$Right,
-        [switch]$NormalizeInheritedProvenance
+        [switch]$NormalizeInheritedProvenance,
+        [switch]$NormalizeEquivalentQualifiedMasks
     )
 
     if ($null -eq $Left -or $null -eq $Right) {
@@ -1135,6 +1142,7 @@ function Test-TicketboxC07SuperuserRecoveryRawAclEquals {
     foreach ($acl in @($Left, $Right)) {
         if ($NormalizeInheritedProvenance) {
             $aceFingerprints = @()
+            $qualifiedMasks = @{}
             for ($index = 0; $index -lt $acl.Count; $index++) {
                 $aceBytes = New-Object byte[] $acl[$index].BinaryLength
                 $acl[$index].GetBinaryForm($aceBytes, 0)
@@ -1146,10 +1154,30 @@ function Test-TicketboxC07SuperuserRecoveryRawAclEquals {
                     [int]$ace.AceFlags -band
                         (-bnot [int][Security.AccessControl.AceFlags]::Inherited)
                 )
+                $accessMask = $null
+                if (
+                    $NormalizeEquivalentQualifiedMasks -and
+                    $ace -is [Security.AccessControl.QualifiedAce]
+                ) {
+                    $accessMask = [int64]$ace.AccessMask -band 0xFFFFFFFFL
+                    $ace.AccessMask = 0
+                }
                 $normalizedAceBytes = New-Object byte[] $ace.BinaryLength
                 $ace.GetBinaryForm($normalizedAceBytes, 0)
-                $aceFingerprints += [Convert]::ToBase64String($normalizedAceBytes)
+                $fingerprint = [Convert]::ToBase64String($normalizedAceBytes)
+                if ($null -eq $accessMask) {
+                    $aceFingerprints += $fingerprint
+                }
+                else {
+                    $qualifiedMasks[$fingerprint] =
+                        [int64]$qualifiedMasks[$fingerprint] -bor $accessMask
+                }
             }
+            $aceFingerprints += @(
+                $qualifiedMasks.GetEnumerator() | ForEach-Object {
+                    "{0}:{1:X8}" -f $_.Key, [int64]$_.Value
+                }
+            )
             $canonicalAcl = (
                 [string]$acl.Revision + ":" +
                 (@($aceFingerprints | Sort-Object -CaseSensitive) -join ",")
