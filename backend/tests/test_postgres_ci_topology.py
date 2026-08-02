@@ -363,13 +363,8 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
         _steps(scope)["Verify qualification SHA"],
         resolves_audit_base=True,
     )
-    for name in (
-        "backend_contracts",
-        "backend_frozen",
-        "windows_packaging_lifecycle",
-        "windows_packaging_build",
-        "windows_packaging",
-    ):
+    windows_jobs = ("windows_packaging_lifecycle", "windows_packaging_build", "windows_packaging")
+    for name in ("backend_contracts", "backend_frozen", *windows_jobs):
         job = jobs[name]
         assert job["outputs"]["qualification_sha"] == "${{ steps.qualification.outputs.sha }}"
         assert job["outputs"]["qualification_source_sha"] == ("${{ steps.qualification.outputs.source_sha }}")
@@ -379,23 +374,11 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     assert audit_environment["XPJ_AUDIT_BASE_REF"] == ("${{ needs.scope.outputs.audit_base_sha }}")
     _assert_bounded_timeout(jobs["backend_contracts"])
     _assert_bounded_timeout(jobs["backend_frozen"])
-    assert jobs["windows_packaging_lifecycle"]["timeout-minutes"] == 20
-    assert jobs["windows_packaging_build"]["timeout-minutes"] == 20
-    assert jobs["windows_packaging"]["timeout-minutes"] == 5
-    assert jobs["windows_packaging"]["needs"] == [
-        "scope",
-        "windows_packaging_lifecycle",
-        "windows_packaging_build",
-    ]
-    windows_environment = _steps(jobs["windows_packaging"])[
-        "Enforce Windows release lane results"
-    ]["env"]
-    assert windows_environment["LIFECYCLE_RESULT"] == (
-        "${{ needs.windows_packaging_lifecycle.result }}"
-    )
-    assert windows_environment["BUILD_RESULT"] == (
-        "${{ needs.windows_packaging_build.result }}"
-    )
+    assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [20, 20, 5]
+    assert jobs["windows_packaging"]["needs"] == ["scope", *windows_jobs[:2]]
+    windows_environment = _steps(jobs["windows_packaging"])["Enforce Windows release lane results"]["env"]
+    assert windows_environment["LIFECYCLE_RESULT"] == "${{ needs.windows_packaging_lifecycle.result }}"
+    assert windows_environment["BUILD_RESULT"] == "${{ needs.windows_packaging_build.result }}"
 
     assert jobs["backend_postgres_ordinary"]["strategy"] == jobs["backend_postgres_real_db"]["strategy"]
     assert jobs["backend_postgres_real_db"]["strategy"] != jobs["backend_postgres_recovery"]["strategy"]
