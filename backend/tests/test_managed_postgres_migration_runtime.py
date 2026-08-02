@@ -293,7 +293,10 @@ def _reject_postcondition(
     raise RuntimeError("injected C02 postcondition failure")
 
 
-def _assert_rollback_retry_and_replay(topology: _ManagedTopology) -> None:
+def _assert_rollback_retry_and_replay(
+    topology: _ManagedTopology,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     with pytest.raises(
         ManagedPostgresMigrationRuntimeError,
         match="managed PostgreSQL migration failed",
@@ -330,6 +333,24 @@ def _assert_rollback_retry_and_replay(topology: _ManagedTopology) -> None:
     assert topology.runtime.run(**arguments) == "target_committed"
     assert _revision(topology.owner_url) == _C02_TARGET_REVISION
     assert topology.runtime.run(**arguments) == "target_observed_after_interruption"
+
+    monkeypatch.setattr(managed_schema, "DATABASE_NAME", topology.database)
+    monkeypatch.setattr(managed_schema, "MIGRATOR_ROLE", topology.migrator)
+    monkeypatch.setattr(managed_schema, "SCHEMA_OWNER_ROLE", topology.owner)
+    noop_plan = managed_schema.get_managed_schema_plan(
+        source_revision=_C02_TARGET_REVISION,
+    )
+    noop_result = managed_schema.run_managed_schema_upgrade_action(
+        database_url=topology.migrator_url.render_as_string(hide_password=False),
+        pgpassfile=topology.pgpass,
+        source_revision=_C02_TARGET_REVISION,
+        target_revision=_C02_TARGET_REVISION,
+        expected_revision_manifest_sha256=str(
+            noop_plan["revision_manifest_sha256"]
+        ),
+    )
+    assert noop_result["result"] == "target_observed_after_interruption"
+    assert noop_result["alembic_revision"] == _C02_TARGET_REVISION
     assert (
         _migrator_sessions(
             topology.admin,
@@ -421,6 +442,6 @@ def test_c02_runtime_uses_one_migrator_transaction_and_retires_cleanly(
 ) -> None:
     with _managed_topology(tmp_path, monkeypatch) as topology:
         _assert_lease_contention(topology)
-        _assert_rollback_retry_and_replay(topology)
+        _assert_rollback_retry_and_replay(topology, monkeypatch)
         _grant_runtime_access(topology)
         _assert_runtime_restart_and_migrator_retirement(topology)

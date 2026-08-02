@@ -325,14 +325,20 @@ function Invoke-TicketboxBoundedNativeProcess {{
         }}
     }}
     if ($Arguments -contains '--managed-schema-upgrade') {{
+        $managedSource = Get-TestArgumentValue $Arguments '--source-revision'
+        $managedTarget = Get-TestArgumentValue $Arguments '--target-revision'
         $managedResult = [ordered]@{{
             schema = 'ticketbox-managed-schema-upgrade-result-v1'
-            source_revision = Get-TestArgumentValue $Arguments '--source-revision'
-            target_revision = Get-TestArgumentValue $Arguments '--target-revision'
+            source_revision = $managedSource
+            target_revision = $managedTarget
             revision_manifest_sha256 =
                 Get-TestArgumentValue $Arguments '--expected-revision-manifest-sha256'
-            result = 'target_committed'
-            alembic_revision = Get-TestArgumentValue $Arguments '--target-revision'
+            result = if ($managedSource -ceq $managedTarget) {{
+                'target_observed_after_interruption'
+            }} else {{
+                'target_committed'
+            }}
+            alembic_revision = $managedTarget
         }}
         return [pscustomobject]@{{
             ExitCode = 0
@@ -387,6 +393,22 @@ $managedActionResult = Invoke-TicketboxPackagedManagedSchemaUpgrade `
     -HostAuthority ([pscustomobject]@{{ Schema = 'authority' }}) `
     -MigratorPassword $secure `
     -Plan $installedManagedPlan `
+    -MigrationHelperPath '{_ps_literal(helper)}' `
+    -MigrationHelperEvidence $helperEvidence `
+    -ExpectedMigrationHelperPath '{_ps_literal(helper)}'
+$managedPlan.source_revision = '20260802_0001'
+$managedPlan.upgrade_required = $false
+$managedPlan.revision_count = 0
+$managedPlan.revision_manifest_sha256 = ('6' * 64)
+$installedManagedNoopPlan = Get-TicketboxPackagedManagedSchemaPlan `
+    -SourceRevision '20260802_0001' `
+    -MigrationHelperPath '{_ps_literal(helper)}' `
+    -MigrationHelperEvidence $helperEvidence `
+    -ExpectedMigrationHelperPath '{_ps_literal(helper)}'
+$managedNoopActionResult = Invoke-TicketboxPackagedManagedSchemaUpgrade `
+    -HostAuthority ([pscustomobject]@{{ Schema = 'authority' }}) `
+    -MigratorPassword $secure `
+    -Plan $installedManagedNoopPlan `
     -MigrationHelperPath '{_ps_literal(helper)}' `
     -MigrationHelperEvidence $helperEvidence `
     -ExpectedMigrationHelperPath '{_ps_literal(helper)}'
@@ -452,6 +474,7 @@ $planPgEntries = @(
     installed_plan_target = [string]$installedPlan.target_revision
     managed_plan_target = [string]$installedManagedPlan.target_revision
     managed_action_result = [string]$managedActionResult.result
+    managed_noop_action_result = [string]$managedNoopActionResult.result
     cleanup_count = [int]$script:testCleanupCount
     stdin_empty = ([string]$script:testInput).Length -eq 0
     secret_in_argv = (($script:testArguments -join "`n").Contains($script:testSecret))
@@ -511,7 +534,8 @@ $planPgEntries = @(
             "installed_plan_target": "20260729_0001",
             "managed_plan_target": "20260802_0001",
             "managed_action_result": "target_committed",
-            "cleanup_count": 2,
+            "managed_noop_action_result": "target_observed_after_interruption",
+            "cleanup_count": 3,
             "stdin_empty": True,
             "secret_in_argv": False,
             "secret_in_child_environment": False,

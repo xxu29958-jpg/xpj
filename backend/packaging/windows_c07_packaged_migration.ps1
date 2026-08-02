@@ -1709,8 +1709,14 @@ function Invoke-TicketboxPackagedManagedSchemaUpgrade {
         [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath
     )
 
-    if (-not [bool]$Plan.upgrade_required -or [int]$Plan.revision_count -lt 1) {
-        throw "managed schema migration 只接受非空 frozen plan。"
+    if (
+        [bool]$Plan.upgrade_required -ne ([int]$Plan.revision_count -gt 0) -or
+        (
+            -not [bool]$Plan.upgrade_required -and
+            [string]$Plan.source_revision -cne [string]$Plan.target_revision
+        )
+    ) {
+        throw "managed schema migration plan 的 source/target/revision shape 无效。"
     }
     $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
         -Authority $HostAuthority `

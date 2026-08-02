@@ -47,6 +47,7 @@ class ManagedSchemaPlan:
     source_revision: str
     target_revision: str
     revisions: tuple[dict[str, str], ...]
+    postcondition_revision: dict[str, str]
     manifest_sha256: str
 
 
@@ -64,6 +65,36 @@ def _canonical_json(value: object) -> bytes:
     ).encode("utf-8")
 
 
+def _postcondition_revision(
+    scripts: ScriptDirectory,
+    *,
+    target_revision: str,
+    versions_root: Path,
+    revisions: list[dict[str, str]],
+) -> dict[str, str]:
+    if revisions:
+        return revisions[-1]
+    target = scripts.get_revision(target_revision)
+    if target is None or not isinstance(target.down_revision, str):
+        raise ManagedSchemaUpgradeError(
+            "managed schema target cannot bind its release postcondition"
+        )
+    target_path = Path(str(target.path)).resolve()
+    if (
+        target_path.parent != versions_root
+        or not target_path.is_file()
+        or target.dependencies is not None
+    ):
+        raise ManagedSchemaUpgradeError(
+            "managed schema target postcondition is not a packaged file"
+        )
+    return {
+        "revision": target_revision,
+        "down_revision": target.down_revision,
+        "module_sha256": hashlib.sha256(target_path.read_bytes()).hexdigest(),
+    }
+
+
 def _load_plan(source_revision: str) -> ManagedSchemaPlan:
     root = _backend_root()
     config = Config(str(root / "alembic.ini"))
@@ -73,9 +104,7 @@ def _load_plan(source_revision: str) -> ManagedSchemaPlan:
         scripts = ScriptDirectory.from_config(config)
         heads = tuple(scripts.get_heads())
         if len(heads) != 1 or scripts.get_revision(source_revision) is None:
-            raise ManagedSchemaUpgradeError(
-                "managed schema source/head is outside the frozen graph"
-            )
+            raise ManagedSchemaUpgradeError("managed schema source/head is outside the frozen graph")
         target_revision = heads[0]
         assert_linear_descendant_chain(
             scripts,
@@ -90,9 +119,7 @@ def _load_plan(source_revision: str) -> ManagedSchemaPlan:
     except ManagedSchemaUpgradeError:
         raise
     except (OSError, RuntimeError, ValueError) as exc:
-        raise ManagedSchemaUpgradeError(
-            "managed schema graph cannot be resolved"
-        ) from exc
+        raise ManagedSchemaUpgradeError("managed schema graph cannot be resolved") from exc
 
     versions_root = (root / "migrations" / "versions").resolve()
     previous = source_revision
@@ -120,17 +147,29 @@ def _load_plan(source_revision: str) -> ManagedSchemaPlan:
         raise ManagedSchemaUpgradeError(
             "managed schema plan did not terminate at the frozen head"
         )
+    postcondition_revision = _postcondition_revision(
+        scripts,
+        target_revision=target_revision,
+        versions_root=versions_root,
+        revisions=revisions,
+    )
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "source_revision": source_revision,
         "target_revision": target_revision,
         "revisions": revisions,
     }
+    if not revisions:
+        # An already-at-head recovery still executes the release postcondition.
+        # Bind that module into the otherwise-empty manifest so plan/action
+        # handoff cannot silently select different verification code.
+        manifest["target_postcondition"] = postcondition_revision
     return ManagedSchemaPlan(
         config=config,
         source_revision=source_revision,
         target_revision=target_revision,
         revisions=tuple(revisions),
+        postcondition_revision=postcondition_revision,
         manifest_sha256=hashlib.sha256(_canonical_json(manifest)).hexdigest(),
     )
 
@@ -179,11 +218,7 @@ def _load_revision(revision: dict[str, str]) -> Any:
 
 
 def _target_postcondition(plan: ManagedSchemaPlan) -> Any:
-    if not plan.revisions:
-        raise ManagedSchemaUpgradeError(
-            "managed schema plan does not contain a release postcondition"
-        )
-    return _load_revision(plan.revisions[-1]).assert_postcondition
+    return _load_revision(plan.postcondition_revision).assert_postcondition
 
 
 def run_managed_schema_upgrade_action(
@@ -198,7 +233,6 @@ def run_managed_schema_upgrade_action(
     if (
         target_revision != plan.target_revision
         or expected_revision_manifest_sha256 != plan.manifest_sha256
-        or not plan.revisions
     ):
         raise ManagedSchemaUpgradeError(
             "managed schema CLI does not match the frozen release plan"
