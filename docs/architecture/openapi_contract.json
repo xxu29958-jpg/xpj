@@ -5730,7 +5730,7 @@
         "type": "object"
       },
       "DebtListResponse": {
-        "description": "Ledger/account-scoped Debt list envelope.\n\n``home_currency_code`` repeats the persisted installation currency authority\nused by writers. Runtime env drift never replaces or nulls an ACTIVE binding;\nclients can therefore keep interpreting historical records while new writes\nfail closed. ``None`` means the installation is genuinely unbound, not that a\nmutable process setting was invalid.",
+        "description": "Ledger/account-scoped Debt list envelope.\n\n``home_currency_code`` repeats the persisted installation currency authority\nused by writers. Runtime env drift never replaces or nulls an ACTIVE binding;\nclients can therefore keep interpreting historical records while new writes\nfail closed. Before the first financial fact, a genuinely EMPTY installation\nexposes only the safe CNY initialization offer accepted by the current writer\ncontract. Adoption, migration, or unsupported initialization states return\n``None``.",
         "properties": {
           "home_currency_code": {
             "anyOf": [
