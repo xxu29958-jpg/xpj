@@ -8,18 +8,17 @@ when the browser can display a different month, currency, or conflict state.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
-from decimal import Decimal
 import re
+from datetime import UTC, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-from api_contract_helpers import patch_expense, web_confirm_expense, web_save_expense
+from api_contract_helpers import patch_expense, web_confirm_expense
 from fastapi.testclient import TestClient
 
 import app.routes._web_expense_edit_command as edit_command
 from app.database import SessionLocal
-from app.errors import AppError
 from app.models import Expense
 from app.schemas import ExpenseItemReplaceRequest, ExpenseItemRequest
 from app.services.currency_binding_service import resolve_write_capability
@@ -28,9 +27,7 @@ from app.services.spending_contract_service import (
     current_accounting_month,
     shift_month,
 )
-from app.tag_text import MAX_TAG_STORAGE_LENGTH
-from app.services.tag_service import set_expense_tags, sync_expense_tags
-from app.services.web_stats_service import confirmed_by_day, source_breakdown
+from app.services.tag_service import sync_expense_tags
 from tests._web_bulk_test_support import seed_pending_with_amount
 
 
