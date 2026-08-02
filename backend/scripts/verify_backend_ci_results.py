@@ -17,7 +17,6 @@ class Verification:
 _REQUIRED_FIELDS = {
     "SCOPE_RESULT",
     "BACKEND_FROZEN_SCOPE",
-    "WINDOWS_SCOPE",
     "BACKEND_CONTRACTS_RESULT",
     "BACKEND_FROZEN_RESULT",
     "WINDOWS_PACKAGING_RESULT",
@@ -29,12 +28,12 @@ _REQUIRED_FIELDS = {
     "SCOPE_SOURCE_SHA",
     "BACKEND_CONTRACTS_SHA",
     "BACKEND_CONTRACTS_SOURCE_SHA",
+    "WINDOWS_PACKAGING_SHA",
+    "WINDOWS_PACKAGING_SOURCE_SHA",
 }
 _OPTIONAL_FIELDS = {
     "BACKEND_FROZEN_SHA",
     "BACKEND_FROZEN_SOURCE_SHA",
-    "WINDOWS_PACKAGING_SHA",
-    "WINDOWS_PACKAGING_SOURCE_SHA",
 }
 _SCOPED_JOBS = (
     (
@@ -43,13 +42,6 @@ _SCOPED_JOBS = (
         "BACKEND_FROZEN_RESULT",
         "BACKEND_FROZEN_SHA",
         "BACKEND_FROZEN_SOURCE_SHA",
-    ),
-    (
-        "Windows packaging",
-        "WINDOWS_SCOPE",
-        "WINDOWS_PACKAGING_RESULT",
-        "WINDOWS_PACKAGING_SHA",
-        "WINDOWS_PACKAGING_SOURCE_SHA",
     ),
 )
 
@@ -65,6 +57,7 @@ def _validate_required_jobs(values: Mapping[str, str]) -> Verification | None:
     for key, failure in (
         ("SCOPE_RESULT", "CI scope resolution did not succeed"),
         ("BACKEND_CONTRACTS_RESULT", "Backend contracts did not succeed"),
+        ("WINDOWS_PACKAGING_RESULT", "Windows packaging did not succeed"),
     ):
         if values[key] != "success":
             return Verification(False, f"{failure}: {values[key]}")
@@ -125,7 +118,12 @@ def verify(values: Mapping[str, str]) -> Verification:
     for check in (
         _validate_sha_fields(
             values,
-            keys=("AGGREGATOR_SHA", "SCOPE_SHA", "BACKEND_CONTRACTS_SHA"),
+            keys=(
+                "AGGREGATOR_SHA",
+                "SCOPE_SHA",
+                "BACKEND_CONTRACTS_SHA",
+                "WINDOWS_PACKAGING_SHA",
+            ),
             expected=values["EXPECTED_SHA"],
             label="qualification SHA",
         ),
@@ -135,6 +133,7 @@ def verify(values: Mapping[str, str]) -> Verification:
                 "AGGREGATOR_SOURCE_SHA",
                 "SCOPE_SOURCE_SHA",
                 "BACKEND_CONTRACTS_SOURCE_SHA",
+                "WINDOWS_PACKAGING_SOURCE_SHA",
             ),
             expected=values["EXPECTED_SOURCE_SHA"],
             label="qualification source SHA",
