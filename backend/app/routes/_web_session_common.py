@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.network_boundary import require_owner_console_local
 from app.services import owner_console_service as owner_svc
+from app.services.ledger_service import find_owner_account_id_for_ledger
 
 
 def parse_form_row_version_token(value: str) -> int | None:
@@ -22,7 +23,8 @@ def parse_form_row_version_token(value: str) -> int | None:
     if not cleaned:
         return None
     try:
-        return int(cleaned)
+        parsed = int(cleaned)
+        return parsed if parsed > 0 else None
     except ValueError:
         return None
 
@@ -36,6 +38,28 @@ def _require_local(request: Request) -> None:
 
 
 LocalOnly = Depends(_require_local)
+
+
+def resolve_web_actor_account_id(
+    db: Session,
+    request: Request,
+    ledger_id: str,
+) -> int:
+    """Resolve the accountable actor for a session or loopback Web mutation."""
+
+    session_auth = getattr(request.state, "web_session_auth", None)
+    if session_auth is not None:
+        if session_auth.ledger_id != ledger_id:
+            raise AppError("permission_denied", status_code=403)
+        return session_auth.account_id
+    account_id = find_owner_account_id_for_ledger(db, ledger_id=ledger_id)
+    if account_id is None:
+        raise AppError(
+            "permission_denied",
+            "当前账本没有可记录的操作账号。",
+            status_code=403,
+        )
+    return account_id
 
 
 @dataclass

@@ -28,6 +28,7 @@ class WebSearchResult:
     href: str
     badge: str
     amount_cents: int | None = None
+    currency_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,15 @@ def _limited(statement: Select[tuple], limit: int) -> Select[tuple]:
     return statement.limit(limit)
 
 
+def _expense_edit_href(expense_id: int, tenant_id: str, term: str) -> str:
+    params = {
+        "ledger_id": tenant_id,
+        "return_to": "search",
+        "return_query": term,
+    }
+    return f"/web/expenses/{expense_id}/edit?{urlencode(params)}"
+
+
 def _search_expenses(
     db: Session,
     tenant_id: str,
@@ -152,9 +162,10 @@ def _search_expenses(
             group=status,
             title=expense.merchant or "未填写商家",
             subtitle=_expense_subtitle(expense),
-            href=f"/web/expenses/{expense.id}/edit?{urlencode({'ledger_id': tenant_id})}",
+            href=_expense_edit_href(expense.id, tenant_id, term),
             badge=badge,
             amount_cents=expense.amount_cents,
+            currency_code=expense.home_currency_code,
         )
         for expense in rows
     ]

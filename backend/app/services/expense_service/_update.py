@@ -173,7 +173,6 @@ def update_expense(
     payload: ExpenseUpdateRequest,
     *,
     commit: bool = True,
-    preserve_currency_snapshot: bool = False,
 ) -> Expense:
     validate_currency_payload_money_command(payload, amount_was_explicit="amount_cents" in payload.model_fields_set)
     # ADR-0038: atomic UPDATE WHERE id, tenant_id, status, updated_at =
@@ -221,13 +220,13 @@ def update_expense(
         expense.value_score = updates["value_score"]
     if "regret_score" in updates:
         expense.regret_score = updates["regret_score"]
+    amount_cents_before = expense.amount_cents
     _apply_update_currency(
         db,
         tenant_id=tenant_id,
         expense=expense,
         payload=payload,
         updates=updates,
-        preserve_currency_snapshot=preserve_currency_snapshot,
     )
     if expense.status == "confirmed":
         _ensure_expense_can_confirm(expense)
@@ -263,8 +262,8 @@ def update_expense(
     if updates.get("tags") is not None:
         sync_expense_tags(db, expense)
 
-    # 0035: amount_cents 改动后必须重算 items_sum_status。
-    if "amount_cents" in updates:
+    # 0035: derived amount changes also invalidate the item-sum match.
+    if expense.amount_cents != amount_cents_before:
         recompute_items_sum_status(db, expense)
 
     expense.updated_at = now_utc()

@@ -10,7 +10,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.schemas._money import (
     NonNegativeCanonicalDecimalInput,
@@ -22,6 +22,7 @@ from app.schemas._money import (
     expense_item_money_schema_extra,
 )
 from app.services.time_service import to_iso
+from app.tag_text import validate_tags_fit_storage
 
 ExpenseItemKind = Literal["product", "discount", "tax", "service_fee"]
 ItemsSumStatus = Literal["matched", "mismatch_known", "mismatch_acknowledged", "no_items"]
@@ -83,11 +84,11 @@ class ExpenseManualCreateRequest(BaseModel):
     spent_at: datetime | None = None
     original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount_minor: NonNegativeMoneyMinor | None = None
-    merchant: str | None = None
-    category: str | None = None
+    merchant: str | None = Field(default=None, max_length=255)
+    category: str | None = Field(default=None, max_length=64)
     note: str | None = None
     expense_time: datetime | None = None
-    tags: str | None = None
+    tags: str | None = Field(default=None, max_length=500)
     value_score: int | None = Field(default=None, ge=1, le=5)
     regret_score: int | None = Field(default=None, ge=1, le=5)
     # Issue #65 slice 1: optional device-scoped idempotency ref. Present → the server
@@ -95,6 +96,8 @@ class ExpenseManualCreateRequest(BaseModel):
     # different body under the same ref. Absent → no dedup (online-only create,
     # unchanged pre-#65 behavior). The Android outbox (slice 4) generates it.
     client_ref: str | None = Field(default=None, max_length=64)
+
+    _tags_fit_mirror = field_validator("tags")(validate_tags_fit_storage)
 
 
 class NotificationDraftCreateRequest(BaseModel):
@@ -133,13 +136,15 @@ class ExpenseUpdateRequest(BaseModel):
     spent_at: datetime | None = None
     original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount_minor: NonNegativeMoneyMinor | None = None
-    merchant: str | None = None
-    category: str | None = None
+    merchant: str | None = Field(default=None, max_length=255)
+    category: str | None = Field(default=None, max_length=64)
     note: str | None = None
     expense_time: datetime | None = None
-    tags: str | None = None
+    tags: str | None = Field(default=None, max_length=500)
     value_score: int | None = Field(default=None, ge=1, le=5)
     regret_score: int | None = Field(default=None, ge=1, le=5)
+
+    _tags_fit_mirror = field_validator("tags")(validate_tags_fit_storage)
 
 
 class ExpenseConfirmRequest(BaseModel):
@@ -208,6 +213,8 @@ class ConfirmedExpenseBatchUpdateRequest(BaseModel):
     expected_row_version_by_id: dict[int, int] = Field(min_length=1, max_length=200)
     category: str | None = Field(default=None, max_length=64)
     tags: str | None = Field(default=None, max_length=500)
+
+    _tags_fit_mirror = field_validator("tags")(validate_tags_fit_storage)
 
 
 class ConfirmedExpenseBatchUpdateResponse(BaseModel):

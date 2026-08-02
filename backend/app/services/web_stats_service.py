@@ -29,6 +29,7 @@ from app.services.expense_service import NOTIFICATION_DRAFT_SOURCE_PREFIX
 from app.services.spending_contract_service import (
     accounting_zone,
     clean_month,
+    confirmed_query,
     month_bounds_utc,
     stat_time,
     stat_time_expr,
@@ -140,19 +141,19 @@ def confirmed_by_day(
     month: str,
     *,
     currency_code: str | None = None,
+    tag: str | None = None,
 ) -> list[dict]:
     """已确认账单在指定月内的每日金额，用于日历热力图。"""
     month = _clean_month_filter(month)
     zone = _web_stats_zone()
-    start_utc, end_utc = _month_bounds(month, zone)
-    expense_time = stat_time_expr()
     expenses = db.scalars(
-        select(Expense)
-        .where(Expense.tenant_id == ledger_id)
-        .where(Expense.status == "confirmed")
-        .where(Expense.amount_cents.is_not(None))
-        .where(expense_time >= start_utc)
-        .where(expense_time < end_utc)
+        confirmed_query(
+            tenant_id=ledger_id,
+            month=month,
+            tag=tag,
+            timezone_name=zone.key,
+            amount_required=True,
+        )
     )
     by_day: dict[str, dict[str, int]] = defaultdict(lambda: {"amount_cents": 0, "count": 0})
     for expense in expenses:
@@ -184,20 +185,26 @@ def confirmed_by_day(
     ]
 
 
-def source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dict]:
+def source_breakdown(
+    db: Session,
+    ledger_id: str,
+    month: str | None,
+    *,
+    tag: str | None = None,
+) -> list[dict]:
     """指定月的已确认账单来源占比。返回 [{'label', 'count', 'percent'}]。"""
+    zone = _web_stats_zone()
+    filtered = confirmed_query(
+        tenant_id=ledger_id,
+        month=month,
+        tag=tag,
+        timezone_name=zone.key,
+    ).subquery()
     q = (
-        select(Expense.source, func.count(Expense.id))
-        .where(Expense.tenant_id == ledger_id)
-        .where(Expense.status == "confirmed")
+        select(filtered.c.source, func.count(filtered.c.id))
+        .select_from(filtered)
+        .group_by(filtered.c.source)
     )
-    if month:
-        month = _clean_month_filter(month)
-        zone = _web_stats_zone()
-        start_utc, end_utc = _month_bounds(month, zone)
-        expense_time = stat_time_expr()
-        q = q.where(expense_time >= start_utc).where(expense_time < end_utc)
-    q = q.group_by(Expense.source)
     rows = list(db.execute(q))
     total = sum(int(c or 0) for _, c in rows) or 1
     # Aggregate AFTER labeling: distinct source values can share one display

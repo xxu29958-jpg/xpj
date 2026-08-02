@@ -9,7 +9,13 @@
 
   function applyFilter(stream, cat) {
     stream.querySelectorAll(".timeline-row[data-cat]").forEach(function (row) {
-      row.style.display = !cat || row.dataset.cat === cat ? "" : "none";
+      var visible = !cat || row.dataset.cat === cat;
+      row.style.display = visible ? "" : "none";
+      var checkbox = row.querySelector(".row-check");
+      if (checkbox) {
+        if (!visible) checkbox.checked = false;
+        checkbox.disabled = !visible;
+      }
     });
     // 整天行全隐 → 连日头一起收起（行排在各自 .lday 之后,直到下一个 .lday）
     stream.querySelectorAll(".lday").forEach(function (day) {

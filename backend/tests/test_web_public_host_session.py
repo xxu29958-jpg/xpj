@@ -21,6 +21,7 @@ import re
 from datetime import timedelta
 
 import pytest
+from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -126,6 +127,66 @@ def test_public_host_with_valid_cookie_renders_dashboard(client: TestClient, *, 
     # Lands on the owner ledger (the test identity uses the owner ledger)
     assert "待确认" in resp.text
     assert SESSION_COOKIE_NAME not in resp.headers.get("set-cookie", "")
+
+
+def test_public_bulk_form_native_post_uses_rendered_csrf_token(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    created = client.post(
+        "/api/expenses/manual",
+        headers=identity.app_headers,
+        json={
+            "amount_cents": 1800,
+            "merchant": "Public Native Batch",
+            "category": "其他",
+        },
+    )
+    assert created.status_code == 200, created.text
+    expense_id = int(created.json()["id"])
+    assert confirm_expense_api(
+        client,
+        expense_id,
+        headers=identity.app_headers,
+    ).status_code == 200
+    token = _mint_session(client, identity=identity)
+    pub = _public_client()
+    pub.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
+    page = pub.get("/web/confirmed")
+    assert page.status_code == 200, page.text
+    form = re.search(r'<form id="bulk-form".*?</form>', page.text, re.DOTALL)
+    assert form is not None, page.text
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', form.group(0))
+    snapshot = re.search(
+        rf'name="expense_snapshot" value="({expense_id}:\d+)"',
+        page.text,
+    )
+    assert csrf is not None, form.group(0)
+    assert snapshot is not None, page.text
+
+    response = pub.post(
+        "/web/confirmed/batch-update",
+        headers={
+            "Origin": f"https://{PUBLIC_HOST}",
+        },
+        data={
+            "csrf_token": csrf.group(1),
+            "ledger_id": "owner",
+            "action": "set_category",
+            "expense_snapshot": snapshot.group(1),
+            "category": "家庭采购",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, response.text
+    detail = client.get(
+        f"/api/expenses/{expense_id}",
+        headers=identity.app_headers,
+    )
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["category"] == "家庭采购"
 
 
 def test_public_host_cookie_does_not_refresh_last_used_or_cookie(client: TestClient, *, identity) -> None:

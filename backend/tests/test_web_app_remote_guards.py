@@ -94,7 +94,10 @@ def test_web_local_post_accepts_same_origin_source(client: TestClient) -> None:
             },
             follow_redirects=False,
         )
-    assert resp.status_code in {303, 307}
+    # Same-origin middleware accepted the request; the business form then
+    # rejects its empty selection in place instead of redirecting.
+    assert resp.status_code == 422
+    assert "请先勾选账单" in resp.text
 
 
 def test_owner_local_post_rejects_cross_site_fetch_metadata(client: TestClient) -> None:

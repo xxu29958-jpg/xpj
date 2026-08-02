@@ -17,13 +17,12 @@
   </div>
 </div>
 
-{% set _q = '?ledger_id=' ~ selected_ledger_id %}
 {% if tag %}
 <input type="hidden" name="tag" value="{{ tag }}">
 <div class="callout-info">当前仅显示标签「{{ tag }}」。</div>
 {% endif %}
 {% if flash_message %}
-<div class="readonly-callout confirmed-flash">{{ flash_message }}</div>
+<div id="confirmed-batch-feedback" class="readonly-callout confirmed-flash{% if flash_type == 'error' %} error-text{% endif %}" {% if flash_type == 'error' %}role="alert"{% else %}role="status"{% endif %}>{{ flash_message }}</div>
 {% endif %}
 
 {# ── 类目筛选 tab（客户端即时过滤；增强自概念图的静态 tab，见 ledger-filter.js） ── #}
@@ -41,7 +40,7 @@
   {% set _groups = {} %}
   {% set _order = [] %}
   {% for e in expenses %}
-    {% set _d = e.expense_time[:10] if e.expense_time else (e.created_at[:10] if e.created_at else '—') %}
+    {% set _d = e.stat_time[:10] if e.stat_time else '—' %}
     {% if _d not in _groups %}{% set _ = _groups.update({_d: []}) %}{% set _ = _order.append(_d) %}{% endif %}
     {% set _ = _groups[_d].append(e) %}
   {% endfor %}
@@ -72,15 +71,15 @@
       <div class="timeline-row lrow{% if can_write %} has-check{% endif %}" data-cat="{{ e.category or '' }}">
         {% if can_write %}
         <div class="lrow-sel">
-          <input class="checkbox row-check" type="checkbox" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单 #{{ e.id }}">
+          <input class="checkbox row-check" type="checkbox" name="expense_snapshot" value="{{ e.id }}:{{ e.row_version }}" form="bulk-form" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单 #{{ e.id }}" {% if e.id in selected_expense_ids %}checked{% endif %}>
         </div>
         {% endif %}
-        <a class="timeline-row-detail" href="/web/expenses/{{ e.id }}/edit{{ _q }}">
+        <a class="timeline-row-detail" href="/web/expenses/{{ e.id }}/edit?{{ confirmed_edit_query }}">
           <div class="lrow-ic {{ _icmap.get(e.category, 'other') }}">{{ (e.category or '·')[:1] }}</div>
           <div class="lrow-mid">
             <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
             <div class="lrow-meta">
-              <span class="num">{{ e.expense_time[11:16] if e.expense_time and ' ' in e.expense_time else '—' }}</span>
+              <span class="num">{{ e.stat_time[11:16] if e.stat_time and ' ' in e.stat_time else '—' }}</span>
               <span class="sep">·</span><span>{{ e.category or '未分类' }}</span>
             </div>
           </div>
@@ -163,7 +162,16 @@
 </div>
 
 {% if can_write and expenses | length > 0 %}
-<form id="bulk-form" method="post" action="/web/confirmed/batch-update" class="bulk-bar confirmed-bulk-bar" data-bulk>
+<noscript>
+  <style>
+    .confirmed-bulk-bar { display: flex; }
+    .confirmed-bulk-bar [data-bulk-count],
+    .confirmed-bulk-bar [data-bulk-clear],
+    .confirmed-bulk-bar > .label { display: none; }
+  </style>
+</noscript>
+<form id="bulk-form" method="post" action="/web/confirmed/batch-update" class="bulk-bar confirmed-bulk-bar" data-bulk{% if flash_type == 'error' %} aria-describedby="confirmed-batch-feedback"{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="month" value="{{ month }}">
   <input type="hidden" name="tag" value="{{ tag }}">
@@ -171,9 +179,9 @@
   <span class="count" data-bulk-count>0</span>
   <span class="label">已选中</span>
   <button class="dt-btn" type="button" data-bulk-clear>取消选择</button>
-  <input class="bulk-field" name="category" maxlength="64" placeholder="分类" aria-label="批量修改分类">
+  <input class="bulk-field" name="category" value="{{ batch_category_input }}" maxlength="64" placeholder="分类" aria-label="批量修改分类">
   <button class="dt-btn" type="submit" name="action" value="set_category">改分类</button>
-  <input class="bulk-field" name="tags" maxlength="500" placeholder="标签，逗号分隔" aria-label="批量修改标签">
+  <input class="bulk-field" name="tags" value="{{ batch_tags_input }}" maxlength="500" placeholder="标签，逗号分隔" aria-label="批量修改标签">
   <button class="dt-btn primary" type="submit" name="action" value="set_tags">改标签</button>
 </form>
 {% endif %}

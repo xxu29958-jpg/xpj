@@ -128,7 +128,7 @@ def test_web_edit_save_bad_expense_time_shows_error(
         data={"amount_yuan": "9.00", "merchant": "店", "category": "餐饮",
               "note": "", "ledger_id": "owner", "expense_time": "not-a-time"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 422
     assert "请填写正确的时间" in resp.text
     # Nothing committed: a fresh pending still has no expense_time and no amount.
     payload = web_client.get(
@@ -230,7 +230,7 @@ def test_web_save_invalid_amount_shows_error(web_client: TestClient, *, identity
         data={"amount_yuan": "not-a-number", "merchant": "", "category": "", "note": "",
               "ledger_id": "owner"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 422
     assert "请填写正确的金额" in resp.text
 
 
@@ -239,7 +239,7 @@ def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient, 
     resp = web_confirm_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 422
     assert "请先填写金额" in resp.text
 
 
@@ -287,7 +287,7 @@ def test_web_amount_over_precision_rejected(
     )
     # Over-precision input is rejected, never silently rounded, and the row
     # keeps its previous (pending, amount-less) state.
-    assert resp.status_code == 200
+    assert resp.status_code == 422
     assert "金额格式不正确" in resp.text
     from sqlalchemy import select
 
@@ -307,7 +307,7 @@ def test_web_save_negative_amount_shows_error(web_client: TestClient, *, identit
         data={"amount_yuan": "-5.00", "merchant": "", "category": "", "note": "",
               "ledger_id": "owner"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 422
     assert "负数" in resp.text
 
 

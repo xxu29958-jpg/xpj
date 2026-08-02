@@ -10,12 +10,13 @@ from app.database import get_db
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
+    _home_amount_label,
     _list_ledger_options,
     _resolve_selected_ledger_id,
     _sidebar_counts,
     templates,
 )
-from app.services.web_search_service import search_web
+from app.services.web_search_service import MAX_QUERY_LENGTH, search_web
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -39,8 +40,22 @@ def web_search(
         page_title="搜索",
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
-    groups = search_web(db, tenant_id=selected_id, query=query)
+    search_error = ""
+    status_code = 200
+    if len(query) > MAX_QUERY_LENGTH:
+        groups = []
+        search_error = f"搜索词最多 {MAX_QUERY_LENGTH} 个字符，请缩短后重试。"
+        status_code = 422
+    else:
+        groups = search_web(db, tenant_id=selected_id, query=query)
     ctx["search_query"] = query
+    ctx["search_error"] = search_error
     ctx["search_groups"] = groups
     ctx["search_total"] = sum(len(group.results) for group in groups)
-    return templates.TemplateResponse(request=request, name="search.html", context=ctx)
+    ctx["search_amount_label"] = _home_amount_label
+    return templates.TemplateResponse(
+        request=request,
+        name="search.html",
+        context=ctx,
+        status_code=status_code,
+    )
