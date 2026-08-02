@@ -467,6 +467,8 @@ $missingModulePaths = @(
             [IO.Path]::GetFullPath($env:SystemRoot)
     comspec_exists = Test-Path -LiteralPath $env:ComSpec -PathType Leaf
     temp_exists = Test-Path -LiteralPath $env:TEMP -PathType Container
+    local_app_data_exists =
+        Test-Path -LiteralPath $env:LOCALAPPDATA -PathType Container
     tmp_matches_temp =
         [IO.Path]::GetFullPath($env:TMP) -ceq
             [IO.Path]::GetFullPath($env:TEMP)
@@ -633,6 +635,7 @@ $parentEnvironmentUnchanged =
         )
         assert evidence["allowlist_names"] == [
             "ComSpec",
+            "LOCALAPPDATA",
             "PATH",
             "PATHEXT",
             "PSModulePath",
@@ -655,6 +658,7 @@ $parentEnvironmentUnchanged =
         assert child["windir_matches_system_root"] is True
         assert child["comspec_exists"] is True
         assert child["temp_exists"] is True
+        assert child["local_app_data_exists"] is True
         assert child["tmp_matches_temp"] is True
         assert child["module_paths_exist"] is True
         assert len(child["module_paths"]) == 2

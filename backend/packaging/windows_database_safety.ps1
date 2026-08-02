@@ -1443,12 +1443,18 @@ function New-TicketboxC07HeartbeatHelperChildEnvironment {
     $temporaryDirectory = [IO.Path]::GetFullPath(
         [IO.Path]::GetTempPath()
     )
+    $localApplicationData = [IO.Path]::GetFullPath(
+        [Environment]::GetFolderPath(
+            [Environment+SpecialFolder]::LocalApplicationData
+        )
+    )
     foreach ($requiredDirectory in @(
         $systemDirectory,
         $windowsDirectory,
         $sharedModulePath,
         $systemModulePath,
-        $temporaryDirectory
+        $temporaryDirectory,
+        $localApplicationData
     )) {
         if (-not (Test-Path -LiteralPath $requiredDirectory -PathType Container)) {
             throw [TicketboxC07HeartbeatHelperException]::new(
@@ -1478,6 +1484,7 @@ function New-TicketboxC07HeartbeatHelperChildEnvironment {
         "ComSpec" = $commandProcessor
         "TEMP" = $temporaryDirectory
         "TMP" = $temporaryDirectory
+        "LOCALAPPDATA" = $localApplicationData
         "PSModulePath" = "$sharedModulePath;$systemModulePath"
         "PATH" = ($pathEntries -join ";")
         "PATHEXT" = ".COM;.EXE;.BAT;.CMD"
@@ -1909,7 +1916,10 @@ function Invoke-TicketboxBoundedNativeProcess {
                 throw $heartbeatFailure
             }
             $timeoutFailure = [TimeoutException]::new(
-                "$Label 超过允许的 $TimeoutMilliseconds 毫秒，已终止。"
+                "$Label 超过允许的 $TimeoutMilliseconds 毫秒，已终止。 " +
+                "root_exited=$processExited active_processes=$activeProcessCount " +
+                "stdin_closed=$stdinClosed stdout_completed=$($stdoutTask.IsCompleted) " +
+                "stderr_completed=$($stderrTask.IsCompleted)"
             )
             $timeoutFailure.Data["TicketboxC07FailureCode"] =
                 "native_process_deadline_exceeded"
