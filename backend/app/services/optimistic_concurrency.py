@@ -56,8 +56,9 @@ def bump_row_version(instance: Any) -> None:
     """Atomically increment a loaded ORM row's ``row_version`` (ADR-0041).
 
     For non-helper mutation paths that set ``updated_at`` directly on a loaded
-    instance — lazy thumbnail gen, background image cleanup, async enrichment,
-    recurring reactivate/archive, … . Emits a SQL ``row_version =
+    instance — background image cleanup, business-visible async enrichment,
+    recurring reactivate/archive, … . Derived cache materialization must not use
+    this helper. Emits a SQL ``row_version =
     row_version + 1`` expression on flush (NOT a Python read-modify-write) so a
     concurrent writer can't make the monotonic counter regress.
 

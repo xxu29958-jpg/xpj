@@ -67,6 +67,17 @@ _AUTO_ENRICHMENT_FAILURES = (
     TypeError,
 )
 
+_ENRICHMENT_NON_OCC_COLUMNS = frozenset({"thumbnail_path", "updated_at", "row_version"})
+
+
+def _enrichment_occ_snapshot(expense: Expense) -> tuple[tuple[str, object], ...]:
+    """Snapshot business columns while excluding the derived thumbnail cache."""
+    return tuple(
+        (column.key, getattr(expense, column.key))
+        for column in Expense.__table__.columns
+        if column.key not in _ENRICHMENT_NON_OCC_COLUMNS
+    )
+
 
 __all__ = [
     "create_manual_expense",
@@ -179,6 +190,7 @@ def enrich_pending_expense(expense_id: int, tenant_id: str, timezone_name: str |
             if expense is None or expense.status != "pending":
                 return
             resolve_write_capability(db)
+            occ_snapshot = _enrichment_occ_snapshot(expense)
             if not expense.thumbnail_path:
                 generated_thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
                 expense.thumbnail_path = generated_thumbnail_path
@@ -197,8 +209,12 @@ def enrich_pending_expense(expense_id: int, tenant_id: str, timezone_name: str |
             _materialize_category_preference(db, expense)
             if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
                 mark_duplicate_status(db, expense)
-            expense.updated_at = now_utc()
-            bump_row_version(expense)
+            # OCR can replace child draft items / append evidence even when the
+            # denormalized Expense values compare equal, so any extraction is a
+            # business-visible change. Thumbnail-only/cache-only work is not.
+            if ocr_extractions or _enrichment_occ_snapshot(expense) != occ_snapshot:
+                expense.updated_at = now_utc()
+                bump_row_version(expense)
             db.commit()
         except _AUTO_ENRICHMENT_FAILURES:
             # Auto-enrichment runs after the upload response has already

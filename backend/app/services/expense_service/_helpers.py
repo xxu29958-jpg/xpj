@@ -8,7 +8,7 @@ Symbol layout in this module is dictated by where it gets used:
   infrastructure leaks shared between create / OCR / enrichment flows.
 - ``_expense_has_pending_fx`` / ``_ensure_expense_can_confirm`` keep the
   FX-gating rules in one place so create / update / OCR confirm see the
-  same definition. Optimistic-concurrency / ``updated_at`` predicates
+  same definition. Optimistic-concurrency / ``row_version`` predicates
   live in :mod:`app.services.optimistic_concurrency`.
 
 ``EDITABLE_STATUSES`` is re-exported through the package facade — both
@@ -50,6 +50,7 @@ __all__ = [
     "_clean_optional_text",
     "_clean_text",
     "_ensure_expense_can_confirm",
+    "_ensure_pending_expense_can_confirm",
     "_expense_has_pending_fx",
     "_notification_draft_fields",
     "_notification_draft_key",
@@ -228,6 +229,19 @@ def _ensure_expense_can_confirm(expense: Expense) -> None:
         raise AppError("exchange_rate_pending", status_code=409)
     if expense.amount_cents is None:
         raise AppError("amount_required", status_code=400)
+
+
+def _ensure_pending_expense_can_confirm(expense: Expense) -> None:
+    """Validate all facts required by a new pending→confirmed transition.
+
+    Existing confirmed history remains readable and editable: this guard is
+    intentionally stricter than :func:`_ensure_expense_can_confirm`, which is
+    also used while editing already-confirmed rows. ``其他`` is a real category;
+    only the shared dirty-token family (blank/未分类/none/null) is rejected.
+    """
+    _ensure_expense_can_confirm(expense)
+    if is_uncategorized_expense_category(expense.category):
+        raise AppError("category_required", status_code=422)
 
 
 def _replace_ocr_draft_items_from_text(

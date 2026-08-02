@@ -34,6 +34,7 @@ from app.services.expense_service._helpers import (
     _clean_optional_text,
     _clean_text,
     _ensure_expense_can_confirm,
+    _ensure_pending_expense_can_confirm,
     _expense_has_pending_fx,
 )
 from app.services.expense_service._query import get_expense, resolve_expense
@@ -290,7 +291,7 @@ def confirm_expense(
     Idempotency on terminal states is preserved: confirming an already
     ``confirmed`` row returns 200 without inspecting the token. Stale
     snapshot against a still-``pending`` row → 409 ``state_conflict``
-    via DB-level ``updated_at = expected`` predicate.
+    via the DB-level ``row_version = expected`` predicate.
 
     ADR-0042: ``commit=False`` lets the idempotent confirm route fold the
     key claim + this status flip + ``mark_idempotency_succeeded`` into ONE
@@ -305,7 +306,7 @@ def confirm_expense(
         raise AppError("expense_not_found", status_code=404)
     if _expense_has_pending_fx(expense):
         refresh_currency_snapshot(db, tenant_id=tenant_id, expense=expense)
-    _ensure_expense_can_confirm(expense)
+    _ensure_pending_expense_can_confirm(expense)
     db.flush()
 
     now = now_utc()
@@ -325,10 +326,10 @@ def confirm_expense(
         if expense.status == "confirmed":
             return expense
         if expense.status == "pending":
-            # row is still pending; either amount_cents missing (terminal
-            # validation error) or updated_at mismatched. Validation
+            # row is still pending; either required facts are missing (terminal
+            # validation error) or row_version mismatched. Validation
             # raises its own error; otherwise stale → 409.
-            _ensure_expense_can_confirm(expense)
+            _ensure_pending_expense_can_confirm(expense)
             raise AppError("state_conflict", status_code=409)
         raise AppError("expense_not_found", status_code=404)
 

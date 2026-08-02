@@ -72,6 +72,7 @@ file_too_large
 unsupported_file_type
 expense_not_found
 amount_required
+category_required
 amount_invalid
 currency_not_supported
 exchange_rate_required
@@ -1290,6 +1291,7 @@ Idempotency-Key: <uuid-v4>
 - `expected_row_version` 是客户端最后一次读取该账单时看到的 `row_version` 整数；账单已被其它端修改时返回 `409 state_conflict`（已是 `confirmed` 的终态行幂等返回 200，与 token 无关）。
 - 本路由经 outbox 重放，必须带 `Idempotency-Key`；缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 - `amount_cents` 为空时返回 `amount_required`。
+- 分类为空或仍是未分类脏标记时返回 `422 category_required`；`其他` 是合法分类。
 - 状态改为 `confirmed`。
 - 写入 `confirmed_at` 和 `updated_at`。
 - 按配置执行确认后图片清理策略。

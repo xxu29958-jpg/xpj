@@ -11,6 +11,7 @@ must redden one of them.
 from __future__ import annotations
 
 from urllib.parse import unquote
+from uuid import uuid4
 
 from _web_bulk_test_support import bulk_snapshot_fields as _bulk_snapshot_fields
 from api_contract_helpers import patch_expense
@@ -20,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.fx_constants import FX_STATUS_PENDING
-from app.models import Expense
+from app.models import ApiIdempotencyKey, Expense
 from app.services.data_quality_service import (
     is_uncategorized_expense_category,
     is_usable_pending_merchant,
@@ -91,7 +92,7 @@ def test_uncategorized_token_shared_samples() -> None:
         assert not is_uncategorized_expense_category(sample), f"must be categorized: {sample!r}"
 
 
-def _insert_pending(db: Session, **overrides) -> None:
+def _insert_pending(db: Session, **overrides) -> Expense:
     defaults = {
         "tenant_id": "owner",
         "amount_cents": 1000,
@@ -102,7 +103,9 @@ def _insert_pending(db: Session, **overrides) -> None:
         "duplicate_status": "none",
     }
     defaults.update(overrides)
-    db.add(Expense(**defaults))
+    expense = Expense(**defaults)
+    db.add(expense)
+    return expense
 
 
 def test_noise_merchants_count_as_missing_and_never_as_ready(
@@ -130,21 +133,22 @@ def test_none_null_category_tokens_count_as_uncategorized(
     client: TestClient, *, identity,
 ) -> None:
     with SessionLocal() as db:
-        _insert_pending(db, category="none")
+        none_category = _insert_pending(db, category="none")
         _insert_pending(db, category="Null")
         _insert_pending(db, category="餐饮")
-        db.add(
-            Expense(
-                tenant_id="owner",
-                amount_cents=500,
-                merchant="星巴克",
-                category="NONE",
-                source="pytest",
-                status="confirmed",
-                duplicate_status="none",
-            )
+        confirmed_dirty = Expense(
+            tenant_id="owner",
+            amount_cents=500,
+            merchant="星巴克",
+            category="NONE",
+            source="pytest",
+            status="confirmed",
+            duplicate_status="none",
         )
+        db.add(confirmed_dirty)
         db.commit()
+        none_category_id = none_category.id
+        confirmed_dirty_id = confirmed_dirty.id
 
     response = client.get("/api/insights/data-quality", headers=identity.app_headers)
     assert response.status_code == 200, response.text
@@ -156,6 +160,45 @@ def test_none_null_category_tokens_count_as_uncategorized(
     # ready-categorized — 'none'/'Null' rows drop out of that caliber.
     assert body["ready_to_confirm"] == 3
     assert body["ready_to_confirm_categorized"] == 1
+
+    # The same category caliber is a service-layer transition invariant, not
+    # merely a Web/bulk filter. Failed validation must not retain an idempotency
+    # claim, while already-confirmed dirty history remains terminal/idempotent.
+    snapshot = client.get(
+        f"/api/expenses/{none_category_id}", headers=identity.app_headers
+    )
+    assert snapshot.status_code == 200
+    failed_key = str(uuid4())
+    rejected = client.post(
+        f"/api/expenses/{none_category_id}/confirm",
+        headers={**identity.app_headers, "Idempotency-Key": failed_key},
+        json={"expected_row_version": snapshot.json()["row_version"]},
+    )
+    assert rejected.status_code == 422, rejected.text
+    rejected_body = rejected.json()
+    assert rejected_body["error"] == "category_required"
+    assert rejected_body["message"] == "请先填写分类。"
+    assert rejected_body["request_id"]
+    with SessionLocal() as db:
+        row = db.get(Expense, none_category_id)
+        assert row is not None
+        assert row.status == "pending"
+        assert db.scalar(
+            select(ApiIdempotencyKey).where(
+                ApiIdempotencyKey.idempotency_key == failed_key
+            )
+        ) is None
+
+    terminal_snapshot = client.get(
+        f"/api/expenses/{confirmed_dirty_id}", headers=identity.app_headers
+    )
+    terminal = client.post(
+        f"/api/expenses/{confirmed_dirty_id}/confirm",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": terminal_snapshot.json()["row_version"]},
+    )
+    assert terminal.status_code == 200, terminal.text
+    assert terminal.json()["status"] == "confirmed"
 
 
 def test_web_ready_caliber_covers_fx_and_shared_category_tokens(

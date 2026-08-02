@@ -521,7 +521,10 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
         )
         db.add(expense)
         db.commit()
+        db.refresh(expense)
         expense_id = expense.id
+        before_row_version = expense.row_version
+        before_updated_at = expense.updated_at
 
     before = set(_stored_upload_files())
 
@@ -537,6 +540,26 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
         row = db.get(Expense, expense_id)
         assert row is not None
         assert row.thumbnail_path is None
+        assert row.row_version == before_row_version
+        assert row.updated_at == before_updated_at
+
+    # A successful retry that only fills the derived thumbnail cache must also
+    # leave the client-facing business snapshot untouched.
+    monkeypatch.setattr(create_mod, "classify_expense", lambda _db, row: row)
+    monkeypatch.setattr(
+        create_mod,
+        "collect_auto_ocr_extractions",
+        lambda *_args, **_kwargs: [],
+    )
+    enrich_pending_expense(expense_id, "owner")
+
+    assert set(_stored_upload_files()) > before
+    with SessionLocal() as db:
+        row = db.get(Expense, expense_id)
+        assert row is not None
+        assert row.thumbnail_path is not None
+        assert row.row_version == before_row_version
+        assert row.updated_at == before_updated_at
 
 
 def test_upload_same_image_marks_suspected_duplicate_without_rejecting(

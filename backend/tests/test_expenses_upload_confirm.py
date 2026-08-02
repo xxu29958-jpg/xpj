@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from api_contract_helpers import (
@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import BACKEND_ROOT
@@ -124,8 +125,22 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     _assert_confirmed_upload_surfaces(client, identity=identity)
 
 
-def test_thumbnail_is_not_readable_after_original_image_is_deleted(client: TestClient, *, identity) -> None:
+def test_thumbnail_materialization_preserves_occ_before_image_deletion(
+    client: TestClient, *, identity
+) -> None:
     expense_id = upload_png(client, identity=identity)
+
+    # Simulate a migrated row whose source image exists but whose derived cache
+    # locator is absent. The token visible before GET must remain usable.
+    with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.thumbnail_path = None
+        db.commit()
+        db.refresh(expense)
+        before_row_version = expense.row_version
+        before_updated_at = expense.updated_at
 
     thumbnail = client.get(
         f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
@@ -133,6 +148,24 @@ def test_thumbnail_is_not_readable_after_original_image_is_deleted(client: TestC
     assert thumbnail.status_code == 200
 
     with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.thumbnail_path is not None
+        assert expense.row_version == before_row_version
+        assert expense.updated_at == before_updated_at
+
+    edit = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={
+            "note": "缩略图读取后仍可编辑",
+            "expected_row_version": before_row_version,
+        },
+    )
+    assert edit.status_code == 200, edit.text
+
+    with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = db.get(Expense, expense_id)
         assert expense is not None
         expense.image_deleted_at = now_utc()

@@ -49,6 +49,7 @@ ERROR_MESSAGES = {
     "unsupported_file_type": "暂不支持这种图片格式。",
     "expense_not_found": "没有找到这笔账单。",
     "amount_required": "请先填写金额。",
+    "category_required": "请先填写分类。",
     "amount_invalid": "金额格式不正确。",
     "money_projection_out_of_range": "金额计算结果超出支持范围，请检查相关记录后再试。",
     "money_fold_conflict": "当前金额无法安全汇总，请刷新数据后再试。",
