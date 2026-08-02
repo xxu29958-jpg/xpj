@@ -19,7 +19,6 @@ import logging
 import os
 import re
 import subprocess
-import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -234,18 +233,9 @@ def create_c07_pre_upgrade_backup(
 
 
 # ── Concurrency guard (BUG-2) ────────────────────────────────────────────────
-# The Owner Console (``create_manual_backup``) and the scheduled Windows task
-# (``backend/scripts/backup_database.ps1``) both write into the same ``backups/``
-# directory. When two backup jobs overlap, their rotation/prune steps race on the
-# dump files and the loser errors out (benign — no data loss, but the task result
-# goes red). A shared sentinel lock file serializes backup *jobs* across both the
-# Python and PowerShell entry points; the PowerShell side honours the same file
-# name and TTL (see ``backup_database.ps1``). The startup pre-migration snapshot
-# is deliberately unlocked (see ``create_pre_upgrade_backup``).
+# Python and the scheduled PowerShell task hold the same OS byte-range lease.
+# The persistent file is diagnostic only; process/handle death releases ownership.
 _LOCK_NAME = ".backup.lock"
-# A pg_dump of a personal-finance database finishes in seconds; a lock older than
-# this can only be a crashed job, so it is reclaimed rather than blocking forever.
-_LOCK_STALE_SECONDS = 30 * 60
 
 
 def _lock_path() -> Path:
@@ -254,23 +244,9 @@ def _lock_path() -> Path:
     return _backup_dir() / _LOCK_NAME
 
 
-def _lock_is_stale(path: Path) -> bool:
-    try:
-        age_seconds = time.time() - path.stat().st_mtime
-    except FileNotFoundError:
-        return False  # already gone — the next exclusive create will win
-    return age_seconds > _LOCK_STALE_SECONDS
-
-
 @contextlib.contextmanager
 def _backup_lock() -> Iterator[None]:
-    """Serialize backup jobs via an exclusive sentinel file (non-blocking).
-
-    If another live job holds the lock, raise ``backup_in_progress`` (409) — the
-    manual-backup operator simply retries. A lock older than
-    ``_LOCK_STALE_SECONDS`` is treated as a crashed job and reclaimed; the
-    ``O_EXCL`` create on the next loop arbitrates the reclaim race.
-    """
+    """Serialize backup jobs through a non-blocking kernel lease."""
     lease = acquire_backup_job_lock()
     try:
         yield
@@ -281,7 +257,7 @@ def _backup_lock() -> Iterator[None]:
 def acquire_backup_job_lock() -> BackupJobLease:
     """Acquire the shared Python/PowerShell backup lock without blocking."""
 
-    return acquire_backup_job_lease(_lock_path(), stale=_lock_is_stale)
+    return acquire_backup_job_lease(_lock_path())
 
 
 def _run_pg_dump(

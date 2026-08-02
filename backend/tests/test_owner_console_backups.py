@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -156,7 +156,7 @@ def test_owner_backups_page_no_warning_when_fresh(
     assert "alert-danger" not in resp.text
 
 
-# ── Backup concurrency guard (BUG-2: shared sentinel lock) ───────────────────
+# ── Backup concurrency guard (BUG-2: shared kernel lease) ────────────────────
 
 
 def _fresh_backup_entry(kind: str):
@@ -173,20 +173,24 @@ def _fresh_backup_entry(kind: str):
 
 def test_manual_backup_holds_lock_during_dump(monkeypatch: pytest.MonkeyPatch) -> None:
     """create_manual_backup must run the dump *inside* the lock and release after."""
+    from app.errors import AppError
     from app.services import backup_service
 
     observed: dict[str, bool] = {}
 
     def fake_run_pg_dump(*, prefix: str, kind: str):
-        observed["lock_present"] = backup_service._lock_path().exists()  # noqa: SLF001
+        with pytest.raises(AppError) as excinfo:
+            backup_service.acquire_backup_job_lock()
+        observed["lock_held"] = excinfo.value.error == "backup_in_progress"
         return _fresh_backup_entry(kind)
 
     monkeypatch.setattr(backup_service, "_run_pg_dump", fake_run_pg_dump)
     backup_service._lock_path().unlink(missing_ok=True)  # noqa: SLF001
     try:
         backup_service.create_manual_backup()
-        assert observed["lock_present"] is True  # dump ran while the lock was held
-        assert backup_service._lock_path().exists() is False  # released after  # noqa: SLF001
+        assert observed["lock_held"] is True
+        successor = backup_service.acquire_backup_job_lock()
+        successor.release()
     finally:
         backup_service._lock_path().unlink(missing_ok=True)  # noqa: SLF001
 
@@ -202,50 +206,91 @@ def test_manual_backup_skips_when_lock_held(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(backup_service, "_run_pg_dump", fail_if_called)
     lock = backup_service._lock_path()  # noqa: SLF001
     lock.parent.mkdir(parents=True, exist_ok=True)
-    lock.write_text("99999\nheld\n", encoding="utf-8")
+    lease = backup_service.acquire_backup_job_lock()
     try:
         with pytest.raises(AppError) as excinfo:
             backup_service.create_manual_backup()
         assert excinfo.value.error == "backup_in_progress"
         assert excinfo.value.status_code == 409
     finally:
+        lease.release()
         lock.unlink(missing_ok=True)
 
 
-def test_stale_backup_lock_is_reclaimed() -> None:
-    """A lock older than the TTL is a crashed job — acquiring reclaims it."""
-    import os
-
+def test_unlocked_persistent_backup_lock_is_reacquired() -> None:
+    """A crashed owner's persistent diagnostic file never blocks a new lease."""
     from app.services import backup_service
 
     lock = backup_service._lock_path()  # noqa: SLF001
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_text("99999\ncrashed\n", encoding="utf-8")
-    stale_mtime = time.time() - (backup_service._LOCK_STALE_SECONDS + 60)  # noqa: SLF001
-    os.utime(lock, (stale_mtime, stale_mtime))
     try:
         with backup_service._backup_lock():  # noqa: SLF001
-            assert lock.exists()  # reclaimed and re-held, no backup_in_progress
-        assert lock.exists() is False  # released on exit
+            assert lock.exists()
+        assert lock.exists()
     finally:
         lock.unlink(missing_ok=True)
 
 
-def test_backup_lease_release_never_removes_a_successor() -> None:
-    """An old coordinator cannot unlink a lock that now belongs to another job."""
+def test_backup_lease_release_is_idempotent_and_never_unlinks_authority(tmp_path: Path) -> None:
+    """Release closes ownership while keeping the stable cross-runtime lock path."""
+    import shutil
+    import subprocess
+    import sys
+
     from app.services import backup_service
 
     lock = backup_service._lock_path()  # noqa: SLF001
     lock.unlink(missing_ok=True)
     lease = backup_service.acquire_backup_job_lock()
-    successor_payload = b"successor-owner\n"
     try:
-        lock.write_bytes(successor_payload)
+        if sys.platform == "win32":
+            engine = shutil.which("powershell")
+            assert engine is not None
+            script_path = Path(__file__).resolve().parents[1] / "scripts" / "backup_database.ps1"
+            probe = tmp_path / "backup-lock-probe.ps1"
+            probe.write_text(
+                f"""
+. '{str(script_path).replace("'", "''")}'
+$lease = Get-BackupLock -Path '{str(lock).replace("'", "''")}'
+if ($null -eq $lease) {{ 'BLOCKED'; exit 0 }}
+try {{ 'ACQUIRED' }} finally {{ Close-BackupLock -Lease $lease }}
+""",
+                encoding="utf-8-sig",
+            )
+            blocked = subprocess.run(  # noqa: S603
+                [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(probe)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            assert blocked.returncode == 0, blocked.stderr
+            assert blocked.stdout.strip().splitlines()[-1] == "BLOCKED"
         lease.release()
-        assert lock.read_bytes() == successor_payload
+        assert lock.exists()
         lease.release()  # idempotent second release is also harmless
+        if sys.platform == "win32":
+            acquired = subprocess.run(  # noqa: S603
+                [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(probe)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            assert acquired.returncode == 0, acquired.stderr
+            assert acquired.stdout.strip().splitlines()[-1] == "ACQUIRED"
+        successor = backup_service.acquire_backup_job_lock()
+        successor_payload = successor.payload
+        try:
+            assert lock.exists()
+        finally:
+            successor.release()
         assert lock.read_bytes() == successor_payload
     finally:
+        lease.release()
         lock.unlink(missing_ok=True)
 
 

@@ -1,13 +1,13 @@
-"""Owned cross-process sentinel used by every backup producer."""
+"""Kernel-owned cross-process lease used by every backup producer."""
 
 from __future__ import annotations
 
-import contextlib
+import errno
 import logging
 import os
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 from uuid import uuid4
 
 from app.errors import AppError
@@ -20,6 +20,7 @@ _logger = logging.getLogger(__name__)
 class BackupJobLease:
     path: Path
     payload: bytes
+    stream: BinaryIO
     released: bool = False
 
     def release(self) -> None:
@@ -27,35 +28,83 @@ class BackupJobLease:
             return
         self.released = True
         try:
-            persisted = self.path.read_bytes()
-        except FileNotFoundError:
-            return
-        if persisted != self.payload:
-            _logger.warning("backup lock ownership changed; refusing to remove it")
-            return
-        with contextlib.suppress(FileNotFoundError):
-            self.path.unlink()
+            _unlock_backup_file(self.stream)
+        except OSError:
+            _logger.warning("backup kernel lease unlock failed; closing its handle", exc_info=True)
+        finally:
+            self.stream.close()
 
 
-def acquire_backup_job_lease(
-    path: Path,
-    *,
-    stale: Callable[[Path], bool],
-) -> BackupJobLease:
-    payload = f"{os.getpid()}\n{now_utc().isoformat()}\n{uuid4().hex}\n".encode()
-    while True:
+class _BackupLeaseBusyError(Exception):
+    pass
+
+
+def _lock_backup_file(stream: BinaryIO) -> None:
+    stream.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
         try:
-            fd = os.open(
-                str(path),
-                os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0),
-                0o600,
-            )
-        except FileExistsError:
-            if stale(path):
-                with contextlib.suppress(FileNotFoundError):
-                    path.unlink()
-                continue
-            raise AppError("backup_in_progress", status_code=409) from None
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(payload)
-        return BackupJobLease(path=path, payload=payload)
+            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError as exc:
+            if exc.errno in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+                raise _BackupLeaseBusyError from exc
+            raise
+        return
+
+    import fcntl
+
+    try:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        if exc.errno in {errno.EACCES, errno.EAGAIN}:
+            raise _BackupLeaseBusyError from exc
+        raise
+
+
+def _unlock_backup_file(stream: BinaryIO) -> None:
+    stream.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+
+    import fcntl
+
+    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def acquire_backup_job_lease(path: Path) -> BackupJobLease:
+    payload = f"{os.getpid()}\n{now_utc().isoformat()}\n{uuid4().hex}\n".encode()
+    fd = os.open(
+        str(path),
+        os.O_CREAT | os.O_RDWR | getattr(os, "O_BINARY", 0),
+        0o600,
+    )
+    stream = os.fdopen(fd, "r+b", buffering=0)
+    try:
+        if stream.seek(0, os.SEEK_END) == 0:
+            stream.write(b"\0")
+            stream.flush()
+            os.fsync(stream.fileno())
+        _lock_backup_file(stream)
+    except _BackupLeaseBusyError:
+        stream.close()
+        raise AppError("backup_in_progress", status_code=409) from None
+    except BaseException:
+        stream.close()
+        raise
+
+    lease = BackupJobLease(path=path, payload=payload, stream=stream)
+    try:
+        stream.seek(0)
+        stream.truncate()
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
+        stream.seek(0)
+    except BaseException:
+        lease.release()
+        raise
+    return lease

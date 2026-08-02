@@ -294,6 +294,31 @@ if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
     -Right $resourceManagerDerivedSecurityBytes)) {{
     throw 'descriptor resource-manager provenance changed security authority'
 }}
+$inheritanceSecurity = New-Object Security.AccessControl.FileSecurity
+$inheritanceSecurity.SetSecurityDescriptorSddlForm(
+    ("O:{{0}}G:{{0}}D:(A;;FA;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
+    $allSections
+)
+$inheritanceSecurityBytes = $inheritanceSecurity.GetSecurityDescriptorBinaryForm()
+$autoInheritedSecurity = New-Object `
+    Security.AccessControl.RawSecurityDescriptor($inheritanceSecurityBytes,0)
+$autoInheritedSecurity.DiscretionaryAcl[0].AceFlags =
+    [Security.AccessControl.AceFlags](
+        [int]$autoInheritedSecurity.DiscretionaryAcl[0].AceFlags -bor
+            [int][Security.AccessControl.AceFlags]::Inherited
+    )
+$autoInheritedSecurity.SetFlags(
+    $autoInheritedSecurity.ControlFlags -bor
+        [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited
+)
+$autoInheritedSecurityBytes =
+    New-Object byte[] $autoInheritedSecurity.BinaryLength
+$autoInheritedSecurity.GetBinaryForm($autoInheritedSecurityBytes,0)
+if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+    -Left $inheritanceSecurityBytes `
+    -Right $autoInheritedSecurityBytes)) {{
+    throw 'descriptor comparison rejected OS-recomputed inheritance provenance'
+}}
 foreach ($protectionFlag in @(
     [Security.AccessControl.ControlFlags]::DiscretionaryAclProtected,
     [Security.AccessControl.ControlFlags]::SystemAclProtected

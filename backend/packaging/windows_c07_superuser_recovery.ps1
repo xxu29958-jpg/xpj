@@ -1063,11 +1063,10 @@ function Test-TicketboxC07SuperuserRecoverySecurityEquals {
     }
 
     try {
-        # Windows may recompute DEFAULTED provenance and automatic-inheritance
-        # request/result metadata when the captured owner/group/DACL/SACL are
-        # applied to an ordinary auth file. Normalize only those provider-
-        # recomputed bits; every ACL byte plus PRESENT/PROTECTED, RM control,
-        # and all other control flags remain part of the equality contract.
+        # Windows may recompute DEFAULTED/automatic-inheritance provenance when
+        # an ACL is reapplied. Normalize those flags and the matching inherited
+        # ACE provenance only; rights, identities, inheritance behavior,
+        # PRESENT/PROTECTED flags and both ACL shapes remain authoritative.
         $ignoredFlags =
             [Security.AccessControl.ControlFlags]::OwnerDefaulted -bor
             [Security.AccessControl.ControlFlags]::GroupDefaulted -bor
@@ -1078,22 +1077,32 @@ function Test-TicketboxC07SuperuserRecoverySecurityEquals {
             [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited -bor
             [Security.AccessControl.ControlFlags]::SystemAclAutoInherited
         $ignoredMask = [int]$ignoredFlags
-        $comparable = @()
-        foreach ($bytes in @($Left, $Right)) {
-            $descriptor = New-Object `
-                Security.AccessControl.RawSecurityDescriptor($bytes, 0)
-            $descriptor.SetFlags(
-                [Security.AccessControl.ControlFlags](
-                    [int]$descriptor.ControlFlags -band (-bnot $ignoredMask)
-                )
-            )
-            $normalized = New-Object byte[] $descriptor.BinaryLength
-            $descriptor.GetBinaryForm($normalized, 0)
-            $comparable += ,$normalized
+        $leftDescriptor = New-Object `
+            Security.AccessControl.RawSecurityDescriptor($Left, 0)
+        $rightDescriptor = New-Object `
+            Security.AccessControl.RawSecurityDescriptor($Right, 0)
+        $leftFlags = [int]$leftDescriptor.ControlFlags -band (-bnot $ignoredMask)
+        $rightFlags = [int]$rightDescriptor.ControlFlags -band (-bnot $ignoredMask)
+        if (
+            $leftFlags -ne $rightFlags -or
+            -not $leftDescriptor.Owner.Equals($rightDescriptor.Owner) -or
+            -not $leftDescriptor.Group.Equals($rightDescriptor.Group) -or
+            $leftDescriptor.ResourceManagerControl -ne
+                $rightDescriptor.ResourceManagerControl -or
+            $leftDescriptor.Revision -ne $rightDescriptor.Revision
+        ) {
+            return $false
         }
-        return Test-TicketboxByteArrayEquals `
-            -Left $comparable[0] `
-            -Right $comparable[1]
+        return (
+            (Test-TicketboxC07SuperuserRecoveryRawAclEquals `
+                -Left $leftDescriptor.DiscretionaryAcl `
+                -Right $rightDescriptor.DiscretionaryAcl `
+                -NormalizeInheritedProvenance) -and
+            (Test-TicketboxC07SuperuserRecoveryRawAclEquals `
+                -Left $leftDescriptor.SystemAcl `
+                -Right $rightDescriptor.SystemAcl `
+                -NormalizeInheritedProvenance)
+        )
     }
     catch {
         return $false
@@ -1103,19 +1112,42 @@ function Test-TicketboxC07SuperuserRecoverySecurityEquals {
 function Test-TicketboxC07SuperuserRecoveryRawAclEquals {
     param(
         [AllowNull()][object]$Left,
-        [AllowNull()][object]$Right
+        [AllowNull()][object]$Right,
+        [switch]$NormalizeInheritedProvenance
     )
 
     if ($null -eq $Left -or $null -eq $Right) {
         return $null -eq $Left -and $null -eq $Right
     }
-    $leftBytes = New-Object byte[] $Left.BinaryLength
-    $rightBytes = New-Object byte[] $Right.BinaryLength
-    $Left.GetBinaryForm($leftBytes, 0)
-    $Right.GetBinaryForm($rightBytes, 0)
+    $aclBytes = @()
+    foreach ($acl in @($Left, $Right)) {
+        if ($NormalizeInheritedProvenance) {
+            $comparableAcl = New-Object `
+                Security.AccessControl.RawAcl($acl.Revision, $acl.Count)
+            for ($index = 0; $index -lt $acl.Count; $index++) {
+                $aceBytes = New-Object byte[] $acl[$index].BinaryLength
+                $acl[$index].GetBinaryForm($aceBytes, 0)
+                $ace = [Security.AccessControl.GenericAce]::CreateFromBinaryForm(
+                    $aceBytes,
+                    0
+                )
+                $ace.AceFlags = [Security.AccessControl.AceFlags](
+                    [int]$ace.AceFlags -band
+                        (-bnot [int][Security.AccessControl.AceFlags]::Inherited)
+                )
+                $comparableAcl.InsertAce($comparableAcl.Count, $ace)
+            }
+        }
+        else {
+            $comparableAcl = $acl
+        }
+        $bytes = New-Object byte[] $comparableAcl.BinaryLength
+        $comparableAcl.GetBinaryForm($bytes, 0)
+        $aclBytes += ,$bytes
+    }
     return Test-TicketboxByteArrayEquals `
-        -Left $leftBytes `
-        -Right $rightBytes
+        -Left $aclBytes[0] `
+        -Right $aclBytes[1]
 }
 
 function Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic {

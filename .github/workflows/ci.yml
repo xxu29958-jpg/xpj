@@ -271,7 +271,6 @@ jobs:
         run: >-
           python -m pytest -q packaging/tests
           --strict-markers -p no:cacheprovider -o addopts=
-          -n 2 --dist loadfile --max-worker-restart 0
 
       - name: Windows database maintenance contract
         run: >-

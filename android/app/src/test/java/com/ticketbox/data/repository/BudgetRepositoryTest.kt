@@ -361,7 +361,7 @@ class BudgetRepositoryAdviceBindingTest {
         val api = BudgetApiHandler().apply {
             adviceResponse = BudgetAdviseResponseDto(
                 advice = null,
-                homeCurrencyCode = "KRW",
+                homeCurrencyCode = null,
                 providerName = "empty",
                 reasonCode = "ai_advisor_provider_empty",
             )
@@ -369,6 +369,18 @@ class BudgetRepositoryAdviceBindingTest {
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val repository = repository(api, tokenStore)
 
+        val incompatible = repository.requestBudgetAdvice("2026-05")
+        val incompatibility = incompatible.exceptionOrNull()
+        assertTrue(incompatibility is RepositoryException)
+        assertEquals("server_upgrade_required", incompatibility.errorCode)
+        assertNull(repository.cachedBudgetAdvice("2026-05"))
+
+        api.adviceResponse = BudgetAdviseResponseDto(
+            advice = null,
+            homeCurrencyCode = "KRW",
+            providerName = "empty",
+            reasonCode = "ai_advisor_provider_empty",
+        )
         val result = repository.requestBudgetAdvice("2026-05").getOrThrow()
 
         assertNull(result.advice)

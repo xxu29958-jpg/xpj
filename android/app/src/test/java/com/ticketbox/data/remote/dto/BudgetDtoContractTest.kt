@@ -1,11 +1,9 @@
 package com.ticketbox.data.remote.dto
 
-import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 
 class BudgetDtoContractTest {
     private val moshi = Moshi.Builder()
@@ -72,7 +70,7 @@ class BudgetDtoContractTest {
     }
 
     @Test
-    fun budgetAdviceRequiresAndPreservesHomeCurrency() {
+    fun budgetAdvicePreservesCurrentCurrencyAndDecodesN1Response() {
         val adapter = moshi.adapter(BudgetAdviseResponseDto::class.java)
         val dto = requireNotNull(
             adapter.fromJson(
@@ -99,10 +97,11 @@ class BudgetDtoContractTest {
 
         assertEquals("JPY", dto.homeCurrencyCode)
         assertEquals(300000L, dto.advice?.suggestions?.single()?.suggestedAmountCents)
-        assertFailsWith<JsonDataException> {
+        val n1Dto = requireNotNull(
             adapter.fromJson(
                 """{"advice":null,"provider_name":"mock","reason_code":null}""",
-            )
-        }
+            ),
+        )
+        assertEquals(null, n1Dto.homeCurrencyCode)
     }
 }
