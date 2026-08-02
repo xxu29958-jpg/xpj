@@ -4034,8 +4034,8 @@ $rejected = $false
 try {{ Assert-TicketboxShawlServiceCommand @shawlArgs }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'Shawl option smuggling accepted' }}
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-$protectedLockRoot = Join-Path '{literal(base)}' 'protected-lock-root'
-$malformedLockTarget = Join-Path '{literal(base)}' 'malformed-lock-target'
+$protectedLockRoot = Join-Path '{literal(tmp_path)}' 'protected-lock-root'
+$malformedLockTarget = Join-Path '{literal(tmp_path)}' 'malformed-lock-target'
 $malformedOperationLock = Join-Path $protectedLockRoot 'installer-operation.lock'
 Initialize-TicketboxProtectedDirectoryAtomically `
     -Path $protectedLockRoot `
