@@ -5,15 +5,17 @@ route files don't have to import from each other.
 """
 from __future__ import annotations
 
-from datetime import datetime
-from decimal import Decimal
-
 from fastapi import Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.money_carrier import parse_canonical_major_decimal
+from app.routes._web_expense_return_context import (
+    edit_context_params,
+    resolve_return_to,
+    return_context_params,
+    return_href,
+)
 from app.routes.web_common import (
     _amount_yuan,
     _base_ctx,
@@ -22,78 +24,13 @@ from app.routes.web_common import (
     _web_redirect,
     templates,
 )
-from app.schemas import (
-    ExpenseItemReplaceRequest,
-    ExpenseItemRequest,
-    ExpenseSplitReplaceRequest,
-    ExpenseSplitRequest,
-)
 from app.services.category_service import list_ledger_category_options
-from app.services.currency_common import currency_input_metadata, major_amount_to_minor
 from app.services.expense_service import get_expense
 from app.services.expense_split_service import (
     list_active_split_members,
     list_expense_splits,
 )
 from app.services.receipt_item_service import list_expense_items
-from app.services.spending_contract_service import accounting_timezone_key
-from app.services.time_service import ensure_utc_assuming_local
-
-
-def parse_amount_yuan(
-    raw: str,
-    *,
-    currency_code: str,
-) -> tuple[int | None, str | None]:
-    text = (raw or "").strip()
-    if not text:
-        return None, None
-    try:
-        amount = major_amount_to_minor(
-            text,
-            currency_code,
-            allow_negative=True,
-        )
-    except AppError:
-        example = currency_input_metadata(currency_code)["amount_example"]
-        return None, f"请填写正确的金额，例如 {example}。"
-    if amount is not None and amount < 0:
-        return None, "金额不能为负数。"
-    return amount, None
-
-
-def parse_original_amount(raw: str) -> tuple[Decimal | None, str | None]:
-    text = raw or ""
-    if not text:
-        return None, None
-    try:
-        amount = parse_canonical_major_decimal(text, allow_negative=True)
-    except ValueError:
-        return None, "请填写正确的金额，例如 12.34。"
-    if amount < 0:
-        return None, "金额不能为负数。"
-    return amount, None
-
-
-def parse_expense_time_local(raw: str | None) -> tuple[datetime | None, str | None]:
-    """Parse the edit form's ``<input type="datetime-local">`` value into a UTC
-    ``datetime``. Blank means "leave the time unchanged" → ``(None, None)``.
-
-    A datetime-local input yields a *naive* wall-clock string (``2026-05-04T20:00``)
-    the user reads as accounting-tz (Asia/Shanghai); we assume-local → UTC so
-    storage stays UTC and round-trips with ``_expense_time_local_input``. A value
-    that already carries an offset / trailing ``Z`` is honoured as-is (defensive).
-    On an unparseable value → ``(None, error)`` so ``web_save`` flashes it via the
-    existing edit error path.
-    """
-    cleaned = (raw or "").strip()
-    if not cleaned:
-        return None, None
-    try:
-        parsed = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
-    except ValueError:
-        return None, "请填写正确的时间。"
-    return ensure_utc_assuming_local(parsed, accounting_timezone_key()), None
 
 
 def _edit_page_or_flash_redirect(
@@ -105,6 +42,17 @@ def _edit_page_or_flash_redirect(
     error_msg: str,
     fallback_path: str,
     error_key: str = "error",
+    status_code: int = 422,
+    form_values: dict[str, str] | None = None,
+    field_errors: dict[str, str] | None = None,
+    receipt_item_rows: list[dict] | None = None,
+    split_form_rows: list[dict] | None = None,
+    return_to: str = "",
+    return_month: str = "",
+    return_filter: str = "",
+    return_page: str = "",
+    return_tag: str = "",
+    return_query: str = "",
 ) -> Response:
     """Re-render edit.html with ``error_msg`` — or flash-redirect when the row
     itself is gone.
@@ -120,36 +68,47 @@ def _edit_page_or_flash_redirect(
     the sub-forms); ``fallback_path`` mirrors the GET guard's list.
     """
     try:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
+        ctx = web_edit_context(
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            form_values=form_values,
+            field_errors=field_errors,
+            return_to=return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+            return_query=return_query,
+        )
     except AppError as exc:
-        return _web_redirect(fallback_path, selected_id, msg=exc.message, flash_type="error")
+        return _web_redirect(
+            resolve_return_to(return_to, fallback_path),
+            selected_id,
+            msg=exc.message,
+            flash_type="error",
+            **return_context_params(
+                return_to,
+                return_month=return_month,
+                return_filter=return_filter,
+                return_page=return_page,
+                return_tag=return_tag,
+                return_query=return_query,
+            ),
+        )
     ctx[error_key] = error_msg
-    return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
-
-
-# 批10: hidden ``return_to`` whitelist for the drawer review flow. The drawer is
-# served from /web/pending, so a successful save can redirect back there instead
-# of bouncing the reviewer into the full /web/expenses/{id}/edit page (the old
-# 303 that "pops you out of the queue", even with JS off). Only a fixed set of
-# list pages is honoured — an arbitrary value falls back to the route default,
-# so this never widens the same-site redirect surface beyond known /web list
-# views.
-_RETURN_TO_PATHS: dict[str, str] = {
-    "pending": "/web/pending",
-    "confirmed": "/web/confirmed",
-    "duplicates": "/web/duplicates",
-}
-
-
-def resolve_return_to(raw: str, default_path: str) -> str:
-    """Map a hidden ``return_to`` token to a whitelisted /web list path.
-
-    批10: blank or unknown → ``default_path`` (each route's existing
-    redirect target). Keeps the success redirect inside the known list-view
-    set; ``_web_redirect`` still runs the value through
-    ``_safe_same_site_redirect_path`` afterwards.
-    """
-    return _RETURN_TO_PATHS.get((raw or "").strip(), default_path)
+    if receipt_item_rows is not None:
+        ctx["receipt_items"]["rows"] = receipt_item_rows
+    if split_form_rows is not None:
+        ctx["split_rows"]["rows"] = split_form_rows
+    return templates.TemplateResponse(
+        request=request,
+        name="edit.html",
+        context=ctx,
+        status_code=status_code,
+    )
 
 
 def drawer_fragment_ok(action: str) -> HTMLResponse:
@@ -171,6 +130,10 @@ def drawer_fragment_error(
     selected_id: str,
     expense_id: int,
     error_msg: str,
+    *,
+    status_code: int = 422,
+    form_values: dict[str, str] | None = None,
+    field_errors: dict[str, str] | None = None,
 ) -> Response:
     """批10: re-render ``_edit_drawer.html`` carrying ``error_msg`` for a failed
     fetch-mutation — or the readable empty-cell snippet when the row vanished.
@@ -184,7 +147,16 @@ def drawer_fragment_error(
     swaps the error fragment into the open drawer instead of advancing.
     """
     try:
-        ctx = web_edit_context(db, request, options, selected_id, expense_id)
+        ctx = web_edit_context(
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            form_values=form_values,
+            field_errors=field_errors,
+            return_to="pending",
+        )
     except AppError as exc:
         return HTMLResponse(
             f'<div class="empty-cell">{exc.message}</div>',
@@ -192,7 +164,10 @@ def drawer_fragment_error(
         )
     ctx["error"] = error_msg
     return templates.TemplateResponse(
-        request=request, name="_edit_drawer.html", context=ctx, status_code=422
+        request=request,
+        name="_edit_drawer.html",
+        context=ctx,
+        status_code=status_code,
     )
 
 
@@ -202,17 +177,58 @@ def web_edit_context(
     options,
     selected_id: str,
     expense_id: int,
+    *,
+    form_values: dict[str, str] | None = None,
+    field_errors: dict[str, str] | None = None,
+    return_to: str = "",
+    return_month: str = "",
+    return_filter: str = "",
+    return_page: str = "",
+    return_tag: str = "",
+    return_query: str = "",
 ) -> dict:
     expense = get_expense(db, expense_id, selected_id)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
-    ctx["expense"] = _expense_view(
+    expense_view = _expense_view(
         expense,
         presentation_currency_code=ctx["home_currency_code"],
     )
+    if form_values:
+        view_keys = {
+            "amount_yuan": "original_amount_value",
+            "merchant": "merchant",
+            "category": "category",
+            "note": "note",
+            "tags": "tags",
+            "expense_time": "expense_time_local",
+        }
+        for form_key, view_key in view_keys.items():
+            if form_key in form_values:
+                expense_view[view_key] = form_values[form_key]
+    ctx["expense"] = expense_view
     ctx["error"] = None
     ctx["message"] = request.query_params.get("msg")
     ctx["items_error"] = None
     ctx["splits_error"] = None
+    ctx["field_errors"] = field_errors or {}
+    ctx["edit_return_fields"] = edit_context_params(
+        return_to,
+        return_month=return_month,
+        return_filter=return_filter,
+        return_page=return_page,
+        return_tag=return_tag,
+        return_query=return_query,
+    )
+    ctx["edit_return_href"] = return_href(
+        return_to,
+        ledger_id=selected_id,
+        default_path="/web/pending",
+        return_month=return_month,
+        return_filter=return_filter,
+        return_page=return_page,
+        return_tag=return_tag,
+        return_query=return_query,
+    )
     record_currency = expense.home_currency_code or ctx["home_currency_code"]
     ctx["currency_input"] = _currency_input_view(record_currency)
     ctx["expense_currency_input"] = _currency_input_view(
@@ -261,6 +277,7 @@ def _web_item_rows(
             ),
             "category": item.category,
             "is_ocr_draft": item.is_ocr_draft,
+            "errors": {},
         }
         for item in response.items
     ]
@@ -273,6 +290,7 @@ def _web_item_rows(
             "amount_yuan": "",
             "category": "",
             "is_ocr_draft": False,
+            "errors": {},
         }
         for _ in range(3)
     )
@@ -300,10 +318,20 @@ def _web_split_rows(
             "amount_yuan": _amount_yuan(split.amount_cents, currency_code),
             "note": split.note or "",
             "disabled": split.disabled_at is not None,
+            "errors": {},
         }
         for split in response.splits
     ]
-    rows.extend({"member_id": "", "amount_yuan": "", "note": ""} for _ in range(3))
+    rows.extend(
+        {
+            "member_id": "",
+            "amount_yuan": "",
+            "note": "",
+            "disabled": False,
+            "errors": {},
+        }
+        for _ in range(3)
+    )
     return {
         "parent_amount_yuan": _amount_yuan(response.parent_amount_cents, currency_code),
         "total_yuan": _amount_yuan(response.splits_total_amount_cents, currency_code),
@@ -317,111 +345,118 @@ def _web_split_members(db: Session, ledger_id: str) -> list[dict]:
     return list_active_split_members(db, tenant_id=ledger_id)
 
 
-def item_replace_payload(
+def confirm_reject_error(
+    db: Session,
+    request: Request,
+    options,
+    selected_id: str,
+    expense_id: int,
+    error_msg: str,
+    fragment: int,
     *,
-    currency_code: str,
-    expected_row_version: int,
-    item_name: list[str],
-    item_kind: list[str],
-    item_quantity: list[str],
-    item_unit_price_yuan: list[str],
-    item_amount_yuan: list[str],
-    item_category: list[str],
-) -> ExpenseItemReplaceRequest:
-    items: list[ExpenseItemRequest] = []
-    max_len = max(
-        len(item_name),
-        len(item_kind),
-        len(item_quantity),
-        len(item_unit_price_yuan),
-        len(item_amount_yuan),
-        len(item_category),
-        0,
-    )
-    for index in range(max_len):
-        name = _at(item_name, index).strip()
-        kind_raw = _at(item_kind, index).strip() or "product"
-        quantity = _at(item_quantity, index).strip()
-        unit_raw = _at(item_unit_price_yuan, index)
-        amount_raw = _at(item_amount_yuan, index)
-        category = _at(item_category, index).strip()
-        if not any((name, quantity, unit_raw.strip(), amount_raw.strip(), category)):
-            continue
-        if not name:
-            raise AppError("invalid_request", "明细名称不能为空。", status_code=422)
-        unit_price_cents, unit_error = parse_amount_yuan(
-            unit_raw,
-            currency_code=currency_code,
+    status_code: int,
+    return_to: str = "",
+    return_month: str = "",
+    return_filter: str = "",
+    return_page: str = "",
+    return_tag: str = "",
+    return_query: str = "",
+    form_values: dict[str, str] | None = None,
+    field_errors: dict[str, str] | None = None,
+) -> Response:
+    if fragment:
+        return drawer_fragment_error(
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            error_msg,
+            status_code=status_code,
+            form_values=form_values,
+            field_errors=field_errors,
         )
-        amount_cents, amount_error = parse_amount_yuan(
-            amount_raw,
-            currency_code=currency_code,
-        )
-        if unit_error or amount_error:
-            raise AppError("invalid_request", "请填写正确的明细金额。", status_code=422)
-        # ADR-0035: form post 总是发正数 amount_yuan；discount 行在 backend
-        # 翻转 sign。这样模板就不用渲染带 "-" 的 input。
-        if kind_raw == "discount" and amount_cents is not None:
-            amount_cents = -abs(amount_cents)
-        try:
-            items.append(
-                ExpenseItemRequest(
-                    name=name,
-                    kind=kind_raw,
-                    quantity_text=quantity or None,
-                    unit_price_cents=unit_price_cents,
-                    amount_cents=amount_cents,
-                    category=category or None,
-                )
-            )
-        except ValueError as exc:
-            raise AppError("invalid_request", str(exc), status_code=422) from exc
-    return ExpenseItemReplaceRequest(
-        expected_row_version=expected_row_version,
-        items=items,
+    return _edit_page_or_flash_redirect(
+        db,
+        request,
+        options,
+        selected_id,
+        expense_id,
+        error_msg,
+        "/web/pending",
+        status_code=status_code,
+        form_values=form_values,
+        field_errors=field_errors,
+        return_to=return_to,
+        return_month=return_month,
+        return_filter=return_filter,
+        return_page=return_page,
+        return_tag=return_tag,
+        return_query=return_query,
     )
 
 
-def split_replace_payload(
+def web_save_response(
+    db: Session,
+    request: Request,
+    options,
+    selected_id: str,
+    expense_id: int,
     *,
-    currency_code: str,
-    expected_row_version: int,
-    split_member_id: list[str],
-    split_amount_yuan: list[str],
-    split_note: list[str],
-) -> ExpenseSplitReplaceRequest:
-    splits: list[ExpenseSplitRequest] = []
-    max_len = max(len(split_member_id), len(split_amount_yuan), len(split_note), 0)
-    for index in range(max_len):
-        member_raw = _at(split_member_id, index).strip()
-        amount_raw = _at(split_amount_yuan, index)
-        note = _at(split_note, index).strip()
-        if not any((member_raw, amount_raw.strip(), note)):
-            continue
-        if not member_raw or not amount_raw.strip():
-            raise AppError("invalid_request", "拆账成员和金额都需要填写。", status_code=422)
-        try:
-            member_id = int(member_raw)
-        except ValueError as exc:
-            raise AppError("invalid_request", "请选择正确的家庭成员。", status_code=422) from exc
-        amount_cents, amount_error = parse_amount_yuan(
-            amount_raw,
-            currency_code=currency_code,
-        )
-        if amount_error or amount_cents is None:
-            raise AppError("invalid_request", "请填写正确的拆账金额。", status_code=422)
-        splits.append(
-            ExpenseSplitRequest(
-                member_id=member_id,
-                amount_cents=amount_cents,
-                note=note or None,
+    error: str | None,
+    error_status: int,
+    form_values: dict[str, str] | None,
+    field_errors: dict[str, str] | None,
+    fragment: int,
+    return_to: str,
+    return_month: str,
+    return_filter: str,
+    return_page: str,
+    return_tag: str,
+    return_query: str,
+) -> Response:
+    if error is not None:
+        if fragment:
+            return drawer_fragment_error(
+                db,
+                request,
+                options,
+                selected_id,
+                expense_id,
+                error,
+                status_code=error_status,
+                form_values=form_values,
+                field_errors=field_errors,
             )
+        return _edit_page_or_flash_redirect(
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            error,
+            "/web/confirmed",
+            status_code=error_status,
+            form_values=form_values,
+            field_errors=field_errors,
+            return_to=return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+            return_query=return_query,
         )
-    return ExpenseSplitReplaceRequest(
-        expected_row_version=expected_row_version,
-        splits=splits,
+    if fragment:
+        return drawer_fragment_ok("save")
+    return _web_redirect(
+        resolve_return_to(return_to, f"/web/expenses/{expense_id}/edit"),
+        selected_id,
+        **return_context_params(
+            return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+            return_query=return_query,
+        ),
     )
-
-
-def _at(values: list[str], index: int) -> str:
-    return values[index] if index < len(values) else ""

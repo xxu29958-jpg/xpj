@@ -170,8 +170,8 @@ def test_web_confirmed_batch_stale_token_redirects_without_partial_update(web_cl
         },
         follow_redirects=False,
     )
-    assert response.status_code in {303, 307}
-    assert "msg=" in response.headers["location"]
+    assert response.status_code == 409
+    assert "账单已在其它端被修改" in response.text
 
     first_after = web_client.get(f"/api/expenses/{first_id}", headers=identity.app_headers).json()
     second_after = web_client.get(f"/api/expenses/{second_id}", headers=identity.app_headers).json()

@@ -11,11 +11,16 @@
 
 <form class="search-box" method="get" action="/web/search">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-  <input class="search-input" type="search" name="q" value="{{ search_query }}" placeholder="商家、分类、备注、规则关键词或目标名" autofocus>
+  <input class="search-input" type="search" name="q" value="{{ search_query }}" maxlength="80" placeholder="商家、分类、备注、规则关键词或目标名" autofocus{% if search_error %} aria-invalid="true" aria-describedby="search-query-error"{% endif %}>
   <button class="dt-btn primary" type="submit">搜索</button>
 </form>
 
-{% if not search_query %}
+{% if search_error %}
+<div id="search-query-error" class="error-text" role="alert">{{ search_error }}</div>
+{% endif %}
+
+{% if search_error %}
+{% elif not search_query %}
 <div class="search-empty dt-card">
   <div class="card-title">先输入一个关键词</div>
   <div class="card-sub">例如早餐、地铁、咖啡、预算分类或目标名称。</div>
@@ -45,7 +50,7 @@
             <span class="search-subtitle">{{ result.subtitle }}</span>
           </span>
           {% if result.amount_cents is not none %}
-          <span class="search-amount">{{ home_currency_symbol }}{{ home_amount_value(result.amount_cents) }}</span>
+          <span class="search-amount">{{ search_amount_label(result.amount_cents, result.currency_code or home_currency_code) }}{% if result.currency_code %} <small>{{ result.currency_code }}</small>{% endif %}</span>
           {% endif %}
         </a>
         {% endfor %}

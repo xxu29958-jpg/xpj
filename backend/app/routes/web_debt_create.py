@@ -12,7 +12,7 @@ from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_expense_helpers import parse_expense_time_local
+from app.routes._web_expense_form import parse_expense_time_local
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,

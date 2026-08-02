@@ -1548,10 +1548,37 @@
       },
       "Body_web_confirm_web_expenses__expense_id__confirm_post": {
         "properties": {
+          "amount_yuan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Yuan"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
             "type": "string"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
           },
           "fragment": {
             "default": 0,
@@ -1561,6 +1588,67 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "original_currency": {
+            "default": "",
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "save_before_confirm": {
+            "default": 0,
+            "title": "Save Before Confirm",
+            "type": "integer"
+          },
+          "tags": {
+            "default": "",
+            "title": "Tags",
             "type": "string"
           }
         },
@@ -1592,6 +1680,14 @@
               "type": "integer"
             },
             "title": "Expense Ids",
+            "type": "array"
+          },
+          "expense_snapshot": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expense Snapshot",
             "type": "array"
           },
           "ledger_id": {
@@ -2187,6 +2283,36 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
           }
         },
         "title": "Body_web_items_acknowledge_mismatch_web_expenses__expense_id__items_acknowledge_mismatch_post",
@@ -2250,6 +2376,36 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
             "type": "string"
           }
         },
@@ -2672,6 +2828,36 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
           }
         },
         "title": "Body_web_reject_web_expenses__expense_id__reject_post",
@@ -2884,9 +3070,15 @@
       "Body_web_save_web_expenses__expense_id__save_post": {
         "properties": {
           "amount_yuan": {
-            "default": "",
-            "title": "Amount Yuan",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Yuan"
           },
           "category": {
             "default": "",
@@ -2920,9 +3112,15 @@
             "type": "string"
           },
           "merchant": {
-            "default": "",
-            "title": "Merchant",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
           },
           "note": {
             "default": "",
@@ -2932,6 +3130,31 @@
           "original_currency": {
             "default": "",
             "title": "Original Currency",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
             "type": "string"
           },
           "return_to": {
@@ -3057,6 +3280,36 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
             "type": "string"
           },
           "split_amount_yuan": {
@@ -6959,6 +7212,7 @@
           "category": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -6994,6 +7248,7 @@
           "merchant": {
             "anyOf": [
               {
+                "maxLength": 255,
                 "type": "string"
               },
               {
@@ -7094,6 +7349,7 @@
           "tags": {
             "anyOf": [
               {
+                "maxLength": 500,
                 "type": "string"
               },
               {
@@ -7892,6 +8148,7 @@
           "category": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -7919,6 +8176,7 @@
           "merchant": {
             "anyOf": [
               {
+                "maxLength": 255,
                 "type": "string"
               },
               {
@@ -8019,6 +8277,7 @@
           "tags": {
             "anyOf": [
               {
+                "maxLength": 500,
                 "type": "string"
               },
               {
@@ -35501,6 +35760,66 @@
               "default": 0,
               "title": "Fragment",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_page",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Page",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_tag",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Tag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Query",
+              "type": "string"
             }
           }
         ],

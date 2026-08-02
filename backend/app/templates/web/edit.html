@@ -30,30 +30,37 @@
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="original_currency" value="{{ expense.original_currency_code }}">
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
+      <input type="hidden" name="save_before_confirm" value="1">
+      {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
       <div class="dt-form-row">
         <label for="{{ form_prefix }}-amount-yuan">金额 ({{ expense.original_currency_code }})</label>
-        <input id="{{ form_prefix }}-amount-yuan" type="number" name="amount_yuan" value="{{ expense.original_amount_value }}" min="0" step="{{ expense_currency_input.amount_step }}" placeholder="例如 {{ expense_currency_input.amount_example }}" inputmode="{{ expense_currency_input.inputmode }}" {% if not can_write %}disabled{% endif %}>
+        <input id="{{ form_prefix }}-amount-yuan" type="number" name="amount_yuan" value="{{ expense.original_amount_value }}" min="0" step="{{ expense_currency_input.amount_step }}" placeholder="例如 {{ expense_currency_input.amount_example }}" inputmode="{{ expense_currency_input.inputmode }}" {% if field_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-amount-error"{% endif %} {% if not can_write or expense.is_split_received %}disabled{% endif %}>
+        {% if field_errors.get('amount_yuan') %}<div id="{{ form_prefix }}-amount-error" class="error-text">{{ field_errors.get('amount_yuan') }}</div>{% endif %}
         {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
       </div>
       <div class="dt-form-row">
         <label for="{{ form_prefix }}-merchant">商家</label>
-        <input id="{{ form_prefix }}-merchant" type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200" placeholder="未填写商家" {% if not can_write %}disabled{% endif %}>
+        <input id="{{ form_prefix }}-merchant" type="text" name="merchant" value="{{ expense.merchant }}" maxlength="255" placeholder="未填写商家" {% if field_errors.get('merchant') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-merchant-error"{% endif %} {% if not can_write or expense.is_split_received %}disabled{% endif %}>
+        {% if field_errors.get('merchant') %}<div id="{{ form_prefix }}-merchant-error" class="error-text">{{ field_errors.get('merchant') }}</div>{% endif %}
       </div>
       <div class="dt-form-row">
         <label for="{{ form_prefix }}-expense-time">消费时间</label>
-        <input id="{{ form_prefix }}-expense-time" type="datetime-local" name="expense_time" value="{{ expense.expense_time_local }}" {% if not can_write %}disabled{% endif %}>
+        <input id="{{ form_prefix }}-expense-time" type="datetime-local" name="expense_time" value="{{ expense.expense_time_local }}" {% if field_errors.get('expense_time') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-time-error"{% endif %} {% if not can_write or expense.is_split_received %}disabled{% endif %}>
+        {% if field_errors.get('expense_time') %}<div id="{{ form_prefix }}-time-error" class="error-text">{{ field_errors.get('expense_time') }}</div>{% endif %}
         <div class="meta">留空表示不修改时间。</div>
       </div>
       <div class="dt-form-row">
         <label for="{{ form_prefix }}-category">分类</label>
-        <input id="{{ form_prefix }}-category" type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮" list="category-options" {% if not can_write %}disabled{% endif %}>
+        <input id="{{ form_prefix }}-category" type="text" name="category" value="{{ expense.category }}" maxlength="64" placeholder="例如 餐饮" list="category-options" {% if field_errors.get('category') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-category-error"{% endif %} {% if not can_write %}disabled{% endif %}>
+        {% if field_errors.get('category') %}<div id="{{ form_prefix }}-category-error" class="error-text">{{ field_errors.get('category') }}</div>{% endif %}
         <datalist id="category-options">
           {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
         </datalist>
       </div>
       <div class="dt-form-row">
         <label for="{{ form_prefix }}-tags">标签</label>
-        <input id="{{ form_prefix }}-tags" type="text" name="tags" value="{{ expense.tags }}" maxlength="500" placeholder="用逗号分隔，例如 报销, 出差" {% if not can_write %}disabled{% endif %}>
+        <input id="{{ form_prefix }}-tags" type="text" name="tags" value="{{ expense.tags }}" maxlength="500" placeholder="用逗号分隔，例如 报销, 出差" {% if field_errors.get('tags') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-tags-error"{% endif %} {% if not can_write %}disabled{% endif %}>
+        {% if field_errors.get('tags') %}<div id="{{ form_prefix }}-tags-error" class="error-text">{{ field_errors.get('tags') }}</div>{% endif %}
       </div>
       <div class="dt-form-row">
         <label for="{{ form_prefix }}-note">备注</label>
@@ -71,6 +78,7 @@
           ｜来源：{{ expense.source_label }}
           ｜上传时间：{{ expense.created_at }}
         </span>
+        {% if expense.is_split_received %}<div class="meta">来自家庭拆账的金额、商家和消费时间按协定冻结；分类、标签和备注仍可整理。</div>{% endif %}
       </div>
       <div class="actions">
         {% if can_write %}
@@ -81,7 +89,7 @@
                 data-confirm="忽略这笔账单？">忽略</button>
         {% endif %}
         {% endif %}
-        <a href="/web/pending{{ q }}" class="dt-btn link">返回</a>
+        <a href="{{ edit_return_href }}" class="dt-btn link">返回</a>
       </div>
     </form>
   </div>
@@ -183,8 +191,10 @@
       ⚠️ 明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。检查明细，或如果原小票本身如此，点下面"原小票如此"确认。
     </div>
     <form method="post" action="/web/expenses/{{ expense.id }}/items/acknowledge-mismatch" class="acknowledge-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
+      {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
       {% if can_write %}<button type="submit" class="dt-btn">原小票如此</button>{% endif %}
     </form>
     {% elif receipt_items.status == 'mismatch_acknowledged' %}
@@ -194,8 +204,10 @@
     {% endif %}
 
     <form method="post" action="/web/expenses/{{ expense.id }}/items/save">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
       <table class="dt-table dt-table--compact edit-subtable">
         <thead>
           <tr>
@@ -209,23 +221,27 @@
         </thead>
         <tbody>
         {% for item in receipt_items.rows %}
+          {% set row_index = loop.index0 %}
+          {% set item_errors = item.errors or {} %}
           <tr>
             <td>
-              <select name="item_kind" {% if not can_write %}disabled{% endif %}>
+              <select name="item_kind" {% if item_errors.get('kind') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-kind-error"{% endif %} {% if not can_write %}disabled{% endif %}>
                 <option value="product" {% if item.kind == 'product' %}selected{% endif %}>商品</option>
                 <option value="discount" {% if item.kind == 'discount' %}selected{% endif %}>优惠/折扣</option>
                 <option value="tax" {% if item.kind == 'tax' %}selected{% endif %}>税</option>
                 <option value="service_fee" {% if item.kind == 'service_fee' %}selected{% endif %}>服务费</option>
               </select>
+              {% if item_errors.get('kind') %}<div id="item-{{ row_index }}-kind-error" class="error-text">{{ item_errors.get('kind') }}</div>{% endif %}
             </td>
             <td>
-              <input type="text" name="item_name" value="{{ item.name }}" maxlength="255" placeholder="商品或服务" {% if not can_write %}disabled{% endif %}>
+              <input type="text" name="item_name" value="{{ item.name }}" maxlength="255" placeholder="商品或服务" {% if item_errors.get('name') or item_errors.get('row') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-name-error"{% endif %} {% if not can_write %}disabled{% endif %}>
+              {% if item_errors.get('name') or item_errors.get('row') %}<div id="item-{{ row_index }}-name-error" class="error-text">{{ item_errors.get('name') or item_errors.get('row') }}</div>{% endif %}
               {% if item.is_ocr_draft %}<div class="meta">识别草稿</div>{% endif %}
             </td>
-            <td><input type="text" name="item_quantity" value="{{ item.quantity_text }}" maxlength="64" placeholder="1份" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="number" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="number" name="item_amount_yuan" value="{{ item.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="text" name="item_category" value="{{ item.category }}" maxlength="64" placeholder="其他" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="text" name="item_quantity" value="{{ item.quantity_text }}" maxlength="64" placeholder="1份" {% if item_errors.get('quantity') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-quantity-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('quantity') %}<div id="item-{{ row_index }}-quantity-error" class="error-text">{{ item_errors.get('quantity') }}</div>{% endif %}</td>
+            <td><input type="number" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if item_errors.get('unit_price_yuan') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-unit-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('unit_price_yuan') %}<div id="item-{{ row_index }}-unit-error" class="error-text">{{ item_errors.get('unit_price_yuan') }}</div>{% endif %}</td>
+            <td><input type="number" name="item_amount_yuan" value="{{ item.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if item_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-amount-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('amount_yuan') %}<div id="item-{{ row_index }}-amount-error" class="error-text">{{ item_errors.get('amount_yuan') }}</div>{% endif %}</td>
+            <td><input type="text" name="item_category" value="{{ item.category }}" maxlength="64" placeholder="其他" {% if item_errors.get('category') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-category-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('category') %}<div id="item-{{ row_index }}-category-error" class="error-text">{{ item_errors.get('category') }}</div>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -259,8 +275,10 @@
     </div>
     {% endif %}
     <form method="post" action="/web/expenses/{{ expense.id }}/splits/save">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
       <table class="dt-table dt-table--compact edit-subtable">
         <thead>
           <tr>
@@ -271,10 +289,13 @@
         </thead>
         <tbody>
         {% for split in split_rows.rows %}
+          {% set row_index = loop.index0 %}
+          {% set split_errors = split.errors or {} %}
           <tr>
             <td>
-              <select name="split_member_id" {% if not can_write %}disabled{% endif %}>
+              <select name="split_member_id" {% if split_errors.get('member_id') or split_errors.get('row') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-member-error"{% endif %} {% if not can_write %}disabled{% endif %}>
                 <option value="">选择成员</option>
+                {% if split.member_id is string and split.member_id %}<option value="{{ split.member_id }}" selected>无效成员（请重新选择）</option>{% endif %}
                 {% if split.disabled %}
                 <option value="{{ split.member_id }}" selected>{{ split.account_name }}（已停用）</option>
                 {% endif %}
@@ -284,9 +305,10 @@
                 </option>
                 {% endfor %}
               </select>
+              {% if split_errors.get('member_id') or split_errors.get('row') %}<div id="split-{{ row_index }}-member-error" class="error-text">{{ split_errors.get('member_id') or split_errors.get('row') }}</div>{% endif %}
             </td>
-            <td><input type="number" name="split_amount_yuan" value="{{ split.amount_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if not can_write %}disabled{% endif %}></td>
-            <td><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="number" name="split_amount_yuan" value="{{ split.amount_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if split_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-amount-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('amount_yuan') %}<div id="split-{{ row_index }}-amount-error" class="error-text">{{ split_errors.get('amount_yuan') }}</div>{% endif %}</td>
+            <td><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" {% if split_errors.get('note') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-note-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('note') %}<div id="split-{{ row_index }}-note-error" class="error-text">{{ split_errors.get('note') }}</div>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>

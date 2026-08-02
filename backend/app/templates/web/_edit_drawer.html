@@ -131,6 +131,7 @@
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
       <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
+      <input type="hidden" name="save_before_confirm" value="1">
       {# 批10: hidden return_to sends a no-JS save back to the pending queue instead
          of the full edit page (fixes the "saved → popped out of queue" 303). The JS
          drawer flow reads/sets fragment=1 itself; this static value keeps the
@@ -156,8 +157,10 @@
                    min="0"
                    step="{{ expense_currency_input.amount_step }}"
                    placeholder="例如 {{ expense_currency_input.amount_example }}"
-                   {% if not can_write %}disabled{% endif %}>
+                   {% if field_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-amount-error"{% endif %}
+                   {% if not can_write or e.is_split_received %}disabled{% endif %}>
           </span>
+          {% if field_errors.get('amount_yuan') %}<span id="{{ form_prefix }}-amount-error" class="error-text">{{ field_errors.get('amount_yuan') }}</span>{% endif %}
           {% if e.fx_meta %}<span class="product-drawer-field-hint">{{ e.fx_meta }}</span>{% endif %}
         </label>
         <label class="product-field product-drawer-currency-field" for="{{ form_prefix }}-currency">
@@ -176,8 +179,11 @@
                type="text"
                name="merchant"
                value="{{ e.merchant }}"
+               maxlength="255"
                placeholder="例如：盒马鲜生 · 望京店"
-               {% if not can_write %}disabled{% endif %}>
+               {% if field_errors.get('merchant') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-merchant-error"{% endif %}
+               {% if not can_write or e.is_split_received %}disabled{% endif %}>
+        {% if field_errors.get('merchant') %}<span id="{{ form_prefix }}-merchant-error" class="error-text">{{ field_errors.get('merchant') }}</span>{% endif %}
       </label>
 
       <label class="product-field" for="{{ form_prefix }}-expense-time">
@@ -187,7 +193,9 @@
                type="datetime-local"
                name="expense_time"
                value="{{ e.expense_time_local }}"
-               {% if not can_write %}disabled{% endif %}>
+               {% if field_errors.get('expense_time') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-time-error"{% endif %}
+               {% if not can_write or e.is_split_received %}disabled{% endif %}>
+        {% if field_errors.get('expense_time') %}<span id="{{ form_prefix }}-time-error" class="error-text">{{ field_errors.get('expense_time') }}</span>{% endif %}
       </label>
 
       <label class="product-field" for="{{ form_prefix }}-category">
@@ -197,8 +205,11 @@
                type="text"
                name="category"
                value="{{ e.category }}"
+               maxlength="64"
                list="category-options-drawer"
+               {% if field_errors.get('category') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-category-error"{% endif %}
                {% if not can_write %}disabled{% endif %}>
+        {% if field_errors.get('category') %}<span id="{{ form_prefix }}-category-error" class="error-text">{{ field_errors.get('category') }}</span>{% endif %}
       </label>
       <datalist id="category-options-drawer">
         {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
@@ -213,7 +224,9 @@
                value="{{ e.tags }}"
                maxlength="500"
                placeholder="用逗号分隔，例如：报销, 出差"
+               {% if field_errors.get('tags') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-tags-error"{% endif %}
                {% if not can_write %}disabled{% endif %}>
+        {% if field_errors.get('tags') %}<span id="{{ form_prefix }}-tags-error" class="error-text">{{ field_errors.get('tags') }}</span>{% endif %}
       </label>
 
       <label class="product-field" for="{{ form_prefix }}-note">

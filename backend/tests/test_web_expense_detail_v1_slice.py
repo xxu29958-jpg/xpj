@@ -10,7 +10,8 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
-from app.models import Expense, LedgerMember
+from app.models import Expense, LedgerAuditLog, LedgerMember
+from app.routes._web_expense_rows import item_replace_payload
 from app.routes.web_app import _require_local as _web_require_local
 from app.schemas import (
     ExpenseItemReplaceRequest,
@@ -34,6 +35,7 @@ def _seed_pending_expense(
     *,
     amount_cents: int = 1234,
     currency_code: str = "CNY",
+    source: str = "manual",
 ) -> int:
     with SessionLocal() as db:
         now = now_utc()
@@ -46,7 +48,7 @@ def _seed_pending_expense(
             merchant="家庭超市",
             category="生活",
             note="周末采购",
-            source="manual",
+            source=source,
             image_path=None,
             thumbnail_path=None,
             image_hash=None,
@@ -191,6 +193,7 @@ def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestCl
     assert "面包" in detail.text
     assert "家庭拆账" in detail.text
     assert "我先记" in detail.text
+    assert detail.text.count('name="csrf_token"') >= 4
 
     api_items = web_client.get(f"/api/expenses/{expense_id}/items", headers=identity.app_headers)
     assert api_items.status_code == 200, api_items.json()
@@ -200,6 +203,111 @@ def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestCl
     api_splits = web_client.get(f"/api/expenses/{expense_id}/splits", headers=identity.app_headers)
     assert api_splits.status_code == 200, api_splits.json()
     assert api_splits.json()["splits_total_amount_cents"] == 1234
+    with SessionLocal() as db:
+        audit = db.scalar(
+            select(LedgerAuditLog)
+            .where(LedgerAuditLog.ledger_id == "owner")
+            .where(LedgerAuditLog.action == "expense_splits_replaced")
+            .order_by(LedgerAuditLog.id.desc())
+            .limit(1)
+        )
+        assert audit is not None
+        assert audit.actor_account_id is not None
+
+
+def test_web_item_and_split_validation_retains_rows_and_anchors_errors(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense_id = _seed_pending_expense()
+    snapshot = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    ).json()
+    parsed = item_replace_payload(
+        currency_code="CNY",
+        expected_row_version=snapshot["row_version"],
+        item_name=["直接解析牛奶"],
+        item_kind=["product"],
+        item_quantity=["1盒"],
+        item_unit_price_yuan=["5.80"],
+        item_amount_yuan=["5.80"],
+        item_category=["生活"],
+    )
+    assert parsed.items[0].amount_cents == 580
+    items = web_client.post(
+        f"/web/expenses/{expense_id}/items/save",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": str(snapshot["row_version"]),
+            "item_name": ["未保存牛奶", "未保存面包"],
+            "item_kind": ["product", "product"],
+            "item_quantity": ["1盒", "2个"],
+            "item_unit_price_yuan": ["5.80", "3.25"],
+            "item_amount_yuan": ["5.80", "1.234"],
+            "item_category": ["生活", "餐饮"],
+        },
+        follow_redirects=False,
+    )
+    assert items.status_code == 422, items.text
+    assert "未保存牛奶" in items.text
+    assert "未保存面包" in items.text
+    assert 'aria-describedby="item-1-amount-error"' in items.text
+
+    splits = web_client.post(
+        f"/web/expenses/{expense_id}/splits/save",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": str(snapshot["row_version"]),
+            "split_member_id": ["-1"],
+            "split_amount_yuan": ["12.34"],
+            "split_note": ["未保存分摊"],
+        },
+        follow_redirects=False,
+    )
+    assert splits.status_code == 422, splits.text
+    assert "未保存分摊" in splits.text
+    assert 'aria-describedby="split-0-member-error"' in splits.text
+
+
+def test_received_split_web_edit_locks_agreed_facts_but_allows_metadata(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense_id = _seed_pending_expense(source="bill_split_received")
+    page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert page.status_code == 200, page.text
+    assert "金额、商家和消费时间按协定冻结" in page.text
+    assert 'name="amount_yuan"' in page.text
+    assert 'name="merchant"' in page.text
+    before = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    ).json()
+
+    response = web_client.post(
+        f"/web/expenses/{expense_id}/save",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": str(before["row_version"]),
+            "original_currency": "CNY",
+            "category": "家庭采购",
+            "note": "协定后整理",
+            "tags": "家庭",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, response.text
+    after = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    ).json()
+    assert after["amount_cents"] == before["amount_cents"]
+    assert after["merchant"] == before["merchant"]
+    assert after["expense_time"] == before["expense_time"]
+    assert after["category"] == "家庭采购"
+    assert after["note"] == "协定后整理"
+    assert after["tags"] == "家庭"
 
 
 def test_web_detail_money_posts_fail_closed_after_env_drift(
@@ -232,7 +340,7 @@ def test_web_detail_money_posts_fail_closed_after_env_drift(
             },
             follow_redirects=False,
         )
-        assert items.status_code == 200, items.text
+        assert items.status_code == 409, items.text
         assert "服务端币种配置与已持久化的本位币绑定不一致" in items.text
         api_items = web_client.get(
             f"/api/expenses/{expense_id}/items", headers=identity.app_headers
@@ -256,7 +364,7 @@ def test_web_detail_money_posts_fail_closed_after_env_drift(
             },
             follow_redirects=False,
         )
-        assert splits.status_code == 200, splits.text
+        assert splits.status_code == 409, splits.text
         assert "服务端币种配置与已持久化的本位币绑定不一致" in splits.text
         api_splits = web_client.get(
             f"/api/expenses/{expense_id}/splits", headers=identity.app_headers

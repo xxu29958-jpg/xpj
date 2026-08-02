@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from app.errors import AppError
-from app.routes._web_expense_helpers import parse_amount_yuan
+from app.routes._web_expense_form import parse_amount_yuan
 from app.routes.web_budgets import _parse_amount_yuan as _budget_amount
 from app.routes.web_goals import _parse_amount_yuan as _goal_amount
 

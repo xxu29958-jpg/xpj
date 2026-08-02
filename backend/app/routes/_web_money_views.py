@@ -22,6 +22,7 @@ from app.services.data_quality_service import (
 from app.services.spending_contract_service import (
     accounting_datetime_label,
     accounting_zone,
+    stat_time,
 )
 from app.services.time_service import ensure_utc, parse_month_label
 from app.services.time_service import to_iso as _datetime_to_iso
@@ -173,12 +174,14 @@ def _confirmed_by_day(
     month: str,
     *,
     currency_code: str,
+    tag: str | None = None,
 ) -> list[dict]:
     return web_stats_service.confirmed_by_day(
         db,
         ledger_id,
         month,
         currency_code=currency_code,
+        tag=tag,
     )
 
 
@@ -186,8 +189,10 @@ def _confirmed_source_breakdown(
     db: Session,
     ledger_id: str,
     month: str | None,
+    *,
+    tag: str | None = None,
 ) -> list[dict]:
-    return web_stats_service.source_breakdown(db, ledger_id, month)
+    return web_stats_service.source_breakdown(db, ledger_id, month, tag=tag)
 
 
 def _expense_view(
@@ -242,6 +247,7 @@ def _expense_view(
         "tags": getattr(expense, "tags", None) or "",
         "status": expense.status,
         "expense_time": accounting_datetime_label(expense.expense_time),
+        "stat_time": accounting_datetime_label(stat_time(expense)),
         "expense_time_local": _expense_time_local_input(
             getattr(expense, "expense_time", None)
         ),

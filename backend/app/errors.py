@@ -64,6 +64,7 @@ ERROR_MESSAGES = {
     "currency_binding_evidence_changed": "历史金额证据已变化，请重新预览后再确认。",
     "currency_binding_revision_conflict": "本位币绑定已更新，请刷新后重试。",
     "currency_binding_state_conflict": "本位币绑定状态已变化，请刷新后重试。",
+    "currency_snapshot_immutable": "账单币种快照已经冻结，不能通过编辑更改。",
     "repayment_draft_currency_unsupported": "还款通知草稿目前只支持人民币账本捕获（通知金额按人民币分解析），暂不能入账到其它币种的账本。",
     "notification_draft_currency_unsupported": "通知捕获目前只支持人民币账本：通知金额按人民币分解析，暂不能入账到其它币种的账本。",
     "exchange_rate_required": "请先填写这一天的汇率。",
